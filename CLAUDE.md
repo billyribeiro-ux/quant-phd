@@ -40,7 +40,18 @@
 .venv/bin/pytest
 .venv/bin/python tools/render_curriculum.py && git diff --exit-code -- CURRICULUM.md curriculum/curriculum.json
 .venv/bin/python tools/verify_refs.py --offline  # add the live run after changing references
+.venv/bin/python tools/vendor.py check && .venv/bin/python tools/build_site.py && .venv/bin/python tools/page_smoke.py
 ```
+
+Site rules:
+- **No CDN, ever.** Add a runtime through `course/assets/vendor/SPEC.yaml`,
+  then run `vendor.py lock` and `vendor.py install`. Pins must be at least 14
+  days old, and `lock` enforces this.
+- **Colours come only from CSS custom properties** in
+  `course/assets/css/tokens.css`. Every page must pass the smoke test in light
+  and dark themes at 1280 px and 375 px, with no horizontal scroll.
+- **`course/dev/design-system.html` is the component reference.** New
+  components go there first, so the smoke test exercises them.
 
 ## Conventions
 

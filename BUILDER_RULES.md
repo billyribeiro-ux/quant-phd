@@ -260,7 +260,8 @@ Studios integrate every module listed in `requires`. A studio:
      <p class="interpretation">What the output means, and what it does not mean.</p>
    </section>
    ```
-   Each lab has a byte-identical pytest twin in `tests/labs/`. Seed
+   `tools/run_labs.py` extracts each lab from the page and runs it under CPython 3.14, so the page is the
+   single source of truth: never copy lab code anywhere else. Seed
    every RNG. No network access. Runtime under 10 s in Pyodide; precompute at
    build time if needed, and say so on the page.
 2. **Code quality:** type hints, docstrings that state units, no global mutable

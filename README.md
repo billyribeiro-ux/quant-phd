@@ -8,10 +8,17 @@ degree (bachelor's level) and a Master's in Finance / Financial Engineering.
 The program ships as a self-contained static HTML site with runnable labs,
 autograded projects and a program-long engineering build ("Atlas").
 
-> **Status: Phase 0 (foundations) in progress.** The curriculum, its validator,
-> and the verified citation registry are built. The design system, page
-> templates, grader harness and site come next. See
-> [BLUEPRINT.md §9](BLUEPRINT.md#9-build-process).
+> **Status: Phase 0 (foundations) in progress.** Built so far:
+> - the curriculum and its validator
+> - the verified citation registry (403 works)
+> - pinned, integrity-checked runtimes
+> - the design system
+> - the program map
+> - a reference lesson whose Python lab runs in the browser
+> - a browser smoke test
+>
+> Next come the lesson, project and studio templates, the grader harness, and
+> spaced retrieval. See [BLUEPRINT.md §9](BLUEPRINT.md#9-build-process).
 
 ## What makes it different
 
@@ -56,6 +63,12 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python tools/render_curriculum.py      # validate the DAG and regenerate CURRICULUM.md
 .venv/bin/python tools/verify_refs.py --offline  # registry integrity
 .venv/bin/python tools/verify_refs.py            # live re-verification against Crossref
+
+# Site: fetch runtimes once, publish data, preview, and smoke-test in Chromium
+.venv/bin/python tools/vendor.py install          # pinned + sha512-verified, from the npm registry
+.venv/bin/python tools/build_site.py
+python3 -m http.server -d course 8000            # open http://localhost:8000
+.venv/bin/python tools/page_smoke.py             # needs: python -m playwright install chromium
 
 # Registry pipeline
 .venv/bin/python tools/seed_references.py        # resolve every curriculum source against Crossref

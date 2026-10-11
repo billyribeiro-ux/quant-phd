@@ -36,6 +36,47 @@ jobs:
       - name: Registry integrity (offline)
         run: python tools/verify_refs.py --offline
 
+  labs:
+    name: In-page labs on CPython 3.14 (matches Pyodide 314.x)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: python tools/run_labs.py
+
+  site:
+    name: Site build and browser smoke test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Restore vendored runtimes
+        uses: actions/cache@v4
+        with:
+          path: |
+            course/assets/vendor
+            !course/assets/vendor/SPEC.yaml
+            !course/assets/vendor/LOCK.json
+          key: vendor-${{ hashFiles('course/assets/vendor/LOCK.json', 'course/assets/vendor/SPEC.yaml') }}
+      - name: Install vendored runtimes (sha512-verified)
+        run: python tools/vendor.py check || python tools/vendor.py install
+      - run: python tools/build_site.py
+      - run: python -m playwright install --with-deps chromium
+      - run: python tools/page_smoke.py
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-screenshots
+          path: .cache/screens/
+
   live-citations:
     name: Live Crossref re-verification
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
