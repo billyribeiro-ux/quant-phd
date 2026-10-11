@@ -7,21 +7,134 @@
 | Measure | Value |
 |---|---|
 | Parts | 25 |
-| Modules | 127 |
-| Graded projects | 150 (127 module projects + 23 studio projects) |
+| Modules | 134 |
+| Graded projects | 157 (134 module projects + 23 studio projects) |
 | Atlas milestones | 20 |
-| Total design hours | 13,165 |
-| Credit-hour equivalent | ≈293 credits (≈98 three-credit courses at 135 h each) |
-| Full-time equivalent | 6.09 years at 45 h/week × 48 weeks |
+| Total design hours | 13,695 |
+| Credit-hour equivalent | ≈304 credits (≈101 three-credit courses at 135 h each) |
+| Full-time equivalent | 6.34 years at 45 h/week × 48 weeks |
 
 Hours are design targets that include each module's project. They are calibrated against the U.S. federal credit-hour definition (45 h of student work per credit, 135 h per three-credit course), will be recalibrated against pilot-learner data, and shrink for any student who tests out of material through placement.
+
+## Degree-equivalent credentials
+
+Named credentials are explicit views over the curriculum graph. The validator proves each one closed under prerequisites and bounded by its tier. They are **content-equivalent only**: only an accredited, state-authorized institution can award a degree.
+
+| Credential | Modules | Studios | Graded projects | Hours | Credit equivalent | FTE years |
+|---|---|---|---|---|---|---|
+| **Finance Degree — Bachelor's Level** | 42 | 5 | 47 | 3,881 | ≈86 credits | 1.80 |
+| **Master's in Finance / Financial Engineering** | 76 | 8 | 84 | 7,546 | ≈168 credits | 3.49 |
+| **PhD in Finance** | 83 | 4 | 87 | 9,171 | ≈204 credits | 4.25 |
+
+Credential hours include every prerequisite the credential pulls in. Credentials overlap: a student completing the Master's has already completed most of the Bachelor's.
+
+### Finance Degree — Bachelor's Level
+
+| Area | Course | Program modules | Hours |
+|---|---|---|---|
+| Quantitative & business core | **Calculus** | M1 · Precalculus & Mathematical Reasoning<br>M2 · Single & Multivariable Calculus | 400 |
+| Quantitative & business core | **Statistics for Finance** | S0 · Exploratory Data Analysis & Visualization<br>S1 · Statistical Inference | 180 |
+| Quantitative & business core | **Regression & Econometrics** | S2 · Linear Regression | 120 |
+| Quantitative & business core | **Programming for Finance** | CS1 · Programming in Python from Zero | 120 |
+| Quantitative & business core | **Microeconomics** | E1 · Microeconomics | 120 |
+| Quantitative & business core | **Macroeconomics** | E5 · Macroeconomics I: Aggregates, Cycles & Policy | 110 |
+| Quantitative & business core | **Financial Accounting** | AC1 · Financial Accounting | 120 |
+| Quantitative & business core | **Managerial Accounting** | AC4 · Managerial & Cost Accounting for Decisions | 70 |
+| Quantitative & business core | **Business Law & Professional Ethics** | LX2 · Securities Law, Regulation & Professional Conduct | 50 |
+| Quantitative & business core | **Business Communication** | PC1 · Research Writing & Presentation | 30 |
+| Finance major | **Principles of Finance / Corporate Finance I** | CF1 · Time Value & Capital Budgeting<br>CF2 · Cost of Capital & Capital Structure | 140 |
+| Finance major | **Corporate Finance II: Payout & Governance** | CF3 · Payout, Governance & Agency<br>E2 · Game Theory & Information Economics | 170 |
+| Finance major | **Investments** | AP2 · Mean-Variance, CAPM, ICAPM & APT<br>FC3 · Market Efficiency: The Evidence Primer<br>FC4 · Investments & Equity Security Analysis | 225 |
+| Finance major | **Financial Markets & Institutions** | FC1 · The Financial System, Markets & Instruments<br>BK1 · Banking & Asset-Liability Management<br>FI4 · Money Markets & Plumbing<br>BK4 · Payments, Market Infrastructure & Fintech | 270 |
+| Finance major | **Financial Statement Analysis** | AC2 · Financial Statement Analysis & Earnings Quality | 110 |
+| Finance major | **Valuation** | CF4 · Valuation | 100 |
+| Finance major | **Financial Modeling** | CF7 · Financial Modeling: Spreadsheets to Code | 80 |
+| Finance major | **Short-Term Financial Management** | CF8 · Working Capital, Treasury & Short-Term Finance | 50 |
+| Finance major | **Fixed Income** | FI1 · Bond Math & Curve Construction | 90 |
+| Finance major | **Derivatives** | FC2 · Derivatives Fundamentals | 90 |
+| Finance major | **Risk Management & International Finance** | CF9 · Corporate Risk Management & International Corporate Finance | 70 |
+| Finance major | **Asset Management** | BK2 · Asset Management Industry | 50 |
+| Finance major | **Personal Finance & Wealth Management** | BK5 · Household Finance & Wealth Management | 50 |
+| Finance major | **Financial History** | LX1 · Financial History | 50 |
+| Finance major | **Investment Memos & Pitches** | PC2 · Investment Memos & Trade Pitches | 40 |
+| Finance major | **Careers & Technical Interviews** | PC3 · Quant & Finance Interviews | 50 |
+| Finance major | **Senior Capstone** | CAP0 · Finance Degree Capstone | 120 |
+
+*Studios:* STUDIO-FC, STUDIO-AC, STUDIO-BK, STUDIO-LX, STUDIO-PC  
+*Supporting prerequisites pulled in by the graph:* CS2, E3, M3, M4, M7, P0.1
+
+### Master's in Finance / Financial Engineering
+
+| Area | Course | Program modules | Hours |
+|---|---|---|---|
+| Core | **Stochastic Calculus for Finance** | SC1 · Stochastic Processes<br>SC2 · Itô Calculus & SDEs<br>SC3 · Change of Measure | 280 |
+| Core | **Derivatives Pricing** | DV1 · Continuous-Time Arbitrage Pricing<br>DV2 · The Volatility Surface | 180 |
+| Core | **Computational Finance** | M8 · Numerical Methods & Scientific Computing<br>SC4 · PDEs & Feynman–Kac<br>DV4 · Numerical Pricing (C++) | 320 |
+| Core | **Financial Econometrics** | S3 · Time Series<br>S4 · Volatility Econometrics<br>S7 · Research Integrity & Multiple Testing | 290 |
+| Core | **Asset Pricing** | AP1 · No-Arbitrage & the Stochastic Discount Factor<br>AP5 · Present Value & Return Predictability | 200 |
+| Core | **Portfolio Management** | PR1 · Mean-Variance in Practice<br>PR2 · Risk Parity, Vol Targeting & Leverage<br>PR3 · Growth-Optimal Sizing | 180 |
+| Core | **Risk Management** | PR4 · Risk Measurement | 100 |
+| Electives | **Fixed Income & Interest-Rate Models** | FI2 · Term-Structure Models<br>FI3 · Bond Risk Premia & the Expectations Hypothesis<br>FI5 · Inflation-Linked Markets<br>FI6 · Interest-Rate Derivatives | 340 |
+| Electives | **Credit Risk** | CR1 · Structural & Reduced-Form Credit Models<br>CR2 · Credit Derivatives & Correlation<br>CR3 · Credit Cycles & Macro-Credit<br>CR4 · Distressed Debt & Restructuring | 260 |
+| Electives | **Factor Investing & Performance Evaluation** | F1 · Data & Methodology<br>F2 · The Classic Factors<br>F3 · Factors Across Asset Classes<br>F7 · Performance Evaluation & Skill | 280 |
+| Electives | **Market Microstructure & Trading** | MS1 · Microstructure Theory<br>MS3 · Market Impact & Optimal Execution | 170 |
+| Electives | **Machine Learning for Finance** | QR3 · Statistical Learning for Finance | 130 |
+| Electives | **Quantitative Research & Backtesting** | QR1 · Research Data Engineering<br>QR2 · Backtesting Architecture | 150 |
+| Electives | **Advanced Corporate Finance: M&A, LBOs, Capital Raising** | CF5 · M&A, LBOs & Restructuring<br>CF6 · Raising Capital & Investment Banking | 140 |
+| Electives | **Alternative Investments & Real Estate** | PM1 · Private Equity<br>PM4 · Real Estate Finance & Mortgage-Backed Securities | 140 |
+| Electives | **International Finance & Commodities** | X1 · FX Markets & Parity Conditions<br>X2 · Currency Risk Premia<br>X3 · Commodities | 200 |
+| Electives | **Volatility & Structured Products** | DV5 · Variance Risk Premium & Volatility Trading<br>DV6 · Exotics, Structured Products & Dealer Hedging | 140 |
+
+*Studios:* STUDIO-SC, STUDIO-DV, STUDIO-FI, STUDIO-CR, STUDIO-F, STUDIO-PR, STUDIO-CF, STUDIO-QR  
+*Supporting prerequisites pulled in by the graph:* AC1, AC2, AP2, CF1, CF2, CF3, CF4, CS1, CS2, CS3, CS4, CS5, E1, E2, E3, E4, E5, E8, FC2, FI1, M1, M2, M3, M4, M5, M6, M7, P0.1, S0, S1, S2, S6, SC6
+
+### PhD in Finance
+
+| Area | Course | Program modules | Hours |
+|---|---|---|---|
+| First-year sequence | **Asset Pricing Theory I–II** | AP1 · No-Arbitrage & the Stochastic Discount Factor<br>AP3 · Consumption-Based Pricing & Its Puzzles<br>AP4 · Resolving the Puzzles | 320 |
+| First-year sequence | **Empirical Asset Pricing** | AP5 · Present Value & Return Predictability<br>F1 · Data & Methodology<br>F2 · The Classic Factors<br>F5 · The Factor Zoo & Replication | 310 |
+| First-year sequence | **Continuous-Time Finance** | SC1 · Stochastic Processes<br>SC2 · Itô Calculus & SDEs<br>SC3 · Change of Measure<br>SC5 · Jumps & Lévy Processes<br>SC6 · Stochastic Control | 440 |
+| First-year sequence | **Corporate Finance Theory** | CF2 · Cost of Capital & Capital Structure<br>CF3 · Payout, Governance & Agency<br>CF5 · M&A, LBOs & Restructuring<br>E2 · Game Theory & Information Economics<br>E4 · General Equilibrium & Information in Markets | 430 |
+| First-year sequence | **Econometrics I–II** | S1 · Statistical Inference<br>S2 · Linear Regression<br>S3 · Time Series<br>S5 · GMM & Cross-Sectional Econometrics<br>S6 · Causal Inference & Event Studies | 580 |
+| First-year sequence | **Microeconomic Theory** | E1 · Microeconomics<br>E2 · Game Theory & Information Economics<br>E3 · Decision Theory Under Risk & Ambiguity<br>E4 · General Equilibrium & Information in Markets | 400 |
+| First-year sequence | **Macroeconomic Theory** | E5 · Macroeconomics I: Aggregates, Cycles & Policy<br>E6 · Macroeconomics II: Dynamic General Equilibrium<br>E7 · Monetary Economics & Central Banking | 390 |
+| Field courses | **Intermediation & Macro-Finance** | AP6 · Intermediary & Institutional Asset Pricing<br>SR1 · Runs, Liquidity & Fire Sales<br>SR2 · Leverage Cycles | 190 |
+| Field courses | **Behavioral Finance & Market Efficiency** | AP7 · Behavioral Finance<br>AP8 · Market Efficiency: The Full Debate | 130 |
+| Field courses | **Market Microstructure** | MS1 · Microstructure Theory<br>MS2 · Limit Order Books & Market Structure | 150 |
+| Field courses | **Machine Learning in Asset Pricing** | F6 · Machine Learning in Asset Pricing | 100 |
+| Field courses | **Derivatives & Volatility Theory** | DV3 · Stochastic & Rough Volatility | 90 |
+| Field courses | **Dynamic Portfolio Choice** | PR6 · Dynamic & Long-Horizon Allocation | 80 |
+| Field courses | **Learning & Control in Trading** | QR5 · Reinforcement Learning & Control in Trading | 80 |
+| Milestones | **Qualifying Examination** | CAP3 · Qualifying Examination | 200 |
+| Milestones | **Replication & Refereeing** | CAP1 · Reading, Refereeing & Replicating | 120 |
+| Milestones | **The Great Debates** | CAP2 · The Great Debates | 120 |
+| Milestones | **Dissertation & Defense** | CAP4 · Research Thesis & Defense | 1200 |
+
+*Studios:* STUDIO-S, STUDIO-E, STUDIO-AP, STUDIO-F  
+*Supporting prerequisites pulled in by the graph:* AC1, AC2, AP2, BK1, CF1, CF4, CS1, CS2, CS3, CS4, DV1, DV2, DV5, E8, F3, FC1, FC2, FC3, FI1, FI3, GM1, GM2, GM4, M1, M2, M3, M4, M5, M6, M7, P0.1, PR1, PR2, PR3, QR1, QR2, QR3, S0, S7, X1, X2
+
+### External coverage check: CFA Program curriculum topic areas [V]
+
+| Topic area | Covered by |
+|---|---|
+| Ethical and Professional Standards | LX2 · Securities Law, Regulation & Professional Conduct |
+| Quantitative Methods | M4 · Probability<br>S1 · Statistical Inference<br>S2 · Linear Regression<br>S3 · Time Series<br>QR3 · Statistical Learning for Finance |
+| Economics | E1 · Microeconomics<br>E5 · Macroeconomics I: Aggregates, Cycles & Policy<br>E7 · Monetary Economics & Central Banking<br>E8 · International Macro & the Dollar |
+| Financial Statement Analysis | AC1 · Financial Accounting<br>AC2 · Financial Statement Analysis & Earnings Quality<br>AC3 · Earnings, Disclosure & Market Reaction |
+| Corporate Issuers | CF2 · Cost of Capital & Capital Structure<br>CF3 · Payout, Governance & Agency<br>CF5 · M&A, LBOs & Restructuring<br>CF8 · Working Capital, Treasury & Short-Term Finance |
+| Equity Investments | FC3 · Market Efficiency: The Evidence Primer<br>FC4 · Investments & Equity Security Analysis<br>CF4 · Valuation |
+| Fixed Income | FI1 · Bond Math & Curve Construction<br>FI3 · Bond Risk Premia & the Expectations Hypothesis<br>CR1 · Structural & Reduced-Form Credit Models<br>PM4 · Real Estate Finance & Mortgage-Backed Securities |
+| Derivatives | FC2 · Derivatives Fundamentals<br>DV1 · Continuous-Time Arbitrage Pricing |
+| Alternative Investments | PM1 · Private Equity<br>PM2 · Venture Capital<br>PM3 · Private Credit & Infrastructure<br>PM4 · Real Estate Finance & Mortgage-Backed Securities<br>X3 · Commodities<br>X4 · Digital Assets as a Macro Asset |
+| Portfolio Management and Wealth Planning | PR1 · Mean-Variance in Practice<br>PR2 · Risk Parity, Vol Targeting & Leverage<br>PR4 · Risk Measurement<br>BK2 · Asset Management Industry<br>BK5 · Household Finance & Wealth Management |
 
 ## Tiers
 
 | Tier | Standard | Modules | Module h | Studio h |
 |---|---|---|---|---|
 | **F** Foundations | Rigorous first-two-years university mathematics, computing, statistics and economics. | 13 | 1,420 | 0 |
-| **U** Major | Complete undergraduate finance major at a top program, plus the quantitative depth most majors skip. | 27 | 2,115 | 280 |
+| **U** Major | Complete undergraduate finance major at a top program, plus the quantitative depth most majors skip. | 34 | 2,645 | 280 |
 | **M** Master's | MFE / MSF / MSc Economics level: continuous-time finance, econometrics, and production research. | 73 | 5,770 | 1,020 |
 | **D** Doctoral | First-year PhD coursework in asset pricing, econometrics and macro, then original research. | 14 | 2,490 | 70 |
 
@@ -29,10 +142,10 @@ Hours are design targets that include each module's project. They are calibrated
 
 | Milestone | Rule | Cumulative h | FTE years |
 |---|---|---|---|
-| **Major Complete** | Every F and U module project passed, plus every studio of tier F or U. | 3,815 | 1.77 |
-| **Master's-Equivalent** | MAJOR, plus every M module project and every M studio. | 10,605 | 4.91 |
-| **Doctoral Candidate** | MASTERS, plus every D module and studio, including the CAP3 qualifying exam. | 11,965 | 5.54 |
-| **Doctoral** | CANDIDATE, plus the CAP4 thesis defended against the rubric. | 13,165 | 6.09 |
+| **Major Complete** | Every F and U module project passed, plus every studio of tier F or U. | 4,345 | 2.01 |
+| **Master's-Equivalent** | MAJOR, plus every M module project and every M studio. | 11,135 | 5.16 |
+| **Doctoral Candidate** | MASTERS, plus every D module and studio, including the CAP3 qualifying exam. | 12,495 | 5.78 |
+| **Doctoral** | CANDIDATE, plus the CAP4 thesis defended against the rubric. | 13,695 | 6.34 |
 
 ## Career tracks (computed prerequisite closures)
 
@@ -41,7 +154,8 @@ Hours are design targets that include each module's project. They are calibrated
 | Quantitative Researcher | F6, QR2, PR4, MS4, S7, CAP1 | 40 | 4,056 | 1.88 |
 | Global Macro Portfolio Manager | GM5, FI3, X2, DV5, PR3, PC2 | 55 | 5,066 | 2.35 |
 | Derivatives & Volatility | DV3, DV4, DV5, DV6, FI6 | 39 | 3,946 | 1.83 |
-| Corporate Finance / Investment Banking / Private Equity | CF5, CF6, PM1, PM2, AC3, PC2 | 36 | 3,296 | 1.53 |
+| Corporate Finance / Investment Banking / Private Equity | CF5, CF6, CF7, CF9, PM1, PM2, AC3, PC2 | 39 | 3,536 | 1.64 |
+| Equity Research / Asset Management | FC4, CF7, F7, BK2, PR2, PC2 | 34 | 3,111 | 1.44 |
 | Quant Developer | CS6, QR2, MS2, DV4 | 35 | 3,626 | 1.68 |
 | Risk & Financial Stability | PR4, SR3, SR4, BK3 | 31 | 2,936 | 1.36 |
 | Research doctorate (minimum prerequisite path to thesis) | CAP4 | 42 | 5,626 | 2.60 |
@@ -295,6 +409,11 @@ For one asset class, produce a complete field guide covering venues, participant
   - *Lab:* Sharpe's arithmetic of active management, simulated.
   - *Project — Fund-skill test* (`both`): Using a simulated fund universe with known skill, show how many funds look skilled by chance, and recover the true skilled set with a bootstrap. *Deliverable:* Simulation plus memo.
   - ⚖ *Debate:* Are markets efficient? (primer; full debate in AP8 and CAP2)
+- **FC4 · Investments & Equity Security Analysis** · U · 90 h · ← AP2, AC2, CF1
+  - *Core:* Equity markets and instruments, industry and competitive analysis, the dividend discount model, FCFE and residual-income approaches, multiples, sell-side vs. buy-side research, and the evidence on analyst forecasts and recommendations.
+  - *Sources:* Gordon & Shapiro (1956), Management Science 3(1); Graham & Dodd, Security Analysis (1934); Porter (1979), 'How Competitive Forces Shape Strategy', Harvard Business Review 57(2); Womack (1996), JF 51(1); Hong & Kubik (2003), JF 58(1); Bodie, Kane & Marcus, Investments, latest ed. [V]
+  - *Lab:* Gordon-growth sensitivity: value as (r − g) shrinks.
+  - *Project — Initiation-of-coverage report* (`both`): Write a full sell-side-format initiation on a real public company: industry and competitive analysis, an Atlas-driven model (A15/A16), a price target with bull/base/bear scenarios and probabilities, key risks, and what would change the call. *Deliverable:* Initiation report plus model.
 
 ### Part 6 · Accounting & Financial Statement Analysis (`AC`)
 
@@ -317,6 +436,11 @@ Using SEC EDGAR filings and XBRL data for a real issuer over five or more years,
   - *Sources:* Ball & Brown (1968), Journal of Accounting Research 6(2); Bernard & Thomas (1989), Journal of Accounting Research 27 (Supplement); Ohlson (1995), Contemporary Accounting Research 11(2)
   - *Lab:* Earnings-surprise construction from XBRL.
   - *Project — PEAD replication* (`both`): Replicate post-earnings-announcement drift with the student's own price data (bring-your-own-data mode) and Atlas fundamentals. Report the post-2000 decay and net-of-cost results. *Deliverable:* Replication plus a referee-style note.
+- **AC4 · Managerial & Cost Accounting for Decisions** · U · 70 h · ← AC1
+  - *Core:* Cost behaviour, contribution margin and cost-volume-profit analysis, relevant costs for decisions, activity-based costing, master and flexible budgets, variance analysis, transfer pricing, performance measurement (residual income, EVA).
+  - *Sources:* Datar & Rajan, Horngren's Cost Accounting, latest ed. [V]; Cooper & Kaplan (1988), 'Measure Costs Right: Make the Right Decisions', Harvard Business Review 66(5) [V]; Kaplan & Cooper, Cost & Effect (1998)
+  - *Lab:* CVP break-even under mixed cost structures.
+  - *Project — Budget and variance engine* (`both`): Build a master budget and a flexible budget for a seeded company case, and decompose actual-vs-budget profit into price, volume, mix and efficiency variances that reconcile exactly. *Deliverable:* Tested model plus management memo.
 
 ### Part 7 · Corporate Finance & Valuation (`CF`)
 
@@ -354,6 +478,21 @@ For one public company: a full DCF and multiples valuation driven by Atlas A15 a
   - *Sources:* Rock (1986), JFE 15(1-2); Ritter (1991), JF 46(1); Loughran & Ritter (1995), JF 50(1); Ljungqvist (2007), 'IPO Underpricing', Handbook of Corporate Finance, Vol. 1
   - *Lab:* Winner's-curse underpricing model.
   - *Project — IPO pricing case* (`rubric`): Price a hypothetical IPO from comparables and DCF, design the book-building allocation, and explain the expected first-day return. *Deliverable:* Pricing model plus pitch memo.
+- **CF7 · Financial Modeling: Spreadsheets to Code** · U · 80 h · ← AC1, CF1, CS1
+  - *Core:* Model architecture (inputs / calculations / outputs), integrated three-statement models, circularity (revolver interest), scenarios and sensitivities, error checks, the documented record of spreadsheet errors, and reconciling a spreadsheet model to an independent Python implementation.
+  - *Sources:* Panko (1998), Journal of End User Computing 10(2); Herndon, Ash & Pollin (2014), Cambridge Journal of Economics 38(2); FAST Standard for financial modelling (practitioner) [V]
+  - *Lab:* Revolver circularity: iteration vs. closed form.
+  - *Project — Integrated three-statement + DCF model (.xlsx)* (`both`): Build an integrated three-statement model with a revolver, debt schedule and DCF in Excel, LibreOffice or Google Sheets for your seeded company case. The in-page grader (openpyxl in Pyodide) checks structure (no hard-codes in calculation blocks, balance check, cash tie-out) and the saved values against the Python reference. *Deliverable:* Workbook plus reconciliation report.
+- **CF8 · Working Capital, Treasury & Short-Term Finance** · U · 50 h · ← CF1, AC1
+  - *Core:* The cash conversion cycle, receivables and credit policy, inventory, payables and supply-chain finance, cash forecasting, bank lines, commercial paper, and the evidence on corporate cash holdings.
+  - *Sources:* Opler, Pinkowitz, Stulz & Williamson (1999), JFE 52(1); Bates, Kahle & Stulz (2009), JF 64(5); Brealey, Myers & Allen, Principles of Corporate Finance, 14th ed. (2023)
+  - *Lab:* Cash-conversion-cycle decomposition from XBRL.
+  - *Project — 13-week cash-flow forecast* (`both`): Build a 13-week direct cash forecast and liquidity plan for a stressed company case. Size the revolver, identify the covenant pinch point, and propose working-capital actions with their cash impact. *Deliverable:* Forecast model plus treasurer memo.
+- **CF9 · Corporate Risk Management & International Corporate Finance** · U · 70 h · ← CF2, FC2
+  - *Core:* Why firms hedge (theory and evidence), transaction / translation / economic FX exposure, hedging with forwards, options and swaps, hedge accounting basics, international capital budgeting and cost of capital, political risk.
+  - *Sources:* Smith & Stulz (1985), JFQA 20(4); Froot, Scharfstein & Stein (1993), JF 48(5); Guay & Kothari (2003), JFE 70(3); FASB ASC 815 and IFRS 9 hedge accounting (primary)
+  - *Lab:* Minimum-variance hedge ratio vs. full cover.
+  - *Project — Corporate hedging program* (`both`): Design an FX and interest-rate hedging program for a multinational case, simulate cash-flow-at-risk with and without the program, and write the board memo, including the hedge-accounting consequences. *Deliverable:* Simulation plus board memo.
 
 ### Part 8 · Financial Institutions (`BK`)
 
@@ -381,6 +520,11 @@ Using public FFIEC call-report data, reconstruct a failed bank's balance sheet, 
   - *Sources:* BIS CPMI publications (primary); Duffie & Zhu (2011), Review of Asset Pricing Studies 1(1); SEC T+1 settlement rule (primary)
   - *Lab:* Multilateral netting: exposure before and after a CCP.
   - *Project — Clearing-house simulator* (`both`): Simulate a CCP default waterfall (margin, default fund, CCP capital) under a member default, and size the margin needed for a target cover. *Deliverable:* Simulator plus memo.
+- **BK5 · Household Finance & Wealth Management** · U · 50 h · ← FC3, CF1
+  - *Core:* Household balance sheets, lifecycle saving, retirement accounts and taxes, asset location, the evidence on household investment mistakes, financial literacy, advice and fees.
+  - *Sources:* Campbell (2006), JF 61(4); Barber & Odean (2000), JF 55(2); Lusardi & Mitchell (2014), JEL 52(1); Bengen (1994), Journal of Financial Planning 7(4)
+  - *Lab:* Fee and tax drag on a 40-year plan.
+  - *Project — Retirement plan with Monte Carlo* (`both`): Build a household financial plan with block-bootstrap Monte Carlo withdrawal sustainability (embedded Shiller data) and tax-aware asset location, and write the client letter explaining the risks in plain language. *Deliverable:* Plan model plus client letter.
 
 ### Part 9 · Fixed Income & Rates (`FI`)
 
@@ -872,6 +1016,11 @@ Present one finished research result or trade idea to a hostile investment commi
 
 ### Part 24 · Capstone (`CAP`)
 
+- **CAP0 · Finance Degree Capstone** · U · 120 h · ← FC4, CF7, CF8, CF9, BK5, PC2
+  - *Core:* Integrating the whole finance major on one live case: valuation, capital structure and payout, liquidity, risk management and investor communication.
+  - *Sources:* All finance-degree module sources
+  - *Lab:* Case data-room walkthrough.
+  - *Project — Integrated corporate finance and equity case* (`both`): For one real public company, deliver the following: an initiation report (FC4); an integrated model (CF7); a capital-structure and payout recommendation (CF2–CF3); a liquidity plan (CF8); a hedging program (CF9). Then defend all of it in a board/IC presentation against the PC2 question bank. *Deliverable:* Report pack, models, presentation, written Q&A defense.
 - **CAP1 · Reading, Refereeing & Replicating** · D · 120 h · ← F5, S7, QR2
   - *Core:* The referee report as a genre, full replication of a published result from open data, and diagnosing why replications diverge.
   - *Sources:* Berk, Harvey & Hirshleifer (2017), 'How to Write an Effective Referee Report and Improve the Scientific Review Process', Journal of Economic Perspectives 31(1)

@@ -1,12 +1,12 @@
 # Master Blueprint — Doctoral-Track Major in Finance, Economics & Quantitative Markets
 
-**Version:** 2.0 (2026-10-11) · **Chief architect:** Claude · **Owner:** Billy Ribeiro
+**Version:** 2.1 (2026-10-11) · **Chief architect:** Claude · **Owner:** Billy Ribeiro
 
 **Companion files:**
 
 | File | Role |
 |---|---|
-| [`CURRICULUM.md`](CURRICULUM.md) | The full curriculum: 127 modules and 150 graded projects. Generated, never hand-edited |
+| [`CURRICULUM.md`](CURRICULUM.md) | The full curriculum: 134 modules, 157 graded projects, and the degree-equivalent credential maps. Generated, never hand-edited |
 | [`curriculum/*.yaml`](curriculum/) | Source of truth for the curriculum |
 | [`tools/render_curriculum.py`](tools/render_curriculum.py) | Validator and renderer for the curriculum |
 | [`BUILDER_RULES.md`](BUILDER_RULES.md) | Binding system prompt for builder agents |
@@ -20,10 +20,13 @@ This is one continuous program. A student starts with high-school algebra and
 finishes holding a defended doctoral thesis. It covers what a top university
 spreads across several separate degrees, with no repetition between them:
 
-- **A complete finance major.** Corporate finance and valuation, accounting
-  and statement analysis, investments, fixed income, derivatives, financial
-  institutions, private markets and real estate, financial history, law and
-  professional conduct.
+- **A complete Finance degree.** Corporate finance, valuation, financial
+  modeling, working capital and treasury, corporate risk management and
+  international finance; financial and managerial accounting and statement
+  analysis; investments and equity research; fixed income and derivatives;
+  financial markets and institutions; asset management; household finance and
+  wealth management; private markets and real estate; financial history, law
+  and professional conduct; and a senior capstone. See §1.1.
 - **The economics it rests on.** Micro, game theory and information,
   decision theory, macro I and II, monetary, international, and sovereign
   debt and crises.
@@ -54,6 +57,45 @@ assumes the student will pick up implementation somewhere else. This program
 puts the theory, the replication evidence and the implementation in the same
 place.
 
+### 1.1 The degrees inside this program
+
+Three named Finance credentials are built into the curriculum. Each one is an
+explicit, machine-checked view over the module graph. The validator proves
+three things about each:
+
+- it includes every prerequisite it depends on
+- it never reaches above its tier
+- every course in its course map is actually inside it
+
+`CURRICULUM.md` carries the full course-by-course map for each.
+
+| Credential | What it covers | Modules | Graded projects | Hours | Credit equivalent | FTE years |
+|---|---|---|---|---|---|---|
+| **Finance Degree — Bachelor's Level** | Business and quantitative core (calculus, statistics, econometrics, programming, micro, macro, financial and managerial accounting, law and ethics, communication), plus the full finance major (corporate finance I–II, investments, markets and institutions, statement analysis, valuation, financial modeling, short-term finance, fixed income, derivatives, risk management and international finance, asset management, wealth management, financial history), plus a senior capstone | 42 | 47 | 3,881 | ≈86 credits | 1.80 |
+| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 76 | 84 | 7,546 | ≈168 credits | 3.49 |
+| **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 83 | 87 | 9,171 | ≈204 credits | 4.25 |
+
+Some facts about these numbers:
+
+- Credential hours include every prerequisite the credential pulls in.
+- The credentials overlap, so a student who completes the Master's has
+  already completed most of the Bachelor's.
+- The Bachelor's figure (≈86 credits) is the finance, business-core and
+  quantitative content of a 120-credit degree. The remaining credits of a
+  conventional degree are general-education requirements, which the program
+  deliberately omits.
+
+**External check.** The finance content is also mapped topic by topic to the
+CFA Program curriculum topic areas: ethics, quantitative methods, economics,
+financial statement analysis, corporate issuers, equity, fixed income,
+derivatives, alternatives, and portfolio management and wealth planning. The
+validator checks that every mapped module exists. Phase 0 verifies the topic
+list against CFA Institute's current outline.
+
+**These are content-equivalent credentials, not degrees.** Only an accredited,
+state-authorized institution can award a degree. Market them as "Finance
+Degree–equivalent curriculum" or similar. Never market them as a degree.
+
 ---
 
 ## 2. Where the time is saved (numbers, not slogans)
@@ -69,16 +111,16 @@ replaces. Every hour figure includes the module's project.
 
 | Milestone | Cumulative hours | Full-time years* |
 |---|---|---|
-| Major Complete (F + U tiers) | 3,815 | 1.77 |
-| Master's-Equivalent (+ M tier) | 10,605 | 4.91 |
-| Doctoral Candidate (+ D tier, quals) | 11,965 | 5.54 |
-| Doctoral (+ thesis) | 13,165 | 6.09 |
+| All F + U tiers (whole major incl. economics & computing) | 4,345 | 2.01 |
+| + all M tier (Master's-equivalent breadth) | 11,135 | 5.16 |
+| + all D tier, quals (Doctoral Candidate) | 12,495 | 5.78 |
+| + thesis (Doctoral) | 13,695 | 6.34 |
 
 \*At 45 hours/week for 48 weeks/year. That is a full-time professional pace,
 not a student pace.
 
 Job-ready career tracks are the prerequisite closures of each track's target
-modules. They take 1.5–2.4 full-time years. See the table in `CURRICULUM.md`.
+modules. They take 1.4–2.4 full-time years. See the table in `CURRICULUM.md`.
 
 The savings come from six mechanisms, and every one of them is designed in:
 
@@ -185,7 +227,7 @@ than building on them.
 
 ## 5. The project system
 
-**Scale:** 150 graded projects, made up of 127 module projects and 23 studio
+**Scale:** 157 graded projects, made up of 134 module projects and 23 studio
 projects. Twenty of the module projects are Atlas milestones. In addition there
 are 1–4 inline labs per lesson, and the capstone sequence.
 
@@ -378,7 +420,7 @@ builder with only the failing ledger rows.
 ## 10. Definition of done (whole program)
 
 - [ ] `render_curriculum.py` valid; generated `CURRICULUM.md` committed
-- [ ] All 127 module ledgers and 23 studio ledgers PASS, with zero failing or unverifiable rows
+- [ ] All 134 module ledgers and 23 studio ledgers PASS, with zero failing or unverifiable rows
 - [ ] Every autograder passes its reference solution and fails every mutant (`mutate_graders.py`)
 - [ ] Every rubric ships exemplars at two or more levels
 - [ ] `verify_refs.py`: 100% resolved; zero orphan or uncited keys

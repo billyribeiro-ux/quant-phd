@@ -13,6 +13,9 @@ exit code on any structural defect:
 * a module without a project, or with an unknown grading mode
 * a studio whose required modules sit above the studio's declared tier
 * Atlas milestones that do not match the module that delivers them
+* a credential whose prerequisite closure exceeds its tier, whose studios need
+  modules outside the closure, or whose course map points outside the closure
+* a body-of-knowledge coverage map that names an unknown module
 
 Usage::
 
@@ -211,16 +214,60 @@ def validate(meta: dict[str, Any], parts: list[Part]) -> tuple[dict[str, Tier], 
             if target not in modules:
                 errors.append(f"track {track['id']}: unknown target {target}")
 
+    for body in meta.get("bodies_of_knowledge", []):
+        for topic in body["topics"]:
+            for module_id in topic["modules"]:
+                if module_id not in modules:
+                    errors.append(f"{body['id']} topic '{topic['topic']}': unknown module {module_id}")
+
     order: list[str] = []
     if not errors:
         try:
             order = list(TopologicalSorter({m.id: m.prereqs for m in modules.values()}).static_order())
         except CycleError as exc:
             errors.append(f"prerequisite cycle: {' -> '.join(exc.args[1])}")
+    if not errors:
+        errors.extend(validate_credentials(meta, parts, tiers, modules))
 
     if errors:
         raise CurriculumError("\n".join(f"  - {e}" for e in errors))
     return tiers, modules, order
+
+
+def validate_credentials(
+    meta: dict[str, Any], parts: list[Part], tiers: dict[str, Tier], modules: dict[str, Module]
+) -> list[str]:
+    """Check every credential is a coherent, tier-bounded view over the DAG."""
+    errors: list[str] = []
+    studios = {p.studio["id"]: p.studio for p in parts if p.studio}
+    for cred in meta.get("credentials", []):
+        cid = cred["id"]
+        unknown = [m for m in cred["requires"] if m not in modules]
+        if unknown:
+            errors.append(f"credential {cid}: unknown modules {unknown}")
+            continue
+        if cred["max_tier"] not in tiers:
+            errors.append(f"credential {cid}: unknown max_tier {cred['max_tier']}")
+            continue
+        required = closure(cred["requires"], modules)
+        ceiling = tiers[cred["max_tier"]].rank
+        for module_id in sorted(required):
+            if tiers[modules[module_id].tier].rank > ceiling:
+                errors.append(
+                    f"credential {cid} (max tier {cred['max_tier']}) pulls in {module_id} (tier {modules[module_id].tier})"
+                )
+        for studio_id in cred["studios"]:
+            if studio_id not in studios:
+                errors.append(f"credential {cid}: unknown studio {studio_id}")
+                continue
+            outside = [m for m in studios[studio_id]["requires"] if m not in required]
+            if outside:
+                errors.append(f"credential {cid}: {studio_id} needs modules outside the closure {outside}")
+        for entry in cred.get("course_map", []):
+            outside = [m for m in entry["modules"] if m not in required]
+            if outside:
+                errors.append(f"credential {cid}: course '{entry['course']}' maps outside the closure {outside}")
+    return errors
 
 
 def closure(targets: list[str], modules: dict[str, Module]) -> set[str]:
@@ -276,6 +323,32 @@ def compute_stats(
             }
         )
 
+    studio_hours = {p.studio["id"]: int(p.studio["hours"]) for p in parts if p.studio}
+    credential_stats = []
+    for cred in meta.get("credentials", []):
+        required = closure(cred["requires"], modules)
+        mapped = {m for entry in cred.get("course_map", []) for m in entry["modules"]}
+        module_hours = sum(modules[m].hours for m in required)
+        cred_studio_hours = sum(studio_hours[s] for s in cred["studios"])
+        hours = module_hours + cred_studio_hours
+        credential_stats.append(
+            {
+                "id": cred["id"],
+                "name": cred["name"],
+                "level": cred["level"],
+                "modules": len(required),
+                "studios": len(cred["studios"]),
+                "projects": len(required) + len(cred["studios"]),
+                "module_hours": module_hours,
+                "studio_hours": cred_studio_hours,
+                "hours": hours,
+                "full_time_years": round(full_time_years(hours), 2),
+                "credit_equivalent": round(hours / HOURS_PER_CREDIT),
+                "closure": sorted(required, key=lambda m: (modules[m].part_code, m)),
+                "supporting": sorted(required - mapped, key=lambda m: (modules[m].part_code, m)),
+            }
+        )
+
     total_hours = sum(module_hours_by_tier.values()) + sum(studio_hours_by_tier.values())
     projects = len(modules) + sum(1 for p in parts if p.studio)
     return {
@@ -293,6 +366,7 @@ def compute_stats(
         "credit_hour_equivalent": round(total_hours / HOURS_PER_CREDIT),
         "course_equivalent": round(total_hours / HOURS_PER_COURSE),
         "tracks": track_stats,
+        "credentials": credential_stats,
     }
 
 
@@ -303,6 +377,8 @@ def render_json(meta: dict[str, Any], parts: list[Part], order: list[str], stats
         "milestones": meta["milestones"],
         "tracks": meta["tracks"],
         "atlas": meta["atlas"],
+        "credentials": meta.get("credentials", []),
+        "bodies_of_knowledge": meta.get("bodies_of_knowledge", []),
         "topological_order": order,
         "stats": stats,
         "parts": [
@@ -360,6 +436,7 @@ def render_markdown(
         "of material through placement.\n"
     )
 
+    out.extend(render_credentials(meta, modules, stats))
     out.append("## Tiers\n")
     out.append("| Tier | Standard | Modules | Module h | Studio h |")
     out.append("|---|---|---|---|---|")
@@ -424,6 +501,51 @@ def render_markdown(
             )
         out.append("")
     return "\n".join(out)
+
+
+def render_credentials(meta: dict[str, Any], modules: dict[str, Module], stats: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    out.append("## Degree-equivalent credentials\n")
+    out.append(
+        "Named credentials are explicit views over the curriculum graph. The validator proves "
+        "each one closed under prerequisites and bounded by its tier. They are **content-equivalent "
+        "only**: only an accredited, state-authorized institution can award a degree.\n"
+    )
+    out.append("| Credential | Modules | Studios | Graded projects | Hours | Credit equivalent | FTE years |")
+    out.append("|---|---|---|---|---|---|---|")
+    for cs in stats["credentials"]:
+        out.append(
+            f"| **{cs['name']}** | {cs['modules']} | {cs['studios']} | {cs['projects']} | {cs['hours']:,} | "
+            f"≈{cs['credit_equivalent']} credits | {cs['full_time_years']:.2f} |"
+        )
+    out.append(
+        "\nCredential hours include every prerequisite the credential pulls in. Credentials overlap: "
+        "a student completing the Master's has already completed most of the Bachelor's.\n"
+    )
+    by_id = {cs["id"]: cs for cs in stats["credentials"]}
+    for cred in meta.get("credentials", []):
+        cs = by_id[cred["id"]]
+        out.append(f"### {cred['name']}\n")
+        out.append("| Area | Course | Program modules | Hours |")
+        out.append("|---|---|---|---|")
+        for entry in cred["course_map"]:
+            names = "<br>".join(f"{m} · {modules[m].title}" for m in entry["modules"])
+            hours = sum(modules[m].hours for m in entry["modules"])
+            out.append(f"| {entry['group']} | **{entry['course']}** | {names} | {hours} |")
+        out.append("")
+        out.append(f"*Studios:* {', '.join(cred['studios'])}  ")
+        if cs["supporting"]:
+            out.append(f"*Supporting prerequisites pulled in by the graph:* {', '.join(cs['supporting'])}")
+        out.append("")
+    for body in meta.get("bodies_of_knowledge", []):
+        out.append(f"### External coverage check: {body['name']}\n")
+        out.append("| Topic area | Covered by |")
+        out.append("|---|---|")
+        for topic in body["topics"]:
+            names = "<br>".join(f"{m} · {modules[m].title}" for m in topic["modules"])
+            out.append(f"| {topic['topic']} | {names} |")
+        out.append("")
+    return out
 
 
 def main() -> int:
