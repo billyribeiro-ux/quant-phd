@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1" # weekly live re-verification of every citation against Crossref
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    name: Lint, types, tests, curriculum, registry integrity
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format
+        run: ruff format --check .
+      - name: Mypy (strict)
+        run: mypy
+      - name: Tests
+        run: pytest
+      - name: Curriculum validates and generated files are current
+        run: |
+          python tools/render_curriculum.py
+          git diff --exit-code -- CURRICULUM.md curriculum/curriculum.json
+      - name: Registry integrity (offline)
+        run: python tools/verify_refs.py --offline
+
+  live-citations:
+    name: Live Crossref re-verification
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python tools/verify_refs.py

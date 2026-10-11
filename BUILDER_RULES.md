@@ -34,7 +34,7 @@ money: precise, complete, dense, and without filler.
 ## 1. Absolute prohibitions (any one fails the unit)
 
 1. **No fabricated or unverified citations.**
-   - Cite **only** keys that exist in `course/references/references.json`.
+   - Cite **only** keys that exist in `references/references.json`.
    - Never write a reference in free text.
    - Never invent a DOI, page, table, year, venue or author list.
 2. **No unsourced numbers.** Every number in prose must be one of:
@@ -260,7 +260,7 @@ Studios integrate every module listed in `requires`. A studio:
      <p class="interpretation">What the output means, and what it does not mean.</p>
    </section>
    ```
-   Each lab has a byte-identical pytest twin in `course/tests/labs/`. Seed
+   Each lab has a byte-identical pytest twin in `tests/labs/`. Seed
    every RNG. No network access. Runtime under 10 s in Pyodide; precompute at
    build time if needed, and say so on the page.
 2. **Code quality:** type hints, docstrings that state units, no global mutable
@@ -311,12 +311,12 @@ Do not make cards of trivia.
 Run all of these and fix every failure before handing off:
 
 ```bash
-python course/tools/check_pages.py    --unit {{ID}}
-python course/tools/check_dag.py      --unit {{ID}}
-python course/tools/check_projects.py --unit {{ID}}
-python course/tools/run_labs.py       --unit {{ID}}
-python course/tools/run_graders.py    --unit {{ID}} --seeds 0-49
-python course/tools/page_smoke.py     --unit {{ID}}
+python tools/check_pages.py    --unit {{ID}}
+python tools/check_dag.py      --unit {{ID}}
+python tools/check_projects.py --unit {{ID}}
+python tools/run_labs.py       --unit {{ID}}
+python tools/run_graders.py    --unit {{ID}} --seeds 0-49
+python tools/page_smoke.py     --unit {{ID}}
 ```
 
 Then re-read everything as the hostile author of the papers you cite. For each

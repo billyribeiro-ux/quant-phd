@@ -267,7 +267,7 @@ Build a price-time-priority matching engine (limit, market, cancel, modify) in C
   - *Project — Streaming statistics library* (`both`): Implement O(1)-update rolling mean, variance (Welford), min/max (monotonic deque) and an approximate quantile sketch. Prove the correctness of Welford's update. *Deliverable:* Tested library plus proof.
 - **CS3 · Data, Databases & SQL** · F · 80 h · ← CS1 · ⚑ A2
   - *Core:* The relational model, SQL, joins, window functions, ASOF joins, indexing, columnar storage, Parquet, DuckDB.
-  - *Sources:* Codd (1970), Communications of the ACM 13(6); Raasveldt & Mühleisen (2019), DuckDB, SIGMOD demo
+  - *Sources:* Codd (1970), Communications of the ACM 13(6); Raasveldt & Mühleisen (2019), 'DuckDB: an Embeddable Analytical Database', Proceedings of the 2019 International Conference on Management of Data
   - *Lab:* ASOF JOIN of trades to quotes in DuckDB-WASM.
   - *Project — Atlas A2: data layer* (`autograder`): Build the Atlas data layer: a DuckDB store with a point-in-time schema, ingestion for FRED, French, Shiller, Treasury and EDGAR, and a manifest with source, licence, retrieval time and hash. *Deliverable:* Atlas at milestone A2.
 - **CS4 · Software Engineering & Reproducible Research** · U · 80 h · ← CS2, CS3
@@ -282,7 +282,7 @@ Build a price-time-priority matching engine (limit, market, cancel, modify) in C
   - *Project — C++ Monte Carlo kernel* (`autograder`): Port a Python Monte Carlo pricer to C++ with identical seeded output, expose it to Python, and document the speedup and where it comes from. *Deliverable:* C++ kernel, bindings, equivalence tests, benchmark.
 - **CS6 · Parallel & High-Performance Computing** · M · 90 h · ← CS5, M8
   - *Core:* Amdahl's law, threads vs. processes, SIMD, GPU programming model, parallel RNG streams, profiling, latency vs. throughput engineering.
-  - *Sources:* Amdahl (1967), AFIPS Conference Proceedings 30; Hennessy & Patterson, Computer Architecture: A Quantitative Approach, 6th ed. (2017)
+  - *Sources:* Amdahl (1967), 'Validity of the Single Processor Approach to Achieving Large Scale Computing Capabilities', AFIPS Spring Joint Computer Conference; Hennessy & Patterson, Computer Architecture: A Quantitative Approach, 6th ed. (2017)
   - *Lab:* Parallel Monte Carlo with independent RNG streams: reproducibility check.
   - *Project — Parallel risk run* (`autograder`): Parallelize a full-portfolio Monte Carlo VaR with reproducible RNG streams, achieving a measured speedup and reconciling the result to the serial run. *Deliverable:* Code, scaling plot, reconciliation test.
 
@@ -324,12 +324,12 @@ Replicate the CAPE / dividend-yield return-predictability evidence on embedded S
   - *Project — Two-pass estimator with errors-in-variables correction* (`both`): Implement Fama–MacBeth with Shanken-corrected standard errors and GMM equivalents, and show when the correction changes the conclusion. *Deliverable:* Tested module plus a replication note.
 - **S6 · Causal Inference & Event Studies** · M · 100 h · ← S2
   - *Core:* Potential outcomes, IV and weak instruments, difference-in-differences (including staggered adoption), RDD, event studies, synthetic control.
-  - *Sources:* Angrist & Pischke, Mostly Harmless Econometrics (2009); MacKinlay (1997), Journal of Economic Literature 35(1); Abadie, Diamond & Hainmueller (2010), JASA 105(490); Goodman-Bacon (2021), Journal of Econometrics 225(2)
+  - *Sources:* Angrist & Pischke, Mostly Harmless Econometrics (2009); MacKinlay (1997), 'Event Studies in Economics and Finance', Journal of Economic Literature 35(1); Abadie, Diamond & Hainmueller (2010), JASA 105(490); Goodman-Bacon (2021), Journal of Econometrics 225(2)
   - *Lab:* Event study with correct abnormal-return variance.
   - *Project — Policy-shock event study* (`both`): Measure asset-price reactions to a set of scheduled macro announcements using open data, with clustering-robust inference and placebo dates. *Deliverable:* Code plus a research note.
 - **S7 · Research Integrity & Multiple Testing** · M · 80 h · ← S1, S2 · ⚑ A8
   - *Core:* Data snooping, the Reality Check, SPA, Romano–Wolf, FDR, the factor-zoo t-stat hurdle, the deflated Sharpe ratio, probability of backtest overfitting, p-hacking.
-  - *Sources:* Lo & MacKinlay (1990), RFS 3(3); White (2000), Econometrica 68(5); Hansen (2005), JBES 23(4); Romano & Wolf (2005), Econometrica 73(4); Benjamini & Hochberg (1995), JRSS-B 57(1); Harvey, Liu & Zhu (2016), RFS 29(1); Harvey (2017), JF 72(4); Bailey & López de Prado (2014), JPM 40(5); Bailey, Borwein, López de Prado & Zhu (2017), Journal of Computational Finance 20(4)
+  - *Sources:* Lo & MacKinlay (1990), RFS 3(3); White (2000), Econometrica 68(5); Hansen (2005), JBES 23(4); Romano & Wolf (2005), Econometrica 73(4); Benjamini & Hochberg (1995), JRSS-B 57(1); Harvey, Liu & Zhu (2016), RFS 29(1); Harvey (2017), JF 72(4); Bailey & López de Prado (2014), JPM 40(5); Bailey, Borwein, López de Prado & Zhu (2017), 'The Probability of Backtest Overfitting', Journal of Computational Finance 20(4)
   - *Lab:* Random-strategy overfitting engine: in-sample vs. out-of-sample Sharpe.
   - *Project — Atlas A8: research-integrity module* (`autograder`): Add deflated Sharpe, PBO, Romano–Wolf and BH adjustments to Atlas, applied automatically to every backtest result object. *Deliverable:* Atlas at milestone A8.
 
@@ -356,12 +356,12 @@ Estimate a Taylor rule on FRED data, solve and calibrate the three-equation New 
   - *Project — Preference elicitation* (`both`): Design and run an in-page lottery questionnaire, estimate the participant's risk-aversion and loss-aversion parameters by MLE, and report the uncertainty. *Deliverable:* Instrument plus estimation report.
 - **E4 · General Equilibrium & Information in Markets** · M · 100 h · ← E2, E3, M7
   - *Core:* Arrow–Debreu, complete vs. incomplete markets, rational expectations, the Grossman–Stiglitz paradox, the no-trade theorem.
-  - *Sources:* Mas-Colell, Whinston & Green, Microeconomic Theory (1995); Muth (1961), Econometrica 29(3); Grossman & Stiglitz (1980), AER 70(3); Milgrom & Stokey (1982), JET 26(1)
+  - *Sources:* Mas-Colell, Whinston & Green, Microeconomic Theory (1995); Muth (1961), Econometrica 29(3); Grossman & Stiglitz (1980), 'On the Impossibility of Informationally Efficient Markets', AER 70(3); Milgrom & Stokey (1982), JET 26(1)
   - *Lab:* Grossman–Stiglitz equilibrium: fraction informed vs. information cost.
   - *Project — Price-informativeness model* (`both`): Solve a noisy rational-expectations model numerically, and show how price informativeness responds to noise-trader volume and information cost. *Deliverable:* Solver plus write-up.
 - **E5 · Macroeconomics I: Aggregates, Cycles & Policy** · U · 110 h · ← E1
   - *Core:* National accounts, growth accounting, the Solow model, IS-LM and AD-AS, the Phillips curve and the natural rate, central banking and fiscal policy basics.
-  - *Sources:* Solow (1956), QJE 70(1); Hicks (1937), Econometrica 5(2); Friedman (1968), AER 58(1); Phelps (1968), JPE 76(4); Blanchard, Macroeconomics, 8th ed. (2021)
+  - *Sources:* Solow (1956), QJE 70(1); Hicks (1937), Econometrica 5(2); Friedman (1968), 'The Role of Monetary Policy', AER 58(1); Phelps (1968), 'Money-Wage Dynamics and Labor-Market Equilibrium', JPE 76(4); Blanchard, Macroeconomics, 8th ed. (2021)
   - *Lab:* Growth accounting on embedded national-accounts data.
   - *Project — Macro dashboard v0* (`rubric`): Assemble GDP, inflation, unemployment, policy-rate and term-spread series from Atlas into a documented dashboard, with a one-page cycle diagnosis. *Deliverable:* Dashboard plus diagnosis.
 - **E6 · Macroeconomics II: Dynamic General Equilibrium** · M · 150 h · ← E5, M7, S3
@@ -371,7 +371,7 @@ Estimate a Taylor rule on FRED data, solve and calibrate the three-equation New 
   - *Project — NK model solver* (`autograder`): Solve the NK model by undetermined coefficients and numerically, verify the determinacy (Taylor) principle, and reproduce the canonical impulse responses. *Deliverable:* Tested solver plus a figure set.
 - **E7 · Monetary Economics & Central Banking** · M · 130 h · ← E6
   - *Core:* Policy rules, time inconsistency, the ZLB, operating frameworks (floor vs. corridor), QE channels and evidence, shock identification, r-star, the fiscal theory of the price level, the 2021–23 inflation.
-  - *Sources:* Taylor (1993), Carnegie-Rochester Conference Series 39; Kydland & Prescott (1977), JPE 85(3); Barro & Gordon (1983), JPE 91(4); Gagnon, Raskin, Remache & Sack (2011), International Journal of Central Banking 7(1); Krishnamurthy & Vissing-Jorgensen (2011), Brookings Papers on Economic Activity; Bernanke (2020), AER 110(4); Romer & Romer (2004), AER 94(4); Gertler & Karadi (2015), AEJ: Macroeconomics 7(1); Nakamura & Steinsson (2018), QJE 133(3); Holston, Laubach & Williams (2017), Journal of International Economics 108; Cochrane, The Fiscal Theory of the Price Level (2023); Bernanke & Blanchard, pandemic-era inflation [WP][V]
+  - *Sources:* Taylor (1993), Carnegie-Rochester Conference Series on Public Policy 39; Kydland & Prescott (1977), JPE 85(3); Barro & Gordon (1983), JPE 91(4); Gagnon, Raskin, Remache & Sack (2011), International Journal of Central Banking 7(1); Krishnamurthy & Vissing-Jorgensen (2011), 'The Effects of Quantitative Easing on Interest Rates: Channels and Implications for Policy', Brookings Papers on Economic Activity; Bernanke (2020), AER 110(4); Romer & Romer (2004), AER 94(4); Gertler & Karadi (2015), AEJ: Macroeconomics 7(1); Nakamura & Steinsson (2018), QJE 133(3); Holston, Laubach & Williams (2017), Journal of International Economics 108; Cochrane, The Fiscal Theory of the Price Level (2023); Bernanke & Blanchard, pandemic-era inflation [WP][V]
   - *Lab:* Taylor-rule prescriptions vs. the realized policy rate.
   - *Project — Monetary-shock identification* (`both`): Construct high-frequency policy surprises from embedded futures-implied rates, estimate their effects with local projections, and compare the result with the Romer–Romer narrative series. *Deliverable:* Code plus a research note.
   - ⚖ *Debate:* Does QE work mainly through portfolio balance or through signalling?
@@ -455,12 +455,12 @@ For one public company: a full DCF and multiples valuation driven by Atlas A15 a
   - *Project — Capital-budgeting engine* (`both`): Build a project-evaluation tool with tax, depreciation, working capital and real-vs-nominal handling, plus Monte Carlo NPV. *Deliverable:* Tested module plus a case memo.
 - **CF2 · Cost of Capital & Capital Structure** · U · 80 h · ← CF1, AP2
   - *Core:* WACC and its estimation error, Modigliani–Miller, tax shields, trade-off vs. pecking order, market timing, leverage dynamics.
-  - *Sources:* Modigliani & Miller (1958), AER 48(3); Modigliani & Miller (1963), AER 53(3); Myers (1984), JF 39(3); Myers & Majluf (1984), JFE 13(2); Fama & French (2002), RFS 15(1); Baker & Wurgler (2002), JF 57(1)
+  - *Sources:* Modigliani & Miller (1958), 'The Cost of Capital, Corporation Finance and the Theory of Investment', AER 48(3); Modigliani & Miller (1963), 'Corporate Income Taxes and the Cost of Capital: A Correction', AER 53(3); Myers (1984), JF 39(3); Myers & Majluf (1984), JFE 13(2); Fama & French (2002), RFS 15(1); Baker & Wurgler (2002), JF 57(1)
   - *Lab:* MM with taxes and distress costs: the optimal-leverage curve.
   - *Project — Cost-of-capital estimation under uncertainty* (`both`): Estimate one firm's WACC with full error propagation (beta, ERP, spreads), and show the valuation range the error implies. *Deliverable:* Estimation code plus memo.
 - **CF3 · Payout, Governance & Agency** · U · 60 h · ← CF2, E2
   - *Core:* Dividends vs. buybacks, payout irrelevance and its failures, agency costs, free cash flow, boards, executive compensation, shareholder rights.
-  - *Sources:* Lintner (1956), AER 46(2); Miller & Modigliani (1961), Journal of Business 34(4); Fama & French (2001), JFE 60(1); Jensen & Meckling (1976), JFE 3(4); Jensen (1986), AER 76(2); Shleifer & Vishny (1997), JF 52(2); Gompers, Ishii & Metrick (2003), QJE 118(1); Bebchuk, Cohen & Ferrell (2009), RFS 22(2)
+  - *Sources:* Lintner (1956), 'Distribution of Incomes of Corporations Among Dividends, Retained Earnings, and Taxes', AER 46(2); Miller & Modigliani (1961), Journal of Business 34(4); Fama & French (2001), JFE 60(1); Jensen & Meckling (1976), JFE 3(4); Jensen (1986), 'Agency Costs of Free Cash Flow, Corporate Finance, and Takeovers', AER 76(2); Shleifer & Vishny (1997), JF 52(2); Gompers, Ishii & Metrick (2003), QJE 118(1); Bebchuk, Cohen & Ferrell (2009), RFS 22(2)
   - *Lab:* Lintner partial-adjustment model.
   - *Project — Governance scorecard* (`both`): Score ten firms on governance from proxy-statement data, and test (with honest power caveats) whether the score relates to valuation. *Deliverable:* Dataset, code, memo.
 - **CF4 · Valuation** · U · 100 h · ← CF2, AC2 · ⚑ A16
@@ -475,7 +475,7 @@ For one public company: a full DCF and multiples valuation driven by Atlas A15 a
   - *Project — LBO model* (`both`): Build a full LBO model (sources and uses, debt tranches, cash sweep, covenants, exit) with IRR/MOIC attribution, and test it for internal consistency. *Deliverable:* Tested model plus memo.
 - **CF6 · Raising Capital & Investment Banking** · M · 60 h · ← CF3, S6
   - *Core:* IPO underpricing, long-run IPO performance, SEOs, debt issuance, bookbuilding, underwriting economics.
-  - *Sources:* Rock (1986), JFE 15(1-2); Ritter (1991), JF 46(1); Loughran & Ritter (1995), JF 50(1); Ljungqvist (2007), 'IPO Underpricing', Handbook of Corporate Finance, Vol. 1
+  - *Sources:* Rock (1986), JFE 15(1-2); Ritter (1991), JF 46(1); Loughran & Ritter (1995), JF 50(1); Ljungqvist (2007), 'IPO Underpricing', Handbook of Empirical Corporate Finance
   - *Lab:* Winner's-curse underpricing model.
   - *Project — IPO pricing case* (`rubric`): Price a hypothetical IPO from comparables and DCF, design the book-building allocation, and explain the expected first-day return. *Deliverable:* Pricing model plus pitch memo.
 - **CF7 · Financial Modeling: Spreadsheets to Code** · U · 80 h · ← AC1, CF1, CS1
@@ -534,17 +534,17 @@ Fit the Treasury curve daily over a historical window, decompose yields into exp
 
 - **FI1 · Bond Math & Curve Construction** · U · 90 h · ← M2, CF1 · ⚑ A5
   - *Core:* Pricing, yield conventions, day counts, duration, convexity, DV01, bootstrapping, Nelson–Siegel and Svensson, the GSW curve.
-  - *Sources:* Nelson & Siegel (1987), Journal of Business 60(4); Svensson (1994), NBER Working Paper 4871; Gürkaynak, Sack & Wright (2007), JME 54(8)
+  - *Sources:* Nelson & Siegel (1987), Journal of Business 60(4); Svensson (1994), 'Estimating and Interpreting Forward Interest Rates: Sweden 1992-1994', NBER Working Paper 4871 [WP]; Gürkaynak, Sack & Wright (2007), JME 54(8)
   - *Lab:* Fit Nelson–Siegel to an embedded curve.
   - *Project — Atlas A5: curve engine* (`autograder`): Add bootstrapping, NS / Svensson fitting and full day-count support to Atlas, tested against published GSW parameters. *Deliverable:* Atlas at milestone A5.
 - **FI2 · Term-Structure Models** · M · 120 h · ← FI1, SC3
   - *Core:* Short-rate models (Vasicek, CIR), the affine class, HJM, the LIBOR market model, calibration.
-  - *Sources:* Vasicek (1977), JFE 5(2); Cox, Ingersoll & Ross (1985), Econometrica 53(2); Duffie & Kan (1996), Mathematical Finance 6(4); Dai & Singleton (2000), JF 55(5); Heath, Jarrow & Morton (1992), Econometrica 60(1); Brace, Gatarek & Musiela (1997), Mathematical Finance 7(2)
+  - *Sources:* Vasicek (1977), JFE 5(2); Cox, Ingersoll & Ross (1985), 'A Theory of the Term Structure of Interest Rates', Econometrica 53(2); Duffie & Kan (1996), Mathematical Finance 6(4); Dai & Singleton (2000), JF 55(5); Heath, Jarrow & Morton (1992), Econometrica 60(1); Brace, Gatarek & Musiela (1997), Mathematical Finance 7(2)
   - *Lab:* Vasicek closed form vs. Monte Carlo.
   - *Project — Affine model calibration* (`both`): Calibrate a three-factor Gaussian affine model to the historical curve by Kalman-filter MLE, and validate its pricing errors and factor dynamics. *Deliverable:* Calibration code plus diagnostics.
 - **FI3 · Bond Risk Premia & the Expectations Hypothesis** · M · 80 h · ← FI1, S3 · ⚑ A13
   - *Core:* Failure of the expectations hypothesis, forward-rate regressions, the Cochrane–Piazzesi factor, model-based term premia, robustness debates.
-  - *Sources:* Fama & Bliss (1987), AER 77(4); Campbell & Shiller (1991), REStud 58(3); Cochrane & Piazzesi (2005), AER 95(1); Adrian, Crump & Moench (2013), JFE 110(1); Bauer & Hamilton (2018), RFS 31(2)
+  - *Sources:* Fama & Bliss (1987), 'The Information in Long-Maturity Forward Rates', AER 77(4); Campbell & Shiller (1991), REStud 58(3); Cochrane & Piazzesi (2005), AER 95(1); Adrian, Crump & Moench (2013), JFE 110(1); Bauer & Hamilton (2018), RFS 31(2)
   - *Lab:* Cochrane–Piazzesi factor on GSW data.
   - *Project — Atlas A13: term-premium and rates-RV module* (`autograder`): Add ACM-style term premium, carry and roll-down analytics, and curve-trade P&L attribution to Atlas. *Deliverable:* Atlas at milestone A13.
   - ⚖ *Debate:* Are excess bond returns predictable out of sample?
@@ -593,7 +593,7 @@ Compute Hansen–Jagannathan bounds from embedded consumption and return data. S
   - ⚖ *Debate:* Is the equity premium a risk premium?
 - **AP5 · Present Value & Return Predictability** · M · 80 h · ← AP1, S3
   - *Core:* Excess volatility, the Campbell–Shiller decomposition, dividend-price regressions, the out-of-sample predictability debate, discount-rate variation.
-  - *Sources:* Shiller (1981), AER 71(3); Campbell & Shiller (1988), RFS 1(3); Fama & French (1988), JFE 22(1); Welch & Goyal (2008), RFS 21(4); Campbell & Thompson (2008), RFS 21(4); Cochrane (2008), RFS 21(4); Cochrane (2011), JF 66(4)
+  - *Sources:* Shiller (1981), 'Do Stock Prices Move Too Much to be Justified by Subsequent Changes in Dividends?', AER 71(3); Campbell & Shiller (1988), RFS 1(3); Fama & French (1988), JFE 22(1); Welch & Goyal (2008), RFS 21(4); Campbell & Thompson (2008), RFS 21(4); Cochrane (2008), RFS 21(4); Cochrane (2011), JF 66(4)
   - *Lab:* CAPE regressions with Stambaugh-corrected inference.
   - *Project — Variance decomposition* (`both`): Decompose dividend-yield variance into cash-flow and discount-rate news with a VAR, and test sensitivity to sample and specification. *Deliverable:* Code plus note.
 - **AP6 · Intermediary & Institutional Asset Pricing** · D · 80 h · ← AP5, E4
@@ -609,7 +609,7 @@ Compute Hansen–Jagannathan bounds from embedded consumption and return data. S
   - ⚖ *Debate:* Are anomalies compensation for risk or mispricing?
 - **AP8 · Market Efficiency: The Full Debate** · M · 50 h · ← AP7, FC3
   - *Core:* Efficiency revisited with the full toolkit: joint-hypothesis problem, the Grossman–Stiglitz equilibrium, luck vs. skill, the economics of active management.
-  - *Sources:* Fama (1991), JF 46(5); Fama & French (2010), JF 65(5); Berk & van Binsbergen (2015), JFE 118(1); Grossman & Stiglitz (1980), AER 70(3)
+  - *Sources:* Fama (1991), JF 46(5); Fama & French (2010), JF 65(5); Berk & van Binsbergen (2015), JFE 118(1); Grossman & Stiglitz (1980), 'On the Impossibility of Informationally Efficient Markets', AER 70(3)
   - *Lab:* Bootstrap luck-vs-skill test.
   - *Project — Debate brief* (`rubric`): Write both sides of 'Markets are efficient' to the program's debate standard, then cross-examine the opposing side's three strongest pieces of evidence. *Deliverable:* Debate brief.
   - ⚖ *Debate:* Are markets efficient?
@@ -680,13 +680,13 @@ Calibrate an arbitrage-free SVI surface and a Heston model (priced with the DV4 
   - *Project — Atlas A6: pricing library* (`autograder`): Add BSM, binomial, PDE, Monte Carlo and LSMC pricers with Greeks to Atlas, with a C++ kernel behind a Python API and cross-method consistency tests. *Deliverable:* Atlas at milestone A6.
 - **DV5 · Variance Risk Premium & Volatility Trading** · M · 70 h · ← DV2, F2
   - *Core:* Variance swaps and static replication, VIX construction, the variance risk premium, option returns, tail-hedging economics, the February 2018 short-vol blow-up.
-  - *Sources:* Demeterfi, Derman, Kamal & Zou (1999), Goldman Sachs Quantitative Strategies note; Cboe VIX methodology white paper (primary); Carr & Wu (2009), RFS 22(3); Bollerslev, Tauchen & Zhou (2009), RFS 22(11); Coval & Shumway (2001), JF 56(3); Israelov, protective-put evidence [V]
+  - *Sources:* Demeterfi, Derman, Kamal & Zou (1999), 'A Guide to Volatility and Variance Swaps', Journal of Derivatives 6(4); Cboe VIX methodology white paper (primary); Carr & Wu (2009), RFS 22(3); Bollerslev, Tauchen & Zhou (2009), RFS 22(11); Coval & Shumway (2001), JF 56(3); Israelov, protective-put evidence [V]
   - *Lab:* Replicate VIX from an embedded option chain.
   - *Project — Short-vol strategy audit* (`both`): Backtest a systematic short-variance strategy with realistic margin and costs, then stress it through 2008, 2018 and 2020 analogues, and report the true risk-adjusted return. *Deliverable:* Backtest plus audit memo.
   - ⚖ *Debate:* Is short volatility a free lunch?
 - **DV6 · Exotics, Structured Products & Dealer Hedging** · M · 70 h · ← DV2, DV4
   - *Core:* Barriers, Asians, lookbacks, autocallables, dealer gamma positioning, hedging flows and their market footprint.
-  - *Sources:* Ni, Pearson & Poteshman (2005), JFE 78(1); Baltussen, Da, Lammers & Martens (2021), JFE 142(1)
+  - *Sources:* Ni, Pearson & Poteshman (2005), 'Stock Price Clustering on Option Expiration Dates', JFE 78(1); Baltussen, Da, Lammers & Martens (2021), JFE 142(1)
   - *Lab:* Dealer gamma-exposure simulator (SIMULATED).
   - *Project — Autocallable pricer and risk report* (`both`): Price an autocallable by Monte Carlo under local volatility, compute its Greeks, and explain the dealer's hedging exposure across spot levels. *Deliverable:* Pricer plus risk report.
 
@@ -698,7 +698,7 @@ For a set of issuers with public filings, compute structural-model default proba
 
 - **CR1 · Structural & Reduced-Form Credit Models** · M · 90 h · ← CF2, SC3 · ⚑ A14
   - *Core:* Merton, Black–Cox, Leland, intensity models, distance to default, the credit-spread puzzle.
-  - *Sources:* Merton (1974), JF 29(2); Black & Cox (1976), JF 31(2); Leland (1994), JF 49(4); Jarrow & Turnbull (1995), JF 50(1); Duffie & Singleton (1999), RFS 12(4); Bharath & Shumway (2008), RFS 21(3); Collin-Dufresne, Goldstein & Martin (2001), JF 56(6); Huang & Huang (2012), Review of Asset Pricing Studies 2(2)
+  - *Sources:* Merton (1974), JF 29(2); Black & Cox (1976), JF 31(2); Leland (1994), JF 49(4); Jarrow & Turnbull (1995), JF 50(1); Duffie & Singleton (1999), RFS 12(4); Bharath & Shumway (2008), RFS 21(3); Collin-Dufresne, Goldstein & Martin (2001), 'The Determinants of Credit Spread Changes', JF 56(6); Huang & Huang (2012), Review of Asset Pricing Studies 2(2)
   - *Lab:* Merton model on a stylized firm.
   - *Project — Atlas A14: credit module* (`autograder`): Add Merton, Black–Cox and reduced-form pricers, distance to default and spread decomposition to Atlas. *Deliverable:* Atlas at milestone A14.
 - **CR2 · Credit Derivatives & Correlation** · M · 70 h · ← CR1
@@ -747,7 +747,7 @@ Propose an original signal, test it on open data (Open Source Asset Pricing plus
   - ⚖ *Debate:* Is value dead?
 - **F5 · The Factor Zoo & Replication** · D · 80 h · ← F2, S5, S7
   - *Core:* Multiple testing in the cross-section, replication studies and their disagreement, factor selection.
-  - *Sources:* Harvey, Liu & Zhu (2016), RFS 29(1); Hou, Xue & Zhang (2020), RFS 33(5); Jensen, Kelly & Pedersen (2023), JF 78(5); Chen & Zimmermann (2022), Critical Finance Review 11(2); Feng, Giglio & Xiu (2020), JF 75(3)
+  - *Sources:* Harvey, Liu & Zhu (2016), RFS 29(1); Hou, Xue & Zhang (2020), 'Replicating Anomalies', RFS 33(5); Jensen, Kelly & Pedersen (2023), JF 78(5); Chen & Zimmermann (2022), Critical Finance Review 11(2); Feng, Giglio & Xiu (2020), JF 75(3)
   - *Lab:* Multiple-testing haircut on the open anomaly set.
   - *Project — Replication-crisis adjudication* (`both`): Using the open anomaly dataset, reproduce the key disagreement between HXZ-style and JKP-style replication conclusions, and identify exactly which methodological choices drive it. *Deliverable:* Research note plus code.
   - ⚖ *Debate:* Are most published factors false discoveries?
@@ -771,7 +771,7 @@ Run a multi-asset portfolio through Atlas A11 / A12 across a historical window: 
 
 - **PR1 · Mean-Variance in Practice** · M · 70 h · ← AP2, S2
   - *Core:* Estimation error, 1/N, shrinkage, Black–Litterman, robust optimization.
-  - *Sources:* Michaud (1989), FAJ 45(1); Chopra & Ziemba (1993), JPM 19(2); DeMiguel, Garlappi & Uppal (2009), RFS 22(5); Ledoit & Wolf (2004), Journal of Multivariate Analysis 88(2); Ledoit & Wolf (2017), RFS 30(12); Black & Litterman (1992), FAJ 48(5)
+  - *Sources:* Michaud (1989), FAJ 45(1); Chopra & Ziemba (1993), JPM 19(2); DeMiguel, Garlappi & Uppal (2009), 'Optimal Versus Naive Diversification: How Inefficient is the 1/N Portfolio Strategy?', RFS 22(5); Ledoit & Wolf (2004), Journal of Multivariate Analysis 88(2); Ledoit & Wolf (2017), RFS 30(12); Black & Litterman (1992), FAJ 48(5)
   - *Lab:* Optimizer instability under resampling.
   - *Project — Allocator shoot-out* (`both`): Compare sample MV, shrinkage MV, Black–Litterman, minimum variance and 1/N out of sample with turnover costs, and explain the ranking. *Deliverable:* Code plus report.
 - **PR2 · Risk Parity, Vol Targeting & Leverage** · M · 60 h · ← PR1 · ⚑ A11
@@ -809,7 +809,7 @@ Extend the CS studio matching engine into an agent-based market (market makers, 
 
 - **MS1 · Microstructure Theory** · M · 90 h · ← E4, S1
   - *Core:* Roll's spread estimator, Kyle, Glosten–Milgrom, inventory models, PIN, the VPIN dispute.
-  - *Sources:* Roll (1984), JF 39(4); Kyle (1985), Econometrica 53(6); Glosten & Milgrom (1985), JFE 14(1); Ho & Stoll (1981), JFE 9(1); Easley, Kiefer, O'Hara & Paperman (1996), JF 51(4); Easley, López de Prado & O'Hara (2012), RFS 25(5); Andersen & Bondarenko (2014), Journal of Financial Markets 17
+  - *Sources:* Roll (1984), JF 39(4); Kyle (1985), Econometrica 53(6); Glosten & Milgrom (1985), JFE 14(1); Ho & Stoll (1981), JFE 9(1); Easley, Kiefer, O'Hara & Paperman (1996), JF 51(4); Easley, López de Prado & O'Hara (2012), RFS 25(5); Andersen & Bondarenko (2014), 'VPIN and the Flash Crash', Journal of Financial Markets 17
   - *Lab:* Kyle equilibrium.
   - *Project — Spread decomposition* (`both`): Implement Roll and Glosten–Milgrom-style decompositions on simulated and bring-your-own-data trades, and separate adverse selection from inventory and order-processing costs. *Deliverable:* Code plus note.
 - **MS2 · Limit Order Books & Market Structure** · M · 60 h · ← MS1, CS2
@@ -857,7 +857,7 @@ Take one strategy from hypothesis to paper-trading spec, entirely on Atlas: data
   - *Project — Contamination-safe text signal* (`both`): Build a filing-text signal from EDGAR, then design and run a test proving the model could not have seen the outcome period. *Deliverable:* Code plus research note.
 - **QR5 · Reinforcement Learning & Control in Trading** · D · 80 h · ← QR3, SC6
   - *Core:* MDPs, Q-learning, policy gradients, RL for execution, deep hedging, and why RL fails in non-stationary low-SNR settings.
-  - *Sources:* Sutton & Barto, Reinforcement Learning, 2nd ed. (2018); Nevmyvaka, Feng & Kearns (2006), ICML; Buehler, Gonon, Teichmann & Wood (2019), Quantitative Finance 19(8); Whalley & Wilmott (1997), Mathematical Finance 7(3)
+  - *Sources:* Sutton & Barto, Reinforcement Learning, 2nd ed. (2018); Nevmyvaka, Feng & Kearns (2006), 'Reinforcement Learning for Optimized Trade Execution', Proceedings of the 23rd International Conference on Machine Learning; Buehler, Gonon, Teichmann & Wood (2019), Quantitative Finance 19(8); Whalley & Wilmott (1997), Mathematical Finance 7(3)
   - *Lab:* Tabular RL execution vs. Almgren–Chriss.
   - *Project — Deep hedging vs. delta hedging* (`both`): Train a deep-hedging policy with transaction costs, and compare it with delta hedging and the Whalley–Wilmott band on held-out paths. *Deliverable:* Code plus report.
 
@@ -869,17 +869,17 @@ Run an FX and commodity carry book on open data, measure crash exposure (skewnes
 
 - **X1 · FX Markets & Parity Conditions** · M · 60 h · ← E8, S3
   - *Core:* FX market structure, forward pricing, UIP and CIP in data, PPP and its slow convergence, the random-walk benchmark.
-  - *Sources:* Meese & Rogoff (1983), Journal of International Economics 14(1-2); Rogoff (1996), JEL 34(2); BIS Triennial Central Bank Survey (primary)
+  - *Sources:* Meese & Rogoff (1983), Journal of International Economics 14(1-2); Rogoff (1996), 'The Purchasing Power Parity Puzzle', JEL 34(2); BIS Triennial Central Bank Survey (primary)
   - *Lab:* Random walk vs. fundamentals models out of sample.
   - *Project — Meese–Rogoff re-run* (`both`): Re-run the Meese–Rogoff horse race on modern open data with proper real-time discipline, and report where the random walk still wins. *Deliverable:* Code plus note.
 - **X2 · Currency Risk Premia** · M · 70 h · ← X1, F3
   - *Core:* Carry, crash risk, FX momentum and value, the dollar factor, the peso problem.
-  - *Sources:* Lustig, Roussanov & Verdelhan (2011), RFS 24(11); Menkhoff, Sarno, Schmeling & Schrimpf (2012), JF 67(2); Brunnermeier, Nagel & Pedersen (2008), NBER Macroeconomics Annual 23; Menkhoff, Sarno, Schmeling & Schrimpf (2012), JFE 106(3); Menkhoff, Sarno, Schmeling & Schrimpf (2017), RFS 30(4); Verdelhan (2018), JF 73(1); Burnside, Eichenbaum, Kleshchelski & Rebelo (2011), RFS 24(3)
+  - *Sources:* Lustig, Roussanov & Verdelhan (2011), RFS 24(11); Menkhoff, Sarno, Schmeling & Schrimpf (2012), JF 67(2); Brunnermeier, Nagel & Pedersen (2008), NBER Macroeconomics Annual 23; Menkhoff, Sarno, Schmeling & Schrimpf (2012), JFE 106(3); Menkhoff, Sarno, Schmeling & Schrimpf (2017), 'Currency Value', RFS 30(2); Verdelhan (2018), JF 73(1); Burnside, Eichenbaum, Kleshchelski & Rebelo (2011), RFS 24(3)
   - *Lab:* Carry-crash simulator.
   - *Project — Currency factor replication* (`both`): Replicate HML-FX and the dollar factor on open data, and test whether global FX volatility prices the carry cross-section. *Deliverable:* Code plus note.
 - **X3 · Commodities** · M · 70 h · ← FC2, F3
   - *Core:* The theory of storage, convenience yield, hedging pressure, roll yield vs. spot return, financialization, oil-shock identification.
-  - *Sources:* Kaldor (1939), Review of Economic Studies 7(1); Working (1949), AER 39(6); Brennan (1958), AER 48(1); de Roon, Nijman & Veld (2000), JF 55(3); Gorton & Rouwenhorst (2006), FAJ 62(2); Erb & Harvey (2006), FAJ 62(2); Tang & Xiong (2012), FAJ 68(6); Kilian (2009), AER 99(3)
+  - *Sources:* Kaldor (1939), Review of Economic Studies 7(1); Working (1949), 'The Theory of Price of Storage', AER 39(6); Brennan (1958), 'The Supply of Storage', AER 48(1); de Roon, Nijman & Veld (2000), JF 55(3); Gorton & Rouwenhorst (2006), FAJ 62(2); Erb & Harvey (2006), FAJ 62(2); Tang & Xiong (2012), FAJ 68(6); Kilian (2009), AER 99(3)
   - *Lab:* Roll yield vs. spot return decomposition.
   - *Project — Oil-shock decomposition* (`both`): Re-estimate a Kilian-style structural VAR separating supply, aggregate demand and oil-specific demand shocks, and apply it to a recent episode. *Deliverable:* Code plus memo.
 - **X4 · Digital Assets as a Macro Asset** · M · 40 h · ← X1, F2
@@ -983,7 +983,7 @@ Reconstruct one historical crisis or one enforcement case (e.g., a manipulation 
 
 - **LX1 · Financial History** · U · 50 h · ← FC1, E5
   - *Core:* Bubbles and panics from the Dutch Republic to 2008, the gold standard and the Great Depression, Bretton Woods and its end, the history of central banking.
-  - *Sources:* Kindleberger & Aliber, Manias, Panics, and Crashes, 7th ed. (2015); Friedman & Schwartz, A Monetary History of the United States, 1867–1960 (1963); Bernanke (1983), AER 73(3); Eichengreen, Golden Fetters (1992); Garber, Famous First Bubbles (2000)
+  - *Sources:* Kindleberger & Aliber, Manias, Panics, and Crashes, 7th ed. (2015); Friedman & Schwartz, A Monetary History of the United States, 1867–1960 (1963); Bernanke (1983), 'Nonmonetary Effects of the Financial Crisis in the Propagation of the Great Depression', AER 73(3); Eichengreen, Golden Fetters (1992); Garber, Famous First Bubbles (2000)
   - *Lab:* Gold-standard adherence vs. depression depth on embedded data.
   - *Project — Then vs. now* (`rubric`): Pick one historical episode and one current market condition, and write a mechanism-level comparison that says where the analogy holds and where it breaks. *Deliverable:* Two-page essay, every claim cited.
 - **LX2 · Securities Law, Regulation & Professional Conduct** · U · 50 h · ← FC1

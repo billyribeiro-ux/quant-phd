@@ -16,7 +16,7 @@
 | Unit under review | `{{MODULE_ID or STUDIO_ID}}` |
 | Directory | `{{PATH}}` |
 | Curriculum entry | `{{FULL JSON OBJECT FROM curriculum.json}}` |
-| Ledger output | `course/ledgers/{{ID}}.verification.json` |
+| Ledger output | `ledgers/{{ID}}.verification.json` |
 
 ---
 

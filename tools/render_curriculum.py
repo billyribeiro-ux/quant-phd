@@ -169,12 +169,12 @@ def validate(meta: dict[str, Any], parts: list[Part]) -> tuple[dict[str, Tier], 
                 continue
             if module.id == prereq:
                 errors.append(f"{module.id}: lists itself as a prerequisite")
-            if module.tier in tiers and modules[prereq].tier in tiers:
-                if tiers[modules[prereq].tier].rank > tiers[module.tier].rank:
-                    errors.append(
-                        f"{module.id} (tier {module.tier}) depends on {prereq} (tier {modules[prereq].tier}): "
-                        "a module cannot sit below its prerequisites"
-                    )
+            prereq_tier = modules[prereq].tier
+            if module.tier in tiers and prereq_tier in tiers and tiers[prereq_tier].rank > tiers[module.tier].rank:
+                errors.append(
+                    f"{module.id} (tier {module.tier}) depends on {prereq} (tier {prereq_tier}): "
+                    "a module cannot sit below its prerequisites"
+                )
 
     for part in parts:
         studio = part.studio
@@ -223,7 +223,7 @@ def validate(meta: dict[str, Any], parts: list[Part]) -> tuple[dict[str, Tier], 
     order: list[str] = []
     if not errors:
         try:
-            order = list(TopologicalSorter({m.id: m.prereqs for m in modules.values()}).static_order())
+            order = deterministic_order(modules)
         except CycleError as exc:
             errors.append(f"prerequisite cycle: {' -> '.join(exc.args[1])}")
     if not errors:
@@ -232,6 +232,23 @@ def validate(meta: dict[str, Any], parts: list[Part]) -> tuple[dict[str, Tier], 
     if errors:
         raise CurriculumError("\n".join(f"  - {e}" for e in errors))
     return tiers, modules, order
+
+
+def deterministic_order(modules: dict[str, Module]) -> list[str]:
+    """Topological order that is identical on every Python version.
+
+    ``graphlib`` guarantees a valid order, not a stable one, so ready nodes are
+    released in curriculum (authoring) order. Raises ``CycleError`` on a cycle.
+    """
+    position = {module_id: index for index, module_id in enumerate(modules)}
+    sorter = TopologicalSorter({m.id: m.prereqs for m in modules.values()})
+    sorter.prepare()
+    order: list[str] = []
+    while sorter.is_active():
+        ready = sorted(sorter.get_ready(), key=position.__getitem__)
+        order.extend(ready)
+        sorter.done(*ready)
+    return order
 
 
 def validate_credentials(
@@ -254,7 +271,8 @@ def validate_credentials(
         for module_id in sorted(required):
             if tiers[modules[module_id].tier].rank > ceiling:
                 errors.append(
-                    f"credential {cid} (max tier {cred['max_tier']}) pulls in {module_id} (tier {modules[module_id].tier})"
+                    f"credential {cid} (max tier {cred['max_tier']}) pulls in {module_id} "
+                    f"(tier {modules[module_id].tier})"
                 )
         for studio_id in cred["studios"]:
             if studio_id not in studios:
@@ -453,7 +471,9 @@ def render_markdown(
     out.append("|---|---|---|---|")
     for milestone in meta["milestones"]:
         cum = stats["milestone_hours"][milestone["id"]]
-        out.append(f"| **{milestone['name']}** | {md_escape(milestone['rule'])} | {cum:,} | {full_time_years(cum):.2f} |")
+        out.append(
+            f"| **{milestone['name']}** | {md_escape(milestone['rule'])} | {cum:,} | {full_time_years(cum):.2f} |"
+        )
     out.append("")
 
     out.append("## Career tracks (computed prerequisite closures)\n")
@@ -474,13 +494,17 @@ def render_markdown(
     out.append("")
 
     out.append("## Modules by part\n")
-    out.append("Legend: tier **F/U/M/D** · hours · ← prerequisites · grading `auto` / `rubric` / `both` · ⚑ Atlas milestone · ⚖ debate.\n")
+    out.append(
+        "Legend: tier **F/U/M/D** · hours · ← prerequisites · grading `auto` / `rubric` / `both` · "
+        "⚑ Atlas milestone · ⚖ debate.\n"
+    )
     for part in parts:
         out.append(f"### Part {part.order} · {part.title} (`{part.code}`)\n")
         if part.studio:
             s = part.studio
             out.append(
-                f"**Studio · {s['title']}** · {s['tier']} · {s['hours']} h · ← {', '.join(s['requires'])} · `{s['grading']}`  \n"
+                f"**Studio · {s['title']}** · {s['tier']} · {s['hours']} h · "
+                f"← {', '.join(s['requires'])} · `{s['grading']}`  \n"
                 f"{md_escape(s['brief'])}  \n"
                 f"*Deliverables:* {', '.join(s['deliverables'])}\n"
             )
