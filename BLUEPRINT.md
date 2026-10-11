@@ -1,741 +1,391 @@
-# Master Blueprint — Doctoral Program in Global Macro & Quantitative Finance
+# Master Blueprint — Doctoral-Track Major in Finance, Economics & Quantitative Markets
 
-**Status:** Architecture v1.0 (2026-10-10) · **Chief architect:** Claude · **Owner:** Billy Ribeiro
-**Companion contracts:** [BUILDER_RULES.md](BUILDER_RULES.md) (system prompt for module builders) ·
-[VERIFIER_RULES.md](VERIFIER_RULES.md) (system prompt for independent verifiers)
+**Version:** 2.0 (2026-10-11) · **Chief architect:** Claude · **Owner:** Billy Ribeiro
 
----
+**Companion files:**
 
-## 1. Mission and exit standard
-
-Take a student from zero (high-school algebra) to the level of a graduate of the
-coursework years of a top finance or economics PhD (Harvard, MIT, Yale, Chicago,
-Stanford, Princeton). Then go past it in the areas that the academy teaches
-weakly: implementation, research integrity, market plumbing, and the evidence
-behind practice.
-
-"PhD-level" is defined operationally. A graduate of this program can:
-
-1. **Pass a first-year qualifying exam** in asset pricing theory, empirical
-   asset pricing, econometrics and macro/monetary economics, closed-book and timed.
-2. **Derive the canon from first principles.** That means the FTAP, the SDF,
-   Black-Scholes-Merton via replication and via change of measure, affine term
-   structure, Kyle's lambda, the Merton portfolio problem, and the NK
-   three-equation model.
-3. **Replicate a published empirical result** from raw data, with correct
-   inference (HAC/clustered errors, Shanken correction, multiple-testing
-   adjustment), and say where the result is fragile.
-4. **Argue every major open debate** in the field (Section 9, CAP2). For each,
-   they can state the strongest case for each side, the graded evidence, and
-   what new evidence would settle it.
-5. **Build production-grade research code.** That means point-in-time data,
-   no lookahead, a realistic cost model, and out-of-sample protocols that
-   withstand an adversarial referee.
-
-The edge over a professor is not more theorems. It is the combination of
-(a) the full theory canon, (b) a live map of which results replicate and which
-don't, and (c) the implementation reality that most academic courses leave out.
+| File | Role |
+|---|---|
+| [`CURRICULUM.md`](CURRICULUM.md) | The full curriculum: 127 modules and 150 graded projects. Generated, never hand-edited |
+| [`curriculum/*.yaml`](curriculum/) | Source of truth for the curriculum |
+| [`tools/render_curriculum.py`](tools/render_curriculum.py) | Validator and renderer for the curriculum |
+| [`BUILDER_RULES.md`](BUILDER_RULES.md) | Binding system prompt for builder agents |
+| [`VERIFIER_RULES.md`](VERIFIER_RULES.md) | Binding system prompt for the independent verifier agents |
 
 ---
 
-## 2. The evidence standard (non-negotiable)
+## 1. What this is
 
-Every substantive claim on every page carries an **evidence grade** and at
-least one **citation key** that resolves to the verified reference registry.
+This is one continuous program. A student starts with high-school algebra and
+finishes holding a defended doctoral thesis. It covers what a top university
+spreads across several separate degrees, with no repetition between them:
+
+- **A complete finance major.** Corporate finance and valuation, accounting
+  and statement analysis, investments, fixed income, derivatives, financial
+  institutions, private markets and real estate, financial history, law and
+  professional conduct.
+- **The economics it rests on.** Micro, game theory and information,
+  decision theory, macro I and II, monetary, international, and sovereign
+  debt and crises.
+- **The mathematics, statistics and computing underneath both.** Proof and
+  analysis, measure-theoretic probability, optimization and numerical methods;
+  inference, econometrics, time series and research integrity; Python, SQL,
+  C++, software engineering and HPC.
+- **The quantitative and macro specialization.** Stochastic calculus, asset
+  pricing theory, empirical asset pricing, portfolio and risk,
+  microstructure and execution, quant research engineering, FX and
+  commodities, global macro trading, systemic risk.
+- **The doctorate.** Qualifying exams, refereeing and replication, the twelve
+  great debates of the field, and an original thesis.
+
+**Exit standard.** The graduate can do the following:
+
+1. pass first-year PhD qualifying exams in asset pricing, econometrics and
+   macro/monetary
+2. derive the canon from first principles
+3. replicate published results, and diagnose why replications diverge
+4. argue every major open debate from graded evidence
+5. ship production research code
+6. value a company, structure a deal, and defend a trade in front of a hostile
+   investment committee
+
+Undergraduate, master's and PhD courses each teach mostly theory, and each
+assumes the student will pick up implementation somewhere else. This program
+puts the theory, the replication evidence and the implementation in the same
+place.
+
+---
+
+## 2. Where the time is saved (numbers, not slogans)
+
+All figures below are computed by `tools/render_curriculum.py` from the
+curriculum sources. They are not estimates typed into this document.
+
+The calibration anchor is the U.S. federal credit-hour definition (34 CFR
+600.2). One credit is about 45 hours of student work, so a three-credit course
+is about 135 hours and a 120-credit bachelor's degree is about 5,400 hours.
+Module hours are sized against the university course content each module
+replaces. Every hour figure includes the module's project.
+
+| Milestone | Cumulative hours | Full-time years* |
+|---|---|---|
+| Major Complete (F + U tiers) | 3,815 | 1.77 |
+| Master's-Equivalent (+ M tier) | 10,605 | 4.91 |
+| Doctoral Candidate (+ D tier, quals) | 11,965 | 5.54 |
+| Doctoral (+ thesis) | 13,165 | 6.09 |
+
+\*At 45 hours/week for 48 weeks/year. That is a full-time professional pace,
+not a student pace.
+
+Job-ready career tracks are the prerequisite closures of each track's target
+modules. They take 1.5–2.4 full-time years. See the table in `CURRICULUM.md`.
+
+The savings come from six mechanisms, and every one of them is designed in:
+
+1. **No general-education or distribution requirements.** Every hour serves
+   the exit standard.
+2. **No re-teaching across degree levels.** A university teaches CAPM,
+   regression and options three times: in the bachelor's, the master's and the
+   PhD. Here each concept is defined exactly once in the prerequisite graph and
+   then reused. `check_dag.py` enforces this.
+3. **Year-round calendar.** Two 15-week semesters give about 30 instructional
+   weeks a year. The program runs 48.
+4. **Placement test-outs.** Each module opens with a diagnostic. A student who
+   scores at the mastery bar on it moves straight to the module project.
+5. **Projects that compound.** The program-long Atlas build (§5) means the
+   data layer from month 2 runs inside the thesis. Nothing is thrown away.
+6. **Research starts early.** Replication, the integrity protocol and
+   self-refereeing are graded from the master's tier onward. The thesis grows
+   out of work the student already owns.
+
+The hours remain design targets. Phase 1 pilot learners recalibrate them, and
+the generated tables update automatically.
+
+---
+
+## 3. The evidence standard (non-negotiable)
+
+Every substantive claim on every page carries an evidence grade and at least
+one citation key from the verified reference registry.
 
 | Grade | Meaning | Allowed phrasing |
 |---|---|---|
-| **T** | Mathematical theorem, proven on the page or with a cited proof | "Theorem.", "It follows that" |
-| **A** | Replicated out of sample, by independent teams, across periods and/or markets | "The evidence shows" |
-| **B** | Peer-reviewed in a top venue, but not robustly replicated, or actively contested | "Published evidence indicates…; contested by…" |
-| **C** | Working paper, practitioner research, single-sample or short-sample evidence | "One study finds…" |
-| **D** | Practitioner lore with no systematic evidence | Only as "It is widely claimed that…", always flagged |
+| **T** | Theorem: proved on the page, or with a precisely cited proof | "Theorem.", "It follows that" |
+| **A** | Replicated out of sample by independent teams, across periods and/or markets | "The evidence shows" |
+| **B** | Published in a top peer-reviewed venue, but not robustly replicated or actively contested | "Published evidence indicates…; contested by…" |
+| **C** | Working paper, practitioner research, or single-sample evidence | "One study finds…" |
+| **D** | Practitioner lore with no systematic evidence | Only as "It is widely claimed…", always flagged |
 | **X** | Refuted, failed replication, or retracted | "Earlier work claimed…; this did not survive…" |
 
-Rules that follow from the table:
+The rules that follow from it:
 
-- Numbers in prose come from one of three places. They are computed live on
-  the page from embedded data, quoted with a precise locator (paper, table or
-  figure, panel), or derived in a shown calculation. No other numbers.
-- A claim graded B or C must name the counter-evidence if any exists. One-sided
-  presentation of a contested claim is a build failure.
-- Training-data recall is a **source of candidates, never a source of truth**.
-  Every citation and every quoted number is checked against the source by the
-  verifier before a module merges. This catches recall errors (wrong year,
-  wrong journal, misattributed result) mechanically instead of trusting any
-  model's confidence. It is the single feature that lets the program survive
-  hostile review by the people it cites.
-- **Freshness:** the knowledge base runs through mid-2026. During the build,
-  verifiers check each working paper for a later published version, and each
-  contested debate for 2025–2026 contributions, then update the registry.
+- **Where numbers can come from.** Every number in prose is either computed
+  live on the page from embedded data, quoted from a source with an exact
+  locator (table, panel, equation or page), or derived on the page.
+- **Contested claims are two-sided.** A claim graded B or C must name its
+  published counter-evidence. One-sided treatment is a build failure.
+- **Memory is a lead, not a source.** Model recall supplies candidate
+  citations and numbers. Every citation enters the registry only through a
+  DOI→Crossref lookup. An independent verifier then checks every attribution
+  and every quoted number against the source (`VERIFIER_RULES.md`). Errors are
+  caught by machinery rather than by trusting any model's confidence. This is
+  what lets the program survive hostile review by the people it cites.
+- **Freshness.** The knowledge base runs to mid-2026. The verifier checks
+  every working paper for a later published version, and every debate for
+  2025–2026 contributions.
+- **The standard covers how the program teaches, too.** Section 4 is held to
+  the same grades.
 
 ---
 
-## 3. Languages and tooling, with the evidence for each choice
+## 4. The learning system, built on learning-science evidence
 
-The evidence for each choice is public: firms' own engineering
-publications and job requirements, the dominant open-source quant libraries,
-and the published scientific-computing literature. Module QR1 teaches this
-section with full citations. Builders must not invent usage percentages or
-survey statistics. Claims stay qualitative unless a verified survey is cited.
-
-| Language | Role in industry and research | Program role | Runs in-page via |
+| Mechanism | Evidence | Grade | How it is built |
 |---|---|---|---|
-| **Python 3** (NumPy, SciPy, pandas, Polars, statsmodels, scikit-learn, PyTorch) | Default research language across buy-side quant research and academic empirical finance. The core libraries are documented in peer-reviewed venues (NumPy: Harris et al. 2020, *Nature*; SciPy: Virtanen et al. 2020, *Nature Methods*; scikit-learn: Pedregosa et al. 2011, *JMLR*) | **Primary.** Every lab | Pyodide (CPython compiled to WebAssembly), vendored and pinned |
-| **C++ (C++20)** | Pricing libraries (QuantLib is C++), low-latency trading systems, performance-critical risk | Pricing and HPC labs (DV4, QR7) | Compiled to WASM with Emscripten at build time; output asserted in CI |
-| **SQL** | Research data access, point-in-time joins, warehouse queries | Data-engineering labs (QR2, F1) | DuckDB-WASM (supports window functions and `ASOF JOIN`, the core time-series join) |
-| **q / kdb+** | Tick-data storage and analytics at many banks and HFT firms | Reading literacy (QR1 appendix) | Static, annotated code (not executed) |
-| **R** | Academic econometrics and statistics | Reading literacy (S-series appendices) | Static, annotated code |
-| **Rust, OCaml** | Trading infrastructure. Jane Street's use of OCaml is documented by the firm itself (Minsky, "OCaml for the Masses", *ACM Queue*, 2011) | Context only (QR1) | — |
+| **Retrieval practice** beats rereading | Roediger & Karpicke (2006), *Psych. Science* 17(3); Dunlosky et al. (2013), *PSPI* 14(1) | A | Every lesson ends in a retrieval quiz. Spaced-retrieval cards are generated from every definition, theorem and key result |
+| **Spaced practice** beats massed practice | Cepeda et al. (2006), *Psych. Bulletin* 132(3) | A | An in-browser scheduler (FSRS-family algorithm; Ye, Su & Cao 2022, KDD [V]) resurfaces cards across the whole program, so Part 1 stays alive in Part 20 |
+| **Worked examples** before problem solving, for novices | Sweller & Cooper (1985), *Cognition & Instruction* 2(1); Atkinson et al. (2000), *RER* 70(2) | A | Rung 1 of the project ladder (below) |
+| **Fading** scaffolds as competence grows | Renkl & Atkinson (2003), *Ed. Psychologist* 38(1) | B | Rung 2: completion problems |
+| **Expertise reversal:** scaffolding hurts experts | Kalyuga, Ayres, Chandler & Sweller (2003), *Ed. Psychologist* 38(1) | A | Placement test-outs skip rungs 1–2 for students who already have the skill |
+| **Active learning** beats lecture | Freeman et al. (2014), *PNAS* 111(23) | A | Labs run inline in the argument, not at the end; every section has a do-something element |
+| **Interleaving** of problem types | Rohrer & Taylor (2007), *Instructional Science* 35 | B | Review sets and quals mix topics, so students must choose the method themselves |
+| **Self-explanation** | Chi et al. (1989), *Cognitive Science* 13(2) | B | Proof modules require written step justifications, graded on rubric |
+| **Mastery learning** | Kulik, Kulik & Bangert-Drowns (1990), *RER* 60(2) | B | A module unlocks only after its prerequisites' projects pass. The mastery bar is set per module |
+| **Rubrics with exemplars** | Jonsson & Svingby (2007), *Educational Research Review* 2(2) [V] | B | Every rubric-graded project ships annotated exemplars at two or more quality levels |
 
-**Front-end stack.** The pages are static HTML5 with vanilla ES modules, so there
-is no framework churn. The site is designed for 10-year longevity.
+**Projects, maximized, in the right order.** The evidence does not support
+throwing novices into open-ended projects. Kirschner, Sweller & Clark (2006,
+*Ed. Psychologist* 41(2)) show that minimally guided instruction underperforms
+for novices. Hmelo-Silver, Duncan & Chinn (2007, *Ed. Psychologist* 42(2))
+reply that well-scaffolded problem-based learning works. Both sides agree on
+the synthesis: projects are most effective when scaffolding fades as skill
+grows.
 
-- **Math:** KaTeX, vendored.
-- **Charts and diagrams:** hand-authored inline SVG, plus D3 v7 (vendored) for
-  data charts.
-- **Runnable code:** Pyodide, DuckDB-WASM and Emscripten output, all vendored
-  and pinned in `vendor/LOCK.json` with SHA-256 hashes. Nothing loads from a CDN
-  at runtime.
+So every module runs a four-rung **project ladder**:
 
-**Self-contained means self-contained.** The whole site works offline. WASM
-runtimes cannot load over `file://`, so the program ships with a one-line local
-server (`python3 -m http.server`) and is also hostable as a static site with no
-backend.
+1. **Worked example:** a fully solved instance, annotated.
+2. **Completion problem:** a partially solved instance that the student
+   finishes.
+3. **Independent project:** the graded module project, specified in the
+   curriculum.
+4. **Stretch:** an open-ended extension with no ceiling, which feeds the
+   student's portfolio.
 
-**Build and verification toolchain:** Python 3.12, pytest, Playwright with the
-pre-installed Chromium, and a Crossref and DOI resolver client.
+Placement results skip rungs 1–2. By the master's tier, rungs 1–2 shrink to
+the minimum, because the expertise-reversal evidence says they start to hurt.
+
+Two contested claims are deliberately left out of the design. Bloom's (1984)
+"2-sigma" tutoring effect is contested: VanLehn (2011, *Ed. Psychologist*
+46(4)) finds a smaller effect. The strong deliberate-practice claim (Ericsson,
+Krampe & Tesch-Römer 1993) is contested by Macnamara, Hambrick & Oswald (2014,
+*Psych. Science* 25(8)). The program teaches these as graded-B debates rather
+than building on them.
 
 ---
 
-## 4. Repository and site architecture
+## 5. The project system
+
+**Scale:** 150 graded projects, made up of 127 module projects and 23 studio
+projects. Twenty of the module projects are Atlas milestones. In addition there
+are 1–4 inline labs per lesson, and the capstone sequence.
+
+| Layer | Size | Purpose |
+|---|---|---|
+| **Labs** | Minutes. 1–4 per lesson | Demonstrate one mechanism or numerically check one theorem |
+| **Module project** | 10–40% of module hours | Prove mastery of the module, as rung 3 of the ladder |
+| **Studio project** | 30–100 h, one per Part | Integrate a whole Part into a realistic professional deliverable: desk, deal, audit, report |
+| **Atlas** | 20 milestones across the program | One production-grade research and trading platform, built cumulatively |
+| **Capstone** | CAP1–CAP4 | Replication, debates, quals, thesis |
+
+### 5.1 Atlas: the program-long build
+
+Atlas is a single repository the student builds across the whole program. It
+grows from a typed skeleton (A1, in CS1) to the following components:
+
+- a point-in-time data layer
+- a time-series toolkit, curve engine and pricing library
+- a cross-sectional engine and a research-integrity module
+- a backtester and execution models
+- portfolio construction and a risk engine
+- fundamentals and valuation engines
+- an ML pipeline
+- nowcasting, systemic-risk and macro trade-construction engines
+
+Later milestones import earlier ones, so a weak early milestone costs the
+student later. That is intentional: it is how real engineering works. By
+graduation, Atlas plus the studio deliverables form a hiring-grade portfolio.
+
+**Where Atlas lives.** Atlas is developed **locally, under git**. Real quant
+engineering happens in repositories, not browser sandboxes, and CS4 teaches the
+workflow. The course page supplies the spec, the starter code, and a test suite
+the student can download. Small and early projects can also run in the
+**in-browser workspace**: Pyodide with a virtual filesystem persisted to
+IndexedDB, plus one-click zip export and import. Browser storage can be cleared
+by the user or the browser, so the page tells students to export their work.
+
+### 5.2 Grading modes
+
+- **Autograder (dual-mode).** The same pytest suite runs in the browser
+  (pytest in Pyodide) or locally (`pytest`).
+  - Tests are **parameterized per student:** a seed derived from the student's
+    workspace ID generates their instance, so answers cannot simply be copied.
+  - Every autograder is **mutation-tested** before release. The verifier writes
+    at least three plausible wrong solutions, and each one must fail.
+  - A static site cannot keep its tests secret, and the program does not
+    pretend otherwise. Integrity comes from parameterized instances and from
+    the fact that the portfolio itself is the credential.
+- **Rubric.** Criteria × four performance levels, with annotated exemplars at
+  two or more levels. The student self-assesses, then compares their scoring
+  with the exemplar scoring to calibrate.
+- **Both.** Code is autograded; the memo or report is rubric-graded.
+
+### 5.3 Data for projects
+
+**Embedded data** comes only from sources that permit redistribution:
+
+- public-domain FRED series
+- the Kenneth French Data Library
+- Shiller's data
+- U.S. Treasury yields
+- Federal Reserve datasets
+- the Open Source Asset Pricing dataset
+- SEC EDGAR / XBRL filings
+- FFIEC call reports
+- BIS statistics where the terms permit
+
+**Bring-your-own-data mode.** Projects that need prices the program cannot
+redistribute accept a student-supplied CSV that never leaves the browser. The
+page documents the required schema and validates it.
+
+**Simulated data** is always labelled **SIMULATED** on the figure.
+
+---
+
+## 6. Languages and tooling
+
+| Language | Evidence for its role | Program role | Runs via |
+|---|---|---|---|
+| **Python 3** | The default research language in buy-side quant research and academic empirical finance. Core libraries are documented in peer-reviewed venues (NumPy: Harris et al. 2020, *Nature*; SciPy: Virtanen et al. 2020, *Nature Methods*; scikit-learn: Pedregosa et al. 2011, *JMLR*) | Primary language for every lab and most projects | Pyodide (in page) and local CPython |
+| **C++20** | The language of pricing libraries (QuantLib) and low-latency systems | CS5, CS6, DV4, the CS studio | Emscripten → WASM at build time; native locally |
+| **SQL** | Research data access; point-in-time and as-of joins | CS3, QR1, the data layer | DuckDB-WASM in page; DuckDB locally |
+| **q / kdb+, R** | Tick-data analytics at banks and HFT firms (q); academic econometrics (R) | Reading literacy | Static, annotated code |
+| **Rust, OCaml** | Trading infrastructure; Jane Street documents its OCaml use (Minsky 2011, *ACM Queue*) | Context only | — |
+
+No usage percentages are claimed unless a verified survey is in the registry.
+
+**Front end.** The site is static HTML5 with vanilla ES modules, so there is
+no framework churn to maintain. Everything below is vendored, pinned and
+SHA-256-locked in `vendor/LOCK.json`, so nothing loads from a CDN at runtime:
+
+- KaTeX for math
+- D3 v7 plus hand-authored inline SVG for figures
+- Pyodide (with pytest), DuckDB-WASM, and Emscripten output for runnable code
+- an FSRS-family scheduler for spaced retrieval
+- IndexedDB for progress, cards and the workspace, with JSON and zip export
+  and every access wrapped in try/catch
+
+The site works fully offline from `python3 -m http.server`. A local server is
+required because WASM runtimes do not load over `file://`. The site can also be
+hosted as a static site with no backend.
+
+**Build and verification toolchain:** Python 3.12+, pytest, Playwright with the
+pre-installed Chromium, and a Crossref/DOI client.
+
+---
+
+## 7. Repository and site architecture
 
 ```
 course/
-├── index.html                      # Program map: interactive prerequisite DAG, progress, search
-├── assets/
-│   ├── css/  tokens.css base.css components.css print.css
-│   ├── js/   core.js (nav, theme, progress) lab.js (Pyodide/DuckDB runner)
-│   │         chart.js (D3 wrappers) quiz.js refs.js (citation popovers)
-│   ├── vendor/  katex/ pyodide/ duckdb-wasm/ d3/ LOCK.json
-│   ├── data/    *.csv|*.parquet + MANIFEST.json
-│   └── wasm/    compiled C++ lab modules
-├── modules/<PART>/<ID>-<slug>.html # One page per module (92 modules, Section 9)
-├── references/references.json      # THE citation registry. The only legal citation source
-├── references/index.html           # Generated bibliography
-├── notation/notation.json          # Global symbol registry. One symbol, one meaning
-├── notation/glossary.json          # Defined terms → defining module
-├── curriculum/curriculum.json      # DAG: id, title, prereqs, concepts_introduced, concepts_used, hours
-├── ledgers/<ID>.verification.json  # Verifier output. A module merges only if every row passes
+├── index.html                       # Program map: interactive DAG, milestones, tracks, progress, search
+├── placement/                       # Program-wide and per-module diagnostics
+├── modules/<PART>/<ID>/
+│   ├── index.html                   # Module hub: objectives, prereqs, lesson list, project ladder
+│   ├── L01.html … Lnn.html          # Lessons of 6–12 study hours each
+│   ├── project.html                 # Ladder rungs 1–4, spec, submission, rubric/exemplars
+│   └── grader/                      # Parameterized pytest suite + instance generator
+├── studios/<STUDIO-ID>/             # Studio spec, starter repo, grader, rubric, exemplars
+├── atlas/                           # Atlas milestone specs, interface contracts, cumulative test suites
+├── assets/{css,js,vendor,data,wasm} # Design system, runtime, vendored deps, embedded data + MANIFEST.json
+├── references/references.json       # THE citation registry, the only legal citation source
+├── notation/{notation,glossary}.json
+├── curriculum/curriculum.json       # Generated by render_curriculum.py
+├── ledgers/<ID>.verification.json   # Verifier output; merge is gated on all-PASS
 └── tools/
-    ├── fetch_data.py       # Downloads public data, writes MANIFEST (url, retrieved_at, license, sha256, transform)
-    ├── add_reference.py    # DOI → Crossref metadata → registry entry (never hand-typed)
-    ├── verify_refs.py      # Re-resolves every DOI and cross-checks title, authors, year, venue
-    ├── run_labs.py         # Executes every lab under the pinned Pyodide-matching CPython and asserts expected output
-    ├── check_pages.py      # Template conformance, banned phrases, grade tags, citation keys, notation, a11y
-    ├── check_dag.py        # Every concept used must be introduced in a transitive prerequisite
-    └── page_smoke.py       # Playwright: zero console errors, KaTeX renders, labs execute in the browser, light/dark
+    ├── render_curriculum.py  fetch_data.py  add_reference.py  verify_refs.py
+    ├── run_labs.py  run_graders.py  mutate_graders.py
+    ├── check_pages.py  check_dag.py  check_projects.py
+    └── page_smoke.py                # Playwright: zero console errors, math renders, labs + graders run in-browser
 ```
-
-**Data policy.** Embed only data whose license permits redistribution:
-
-- FRED series in the public domain (third-party-copyrighted series excluded;
-  the per-series rights notice is checked)
-- the Kenneth French Data Library
-- Robert Shiller's online data
-- U.S. Treasury yield data
-- the Fed's published datasets (e.g., the Gürkaynak-Sack-Wright curve)
-- the Open Source Asset Pricing dataset (Chen and Zimmermann)
-- BIS statistics where the terms permit
-
-Licensed data (CRSP, Compustat, TAQ, Bloomberg) is **described, never
-embedded**. Labs needing it use open substitutes.
-
-Synthetic data is allowed for teaching mechanisms, but must be labelled
-**SIMULATED** on the figure itself.
 
 **Design system.**
 
-- Colour tokens on `:root` with a dark-mode override.
-- One serif for prose, one sans for UI, one mono for code. All fonts are
-  vendored, with no Google Fonts call at runtime.
-- 72ch prose measure, theorem/definition/proof callouts, and margin notes for
-  citations.
-- Print stylesheet, so every module prints as a clean study PDF.
+- Colour tokens on `:root`, with a dark-mode override.
+- A serif for prose, a sans-serif for the interface and a monospace for code,
+  all vendored.
+- 72-character prose measure; theorem/definition/proof callouts; citation
+  margin notes with hover popovers.
+- A print stylesheet, so every lesson prints as a clean study PDF.
 - WCAG 2.2 AA throughout.
 
-**Images.** Every image must teach a mechanism or show data. No stock photos
-and no decoration. Diagrams are inline SVG with `<title>` and `<desc>` for
-accessibility. Data charts carry a source line and retrieval date on the chart
-itself.
+**Images.** Every image teaches a mechanism or shows data. No stock photos, no
+decoration. SVGs carry `<title>` and `<desc>`. Charts carry their source and
+retrieval date.
 
 ---
 
-## 5. Module page template (every page, same order)
+## 8. Module template
 
-1. **Header:** ID, title, prerequisites (linked), target study hours, 4–8
-   learning objectives written as measurable verbs (derive, estimate, prove,
-   implement, critique).
-2. **Why it matters:** at most 150 words, with no motivational filler.
-3. **Core content:** numbered sections, with Definition, Theorem, Proof,
-   Example and Remark blocks. Every substantive claim carries a grade badge
-   and citation key(s).
-4. **Figures:** SVG diagrams and data charts with caption, source and
-   retrieval date.
-5. **Labs:** runnable code, each with a stated hypothesis, the code, the
-   expected output (asserted in CI), and an interpretation.
-6. **Where the canon breaks:** failed assumptions, failed replications, and
-   regime dependence.
-7. **Debate brief** (for modules with live controversies): the resolution, the
-   strongest case for each side, graded evidence, the current state, and what
-   evidence would settle it.
-8. **Misconceptions:** each wrong belief, why it is wrong, and the evidence.
-9. **Problem set,** in four tiers: Mechanics / Proof / Empirical /
-   Research-grade, each with full worked solutions (collapsed).
-10. **Key results table:** claim, grade, citation keys.
-11. **Reading list:** required primary papers and optional extensions, all as
-    registry keys.
-12. **Self-check quiz:** 10–20 items, scored locally, with explanations.
+Each module consists of a hub page, its lessons, and a project page.
+
+- **Hub.** Lists objectives (4–8 measurable verbs), prerequisites, hours,
+  placement test, lesson map and the project ladder.
+- **Each lesson** contains, in order:
+  1. Why it matters (at most 120 words)
+  2. Core content in Definition, Theorem, Proof, Example and Remark blocks,
+     every claim graded and cited
+  3. Inline labs
+  4. Where the canon breaks
+  5. Debate brief, where the curriculum tags one
+  6. Misconceptions
+  7. A tiered problem set (Mechanics / Proof / Empirical / Research), each
+     problem with a full worked solution
+  8. A key-results table
+  9. The retrieval quiz, which also generates spaced-retrieval cards
+- **Project page.** Contains ladder rungs 1–4, the full spec, the grader or
+  rubric, exemplars, and the reading list.
 
 ---
 
-## 6. Pedagogy
-
-- **Spiral, not silo.** A concept introduced in maths reappears applied. For
-  example, PCA (M3) comes back as level/slope/curvature (FI1) and as factor
-  extraction (F6). The DAG records every reuse.
-- **Derive, then test.** Each theorem comes with a numerical check in a lab.
-  For example, put-call parity is checked on simulated paths, and BS Greeks
-  against finite differences.
-- **Primary sources over textbook paraphrase.** Students read the original
-  papers on the reading lists. Pages teach how to read them.
-- **Adversarial training.** Every empirical module includes an exercise in
-  breaking a published result: costs, subsamples, multiple-testing
-  adjustment, or alternative standard errors.
-
----
-
-## 7. Build process (Claude Code, architect-led)
+## 9. Build process
 
 | Phase | Output | Gate |
 |---|---|---|
-| **0 — Foundations** | Design system, page template, all `tools/`, vendored runtimes with `LOCK.json`, `curriculum.json` (full DAG), `notation.json`, seed `references.json` (every key in Section 9 resolved through `add_reference.py`) | `verify_refs.py` 100% resolved; `page_smoke.py` passes on the template page |
-| **1 — Pilot** | Two modules end-to-end: **S7** (research integrity) and **AP1** (no-arbitrage). They calibrate tone, density and verification cost | Architect review + full ledger pass; template and rules revised once based on the pilot |
-| **2 — Fan-out** | Remaining modules, built in DAG order and batched by Part. Each module is written by one builder agent and checked by an independent verifier agent with fresh context | Ledger pass + `check_dag.py` + architect integration review |
-| **3 — Integration** | Program map, cross-module links, glossary, bibliography, capstone debates, qualifying exam, thesis rubric | Full-site Playwright run; zero broken links; zero unresolved keys |
-| **4 — Freshness pass** | 2025–2026 literature update for every debate brief and working paper | Verifier ledger rerun on the touched modules |
+| **0 — Foundations** | Design system; templates (hub, lesson, project, studio); all `tools/`; vendored runtimes with lock file; grader harness (Pyodide + local); spaced-retrieval engine; `references.json` seeded from every source in `curriculum/*.yaml` via `add_reference.py`; `notation.json` | `render_curriculum.py` valid; `verify_refs.py` 100% resolved or removed; `page_smoke.py` green on every template |
+| **1 — Pilot** | Three modules end to end, chosen to calibrate every style: **S7** (theory + autograder), **AP1** (proof-heavy), **AC2** (applied, rubric + Atlas milestone). Ten pilot learners | Full ledger PASS; hours recalibrated from pilot data; templates and rules revised once |
+| **2 — Fan-out** | All remaining modules and studios in topological order (`curriculum.json` → `topological_order`), in batches of up to 8 modules. Each module gets one builder agent and one independent verifier agent | Ledger PASS + `check_dag.py` + `check_projects.py` (incl. mutation tests) + architect review |
+| **3 — Integration** | Program map, placement system, Atlas cumulative test suites, capstone, quals bank, thesis rubric | Full-site Playwright run; zero broken links; zero unresolved keys |
+| **4 — Freshness** | 2025–2026 literature pass on every debate and working paper | Ledgers re-run on touched modules |
 
-**Agent topology per module:** a builder (BUILDER_RULES) produces the page and
-lab tests; a verifier (VERIFIER_RULES, separate context, never the same
-agent) produces the ledger; the architect reviews diffs and merges. A verifier
-failure goes back to the builder with the failing ledger rows only.
-
----
-
-## 8. Seed canon notes
-
-The citations in Section 9 are the seed list for the registry. Each one enters
-`references.json` only through `add_reference.py` (DOI → Crossref metadata),
-so the bibliographic fields are machine-sourced, not recalled.
-
-Entries marked **[WP]** may have been published since. Entries marked **[V]**
-are flagged for priority verification of venue, year and exact title. A key
-that fails verification is removed or replaced before any module cites it.
-
-Abbreviations:
-
-- *JF* Journal of Finance
-- *JFE* Journal of Financial Economics
-- *RFS* Review of Financial Studies
-- *AER* American Economic Review
-- *QJE* Quarterly Journal of Economics
-- *JPE* Journal of Political Economy
-- *ECMA* Econometrica
-- *REStud* Review of Economic Studies
-- *REStat* Review of Economics and Statistics
-- *JME* Journal of Monetary Economics
-- *JET* Journal of Economic Theory
-- *JPM* Journal of Portfolio Management
-- *FAJ* Financial Analysts Journal
-- *CFR* Critical Finance Review
-
----
-
-## 9. Curriculum: 17 Parts, 92 modules
-
-Notation used below:
-
-- Each module line reads: ID · title · prerequisites · core content · anchor sources · signature lab.
-- `→` means "requires".
-- Target hours are design targets for study time, not claims.
-
-### PART 0 — Orientation
-- **P0.1 · How to Study This Program** · none · Evidence grades; how to read a
-  paper (identification, data, inference, robustness); steelmanning; notation
-  conventions; using the labs. · Lab: navigate the DAG; first Pyodide cell.
-
-### PART I — Mathematical Foundations (M)
-- **M1 · Proof, Logic & Real Analysis** · P0.1 · Sets, quantifiers, proof
-  techniques, sequences, limits, continuity, completeness, compactness, metric
-  spaces. · Abbott, *Understanding Analysis*; Rudin, *Principles of
-  Mathematical Analysis*. · Lab: ε–δ visualizer.
-- **M2 · Single & Multivariable Calculus** · M1 · Taylor's theorem, Riemann
-  integration, gradients, Jacobians, Hessians, implicit-function and envelope
-  theorems. · Lab: Taylor expansion of bond price (duration and convexity
-  preview).
-- **M3 · Linear Algebra** · M1 · Vector spaces, eigendecomposition, spectral
-  theorem, SVD, PSD matrices, projections, least-squares geometry, PCA. ·
-  Axler, *Linear Algebra Done Right*; Strang. · Lab: PCA of the Treasury curve
-  (embedded FRED data).
-- **M4 · Probability I** · M2 · Distributions, expectation, MGF and
-  characteristic functions, the multivariate normal, conditioning, LLN, CLT,
-  heavy tails. · Lab: CLT failure under infinite variance.
-- **M5 · Measure-Theoretic Probability** · M1, M4 · σ-algebras, Lebesgue
-  integral, MCT and DCT, Radon–Nikodym, conditional expectation as projection,
-  filtrations, discrete martingales, optional stopping. · Williams,
-  *Probability with Martingales* (1991); Billingsley. · Lab: martingale
-  betting-system simulator.
-- **M6 · Optimization** · M2, M3 · Convexity, Lagrange multipliers, KKT,
-  duality, QP, dynamic programming and Bellman equations. · Boyd &
-  Vandenberghe (2004); Stokey & Lucas (1989). · Lab: efficient-frontier QP
-  solver.
-- **M7 · Numerical Methods & Scientific Computing** · M2, M3, M4 · IEEE 754,
-  conditioning, root finding, linear solvers, interpolation, quadrature, finite
-  differences, RNG, Monte Carlo variance reduction. · Glasserman, *Monte Carlo
-  Methods in Financial Engineering* (2003). · Lab: catastrophic-cancellation
-  demo; antithetic and control variates.
-
-### PART II — Statistics & Econometrics (S)
-- **S1 · Statistical Inference** · M4 · Estimators, MLE asymptotics,
-  Cramér–Rao, tests, power, confidence intervals, Bayesian inference,
-  bootstrap. · Casella & Berger; Efron (1979, *Annals of Statistics*). · Lab:
-  bootstrap vs. asymptotic CI.
-- **S2 · Linear Regression** · S1, M3 · OLS geometry, Gauss–Markov,
-  asymptotics, White (1980, *ECMA*), Newey–West (1987, *ECMA*), clustering
-  (Petersen 2009, *RFS*), Stambaugh bias (Stambaugh 1999, *JFE*). · Lab:
-  Stambaugh-bias Monte Carlo.
-- **S3 · Time Series** · S2 · Stationarity, ARMA, Wold, unit roots
-  (Dickey–Fuller 1979, *JASA*), spurious regression (Granger–Newbold 1974,
-  *J. Econometrics*), cointegration (Engle–Granger 1987; Johansen 1991,
-  *ECMA*), VARs (Sims 1980, *ECMA*), Kalman filter, Markov switching (Hamilton
-  1989, *ECMA*). · Hamilton, *Time Series Analysis* (1994). · Lab: spurious
-  regression generator.
-- **S4 · Volatility Econometrics** · S3 · ARCH (Engle 1982, *ECMA*), GARCH
-  (Bollerslev 1986, *J. Econometrics*), EGARCH (Nelson 1991, *ECMA*), realized
-  volatility (Andersen–Bollerslev–Diebold–Labys 2003, *ECMA*), HAR (Corsi 2009,
-  *J. Financial Econometrics*). · Lab: GARCH vs. HAR forecast evaluation.
-- **S5 · GMM & Cross-Sectional Econometrics** · S2 · GMM (Hansen 1982,
-  *ECMA*), Fama–MacBeth (1973, *JPE*), Shanken (1992, *RFS*),
-  Gibbons–Ross–Shanken (1989, *ECMA*), panel methods. · Lab: GRS test on
-  Fama–French portfolios.
-- **S6 · Causal Inference** · S2 · Potential outcomes, IV, DiD, RDD, event
-  studies (MacKinlay 1997, *JEL*), synthetic control (Abadie–Diamond–Hainmueller
-  2010, *JASA*). · Angrist & Pischke (2009). · Lab: event study with
-  correct-variance abnormal returns.
-- **S7 · Research Integrity & Multiple Testing** · S1, S2 · Data snooping
-  (Lo–MacKinlay 1990, *RFS*), White (2000, *ECMA*), Hansen SPA (2005, *JBES*),
-  Romano–Wolf (2005, *ECMA*), Benjamini–Hochberg (1995, *JRSS-B*),
-  Harvey–Liu–Zhu (2016, *RFS*), Harvey (2017, *JF*), deflated Sharpe
-  (Bailey–López de Prado 2014, *JPM*), PBO (Bailey–Borwein–López de Prado–Zhu
-  2017, *J. Computational Finance*). · Lab: random-strategy overfitting engine
-  (in-sample vs. out-of-sample Sharpe).
-
-### PART III — Stochastic Calculus & Continuous Time (SC)
-- **SC1 · Stochastic Processes** · M5 · Brownian motion, quadratic variation,
-  continuous martingales, the Markov property, stopping times. · Shreve,
-  *Stochastic Calculus for Finance II* (2004). · Lab: quadratic-variation
-  convergence.
-- **SC2 · Itô Calculus & SDEs** · SC1 · Itô integral, Itô's lemma, GBM, OU,
-  existence and uniqueness. · Lab: Euler–Maruyama, strong vs. weak convergence.
-- **SC3 · Change of Measure** · SC2 · Girsanov, martingale representation,
-  risk-neutral measure, change of numeraire (Geman–El Karoui–Rochet 1995, *J.
-  Applied Probability*). · Lab: importance sampling via Girsanov.
-- **SC4 · PDEs & Feynman–Kac** · SC2, M7 · Kolmogorov equations,
-  Feynman–Kac, boundary conditions. · Lab: Crank–Nicolson solver.
-- **SC5 · Jumps & Lévy Processes** · SC2 · Poisson and compound Poisson, Merton
-  jump-diffusion (Merton 1976, *JFE*), Lévy–Khintchine, Variance Gamma
-  (Madan–Carr–Chang 1998). · Cont & Tankov (2004). · Lab: jump-induced smile.
-- **SC6 · Stochastic Control** · SC2, M6 · HJB equation, Merton portfolio
-  problem (Merton 1969, *REStat*; 1971, *JET*). · Lab: Merton fraction vs.
-  simulated utility.
-
-### PART IV — Economic Foundations (E)
-- **E1 · Decision Theory Under Risk & Ambiguity** · M6 · vNM expected utility,
-  Arrow–Pratt (Pratt 1964, *ECMA*), stochastic dominance, Epstein–Zin (1989,
-  *ECMA*), prospect theory (Kahneman–Tversky 1979, *ECMA*), ambiguity (Ellsberg
-  1961, *QJE*; Gilboa–Schmeidler 1989). · Lab: certainty equivalents across
-  preferences.
-- **E2 · Equilibrium & Information** · E1 · Arrow–Debreu, complete markets,
-  rational expectations (Muth 1961, *ECMA*), Grossman–Stiglitz (1980, *AER*),
-  no-trade theorem (Milgrom–Stokey 1982, *JET*). · Mas-Colell, Whinston & Green
-  (1995). · Lab: information-efficiency equilibrium.
-- **E3 · Macroeconomics** · E1, M6, S3 · Solow (1956, *QJE*), RBC
-  (Kydland–Prescott 1982, *ECMA*), New Keynesian (Clarida–Galí–Gertler 1999,
-  *JEL*; Galí 2015; Woodford 2003), HANK (Kaplan–Moll–Violante 2018, *AER*). ·
-  Lab: three-equation NK impulse responses.
-- **E4 · Monetary Economics & Central Banking** · E3 · Taylor (1993),
-  time inconsistency (Kydland–Prescott 1977, *JPE*; Barro–Gordon 1983, *JPE*),
-  ZLB, operating frameworks (floor vs. corridor), QE evidence (Gagnon et al.
-  2011, *IJCB*; Krishnamurthy–Vissing-Jorgensen 2011, *BPEA*; Bernanke 2020,
-  *AER*), shock identification (Romer–Romer 2004, *AER*; Gertler–Karadi 2015,
-  *AEJ:Macro*; Nakamura–Steinsson 2018, *QJE*), r* (Holston–Laubach–Williams
-  2017, *JIE*), fiscal theory (Cochrane 2023, *The Fiscal Theory of the Price
-  Level*), the 2021–23 inflation (Bernanke–Blanchard [WP][V]). · Lab: Taylor
-  rule vs. realized policy rate.
-- **E5 · International Macro & the Dollar** · E3 · UIP failure (Fama 1984,
-  *JME*), CIP deviations (Du–Tepper–Verdelhan 2018, *JF*), the trilemma,
-  Dornbusch overshooting (1976, *JPE*), the dominant currency paradigm
-  (Gopinath et al. 2020, *AER*), the global financial cycle (Rey 2013, Jackson
-  Hole; Miranda-Agrippino–Rey 2020, *REStud*), safe-asset convenience yields
-  (Krishnamurthy–Vissing-Jorgensen 2012, *JPE*; Jiang–Krishnamurthy–Lustig
-  2021, *JF*). · Obstfeld & Rogoff (1996). · Lab: Fama UIP regression.
-- **E6 · Sovereign Debt, Crises & Political Economy** · E4, E5 · r−g dynamics
-  (Blanchard 2019, *AER*), sovereign default (Eaton–Gersovitz 1981, *REStud*),
-  currency-crisis models (Krugman 1979, *JMCB*; Obstfeld 1996, *EER*), sudden
-  stops (Calvo 1998), Reinhart–Rogoff (2009; 2010) and the Herndon–Ash–Pollin
-  (2014, *CJE*) replication. · Lab: debt-dynamics simulator.
-
-### PART V — Asset Pricing Theory (AP)
-- **AP1 · No-Arbitrage & the SDF** · M5, M6, E1 · Law of one price, FTAP
-  (Harrison–Kreps 1979, *JET*; Harrison–Pliska 1981, *SPA*;
-  Delbaen–Schachermayer 1994, *Math. Annalen*), state prices, p = E[mx]. ·
-  Cochrane, *Asset Pricing* (rev. 2005); Duffie, *Dynamic Asset Pricing Theory*
-  (2001). · Lab: arbitrage detection via LP.
-- **AP2 · Mean-Variance, CAPM, ICAPM, APT** · AP1, M6 · Markowitz (1952, *JF*),
-  Tobin (1958, *REStud*), Sharpe (1964, *JF*), Lintner (1965, *REStat*), Roll
-  critique (1977, *JFE*), ICAPM (Merton 1973, *ECMA*), APT (Ross 1976, *JET*),
-  Fama–French (1992, *JF*). · Lab: CAPM security market line on French
-  portfolios.
-- **AP3 · Consumption-Based Pricing & Puzzles** · AP1 · Lucas (1978, *ECMA*),
-  Breeden (1979, *JFE*), Hansen–Singleton, the equity-premium puzzle
-  (Mehra–Prescott 1985, *JME*), the risk-free-rate puzzle (Weil 1989, *JME*),
-  HJ bounds (Hansen–Jagannathan 1991, *JPE*). · Lab: HJ bound vs. consumption
-  data.
-- **AP4 · Resolving the Puzzles** · AP3, E1 · Habit (Campbell–Cochrane 1999,
-  *JPE*), long-run risk (Bansal–Yaron 2004, *JF*), disasters (Rietz 1988,
-  *JME*; Barro 2006, *QJE*; Wachter 2013, *JF*), heterogeneous agents
-  (Constantinides–Duffie 1996, *JPE*), Beeler–Campbell (2012, *CFR*). · Debate:
-  which model survives the data. · Lab: simulate each model's moments.
-- **AP5 · Present Value & Return Predictability** · AP1, S2 · Shiller (1981,
-  *AER*), Campbell–Shiller (1988, *RFS*), Fama–French (1988, *JFE*),
-  Welch–Goyal (2008, *RFS*) vs. Campbell–Thompson (2008, *RFS*), Cochrane
-  (2008, *RFS*; 2011, *JF*). · Lab: CAPE regressions with Stambaugh-corrected
-  inference (Shiller data).
-- **AP6 · Intermediary & Institutional Asset Pricing** · AP1, AP5 · Limits to
-  arbitrage (Shleifer–Vishny 1997, *JF*), He–Krishnamurthy (2013, *AER*),
-  Adrian–Etula–Muir (2014, *JF*), He–Kelly–Manela (2017, *JFE*), slow-moving
-  capital (Duffie 2010, *JF*), demand systems (Koijen–Yogo 2019, *JPE*), the
-  inelastic-markets hypothesis (Gabaix–Koijen [WP][V]). · Lab:
-  intermediary-factor pricing test.
-- **AP7 · Behavioral Finance** · AP5, E1 · Noise traders (De Long et al. 1990,
-  *JPE*), overreaction (De Bondt–Thaler 1985, *JF*), BSV (1998, *JFE*), DHS
-  (1998, *JF*), Hong–Stein (1999, *JF*), sentiment (Baker–Wurgler 2006, *JF*),
-  survey expectations (Greenwood–Shleifer 2014, *RFS*), diagnostic expectations
-  (Bordalo–Gennaioli–La Porta–Shleifer 2019, *JF*). · Debate: risk vs.
-  mispricing.
-- **AP8 · Market Efficiency: The Full Debate** · AP5–AP7 · Fama (1970, *JF*;
-  1991, *JF*), Grossman–Stiglitz, luck vs. skill (Fama–French 2010, *JF*),
-  Berk–Green (2004, *JPE*), Berk–van Binsbergen (2015, *JFE*). · Lab:
-  bootstrap luck-vs-skill test.
-
-### PART VI — Empirical Asset Pricing & Factors (F)
-- **F1 · Data & Methodology** · S5, AP2 · CRSP/Compustat structure (described),
-  point-in-time discipline, survivorship and delisting bias (Shumway 1997,
-  *JF*), portfolio sorts. · Lab: sorts on Ken French data; delisting-bias demo
-  (SIMULATED).
-- **F2 · The Classic Factors** · F1 · Size (Banz 1981, *JFE*), value (FF 1992,
-  1993), momentum (Jegadeesh–Titman 1993, *JF*; Carhart 1997, *JF*),
-  profitability and investment (Novy-Marx 2013, *JFE*; FF 2015, *JFE*;
-  Hou–Xue–Zhang 2015, *RFS*), low risk (Frazzini–Pedersen 2014, *JFE*;
-  Ang–Hodrick–Xing–Zhang 2006, *JF*), quality (Asness–Frazzini–Pedersen 2019,
-  *RAS*). · Lab: factor statistics and spanning regressions.
-- **F3 · Factors Across Asset Classes** · F2 · Value and momentum everywhere
-  (Asness–Moskowitz–Pedersen 2013, *JF*), carry (Koijen–Moskowitz–Pedersen–Vrugt
-  2018, *JFE*), time-series momentum (Moskowitz–Ooi–Pedersen 2012, *JFE*), a
-  century of trend (Hurst–Ooi–Pedersen 2017, *JPM*), the challenge from
-  Huang–Li–Wang–Zhou (2020, *JFE*). · Debate: is TSMOM real?
-- **F4 · Crashes, Crowding & Decay** · F3 · Momentum crashes (Daniel–Moskowitz
-  2016, *JFE*), the August 2007 quant quake (Khandani–Lo 2011, *J. Financial
-  Markets*), post-publication decay (McLean–Pontiff 2016, *JF*), value's
-  2018–2020 drawdown. · Lab: crash-conditional momentum.
-- **F5 · The Factor Zoo & Replication** · F2, S7 · Harvey–Liu–Zhu (2016),
-  Hou–Xue–Zhang (2020, *RFS*), Jensen–Kelly–Pedersen (2023, *JF*),
-  Chen–Zimmermann (2022, *CFR*), Feng–Giglio–Xiu (2020, *JF*). · Debate: is
-  there a replication crisis? · Lab: multiple-testing haircut on the open
-  anomaly set.
-- **F6 · Machine Learning in Asset Pricing** · F5, QR4 · Gu–Kelly–Xiu (2020,
-  *RFS*), IPCA (Kelly–Pruitt–Su 2019, *JFE*), Chen–Pelger–Zhu (2024, *Mgmt
-  Sci*), virtue of complexity (Kelly–Malamud–Zhou 2024, *JF*) vs. its critiques
-  (Nagel [WP][V]), Kelly–Xiu (2023, *Foundations & Trends*). · Lab: ridge vs.
-  OLS out-of-sample R².
-- **F7 · Performance Evaluation & Skill** · F2, S3 · Jensen (1968, *JF*),
-  Sharpe-ratio statistics (Lo 2002, *FAJ*), return smoothing
-  (Getmansky–Lo–Makarov 2004, *JFE*), trend followers as lookback straddles
-  (Fung–Hsieh 2001, *RFS*). · Lab: Sharpe CI under autocorrelation.
-
-### PART VII — Fixed Income & Rates (FI)
-- **FI1 · Bond Math & Curve Construction** · M2, M3 · Duration, convexity,
-  bootstrapping, Nelson–Siegel (1987, *J. Business*), Svensson (1994, NBER WP),
-  the GSW curve (Gürkaynak–Sack–Wright 2007, *JME*). · Lab: fit NS and
-  Svensson.
-- **FI2 · Term-Structure Models** · FI1, SC3 · Vasicek (1977, *JFE*), CIR
-  (1985, *ECMA*), affine models (Duffie–Kan 1996, *Math. Finance*;
-  Dai–Singleton 2000, *JF*), HJM (1992, *ECMA*), LMM (Brace–Gatarek–Musiela
-  1997). · Lab: Vasicek closed form vs. Monte Carlo.
-- **FI3 · Bond Risk Premia** · FI1, S3 · Fama–Bliss (1987, *AER*),
-  Campbell–Shiller (1991, *REStud*), Cochrane–Piazzesi (2005, *AER*), the ACM
-  term premium (Adrian–Crump–Moench 2013, *JFE*), Bauer–Hamilton (2018, *RFS*).
-  · Debate: are bond returns predictable? · Lab: CP factor replication on GSW
-  data.
-- **FI4 · Money Markets & Plumbing** · FI1, E4 · Repo, SOFR, reserves, Fed
-  balance sheet, the Treasury basis trade, dealer balance-sheet limits, the
-  March 2020 dash for cash (He–Nagel–Song 2022, *JFE*), the SLR. · Lab: basis
-  P&L with haircut and margin.
-- **FI5 · Inflation-Linked Markets** · FI3 · TIPS, breakevens, liquidity
-  premium (D'Amico–Kim–Wei 2018, *JFQA*), the TIPS–Treasury puzzle
-  (Fleckenstein–Longstaff–Lustig 2014, *JF*). · Lab: breakeven decomposition.
-- **FI6 · Interest-Rate Derivatives** · FI2, DV1 · Swaps, caps, swaptions,
-  Black-76 (Black 1976, *JFE*), the Bachelier model, SABR (Hagan et al. 2002,
-  *Wilmott*), multi-curve, the LIBOR→SOFR transition. · Lab: swaption under
-  normal vs. lognormal models.
-
-### PART VIII — Derivatives & Volatility (DV)
-- **DV1 · Arbitrage Pricing of Derivatives** · AP1, SC3 · Put–call parity
-  (Stoll 1969, *JF*), binomial (Cox–Ross–Rubinstein 1979, *JFE*), BSM (Black–Scholes 1973,
-  *JPE*; Merton 1973, *Bell J.*), Greeks, discrete-hedging error. · Lab:
-  delta-hedging simulator with costs.
-- **DV2 · The Volatility Surface** · DV1 · Smile and skew, static-arbitrage
-  conditions, SVI (Gatheral–Jacquier 2014, *Quant. Finance*), local vol (Dupire
-  1994, *Risk*), risk-neutral densities (Breeden–Litzenberger 1978,
-  *J. Business*). · Gatheral, *The Volatility Surface* (2006). · Lab: RND
-  extraction.
-- **DV3 · Stochastic & Rough Volatility** · DV2, SC5 · Heston (1993, *RFS*),
-  SABR, rough volatility (Gatheral–Jaisson–Rosenbaum 2018, *Quant. Finance*;
-  Bayer–Friz–Gatheral 2016, *Quant. Finance*). · Debate: is volatility rough?
-  · Lab: Heston via characteristic function.
-- **DV4 · Numerical Pricing (C++ module)** · DV1, M7, SC4 · Trees, finite
-  differences, Monte Carlo (Boyle 1977, *JFE*), Longstaff–Schwartz (2001,
-  *RFS*), Fourier (Carr–Madan 1999, *J. Comp. Finance*; Fang–Oosterlee 2008,
-  *SIAM J. Sci. Comput.*), AAD (Giles–Glasserman 2006, *Risk*). · Lab: the same
-  American option priced four ways (C++→WASM and Python).
-- **DV5 · Variance Risk Premium & Vol Trading** · DV2, F2 · Variance swaps
-  (Demeterfi–Derman–Kamal–Zou 1999, Goldman Sachs QS note), Cboe VIX
-  methodology, VRP (Carr–Wu 2009, *RFS*; Bollerslev–Tauchen–Zhou 2009, *RFS*),
-  option returns (Coval–Shumway 2001, *JF*), the February 2018 Volmageddon
-  case, tail-hedging cost (Israelov [V]). · Debate: is short vol a free lunch?
-- **DV6 · Exotics, Structured Products & Dealer Hedging** · DV3 · Barriers,
-  Asians, autocallables, pinning (Ni–Pearson–Poteshman 2005, *JFE*), hedging
-  demand and intraday momentum (Baltussen–Da–Lammers–Martens 2021, *JFE*). ·
-  Lab: dealer gamma-exposure simulator (SIMULATED).
-
-### PART IX — Credit & Corporate Finance (CR)
-- **CR1 · Corporate Finance Essentials** · AP1 · Modigliani–Miller (1958,
-  *AER*), agency (Jensen–Meckling 1976, *JFE*), pecking order (Myers–Majluf
-  1984, *JFE*), payout and leverage dynamics. · Lab: MM with taxes and distress
-  costs.
-- **CR2 · Structural & Reduced-Form Credit** · CR1, SC3 · Merton (1974, *JF*),
-  Black–Cox (1976, *JF*), Leland (1994, *JF*), Jarrow–Turnbull (1995, *JF*),
-  Duffie–Singleton (1999, *RFS*), distance to default (Bharath–Shumway 2008,
-  *RFS*), the credit-spread puzzle (Collin-Dufresne–Goldstein–Martin 2001, *JF*;
-  Huang–Huang 2012, *RAPS*). · Lab: Merton model on a stylized firm.
-- **CR3 · Credit Derivatives & Correlation** · CR2 · CDS mechanics, the
-  CDS–bond basis, Gaussian copula (Li 2000, *J. Fixed Income*), CDO tranches
-  and the 2008 failure. · Lab: tranche loss under correlation shifts.
-- **CR4 · Credit Cycles** · CR2, E3 · Excess bond premium (Gilchrist–Zakrajšek
-  2012, *AER*), credit sentiment (López-Salido–Stein–Zakrajšek 2017, *QJE*),
-  private credit. · Lab: EBP as a recession predictor.
-
-### PART X — FX, Commodities & Digital Assets (X)
-- **X1 · FX Markets & Parity Conditions** · E5 · FX microstructure,
-  UIP and CIP, PPP (Rogoff 1996, *JEL*), Meese–Rogoff (1983, *JIE*). · Lab:
-  random walk vs. models out of sample.
-- **X2 · Currency Risk Premia** · X1, F3 · Carry (Lustig–Roussanov–Verdelhan
-  2011, *RFS*; Menkhoff–Sarno–Schmeling–Schrimpf 2012, *JF*), crash risk
-  (Brunnermeier–Nagel–Pedersen 2008, *NBER Macro Annual*), FX momentum (MSSS
-  2012, *JFE*), currency value (MSSS 2017, *RFS*), the dollar factor
-  (Verdelhan 2018, *JF*), the peso problem (Burnside et al. 2011, *RFS*). ·
-  Lab: carry-crash simulator.
-- **X3 · Commodities** · AP1, F3 · The theory of storage (Kaldor 1939; Working
-  1949; Brennan 1958, *AER*), hedging pressure (de Roon–Nijman–Veld 2000,
-  *JF*), Gorton–Rouwenhorst (2006, *FAJ*), Erb–Harvey (2006, *FAJ*),
-  financialization (Tang–Xiong 2012, *FAJ*), oil-shock decomposition (Kilian
-  2009, *AER*), negative WTI in April 2020. · Lab: roll yield vs. spot return.
-- **X4 · Digital Assets as a Macro Asset** · X1, F2 · Liu–Tsyvinski (2021,
-  *RFS*), Liu–Tsyvinski–Wu (2022, *JF*), stablecoins and T-bill demand (grade
-  B/C). · Lab: crypto factor exposures.
-
-### PART XI — Global Macro Trading (GM)
-- **GM1 · Macro Data & Nowcasting** · S3, E3 · Real-time vintages
-  (Croushore–Stark 2001, *J. Econometrics*; ALFRED), dynamic factor models
-  (Stock–Watson 2002, *JASA*), nowcasting (Giannone–Reichlin–Small 2008, *JME*).
-  · Lab: revised-data lookahead bias in a backtest.
-- **GM2 · Regimes & the Business Cycle** · GM1, S3 · Yield-curve recession
-  signal (Estrella–Hardouvelis 1991, *JF*; Estrella–Mishkin 1998, *REStat*),
-  Markov switching, stock–bond correlation regimes
-  (Campbell–Sunderam–Viceira 2017, *CFR*; Campbell–Pflueger–Viceira 2020, *JPE*),
-  inflation-regime evidence (Neville et al. [WP][V]). · Lab: stock–bond
-  correlation sign flip.
-- **GM3 · Trading Monetary Policy** · E4, S6 · Pre-FOMC drift (Lucca–Moench
-  2015, *JF*), Fed information effects (Nakamura–Steinsson 2018), policy
-  divergence and FX. · Lab: FOMC event study.
-- **GM4 · Macro Strategy Construction** · GM2, FI3, X2, DV2 · Expressing a
-  view (curve trades, relative value, options vs. delta-one), carry and
-  roll-down, sizing, risk-reward asymmetry. · Lab: trade-expression comparator.
-- **GM5 · Crises as Mechanisms** · GM4, SR1 · 1992 ERM, 1997 Asia, 1998
-  LTCM/Russia, 2008, 2010–12 euro crisis, 2013 taper tantrum, 2015 CHF de-peg,
-  March 2020, 2022 gilts/LDI, 2023 SVB, 2024 yen-carry unwind. Each episode is
-  taught as a causal mechanism and cited to primary official or academic
-  sources ([V] for each). · Lab: LDI collateral-spiral simulator.
-
-### PART XII — Portfolio Construction & Risk (PR)
-- **PR1 · Mean-Variance in Practice** · AP2, S1 · Estimation error (Michaud
-  1989, *FAJ*; Chopra–Ziemba 1993, *JPM*), 1/N (DeMiguel–Garlappi–Uppal 2009,
-  *RFS*), shrinkage (Ledoit–Wolf 2004, *J. Multivariate Analysis*; 2017, *RFS*),
-  Black–Litterman (1992, *FAJ*). · Lab: optimizer instability.
-- **PR2 · Risk Parity, Vol-Targeting & Leverage** · PR1 · Risk parity
-  (Asness–Frazzini–Pedersen 2012, *FAJ*), vol-managed portfolios
-  (Moreira–Muir 2017, *JF*) vs. Cederburg et al. (2020, *JFE*), vol targeting
-  (Harvey et al. 2018, *JPM*). · Debate: are vol-managed portfolios a free
-  lunch?
-- **PR3 · Growth-Optimal Sizing** · PR1, SC6 · Kelly (1956, *Bell System
-  Tech. J.*), Breiman (1961), fractional Kelly under parameter uncertainty
-  (MacLean–Thorp–Ziemba 2011), Samuelson's critique (1979, *J. Banking &
-  Finance*). · Lab: Kelly under estimation error.
-- **PR4 · Risk Measurement** · PR1, S4 · VaR and ES, coherence (Artzner et al.
-  1999, *Math. Finance*), VaR backtests (Kupiec 1995; Christoffersen 1998,
-  *IER*), EVT (McNeil–Frey 2000, *J. Empirical Finance*), copulas, stress
-  testing, FRTB. · McNeil–Frey–Embrechts (2015). · Lab: VaR backtest.
-- **PR5 · Drawdowns & Capital Allocation** · PR3 · Maximum drawdown of
-  Brownian motion (Magdon-Ismail et al. 2004, *J. Applied Probability*),
-  drawdown constraints (Grossman–Zhou 1993, *Math. Finance*), risk of ruin,
-  multi-strategy allocation. · Lab: drawdown distribution vs. Sharpe.
-- **PR6 · Dynamic & Long-Horizon Allocation** · SC6, PR1 · Hedging demands,
-  Campbell–Viceira (2002), LDI, the time-diversification fallacy. · Lab:
-  horizon effects under mean reversion.
-
-### PART XIII — Market Microstructure & Execution (MS)
-- **MS1 · Microstructure Theory** · E2, S1 · Roll (1984, *JF*), Kyle (1985,
-  *ECMA*), Glosten–Milgrom (1985, *JFE*), inventory (Ho–Stoll 1981, *JFE*), PIN
-  (Easley et al. 1996, *JF*), the VPIN dispute (Easley–López de Prado–O'Hara
-  2012, *RFS*, vs. Andersen–Bondarenko 2014, *J. Financial Markets*). · Lab:
-  Kyle equilibrium.
-- **MS2 · Limit Order Books & Market Structure** · MS1 · LOB dynamics
-  (Cont–Stoikov–Talreja 2010, *Operations Research*), Reg NMS, dark pools, HFT
-  (Brogaard–Hendershott–Riordan 2014, *RFS*), the 2010 Flash Crash (Kirilenko
-  et al. 2017, *JF*), batch auctions (Budish–Cramton–Shim 2015, *QJE*). · Lab:
-  queue-position simulator.
-- **MS3 · Market Impact & Optimal Execution** · MS1, SC6 · The square-root law
-  (Almgren et al. 2005, *Risk*; Tóth et al. 2011, *Phys. Rev. X*),
-  Almgren–Chriss (2001, *J. Risk*), Obizhaeva–Wang (2013, *J. Financial
-  Markets*). · Bouchaud et al., *Trades, Quotes and Prices* (2018). · Lab:
-  Almgren–Chriss efficient frontier.
-- **MS4 · Costs, Capacity & Implementation Shortfall** · MS3, F2 · Perold
-  (1988, *JPM*), Novy-Marx–Velikov (2016, *RFS*), Patton–Weller (2020, *JFE*),
-  Frazzini–Israel–Moskowitz [WP][V]. · Lab: anomaly returns net of cost.
-
-### PART XIV — Quantitative Research Engineering (QR)
-- **QR1 · The Quant Technology Stack** · P0.1 · Section 3 taught with
-  evidence; testing; reproducibility; numerical determinism; reading
-  literacy for q and R. · Lab: property-based tests for a pricing function.
-- **QR2 · Research Data Engineering** · F1 · Point-in-time databases,
-  corporate actions, tick data, timestamps and time zones, alternative data. ·
-  Lab: DuckDB `ASOF JOIN` point-in-time merge.
-- **QR3 · Backtesting Architecture** · QR2, S7 · Vectorized vs. event-driven
-  backtests, signal-to-execution lags, cost models, walk-forward testing,
-  purged/embargoed and combinatorial CV (López de Prado 2018, *Advances in
-  Financial Machine Learning*). · Lab: lookahead-bias detector.
-- **QR4 · Statistical Learning for Finance** · S1, M6 · Bias–variance, lasso
-  (Tibshirani 1996, *JRSS-B*), boosting (Friedman 2001, *Annals of
-  Statistics*), random forests (Breiman 2001, *Machine Learning*), neural nets,
-  low signal-to-noise and non-stationarity, SHAP (Lundberg–Lee 2017, NeurIPS).
-  · Hastie–Tibshirani–Friedman, *ESL*. · Lab: overfit vs. regularized learner.
-- **QR5 · Text, Sequence Models & LLMs** · QR4 · Text as data
-  (Gentzkow–Kelly–Taddy 2019, *JEL*), Loughran–McDonald (2011, *JF*),
-  transformers (Vaswani et al. 2017, NeurIPS), LLM return-prediction claims
-  (Lopez-Lira–Tang [WP]) vs. lookahead and contamination critiques
-  (Glasserman–Lin [WP][V]). · Lab: dictionary sentiment with a contamination
-  test.
-- **QR6 · RL & Optimal Control in Trading** · QR4, SC6 · MDPs, Q-learning, RL
-  for execution (Nevmyvaka–Feng–Kearns 2006, ICML), deep hedging
-  (Buehler–Gonon–Teichmann–Wood 2019, *Quant. Finance*), failure modes under
-  non-stationarity. · Lab: tabular RL execution vs. Almgren–Chriss.
-- **QR7 · High-Performance Computing (C++ module)** · M7, DV4 · Memory layout,
-  vectorization, templates, parallelism, GPUs, latency engineering basics. ·
-  Lab: Monte Carlo in C++→WASM vs. NumPy.
-
-### PART XV — Systemic Risk & Financial Stability (SR)
-- **SR1 · Runs, Liquidity & Fire Sales** · AP6 · Diamond–Dybvig (1983, *JPE*),
-  liquidity spirals (Brunnermeier–Pedersen 2009, *RFS*), fire sales
-  (Shleifer–Vishny 2011, *JEP*), the run on repo (Gorton–Metrick 2012, *JFE*).
-  · Lab: margin-spiral simulator.
-- **SR2 · Leverage Cycles** · SR1 · Geanakoplos (2010, *NBER Macro Annual*),
-  Adrian–Shin (2010, *JFI*), Brunnermeier–Sannikov (2014, *AER*). · Lab:
-  procyclical-leverage simulation.
-- **SR3 · Measuring Systemic Risk** · SR2, PR4 · CoVaR (Adrian–Brunnermeier
-  2016, *AER*), SRISK (Brownlees–Engle 2017, *RFS*), MES (Acharya et al. 2017,
-  *RFS*), network contagion (Acemoglu–Ozdaglar–Tahbaz-Salehi 2015, *AER*). ·
-  Lab: CoVaR estimation.
-- **SR4 · Regulation's Market Footprint** · SR3, FI4 · Basel III, SLR,
-  Volcker, central clearing, dealer constraints and Treasury-market liquidity,
-  post-2020 market reform. · Lab: balance-sheet cost of intermediation.
-
-### PART XVI — Capstone (CAP)
-- **CAP1 · Reading, Refereeing & Replicating** · F5, S7 · Referee-report
-  craft; full replication of one published result from embedded open data.
-- **CAP2 · The Great Debates** · all Parts · Twelve resolutions, each with a
-  steelman for both sides, graded evidence and a "what would settle it"
-  section:
-  1. Markets are efficient.
-  2. The equity premium is a risk premium.
-  3. Value is dead.
-  4. Most published factors are false discoveries.
-  5. QE works mainly through portfolio balance.
-  6. UIP failure is a risk premium.
-  7. Complexity helps return prediction.
-  8. Trend-following's edge survived 2009.
-  9. Vol-managed portfolios beat their unmanaged counterparts after costs.
-  10. r* has fallen permanently.
-  11. The fiscal theory of the price level explains 2021–23.
-  12. HFT improves market quality.
-- **CAP3 · Qualifying Examination** · all · Timed written exams in asset
-  pricing, econometrics and macro/monetary, modeled on PhD prelims, with full
-  solutions.
-- **CAP4 · Research Thesis & Defense** · CAP1 · An original extension of a
-  replicated result, a full research pipeline, a written paper, and an
-  oral-defense rubric.
-
-**Parts and modules:**
-
-| Part | Modules |
-|---|---|
-| 0 | 1 |
-| I | 7 |
-| II | 7 |
-| III | 6 |
-| IV | 6 |
-| V | 8 |
-| VI | 7 |
-| VII | 6 |
-| VIII | 6 |
-| IX | 4 |
-| X | 4 |
-| XI | 5 |
-| XII | 6 |
-| XIII | 4 |
-| XIV | 7 |
-| XV | 4 |
-| XVI | 4 |
-| **Total** | **92** |
+**Agent topology.** A builder (`BUILDER_RULES.md`) writes the module, its
+lessons, project and grader. A verifier (`VERIFIER_RULES.md`) is always a
+separate agent with a fresh context. It produces the ledger and runs the
+mutation tests. The architect reviews and merges. A failure goes back to the
+builder with only the failing ledger rows.
 
 ---
 
 ## 10. Definition of done (whole program)
 
-- [ ] All 92 module ledgers pass with zero failing rows
-- [ ] `verify_refs.py`: 100% of registry keys resolve; zero orphan or uncited keys
-- [ ] `run_labs.py`: every lab executes and every expected output matches
-- [ ] `check_dag.py`: zero concepts used before being introduced
-- [ ] `page_smoke.py`: every page, in light and dark mode, has zero console errors and renders all math
-- [ ] Lighthouse accessibility score ≥ 95 on every page; site works fully offline from a local server
-- [ ] Every data file in `MANIFEST.json` has source, licence, retrieval date, hash and transform script
-- [ ] The architect has read every module in full before release
+- [ ] `render_curriculum.py` valid; generated `CURRICULUM.md` committed
+- [ ] All 127 module ledgers and 23 studio ledgers PASS, with zero failing or unverifiable rows
+- [ ] Every autograder passes its reference solution and fails every mutant (`mutate_graders.py`)
+- [ ] Every rubric ships exemplars at two or more levels
+- [ ] `verify_refs.py`: 100% resolved; zero orphan or uncited keys
+- [ ] `run_labs.py` and `run_graders.py` green both in-browser (Pyodide) and locally
+- [ ] Atlas cumulative suites pass from A1 through A20 on the reference implementation
+- [ ] `check_dag.py`: zero concepts used before they are introduced; zero concepts defined twice
+- [ ] `page_smoke.py`: every page, light and dark mode, zero console errors, all math rendered, works offline
+- [ ] Lighthouse accessibility ≥ 95 on every page
+- [ ] Every embedded dataset has source, licence, retrieval date, hash and transform in `MANIFEST.json`
+- [ ] Pilot-calibrated hours are reflected in the regenerated curriculum
