@@ -45,8 +45,9 @@ def node(script: str, payload: object) -> Any:
     exe = shutil.which("node")
     assert exe, "Node.js is required for the figure-kernel tests (CI installs it)"
     source = f"globalThis.INPUT = {json.dumps(payload)};\n{script}"
+    # The script goes on stdin: inputs can exceed the operating system's argument-length limit.
     result = subprocess.run(
-        [exe, "--input-type=module", "-e", source], capture_output=True, text=True, check=False, cwd=ROOT
+        [exe, "--input-type=module"], input=source, capture_output=True, text=True, check=False, cwd=ROOT
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
@@ -202,3 +203,137 @@ def test_dsr_explorer_matches_the_reference_and_example_3_2() -> None:
         assert sr0 == pytest.approx(ref.expected_max_sharpe(n, sd**2, 0.0), abs=1e-15)
     assert out["se"] == pytest.approx(ref.sharpe_ratio_std(0.09, 756, -1.5, 8.0), rel=1e-14)
     assert round(out["sr0"][2], 4) == 0.0657 and round(out["se"], 4) == 0.0390, "Example 3.2's printed values"
+
+
+@pytest.mark.parametrize(("seed", "periods", "constant_column"), [(0, 120, False), (1, 250, False), (2, 6, True)])
+def test_studentized_bootstrap_reproduces_the_reference_romano_wolf(
+    seed: int, periods: int, constant_column: bool
+) -> None:
+    ref = reference()
+    rng = np.random.default_rng([47, seed])
+    d = rng.standard_normal((periods, 5)) + 0.25 * rng.standard_normal((periods, 1)) + np.array([0.3, 0.1, 0, 0, -0.2])
+    if constant_column:
+        d[:, 0] = 0.0
+        d[-1, 0] = 1.0  # a resample that misses the last period is constant in column 0
+    n_boot, mean_block = 199, 2.0
+    draws = np.random.default_rng(seed)  # the same index vectors romano_wolf draws
+    indices = [ref.stationary_bootstrap_indices(periods, mean_block, draws).tolist() for _ in range(n_boot)]
+    separate = [
+        [ref.stationary_bootstrap_indices(periods, mean_block, draws).tolist() for _ in range(5)] for _ in range(20)
+    ]
+    out = node(
+        IMPORTS + "const j = mt.studentizedBootstrap(INPUT.d, INPUT.idx, true);"
+        " const s = mt.studentizedBootstrap(INPUT.d, INPUT.sep, false);"
+        " console.log(JSON.stringify({t: j.t, boot: j.boot, mask: mt.stepdown(j.t, j.boot, 0.1).mask, sep: s.boot,"
+        " corr: mt.correlation(INPUT.d.map((r) => r[0]), INPUT.d.map((r) => r[1]))}));",
+        {"d": d.tolist(), "idx": indices, "sep": separate},
+    )
+    mean, sd = d.mean(0), d.std(0, ddof=1)
+    np.testing.assert_allclose(out["t"], mean / (sd / math.sqrt(periods)), rtol=1e-12)
+    expected = []
+    for idx in indices:
+        sample = d[idx]
+        sd_b = sample.std(0, ddof=1)
+        sd_b = np.where(sd_b == 0.0, sd, sd_b)
+        expected.append((sample.mean(0) - mean) / (sd_b / math.sqrt(periods)))
+    np.testing.assert_allclose(out["boot"], expected, rtol=1e-10, atol=1e-12)
+    assert out["mask"] == ref.romano_wolf(d, 0.1, n_boot, mean_block, seed).tolist(), "same decisions as romano_wolf"
+    cols = np.array([[d[draw[k], k] for k in range(5)] for draw in separate])  # (B, K, T)
+    sep_sd = np.where(cols.std(2, ddof=1) == 0.0, sd, cols.std(2, ddof=1))
+    np.testing.assert_allclose(
+        out["sep"], (cols.mean(2) - mean) / (sep_sd / math.sqrt(periods)), rtol=1e-10, atol=1e-12
+    )
+    assert out["corr"] == pytest.approx(float(np.corrcoef(d[:, 0], d[:, 1])[0, 1]), abs=1e-12)
+
+
+def test_new_kernels_match_python() -> None:
+    rng = np.random.default_rng(53)
+    p = rng.random(500)
+    x = np.cumsum(rng.standard_normal(64)) * 0.1 + rng.standard_normal(64)
+    out = node(
+        IMPORTS + "const c = mt.circularAutocovariance(INPUT.x);"
+        " console.log(JSON.stringify({pi0: [0.3, 0.5, 0.8].map((l) => mt.storeyPi0(INPUT.p, l)), c,"
+        " v: [1, 2.5, 7, 64].map((b) => mt.bootstrapVarianceOfMean(c, b))}));",
+        {"p": p.tolist(), "x": x.tolist()},
+    )
+    for lam, got in zip([0.3, 0.5, 0.8], out["pi0"], strict=True):
+        assert got == pytest.approx(float(np.mean(p > lam)) / (1 - lam), rel=1e-12)
+    n = x.size
+    dev = x - x.mean()
+    c = np.array([np.mean(dev * np.roll(dev, -h)) for h in range(n)])
+    np.testing.assert_allclose(out["c"], c, rtol=1e-12, atol=1e-14)
+    for b, got in zip([1, 2.5, 7, 64], out["v"], strict=True):
+        h = np.arange(1, n)
+        expected = (c[0] + 2 * np.sum((1 - h / n) * (1 - 1 / b) ** h * c[1:])) / n  # L04 formula (2)
+        assert got == pytest.approx(float(expected), rel=1e-12)
+    # Formula (2) is the exact stationary-bootstrap variance: compare with resampling by the reference.
+    ref = reference()
+    draws = np.random.default_rng(5)
+    means = [x[ref.stationary_bootstrap_indices(n, 7.0, draws)].mean() for _ in range(40_000)]
+    assert float(np.var(means)) == pytest.approx(out["v"][2], rel=0.03)
+
+
+def test_reality_check_and_spa_kernel_matches_lab_3() -> None:
+    rng = np.random.default_rng(59)
+    t_obs, k = 300, 30
+    d = rng.standard_normal((t_obs, k)) + np.where(np.arange(k) == 0, 0.15, np.where(np.arange(k) >= 10, -0.25, 0.0))
+    idx = np.random.default_rng(61).integers(0, t_obs, size=(400, t_obs))
+    boot = d[idx].mean(axis=1)
+    means, sd = d.mean(0), d.std(0, ddof=1)
+    out = node(
+        IMPORTS + "const r = mt.realityCheckSpa(INPUT.m, INPUT.s, INPUT.b, INPUT.t, INPUT.k);"
+        " console.log(JSON.stringify({v: r.v, t: r.tObs, rc: r.pRc, spa: r.pSpa, n: r.recentred}));",
+        {"m": means.tolist(), "s": sd.tolist(), "b": boot.tolist(), "t": t_obs, "k": k},
+    )
+    # L04 Lab 3's formulas, verbatim.
+    v = np.sqrt(t_obs) * means.max()
+    p_rc = np.mean((np.sqrt(t_obs) * (boot - means)).max(axis=1) >= v)
+    threshold = sd * np.sqrt(2.0 * np.log(np.log(t_obs)) / t_obs)
+    centre = np.where(means <= -threshold, means, 0.0)
+    t_max = max(float((np.sqrt(t_obs) * means / sd).max()), 0.0)
+    t_star = np.maximum((np.sqrt(t_obs) * (boot - means + centre) / sd).max(axis=1), 0.0)
+    assert out["v"] == pytest.approx(float(v), rel=1e-12) and out["t"] == pytest.approx(t_max, rel=1e-12)
+    assert out["rc"] == pytest.approx(float(p_rc), abs=1e-15)
+    assert out["spa"] == pytest.approx(float(np.mean(t_star >= t_max)), abs=1e-15)
+    assert out["n"] == int(np.sum(centre != 0))
+
+
+def ranks_within(values: list[float], index: int, tolerance: float) -> bool:
+    """Whether values[index] lies within `tolerance` ranks of the median of `values`."""
+    rank = sum(v < values[index] for v in values)
+    return abs(rank - (len(values) - 1) / 2) <= tolerance
+
+
+def test_simulated_figure_defaults_are_median_draws() -> None:
+    l03, l04, l05, l08 = (
+        f'"{(S7 / f).as_uri()}"' for f in ("figures-L03.js", "figures-L04.js", "figures-L05.js", "figures-L08.js")
+    )
+    out = node(
+        f"import * as f3 from {l03}; import * as f4 from {l04}; import * as f5 from {l05}; import * as f8 from {l08};\n"
+        + IMPORTS
+        + "const seeds = (a, b) => Array.from({length: b - a + 1}, (_, i) => a + i);\n"
+        "const pi0 = seeds(1, 200).map((s) => mt.storeyPi0(f3.pvalueSample(s), 0.5));\n"
+        "const blocks = seeds(1, 200).map((s) => f4.blockDraw(s, 4).blocks.length);\n"
+        "const peaks = seeds(1, 200).map((s) => f4.varianceCurve(f4.ar1Autocovariance(s, 0.5), 0.5)"
+        ".reduce((a, p) => (p[1] > a[1] ? p : a)));\n"
+        "const rc = seeds(2000, 2029).map((s) => { const u = f4.universe(s);"
+        " const a = mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, 10);"
+        " return [a.v, a.pRc, mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, 110).pRc]; });\n"
+        "const stepm = seeds(0, 299).map((s) => { const r = f5.study(s).result;"
+        " return [r.steps[0].rejected.length, r.mask.filter(Boolean).length]; });\n"
+        "const pbo = seeds(1, 200).map((s) => mt.cscv(f8.simulate(s, false), 8).pbo);\n"
+        "console.log(JSON.stringify({pi0, blocks, peaks, rc, stepm, pbo, d: [f3.PVALUE_DEFAULT_SEED,"
+        " f4.DEFAULT_BLOCK_SEED, f4.DEFAULT_AR_SEED, f4.DEFAULT_RC_SEED, f5.DEFAULT_SEED, f8.DEFAULT_CSCV_SEED]}));",
+        {},
+    )
+    d3, dblock, dar, drc, d5, d8 = out["d"]
+    assert out["pi0"][d3 - 1] == sorted(out["pi0"])[99], "L03 histogram: the default estimate is the median"
+    assert out["blocks"][dblock - 1] == sorted(out["blocks"])[99], "L04 blocks: the default block count is the median"
+    peak_b = [p[0] for p in out["peaks"]]
+    peak_h = [p[1] for p in out["peaks"]]
+    assert ranks_within(peak_b, dar - 1, 3) and ranks_within(peak_h, dar - 1, 3), "L04 variance: a median peak"
+    for j in range(3):
+        assert ranks_within([r[j] for r in out["rc"]], drc - 2000, 3), f"L04 RC/SPA statistic {j} near its median"
+    single, total = ([s[j] for s in out["stepm"]] for j in (0, 1))
+    assert single[d5] == sorted(single)[150] and total[d5] == sorted(total)[150], "L05 StepM: a median study"
+    assert ranks_within(out["pbo"], d8 - 1, 3), "L08 CSCV: a median history (PBO with no edge)"

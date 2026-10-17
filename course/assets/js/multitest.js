@@ -128,18 +128,23 @@ export function combinations(n, k) {
   return out;
 }
 
-/** Per-column Sharpe ratio of the given rows: mean / sd (ddof 1); 0 if both are 0; ±Infinity if only sd is 0. */
+/** Whether every row has the same value in column n (the contract's test for zero variance). */
+function constantColumn(rows, n) {
+  const first = rows[0][n];
+  return rows.every((row) => row[n] === first);
+}
+
+/** Per-column Sharpe ratio of the given rows: mean / sd (ddof 1); on a constant column 0 if its mean is 0, else ±Infinity. */
 export function columnSharpe(rows, columns) {
   const T = rows.length;
   return Array.from({ length: columns }, (_, n) => {
     let total = 0;
     for (const row of rows) total += row[n];
     const m = total / T;
+    if (constantColumn(rows, n)) return m === 0 ? 0 : m > 0 ? Infinity : -Infinity;
     let ss = 0;
     for (const row of rows) ss += (row[n] - m) ** 2;
-    const s = Math.sqrt(ss / (T - 1));
-    if (s === 0) return m === 0 ? 0 : m > 0 ? Infinity : -Infinity;
-    return m / s;
+    return m / Math.sqrt(ss / (T - 1));
   });
 }
 
@@ -173,4 +178,116 @@ export function cscv(matrix, S) {
   });
   const logits = splits.map((s) => s.logit);
   return { pbo: logits.filter((l) => l <= 0).length / logits.length, logits, splits, blockSize: size, dropped: matrix.length % S };
+}
+
+/** Column means and sample standard deviations (divisor T − 1) of T rows of K values. */
+export function columnMoments(rows) {
+  const T = rows.length;
+  const K = rows[0].length;
+  const mean = new Float64Array(K);
+  const sd = new Float64Array(K);
+  for (const row of rows) for (let k = 0; k < K; k += 1) mean[k] += row[k] / T;
+  for (const row of rows) for (let k = 0; k < K; k += 1) sd[k] += (row[k] - mean[k]) ** 2;
+  for (let k = 0; k < K; k += 1) sd[k] = Math.sqrt(sd[k] / (T - 1));
+  return { mean, sd };
+}
+
+/**
+ * Studentized statistics and centred bootstrap statistics, as romano_wolf in the A8 contract:
+ * t_k = mean(d_k) / (sd(d_k) / √T) and t*_bk = (mean(d*_k) − mean(d_k)) / (sd(d*_k) / √T), a draw in which
+ * the resampled column is constant being studentized by sd(d_k). `draws[b]` is one index vector shared by every column
+ * (whole dates resampled) or, with `joint = false`, an array of K index vectors, one per column.
+ */
+export function studentizedBootstrap(d, draws, joint = true) {
+  const T = d.length;
+  const K = d[0].length;
+  const { mean, sd } = columnMoments(d);
+  const root = Math.sqrt(T);
+  const t = Array.from(mean, (m, k) => m / (sd[k] / root));
+  const boot = draws.map((draw) => {
+    const rows = Array.from({ length: T }, (_, i) => (joint ? d[draw[i]] : Array.from({ length: K }, (_, k) => d[draw[k][i]][k])));
+    const m = columnMoments(rows);
+    return Array.from(m.mean, (v, k) => (v - mean[k]) / ((constantColumn(rows, k) ? sd[k] : m.sd[k]) / root));
+  });
+  return { t, boot };
+}
+
+/** Pearson correlation of two equal-length samples. */
+export function correlation(xs, ys) {
+  const n = xs.length;
+  let mx = 0;
+  let my = 0;
+  for (let i = 0; i < n; i += 1) {
+    mx += xs[i] / n;
+    my += ys[i] / n;
+  }
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (let i = 0; i < n; i += 1) {
+    sxy += (xs[i] - mx) * (ys[i] - my);
+    sxx += (xs[i] - mx) ** 2;
+    syy += (ys[i] - my) ** 2;
+  }
+  return sxy / Math.sqrt(sxx * syy);
+}
+
+/** Storey's estimate of the share of true nulls: #{p > λ} / ((1 − λ) m) (L03 Remark 6.1). */
+export function storeyPi0(pvalues, lambda) {
+  return pvalues.filter((p) => p > lambda).length / ((1 - lambda) * pvalues.length);
+}
+
+/** Circular sample autocovariances ĉ(0), …, ĉ(n − 1) of x (L04 Theorem 3.3). */
+export function circularAutocovariance(x) {
+  const n = x.length;
+  let m = 0;
+  for (const v of x) m += v / n;
+  const d = x.map((v) => v - m);
+  return Array.from({ length: n }, (_, h) => {
+    let s = 0;
+    for (let i = 0; i < n; i += 1) s += d[i] * d[(i + h) % n];
+    return s / n;
+  });
+}
+
+/** Formula (2) of L04 Theorem 3.3: the exact stationary-bootstrap variance of the mean, mean block length b. */
+export function bootstrapVarianceOfMean(c, b) {
+  const n = c.length;
+  const keep = 1 - 1 / b;
+  let total = c[0];
+  let w = 1;
+  for (let h = 1; h < n; h += 1) {
+    w *= keep;
+    total += 2 * (1 - h / n) * w * c[h];
+  }
+  return total / n;
+}
+
+/**
+ * Reality Check and SPA-style p-values over the first k strategies, as L04 Lab 3 computes them: means and sds
+ * of the differentials, bootMeans[b][j] the bootstrap mean of strategy j in draw b, T periods. The Reality Check
+ * recentres every strategy at zero; the SPA-style test studentizes and keeps a strategy whose mean lies at or
+ * below −sd·√(2 ln ln T / T) at that mean. Returns both observed statistics and both p-values.
+ */
+export function realityCheckSpa(means, sds, bootMeans, T, k) {
+  const root = Math.sqrt(T);
+  let v = -Infinity;
+  for (let j = 0; j < k; j += 1) v = Math.max(v, root * means[j]);
+  let tObs = 0;
+  for (let j = 0; j < k; j += 1) tObs = Math.max(tObs, (root * means[j]) / sds[j]);
+  const centre = Array.from({ length: k }, (_, j) => (means[j] <= -sds[j] * Math.sqrt((2 * Math.log(Math.log(T))) / T) ? means[j] : 0));
+  const rc = [];
+  const spa = [];
+  for (const m of bootMeans) {
+    let a = -Infinity;
+    let s = 0;
+    for (let j = 0; j < k; j += 1) {
+      a = Math.max(a, root * (m[j] - means[j]));
+      s = Math.max(s, (root * (m[j] - means[j] + centre[j])) / sds[j]);
+    }
+    rc.push(a);
+    spa.push(s);
+  }
+  const share = (xs, x) => xs.filter((y) => y >= x).length / xs.length;
+  return { v, tObs, rc, spa, pRc: share(rc, v), pSpa: share(spa, tObs), recentred: centre.filter((c) => c !== 0).length };
 }

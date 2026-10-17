@@ -2,7 +2,7 @@
 """Load every page of a unit in Chromium and fail on anything a learner would hit.
 
 Serves ``course/`` locally (WASM runtimes do not load over file://) and, for
-each page, in light and dark themes at desktop width and at 360 px:
+each page, in light and dark themes, each at desktop width and at 360 px:
 
 * waits for ``<html data-ready="true">`` (site.js finished)
 * zero console errors, page errors, failed requests and site.js step errors
@@ -177,8 +177,6 @@ def main() -> int:
                 problems: list[str] = []
                 for scheme in ("light", "dark"):
                     for name, width, height in VIEWPORTS:
-                        if scheme == "dark" and name == "mobile":
-                            continue
                         context = browser.new_context(viewport={"width": width, "height": height}, color_scheme=scheme)
                         page = context.new_page()
                         found = load(page, url, origin)

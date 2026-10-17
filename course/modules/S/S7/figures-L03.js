@@ -2,7 +2,7 @@
 // p-values of Example 2.2, and the p-value histogram behind the π0 estimate of Remark 6.1.
 
 import { drawAll, mountFigure, plot } from "../../../assets/js/chart.js";
-import { benjaminiHochberg, benjaminiYekutieli, bonferroni, holm } from "../../../assets/js/multitest.js";
+import { benjaminiHochberg, benjaminiYekutieli, bonferroni, holm, storeyPi0 } from "../../../assets/js/multitest.js";
 import { histogram, normSf, rng } from "../../../assets/js/stats.js";
 
 // Example 2.2: ten p-values, already sorted.
@@ -15,7 +15,7 @@ function bhGeometry(el) {
     controls: [
       { type: "range", key: "q", label: "Level q", min: 0.01, max: 0.2, step: 0.005, value: 0.05, format: (v) => v.toFixed(3) },
       { type: "check", key: "fwer", label: "Holm and Bonferroni", value: true },
-      { type: "check", key: "by", label: "Benjamini–Yekutieli", value: false },
+      { type: "check", key: "by", label: "Benjamini–Yekutieli (Section 5)", value: false },
     ],
     draw(area, s, width) {
       const m = EXAMPLE.length;
@@ -60,23 +60,30 @@ function bhGeometry(el) {
         `q = ${s.q.toFixed(3)}: BH rejects ${bh.kStar} of ${m}` +
         (carried.length ? ` (rank ${carried.join(", ")} sits above its own line and is carried by the step-up)` : "") +
         `; Holm rejects ${count(hm.mask)}; Bonferroni rejects ${bonf}` +
-        (s.by ? `; Benjamini–Yekutieli rejects ${by.kStar} (c(10) = ${by.c.toFixed(3)})` : "") +
+        (s.by ? `; Benjamini–Yekutieli (Section 5) rejects ${by.kStar} (c(10) = ${by.c.toFixed(3)})` : "") +
         "."
       );
     },
   });
 }
 
+const M = 1000;
+const M0 = 800;
+const EFFECT = 3;
+
+/** One SIMULATED set of p-values: M0 uniform true nulls and M − M0 one-sided z-tests with mean EFFECT. */
+export function pvalueSample(seed) {
+  const g = rng(seed);
+  return Array.from({ length: M }, (_, i) => (i < M0 ? g.uniform() : normSf(EFFECT + g.normal())));
+}
+
+// The default, seed 22, is a median draw: its estimate at λ = 0.5 equals the median over seeds 1–200
+// (tests/test_figure_kernels.py checks this).
+export const PVALUE_DEFAULT_SEED = 22;
+
 function pvalueHistogram(el) {
-  const m = 1000;
-  const m0 = 800;
-  const effect = 3;
-  let seed = 1;
-  const sample = () => {
-    const g = rng(seed);
-    return Array.from({ length: m }, (_, i) => (i < m0 ? g.uniform() : normSf(effect + g.normal())));
-  };
-  let p = sample();
+  let seed = PVALUE_DEFAULT_SEED;
+  let p = pvalueSample(seed);
   mountFigure(el, {
     controls: [
       { type: "range", key: "lambda", label: "λ", min: 0.05, max: 0.95, step: 0.05, value: 0.5, format: (v) => v.toFixed(2) },
@@ -85,33 +92,36 @@ function pvalueHistogram(el) {
         label: "Draw a new sample",
         onClick: () => {
           seed += 1;
-          p = sample();
+          p = pvalueSample(seed);
         },
       },
     ],
     draw(area, s, width) {
       const bins = 20;
       const counts = histogram(p, 0, 1, bins);
-      const density = counts.map((b) => ({ x0: b.x0, x1: b.x1, y: b.count / (m / bins) }));
+      const density = counts.map((b) => ({ x0: b.x0, x1: b.x1, y: b.count / (M / bins) }));
       const above = p.filter((v) => v > s.lambda).length;
-      const pi0hat = above / ((1 - s.lambda) * m);
+      const pi0hat = storeyPi0(p, s.lambda);
       plot(area, {
         width,
         title: "Histogram of a thousand p-values, eight hundred of them from true nulls",
         desc:
-          `A SIMULATED histogram of 1,000 one-sided p-values: 800 true nulls, uniform on (0, 1), and 200 effects of mean ${effect}, ` +
-          `which pile up near zero. To the right of λ = ${s.lambda.toFixed(2)} the bars sit on a flat floor near the true share of nulls, 0.8; ` +
-          `the estimate of π0 at λ, ${pi0hat.toFixed(3)}, is the height of that floor.`,
+          `A SIMULATED histogram of 1,000 one-sided p-values: 800 true nulls, uniform on (0, 1), and 200 effects of mean ${EFFECT}, ` +
+          `which pile up near zero. To the right of λ = ${s.lambda.toFixed(2)} the bars scatter around a flat floor at the true share of nulls, 0.8; ` +
+          `the estimate of π0 at λ, ${pi0hat.toFixed(3)}, is the average height of that floor.`,
         x: { label: "p-value", domain: [0, 1], format: ".1f" },
         y: { label: "Density (1 = uniform)", domain: [0, Math.max(4, Math.ceil(Math.max(...density.map((b) => b.y))))], format: ".1f" },
         layers: [
           { type: "bars", name: "p-values (density)", bins: density, series: 4 },
-          { type: "rule", y: m0 / m, label: "true π0 = 0.8", tone: "strong", labelAt: "left" },
+          { type: "rule", y: M0 / M, label: "true π0 = 0.8", tone: "strong", labelAt: "left" },
           { type: "segments", name: "estimated π0(λ) = #{p > λ} / ((1 − λ) m)", segments: [[s.lambda, pi0hat, 1, pi0hat]], series: 1, dash: 1 },
           { type: "rule", x: s.lambda, label: `λ = ${s.lambda.toFixed(2)}` },
         ],
       });
-      return `Sample ${seed}: ${above} of ${m} p-values exceed λ = ${s.lambda.toFixed(2)}, so the estimate is π0(λ) = ${above} / (${(1 - s.lambda).toFixed(2)} × ${m}) = ${pi0hat.toFixed(3)}, against the true π0 = 0.800.`;
+      return (
+        `Sample ${seed}${seed === PVALUE_DEFAULT_SEED ? " (a median draw)" : ""}: ${above} of ${M} p-values exceed λ = ${s.lambda.toFixed(2)}, ` +
+        `so the estimate is π0(λ) = ${above} / (${(1 - s.lambda).toFixed(2)} × ${M}) = ${pi0hat.toFixed(3)}, against the true π0 = 0.800.`
+      );
     },
   });
 }

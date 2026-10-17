@@ -222,7 +222,7 @@ def romano_wolf(
             [d[stationary_bootstrap_indices(n_obs, mean_block, rng), k] for k in range(d.shape[1])]
         )
         sd_b = np.std(sample, axis=0, ddof=1)
-        sd_b[sd_b == 0.0] = np.finfo(np.float64).tiny
+        sd_b = np.where(sd_b == 0.0, sd, sd_b)  # a constant resampled column is studentized by its sample sd
         t_boot[b] = (sample.mean(axis=0) - means) / (sd_b / math.sqrt(n_obs))
     return stepdown_rejections(t_obs, t_boot, alpha)
 
@@ -262,6 +262,8 @@ def probability_of_backtest_overfitting(performance: ArrayLike, n_blocks: int = 
     if n_blocks > n_obs:
         raise ValueError("n_blocks cannot exceed the number of periods")
     s = int(n_blocks)
+    if (n_obs - n_obs % s) // 2 < 2:
+        raise ValueError("each CSCV half-sample needs at least 2 periods")
     m = m[n_obs % s :]
     blocks = np.split(m, s)
     logits = []
@@ -338,6 +340,8 @@ def integrity_report(
     """Every A8 statistic for the proposed strategy and the trials it was selected from."""
     r = trials.returns
     n_obs, n_trials = r.shape
+    if n_obs < 4:
+        raise ValueError("an integrity report needs at least 4 periods, so each CSCV half-sample has 2")
     selected = r[:, trials.selected]
     sharpes = np.array([sharpe_ratio(r[:, j]) for j in range(n_trials)])
     sr = float(sharpes[trials.selected])

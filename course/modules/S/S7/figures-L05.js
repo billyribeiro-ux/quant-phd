@@ -2,39 +2,17 @@
 // step (Definitions 1.1–1.2), and why the bootstrap must resample whole dates (Section 4).
 
 import { drawAll, mountFigure, plot } from "../../../assets/js/chart.js";
-import { stationaryBootstrap, stepdown, upperCritical } from "../../../assets/js/multitest.js";
+import { correlation, stationaryBootstrap, stepdown, studentizedBootstrap, upperCritical } from "../../../assets/js/multitest.js";
 import { rng } from "../../../assets/js/stats.js";
 
-/** Columns' means and sample standard deviations of a T × K matrix (array of rows). */
-function moments(d) {
-  const T = d.length;
-  const K = d[0].length;
-  const mean = new Float64Array(K);
-  const sd = new Float64Array(K);
-  for (const row of d) for (let k = 0; k < K; k += 1) mean[k] += row[k] / T;
-  for (const row of d) for (let k = 0; k < K; k += 1) sd[k] += (row[k] - mean[k]) ** 2;
-  for (let k = 0; k < K; k += 1) sd[k] = Math.sqrt(sd[k] / (T - 1));
-  return { mean, sd };
+/** B stationary-bootstrap draws: one index vector per draw (whole dates), or K per draw (each strategy apart). */
+function bootstrapDraws(T, K, B, meanBlock, g, joint = true) {
+  return Array.from({ length: B }, () =>
+    joint ? stationaryBootstrap(T, meanBlock, g).indices : Array.from({ length: K }, () => stationaryBootstrap(T, meanBlock, g).indices),
+  );
 }
 
-/** Studentized statistics and centred joint stationary-bootstrap statistics (Definition 1.1). */
-function studentizedBootstrap(d, B, meanBlock, g, joint = true) {
-  const T = d.length;
-  const K = d[0].length;
-  const { mean, sd } = moments(d);
-  const t = Array.from(mean, (m, k) => m / (sd[k] / Math.sqrt(T)));
-  const boot = [];
-  for (let b = 0; b < B; b += 1) {
-    const draws = joint ? null : Array.from({ length: K }, () => stationaryBootstrap(T, meanBlock, g).indices);
-    const shared = joint ? stationaryBootstrap(T, meanBlock, g).indices : null;
-    const rows = Array.from({ length: T }, (_, i) => (joint ? d[shared[i]] : Array.from({ length: K }, (_, k) => d[draws[k][i]][k])));
-    const m = moments(rows);
-    boot.push(Array.from(m.mean, (v, k) => (v - mean[k]) / (m.sd[k] / Math.sqrt(T))));
-  }
-  return { t, boot };
-}
-
-function simulateUniverse(seed) {
+export function simulateUniverse(seed) {
   // 20 strategies, pairwise correlation 0.3 through a common factor, eight with a true alpha.
   const T = 250;
   const K = 20;
@@ -47,17 +25,41 @@ function simulateUniverse(seed) {
   return { d, genuine, K, T };
 }
 
+/** One simulated study: the universe, its studentized statistics and the StepM result at 5%. */
+export function study(seed) {
+  const u = simulateUniverse(seed);
+  const { t, boot } = studentizedBootstrap(u.d, bootstrapDraws(u.T, u.K, 500, 5, rng(seed + 1000)));
+  return { u, t, result: stepdown(t, boot, 0.05) };
+}
+
+// The default, seed 0, is a median study: across seeds 0–299 its single-step and StepM counts equal the medians
+// (tests/test_figure_kernels.py checks this). A later step adds a rejection in a minority of studies; the second
+// button draws new studies until one does and reports how many it drew.
+export const DEFAULT_SEED = 0;
+
 function stepmSteps(el) {
-  let seed = 3;
+  let seed = DEFAULT_SEED;
   let cache = null;
+  let searched = null;
   mountFigure(el, {
-    controls: [{ type: "button", label: "Simulate a new study", onClick: () => ((seed += 1), (cache = null)) }],
+    controls: [
+      { type: "button", label: "Simulate a new study", onClick: () => ((seed += 1), (cache = null), (searched = null)) },
+      {
+        type: "button",
+        label: "Show a study where a later step rejects",
+        onClick: () => {
+          let draws = 0;
+          do {
+            seed += 1;
+            draws += 1;
+            cache = study(seed);
+          } while (cache.result.mask.filter(Boolean).length === cache.result.steps[0].rejected.length && draws < 500);
+          searched = draws;
+        },
+      },
+    ],
     draw(area, _s, width) {
-      if (!cache) {
-        const u = simulateUniverse(seed);
-        const { t, boot } = studentizedBootstrap(u.d, 500, 5, rng(seed + 1000));
-        cache = { u, t, result: stepdown(t, boot, 0.05) };
-      }
+      if (!cache) cache = study(seed);
       const { u, t, result } = cache;
       const order = t.map((v, k) => [v, k]).sort((a, b) => b[0] - a[0]);
       const pos = new Map(order.map(([, k], i) => [k, i + 1]));
@@ -92,20 +94,25 @@ function stepmSteps(el) {
       const total = result.mask.filter(Boolean).length;
       const found = result.mask.filter((r, k) => r && k < u.genuine).length;
       const falseHits = total - found;
+      const steps = result.steps.length;
+      const fell = result.steps.some((st, j) => j > 0 && st.critical < result.steps[j - 1].critical);
       plot(area, {
         width,
         title: "The StepM procedure, step by step",
         desc:
           `Twenty SIMULATED strategies sorted by their studentized statistic, eight with a true alpha. The first step's critical value ` +
           `${result.steps[0].critical.toFixed(2)} is the single-step test and rejects ${single}. Each later step drops the rejected strategies ` +
-          `and recomputes the critical value over the rest, which is lower; StepM rejects ${total} in ${result.steps.length} steps.`,
-        x: { label: "Strategy, sorted by studentized statistic", domain: [0.3, u.K + 0.7], ticks: 10, format: "d" },
+          `and recomputes the critical value over the rest, which is never higher${fell ? " and here falls" : " and here stays the same"}; ` +
+          `StepM rejects ${total} in ${steps} step${steps === 1 ? "" : "s"}.`,
+        x: { label: "Strategy, sorted by t", domain: [0.3, u.K + 0.7], ticks: 10, format: "d" },
         y: { label: "Studentized statistic t", domain: [floor, Math.max(...t) + 0.8], format: ".0f" },
         layers,
       });
       return (
+        `Study ${seed}${seed === DEFAULT_SEED ? " (a median study)" : ""}${searched ? `, found after drawing ${searched} new stud${searched === 1 ? "y" : "ies"}` : ""}: ` +
         result.steps.map((st, j) => `step ${j + 1}: c = ${st.critical.toFixed(3)} over ${st.active.length}, rejects ${st.rejected.length}`).join("; ") +
-        `. Single-step rejects ${single}; StepM rejects ${total} (${found} of ${u.genuine} true alphas, ${falseHits} false).`
+        `. Single-step rejects ${single}; StepM rejects ${total} (${found} of ${u.genuine} true alphas, ${falseHits} false)` +
+        (total > single ? "; a later step added a rejection." : "; no later step added one.")
       );
     },
   });
@@ -119,23 +126,9 @@ function jointVsIndependent(el) {
     const c = g.normal();
     return Array.from({ length: 10 }, () => Math.sqrt(rho) * c + Math.sqrt(1 - rho) * g.normal());
   });
-  const joint = studentizedBootstrap(d, 600, 5, rng(78), true);
-  const indep = studentizedBootstrap(d, 600, 5, rng(79), false);
-  const corr = (boot) => {
-    const xs = boot.map((r) => r[0]);
-    const ys = boot.map((r) => r[1]);
-    const mx = xs.reduce((a, v) => a + v, 0) / xs.length;
-    const my = ys.reduce((a, v) => a + v, 0) / ys.length;
-    let sxy = 0;
-    let sxx = 0;
-    let syy = 0;
-    xs.forEach((x, i) => {
-      sxy += (x - mx) * (ys[i] - my);
-      sxx += (x - mx) ** 2;
-      syy += (ys[i] - my) ** 2;
-    });
-    return sxy / Math.sqrt(sxx * syy);
-  };
+  const joint = studentizedBootstrap(d, bootstrapDraws(T, 10, 600, 5, rng(78), true), true);
+  const indep = studentizedBootstrap(d, bootstrapDraws(T, 10, 600, 5, rng(79), false), false);
+  const corr = (boot) => correlation(boot.map((r) => r[0]), boot.map((r) => r[1]));
   const crit = (boot) => upperCritical(boot.map((r) => Math.max(...r)), 0.05);
   mountFigure(el, {
     draw(area, _s, width) {

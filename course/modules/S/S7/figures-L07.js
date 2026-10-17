@@ -32,11 +32,15 @@ function dsrExplorer(el) {
     draw(area, s, width) {
       const T = DAYS[s.ti];
       const N = TRIALS[s.ni];
-      const bracket = 1 - s.skew * s.sr + ((s.kurt - 1) / 4) * s.sr * s.sr;
-      if (bracket <= 0) {
-        area.textContent = "The variance bracket 1 − γ3·SR + (γ4 − 1)/4·SR² is not positive for these inputs, so formula (2) is undefined.";
+      // No distribution has kurtosis below 1 + skewness² (Pearson's inequality, Problem P1), so no PSR exists there.
+      if (s.kurt < 1 + s.skew * s.skew) {
+        const note = document.createElement("p");
+        note.className = "figure-note";
+        note.textContent = `No distribution has kurtosis below 1 + skewness² = ${(1 + s.skew * s.skew).toFixed(2)} (Problem P1); raise the kurtosis or reduce the skewness.`;
+        area.append(note);
         return "";
       }
+      const bracket = 1 - s.skew * s.sr + ((s.kurt - 1) / 4) * s.sr * s.sr;
       const se = sharpeStdError(s.sr, T, s.skew, s.kurt);
       const sr0 = benchmarkSharpe(N, s.dispersion);
       const psr = normCdf(s.sr / se);
@@ -51,7 +55,7 @@ function dsrExplorer(el) {
         title: "The probabilistic and deflated Sharpe ratios as areas",
         desc:
           `Two normal densities with the standard error ${se.toFixed(4)} of formula (2): one centred at 0 (the PSR benchmark) and one at SR0 = ${sr0.toFixed(4)}, ` +
-          `the expected maximum of ${N} null trials (the DSR benchmark). The area of each to the left of the estimated Sharpe ratio ${s.sr.toFixed(3)} ` +
+          `the expected maximum of ${N} null trial${N === 1 ? "" : "s"} (the DSR benchmark). The area of each to the left of the estimated Sharpe ratio ${s.sr.toFixed(3)} ` +
           `is PSR = ${psr.toFixed(3)} and DSR = ${dsr.toFixed(3)}.`,
         x: { label: "Sharpe ratio per day", domain: [lo, hi], format: ".2f" },
         y: { label: "Density" },

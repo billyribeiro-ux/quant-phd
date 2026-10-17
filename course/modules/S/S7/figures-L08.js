@@ -2,7 +2,7 @@
 // cross-validation (Definition 3.1) one split at a time, from the block assignment through the
 // in-sample winner and its out-of-sample rank to the logit and the PBO estimate.
 
-import { drawAll, mountFigure, plot, svgFrame } from "../../../assets/js/chart.js";
+import { drawAll, mountFigure, multilineText, plot, svgFrame } from "../../../assets/js/chart.js";
 import { cscv } from "../../../assets/js/multitest.js";
 import { rng } from "../../../assets/js/stats.js";
 
@@ -12,13 +12,17 @@ const N = 10;
 const VOL = 0.01;
 const LETTERS = "ABCDEFGH";
 
-function simulate(seed, edge) {
+/** A SIMULATED history: S·BLOCK days of N configurations, daily volatility VOL; configuration 1 gets a daily Sharpe ratio of 0.10 with an edge. */
+export function simulate(seed, edge) {
   const g = rng(seed);
   return Array.from({ length: S * BLOCK }, () => Array.from({ length: N }, (_, n) => VOL * (g.normal() + (edge && n === 0 ? 0.1 : 0))));
 }
 
 function blockStrip(area, width, split) {
-  const height = 64;
+  const note = `Filled: in sample J (${S / 2} blocks). Outlined: out of sample J̄. ${BLOCK} days per block, in time order.`;
+  const chars = Math.floor((width - 16) / 5.6);
+  const lines = Math.ceil(note.length / chars);
+  const height = 50 + 13 * lines;
   const left = 8;
   const w = (width - 2 * left) / S;
   const svg = svgFrame(area, {
@@ -45,11 +49,15 @@ function blockStrip(area, width, split) {
       .attr("text-anchor", "middle")
       .text(LETTERS[b]);
   }
-  svg.append("text").attr("class", "small").attr("x", left).attr("y", 54).text(`Filled: in-sample J (${S / 2} blocks). Outlined: out-of-sample J̄. ${BLOCK} days per block, in time order.`);
+  multilineText(svg, note, { x: left, y: 54, chars, lineHeight: 13, cls: "small" });
 }
 
+// Seed 9 is a median history: with no edge its PBO is within three ranks of the median over seeds 1–200 (the
+// smallest such seed; tests/test_figure_kernels.py checks this). One history can land far from E[PBO] = 1/2 (Lab 2).
+export const DEFAULT_CSCV_SEED = 9;
+
 function cscvExplorer(el) {
-  let seed = 8;
+  let seed = DEFAULT_CSCV_SEED;
   let cache = null;
   mountFigure(el, {
     controls: [
@@ -74,7 +82,7 @@ function cscvExplorer(el) {
       const yDomain = [-yMax * 1.1, yMax * 1.1];
       for (const [label, metric, note] of [
         ["In sample J", split.isMetric, `winner is configuration ${split.best + 1}`],
-        ["Out of sample J̄", split.oosMetric, `winner ranks ${split.rank} of ${N}`],
+        ["Out of sample J̄", split.oosMetric, `winner ranks ${split.rank} of ${N} (${N} = best)`],
       ]) {
         const box = document.createElement("div");
         row.append(box);
@@ -103,7 +111,7 @@ function cscvExplorer(el) {
         legend: false,
         title: "Logits of all 70 splits",
         desc: `Histogram of the 70 logits λ = ln(ω/(1 − ω)); the ${result.logits.filter((l) => l <= 0).length} at or below zero, where the in-sample winner lands at or below the out-of-sample median, give PBO = ${result.pbo.toFixed(3)}.`,
-        x: { label: "Logit λ of the in-sample winner's out-of-sample rank", domain: [-2.5, 2.5], format: ".1f" },
+        x: { label: "Logit λ of the winner's OOS rank", domain: [-2.5, 2.5], format: ".1f" },
         y: { label: "Splits" },
         layers: [
           { type: "bars", bins },
@@ -112,7 +120,7 @@ function cscvExplorer(el) {
         ],
       });
       return (
-        `Split ${s.split}: in-sample blocks ${split.inSample.map((b) => LETTERS[b]).join("")}; winner configuration ${split.best + 1}; out-of-sample rank ${split.rank} of ${N}, ` +
+        `${seed === DEFAULT_CSCV_SEED && !s.edge ? "A median history. " : ""}Split ${s.split}: in-sample blocks ${split.inSample.map((b) => LETTERS[b]).join("")}; winner configuration ${split.best + 1}; out-of-sample rank ${split.rank} of ${N}, ` +
         `ω = ${split.rank}/${N + 1} = ${split.omega.toFixed(3)}, λ = ${split.logit.toFixed(3)}. Over all 70 splits PBO = ${result.pbo.toFixed(3)}` +
         `${s.edge ? "" : ` (Theorem 4.1 gives E[PBO] = ${(Math.floor((N + 1) / 2) / N).toFixed(1)} when nothing works)`}.`
       );

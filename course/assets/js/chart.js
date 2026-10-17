@@ -110,7 +110,7 @@ function legend(parent, layers) {
  *   dots     {points: [[x, y]], series, name?, hollow?, r?}
  *   bars     {bins: [{x0, x1, y}], series, name?}
  *   segments {segments: [[x1, y1, x2, y2]], series, dash?}
- *   rule     {x? | y?, label?, labelAt?: "left" | x-value, row?, tone?: "muted" | "strong"}
+ *   rule     {x? | y?, label?, labelAt?: "left" | x-value, below?, row?, tone?: "muted" | "strong"}
  *   text     {x, y, text, anchor?, dx?, dy?, tone?}
  */
 export function plot(parent, spec) {
@@ -143,19 +143,25 @@ export function plot(parent, spec) {
     .attr("class", "axis")
     .attr("transform", `translate(${margin.left},0)`)
     .call(d3().axisLeft(y).ticks(yTicks, spec.y.format));
-  svg
-    .append("text")
-    .attr("class", "axis-label")
-    .attr("x", margin.left + inner.w / 2)
-    .attr("y", height - 8)
-    .attr("text-anchor", "middle")
-    .text(spec.x.label);
-  svg
-    .append("text")
-    .attr("class", "axis-label")
-    .attr("transform", `translate(14,${margin.top + inner.h / 2}) rotate(-90)`)
-    .attr("text-anchor", "middle")
-    .text(spec.y.label);
+  fitLabel(
+    svg
+      .append("text")
+      .attr("class", "axis-label")
+      .attr("x", margin.left + inner.w / 2)
+      .attr("y", height - 8)
+      .attr("text-anchor", "middle")
+      .text(spec.x.label),
+    inner.w + margin.left - 4,
+  );
+  fitLabel(
+    svg
+      .append("text")
+      .attr("class", "axis-label")
+      .attr("transform", `translate(14,${margin.top + inner.h / 2}) rotate(-90)`)
+      .attr("text-anchor", "middle")
+      .text(spec.y.label),
+    inner.h + margin.top + margin.bottom - 8,
+  );
 
   const plotArea = svg.append("g").attr("class", "plot");
   clipCount += 1;
@@ -253,7 +259,7 @@ export function plot(parent, spec) {
           const at = typeof layer.labelAt === "number" ? x(layer.labelAt) : layer.labelAt === "left" ? margin.left + 5 : width - margin.right - 5;
           g.append("text")
             .attr("x", at)
-            .attr("y", y(layer.y) - 5)
+            .attr("y", y(layer.y) + (layer.below ? 13 : -5))
             .attr("text-anchor", layer.labelAt === "left" ? "start" : typeof layer.labelAt === "number" ? "middle" : "end")
             .text(layer.label);
         }
@@ -416,6 +422,17 @@ export function scatterChart(container, spec) {
       });
     },
   });
+}
+
+/**
+ * Shrink an axis label's font until it fits `room` pixels, so a long label never leaves the SVG on a narrow
+ * screen. Measures the rendered length when the browser can (getComputedTextLength), else estimates it.
+ */
+function fitLabel(label, room) {
+  const node = label.node();
+  const measure = () => (typeof node.getComputedTextLength === "function" ? node.getComputedTextLength() : 0) || node.textContent.length * 6.6;
+  const length = measure();
+  if (length > room && room > 0) label.style("font-size", `${Math.max(8, 12 * (room / length)).toFixed(1)}px`);
 }
 
 /** Wrap `text` into lines of at most `chars` characters, breaking at spaces. */

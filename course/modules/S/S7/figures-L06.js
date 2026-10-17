@@ -24,24 +24,25 @@ function hurdleGrowth(el) {
     draw(area, s, width) {
       const ms = logIntegers(1, 1e6, 12);
       const hurdle = (m) => normPpf(1 - s.alpha / (2 * m));
-      const crossing = ms.find((m) => hurdle(m) >= 3);
+      // The smallest integer M whose hurdle reaches 3.0, solved exactly from α/(2M) ≤ 1 − Φ(3).
+      const crossing = Math.ceil(s.alpha / (2 * normSf(3)));
       plot(area, {
         width,
         title: "The Bonferroni t-statistic hurdle as the number of tests grows",
         desc:
           `The exact Bonferroni hurdle Φ⁻¹(1 − α/(2M)) at α = ${(100 * s.alpha).toFixed(0)}%, against the number of tests M on a log scale from 1 to a million, ` +
-          `with the upper bound √(2 ln(2M/α)) of Theorem 2.3 above it and √(2 ln M), its growth rate, below. The hurdle passes 3.0 at about M = ${crossing}.`,
+          `with the upper bound √(2 ln(2M/α)) of Theorem 2.3 above it and √(2 ln M), its growth rate, below. The hurdle first reaches 3.0 at M = ${crossing}.`,
         x: { label: "Number of tests M (log scale)", log: true, domain: [1, 1e6], format: "~s" },
         y: { label: "t-statistic hurdle", domain: [0, 6.5], format: ".0f" },
         layers: [
           { type: "line", name: "exact hurdle Φ⁻¹(1 − α/(2M))", points: ms.map((m) => [m, hurdle(m)]), series: 0 },
           { type: "line", name: "upper bound √(2 ln(2M/α))", points: ms.map((m) => [m, Math.sqrt(2 * Math.log((2 * m) / s.alpha))]), series: 1, dash: 1 },
           { type: "line", name: "growth rate √(2 ln M)", points: ms.map((m) => [m, Math.sqrt(2 * Math.log(m))]), series: 2, dash: 2 },
-          { type: "rule", y: 1.96, label: "1.96", labelAt: "left" },
-          { type: "rule", y: 3, label: "3.0", labelAt: "left" },
+          { type: "rule", y: 1.96, label: "1.96", labelAt: 3e4, below: true },
+          { type: "rule", y: 3, label: "3.0", labelAt: 3e4, below: true },
         ],
       });
-      return `α = ${(100 * s.alpha).toFixed(0)}%: hurdle ${[1, 10, 100, 1000, 1e6].map((m) => `${hurdle(m).toFixed(2)} at M = ${m.toLocaleString("en-US")}`).join(", ")}.`;
+      return `α = ${(100 * s.alpha).toFixed(0)}%: hurdle ${[1, 10, 100, 1000, 1e6].map((m) => `${hurdle(m).toFixed(2)} at M = ${m.toLocaleString("en-US")}`).join(", ")}; it first reaches 3.0 at M = ${crossing}.`;
     },
   });
 }
@@ -74,7 +75,7 @@ function forkingPaths(el) {
           `common correlation ρ. Every curve lies between the bounds of Proposition 3.2, α and min(1, Kα). Independent analyses (ρ = 0) reach ` +
           `${curves[0][7][1].toFixed(2)} at K = 10; highly correlated ones (ρ = 0.95) reach ${curves[3][7][1].toFixed(2)}.`,
         x: { label: "Number of analyses K", domain: [1, 50], format: "d" },
-        y: { label: "Probability the reported p-value is below 5%", domain: [0, 1], format: ".1f" },
+        y: { label: "P(best p-value < 5%)", domain: [0, 1], format: ".1f" },
         layers: [
           ...rhos.map((rho, i) => ({ type: "line", name: `ρ = ${rho}`, points: curves[i], series: i, dash: i % 3 })),
           { type: "line", name: "upper bound min(1, Kα)", points: ks.map((k) => [k, Math.min(1, k * alpha)]), series: 5, dash: 2 },

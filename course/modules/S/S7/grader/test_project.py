@@ -509,3 +509,104 @@ def test_depends_on_numpy_and_stdlib_only() -> None:
 def test_trialset_validation(selected: int) -> None:
     r = np.random.default_rng(0).normal(size=(50, 4))
     must_raise(lambda: a8.TrialSet(r, selected, 252), "TrialSet with selected outside the trial columns")
+
+
+# ---------------------------------------------------------------- bootstrap statistics, flat subsamples, validation
+
+
+def rw_one_column_critical_value(x: np.ndarray, alpha: float, n_boot: int, mean_block: float, seed: int) -> float:
+    """First-step StepM critical value of the contract for one column, drawing exactly as the contract says."""
+    rng = np.random.default_rng(seed)
+    n, sd = x.size, float(x.std(ddof=1))
+    stats = []
+    for _ in range(n_boot):
+        s = x[np.asarray(a8.stationary_bootstrap_indices(n, mean_block, rng))]
+        sd_b = float(s.std(ddof=1))
+        stats.append((s.mean() - x.mean()) / ((sd_b if sd_b > 0.0 else sd) / math.sqrt(n)))
+    return float(np.sort(stats)[math.ceil((1 - alpha) * n_boot) - 1])
+
+
+def test_romano_wolf_bootstrap_statistic_is_the_contracts() -> None:
+    z = np.random.default_rng(SEED).standard_normal(50)
+    z = (z - z.mean()) / z.std(ddof=1)
+    c = rw_one_column_critical_value(z, 0.05, 400, 5.0, SEED)
+    for t in (c + 1e-6, c - 1e-6):
+        col = z + t / math.sqrt(z.size)
+        t_obs = col.mean() / (col.std(ddof=1) / math.sqrt(col.size))
+        want = t_obs > rw_one_column_critical_value(col, 0.05, 400, 5.0, SEED)
+        got = bool(np.asarray(a8.romano_wolf(col[:, None], 0.05, 400, 5.0, SEED))[0])
+        assert got == want, (
+            "Each bootstrap statistic is (mean(d*) - mean(d)) / (std(d*, ddof=1) / sqrt(T)), studentized by the "
+            "draw's own standard deviation with ddof=1 (contract; L05)."
+        )
+
+
+def test_romano_wolf_constant_resample_uses_the_sample_sd() -> None:
+    # Seven equal periods and one loss, all dyadic, so a resample that misses the loss is exactly constant and
+    # its statistic is exactly 1 under the contract; such draws are far more than 5% of 400 with mean_block 2.
+    for level, rejected in ((0.1875, False), (0.3125, True)):  # observed t-statistics 0.5 and 1.5
+        x = np.full(8, level)
+        x[7] = level - 1.0
+        got = bool(np.asarray(a8.romano_wolf(x[:, None], 0.05, 400, 2.0, SEED))[0])
+        assert got == rejected, (
+            "In a draw where a resampled column is constant, studentize it by the column's own sample standard "
+            "deviation: do not drop the draw or divide by a tiny number (contract)."
+        )
+
+
+def cscv_metric(block: np.ndarray) -> np.ndarray:
+    mean, sd = block.mean(0), block.std(0, ddof=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out = mean / sd
+    flat = np.ptp(block, axis=0) == 0.0  # a constant subsample (the contract's zero-variance rule)
+    out[flat] = np.where(mean[flat] == 0.0, 0.0, np.copysign(np.inf, mean[flat]))
+    return out
+
+
+def test_pbo_handles_flat_subsamples() -> None:
+    m = np.random.default_rng(SEED).normal(0.0, 0.01, (80, 5))
+    m[:40, 1] = 0.0  # a configuration out of the market for the first half
+    m[40:, 2] = 2.0**-10  # a configuration earning a constant return in the second half
+    blocks = np.split(m, 4)
+    expected = []
+    for combo in itertools.combinations(range(4), 2):
+        train = np.vstack([blocks[i] for i in combo])
+        test = np.vstack([blocks[i] for i in range(4) if i not in combo])
+        best = int(np.argmax(cscv_metric(train)))
+        oos = cscv_metric(test)
+        rank = 1 + np.sum(oos < oos[best]) + 0.5 * (np.sum(oos == oos[best]) - 1)
+        expected.append(math.log(rank / (6 - rank)))
+    got = np.asarray(a8.probability_of_backtest_overfitting(m, 4).logits)
+    assert np.allclose(got, expected, rtol=0, atol=1e-10), (
+        "A subsample with zero standard deviation has Sharpe metric 0.0 when its mean is 0 and +-inf otherwise, "
+        "with no warning (contract)."
+    )
+
+
+def test_stationary_bootstrap_starts_uniformly() -> None:
+    rng = np.random.default_rng(SEED)
+    firsts = {int(np.asarray(a8.stationary_bootstrap_indices(50, 10.0, rng))[0]) for _ in range(200)}
+    assert len(firsts) >= 25, "The first block starts at a uniformly drawn period, not at a fixed one (L04)."
+
+
+@pytest.mark.parametrize("function", ["sample_skewness", "sample_kurtosis", "probabilistic_sharpe_ratio"])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        pytest.param([[0.01, 0.02], [0.03, 0.01]], id="two-dimensional"),
+        pytest.param([0.01, float("nan"), 0.02], id="non-finite"),
+    ],
+)
+def test_series_functions_validate_their_input(function: str, bad: list) -> None:
+    must_raise(lambda: getattr(a8, function)(bad), f"{function} given an invalid series")
+
+
+def test_a_constant_series_has_zero_variance() -> None:
+    # 1e-4 is not a dyadic fraction, so np.std of a constant series is a tiny nonzero number, not 0.0.
+    must_raise(lambda: a8.sharpe_ratio(np.full(250, 1e-4)), "sharpe_ratio given a constant series")
+    r = np.random.default_rng(SEED).normal(0, 0.01, (60, 4))
+    r[:, 2] = 2e-4
+    must_raise(
+        lambda: a8.integrity_report(a8.TrialSet(r, 0, 252), n_boot=50),
+        "integrity_report on a trial set with a constant trial (all values equal)",
+    )

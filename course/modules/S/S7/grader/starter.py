@@ -1,8 +1,11 @@
 """Starter for Atlas A8: atlas/integrity.py.
 
 Implement every function so that it matches atlas/A8.contract.md exactly, then
-run the autograder on the S7 project page (or locally:
-QF_SEED=<your seed> pytest test_project.py). The dataclasses are complete.
+run the autograder on the S7 project page, or locally with the browser's flags:
+
+    QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
+
+The dataclasses are complete.
 Every function must validate its inputs and raise ValueError naming the
 violated condition; none may print, warn or mutate its arguments.
 """
