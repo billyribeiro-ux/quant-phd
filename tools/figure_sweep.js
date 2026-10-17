@@ -69,6 +69,10 @@
         const parts = t.querySelectorAll("tspan").length ? [...t.querySelectorAll("tspan")] : [t];
         return parts.filter((n) => n.textContent.trim()).map((n) => ({ text: JSON.stringify(n.textContent.trim()), box: glyphs(n), node: n }));
       });
+      // fitLabel cuts an axis label only when it cannot fit at its smallest size; a cut label hides words, so it fails.
+      for (const label of svg.querySelectorAll("text.axis-label")) {
+        if (label.querySelector("title")) problems.push(`axis label ${JSON.stringify(label.querySelector("title").textContent)} is cut to fit`);
+      }
       for (const t of texts) {
         if (t.node.closest("[clip-path]")) continue; // the clip hides what spills
         const r = t.node.getBoundingClientRect();
@@ -90,7 +94,12 @@
       // A plotted segment drawn outside the plot area is clipped away: its data are not shown.
       const clip = svg.querySelector("clipPath rect");
       if (clip) {
-        const area = clip.getBoundingClientRect();
+        // A clipPath rect is never rendered (its client rect is empty): map its own attributes to the screen.
+        const m = svg.getScreenCTM();
+        const [x, y, w, h] = ["x", "y", "width", "height"].map((a) => clip[a].baseVal.value);
+        const a = new DOMPoint(x, y).matrixTransform(m);
+        const b = new DOMPoint(x + w, y + h).matrixTransform(m);
+        const area = { left: Math.min(a.x, b.x), right: Math.max(a.x, b.x), top: Math.min(a.y, b.y), bottom: Math.max(a.y, b.y) };
         for (const line of svg.querySelectorAll(".plot line.line")) {
           const r = line.getBoundingClientRect();
           if (r.bottom < area.top - 0.5 || r.top > area.bottom + 0.5 || r.right < area.left - 0.5 || r.left > area.right + 0.5) {

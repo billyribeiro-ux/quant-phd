@@ -83,7 +83,8 @@ function cscvExplorer(el) {
       const yDomain = [-yMax * 1.1, yMax * 1.1];
       for (const [label, metric, note] of [
         ["In sample J", split.isMetric, `winner is configuration ${split.best + 1}`],
-        ["Out of sample J̄", split.oosMetric, `winner ranks ${split.rank} of ${N} (${N} = best)`],
+        // The rank direction (N = best) is in the description and the caption, so the axis label fits whole.
+        ["Out of sample J̄", split.oosMetric, `winner ranks ${split.rank} of ${N}`],
       ]) {
         const box = document.createElement("div");
         row.append(box);
@@ -92,7 +93,7 @@ function cscvExplorer(el) {
           height: 220,
           legend: false,
           title: `${label}: annualized Sharpe ratio by configuration`,
-          desc: `Annualized Sharpe ratios of the ${N} configurations ${label.startsWith("In") ? "in sample" : "out of sample"}; configuration ${split.best + 1}, the in-sample winner, is highlighted: the ${note}.`,
+          desc: `Annualized Sharpe ratios of the ${N} configurations ${label.startsWith("In") ? "in sample" : "out of sample"}; configuration ${split.best + 1}, the in-sample winner, is highlighted: the ${note}${label.startsWith("Out") ? ` (rank ${N} is the best)` : ""}.`,
           margin: { left: 48 },
           x: { label: `${label}: ${note}`, domain: [0.4, N + 0.6], ticks: N, format: "d" },
           y: { label: "Annualized Sharpe", domain: yDomain, format: ".1f" },

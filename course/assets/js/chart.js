@@ -585,7 +585,14 @@ function fitLabel(label, room) {
   const measure = () => (typeof node.getComputedTextLength === "function" ? node.getComputedTextLength() : 0) || node.textContent.length * 6.6;
   const length = measure();
   if (length <= room || room <= 0) return;
-  label.style("font-size", `${Math.max(MIN_LABEL_PX, 12 * (room / length)).toFixed(1)}px`);
+  // Shrink to the largest tenth of a pixel that fits, rounding down, then step down until it does: the text's
+  // rendered length is not exactly proportional to its size.
+  let size = Math.max(MIN_LABEL_PX, Math.floor((120 * room) / length) / 10);
+  label.style("font-size", `${size.toFixed(1)}px`);
+  while (measure() > room && size > MIN_LABEL_PX) {
+    size = Math.max(MIN_LABEL_PX, Math.round((size - 0.1) * 10) / 10);
+    label.style("font-size", `${size.toFixed(1)}px`);
+  }
   if (measure() <= room) return;
   const full = node.textContent;
   const words = full.split(" ");
