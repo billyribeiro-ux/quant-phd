@@ -10,6 +10,16 @@ each page, in light and dark themes, each at desktop width and at 360 px:
 * zero unrendered math (``.katex-error``)
 * no horizontal scrolling at 360 px
 * every chart's SVG carries ``<title>`` and ``<desc>``
+* every chart's text lies inside its SVG
+
+At both widths in the light theme it then sweeps every live figure: each
+control runs through all its values (every range step, select option and
+checkbox state; the full product of them when it has at most
+``SWEEP_PRODUCT_LIMIT`` states, else one control at a time from the default),
+and each button is pressed ``SWEEP_PRESSES`` times. In every state no chart
+text may leave its SVG, overlap another text, or be crossed by a plotted line,
+segment, rule, dot or bar (tools/figure_sweep.js). Geometry does not depend on the
+theme, so the dark theme is not swept.
 
 Then, once per page at desktop width: runs every lab in Pyodide and requires
 its output to match the page within 10 s of runtime (the runtime is started
@@ -29,6 +39,7 @@ from __future__ import annotations
 import argparse
 import functools
 import http.server
+import math
 import re
 import socketserver
 import sys
@@ -37,13 +48,15 @@ import time
 from pathlib import Path
 from typing import Any
 
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import Locator, Page, sync_playwright
 
 from coursekit import COURSE, Unit, built_units, labs_in, load_page, unit
 
 LAB_LIMIT_S = 10.0
 GRADER_LIMIT_S = 60.0
 VIEWPORTS = (("desktop", 1280, 900), ("mobile", 360, 760))
+SWEEP_PRODUCT_LIMIT = 300
+SWEEP_PRESSES = 3
 
 
 MIME_TYPES = {
@@ -101,6 +114,75 @@ def load(page: Page, url: str, origin: str) -> list[str]:
     for chart in page.locator("[data-chart]").all():
         if chart.locator("svg > title").count() == 0 or chart.locator("svg > desc").count() == 0:
             problems.append(f"chart {chart.get_attribute('data-chart')} lacks an SVG <title> or <desc>")
+    problems.extend(f"chart {name}: text {text!r} leaves its SVG" for name, text in page.evaluate(ESCAPED_TEXT))
+    return problems
+
+
+# Every SVG <text> in a chart must lie inside its SVG (1 px tolerance), except text in a clipped group, which the
+# clip hides rather than lets spill.
+ESCAPED_TEXT = """() => [...document.querySelectorAll("[data-chart] svg")].flatMap((svg) => {
+  const box = svg.getBoundingClientRect();
+  return [...svg.querySelectorAll("text")]
+    .filter((t) => !t.closest("[clip-path]") && t.textContent.trim())
+    .filter((t) => {
+      const r = t.getBoundingClientRect();
+      return r.left < box.left - 1 || r.right > box.right + 1 || r.top < box.top - 1 || r.bottom > box.bottom + 1;
+    })
+    .map((t) => [svg.closest("[data-chart]").dataset.chart, t.textContent.trim()]);
+})"""
+
+
+SWEEP_SCRIPT = Path(__file__).with_name("figure_sweep.js")
+
+
+def control_values(control: dict[str, Any]) -> list[Any]:
+    if control["kind"] != "range":
+        return list(control["values"])
+    n = round((control["max"] - control["min"]) / control["step"])
+    return [round(control["min"] + i * control["step"], 10) for i in range(n + 1)]
+
+
+def sweep_figures(page: Page) -> list[str]:
+    """Every state of every live figure on the page, checked by figure_sweep.js (see the module docstring)."""
+    page.evaluate(SWEEP_SCRIPT.read_text(encoding="utf-8"))
+    problems: list[str] = []
+    width = page.viewport_size["width"] if page.viewport_size else 0
+    for chart in page.locator("[data-chart]").all():
+        problems += sweep_chart(chart, f"{width} px, chart {chart.get_attribute('data-chart')}")
+    return problems
+
+
+def sweep_chart(chart: Locator, where: str) -> list[str]:
+    controls = chart.evaluate("(el) => window.__figureSweep.controls(el)")
+    settable = [(i, c) for i, c in enumerate(controls) if c["kind"] != "button"]
+    grids = [control_values(c) for _, c in settable]
+    states: list[list[tuple[int, Any]]] = [[]]
+    if math.prod(len(g) for g in grids) <= SWEEP_PRODUCT_LIMIT:
+        for (i, _), grid in zip(settable, grids, strict=True):
+            states = [[*state, (i, v)] for state in states for v in grid]
+    else:
+        states = [[(i, v)] for (i, _), grid in zip(settable, grids, strict=True) for v in grid]
+    defaults = [(i, c["value"]) for i, c in settable]
+    problems: list[str] = []
+
+    def check(label: str) -> None:
+        found = chart.evaluate("(el) => window.__figureSweep.collisions(el)")
+        problems.extend(f"{where} [{label}]: {p}" for p in found)
+
+    def set_all(assignment: list[tuple[int, Any]]) -> None:
+        for i, v in assignment:
+            chart.evaluate("(el, [i, v]) => window.__figureSweep.set(el, i, v)", [i, v])
+
+    check("default")
+    for state in states:
+        set_all(state)
+        check(", ".join(f"{controls[i]['label']} = {v}" for i, v in state))
+        set_all(defaults)
+    for i, c in enumerate(controls):
+        if c["kind"] == "button":
+            for press in range(1, SWEEP_PRESSES + 1):
+                set_all([(i, None)])
+                check(f"{c['label']} pressed {press}x")
     return problems
 
 
@@ -161,6 +243,7 @@ def main() -> int:
     target.add_argument("--all", action="store_true", help="every built unit plus the site pages")
     parser.add_argument("--pages", nargs="*", help="page names within --unit (index, L01, project); default: all")
     parser.add_argument("--skip-labs", action="store_true", help="render checks only")
+    parser.add_argument("--skip-sweep", action="store_true", help="do not sweep the figures' control states")
     args = parser.parse_args()
     units = built_units() if args.all else [unit(args.unit)]
     owner = {p: u for u in units for p in u.pages() if not args.pages or p.stem in args.pages}
@@ -184,6 +267,8 @@ def main() -> int:
                             overflow = page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
                             if overflow > 1:
                                 found.append(f"horizontal scroll of {overflow} px at {width} px wide")
+                        if scheme == "light" and not args.skip_sweep:
+                            found += sweep_figures(page)
                         if scheme == "light" and name == "desktop" and not args.skip_labs:
                             found += run_labs(page, path)
                             if path.name == "project.html":

@@ -26,6 +26,7 @@ function maxSharpeDensity(el) {
         series: i,
         dash: i % 3,
       }));
+      const peak = Math.max(...layers.flatMap((l) => l.points.map((p) => p[1])));
       layers.push({ type: "rule", x: 1, label: "annualized Sharpe 1.0" });
       const tail = (n) => 1 - Math.pow(normCdf(1 / scale), n);
       plot(area, {
@@ -36,7 +37,8 @@ function maxSharpeDensity(el) {
           `year${s.years > 1 ? "s" : ""} of daily data. As N grows the density moves right and narrows; more data pulls every curve toward zero only like one over the square root of T. The expected best of 100 is ` +
           `${(scale * EXPECTED_MAX.get(100)).toFixed(2)} and it exceeds 1.0 with probability ${tail(100).toFixed(2)}.`,
         x: { label: "Best annualized Sharpe ratio", domain: [-1.5, right], format: ".1f" },
-        y: { label: "Probability density" },
+        // Headroom above the tallest curve keeps every curve clear of the rule's label at the top of the plot.
+        y: { label: "Probability density", domain: [0, 1.2 * peak] },
         layers,
       });
       return (

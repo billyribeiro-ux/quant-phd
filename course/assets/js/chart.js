@@ -80,7 +80,9 @@ function swatch(layer) {
       ? `<circle cx="14" cy="6" r="4" class="dot ${cls}${layer.hollow ? " hollow" : ""}"></circle>`
       : layer.type === "bars" || layer.type === "area"
         ? `<rect x="3" y="1" width="22" height="10" rx="2" class="${layer.type === "bars" ? "bar" : "area"} ${cls}"></rect>`
-        : `<line x1="1" x2="27" y1="6" y2="6" class="line ${cls}${layer.dash ? ` dash-${layer.dash}` : ""}"></line>`;
+        : layer.type === "rule"
+          ? `<g class="rule ${layer.tone ?? "muted"}"><line x1="1" x2="27" y1="6" y2="6"></line></g>`
+          : `<line x1="1" x2="27" y1="6" y2="6" class="line ${cls}${layer.dash ? ` dash-${layer.dash}` : ""}"></line>`;
   return `<svg width="28" height="12" aria-hidden="true" focusable="false">${body}</svg>`;
 }
 
@@ -110,8 +112,15 @@ function legend(parent, layers) {
  *   dots     {points: [[x, y]], series, name?, hollow?, r?}
  *   bars     {bins: [{x0, x1, y}], series, name?}
  *   segments {segments: [[x1, y1, x2, y2]], series, dash?}
- *   rule     {x? | y?, label?, labelAt?: "left" | x-value, below?, row?, tone?: "muted" | "strong"}
- *   text     {x, y, text, anchor?, dx?, dy?, tone?}
+ *   rule     {x? | y?, label?, labelAt?: "left" | x-value, below?, row?, side?: "left" | "right", tone?, name?}
+ *            A vertical rule's label goes at the top of the plot, in the first row (from `row`, default 0) and on
+ *            the first side (from `side`, default right) where it stays inside the plot, clear of every other
+ *            vertical rule and of the labels already placed; an automatic y domain gains headroom above the data
+ *            for the rows used (layoutRuleLabels). A rule with a name is listed in the legend instead: use that
+ *            for a horizontal rule a curve could cross in some state.
+ *   text     {x, y, text, anchor?, dx?, dy?, tone?, candidates?: [{dx, dy, anchor?}]}
+ *            With candidates, the text takes the first offset whose glyph box lies inside the plot and clear of
+ *            every line, segment, rule, dot and bar and of the texts placed before it (the first if none is).
  */
 export function plot(parent, spec) {
   const width = spec.width;
@@ -121,9 +130,10 @@ export function plot(parent, spec) {
   const xs = spec.layers.flatMap((l) => layerValues(l, "x"));
   const ys = spec.layers.flatMap((l) => layerValues(l, "y"));
   const x = scale(spec.x, [margin.left, width - margin.right], xs);
-  const y = scale(spec.y, [height - margin.bottom, margin.top], ys);
   const svg = svgFrame(parent, { width, height, title: spec.title, desc: spec.desc });
   const inner = { w: width - margin.left - margin.right, h: height - margin.top - margin.bottom };
+  const placed = layoutRuleLabels(svg, spec.layers, x, margin, width);
+  const y = scale(spec.y, [height - margin.bottom, margin.top], withHeadroom(spec.y, ys, inner.h, placed.band));
 
   const xTicks = tickCount(inner.w, spec.x);
   const yTicks = tickCount(inner.h, { ticks: spec.y.ticks ?? 6 });
@@ -151,7 +161,7 @@ export function plot(parent, spec) {
       .attr("y", height - 8)
       .attr("text-anchor", "middle")
       .text(spec.x.label),
-    inner.w + margin.left - 4,
+    centredRoom(margin.left + inner.w / 2, width),
   );
   fitLabel(
     svg
@@ -160,7 +170,7 @@ export function plot(parent, spec) {
       .attr("transform", `translate(14,${margin.top + inner.h / 2}) rotate(-90)`)
       .attr("text-anchor", "middle")
       .text(spec.y.label),
-    inner.h + margin.top + margin.bottom - 8,
+    centredRoom(margin.top + inner.h / 2, height),
   );
 
   const plotArea = svg.append("g").attr("class", "plot");
@@ -176,6 +186,7 @@ export function plot(parent, spec) {
     .attr("height", inner.h + 8);
   plotArea.attr("clip-path", `url(#${clip})`);
 
+  let obstacles = null;
   for (const layer of spec.layers) {
     const cls = seriesClass(layer.series ?? 0);
     if (layer.type === "line") {
@@ -245,12 +256,11 @@ export function plot(parent, spec) {
       if (layer.x !== undefined) {
         g.append("line").attr("x1", x(layer.x)).attr("x2", x(layer.x)).attr("y1", margin.top).attr("y2", height - margin.bottom);
         if (layer.label) {
-          // Anchor the label on whichever side of the rule has room for it.
-          const right = x(layer.x) + 5 + layer.label.length * 6.2 > width - margin.right;
+          const { row, side } = placed.at.get(layer);
           g.append("text")
-            .attr("x", x(layer.x) + (right ? -5 : 5))
-            .attr("y", margin.top + 11 + (layer.row ?? 0) * 14)
-            .attr("text-anchor", right ? "end" : "start")
+            .attr("x", x(layer.x) + (side === "left" ? -LABEL_GAP : LABEL_GAP))
+            .attr("y", margin.top + 11 + row * ROW_HEIGHT)
+            .attr("text-anchor", side === "left" ? "end" : "start")
             .text(layer.label);
         }
       } else {
@@ -265,16 +275,62 @@ export function plot(parent, spec) {
         }
       }
     } else if (layer.type === "text") {
-      svg
-        .append("text")
-        .attr("class", `note ${layer.tone ?? ""}`)
-        .attr("x", x(layer.x) + (layer.dx ?? 0))
-        .attr("y", y(layer.y) + (layer.dy ?? 0))
-        .attr("text-anchor", layer.anchor ?? "start")
-        .text(layer.text);
+      const node = svg.append("text").attr("class", `note ${layer.tone ?? ""}`).text(layer.text);
+      const options = layer.candidates ?? [{ dx: layer.dx ?? 0, dy: layer.dy ?? 0, anchor: layer.anchor }];
+      const length = node.node().getComputedTextLength?.() || layer.text.length * 6.2;
+      const boxOf = (o) => {
+        const left = x(layer.x) + o.dx - ((o.anchor ?? layer.anchor) === "middle" ? length / 2 : (o.anchor ?? layer.anchor) === "end" ? length : 0);
+        return { l: left, r: left + length, t: y(layer.y) + o.dy - 8.5, b: y(layer.y) + o.dy + 2.5 };
+      };
+      obstacles ??= markObstacles(spec.layers, x, y, margin, width, height);
+      const clear = (b) =>
+        b.l >= margin.left && b.r <= width - margin.right && b.t >= margin.top && b.b <= height - margin.bottom && !obstacles.some((o) => o(b));
+      const chosen = options.find((o) => clear(boxOf(o))) ?? options[0];
+      const box = boxOf(chosen);
+      obstacles.push((b) => b.l < box.r + 2 && b.r > box.l - 2 && b.t < box.b + 1 && b.b > box.t - 1);
+      node
+        .attr("x", x(layer.x) + chosen.dx)
+        .attr("y", y(layer.y) + chosen.dy)
+        .attr("text-anchor", chosen.anchor ?? layer.anchor ?? "start");
     }
   }
   return { svg, x, y, width, height, margin };
+}
+
+/**
+ * Tests `(box) => boolean` for whether a glyph box meets a plotted mark: each line or segment (sampled every pixel),
+ * each rule across the plot, and each dot and bar by its bounding box.
+ */
+function markObstacles(layers, x, y, margin, width, height) {
+  const tests = [];
+  const meetsPath = (pts) => (b) => {
+    for (let i = 1; i < pts.length; i += 1) {
+      const [x1, y1] = pts[i - 1];
+      const [x2, y2] = pts[i];
+      if (!(Number.isFinite(y1) && Number.isFinite(y2))) continue;
+      const n = Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1)));
+      for (let k = 0; k <= n; k += 1) {
+        const px = x1 + ((x2 - x1) * k) / n;
+        const py = y1 + ((y2 - y1) * k) / n;
+        if (px >= b.l && px <= b.r && py >= b.t && py <= b.b) return true;
+      }
+    }
+    return false;
+  };
+  const meetsBox = (m) => (b) => b.l < m.r && b.r > m.l && b.t < m.b && b.b > m.t;
+  for (const layer of layers) {
+    if (layer.type === "line") tests.push(meetsPath(layer.points.map((p) => [x(p[0]), y(p[1])])));
+    else if (layer.type === "segments") for (const sg of layer.segments) tests.push(meetsPath([[x(sg[0]), y(sg[1])], [x(sg[2]), y(sg[3])]]));
+    else if (layer.type === "rule" && layer.x !== undefined) tests.push(meetsPath([[x(layer.x), margin.top], [x(layer.x), height - margin.bottom]]));
+    else if (layer.type === "rule") tests.push(meetsPath([[margin.left, y(layer.y)], [width - margin.right, y(layer.y)]]));
+    else if (layer.type === "dots") {
+      const r = (layer.r ?? 3.5) + 1;
+      for (const [px, py] of layer.points) tests.push(meetsBox({ l: x(px) - r, r: x(px) + r, t: y(py) - r, b: y(py) + r }));
+    } else if (layer.type === "bars") {
+      for (const bin of layer.bins) tests.push(meetsBox({ l: x(bin.x0), r: x(bin.x1), t: Math.min(y(0), y(bin.y)), b: Math.max(y(0), y(bin.y)) }));
+    }
+  }
+  return tests;
 }
 
 /**
@@ -422,6 +478,66 @@ export function scatterChart(container, spec) {
       });
     },
   });
+}
+
+const LABEL_GAP = 5;
+const ROW_HEIGHT = 14;
+const MAX_ROWS = 4;
+
+/**
+ * Rows and sides for the labels of vertical rules (see plot). Measures each label as rendered, then takes the first
+ * row and side where the label lies inside the plot, at least 3 px from every other vertical rule, and at least 6 px
+ * from every label already in that row. Returns the placements and the height `band` of the label rows below the top
+ * of the plot (0 without labels).
+ */
+function layoutRuleLabels(svg, layers, x, margin, width) {
+  const rules = layers.filter((l) => l.type === "rule" && l.x !== undefined && l.label);
+  const lines = layers.filter((l) => l.type === "rule" && l.x !== undefined).map((l) => x(l.x));
+  const probe = svg.append("g").attr("class", "rule").append("text");
+  const at = new Map();
+  const rows = Array.from({ length: MAX_ROWS }, () => []);
+  let used = -1;
+  for (const rule of rules) {
+    probe.text(rule.label);
+    const node = probe.node();
+    const w = (typeof node.getComputedTextLength === "function" ? node.getComputedTextLength() : 0) || rule.label.length * 6.2;
+    const px = x(rule.x);
+    const sides = rule.side === "left" ? ["left", "right"] : ["right", "left"];
+    const boxOf = (side) => (side === "left" ? [px - LABEL_GAP - w, px - LABEL_GAP] : [px + LABEL_GAP, px + LABEL_GAP + w]);
+    const fits = ([l, r], row) =>
+      l >= margin.left + 2 &&
+      r <= width - margin.right - 2 &&
+      lines.every((v) => v === px || v < l - 3 || v > r + 3) &&
+      rows[row].every(([a, b]) => r < a - 6 || l > b + 6);
+    let choice = null;
+    for (let row = rule.row ?? 0; row < MAX_ROWS && !choice; row += 1) {
+      const side = sides.find((sd) => fits(boxOf(sd), row));
+      if (side) choice = { row, side };
+    }
+    // Nowhere clear: the first row, on the side with more room.
+    if (!choice) choice = { row: rule.row ?? 0, side: px + LABEL_GAP + w > width - margin.right ? "left" : "right" };
+    rows[choice.row].push(boxOf(choice.side));
+    at.set(rule, choice);
+    used = Math.max(used, choice.row);
+  }
+  probe.node().parentNode.remove();
+  return { at, band: used < 0 ? 0 : 11 + used * ROW_HEIGHT + 8 };
+}
+
+/**
+ * The values an automatic y domain is fitted to, extended so the data stay `band` pixels below the top of a plot
+ * `pixels` tall. An explicit domain is the caller's to choose and is left alone.
+ */
+function withHeadroom(axis, values, pixels, band) {
+  if (axis.domain || axis.log || !band || !values.length) return values;
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  return [...values, hi + ((hi - lo) * band) / Math.max(1, pixels - band)];
+}
+
+/** Width available to a label centred at `centre` on an axis of length `extent`, keeping 4px clear of each edge. */
+function centredRoom(centre, extent) {
+  return 2 * Math.min(centre, extent - centre) - 8;
 }
 
 /**

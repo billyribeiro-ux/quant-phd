@@ -311,9 +311,21 @@ Studios integrate every module listed in `requires`. A studio:
      simulations (`stats.rng(seed)`), rewrite the SVG `<desc>` and the readout
      for the current state, and start from a representative state (a median
      draw, or the lesson's own worked example), never a cherry-picked one.
+     Say "a median draw" only in the state a test checks it in, and make the
+     caption true in every state, not just the default.
    - **Numbers a figure shows** come from `stats.js` and `multitest.js`, whose
      tests (`tests/test_figure_kernels.py`) require the same answers as the
-     Python reference. A new kernel needs such a test before a figure uses it.
+     Python reference. A new kernel needs such a test before a figure uses it;
+     `test_every_kernel_a_figure_imports_is_tested` enforces this.
+   - **Labels stay legible in every state.** `tools/page_smoke.py` sweeps every
+     control of every figure at 360 px and 1280 px and fails if any text leaves
+     its SVG, overlaps another text, or is crossed by a line, segment, rule,
+     dot or bar. `plot()` places vertical-rule labels clear of other rules and
+     reserves headroom above an automatic y domain. A text layer can give
+     `candidates`, and the first clear one is used. A horizontal rule that a
+     curve crosses in some state gets a legend `name` instead of an in-plot
+     `label`. With an explicit y domain, leave headroom for the labels
+     yourself.
 5. Every figure must teach a mechanism, distribution, relationship or failure.
    Nothing decorative.
 6. **New data** goes under `DATA_REQUESTS` with the source URL, series ID,

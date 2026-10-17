@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import functools
 import importlib.util
+import itertools
 import json
 import math
+import re
 import shutil
 import subprocess
 import sys
@@ -298,10 +300,139 @@ def test_reality_check_and_spa_kernel_matches_lab_3() -> None:
     assert out["n"] == int(np.sum(centre != 0))
 
 
+PI0_CASES = [(800, 200, 0.05, 0.0877), (800, 200, 0.5, 0.0013), (500, 0, 0.3, 0.2)]
+
+
+def test_descriptive_helpers_match_python() -> None:
+    rng = np.random.default_rng(67)
+    xs = np.concatenate([rng.random(997), [0.0, 0.05, 0.5, 1.0, -0.2, 1.3]])  # bin edges and both clamps
+    rows = rng.standard_normal((40, 7))
+    idx = rng.integers(0, 40, size=40)
+    boot = rng.standard_normal(999)
+    out = node(
+        IMPORTS + "console.log(JSON.stringify({"
+        " hist: stats.histogram(INPUT.xs, 0, 1, 20),"
+        " lin: stats.linspace(-1.5, 2.5, 9),"
+        " logs: [[1, 500, 30], [1, 1000, 20], [3, 77, 7]].map(([a, b, d]) => stats.logIntegers(a, b, d)),"
+        " pdf: [-3, -0.5, 0, 1.2, 4].flatMap((x) => [1, 2, 100, 1000].map((n) => stats.maxNormalPdf(x, n))),"
+        " simpson: [stats.simpson(Math.sin, 0, Math.PI, 200), stats.simpson((x) => x ** 3 - 2 * x, -1, 3, 7)],"
+        " gamma: stats.EULER_MASCHERONI,"
+        " moments: (({ mean, sd }) => ({ mean: Array.from(mean), sd: Array.from(sd) }))(mt.columnMoments(INPUT.rows)),"
+        " boot: Array.from(mt.bootstrapColumnMeans(INPUT.rows, INPUT.idx)),"
+        " crit: [0.05, 0.1, 0.5, 0.999].map((a) => mt.upperCritical(INPUT.b, a)),"
+        " pi0: INPUT.pi0.map((a) => mt.storeyPi0Moments(...a)),"
+        " }));",
+        {"xs": xs.tolist(), "rows": rows.tolist(), "idx": idx.tolist(), "b": boot.tolist(), "pi0": PI0_CASES},
+    )
+    # histogram: bin i holds lo + i*w <= x < lo + (i+1)*w, the last bin also takes x = hi, and values outside
+    # [lo, hi] are clamped into the end bins (stats.js). Off the edges numpy.histogram must agree.
+    inside = xs[(xs >= 0) & (xs <= 1)]
+    counts = [b["count"] for b in out["hist"]]
+    expected = np.zeros(20, dtype=int)
+    for x in xs:
+        expected[min(19, max(0, math.floor(x / 0.05)))] += 1
+    assert counts == expected.tolist()
+    off_edge = inside[np.abs(inside * 20 - np.round(inside * 20)) > 1e-9]
+    by_numpy = np.histogram(off_edge, bins=20, range=(0.0, 1.0))[0]
+    by_kernel = np.zeros(20, dtype=int)
+    for x in off_edge:
+        by_kernel[min(19, math.floor(x / 0.05))] += 1
+    assert by_kernel.tolist() == by_numpy.tolist()
+    assert [b["x0"] for b in out["hist"]] == pytest.approx(np.linspace(0, 1, 21)[:-1].tolist(), abs=1e-15)
+    assert counts[0] >= 2 and counts[19] >= 2 and sum(counts) == xs.size, "both clamps and both edges counted"
+    assert out["lin"] == pytest.approx(np.linspace(-1.5, 2.5, 9).tolist(), abs=1e-15)
+    for (lo, hi, per), got in zip([(1, 500, 30), (1, 1000, 20), (3, 77, 7)], out["logs"], strict=True):
+        want, e = {lo, hi}, math.log10(lo)
+        while e <= math.log10(hi) + 1e-9:
+            want.add(math.floor(10**e + 0.5))
+            e += 1 / per
+        assert got == sorted(v for v in want if lo <= v <= hi)
+        assert got[0] == lo and got[-1] == hi and all(a < b for a, b in itertools.pairwise(got))
+    phi = NormalDist()
+    pdfs = iter(out["pdf"])
+    for x in (-3, -0.5, 0, 1.2, 4):
+        for n in (1, 2, 100, 1000):
+            assert next(pdfs) == pytest.approx(n * phi.pdf(x) * phi.cdf(x) ** (n - 1), rel=1e-12, abs=1e-300)
+    assert out["simpson"][0] == pytest.approx(2.0, abs=1e-8)
+    assert out["simpson"][1] == pytest.approx(3**4 / 4 - 3**2 - (1 / 4 - 1), rel=1e-12), "Simpson is exact on cubics"
+    assert out["gamma"] == pytest.approx(0.57721566490153286, rel=1e-16)
+    np.testing.assert_allclose(out["moments"]["mean"], rows.mean(0), rtol=1e-13, atol=1e-15)
+    np.testing.assert_allclose(out["moments"]["sd"], rows.std(0, ddof=1), rtol=1e-13)
+    np.testing.assert_allclose(out["boot"], rows[idx].mean(0), rtol=1e-13, atol=1e-15)
+    ordered = np.sort(boot)
+    for alpha, got in zip([0.05, 0.1, 0.5, 0.999], out["crit"], strict=True):
+        assert got == ordered[max(1, math.ceil((1 - alpha) * boot.size)) - 1], "the contract's upper critical value"
+    for (m0, m1, lam, tail), got in zip(PI0_CASES, out["pi0"], strict=True):
+        scale = (1 - lam) * (m0 + m1)
+        assert got["mean"] == pytest.approx((m0 * (1 - lam) + m1 * tail) / scale, rel=1e-14)
+        assert got["leak"] == pytest.approx(m1 * tail / scale, rel=1e-14, abs=1e-300)
+        assert got["sd"] == pytest.approx(math.sqrt(m0 * lam * (1 - lam) + m1 * tail * (1 - tail)) / scale, rel=1e-14)
+
+
+def test_pi0_moments_describe_the_figures_samples() -> None:
+    l03 = (S7 / "figures-L03.js").as_uri()
+    out = node(
+        f'import * as f3 from "{l03}";\n' + IMPORTS + "const lams = [0.05, 0.5];\n"
+        "console.log(JSON.stringify(lams.map((l) => ({m: f3.pi0Moments(l),"
+        " est: Array.from({length: 400}, (_, i) => mt.storeyPi0(f3.pvalueSample(i + 1), l))}))));",
+        {},
+    )
+    for lam, row in zip([0.05, 0.5], out, strict=True):
+        est = np.asarray(row["est"])
+        assert abs(est.mean() - row["m"]["mean"]) < 4 * row["m"]["sd"] / math.sqrt(est.size), lam
+        assert est.std(ddof=1) == pytest.approx(row["m"]["sd"], rel=0.15), lam
+    assert row["m"]["leak"] < row["m"]["sd"] / 50, "at lambda = 0.5 the leak is far below the noise (L03 caption)"
+    first = out[0]
+    assert first["m"]["leak"] > 2 * first["m"]["sd"], "at lambda = 0.05 the leak is more than twice the noise"
+    assert np.mean(np.asarray(first["est"]) > 0.8) >= 0.95, "at lambda = 0.05 almost every estimate exceeds pi0"
+
+
+def test_reality_check_and_spa_kernel_uses_only_the_first_k_strategies() -> None:
+    rng = np.random.default_rng(71)
+    t_obs, big_k = 200, 25
+    d = rng.standard_normal((t_obs, big_k)) - np.where(np.arange(big_k) >= 8, 0.3, 0.0)
+    d[:, 20] += 1.0  # a strong strategy outside the subset must not affect the statistics of the first k
+    boot = d[np.random.default_rng(73).integers(0, t_obs, size=(300, t_obs))].mean(axis=1)
+    means, sd = d.mean(0), d.std(0, ddof=1)
+    out = node(
+        IMPORTS + "console.log(JSON.stringify([12, 25].map((k) => {"
+        " const r = mt.realityCheckSpa(INPUT.m, INPUT.s, INPUT.b, INPUT.t, k);"
+        " return {v: r.v, t: r.tObs, rc: r.pRc, spa: r.pSpa, n: r.recentred}; })));",
+        {"m": means.tolist(), "s": sd.tolist(), "b": boot.tolist(), "t": t_obs},
+    )
+    for k, got in zip([12, 25], out, strict=True):
+        m, s_, b = means[:k], sd[:k], boot[:, :k]
+        v = np.sqrt(t_obs) * m.max()
+        threshold = s_ * np.sqrt(2.0 * np.log(np.log(t_obs)) / t_obs)
+        centre = np.where(m <= -threshold, m, 0.0)
+        t_max = max(float((np.sqrt(t_obs) * m / s_).max()), 0.0)
+        t_star = np.maximum((np.sqrt(t_obs) * (b - m + centre) / s_).max(axis=1), 0.0)
+        assert got["v"] == pytest.approx(float(v), rel=1e-12) and got["t"] == pytest.approx(t_max, rel=1e-12), k
+        assert got["rc"] == pytest.approx(float(np.mean((np.sqrt(t_obs) * (b - m)).max(axis=1) >= v)), abs=1e-15)
+        assert got["spa"] == pytest.approx(float(np.mean(t_star >= t_max)), abs=1e-15), k
+        assert got["n"] == int(np.sum(centre != 0)), k
+    assert out[0]["v"] < out[1]["v"], "the subset excludes the strong strategy"
+
+
+def test_every_kernel_a_figure_imports_is_tested() -> None:
+    """BUILDER_RULES 6.4: a figure may use a kernel only once a test here exercises it."""
+    source = Path(__file__).read_text(encoding="utf-8")
+    alias = {"stats": "stats", "multitest": "mt"}
+    missing = []
+    for figure in sorted((ROOT / "course" / "modules").rglob("figures-*.js")):
+        text = figure.read_text(encoding="utf-8")
+        for names, module in re.findall(r"import \{([^}]*)\} from \"[./]*assets/js/(stats|multitest)\.js\"", text):
+            for name in filter(None, re.split(r"[,\s]+", names)):
+                if not re.search(rf"\b{alias[module]}\.{name}\b", source):
+                    missing.append(f"{figure.name}: {module}.{name}")
+    assert not missing, f"figure kernels with no test: {missing}"
+
+
 def ranks_within(values: list[float], index: int, tolerance: float) -> bool:
-    """Whether values[index] lies within `tolerance` ranks of the median of `values`."""
-    rank = sum(v < values[index] for v in values)
-    return abs(rank - (len(values) - 1) / 2) <= tolerance
+    """Whether values[index] lies within `tolerance` ranks of the median of `values`, ties counted as equal ranks."""
+    ordered = sorted(values)
+    middle = (len(values) - 1) / 2
+    return ordered[math.floor(middle - tolerance)] <= values[index] <= ordered[math.ceil(middle + tolerance)]
 
 
 def test_simulated_figure_defaults_are_median_draws() -> None:
@@ -314,25 +445,30 @@ def test_simulated_figure_defaults_are_median_draws() -> None:
         + "const seeds = (a, b) => Array.from({length: b - a + 1}, (_, i) => a + i);\n"
         "const pi0 = seeds(1, 200).map((s) => mt.storeyPi0(f3.pvalueSample(s), 0.5));\n"
         "const blocks = seeds(1, 200).map((s) => f4.blockDraw(s, 4).blocks.length);\n"
-        "const peaks = seeds(1, 200).map((s) => f4.varianceCurve(f4.ar1Autocovariance(s, 0.5), 0.5)"
-        ".reduce((a, p) => (p[1] > a[1] ? p : a)));\n"
+        "const peaks = seeds(1, 200).map((s) => { const c = f4.varianceCurve(f4.ar1Autocovariance(s, 0.5), 0.5);"
+        " return [...c.reduce((a, p) => (p[1] > a[1] ? p : a)), c[0][1], c[c.length - 1][1]]; });\n"
         "const rc = seeds(2000, 2029).map((s) => { const u = f4.universe(s);"
         " const a = mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, 10);"
         " return [a.v, a.pRc, mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, 110).pRc]; });\n"
         "const stepm = seeds(0, 299).map((s) => { const r = f5.study(s).result;"
         " return [r.steps[0].rejected.length, r.mask.filter(Boolean).length,"
         " r.steps.length > 1 ? r.steps[0].critical - r.steps[1].critical : null]; });\n"
-        "const pbo = seeds(1, 200).map((s) => mt.cscv(f8.simulate(s, false), 8).pbo);\n"
+        "const pbo = [false, true].map((e) => [...seeds(1, 200), f8.DEFAULT_CSCV_SEED]"
+        ".map((s) => mt.cscv(f8.simulate(s, e), 8).pbo));\n"
         "console.log(JSON.stringify({pi0, blocks, peaks, rc, stepm, pbo, d: [f3.PVALUE_DEFAULT_SEED,"
-        " f4.DEFAULT_BLOCK_SEED, f4.DEFAULT_AR_SEED, f4.DEFAULT_RC_SEED, f5.DEFAULT_SEED, f8.DEFAULT_CSCV_SEED]}));",
+        " f4.DEFAULT_BLOCK_SEED, f4.DEFAULT_AR_SEED, f4.DEFAULT_RC_SEED, f5.DEFAULT_SEED]}));",
         {},
     )
-    d3, dblock, dar, drc, d5, d8 = out["d"]
+    d3, dblock, dar, drc, d5 = out["d"]
     assert out["pi0"][d3 - 1] == sorted(out["pi0"])[99], "L03 histogram: the default estimate is the median"
     assert out["blocks"][dblock - 1] == sorted(out["blocks"])[99], "L04 blocks: the default block count is the median"
-    peak_b = [p[0] for p in out["peaks"]]
-    peak_h = [p[1] for p in out["peaks"]]
-    assert ranks_within(peak_b, dar - 1, 3) and ranks_within(peak_h, dar - 1, 3), "L04 variance: a median peak"
+    for j, what in enumerate(("peak block length", "peak height", "ratio at b = 1", "ratio at b = 500")):
+        column = [p[j] for p in out["peaks"]]
+        assert ranks_within(column, dar - 1, 16.5), f"L04 variance: the {what} is between the 41st and 59th percentiles"
+    columns = [[p[j] for p in out["peaks"]] for j in range(4)]
+    distance = [[next(t + 0.5 for t in range(100) if ranks_within(c, i, t + 0.5)) for c in columns] for i in range(200)]
+    spread = [max(d) for d in distance]
+    assert min(spread) == spread[dar - 1], "L04 variance: no seed in 1-200 is closer to the median on all four"
     for j in range(3):
         assert ranks_within([r[j] for r in out["rc"]], drc - 2000, 3), f"L04 RC/SPA statistic {j} near its median"
     single, total = ([s[j] for s in out["stepm"]] for j in (0, 1))
@@ -341,4 +477,6 @@ def test_simulated_figure_defaults_are_median_draws() -> None:
     middle = sorted(falls)[len(falls) // 2 - 1 : len(falls) // 2 + 1]
     assert out["stepm"][d5][2] == pytest.approx(sum(middle) / 2, abs=5e-4), "L05 StepM: the median fall of c"
     assert sum(t > s for s, t in zip(single, total, strict=True)) == 69, "L05 StepM: 23% (69 of 300) step down"
-    assert ranks_within(out["pbo"], d8 - 1, 3), "L08 CSCV: a median history (PBO with no edge)"
+    for edge, pbo in zip((False, True), out["pbo"], strict=True):
+        middle = sorted(pbo[:200])[99:101]
+        assert pbo[200] in middle, f"L08 CSCV: a median history (PBO, edge={edge}) among seeds 1-200"

@@ -181,6 +181,16 @@ export function cscv(matrix, S) {
 }
 
 /** Column means and sample standard deviations (divisor T − 1) of T rows of K values. */
+/** Mean of every column over the rows that `indices` selects: one bootstrap resample of whole periods. */
+export function bootstrapColumnMeans(rows, indices) {
+  const sums = new Float64Array(rows[0].length);
+  for (const i of indices) {
+    const row = rows[i];
+    for (let k = 0; k < sums.length; k += 1) sums[k] += row[k];
+  }
+  return sums.map((v) => v / indices.length);
+}
+
 export function columnMoments(rows) {
   const T = rows.length;
   const K = rows[0].length;
@@ -235,6 +245,20 @@ export function correlation(xs, ys) {
 /** Storey's estimate of the share of true nulls: #{p > λ} / ((1 − λ) m) (L03 Remark 6.1). */
 export function storeyPi0(pvalues, lambda) {
   return pvalues.filter((p) => p > lambda).length / ((1 - lambda) * pvalues.length);
+}
+
+/**
+ * Mean and standard deviation of storeyPi0 when m0 null p-values are uniform and each of m1 effects exceeds λ
+ * independently with probability `effectTail`. The mean is π0 + leak, the true share of nulls plus
+ * leak = m1 · effectTail / ((1 − λ) m) from the effects that land past λ (L03 Remark 6.1).
+ */
+export function storeyPi0Moments(m0, m1, lambda, effectTail) {
+  const scale = (1 - lambda) * (m0 + m1);
+  return {
+    mean: (m0 * (1 - lambda) + m1 * effectTail) / scale,
+    leak: (m1 * effectTail) / scale,
+    sd: Math.sqrt(m0 * (1 - lambda) * lambda + m1 * effectTail * (1 - effectTail)) / scale,
+  };
 }
 
 /** Circular sample autocovariances ĉ(0), …, ĉ(n − 1) of x (L04 Theorem 3.3). */

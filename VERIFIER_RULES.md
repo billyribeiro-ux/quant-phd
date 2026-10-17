@@ -147,7 +147,10 @@
 - **Interactive figures:** move every control across its range. The readout,
   the `<desc>` and the caption stay true in every state, the default state is
   representative, and every number shown agrees with the lesson (recompute
-  at least the default state yourself).
+  at least the default state yourself). `tools/page_smoke.py` already fails on
+  text that leaves its SVG, overlaps other text, or is crossed by a mark in
+  any swept state. Look at the figures anyway, for clutter or ambiguity the
+  geometry check cannot see.
 
 ### 2.9 Structure and prose: one row per template section, plus one per banned-phrase hit
 - Hub, lessons and project page are complete, in the order of BUILDER_RULES

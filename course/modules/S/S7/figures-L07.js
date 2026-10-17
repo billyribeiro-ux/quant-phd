@@ -36,7 +36,7 @@ function dsrExplorer(el) {
       if (s.kurt < 1 + s.skew * s.skew) {
         const note = document.createElement("p");
         note.className = "figure-note";
-        note.textContent = `No distribution has kurtosis below 1 + skewness² = ${(1 + s.skew * s.skew).toFixed(2)} (Problem P1); raise the kurtosis or reduce the skewness.`;
+        note.textContent = `No distribution has kurtosis below 1 + skewness² = ${(1 + s.skew * s.skew).toFixed(2)} (Problem P1); raise the kurtosis or move the skewness toward zero.`;
         area.append(note);
         return "";
       }
@@ -63,8 +63,9 @@ function dsrExplorer(el) {
           { type: "area", name: `DSR = ${dsr.toFixed(3)} (area left of the estimate)`, points: shade(sr0), series: 1 },
           { type: "line", name: "benchmark 0 (PSR)", points: density(0), series: 0, dash: 1 },
           { type: "line", name: `benchmark SR0 = ${sr0.toFixed(4)} (DSR)`, points: density(sr0), series: 1 },
-          { type: "rule", x: s.sr, label: `estimate ${s.sr.toFixed(3)}`, tone: "strong" },
-          { type: "rule", x: sr0, label: "SR0", row: 1 },
+          // Named in the legend: the estimate and SR0 can be a few pixels apart near the edge of the plot.
+          { type: "rule", x: s.sr, name: `estimated Sharpe ratio ${s.sr.toFixed(3)}`, tone: "strong" },
+          { type: "rule", x: sr0, name: "SR0" },
         ],
       });
       return (

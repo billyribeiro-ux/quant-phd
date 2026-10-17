@@ -1,8 +1,8 @@
 // Numerical building blocks for live figures: the standard normal distribution,
 // a seeded pseudo-random generator, the expected maximum of independent normals,
 // and small descriptive helpers. Pure functions with no DOM access, so the same
-// code runs in the browser and under Node's test runner (tests/js/stats.test.mjs,
-// which checks every function against Python's standard library).
+// code runs in the browser and under Node: tests/test_figure_kernels.py runs each
+// function a figure uses on fixed inputs and compares it with Python.
 
 export const EULER_MASCHERONI = 0.5772156649015329;
 const SQRT_2PI = Math.sqrt(2 * Math.PI);

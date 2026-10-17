@@ -2,8 +2,8 @@
 // p-values of Example 2.2, and the p-value histogram behind the π0 estimate of Remark 6.1.
 
 import { drawAll, mountFigure, plot } from "../../../assets/js/chart.js";
-import { benjaminiHochberg, benjaminiYekutieli, bonferroni, holm, storeyPi0 } from "../../../assets/js/multitest.js";
-import { histogram, normSf, rng } from "../../../assets/js/stats.js";
+import { benjaminiHochberg, benjaminiYekutieli, bonferroni, holm, storeyPi0, storeyPi0Moments } from "../../../assets/js/multitest.js";
+import { histogram, normCdf, normPpf, normSf, rng } from "../../../assets/js/stats.js";
 
 // Example 2.2: ten p-values, already sorted.
 const EXAMPLE = [0.001, 0.008, 0.012, 0.021, 0.024, 0.046, 0.06, 0.074, 0.205, 0.212];
@@ -77,9 +77,14 @@ export function pvalueSample(seed) {
   return Array.from({ length: M }, (_, i) => (i < M0 ? g.uniform() : normSf(EFFECT + g.normal())));
 }
 
-// The default, seed 22, is a median draw: its estimate at λ = 0.5 equals the median over seeds 1–200
-// (tests/test_figure_kernels.py checks this).
+// The default, seed 22, is a median draw at λ = 0.5: its estimate there equals the median over seeds 1–200
+// (tests/test_figure_kernels.py checks this). At other λ it is just one sample.
 export const PVALUE_DEFAULT_SEED = 22;
+
+/** Mean, leak and sd of the estimate π0(λ) for this design: an effect's p-value exceeds λ with probability Φ(Φ⁻¹(1 − λ) − EFFECT). */
+export function pi0Moments(lambda) {
+  return storeyPi0Moments(M0, M - M0, lambda, normCdf(normPpf(1 - lambda) - EFFECT));
+}
 
 function pvalueHistogram(el) {
   let seed = PVALUE_DEFAULT_SEED;
@@ -102,25 +107,31 @@ function pvalueHistogram(el) {
       const density = counts.map((b) => ({ x0: b.x0, x1: b.x1, y: b.count / (M / bins) }));
       const above = p.filter((v) => v > s.lambda).length;
       const pi0hat = storeyPi0(p, s.lambda);
+      const moments = pi0Moments(s.lambda);
+      const leakDominates = moments.leak > moments.sd;
       plot(area, {
         width,
         title: "Histogram of a thousand p-values, eight hundred of them from true nulls",
         desc:
           `A SIMULATED histogram of 1,000 one-sided p-values: 800 true nulls, uniform on (0, 1), and 200 effects of mean ${EFFECT}, ` +
-          `which pile up near zero. To the right of λ = ${s.lambda.toFixed(2)} the bars scatter around a flat floor at the true share of nulls, 0.8; ` +
-          `the estimate of π0 at λ, ${pi0hat.toFixed(3)}, is the average height of that floor.`,
+          `which pile up near zero. To the right of λ = ${s.lambda.toFixed(2)} the null p-values form a flat floor at the true share of nulls, 0.8, ` +
+          `and the effects that land past λ add ${moments.leak.toFixed(4)} to it on average, ${leakDominates ? "more" : "less"} than the sampling noise (sd ${moments.sd.toFixed(4)}); ` +
+          `the estimate of π0 at λ, ${pi0hat.toFixed(3)}, is the average height of the bars to the right of λ.`,
         x: { label: "p-value", domain: [0, 1], format: ".1f" },
         y: { label: "Density (1 = uniform)", domain: [0, Math.max(4, Math.ceil(Math.max(...density.map((b) => b.y))))], format: ".1f" },
         layers: [
           { type: "bars", name: "p-values (density)", bins: density, series: 4 },
-          { type: "rule", y: M0 / M, label: "true π0 = 0.8", tone: "strong", labelAt: "left" },
           { type: "segments", name: "estimated π0(λ) = #{p > λ} / ((1 − λ) m)", segments: [[s.lambda, pi0hat, 1, pi0hat]], series: 1, dash: 1 },
+          // Named in the legend: the bars scatter around this line, so any label on it would sit on them.
+          { type: "rule", y: M0 / M, name: "true π0 = 0.8", tone: "strong" },
           { type: "rule", x: s.lambda, label: `λ = ${s.lambda.toFixed(2)}` },
         ],
       });
       return (
-        `Sample ${seed}${seed === PVALUE_DEFAULT_SEED ? " (a median draw)" : ""}: ${above} of ${M} p-values exceed λ = ${s.lambda.toFixed(2)}, ` +
-        `so the estimate is π0(λ) = ${above} / (${(1 - s.lambda).toFixed(2)} × ${M}) = ${pi0hat.toFixed(3)}, against the true π0 = 0.800.`
+        `Sample ${seed}${seed === PVALUE_DEFAULT_SEED && Math.abs(s.lambda - 0.5) < 1e-9 ? " (a median draw at λ = 0.5)" : ""}: ${above} of ${M} p-values exceed λ = ${s.lambda.toFixed(2)}, ` +
+        `so the estimate is π0(λ) = ${above} / (${(1 - s.lambda).toFixed(2)} × ${M}) = ${pi0hat.toFixed(3)}, against the true π0 = 0.800. ` +
+        `At this λ the effects that land past it raise the estimate by ${moments.leak.toFixed(4)} on average, ` +
+        `${leakDominates ? "more than" : "less than"} the sampling noise (sd ${moments.sd.toFixed(4)}).`
       );
     },
   });

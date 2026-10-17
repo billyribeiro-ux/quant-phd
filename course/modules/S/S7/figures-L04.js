@@ -2,13 +2,16 @@
 // (Definition 3.1), the exact bootstrap variance of the mean (Theorem 3.3) against the block
 // length for a simulated AR(1) sample (Remark 3.4), and the Reality Check and SPA-style null
 // distributions as useless strategies join the universe (Section 6, Lab 3's design at a smaller scale).
-// Every number comes from the tested kernels in multitest.js and stats.js. Each default is a median
-// draw; tests/test_figure_kernels.py checks every DEFAULT_* claim below.
+// Every statistic comes from a kernel in multitest.js or stats.js that tests/test_figure_kernels.py compares
+// with Python; this file only simulates data and lays out the results. The same test checks every DEFAULT_*
+// claim below.
 
 import { drawAll, mountFigure, plot, svgFrame } from "../../../assets/js/chart.js";
 import {
+  bootstrapColumnMeans,
   bootstrapVarianceOfMean,
   circularAutocovariance,
+  columnMoments,
   realityCheckSpa,
   stationaryBootstrap,
 } from "../../../assets/js/multitest.js";
@@ -89,8 +92,8 @@ function bootstrapBlocks(el) {
       }
       const list = blocks.map((k) => `${k.from}→${(k.from + k.length - 1) % n}`).join(", ");
       return (
-        `Resample ${seed}${seed === DEFAULT_BLOCK_SEED && b === 4 ? " (a median draw at b = 4)" : ""}, b = ${b}: ${blocks.length} block${blocks.length === 1 ? "" : "s"}, ` +
-        `mean length ${(n / blocks.length).toFixed(1)} (blocks cut off by the end of the sample are shorter than b): ${list}.`
+        `Resample ${seed}${seed === DEFAULT_BLOCK_SEED && b === 4 ? " (a median draw at b = 4)" : ""}, b = ${b}: ${blocks.length} block${blocks.length === 1 ? "" : "s"} ` +
+        `(expected 1 + ${n - 1}/${b} = ${+(1 + (n - 1) / b).toFixed(2)}), mean length ${(n / blocks.length).toFixed(1)}: ${list}.`
       );
     },
   });
@@ -99,9 +102,10 @@ function bootstrapBlocks(el) {
 // ---------------------------------------------------------------- the bootstrap variance against block length
 
 const AR_N = 500;
-// Seed 161 is a median draw at φ = 0.5: the block length and the height of its peak are both within three ranks
-// of the medians over seeds 1–200.
-export const DEFAULT_AR_SEED = 161;
+// Seed 186 is a typical draw at ϕ = 0.5: each number the readout prints (the ratio at b = 1, the height and block
+// length of the peak, the ratio at b = AR_N) is within 17 ranks of its median over seeds 1–200, so between the
+// 41st and 59th percentiles; no seed in 1–200 is closer on all four. At other ϕ it is just one sample.
+export const DEFAULT_AR_SEED = 186;
 
 /** Circular autocovariances of one SIMULATED stationary AR(1) sample of AR_N observations, unit innovations. */
 export function ar1Autocovariance(seed, phi) {
@@ -123,7 +127,7 @@ function bootstrapVariancePlot(el) {
   let cache = null;
   mountFigure(el, {
     controls: [
-      { type: "range", key: "phi", label: "AR(1) coefficient φ", min: 0, max: 0.9, step: 0.1, value: 0.5, format: (v) => v.toFixed(1) },
+      { type: "range", key: "phi", label: "AR(1) coefficient ϕ", min: 0, max: 0.9, step: 0.1, value: 0.5, format: (v) => v.toFixed(1) },
       { type: "button", label: "Draw a new sample", onClick: () => ((seed += 1), (cache = null)) },
     ],
     draw(area, s, width) {
@@ -137,7 +141,7 @@ function bootstrapVariancePlot(el) {
         width,
         title: "Stationary-bootstrap standard error of the mean against the block length",
         desc:
-          `For one SIMULATED AR(1) sample of ${AR_N} observations with φ = ${s.phi.toFixed(1)}, the exact bootstrap standard error of the mean from formula (2), ` +
+          `For one SIMULATED AR(1) sample of ${AR_N} observations with ϕ = ${s.phi.toFixed(1)}, the exact bootstrap standard error of the mean from formula (2), ` +
           `as a fraction of the true long-run standard error, against the mean block length on a log scale. It is ${first.toFixed(2)} at b = 1 (the iid bootstrap), ` +
           `peaks at ${best[1].toFixed(2)} near b = ${best[0]}, and is ${last.toFixed(2)} at b = ${AR_N}.`,
         x: { label: "Mean block length b (log scale)", log: true, domain: [1, AR_N], format: "~s" },
@@ -145,11 +149,12 @@ function bootstrapVariancePlot(el) {
         layers: [
           { type: "line", name: "exact bootstrap s.e., formula (2)", points, series: 0 },
           { type: "rule", y: 1, label: "true s.e.", tone: "strong" },
-          { type: "rule", y: iidTrue, label: "iid level √((1−φ)/(1+φ))", labelAt: "left", below: true },
+          // Named in the legend: the curve starts at this level at b = 1, so a label on the line would sit on it.
+          { type: "rule", y: iidTrue, name: "iid level √((1−ϕ)/(1+ϕ))" },
         ],
       });
       return (
-        `φ = ${s.phi.toFixed(1)}, sample ${seed}${seed === DEFAULT_AR_SEED ? " (a median draw)" : ""}: the bootstrap gives ${(100 * first).toFixed(0)}% of the true ` +
+        `ϕ = ${s.phi.toFixed(1)}, sample ${seed}${seed === DEFAULT_AR_SEED && Math.abs(s.phi - 0.5) < 1e-9 ? " (a typical draw at ϕ = 0.5)" : ""}: the bootstrap gives ${(100 * first).toFixed(0)}% of the true ` +
         `standard error at b = 1, ${(100 * best[1]).toFixed(0)}% at its best (b ≈ ${best[0]}) and ${(100 * last).toFixed(0)}% at b = ${AR_N}.`
       );
     },
@@ -171,26 +176,9 @@ export function universe(seed) {
   const d = Array.from({ length: RC_T }, () =>
     Float64Array.from({ length: RC_K }, (_, k) => g.normal() + (k === 0 ? 3 / Math.sqrt(RC_T) : k >= 10 ? -0.25 : 0)),
   );
-  const means = new Float64Array(RC_K);
-  const sds = new Float64Array(RC_K);
-  for (let k = 0; k < RC_K; k += 1) {
-    let s = 0;
-    for (let t = 0; t < RC_T; t += 1) s += d[t][k];
-    means[k] = s / RC_T;
-    let ss = 0;
-    for (let t = 0; t < RC_T; t += 1) ss += (d[t][k] - means[k]) ** 2;
-    sds[k] = Math.sqrt(ss / (RC_T - 1));
-  }
+  const { mean: means, sd: sds } = columnMoments(d);
   // The same B resamples for every universe size: bootstrap means of all RC_K columns.
-  const bootMeans = Array.from({ length: RC_B }, () => {
-    const { indices } = stationaryBootstrap(RC_T, 10, g);
-    const sums = new Float64Array(RC_K);
-    for (const i of indices) {
-      const r = d[i];
-      for (let k = 0; k < RC_K; k += 1) sums[k] += r[k];
-    }
-    return sums.map((v) => v / RC_T);
-  });
+  const bootMeans = Array.from({ length: RC_B }, () => bootstrapColumnMeans(d, stationaryBootstrap(RC_T, 10, g).indices));
   return { means, sds, bootMeans };
 }
 
@@ -211,15 +199,22 @@ function realityCheckVsSpa(el) {
         width,
         title: "Null distributions of the Reality Check and the SPA-style test as poor strategies are added",
         desc:
-          `SIMULATED universe of ten strategies, one with a true edge, plus ${s.poor} poor strategies. The Reality Check's p-value goes from ` +
-          `${base.pRc.toFixed(3)} with no poor strategies to ${now.pRc.toFixed(3)}, because every poor strategy is recentred at zero and competes for the maximum. ` +
-          `The SPA-style p-value ${spaMoved ? `moves from ${base.pSpa.toFixed(3)} to ${now.pSpa.toFixed(3)}, because ${s.poor - now.recentred + base.recentred} poor strateg${s.poor - now.recentred + base.recentred === 1 ? "y escapes" : "ies escape"} the recentring threshold` : `stays at ${now.pSpa.toFixed(3)}`}.`,
+          `SIMULATED universe of ten strategies, one with a true edge, plus ${s.poor} poor strategies. Each test reads its own observed statistic against its own null: ` +
+          `the Reality Check's maximum √T·d̄ is ${now.v.toFixed(2)}, and the SPA-style maximum, studentized by each strategy's standard deviation, is ${now.tObs.toFixed(2)}. ` +
+          (s.poor === 0
+            ? `With no poor strategies the Reality Check's p-value is ${now.pRc.toFixed(3)} and the SPA-style p-value ${now.pSpa.toFixed(3)}; they differ because the SPA-style statistic is studentized` +
+              `${now.recentred ? ` and keeps ${now.recentred} strateg${now.recentred === 1 ? "y" : "ies"} below its threshold at ${now.recentred === 1 ? "its" : "their"} own mean${now.recentred === 1 ? "" : "s"}` : ""}. ` +
+              `Adding poor strategies raises the Reality Check's p-value, because each is recentred at zero and competes for the maximum.`
+            : `The Reality Check's p-value goes from ${base.pRc.toFixed(3)} with no poor strategies to ${now.pRc.toFixed(3)}, because every poor strategy is recentred at zero and competes for the maximum. ` +
+              `The SPA-style p-value ${spaMoved ? `moves from ${base.pSpa.toFixed(3)} to ${now.pSpa.toFixed(3)}, because ${s.poor - now.recentred + base.recentred} poor strateg${s.poor - now.recentred + base.recentred === 1 ? "y escapes" : "ies escape"} the recentring threshold` : `stays at ${now.pSpa.toFixed(3)}`}.`),
         x: { label: "Bootstrap maximum statistic", domain: [-0.5, 6], format: ".0f" },
         y: { label: "Share of resamples", format: ".2f" },
         layers: [
           { type: "line", name: "Reality Check (all recentred at 0)", points: asLine(now.rc), series: 1 },
           { type: "line", name: "SPA-style (poor strategies keep their mean)", points: asLine(now.spa), series: 0, dash: 1 },
-          { type: "rule", x: now.v, label: `observed ${now.v.toFixed(2)}`, tone: "strong" },
+          // Named in the legend: the two observed statistics are often a few pixels apart.
+          { type: "rule", x: now.v, name: `Reality Check observed V = ${now.v.toFixed(2)}`, tone: "strong" },
+          { type: "rule", x: now.tObs, name: `SPA-style observed t = ${now.tObs.toFixed(2)}` },
         ],
       });
       return (

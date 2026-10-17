@@ -76,7 +76,24 @@ function holmStaircase(el) {
           { type: "line", name: "Bonferroni α/m", points: [[0.4, pct(alpha / m)], [m + 0.6, pct(alpha / m)]], series: 5, dash: 2 },
           { type: "dots", name: "Rejected by Holm", points: sorted.filter((d) => d.rejected).map((d) => [d.rank, pct(d.p)]), series: 0, r: 4.6 },
           { type: "dots", name: "Not rejected", points: sorted.filter((d) => !d.rejected).map((d) => [d.rank, pct(d.p)]), series: 5, hollow: true, r: 4.6 },
-          ...sorted.map((d) => ({ type: "text", x: d.rank, y: pct(d.p), dy: -9, anchor: "middle", text: `#${d.test}` })),
+          ...sorted.map((d) => ({
+            type: "text",
+            x: d.rank,
+            y: pct(d.p),
+            anchor: "middle",
+            text: `#${d.test}`,
+            // Above the dot unless a threshold runs through the label there; then below, diagonally above, or beside it.
+            candidates: [
+              { dx: 0, dy: -9 },
+              { dx: 0, dy: 18 },
+              { dx: 7, dy: -6, anchor: "start" },
+              { dx: -7, dy: -6, anchor: "end" },
+              { dx: 9, dy: 4, anchor: "start" },
+              { dx: -9, dy: 4, anchor: "end" },
+              { dx: 7, dy: 14, anchor: "start" },
+              { dx: -7, dy: 14, anchor: "end" },
+            ],
+          })),
         ],
       });
       // Close-up of step five, where the decision turns on the third significant digit of test 6.
@@ -124,10 +141,10 @@ function powerFamily(el) {
         layers: [
           { type: "line", name: `effect ${s.mu.toFixed(1)}`, points: ms.map((m) => [m, power(m, s.mu)]), series: 0 },
           { type: "dots", points: marks.map((m) => [m, power(m, s.mu)]), series: 0, r: 4 },
-          ...marks.map((m) => ({ type: "text", x: m, y: power(m, s.mu), dx: 6, dy: -6, text: power(m, s.mu).toFixed(3) })),
-          { type: "rule", y: 0.5, label: "coin flip" },
+          // Named in the legend, and the four powers are in the readout: the curve crosses one half at a different
+          // family size for every effect, so no fixed in-plot label stays clear of it.
+          { type: "rule", y: 0.5, name: "coin flip (power 0.5)" },
         ],
-        legend: false,
       });
       return `Critical values ${marks.map((m) => critical(m).toFixed(3)).join(", ")} for m = 1, 10, 100, 1000; power ${marks.map((m) => power(m, s.mu).toFixed(3)).join(", ")}.`;
     },

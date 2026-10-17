@@ -52,9 +52,10 @@ function blockStrip(area, width, split) {
   multilineText(svg, note, { x: left, y: 54, chars, lineHeight: 13, cls: "small" });
 }
 
-// Seed 9 is a median history: with no edge its PBO is within three ranks of the median over seeds 1–200 (the
-// smallest such seed; tests/test_figure_kernels.py checks this). One history can land far from E[PBO] = 1/2 (Lab 2).
-export const DEFAULT_CSCV_SEED = 9;
+// Seed 501 is a median history in both states: with and without the edge its PBO is one of the two middle values
+// over seeds 1–200 (the smallest such seed; tests/test_figure_kernels.py checks this). One history can land far
+// from E[PBO] = 1/2 (Lab 2).
+export const DEFAULT_CSCV_SEED = 501;
 
 function cscvExplorer(el) {
   let seed = DEFAULT_CSCV_SEED;
@@ -108,19 +109,20 @@ function cscvExplorer(el) {
       plot(area, {
         width,
         height: 200,
-        legend: false,
         title: "Logits of all 70 splits",
         desc: `Histogram of the 70 logits λ = ln(ω/(1 − ω)); the ${result.logits.filter((l) => l <= 0).length} at or below zero, where the in-sample winner lands at or below the out-of-sample median, give PBO = ${result.pbo.toFixed(3)}.`,
         x: { label: "Logit λ of the winner's OOS rank", domain: [-2.5, 2.5], format: ".1f" },
         y: { label: "Splits" },
         layers: [
-          { type: "bars", bins },
-          { type: "rule", x: 0, label: "median", tone: "strong" },
-          { type: "rule", x: split.logit, label: `this split: λ = ${split.logit.toFixed(2)}`, row: 1 },
+          { type: "bars", name: "splits with λ ≤ 0 (counted by PBO)", bins: bins.slice(0, 10), series: 1 },
+          { type: "bars", name: "splits with λ > 0", bins: bins.slice(10), series: 0 },
+          { type: "rule", x: 0, name: "λ = 0: the winner ranks at the out-of-sample median", tone: "strong" },
+          // Named in the legend and labelled with its value only: a short label always finds a side clear of λ = 0.
+          { type: "rule", x: split.logit, name: "this split's logit", label: `λ = ${split.logit.toFixed(2)}` },
         ],
       });
       return (
-        `${seed === DEFAULT_CSCV_SEED && !s.edge ? "A median history. " : ""}Split ${s.split}: in-sample blocks ${split.inSample.map((b) => LETTERS[b]).join("")}; winner configuration ${split.best + 1}; out-of-sample rank ${split.rank} of ${N}, ` +
+        `${seed === DEFAULT_CSCV_SEED ? "A median history. " : ""}Split ${s.split}: in-sample blocks ${split.inSample.map((b) => LETTERS[b]).join("")}; winner configuration ${split.best + 1}; out-of-sample rank ${split.rank} of ${N}, ` +
         `ω = ${split.rank}/${N + 1} = ${split.omega.toFixed(3)}, λ = ${split.logit.toFixed(3)}. Over all 70 splits PBO = ${result.pbo.toFixed(3)}` +
         `${s.edge ? "" : ` (Theorem 4.1 gives E[PBO] = ${(Math.floor((N + 1) / 2) / N).toFixed(1)} when nothing works)`}.`
       );

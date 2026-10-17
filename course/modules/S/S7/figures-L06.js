@@ -106,7 +106,8 @@ function bayesPosterior(el) {
           `0.5, 0.8, 0.95 and 0.99, with the two-sided p-value for comparison. At t = ${s.t.toFixed(2)} the p-value is ${(2 * normSf(s.t)).toPrecision(2)}, ` +
           `and the bound is ${priors.map((p) => posterior(s.t, p).toFixed(3)).join(", ")} for the four priors.`,
         x: { label: "t-statistic", domain: [0, 5], format: ".0f" },
-        y: { label: "Probability", domain: [0, 1], format: ".1f" },
+        // Headroom above 1 keeps the curves clear of the rule's label at the top; the ticks stop at 1.
+        y: { label: "Probability", domain: [0, 1.15], format: ".1f" },
         layers: [
           ...priors.map((pi0, i) => ({ type: "line", name: `lower bound, prior P(null) = ${pi0}`, points: ts.map((t) => [t, posterior(t, pi0)]), series: i, dash: i % 3 })),
           { type: "line", name: "two-sided p-value", points: ts.map((t) => [t, 2 * normSf(t)]), series: 5, dash: 2 },
