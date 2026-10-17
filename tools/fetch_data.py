@@ -223,6 +223,10 @@ def sha256(blob: bytes) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
+def _shown(path: Path) -> Path:
+    return path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+
+
 def build(dataset: Dataset, raw: bytes, retrieved: str) -> dict[str, Any]:
     """Write the dataset's snapshot and return its MANIFEST entry."""
     table = TRANSFORMS[dataset.transform["kind"]](raw, dataset.transform)
@@ -253,14 +257,20 @@ def build(dataset: Dataset, raw: bytes, retrieved: str) -> dict[str, Any]:
     }
 
 
-def load_manifest(path: Path = MANIFEST) -> dict[str, dict[str, Any]]:
+# Paths default to the module's MARKET and MANIFEST at call time, so a test that points them elsewhere never
+# touches the committed snapshots.
+
+
+def load_manifest(path: Path | None = None) -> dict[str, dict[str, Any]]:
+    path = path or MANIFEST
     if not path.exists():
         return {}
     entries: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))["datasets"]
     return {e["id"]: e for e in entries}
 
 
-def save_manifest(entries: dict[str, dict[str, Any]], path: Path = MANIFEST) -> None:
+def save_manifest(entries: dict[str, dict[str, Any]], path: Path | None = None) -> None:
+    path = path or MANIFEST
     payload = {"schema": 1, "datasets": [entries[k] for k in sorted(entries)]}
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -274,14 +284,14 @@ def check(datasets: list[Dataset], manifest: dict[str, dict[str, Any]]) -> list[
     listed = {MANIFEST.name} | {d.file.name for d in datasets}
     if MARKET.is_dir():
         for stray in sorted(p.name for p in MARKET.iterdir() if p.name not in listed):
-            problems.append(f"{stray}: in {MARKET.relative_to(ROOT)} but not a dataset of tools/data_sources.yaml")
+            problems.append(f"{stray}: in {_shown(MARKET)} but not a dataset of tools/data_sources.yaml")
     for dataset in datasets:
         entry = manifest.get(dataset.id)
         if entry is None:
             problems.append(f"{dataset.id}: no MANIFEST entry (run --fetch)")
             continue
         if not dataset.file.exists():
-            problems.append(f"{dataset.id}: snapshot {dataset.file.relative_to(ROOT)} is missing")
+            problems.append(f"{dataset.id}: snapshot {_shown(dataset.file)} is missing")
             continue
         blob = dataset.file.read_bytes()
         if sha256(blob) != entry["sha256"]:
