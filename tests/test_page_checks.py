@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from check_pages import check_figures
+from check_pages import check_code, check_figures
 from coursekit import load_page
 
 D3 = '<script defer src="../../../assets/vendor/d3/d3.min.js"></script>'
@@ -70,3 +70,28 @@ def test_each_wiring_fault_is_reported(
 
 def test_pages_without_figures_need_nothing(tmp_path: Path) -> None:
     assert problems_for(tmp_path, html_attrs="", head="", body="<p>No charts.</p>", module=None) == []
+
+
+@pytest.mark.parametrize(
+    ("body", "ok"),
+    [
+        pytest.param('<pre><code class="language-python" data-run>print(1)</code></pre>', True, id="lab-code"),
+        pytest.param(
+            '<pre><code class="language-python" data-check="sol-S7-L06-E3">print(1)</code></pre>'
+            '<pre class="expected" data-check="sol-S7-L06-E3">1</pre>',
+            True,
+            id="checked-snippet",
+        ),
+        pytest.param('<pre><code class="language-pseudocode">for each split</code></pre>', True, id="pseudocode"),
+        pytest.param('<pre><code class="language-python">print(1)</code></pre>', False, id="unchecked-python"),
+        pytest.param(
+            '<pre><code class="language-python" data-check="sol-S7-L06-E3">print(1)</code></pre>', False, id="no-output"
+        ),
+    ],
+)
+def test_python_on_a_page_must_have_run(tmp_path: Path, body: str, ok: bool) -> None:
+    page = tmp_path / "L06.html"
+    page.write_text(f'<!doctype html><html lang="en"><head></head><body><main>{body}</main></body></html>')
+    found: list[str] = []
+    check_code(load_page(page), found)
+    assert (found == []) is ok, found

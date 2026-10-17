@@ -30,11 +30,11 @@ def pbo(m: NDArray[np.float64], n_blocks: int) -> float:
 # SIMULATED: one configuration with a true daily Sharpe ratio of 0.10 (about 1.6 annualized)
 # competes against a growing number of skill-free configurations; 1000 days, 8 blocks.
 rng = np.random.default_rng(88)
-print("trials  mean_PBO")
+print("trials  mean_PBO  standard_error")
 for n_trials in (2, 20, 200):
     values = []
     for _ in range(16):
         m = rng.standard_normal((1000, n_trials)) * 0.01
         m[:, 0] += 0.001
         values.append(pbo(m, 8))
-    print(f"{n_trials} {np.mean(values):.4f}")
+    print(f"{n_trials} {np.mean(values):.4f} {np.std(values, ddof=1) / np.sqrt(len(values)):.4f}")

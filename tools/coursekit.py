@@ -246,6 +246,7 @@ class Lab:
     tolerance: float
     packages: tuple[str, ...]
     completion: bool = False  # project rung 2: page code has ___ blanks; the twin is the solution
+    snippet: bool = False  # checked solution code (data-check): run locally, not in the page's lab runner
 
     @property
     def unit(self) -> str:
@@ -271,6 +272,29 @@ def labs_in(page: Page) -> list[Lab]:
                 tolerance=float(expected.get("data-tolerance", "0") or 0) if expected else 0.0,
                 packages=tuple(section.get("data-packages").split()),
                 completion="completion" in section.classes,
+            )
+        )
+    return found
+
+
+def snippets_in(page: Page) -> list[Lab]:
+    """Checked code in solutions: <code class="language-python" data-check="<id>"> and its
+    <pre class="expected" data-check="<id>">, held to a twin tests/labs/<UNIT>/<id>.py like a lab."""
+    outputs = {n.get("data-check"): n for n in page.dom.select("pre", "expected", data_check=None)}
+    found: list[Lab] = []
+    for code in page.dom.select("code", None, data_check=None):
+        name = code.get("data-check")
+        expected = outputs.get(name)
+        found.append(
+            Lab(
+                page=page.path,
+                id=name,
+                runtime="python",
+                code=code.text(),
+                expected=expected.text() if expected else None,
+                tolerance=float(expected.get("data-tolerance", "0") or 0) if expected else 0.0,
+                packages=("numpy",),
+                snippet=True,
             )
         )
     return found

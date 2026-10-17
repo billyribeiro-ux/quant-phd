@@ -99,6 +99,7 @@ def check_common(page: Page, u: Unit, problems: list[str]) -> None:
     problems.extend(f"{where}: duplicate id {i!r}" for i, n in ids.items() if n > 1)
 
     check_figures(page, problems)
+    check_code(page, problems)
 
     text = visible_text(page.dom.first("main") or page.dom)
     for pattern in BANNED:
@@ -122,6 +123,23 @@ def check_common(page: Page, u: Unit, problems: list[str]) -> None:
             problems.append(f"{where}:{claim.line}: claim grade {grade!r} is not one of T A B C D X")
         elif grade != "T" and not claim.get("data-cite"):
             problems.append(f"{where}:{claim.line}: a grade-{grade} claim must cite registry keys")
+
+
+def check_code(page: Page, problems: list[str]) -> None:
+    """Python on a page has run: it is a lab (data-run) or a checked snippet (data-check) with its output."""
+    where = page.path.name
+    outputs = {n.get("data-check") for n in page.dom.select("pre", "expected", data_check=None)}
+    for code in page.dom.select("code", "language-python"):
+        if "data-run" in code.attrs:
+            continue
+        name = code.get("data-check")
+        if not name:
+            problems.append(
+                f"{where}:{code.line}: Python code must be a lab or a checked snippet "
+                '(data-check="sol-<UNIT>-<page>-<id>"); label pseudocode class="language-pseudocode"'
+            )
+        elif name not in outputs:
+            problems.append(f'{where}:{code.line}: snippet {name!r} has no <pre class="expected" data-check>')
 
 
 def check_figures(page: Page, problems: list[str]) -> None:

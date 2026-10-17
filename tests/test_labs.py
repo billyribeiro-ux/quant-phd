@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from coursekit import ROOT, Lab, built_units, labs_in, load_page
+from coursekit import ROOT, Lab, built_units, labs_in, load_page, snippets_in
 from embed_labs import remark
 from run_labs import check_lab
 
@@ -13,7 +13,8 @@ def all_labs() -> list[Lab]:
     found: list[Lab] = []
     for u in built_units():
         for path in u.pages():
-            found.extend(labs_in(load_page(path)))
+            page = load_page(path)
+            found.extend(labs_in(page) + snippets_in(page))
     return found
 
 

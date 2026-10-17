@@ -29,9 +29,10 @@ import subprocess
 import sys
 import time
 
-from coursekit import Lab, built_units, compare_output, labs_in, load_page, unit
+from coursekit import Lab, built_units, compare_output, labs_in, load_page, snippets_in, unit
 
 TIME_LIMIT_S = 30.0
+SNIPPET_LIMIT_S = 120.0  # checked solution code is run by the student locally, not on the page
 
 
 def run_twin(lab: Lab) -> tuple[str, str, float]:
@@ -40,7 +41,7 @@ def run_twin(lab: Lab) -> tuple[str, str, float]:
         [sys.executable, "-I", "-W", "error", str(lab.twin)],
         capture_output=True,
         text=True,
-        timeout=TIME_LIMIT_S * 4,
+        timeout=(SNIPPET_LIMIT_S if lab.snippet else TIME_LIMIT_S) * 4,
         check=False,
         env={"PATH": "/usr/bin:/bin", "PYTHONHASHSEED": "0"},
     )
@@ -73,8 +74,9 @@ def check_lab(lab: Lab) -> list[str]:
     stdout, stderr, elapsed = run_twin(lab)
     if stderr:
         problems.append(f"{where}: stderr/exit not clean: {stderr.strip()[:300]}")
-    if elapsed > TIME_LIMIT_S:
-        problems.append(f"{where}: took {elapsed:.1f} s locally (limit {TIME_LIMIT_S:.0f} s)")
+    limit = SNIPPET_LIMIT_S if lab.snippet else TIME_LIMIT_S
+    if elapsed > limit:
+        problems.append(f"{where}: took {elapsed:.1f} s locally (limit {limit:.0f} s)")
     if lab.expected is None:
         problems.append(f"{where}: no expected output on the page")
     else:
@@ -88,7 +90,8 @@ def unit_labs(unit_id: str, page: str | None = None) -> list[Lab]:
     found: list[Lab] = []
     for path in unit(unit_id).pages():
         if page is None or path.stem == page:
-            found.extend(labs_in(load_page(path)))
+            page_ = load_page(path)
+            found.extend(labs_in(page_) + snippets_in(page_))
     return found
 
 

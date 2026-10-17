@@ -13,9 +13,9 @@ actually prints under ``python -I -W error``. Expected outputs are therefore nev
 typed by hand. Pages without markers are left untouched; run_labs.py then keeps
 page and twin in agreement.
 
-After editing a twin, ``--refresh`` turns the page's embedded labs back into
-markers and embeds them again: every lab's code and output, or only the listed
-lab ids. A completion lab keeps its blanked code; only its expected output (the
+After editing a twin, ``--refresh`` turns the page's embedded labs and checked
+solution snippets (``data-check``) back into markers and embeds them again: all
+of them, or only the listed ids. A completion lab keeps its blanked code; only its expected output (the
 completed twin's) is refreshed.
 
 Usage::
@@ -31,6 +31,7 @@ import html
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +39,12 @@ MARKER = re.compile(r"@@(LAB|OUT):([A-Za-z0-9_.-]+\.py)@@")
 LAB_SECTION = re.compile(r'<section class="lab(?P<cls>[^"]*)" id="(?P<id>[^"]+)".*?</section>', re.S)
 CODE = re.compile(r'(<code class="language-python" data-run>).*?(</code>)', re.S)
 EXPECTED = re.compile(r'(<pre class="expected"[^>]*>).*?(</pre>)', re.S)
+SNIPPET_CODE = re.compile(r'<code class="language-python" data-check="([^"]+)">')
+
+
+def _marker(kind: str, name: str) -> Callable[[re.Match[str]], str]:
+    """A substitution that keeps the opening and closing tags and puts a marker between them."""
+    return lambda m: f"{m.group(1)}@@{kind}:{name}.py@@{m.group(2)}"
 
 
 def remark(text: str, twins: Path, only: set[str] | None = None) -> str:
@@ -51,7 +58,25 @@ def remark(text: str, twins: Path, only: set[str] | None = None) -> str:
             body = CODE.sub(lambda m: f"{m.group(1)}@@LAB:{lab_id}.py@@{m.group(2)}", body, count=1)
         return EXPECTED.sub(lambda m: f"{m.group(1)}@@OUT:{lab_id}.py@@{m.group(2)}", body, count=1)
 
-    return LAB_SECTION.sub(one, text)
+    text = LAB_SECTION.sub(one, text)
+    for name in {m.group(1) for m in SNIPPET_CODE.finditer(text)}:
+        if (only and name not in only) or not (twins / f"{name}.py").exists():
+            continue
+        text = re.sub(
+            rf'(<code class="language-python" data-check="{re.escape(name)}">).*?(</code>)',
+            _marker("LAB", name),
+            text,
+            count=1,
+            flags=re.S,
+        )
+        text = re.sub(
+            rf'(<pre class="expected" data-check="{re.escape(name)}"[^>]*>).*?(</pre>)',
+            _marker("OUT", name),
+            text,
+            count=1,
+            flags=re.S,
+        )
+    return text
 
 
 def run_twin(path: Path) -> str:
