@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 
-from coursekit import ROOT, Lab, built_units, labs_in, load_page, snippets_in
-from embed_labs import remark
-from run_labs import check_lab
+import coursekit
+from coursekit import MARKET_DATA, ROOT, Lab, built_units, labs_in, load_page, snippets_in, twin_workdir
+from embed_labs import embed, remark
+from run_labs import check_lab, run_twin
 
 
 def all_labs() -> list[Lab]:
@@ -39,3 +45,80 @@ def test_refresh_re_marks_labs_but_keeps_completion_blanks() -> None:
     assert "x = ___" in out and "@@OUT:lab-S7-project-2.py@@" in out, "a completion lab keeps its blanks"
     assert out.count("kept") == 2, "a lab without a twin is left alone"
     assert remark(page, twins, {"lab-S7-project-2"}).count("@@") == 2, "only the listed labs are re-marked"
+
+
+LISTING = 'from pathlib import Path\n\nprint(sorted(p.name for p in Path("data").iterdir()))\n'
+DEMO = ROOT / "tests" / "labs" / "S7" / "draft-realdata-check.py"
+SNAPSHOTS = ("fx_daily.csv", "fx_monthly.csv", "ust_daily.csv")
+
+
+def data_lab(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str, files: tuple[str, ...]) -> Lab:
+    """A lab whose twin is written under tmp_path (coursekit.LAB_TWINS points there)."""
+    monkeypatch.setattr(coursekit, "LAB_TWINS", tmp_path)
+    (tmp_path / "S7").mkdir(exist_ok=True)
+    lab = Lab(tmp_path / "L09.html", "lab-S7-L09-1", "python", code, "", 1e-9, ("numpy",), files=files)
+    lab.twin.write_text(code, encoding="utf-8")
+    return lab
+
+
+def test_a_twin_sees_exactly_its_data_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    stdout, stderr, _ = run_twin(data_lab(tmp_path, monkeypatch, LISTING, ("ust_daily.csv", "fx_daily.csv")))
+    assert (stdout, stderr) == ("['fx_daily.csv', 'ust_daily.csv']\n", "")
+    stdout, stderr, _ = run_twin(data_lab(tmp_path, monkeypatch, LISTING, ()))
+    assert (stdout, stderr) == ("[]\n", ""), "a lab that declares no data sees none, as in the browser"
+
+
+def test_a_twin_reads_the_committed_bytes_and_cannot_alter_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    code = (
+        "import hashlib\nfrom pathlib import Path\n\n"
+        'path = Path("data/fx_monthly.csv")\nprint(hashlib.sha256(path.read_bytes()).hexdigest())\n'
+        'path.write_text("overwritten")\n'
+    )
+    before = (MARKET_DATA / "fx_monthly.csv").read_bytes()
+    stdout, stderr, _ = run_twin(data_lab(tmp_path, monkeypatch, code, ("fx_monthly.csv",)))
+    manifest = {e["file"]: e for e in json.loads((MARKET_DATA / "MANIFEST.json").read_text())["datasets"]}
+    assert (stdout.strip(), stderr) == (manifest["fx_monthly.csv"]["sha256"], "")
+    assert (MARKET_DATA / "fx_monthly.csv").read_bytes() == before, "a twin works on a copy"
+
+
+def test_an_undeclared_data_file_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    lab = data_lab(tmp_path, monkeypatch, LISTING, ("ff_factors.csv",))
+    assert any("not embedded snapshots" in p for p in check_lab(lab))
+
+
+def demo_output() -> str:
+    with twin_workdir(SNAPSHOTS) as work:
+        result = subprocess.run(
+            [sys.executable, "-I", "-W", "error", str(DEMO)], capture_output=True, text=True, check=True, cwd=work
+        )
+    assert result.stderr == ""
+    return result.stdout
+
+
+def test_the_real_data_demo_twin_reports_what_manifest_records() -> None:
+    lines = demo_output().splitlines()
+    manifest = {e["file"]: e for e in json.loads((MARKET_DATA / "MANIFEST.json").read_text())["datasets"]}
+    for line in lines[1 : 1 + len(SNAPSHOTS)]:
+        name, rows, columns, first, last, _ = line.split()
+        entry = manifest[name]
+        assert (int(rows), int(columns), first, last) == (
+            entry["rows"],
+            len(entry["columns"]),
+            entry["first"],
+            entry["last"],
+        )
+
+
+def test_embed_labs_runs_a_twin_with_its_data_files(tmp_path: Path) -> None:
+    page = tmp_path / "L09.html"
+    page.write_text(
+        '<html data-unit="S7"><section class="lab" id="draft-realdata-check" data-runtime="python" '
+        f'data-files="{" ".join(SNAPSHOTS)}"><pre><code class="language-python" data-run>'
+        "@@LAB:draft-realdata-check.py@@</code></pre>"
+        '<pre class="expected" data-tolerance="1e-9">@@OUT:draft-realdata-check.py@@</pre></section></html>'
+    )
+    assert embed(page) == 2
+    expected = load_page(page).dom.first("pre", "expected")
+    assert expected is not None and expected.text() == demo_output().rstrip("\n")

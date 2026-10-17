@@ -5,10 +5,39 @@
 // |actual − expected| ≤ tol·(1 + |expected|), with tol from data-tolerance;
 // every other token must match exactly. tools/run_labs.py applies the same rule
 // to the lab's byte-identical local twin, so a lab passes in both places or neither.
+//
+// A lab that reads embedded market data names the files in data-files
+// ("fx_daily.csv ust_daily.csv"). They are fetched once per page from
+// assets/data/market/ (tools/fetch_data.py, pinned by SHA-256 in its MANIFEST)
+// and written to data/<file> in the runtime before every run, as its twin sees them.
 
 import { isStarted, runPython } from "./python.js";
 
 const NUMBER = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?%?$/;
+const MARKET_DATA = new URL("../data/market/", import.meta.url);
+const loaded = new Map();
+
+function dataFile(name) {
+  if (!loaded.has(name)) {
+    const request = fetch(new URL(name, MARKET_DATA)).then(async (response) => {
+      if (!response.ok) throw new Error(`${name}: HTTP ${response.status}`);
+      return { name, bytes: new Uint8Array(await response.arrayBuffer()) };
+    });
+    request.catch(() => loaded.delete(name)); // a failed fetch is retried on the next run
+    loaded.set(name, request);
+  }
+  return loaded.get(name);
+}
+
+async function runLab(code, packages, names) {
+  let files;
+  try {
+    files = await Promise.all(names.map(dataFile));
+  } catch (error) {
+    return { stdout: "", stderr: "", error: `Could not load the lab's data files (${error.message || error}).` };
+  }
+  return runPython(code, packages, files);
+}
 
 export function compareOutput(actual, expected, tolerance) {
   const a = actual.trim().split(/\s+/).filter(Boolean);
@@ -43,6 +72,7 @@ function enhance(lab) {
   const expected = lab.querySelector("pre.expected");
   const tolerance = expected ? parseFloat(expected.dataset.tolerance || "0") : 0;
   const packages = (lab.dataset.packages || "").split(/\s+/).filter(Boolean);
+  const files = (lab.dataset.files || "").split(/\s+/).filter(Boolean);
   const title = lab.querySelector("h3")?.textContent.trim() || lab.id;
 
   const editor = el("textarea", {
@@ -88,7 +118,7 @@ function enhance(lab) {
     run.disabled = true;
     status.className = "status";
     status.textContent = isStarted() ? "Running…" : "Starting Python (first run on this page downloads the runtime)…";
-    const result = await runPython(editor.value, packages);
+    const result = await runLab(editor.value, packages, files);
     run.disabled = false;
     output.hidden = false;
     output.classList.toggle("error", Boolean(result.error || result.stderr));

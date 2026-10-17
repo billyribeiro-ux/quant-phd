@@ -34,6 +34,8 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from coursekit import labs_in, load_page, twin_workdir
+
 ROOT = Path(__file__).resolve().parent.parent
 MARKER = re.compile(r"@@(LAB|OUT):([A-Za-z0-9_.-]+\.py)@@")
 LAB_SECTION = re.compile(r'<section class="lab(?P<cls>[^"]*)" id="(?P<id>[^"]+)".*?</section>', re.S)
@@ -79,14 +81,17 @@ def remark(text: str, twins: Path, only: set[str] | None = None) -> str:
     return text
 
 
-def run_twin(path: Path) -> str:
-    result = subprocess.run(
-        [sys.executable, "-I", "-W", "error", str(path)],
-        capture_output=True,
-        text=True,
-        timeout=300,
-        check=False,
-    )
+def run_twin(path: Path, files: tuple[str, ...] = ()) -> str:
+    # Same working directory as run_labs.py: data/ holds the lab's data-files.
+    with twin_workdir(files) as work:
+        result = subprocess.run(
+            [sys.executable, "-I", "-W", "error", str(path.resolve())],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+            cwd=work,
+        )
     if result.returncode != 0 or result.stderr:
         raise RuntimeError(f"{path.name} failed or wrote to stderr:\n{result.stderr}")
     return result.stdout.rstrip("\n")
@@ -98,6 +103,7 @@ def embed(page: Path, refresh: set[str] | None = None) -> int:
         raise RuntimeError(f"{page}: <html> has no data-unit")
     twins = ROOT / "tests" / "labs" / unit.group(1)
     text = page.read_text(encoding="utf-8")
+    files = {lab.id: lab.files for lab in labs_in(load_page(page))}
     if refresh is not None:
         text = remark(text, twins, refresh or None)
     outputs: dict[str, str] = {}
@@ -110,7 +116,7 @@ def embed(page: Path, refresh: set[str] | None = None) -> int:
         if kind == "LAB":
             return html.escape(twin.read_text(encoding="utf-8").rstrip("\n"), quote=False)
         if name not in outputs:
-            outputs[name] = run_twin(twin)
+            outputs[name] = run_twin(twin, files.get(name.removesuffix(".py"), ()))
         return html.escape(outputs[name], quote=False)
 
     new, count = MARKER.subn(replace, text)

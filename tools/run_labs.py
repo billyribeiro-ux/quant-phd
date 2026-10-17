@@ -6,7 +6,9 @@ For each ``<section class="lab" data-runtime="python">`` on a unit's pages:
 * the lab's code, unescaped, is byte-identical to its twin
   ``tests/labs/<UNIT>/<lab-id>.py`` (trailing newlines aside)
 * the twin runs under ``python -I -W error`` with no network, writes nothing to
-  stderr, and finishes within the time limit
+  stderr, and finishes within the time limit; it runs in a scratch directory
+  whose ``data/`` holds exactly the embedded snapshots its section names in
+  ``data-files``, so it opens ``data/<file>`` here as it does in the browser
 * its stdout matches the page's expected output under the page's own rule
   (numbers within tol·(1+|expected|), other tokens exact; see labs.js)
 
@@ -29,7 +31,18 @@ import subprocess
 import sys
 import time
 
-from coursekit import Lab, built_units, compare_output, labs_in, load_page, snippets_in, unit
+from coursekit import (
+    MARKET_DATA,
+    Lab,
+    built_units,
+    compare_output,
+    labs_in,
+    load_page,
+    market_files,
+    snippets_in,
+    twin_workdir,
+    unit,
+)
 
 TIME_LIMIT_S = 30.0
 SNIPPET_LIMIT_S = 120.0  # checked solution code is run by the student locally, not on the page
@@ -37,14 +50,16 @@ SNIPPET_LIMIT_S = 120.0  # checked solution code is run by the student locally, 
 
 def run_twin(lab: Lab) -> tuple[str, str, float]:
     started = time.perf_counter()
-    result = subprocess.run(
-        [sys.executable, "-I", "-W", "error", str(lab.twin)],
-        capture_output=True,
-        text=True,
-        timeout=(SNIPPET_LIMIT_S if lab.snippet else TIME_LIMIT_S) * 4,
-        check=False,
-        env={"PATH": "/usr/bin:/bin", "PYTHONHASHSEED": "0"},
-    )
+    with twin_workdir(lab.files) as work:
+        result = subprocess.run(
+            [sys.executable, "-I", "-W", "error", str(lab.twin)],
+            capture_output=True,
+            text=True,
+            timeout=(SNIPPET_LIMIT_S if lab.snippet else TIME_LIMIT_S) * 4,
+            check=False,
+            env={"PATH": "/usr/bin:/bin", "PYTHONHASHSEED": "0"},
+            cwd=work,
+        )
     elapsed = time.perf_counter() - started
     stderr = result.stderr if result.returncode == 0 else f"exit {result.returncode}\n{result.stderr}"
     return result.stdout, stderr, elapsed
@@ -71,6 +86,9 @@ def check_lab(lab: Lab) -> list[str]:
             problems.append(f"{where}: a completion lab must contain ___ blanks")
     elif shown != twin:
         problems.append(f"{where}: page code is not byte-identical to {lab.twin.name}")
+    absent = [f for f in lab.files if f not in market_files() or not (MARKET_DATA / f).is_file()]
+    if absent:
+        problems.append(f"{where}: data-files {absent} are not embedded snapshots (tools/fetch_data.py)")
     stdout, stderr, elapsed = run_twin(lab)
     if stderr:
         problems.append(f"{where}: stderr/exit not clean: {stderr.strip()[:300]}")
