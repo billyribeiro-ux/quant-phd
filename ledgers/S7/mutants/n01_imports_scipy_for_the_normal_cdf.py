@@ -4,6 +4,8 @@ Verifier mutant (round 2) of course/modules/S/S7/grader/reference.py (S7 / Atlas
 student error, otherwise identical to the reference.
 Rebased in round 5 onto the reference at df84c85 (integer checks, float() scalars, per-resample
 scaling and the Phi^-1(1 - p) = -Phi^-1(p) form); the error is unchanged.
+Rebased in round 6 onto the reference at af8e1d3 (integral NumPy floats and the 2**1000 bound in
+_whole, the seed check, the guarded studentization, from_backtest validating); the error is unchanged.
 """
 
 from __future__ import annotations
@@ -54,8 +56,10 @@ def _level(value: float, name: str) -> float:
 
 
 def _whole(value: object) -> bool:
-    """An integer, or a float with an integral value; False for inf and NaN, which int() cannot convert."""
-    return isinstance(value, int | np.integer) or (isinstance(value, float) and value.is_integer())
+    """An integer of magnitude below 2**1000, or a (Python or NumPy) float with such an integral value."""
+    if isinstance(value, int | np.integer):
+        return bool(-(2**1000) < value < 2**1000)
+    return isinstance(value, float | np.floating) and float(value).is_integer() and abs(float(value)) < 2.0**1000
 
 
 def _all_equal(x: NDArray[np.float64], axis: int | None = None) -> NDArray[np.bool_]:
@@ -244,6 +248,8 @@ def romano_wolf(
     alpha = _level(alpha, "alpha")
     if not _whole(n_boot) or n_boot < 1:
         raise ValueError("n_boot must be a positive integer")
+    if not _whole(seed) or seed < 0:
+        raise ValueError("seed must be a non-negative integer")
     if np.any(_all_equal(d, axis=0)):
         raise ValueError("every column of differentials needs positive sample variance (a constant column has none)")
     n_obs = d.shape[0]
@@ -252,7 +258,7 @@ def romano_wolf(
     means = y.mean(axis=0)
     sd = y.std(axis=0, ddof=1)
     t_obs = means / (sd / root)
-    rng = np.random.default_rng(seed)  # the n_boot index vectors are drawn from it in order, one call each
+    rng = np.random.default_rng(int(seed))  # the n_boot index vectors are drawn from it in order, one call each
     t_boot = np.empty((int(n_boot), d.shape[1]))
     for b in range(int(n_boot)):
         idx = stationary_bootstrap_indices(n_obs, mean_block, rng)
@@ -261,10 +267,10 @@ def romano_wolf(
         # underflow: shift >= 0 re-expresses the column mean there. A statistic too large for a float is +-inf,
         # which ranks above (below) every finite one exactly as the true value does.
         sample, sample_exponent = _scaled(d[idx], axis=0)
+        sd_b = np.where(constant, 1.0, sample.std(axis=0, ddof=1))
         with np.errstate(over="ignore"):
             centre = np.ldexp(means, exponent[0] - sample_exponent[0])
-        sd_b = np.where(constant, 1.0, sample.std(axis=0, ddof=1))
-        varying = (sample.mean(axis=0) - centre) / (sd_b / root)
+            varying = (sample.mean(axis=0) - centre) / (sd_b / root)
         # A constant resampled column is studentized by the column's own sample standard deviation.
         t_boot[b] = np.where(constant, (y[idx].mean(axis=0) - means) / (sd / root), varying)
     return _stepdown(t_obs, t_boot, alpha)
@@ -352,9 +358,7 @@ class TrialSet:
 
     @classmethod
     def from_backtest(cls, result: BacktestLike) -> TrialSet:
-        return cls(
-            np.asarray(result.trial_returns, dtype=np.float64), int(result.selected), int(result.periods_per_year)
-        )
+        return cls(np.asarray(result.trial_returns, dtype=np.float64), result.selected, result.periods_per_year)
 
 
 @dataclass(frozen=True)
