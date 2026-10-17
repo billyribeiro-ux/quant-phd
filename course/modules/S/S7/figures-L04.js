@@ -184,6 +184,32 @@ export function universe(seed) {
   return { means, sds, bootMeans };
 }
 
+/** The RC/SPA figure's SVG description, from the kernel results with `poor` and with no poor strategies. */
+export function rcSpaDescription(now, base, poor) {
+  const recentredBy = (n) => (n ? " and recentring" : "");
+  const intro =
+    `SIMULATED universe of ten strategies, one with a true edge, plus ${poor} poor strategies. Each test reads its own observed statistic against its own null: ` +
+    `the Reality Check's maximum √T·d̄ is ${now.v.toFixed(2)}, and the SPA-style maximum, studentized by each strategy's standard deviation, is ${now.tObs.toFixed(2)}. `;
+  if (poor === 0) {
+    const pair =
+      now.pRc === now.pSpa
+        ? `With no poor strategies both p-values are ${now.pRc.toFixed(3)}: in this universe studentization${recentredBy(now.recentred)} ${now.recentred ? "do" : "does"} not change the share of resamples at or above the observed statistic. `
+        : `With no poor strategies the Reality Check's p-value is ${now.pRc.toFixed(3)} and the SPA-style p-value ${now.pSpa.toFixed(3)}; they differ because the SPA-style statistic is studentized` +
+          `${now.recentred ? ` and keeps ${now.recentred} strateg${now.recentred === 1 ? "y" : "ies"} below its threshold at ${now.recentred === 1 ? "its" : "their"} own mean${now.recentred === 1 ? "" : "s"}` : ""}. `;
+    return intro + pair + "Adding poor strategies tends to raise the Reality Check's p-value, because each is recentred at zero and competes for the maximum.";
+  }
+  const rc =
+    now.pRc === base.pRc
+      ? `The Reality Check's p-value stays at ${now.pRc.toFixed(3)}: recentred at zero, the poor strategies lift no further resample's maximum to the observed V. `
+      : `The Reality Check's p-value goes from ${base.pRc.toFixed(3)} with no poor strategies to ${now.pRc.toFixed(3)}, because every poor strategy is recentred at zero and competes for the maximum. `;
+  const escaped = poor - now.recentred + base.recentred;
+  const spa =
+    now.pSpa !== base.pSpa
+      ? `The SPA-style p-value moves from ${base.pSpa.toFixed(3)} to ${now.pSpa.toFixed(3)}, because ${escaped} poor strateg${escaped === 1 ? "y escapes" : "ies escape"} the recentring threshold.`
+      : `The SPA-style p-value stays at ${now.pSpa.toFixed(3)}.`;
+  return intro + rc + spa;
+}
+
 function realityCheckVsSpa(el) {
   let seed = DEFAULT_RC_SEED;
   let u = universe(seed);
@@ -196,21 +222,10 @@ function realityCheckVsSpa(el) {
       const now = realityCheckSpa(u.means, u.sds, u.bootMeans, RC_T, 10 + s.poor);
       const base = realityCheckSpa(u.means, u.sds, u.bootMeans, RC_T, 10);
       const asLine = (xs) => histogram(xs, -0.5, 6, 52).flatMap((bin) => [[bin.x0, bin.count / RC_B], [bin.x1, bin.count / RC_B]]);
-      const spaMoved = Math.abs(now.pSpa - base.pSpa) >= 0.005;
       plot(area, {
         width,
         title: "Null distributions of the Reality Check and the SPA-style test as poor strategies are added",
-        desc:
-          `SIMULATED universe of ten strategies, one with a true edge, plus ${s.poor} poor strategies. Each test reads its own observed statistic against its own null: ` +
-          `the Reality Check's maximum √T·d̄ is ${now.v.toFixed(2)}, and the SPA-style maximum, studentized by each strategy's standard deviation, is ${now.tObs.toFixed(2)}. ` +
-          (s.poor === 0
-            ? (now.pRc === now.pSpa
-                ? `With no poor strategies both p-values are ${now.pRc.toFixed(3)}: in this universe studentization${now.recentred ? " and recentring" : ""} do not change the share of resamples at or above the observed statistic. `
-                : `With no poor strategies the Reality Check's p-value is ${now.pRc.toFixed(3)} and the SPA-style p-value ${now.pSpa.toFixed(3)}; they differ because the SPA-style statistic is studentized` +
-                  `${now.recentred ? ` and keeps ${now.recentred} strateg${now.recentred === 1 ? "y" : "ies"} below its threshold at ${now.recentred === 1 ? "its" : "their"} own mean${now.recentred === 1 ? "" : "s"}` : ""}. `) +
-              `Adding poor strategies raises the Reality Check's p-value, because each is recentred at zero and competes for the maximum.`
-            : `The Reality Check's p-value goes from ${base.pRc.toFixed(3)} with no poor strategies to ${now.pRc.toFixed(3)}, because every poor strategy is recentred at zero and competes for the maximum. ` +
-              `The SPA-style p-value ${spaMoved ? `moves from ${base.pSpa.toFixed(3)} to ${now.pSpa.toFixed(3)}, because ${s.poor - now.recentred + base.recentred} poor strateg${s.poor - now.recentred + base.recentred === 1 ? "y escapes" : "ies escape"} the recentring threshold` : `stays at ${now.pSpa.toFixed(3)}`}.`),
+        desc: rcSpaDescription(now, base, s.poor),
         x: { label: "Bootstrap maximum statistic", domain: [-0.5, 6], format: ".0f" },
         y: { label: "Share of resamples", format: ".2f" },
         layers: [

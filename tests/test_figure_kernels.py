@@ -436,6 +436,27 @@ def test_stepm_description_matches_every_number_of_steps() -> None:
     assert "here " + ", then ".join(three["c"]) + "." in three["text"], "every step's critical value is named"
 
 
+def test_rc_spa_description_says_what_happened() -> None:
+    l04 = (S7 / "figures-L04.js").as_uri()
+    out = node(
+        f'import * as f4 from "{l04}";\n' + IMPORTS + "const text = (seed, poor) => { const u = f4.universe(seed);"
+        " const at = (k) => mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, k);"
+        " const [now, base] = [at(10 + poor), at(10)];"
+        " return {rc: [base.pRc, now.pRc], spa: [base.pSpa, now.pSpa], n: now.recentred,"
+        " text: f4.rcSpaDescription(now, base, poor)}; };"
+        " console.log(JSON.stringify([text(2011, 10), text(2001, 50), text(2005, 0), text(2003, 0)]));",
+        {},
+    )
+    flat, rises, alone, recentred = out
+    assert flat["rc"][0] == flat["rc"][1], "universe 2011: 10 poor strategies leave the Reality Check p unchanged"
+    assert "Reality Check's p-value stays at" in flat["text"] and "goes from" not in flat["text"]
+    assert rises["rc"][1] > rises["rc"][0] and "Reality Check's p-value goes from" in rises["text"]
+    assert alone["rc"][0] == alone["spa"][0] and alone["n"] == 0, "universe 2005: equal p-values, none recentred"
+    assert "in this universe studentization does not change" in alone["text"]
+    assert recentred["rc"][0] == recentred["spa"][0] and recentred["n"] == 1, "universe 2003: one strategy recentred"
+    assert "in this universe studentization and recentring do not change" in recentred["text"]
+
+
 def test_every_kernel_a_figure_imports_is_tested() -> None:
     """BUILDER_RULES 6.4: a figure may use a kernel only once a test here exercises it."""
     source = Path(__file__).read_text(encoding="utf-8")
