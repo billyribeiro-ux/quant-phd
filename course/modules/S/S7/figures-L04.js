@@ -167,8 +167,9 @@ function bootstrapVariancePlot(el) {
 const RC_T = 500;
 const RC_B = 1000;
 const RC_K = 110;
-// Seed 2001 is a median draw: across seeds 2000–2029 its observed maximum and its Reality Check p-values with
-// 0 and 100 poor strategies are each within three ranks of the medians (the smallest such seed).
+// Seed 2001 is a median draw: across seeds 2000–2029 its observed maximum, its Reality Check p-values with 0 and
+// 100 poor strategies and its SPA-style p-value with none are each within three ranks of the medians (the smallest
+// such seed). The readout tags it only with no poor strategies.
 export const DEFAULT_RC_SEED = 2001;
 
 /** A SIMULATED universe of Lab 3's design at a smaller scale, with the bootstrap means of all RC_K strategies. */

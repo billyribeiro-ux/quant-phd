@@ -2,7 +2,7 @@
 
 Verifier mutant of course/modules/S/S7/grader/reference.py (S7 / Atlas A8): one realistic
 student error, otherwise identical to the reference.
-Rebased in round 3 onto the reference's np.ptp zero-variance checks; the error is unchanged.
+Rebased in round 4 onto the reference's power-of-two scaling; the error is unchanged.
 """
 
 from __future__ import annotations
@@ -51,15 +51,34 @@ def _level(value: float, name: str) -> float:
     return float(value)
 
 
+def _all_equal(x: NDArray[np.float64], axis: int | None = None) -> NDArray[np.bool_]:
+    """The contract's zero variance: all values equal. Compares, so it cannot overflow as np.ptp can."""
+    equal: NDArray[np.bool_] = np.asarray(x.max(axis=axis) == x.min(axis=axis))
+    return equal
+
+
+def _scaled(x: NDArray[np.float64], axis: int | None = None) -> tuple[NDArray[np.float64], NDArray[np.intc]]:
+    """x times 2**-e, with e chosen (per column when axis=0) so the largest |value| lies in [0.5, 1); and e."""
+    _, exponent = np.frexp(np.abs(x).max(axis=axis, keepdims=axis is not None))
+    scaled: NDArray[np.float64] = np.ldexp(x, -exponent)
+    return scaled, exponent
+
+
 # ---------------------------------------------------------------- Sharpe ratio and its distribution
 
 
 def sharpe_ratio(returns: ArrayLike) -> float:
     """Per-period Sharpe ratio mean / std(ddof=1) of an excess-return series."""
+    y = _varying_series(returns)
+    return float(np.mean(y)) / float(np.std(y, ddof=1))
+
+
+def _varying_series(returns: ArrayLike) -> NDArray[np.float64]:
+    """A valid series with positive variance, rescaled by a power of two (see the module docstring)."""
     x = _series(returns)
-    if np.ptp(x) == 0.0:  # all values equal; a floating-point std can be a tiny nonzero number here
+    if _all_equal(x):  # a constant non-dyadic series has a tiny nonzero floating-point std, so test equality
         raise ValueError("returns have zero sample variance (all values are equal)")
-    return float(np.mean(x)) / float(np.std(x, ddof=1))
+    return _scaled(x)[0]
 
 
 def _central_moment(x: NDArray[np.float64], k: int) -> float:
@@ -68,29 +87,23 @@ def _central_moment(x: NDArray[np.float64], k: int) -> float:
 
 def sample_skewness(returns: ArrayLike) -> float:
     """Moment estimator m3 / m2**1.5."""
-    x = _series(returns)
-    if np.ptp(x) == 0.0:
-        raise ValueError("returns have zero sample variance (all values are equal)")
-    m2 = _central_moment(x, 2)
-    return _central_moment(x, 3) / math.pow(m2, 1.5)
+    y = _varying_series(returns)
+    return _central_moment(y, 3) / math.pow(_central_moment(y, 2), 1.5)
 
 
 def sample_kurtosis(returns: ArrayLike) -> float:
     """Moment estimator m4 / m2**2 (not excess; 3 under normality)."""
-    x = _series(returns)
-    if np.ptp(x) == 0.0:
-        raise ValueError("returns have zero sample variance (all values are equal)")
-    m2 = _central_moment(x, 2)
-    return _central_moment(x, 4) / m2**2
+    y = _varying_series(returns)
+    return _central_moment(y, 4) / _central_moment(y, 2) ** 2
 
 
 def sharpe_ratio_std(sharpe: float, n_obs: int, skewness: float, kurtosis: float) -> float:
     """Standard error of the estimated Sharpe ratio under skewness and kurtosis (iid returns)."""
     if n_obs < 2:
         raise ValueError("n_obs must be at least 2")
-    if not all(math.isfinite(v) for v in (sharpe, skewness, kurtosis)):
-        raise ValueError("sharpe, skewness and kurtosis must be finite")
-    bracket = 1.0 - skewness * sharpe + (kurtosis - 3.0) / 4.0 * sharpe**2
+    bracket = 1.0 - skewness * sharpe + (kurtosis - 3.0) / 4.0 * (sharpe * sharpe)
+    if not math.isfinite(bracket):  # a non-finite argument always makes the bracket non-finite
+        raise ValueError("sharpe, skewness and kurtosis must be finite and the variance bracket must not overflow")
     if bracket <= 0.0:
         raise ValueError("the variance bracket 1 - skew*SR + (kurt-1)/4*SR^2 must be positive")
     return math.sqrt(bracket / (n_obs - 1))
@@ -127,7 +140,12 @@ def deflated_sharpe_ratio(returns: ArrayLike, trial_sharpes: ArrayLike, n_trials
     """PSR of `returns` against the expected maximum Sharpe ratio of the trials under the null."""
     trials = _series(trial_sharpes, "trial_sharpes")
     n = trials.size if n_trials is None else n_trials
-    sr0 = expected_max_sharpe(n, float(np.var(trials, ddof=1)), 0.0)
+    scaled, exponent = _scaled(trials)
+    try:
+        variance = math.ldexp(float(np.var(scaled, ddof=1)), 2 * int(exponent))
+    except OverflowError:
+        raise ValueError("the variance of trial_sharpes exceeds the largest float") from None
+    sr0 = expected_max_sharpe(n, variance, 0.0)
     return probabilistic_sharpe_ratio(returns, sr0)
 
 
@@ -184,6 +202,11 @@ def stepdown_rejections(t_obs: ArrayLike, t_boot: ArrayLike, alpha: float) -> ND
         raise ValueError("t_boot needs at least one bootstrap draw")
     if not (np.all(np.isfinite(t)) and np.all(np.isfinite(boot))):
         raise ValueError("statistics must be finite")
+    return _stepdown(t, boot, alpha)
+
+
+def _stepdown(t: NDArray[np.float64], boot: NDArray[np.float64], alpha: float) -> NDArray[np.bool_]:
+    """The step-down loop. romano_wolf calls it directly: its bootstrap statistics may be +-inf (see there)."""
     b = boot.shape[0]
     rank = max(1, math.ceil((1.0 - alpha) * b))
     rejected = np.zeros(t.size, dtype=bool)
@@ -207,22 +230,33 @@ def romano_wolf(
 ) -> NDArray[np.bool_]:
     """Studentized Romano-Wolf StepM with the stationary bootstrap; H0_k: E[d_k] <= 0."""
     d = _matrix(differentials, "differentials")
+    alpha = _level(alpha, "alpha")
     if int(n_boot) != n_boot or n_boot < 1:
         raise ValueError("n_boot must be a positive integer")
-    n_obs = d.shape[0]
-    sd = np.std(d, axis=0, ddof=1)
-    if np.any(np.ptp(d, axis=0) == 0.0):
+    if np.any(_all_equal(d, axis=0)):
         raise ValueError("every column of differentials needs positive sample variance (a constant column has none)")
-    means = d.mean(axis=0)
-    t_obs = means / (sd / math.sqrt(n_obs))
-    rng = np.random.default_rng(seed)
+    n_obs = d.shape[0]
+    root = math.sqrt(n_obs)
+    y, exponent = _scaled(d, axis=0)  # each column times its own power of two: t-statistics do not change
+    means = y.mean(axis=0)
+    sd = y.std(axis=0, ddof=1)
+    t_obs = means / (sd / root)
+    rng = np.random.default_rng(seed)  # the n_boot index vectors are drawn from it in order, one call each
     t_boot = np.empty((int(n_boot), d.shape[1]))
     for b in range(int(n_boot)):
-        sample = d[stationary_bootstrap_indices(n_obs, mean_block, rng)]
-        sd_b = np.std(sample, axis=0, ddof=1)
-        sd_b = np.where(np.ptp(sample, axis=0) == 0.0, sd, sd_b)  # a constant resampled column: use the sample sd
-        t_boot[b] = (sample.mean(axis=0) - means) / (sd_b / math.sqrt(n_obs))
-    return stepdown_rejections(t_obs, t_boot, alpha)
+        idx = stationary_bootstrap_indices(n_obs, mean_block, rng)
+        constant = _all_equal(d[idx], axis=0)
+        # Studentize each resampled column in its own scale, so a resample far smaller than its column cannot
+        # underflow: shift >= 0 re-expresses the column mean there. A statistic too large for a float is +-inf,
+        # which ranks above (below) every finite one exactly as the true value does.
+        sample, sample_exponent = _scaled(d[idx], axis=0)
+        with np.errstate(over="ignore"):
+            centre = np.ldexp(means, exponent[0] - sample_exponent[0])
+        sd_b = np.where(constant, 1.0, sample.std(axis=0, ddof=1))
+        varying = (sample.mean(axis=0) - centre) / (sd_b / root)
+        # A constant resampled column is studentized by the column's own sample standard deviation.
+        t_boot[b] = np.where(constant, (y[idx].mean(axis=0) - means) / (sd / root), varying)
+    return _stepdown(t_obs, t_boot, alpha)
 
 
 # ---------------------------------------------------------------- probability of backtest overfitting
@@ -236,17 +270,14 @@ class PBOResult:
 
 
 def _sharpe_columns(block: NDArray[np.float64]) -> NDArray[np.float64]:
-    mean = block.mean(axis=0)
-    sd = block.std(axis=0, ddof=1)
-    constant = np.ptp(block, axis=0) == 0.0
-    out: NDArray[np.float64] = np.empty(mean.shape, dtype=np.float64)
-    for j in range(mean.size):
-        if not constant[j]:
-            out[j] = mean[j] / sd[j]
-        elif mean[j] == 0.0:
-            out[j] = 0.0
-        else:
-            out[j] = math.copysign(math.inf, mean[j])
+    """Per-column Sharpe ratio of a CSCV subsample; a constant column scores 0.0 at zero and +-inf otherwise."""
+    constant = _all_equal(block, axis=0)
+    y = _scaled(block, axis=0)[0]
+    sd = np.where(constant, 1.0, y.std(axis=0, ddof=1))
+    level = block[0]  # the value of a constant column
+    out: NDArray[np.float64] = np.where(
+        constant, np.where(level == 0.0, 0.0, np.copysign(np.inf, level)), y.mean(axis=0) / sd
+    )
     return out
 
 
@@ -345,7 +376,8 @@ def integrity_report(
     sharpes = np.array([sharpe_ratio(r[:, j]) for j in range(n_trials)])
     sr = float(sharpes[trials.selected])
     sr0 = expected_max_sharpe(n_trials, float(np.var(sharpes, ddof=1)), 0.0)
-    t_stats = r.mean(axis=0) / (r.std(axis=0, ddof=1) / math.sqrt(n_obs))
+    y = _scaled(r, axis=0)[0]  # each trial times its own power of two: t-statistics do not change
+    t_stats = y.mean(axis=0) / (y.std(axis=0, ddof=1) / math.sqrt(n_obs))
     pvalues = np.array([1.0 - _STANDARD_NORMAL.cdf(float(t)) for t in t_stats])
     blocks = min(int(n_blocks), n_obs)
     blocks -= blocks % 2

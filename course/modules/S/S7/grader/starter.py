@@ -7,10 +7,13 @@ run the autograder on the S7 project page, or locally with the browser's flags:
 
 The dataclasses are complete.
 Every function must validate its inputs and raise ValueError naming the
-violated condition; none may print, warn or mutate its arguments. A series
-has zero variance when all its values are equal (test that, not std == 0),
-and every statistic must be unchanged when the returns are multiplied by a
-power of two, at any magnitude (the contract's Scale row).
+violated condition; none may print, warn or mutate its arguments, whatever
+the magnitude of the returns and whether scalars are Python or NumPy numbers.
+A series has zero variance when all its values are equal (test that, not
+std == 0). Every statistic must be unchanged when the returns are multiplied
+by a power of two that keeps them exact, so rescale each series, column,
+bootstrap resample and CSCV subsample by its own power of two before squaring
+(the contract's Scale row).
 """
 
 from __future__ import annotations
@@ -107,6 +110,11 @@ class BacktestLike(Protocol):
     periods_per_year: int
 
 
+def _whole(value: object) -> bool:
+    """An integer, or a float with an integral value; False for inf and NaN."""
+    return isinstance(value, int | np.integer) or (isinstance(value, float) and value.is_integer())
+
+
 @dataclass(frozen=True)
 class TrialSet:
     returns: NDArray[np.float64]
@@ -117,11 +125,13 @@ class TrialSet:
         r = np.asarray(self.returns, dtype=np.float64)
         if r.ndim != 2 or r.shape[0] < 2 or r.shape[1] < 2 or not np.all(np.isfinite(r)):
             raise ValueError("returns must be a finite (T, N) matrix with T >= 2 and N >= 2")
-        if not (0 <= self.selected < r.shape[1]):
-            raise ValueError("selected must index a column of returns")
-        if self.periods_per_year < 1:
-            raise ValueError("periods_per_year must be positive")
+        if not _whole(self.selected) or not (0 <= self.selected < r.shape[1]):
+            raise ValueError("selected must be an integer indexing a column of returns")
+        if not _whole(self.periods_per_year) or self.periods_per_year < 1:
+            raise ValueError("periods_per_year must be a positive integer")
         object.__setattr__(self, "returns", r)
+        object.__setattr__(self, "selected", int(self.selected))
+        object.__setattr__(self, "periods_per_year", int(self.periods_per_year))
 
     @classmethod
     def from_backtest(cls, result: BacktestLike) -> TrialSet:

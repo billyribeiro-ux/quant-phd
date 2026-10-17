@@ -180,7 +180,6 @@ export function cscv(matrix, S) {
   return { pbo: logits.filter((l) => l <= 0).length / logits.length, logits, splits, blockSize: size, dropped: matrix.length % S };
 }
 
-/** Column means and sample standard deviations (divisor T − 1) of T rows of K values. */
 /** Mean of every column over the rows that `indices` selects: one bootstrap resample of whole periods. */
 export function bootstrapColumnMeans(rows, indices) {
   const sums = new Float64Array(rows[0].length);
@@ -191,6 +190,7 @@ export function bootstrapColumnMeans(rows, indices) {
   return sums.map((v) => v / indices.length);
 }
 
+/** Column means and sample standard deviations (divisor T − 1) of T rows of K values. */
 export function columnMoments(rows) {
   const T = rows.length;
   const K = rows[0].length;

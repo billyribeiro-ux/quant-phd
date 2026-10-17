@@ -105,7 +105,7 @@ function bayesPosterior(el) {
           `Lower bounds on the posterior probability of the null, PO·e^(−t²/2)/(1 + PO·e^(−t²/2)), against the t-statistic for prior null probabilities ` +
           `0.5, 0.8, 0.95 and 0.99, with the two-sided p-value for comparison. At t = ${s.t.toFixed(2)} the p-value is ${(2 * normSf(s.t)).toPrecision(2)}, ` +
           `and the bound is ${priors.map((p) => posterior(s.t, p).toFixed(3)).join(", ")} for the four priors.`,
-        x: { label: "t-statistic", domain: [0, 5], format: ".0f" },
+        x: { label: "t-statistic", domain: [0, 5], ticks: 5, format: ".0f" },
         // Headroom above 1 keeps the curves clear of the rule's label at the top; the ticks stop at 1.
         y: { label: "Probability", domain: [0, 1.15], format: ".1f" },
         layers: [

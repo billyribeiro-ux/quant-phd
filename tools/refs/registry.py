@@ -85,8 +85,9 @@ class Entry:
             "title": w.title,
             "authors": [{"family": a.family, "given": a.given} for a in w.authors],
             "year": w.year,
-            # Every year the record carries (issued, print, online-first): display uses the print year.
+            # Every year the record carries (issued, print, online-first); the site shows print_year when set.
             "years": sorted(w.years),
+            "print_year": w.print_year,
             "container": w.container[0] if w.container else None,
             "volume": w.volume,
             "issue": w.issue,
@@ -122,6 +123,25 @@ def assign_keys(entries: list[Entry], reserved: frozenset[str] = frozenset()) ->
         free = [k for k in candidates if k not in reserved]
         for entry, key in zip(group, free, strict=False):
             entry.key = key
+
+
+_CITED_YEAR = re.compile(r"\((\d{4})[a-z]?\)")
+
+
+def display_year(entry: dict[str, Any]) -> int | None:
+    """The year to show for an entry: the printed issue's year when the record has one, else the issued year.
+
+    Crossref's issued date is the earlier of print and online, and a record can also carry a much later re-hosting
+    date, so neither the earliest nor the latest year is the one a citation names (Harvey, Liu & Zhu: issued 2015,
+    printed 2016; Benjamini & Hochberg: printed 1995, re-hosted 2018).
+    """
+    year = entry.get("print_year") or entry.get("year")
+    return int(year) if year is not None else None
+
+
+def cited_years(entry: dict[str, Any]) -> set[int]:
+    """Every year the entry's citation strings name, as in 'Lo (2002), FAJ 58(4)'."""
+    return {int(y) for source in entry.get("source_strings", []) for y in _CITED_YEAR.findall(source)}
 
 
 def load(path: Path = REGISTRY) -> list[dict[str, Any]]:

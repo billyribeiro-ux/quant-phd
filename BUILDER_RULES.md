@@ -320,12 +320,17 @@ Studios integrate every module listed in `requires`. A studio:
    - **Labels stay legible in every state.** `tools/page_smoke.py` sweeps every
      control of every figure at 360 px and 1280 px and fails if any text leaves
      its SVG, overlaps another text, or is crossed by a line, segment, rule,
-     dot or bar. `plot()` places vertical-rule labels clear of other rules and
-     reserves headroom above an automatic y domain. A text layer can give
-     `candidates`, and the first clear one is used. A horizontal rule that a
+     dot or bar, or if an axis repeats a tick label. A button is pressed 3
+     times. A figure that draws random states sets `data-sweep-presses` on
+     its chart to how many draws the sweep should cover, for example 100.
+     `plot()` places vertical-rule labels clear of other rules, reserves
+     headroom above an automatic y domain, and sizes the left margin to the
+     y tick labels. A text layer can give `candidates` (positions and
+     offsets), and the first clear one is used. A horizontal rule that a
      curve crosses in some state gets a legend `name` instead of an in-plot
      `label`. With an explicit y domain, leave headroom for the labels
-     yourself.
+     yourself. When many near-equal lines would each need a label, label the
+     first and last, and list every value in the readout.
 5. Every figure must teach a mechanism, distribution, relationship or failure.
    Nothing decorative.
 6. **New data** goes under `DATA_REQUESTS` with the source URL, series ID,
@@ -345,7 +350,9 @@ key empirical result (with its grade) and misconception:
 ```
 
 Ids run `<UNIT>-c001` upward. A card that states a graded result other than a
-theorem cites the registry keys behind it. Finishing a lesson's quiz adds that
+theorem cites the registry keys behind it, or, for a result the lesson itself
+establishes (a lab or problem simulation), names that in `basis` exactly as the
+key-results table does, for example `"basis": "Lab 1, Problem E2 (simulation)"`. Finishing a lesson's quiz adds that
 lesson's cards to the learner's review deck (`course/review.html`, FSRS-4.5).
 
 Each card tests one fact. The back must be checkable against the lesson text.

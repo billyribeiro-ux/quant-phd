@@ -16,10 +16,12 @@ At both widths in the light theme it then sweeps every live figure: each
 control runs through all its values (every range step, select option and
 checkbox state; the full product of them when it has at most
 ``SWEEP_PRODUCT_LIMIT`` states, else one control at a time from the default),
-and each button is pressed ``SWEEP_PRESSES`` times. In every state no chart
-text may leave its SVG, overlap another text, or be crossed by a plotted line,
-segment, rule, dot or bar (tools/figure_sweep.js). Geometry does not depend on the
-theme, so the dark theme is not swept.
+and each button is pressed ``SWEEP_PRESSES`` times, or as many times as the
+chart's ``data-sweep-presses`` asks (a figure that draws random states needs
+many). In every state no chart text may leave its SVG, overlap another text, or
+be crossed by a plotted line, segment, rule, dot or bar, and no axis may repeat
+a tick label (tools/figure_sweep.js). Geometry does not depend on the theme, so
+the dark theme is not swept.
 
 Then, once per page at desktop width: runs every lab in Pyodide and requires
 its output to match the page within 10 s of runtime (the runtime is started
@@ -148,11 +150,12 @@ def sweep_figures(page: Page) -> list[str]:
     problems: list[str] = []
     width = page.viewport_size["width"] if page.viewport_size else 0
     for chart in page.locator("[data-chart]").all():
-        problems += sweep_chart(chart, f"{width} px, chart {chart.get_attribute('data-chart')}")
+        presses = int(chart.get_attribute("data-sweep-presses") or SWEEP_PRESSES)
+        problems += sweep_chart(chart, f"{width} px, chart {chart.get_attribute('data-chart')}", presses)
     return problems
 
 
-def sweep_chart(chart: Locator, where: str) -> list[str]:
+def sweep_chart(chart: Locator, where: str, presses: int) -> list[str]:
     controls = chart.evaluate("(el) => window.__figureSweep.controls(el)")
     settable = [(i, c) for i, c in enumerate(controls) if c["kind"] != "button"]
     grids = [control_values(c) for _, c in settable]
@@ -180,7 +183,7 @@ def sweep_chart(chart: Locator, where: str) -> list[str]:
         set_all(defaults)
     for i, c in enumerate(controls):
         if c["kind"] == "button":
-            for press in range(1, SWEEP_PRESSES + 1):
+            for press in range(1, presses + 1):
                 set_all([(i, None)])
                 check(f"{c['label']} pressed {press}x")
     return problems

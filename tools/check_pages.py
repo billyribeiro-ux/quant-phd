@@ -347,8 +347,9 @@ def check_cards(u: Unit, lessons: set[str], problems: list[str]) -> None:
         for key in card.get("cite", []):
             if key not in keys:
                 problems.append(f"cards.json: {cid} cites unknown key {key!r}")
-        if card.get("grade") and card["grade"] != "T" and not card.get("cite"):
-            problems.append(f"cards.json: {cid} states a grade-{card['grade']} result without citing it")
+        grounded = card.get("cite") or str(card.get("basis", "")).strip()
+        if card.get("grade") and card["grade"] != "T" and not grounded:
+            problems.append(f"cards.json: {cid} states a grade-{card['grade']} result with neither cite nor basis")
     per_lesson = Counter(c.get("lesson") for c in cards)
     for lesson in sorted(lessons):
         if per_lesson[lesson] == 0:

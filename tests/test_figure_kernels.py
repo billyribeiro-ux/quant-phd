@@ -384,6 +384,9 @@ def test_pi0_moments_describe_the_figures_samples() -> None:
     assert row["m"]["leak"] < row["m"]["sd"] / 50, "at lambda = 0.5 the leak is far below the noise (L03 caption)"
     first = out[0]
     assert first["m"]["leak"] > 2 * first["m"]["sd"], "at lambda = 0.05 the leak is more than twice the noise"
+    # The caption's numbers: leak 0.018 against sd 0.008 at lambda = 0.05; 0.0005 against 0.028 at lambda = 0.5.
+    assert (round(first["m"]["leak"], 3), round(first["m"]["sd"], 3)) == (0.018, 0.008)
+    assert (round(row["m"]["leak"], 4), round(row["m"]["sd"], 3)) == (0.0005, 0.028)
     assert np.mean(np.asarray(first["est"]) > 0.8) >= 0.95, "at lambda = 0.05 almost every estimate exceeds pi0"
 
 
@@ -412,6 +415,25 @@ def test_reality_check_and_spa_kernel_uses_only_the_first_k_strategies() -> None
         assert got["spa"] == pytest.approx(float(np.mean(t_star >= t_max)), abs=1e-15), k
         assert got["n"] == int(np.sum(centre != 0)), k
     assert out[0]["v"] < out[1]["v"], "the subset excludes the strong strategy"
+
+
+def test_stepm_description_matches_every_number_of_steps() -> None:
+    l05 = (S7 / "figures-L05.js").as_uri()
+    out = node(
+        f'import * as f5 from "{l05}";\n'
+        "console.log(JSON.stringify([292, 103, 104].map((s) => { const r = f5.study(s).result;"
+        " return {steps: r.steps.length, c: r.steps.map((x) => x.critical.toFixed(2)),"
+        " text: f5.stepmDescription(r)}; })));",
+        {},
+    )
+    one, flat, three = out
+    assert one["steps"] == 1, "seed 292 stops after one step"
+    assert one["text"].endswith("Step 1 rejects nothing, so there is no later step and StepM rejects nothing.")
+    assert "Each later step" not in one["text"], "a one-step study has no later step"
+    assert flat["steps"] == 2 and flat["c"][0] == flat["c"][1], "seed 103 keeps its critical value"
+    assert f"here {flat['c'][0]}, then {flat['c'][1]}." in flat["text"]
+    assert three["steps"] == 3, "seed 104 takes three steps"
+    assert "here " + ", then ".join(three["c"]) + "." in three["text"], "every step's critical value is named"
 
 
 def test_every_kernel_a_figure_imports_is_tested() -> None:
@@ -449,8 +471,8 @@ def test_simulated_figure_defaults_are_median_draws() -> None:
         " return [...c.reduce((a, p) => (p[1] > a[1] ? p : a)), c[0][1], c[c.length - 1][1]]; });\n"
         "const rc = seeds(2000, 2029).map((s) => { const u = f4.universe(s);"
         " const a = mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, 10);"
-        " return [a.v, a.pRc, mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, 110).pRc]; });\n"
-        "const stepm = seeds(0, 299).map((s) => { const r = f5.study(s).result;"
+        " return [a.v, a.pRc, mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, 110).pRc, a.pSpa]; });\n"
+        "const stepm = seeds(0, 999).map((s) => { const r = f5.study(s).result;"
         " return [r.steps[0].rejected.length, r.mask.filter(Boolean).length,"
         " r.steps.length > 1 ? r.steps[0].critical - r.steps[1].critical : null]; });\n"
         "const pbo = [false, true].map((e) => [...seeds(1, 200), f8.DEFAULT_CSCV_SEED]"
@@ -469,14 +491,16 @@ def test_simulated_figure_defaults_are_median_draws() -> None:
     distance = [[next(t + 0.5 for t in range(100) if ranks_within(c, i, t + 0.5)) for c in columns] for i in range(200)]
     spread = [max(d) for d in distance]
     assert min(spread) == spread[dar - 1], "L04 variance: no seed in 1-200 is closer to the median on all four"
-    for j in range(3):
+    for j in range(4):
         assert ranks_within([r[j] for r in out["rc"]], drc - 2000, 3), f"L04 RC/SPA statistic {j} near its median"
-    single, total = ([s[j] for s in out["stepm"]] for j in (0, 1))
+    first = out["stepm"][:300]  # the median checks use seeds 0-299; the step-down share uses 0-999
+    single, total = ([s[j] for s in first] for j in (0, 1))
     assert single[d5] == sorted(single)[150] and total[d5] == sorted(total)[150], "L05 StepM: a median study"
-    falls = [s[2] for s in out["stepm"] if s[2] is not None]
+    falls = [s[2] for s in first if s[2] is not None]
     middle = sorted(falls)[len(falls) // 2 - 1 : len(falls) // 2 + 1]
-    assert out["stepm"][d5][2] == pytest.approx(sum(middle) / 2, abs=5e-4), "L05 StepM: the median fall of c"
-    assert sum(t > s for s, t in zip(single, total, strict=True)) == 69, "L05 StepM: 23% (69 of 300) step down"
+    assert first[d5][2] == pytest.approx(sum(middle) / 2, abs=5e-4), "L05 StepM: the median fall of c"
+    later = sum(s[1] > s[0] for s in out["stepm"])
+    assert later == 197, "L05 StepM: a later step adds a rejection in 197 of 1,000 studies (about a fifth)"
     for edge, pbo in zip((False, True), out["pbo"], strict=True):
         middle = sorted(pbo[:200])[99:101]
         assert pbo[200] in middle, f"L08 CSCV: a median history (PBO, edge={edge}) among seeds 1-200"

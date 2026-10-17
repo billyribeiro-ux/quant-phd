@@ -111,7 +111,7 @@ function cscvExplorer(el) {
         height: 200,
         title: "Logits of all 70 splits",
         desc: `Histogram of the 70 logits λ = ln(ω/(1 − ω)); the ${result.logits.filter((l) => l <= 0).length} at or below zero, where the in-sample winner lands at or below the out-of-sample median, give PBO = ${result.pbo.toFixed(3)}.`,
-        x: { label: "Logit λ of the winner's OOS rank", domain: [-2.5, 2.5], format: ".1f" },
+        x: { label: "Logit λ of the winner's out-of-sample rank", domain: [-2.5, 2.5], format: ".1f" },
         y: { label: "Splits" },
         layers: [
           { type: "bars", name: "splits with λ ≤ 0 (counted by PBO)", bins: bins.slice(0, 10), series: 1 },

@@ -81,6 +81,12 @@
           if (meets(texts[i].box, texts[j].box)) problems.push(`texts ${texts[i].text} and ${texts[j].text} overlap`);
         }
       }
+      // Every axis shows distinct tick labels: a repeated one means the format is coarser than the tick step.
+      for (const axis of svg.querySelectorAll(".axis")) {
+        const ticks = [...axis.querySelectorAll(".tick text")].map((t) => t.textContent.trim()).filter(Boolean);
+        const repeated = ticks.filter((t, i) => ticks.indexOf(t) !== i);
+        if (repeated.length) problems.push(`an axis repeats tick labels ${JSON.stringify([...new Set(repeated)])}`);
+      }
       const points = markPoints(svg);
       const boxes = [...svg.querySelectorAll(".plot .dot, .plot .bar")].map((n) => {
         const r = n.getBoundingClientRect();

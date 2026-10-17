@@ -118,9 +118,10 @@ function legend(parent, layers) {
  *            vertical rule and of the labels already placed; an automatic y domain gains headroom above the data
  *            for the rows used (layoutRuleLabels). A rule with a name is listed in the legend instead: use that
  *            for a horizontal rule a curve could cross in some state.
- *   text     {x, y, text, anchor?, dx?, dy?, tone?, candidates?: [{dx, dy, anchor?}]}
- *            With candidates, the text takes the first offset whose glyph box lies inside the plot and clear of
- *            every line, segment, rule, dot and bar and of the texts placed before it (the first if none is).
+ *   text     {x, y, text, anchor?, dx?, dy?, tone?, candidates?: [{x?, y?, dx, dy, anchor?}]}
+ *            With candidates, the text takes the first position (data x and y, default the layer's, plus pixel
+ *            offsets) whose glyph box lies inside the plot and clear of every line, segment, rule, dot and bar and
+ *            of the texts placed before it (the first if none is).
  */
 export function plot(parent, spec) {
   const width = spec.width;
@@ -289,9 +290,11 @@ export function plot(parent, spec) {
       const node = svg.append("text").attr("class", `note ${layer.tone ?? ""}`).text(layer.text);
       const options = layer.candidates ?? [{ dx: layer.dx ?? 0, dy: layer.dy ?? 0, anchor: layer.anchor }];
       const length = node.node().getComputedTextLength?.() || layer.text.length * 6.2;
+      const at = (o) => [x(o.x ?? layer.x) + o.dx, y(o.y ?? layer.y) + o.dy];
       const boxOf = (o) => {
-        const left = x(layer.x) + o.dx - ((o.anchor ?? layer.anchor) === "middle" ? length / 2 : (o.anchor ?? layer.anchor) === "end" ? length : 0);
-        return { l: left, r: left + length, t: y(layer.y) + o.dy - 8.5, b: y(layer.y) + o.dy + 2.5 };
+        const [px, py] = at(o);
+        const left = px - ((o.anchor ?? layer.anchor) === "middle" ? length / 2 : (o.anchor ?? layer.anchor) === "end" ? length : 0);
+        return { l: left, r: left + length, t: py - 8.5, b: py + 2.5 };
       };
       obstacles ??= markObstacles(spec.layers, x, y, margin, width, height);
       const clear = (b) =>
@@ -300,8 +303,8 @@ export function plot(parent, spec) {
       const box = boxOf(chosen);
       obstacles.push((b) => b.l < box.r + 2 && b.r > box.l - 2 && b.t < box.b + 1 && b.b > box.t - 1);
       node
-        .attr("x", x(layer.x) + chosen.dx)
-        .attr("y", y(layer.y) + chosen.dy)
+        .attr("x", at(chosen)[0])
+        .attr("y", at(chosen)[1])
         .attr("text-anchor", chosen.anchor ?? layer.anchor ?? "start");
     }
   }
@@ -570,15 +573,27 @@ function centredRoom(centre, extent) {
   return 2 * Math.min(centre, extent - centre) - 8;
 }
 
+const MIN_LABEL_PX = 8;
+
 /**
- * Shrink an axis label's font until it fits `room` pixels, so a long label never leaves the SVG on a narrow
- * screen. Measures the rendered length when the browser can (getComputedTextLength), else estimates it.
+ * Fit an axis label into `room` pixels so it never leaves the SVG: shrink its font, down to MIN_LABEL_PX, and if it
+ * is still too long, cut it at a word with an ellipsis and keep the full text in a <title> child for hover and
+ * screen readers. Measures the rendered length when the browser can (getComputedTextLength), else estimates it.
  */
 function fitLabel(label, room) {
   const node = label.node();
   const measure = () => (typeof node.getComputedTextLength === "function" ? node.getComputedTextLength() : 0) || node.textContent.length * 6.6;
   const length = measure();
-  if (length > room && room > 0) label.style("font-size", `${Math.max(8, 12 * (room / length)).toFixed(1)}px`);
+  if (length <= room || room <= 0) return;
+  label.style("font-size", `${Math.max(MIN_LABEL_PX, 12 * (room / length)).toFixed(1)}px`);
+  if (measure() <= room) return;
+  const full = node.textContent;
+  const words = full.split(" ");
+  while (words.length > 1 && measure() > room) {
+    words.pop();
+    node.textContent = `${words.join(" ")}…`;
+  }
+  label.append("title").text(full);
 }
 
 /** Wrap `text` into lines of at most `chars` characters, breaking at spaces. */

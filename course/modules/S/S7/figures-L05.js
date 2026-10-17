@@ -33,9 +33,24 @@ export function study(seed) {
 }
 
 // The default, seed 101, is a median study: across seeds 0–299 its single-step and StepM counts and the fall of its
-// critical value from step 1 to step 2 all equal the medians. A later step adds a rejection in 23% of those studies
-// (tests/test_figure_kernels.py checks all of this); the second button draws new studies until one does.
+// critical value from step 1 to step 2 all equal the medians. Over seeds 0–999 a later step adds a rejection in 197
+// studies (tests/test_figure_kernels.py checks all of this); the second button draws new studies until one does.
 export const DEFAULT_SEED = 101;
+
+/** The figure's SVG description of one study's StepM result. */
+export function stepmDescription(result) {
+  const single = result.steps[0].rejected.length;
+  const total = result.mask.filter(Boolean).length;
+  const steps = result.steps.length;
+  return (
+    `Twenty SIMULATED strategies sorted by their studentized statistic, eight with a true alpha. The first step's critical value ` +
+    `${result.steps[0].critical.toFixed(2)} is the single-step test and rejects ${single}. ` +
+    (steps === 1
+      ? "Step 1 rejects nothing, so there is no later step and StepM rejects nothing."
+      : `Each later step drops the rejected strategies and recomputes the critical value over the rest, which is never higher: ` +
+        `here ${result.steps.map((st) => st.critical.toFixed(2)).join(", then ")}. StepM rejects ${total} in ${steps} steps.`)
+  );
+}
 
 function stepmSteps(el) {
   let seed = DEFAULT_SEED;
@@ -70,13 +85,31 @@ function stepmSteps(el) {
         const xs = step.active.map((k) => pos.get(k));
         layers.push({
           type: "segments",
-          name: j === 0 ? "critical value at each step" : undefined,
+          name: j === 0 ? "critical value (step 1 solid, later steps dashed)" : undefined,
           segments: [[Math.min(...xs) - 0.4, step.critical, Math.max(...xs) + 0.4, step.critical]],
           series: 1,
           dash: j === 0 ? 0 : 1,
         });
-        // Later steps' labels stack below the line, so equal critical values stay legible.
-        layers.push({ type: "text", x: u.K + 0.6, y: step.critical, dy: j === 0 ? -6 : 3 + 13 * j, anchor: "end", text: `step ${j + 1}: c = ${step.critical.toFixed(2)}` });
+        // Only the first and the last step are labelled in the plot (the readout lists every step): later critical
+        // values can lie within a pixel or two of each other, too close for a label each. A label goes above the
+        // right end of its line, stacking upward past the first step's: every strategy there is unrejected, so its
+        // t lies below every critical value and no dot can reach the label. Below the line or at its left end only
+        // if the plot has no room above.
+        if (j > 0 && j < result.steps.length - 1) return;
+        const left = Math.min(...xs) - 0.4;
+        layers.push({
+          type: "text",
+          x: u.K + 0.6,
+          y: step.critical,
+          anchor: "end",
+          text: `step ${j + 1}: c = ${step.critical.toFixed(2)}`,
+          candidates: [
+            ...Array.from({ length: 6 }, (_, m) => ({ dx: 0, dy: -6 - 13 * m })),
+            { dx: 0, dy: 14 },
+            { x: left, dx: 0, dy: -6, anchor: "start" },
+            { x: left, dx: 0, dy: 14, anchor: "start" },
+          ],
+        });
       });
       const dots = order.map(([v, k]) => [pos.get(k), v, k]);
       layers.push({ type: "dots", name: "rejected", points: dots.filter((p) => stepOf.has(p[2])), series: 0, r: 5 });
@@ -94,18 +127,10 @@ function stepmSteps(el) {
       const total = result.mask.filter(Boolean).length;
       const found = result.mask.filter((r, k) => r && k < u.genuine).length;
       const falseHits = total - found;
-      const steps = result.steps.length;
-      const fell = result.steps.some((st, j) => j > 0 && st.critical < result.steps[j - 1].critical);
       plot(area, {
         width,
         title: "The StepM procedure, step by step",
-        desc:
-          `Twenty SIMULATED strategies sorted by their studentized statistic, eight with a true alpha. The first step's critical value ` +
-          `${result.steps[0].critical.toFixed(2)} is the single-step test and rejects ${single}. Each later step drops the rejected strategies ` +
-          (steps === 1
-            ? "Step 1 rejects nothing, so there is no later step and StepM rejects nothing."
-            : `and recomputes the critical value over the rest, which is never higher and here ${fell ? `falls by ${(result.steps[0].critical - result.steps[1].critical).toFixed(3)}` : "stays the same"}; ` +
-              `StepM rejects ${total} in ${steps} steps.`),
+        desc: stepmDescription(result),
         x: { label: "Strategy, sorted by t", domain: [0.3, u.K + 0.7], ticks: 10, format: "d" },
         y: { label: "Studentized statistic t", domain: [floor, Math.max(...t) + 0.8], format: ".0f" },
         layers,

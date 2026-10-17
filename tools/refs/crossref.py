@@ -82,6 +82,9 @@ class Work:
     publisher: str | None
     # Set for works verified outside Crossref (Open Library edition, landing page, issuer page).
     url: str | None = None
+    # The year of the printed issue (Crossref's published-print), the year a citation names; None when the record
+    # has no print date (online-only venues, and works verified outside Crossref).
+    print_year: int | None = None
 
     @classmethod
     def from_message(cls, item: dict[str, Any]) -> Work:
@@ -98,6 +101,8 @@ class Work:
                 years.add(int(parts[0][0]))
         issued = (item.get("issued") or {}).get("date-parts") or [[None]]
         year = int(issued[0][0]) if issued and issued[0] and issued[0][0] else (min(years) if years else None)
+        printed = (item.get("published-print") or {}).get("date-parts") or [[None]]
+        print_year = int(printed[0][0]) if printed and printed[0] and printed[0][0] else None
         return cls(
             doi=str(item["DOI"]).lower(),
             type=str(item.get("type") or ""),
@@ -111,6 +116,7 @@ class Work:
             year=year,
             isbn=tuple(item.get("ISBN") or ()),
             publisher=item.get("publisher"),
+            print_year=print_year,
         )
 
 

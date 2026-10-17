@@ -14,12 +14,17 @@ It also checks registry integrity: unique keys, DOIs, ISBNs and URLs; required
 fields; a DOI or a URL on every entry; and that every ``used_by`` unit exists
 in the curriculum (or is ``BLUEPRINT``).
 
+It also checks that each citation string's year is the year the site shows
+(``registry.display_year``: the printed issue's year when Crossref has one), so
+a miscited year cannot reach a page.
+
 Exit status is non-zero on any discrepancy, so CI can gate on it.
 
 Usage::
 
     python3 tools/verify_refs.py             # full live re-verification
     python3 tools/verify_refs.py --offline   # integrity checks only (no network)
+    python3 tools/verify_refs.py --backfill-print-years   # record Crossref's print year where it is missing
 """
 
 from __future__ import annotations
@@ -89,6 +94,12 @@ def integrity(entries: list[dict[str, Any]]) -> list[str]:
         unknown = [u for u in e.get("used_by", []) if u not in units]
         if unknown:
             problems.append(f"{e.get('key')}: used_by unknown units {unknown}")
+        if verifier == "crossref" and "print_year" not in e:
+            problems.append(f"{e.get('key')}: print_year not recorded (run --backfill-print-years)")
+        # A year disagreement recorded at admission (notes['year']: curriculum against record) is acknowledged.
+        shown, cited = registry.display_year(e), registry.cited_years(e)
+        if shown is not None and cited and shown not in cited and "year" not in (e.get("notes") or {}):
+            problems.append(f"{e.get('key')}: citation strings name {sorted(cited)} but the site shows {shown}")
     return problems
 
 
@@ -105,6 +116,8 @@ def compare(entry: dict[str, Any], live: Work, *, fields: tuple[str, ...] = ARTI
         diffs.append(f"first author {stored_first!r} != {live_first!r}")
     if entry["year"] != live.year:
         diffs.append(f"year {entry['year']} != {live.year}")
+    if entry.get("verified_by", "crossref") == "crossref" and entry.get("print_year") != live.print_year:
+        diffs.append(f"print_year {entry.get('print_year')} != {live.print_year}")
     live_container = live.container[0] if live.container else None
     if "container" in fields and (entry.get("container") or None) != live_container:
         diffs.append(f"container {entry.get('container')!r} != {live_container!r}")
@@ -134,13 +147,59 @@ def live_check(entry: dict[str, Any], crossref: Crossref, fetcher: Fetcher) -> l
     return [] if recall >= PRIMARY_TITLE_RECALL else [f"issuer page title now covers {recall:.0%} of the citation"]
 
 
+def backfill_print_years(entries: list[dict[str, Any]], workers: int) -> int:
+    """Store print_year on every Crossref entry from its live record; nothing else in an entry changes."""
+    crossref = Crossref(None)
+    todo = [e for e in entries if e.get("verified_by", "crossref") == "crossref" and e.get("doi")]
+
+    def fetch(entry: dict[str, Any]) -> tuple[str, int | None, str | None]:
+        try:
+            return entry["key"], crossref.work(entry["doi"], use_cache=False).print_year, None
+        except CrossrefError as exc:
+            return entry["key"], None, str(exc)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(fetch, todo))
+    failures = [f"{key}: {error}" for key, _, error in results if error]
+    if failures:
+        for failure in failures:
+            print(f"FAIL {failure}")
+        print(f"backfill: {len(failures)} of {len(todo)} records could not be fetched; registry unchanged")
+        return 1
+    years = {key: year for key, year, _ in results}
+    updated = []
+    for entry in entries:
+        if entry["key"] not in years:
+            updated.append(entry)
+            continue
+        # Same field order as a new entry (registry.Entry.to_json): print_year follows years.
+        fields = {k: v for k, v in entry.items() if k != "print_year"}
+        ordered: dict[str, Any] = {}
+        for name, value in fields.items():
+            ordered[name] = value
+            if name == "years":
+                ordered["print_year"] = years[entry["key"]]
+        updated.append(ordered)
+    registry.save(updated)
+    printed = sum(year is not None for year in years.values())
+    print(f"backfill: print_year recorded on {len(years)} Crossref entries ({printed} with a print date)")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--offline", action="store_true", help="integrity checks only")
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument(
+        "--backfill-print-years",
+        action="store_true",
+        help="fetch each Crossref entry's record and store its published-print year (entries added before it existed)",
+    )
     args = parser.parse_args()
 
     entries = registry.load()
+    if args.backfill_print_years:
+        return backfill_print_years(entries, args.workers)
     problems = integrity(entries)
 
     if not args.offline:

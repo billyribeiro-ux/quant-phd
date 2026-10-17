@@ -138,7 +138,8 @@ def test_psr_penalizes_negative_skewness() -> None:
 
 
 def expected_max(n: int, var: float) -> float:
-    z = (1 - GAMMA) * PHI.inv_cdf(1 - 1 / n) + GAMMA * PHI.inv_cdf(1 - 1 / (n * math.e))
+    # Phi^-1(1 - p) written as -Phi^-1(p), which stays exact when 1 - 1/N would round to 1.
+    z = -(1 - GAMMA) * PHI.inv_cdf(1 / n) - GAMMA * PHI.inv_cdf(1 / (n * math.e))
     return math.sqrt(var) * z
 
 
@@ -161,8 +162,13 @@ def test_expected_max_sharpe_edge_cases() -> None:
         ((0, 1.0), "n_trials < 1"),
         ((10, -1.0), "a negative sr_variance"),
         ((2.5, 1.0), "a non-integer n_trials"),
+        ((float("inf"), 1.0), "an infinite n_trials"),
     ):
         must_raise(lambda bad=bad: a8.expected_max_sharpe(*bad), f"expected_max_sharpe with {condition}")
+    assert close(a8.expected_max_sharpe(10**20, 1.0), expected_max(10**20, 1.0)), (
+        "expected_max_sharpe must work for any positive integer N: 1 - 1/N rounds to 1 beyond 2**53, so evaluate "
+        "Phi^-1(1 - p) as -Phi^-1(p) (contract)."
+    )
 
 
 def test_expected_max_is_close_to_simulation() -> None:
@@ -575,6 +581,7 @@ def test_romano_wolf_constant_non_dyadic_resample() -> None:
 
 
 def cscv_metric(block: np.ndarray) -> np.ndarray:
+    block = np.ldexp(block, -np.frexp(np.abs(block).max(0))[1])  # each column in its own scale (contract: scale)
     mean, sd = block.mean(0), block.std(0, ddof=1)
     flat = block.max(0) == block.min(0)  # a constant subsample (the contract's zero-variance rule)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -659,6 +666,37 @@ def test_tiny_and_huge_returns() -> None:
             "Sharpe ratio and kurtosis of a series do not depend on its magnitude: at 1e155 a fourth power "
             "overflows and at 2**-1000 a square underflows unless the series is rescaled first (contract: scale)."
         )
+
+
+def test_every_resample_and_subsample_is_rescaled() -> None:
+    # One large period and 39 tiny ones. A bootstrap resample or a CSCV subsample that misses the large period
+    # holds only values near 1e-300, whose squares underflow to zero unless that resample or subsample is
+    # rescaled by its own power of two; rescaling the whole column once is not enough.
+    rng = np.random.default_rng(SEED)
+    tiny = (np.arange(1, 40) + rng.random(39)) * 1e-300
+    d = np.column_stack([np.r_[1.0, tiny], rng.normal(0.0, 1.0, 40)])
+    got = np.asarray(a8.romano_wolf(d, 0.05, 200, 2.0, SEED))
+    assert got.shape == (2,) and got.dtype == bool, (
+        "romano_wolf must studentize every resample in its own scale, with no warning (contract: scale)."
+    )
+    m = rng.normal(0.0, 0.01, (40, 4))
+    m[:, 1] = np.r_[np.full(10, 0.02), tiny[:30]]
+    logits = np.asarray(a8.probability_of_backtest_overfitting(m, 4).logits)
+    assert np.allclose(logits, cscv_logits(m, 4), rtol=0, atol=1e-10), (
+        "CSCV must compute each subsample's Sharpe ratio in that subsample's own scale, with no warning "
+        "(contract: scale)."
+    )
+
+
+def test_numpy_scalar_arguments_do_not_warn() -> None:
+    must_raise(
+        lambda: a8.sharpe_ratio_std(np.float64(1e200), 100, 0.0, 3.0),
+        "sharpe_ratio_std whose variance bracket overflows for a NumPy scalar Sharpe ratio",
+    )
+    assert close(a8.probabilistic_sharpe_ratio(INST["returns"], np.float64(-1e308)), 1.0), (
+        "A NumPy scalar benchmark must not warn: convert scalar arguments with float() before arithmetic "
+        "(contract: scalars)."
+    )
 
 
 @pytest.mark.parametrize("k", [pytest.param(500, id="times-2^500"), pytest.param(-500, id="times-2^-500")])
@@ -848,6 +886,90 @@ def _differentials() -> np.ndarray:
             ),
             "integrity_report with q = 0",
             id="report-q-zero",
+        ),
+        # Every non-finite value an argument can carry, NaN and infinity alike.
+        pytest.param(
+            lambda: a8.benjamini_hochberg([0.1, float("nan")], 0.05),
+            "benjamini_hochberg given a NaN p-value",
+            id="bh-p-nan",
+        ),
+        pytest.param(
+            lambda: a8.probabilistic_sharpe_ratio(INST["returns"], float("inf")),
+            "probabilistic_sharpe_ratio with an infinite benchmark",
+            id="psr-benchmark-inf",
+        ),
+        pytest.param(
+            lambda: a8.sharpe_ratio([0.01, float("inf"), 0.02]),
+            "sharpe_ratio given an infinite return",
+            id="series-inf",
+        ),
+        pytest.param(
+            lambda: a8.expected_max_sharpe(10, float("nan")),
+            "expected_max_sharpe with a NaN sr_variance",
+            id="ems-sr-variance-nan",
+        ),
+        pytest.param(
+            lambda: a8.expected_max_sharpe(10, 1.0, float("inf")),
+            "expected_max_sharpe with an infinite sr_mean",
+            id="ems-sr-mean-inf",
+        ),
+        pytest.param(
+            lambda: a8.deflated_sharpe_ratio(INST["returns"], [0.05, float("inf")]),
+            "deflated_sharpe_ratio with an infinite trial Sharpe ratio",
+            id="dsr-trial-inf",
+        ),
+        pytest.param(
+            lambda: a8.stationary_bootstrap_indices(50, float("inf"), np.random.default_rng(SEED)),
+            "stationary_bootstrap_indices with an infinite mean_block",
+            id="sb-mean-block-inf",
+        ),
+        pytest.param(
+            lambda: a8.stepdown_rejections([1.0, 2.0], np.full((10, 2), float("inf")), 0.05),
+            "stepdown_rejections with an infinite bootstrap statistic",
+            id="stepdown-boot-inf",
+        ),
+        pytest.param(
+            lambda: a8.romano_wolf(np.where(np.eye(40, 3, dtype=bool), np.inf, _differentials()), 0.05, 20, 5.0, SEED),
+            "romano_wolf given an infinite differential",
+            id="rw-inf",
+        ),
+        # Integer arguments: inf and fractional values are not integers (contract: scalars).
+        pytest.param(
+            lambda: a8.sharpe_ratio_std(0.1, float("inf"), 0.0, 3.0),
+            "sharpe_ratio_std with an infinite n_obs",
+            id="se-n-obs-inf",
+        ),
+        pytest.param(
+            lambda: a8.stationary_bootstrap_indices(float("inf"), 5.0, np.random.default_rng(SEED)),
+            "stationary_bootstrap_indices with an infinite n_obs",
+            id="sb-n-obs-inf",
+        ),
+        pytest.param(
+            lambda: a8.romano_wolf(_differentials(), 0.05, float("inf"), 5.0, SEED),
+            "romano_wolf with an infinite n_boot",
+            id="rw-n-boot-inf",
+        ),
+        pytest.param(
+            lambda: a8.probability_of_backtest_overfitting(_differentials(), float("inf")),
+            "probability_of_backtest_overfitting with an infinite n_blocks",
+            id="pbo-n-blocks-inf",
+        ),
+        pytest.param(
+            lambda: a8.integrity_report(
+                a8.TrialSet(np.random.default_rng(0).normal(size=(50, 4)), 0, 252), n_blocks=float("inf"), n_boot=20
+            ),
+            "integrity_report with an infinite n_blocks",
+            id="report-n-blocks-inf",
+        ),
+        pytest.param(
+            lambda: a8.TrialSet(np.random.default_rng(0).normal(size=(50, 4)), 1.5, 252),
+            "TrialSet with a fractional selected",
+            id="trialset-selected-fractional",
+        ),
+        pytest.param(
+            lambda: a8.TrialSet(np.random.default_rng(0).normal(size=(50, 4)), 0, float("inf")),
+            "TrialSet with an infinite periods_per_year",
+            id="trialset-periods-per-year-inf",
         ),
     ],
 )

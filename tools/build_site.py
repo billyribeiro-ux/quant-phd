@@ -31,6 +31,8 @@ from pathlib import Path
 from string import Template
 from typing import Any
 
+from refs.registry import display_year
+
 ROOT = Path(__file__).resolve().parent.parent
 COURSE = ROOT / "course"
 DATA = COURSE / "assets" / "data"
@@ -48,9 +50,13 @@ _SMALL_WORDS = frozenset(
 # ---------------------------------------------------------------- citation display
 
 
+_INITIALS = re.compile(r"(?:[A-Z]\.-?)+")
+
+
 def _fix_case(word: str) -> str:
-    """'HARVEY' -> 'Harvey', 'MCLEAN' -> 'McLean', 'COLLIN-DUFRESNE' -> 'Collin-Dufresne'; mixed case is kept."""
-    if not word.isupper() or len(word) <= 1:
+    """'HARVEY' -> 'Harvey', 'MCLEAN' -> 'McLean', 'COLLIN-DUFRESNE' -> 'Collin-Dufresne'; mixed case and
+    initials ('P.B.', 'J.-P.') are kept."""
+    if not word.isupper() or len(word) <= 1 or _INITIALS.fullmatch(word):
         return word
     lowered = word.lower()
     if lowered.startswith("mc") and len(lowered) > 3:
@@ -82,14 +88,6 @@ def title_case(title: str) -> str:
         else:
             out.append(word[:1].upper() + word[1:])
     return " ".join(out)
-
-
-def display_year(entry: dict[str, Any]) -> int | None:
-    years = entry.get("years") or []
-    if entry.get("type") == "journal-article" and years:
-        return int(max(years))
-    year = entry.get("year")
-    return int(year) if year is not None else None
 
 
 def short_cite(entry: dict[str, Any]) -> str:
