@@ -2,7 +2,8 @@
 
 Verifier mutant (round 3) of course/modules/S/S7/grader/reference.py (S7 / Atlas A8): one realistic
 student error, otherwise identical to the reference.
-Rebased in round 4 onto the reference's power-of-two scaling; the error is unchanged.
+Rebased in round 5 onto the reference at df84c85 (integer checks, float() scalars, per-resample
+scaling and the Phi^-1(1 - p) = -Phi^-1(p) form); the error is unchanged.
 """
 
 from __future__ import annotations
@@ -49,6 +50,11 @@ def _level(value: float, name: str) -> float:
     if not (0.0 < value < 1.0):
         raise ValueError(f"{name} must lie strictly between 0 and 1")
     return float(value)
+
+
+def _whole(value: object) -> bool:
+    """An integer, or a float with an integral value; False for inf and NaN, which int() cannot convert."""
+    return isinstance(value, int | np.integer) or (isinstance(value, float) and value.is_integer())
 
 
 def _all_equal(x: NDArray[np.float64], axis: int | None = None) -> NDArray[np.bool_]:
@@ -99,8 +105,10 @@ def sample_kurtosis(returns: ArrayLike) -> float:
 
 def sharpe_ratio_std(sharpe: float, n_obs: int, skewness: float, kurtosis: float) -> float:
     """Standard error of the estimated Sharpe ratio under skewness and kurtosis (iid returns)."""
-    if n_obs < 2:
-        raise ValueError("n_obs must be at least 2")
+    if not _whole(n_obs) or n_obs < 2:
+        raise ValueError("n_obs must be an integer of at least 2")
+    # Python floats, so a NumPy scalar argument cannot raise an overflow warning (the bracket is checked below).
+    sharpe, skewness, kurtosis = float(sharpe), float(skewness), float(kurtosis)
     bracket = 1.0 - skewness * sharpe + (kurtosis - 1.0) / 4.0 * (sharpe * sharpe)
     if not math.isfinite(bracket):  # a non-finite argument always makes the bracket non-finite
         raise ValueError("sharpe, skewness and kurtosis must be finite and the variance bracket must not overflow")
@@ -112,6 +120,7 @@ def sharpe_ratio_std(sharpe: float, n_obs: int, skewness: float, kurtosis: float
 def probabilistic_sharpe_ratio(returns: ArrayLike, sr_benchmark: float = 0.0) -> float:
     """Probability that the true Sharpe ratio exceeds sr_benchmark, given skewness and kurtosis."""
     x = _series(returns)
+    sr_benchmark = float(sr_benchmark)  # a NumPy scalar would warn on overflow in the difference below
     if not math.isfinite(sr_benchmark):
         raise ValueError("sr_benchmark must be finite")
     sr = sharpe_ratio(x)
@@ -121,7 +130,7 @@ def probabilistic_sharpe_ratio(returns: ArrayLike, sr_benchmark: float = 0.0) ->
 
 def expected_max_sharpe(n_trials: int, sr_variance: float, sr_mean: float = 0.0) -> float:
     """Approximate expected maximum of n_trials independent normal Sharpe-ratio estimates."""
-    if int(n_trials) != n_trials or n_trials < 1:
+    if not _whole(n_trials) or n_trials < 1:
         raise ValueError("n_trials must be a positive integer")
     if not math.isfinite(sr_variance) or sr_variance < 0.0:
         raise ValueError("sr_variance must be finite and non-negative")
@@ -130,8 +139,9 @@ def expected_max_sharpe(n_trials: int, sr_variance: float, sr_mean: float = 0.0)
     if n_trials == 1:
         return float(sr_mean)
     n = float(n_trials)
-    z = (1.0 - EULER_MASCHERONI) * _STANDARD_NORMAL.inv_cdf(1.0 - 1.0 / n) + EULER_MASCHERONI * (
-        _STANDARD_NORMAL.inv_cdf(1.0 - 1.0 / (n * math.e))
+    # Phi^-1(1 - p) = -Phi^-1(p): 1 - 1/N rounds to 1 once N exceeds 2**53, where Phi^-1 is infinite.
+    z = -(1.0 - EULER_MASCHERONI) * _STANDARD_NORMAL.inv_cdf(1.0 / n) - EULER_MASCHERONI * (
+        _STANDARD_NORMAL.inv_cdf(1.0 / (n * math.e))
     )
     return float(sr_mean) + math.sqrt(sr_variance) * z
 
@@ -176,7 +186,7 @@ def benjamini_hochberg(pvalues: ArrayLike, q: float) -> NDArray[np.bool_]:
 
 def stationary_bootstrap_indices(n_obs: int, mean_block: float, rng: np.random.Generator) -> NDArray[np.intp]:
     """One stationary-bootstrap resample of the time indices 0..n_obs-1."""
-    if int(n_obs) != n_obs or n_obs < 1:
+    if not _whole(n_obs) or n_obs < 1:
         raise ValueError("n_obs must be a positive integer")
     if not math.isfinite(mean_block) or mean_block < 1.0:
         raise ValueError("mean_block must be at least 1")
@@ -231,7 +241,7 @@ def romano_wolf(
     """Studentized Romano-Wolf StepM with the stationary bootstrap; H0_k: E[d_k] <= 0."""
     d = _matrix(differentials, "differentials")
     alpha = _level(alpha, "alpha")
-    if int(n_boot) != n_boot or n_boot < 1:
+    if not _whole(n_boot) or n_boot < 1:
         raise ValueError("n_boot must be a positive integer")
     n_obs = d.shape[0]
     root = math.sqrt(n_obs)
@@ -285,7 +295,7 @@ def probability_of_backtest_overfitting(performance: ArrayLike, n_blocks: int = 
     n_obs, n_strategies = m.shape
     if n_strategies < 2:
         raise ValueError("performance needs at least 2 strategies")
-    if int(n_blocks) != n_blocks or n_blocks < 2 or n_blocks % 2:
+    if not _whole(n_blocks) or n_blocks < 2 or n_blocks % 2:
         raise ValueError("n_blocks must be an even integer >= 2")
     if n_blocks > n_obs:
         raise ValueError("n_blocks cannot exceed the number of periods")
@@ -329,11 +339,13 @@ class TrialSet:
         r = _matrix(self.returns, "returns")
         if r.shape[1] < 2:
             raise ValueError("a trial set needs at least 2 trials")
-        if not (0 <= self.selected < r.shape[1]):
-            raise ValueError("selected must index a column of returns")
-        if self.periods_per_year < 1:
-            raise ValueError("periods_per_year must be positive")
+        if not _whole(self.selected) or not (0 <= self.selected < r.shape[1]):
+            raise ValueError("selected must be an integer indexing a column of returns")
+        if not _whole(self.periods_per_year) or self.periods_per_year < 1:
+            raise ValueError("periods_per_year must be a positive integer")
         object.__setattr__(self, "returns", r)
+        object.__setattr__(self, "selected", int(self.selected))
+        object.__setattr__(self, "periods_per_year", int(self.periods_per_year))
 
     @classmethod
     def from_backtest(cls, result: BacktestLike) -> TrialSet:
@@ -370,6 +382,8 @@ def integrity_report(
     n_obs, n_trials = r.shape
     if n_obs < 4:
         raise ValueError("an integrity report needs at least 4 periods, so each CSCV half-sample has 2")
+    if not _whole(n_blocks):
+        raise ValueError("n_blocks must be an integer")
     selected = r[:, trials.selected]
     sharpes = np.array([sharpe_ratio(r[:, j]) for j in range(n_trials)])
     sr = float(sharpes[trials.selected])
