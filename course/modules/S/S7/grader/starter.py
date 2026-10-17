@@ -111,8 +111,10 @@ class BacktestLike(Protocol):
 
 
 def _whole(value: object) -> bool:
-    """An integer, or a float with an integral value; False for inf and NaN."""
-    return isinstance(value, int | np.integer) or (isinstance(value, float) and value.is_integer())
+    """An integer of magnitude below 2**1000, or a (Python or NumPy) float with such an integral value."""
+    if isinstance(value, int | np.integer):
+        return bool(-(2**1000) < value < 2**1000)
+    return isinstance(value, float | np.floating) and float(value).is_integer() and abs(float(value)) < 2.0**1000
 
 
 @dataclass(frozen=True)
@@ -135,9 +137,7 @@ class TrialSet:
 
     @classmethod
     def from_backtest(cls, result: BacktestLike) -> TrialSet:
-        return cls(
-            np.asarray(result.trial_returns, dtype=np.float64), int(result.selected), int(result.periods_per_year)
-        )
+        return cls(np.asarray(result.trial_returns, dtype=np.float64), result.selected, result.periods_per_year)
 
 
 @dataclass(frozen=True)

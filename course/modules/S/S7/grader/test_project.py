@@ -557,7 +557,7 @@ def test_romano_wolf_bootstrap_statistic_is_the_contracts() -> None:
 def test_romano_wolf_constant_resample_uses_the_sample_sd() -> None:
     # Seven equal periods and one loss, all dyadic, so a resample that misses the loss is exactly constant and
     # its statistic is exactly 1 under the contract; such draws are far more than 5% of 400 with mean_block 2.
-    for level, rejected in ((0.1875, False), (0.3125, True)):  # observed t-statistics 0.5 and 1.5
+    for level, rejected in ((0.1875, False), (0.3125, True), (0.25390625, True)):  # observed t 0.5, 1.5, 1.03125
         x = np.full(8, level)
         x[7] = level - 1.0
         got = bool(np.asarray(a8.romano_wolf(x[:, None], 0.05, 400, 2.0, SEED))[0])
@@ -609,6 +609,7 @@ def test_pbo_handles_flat_subsamples() -> None:
     m = np.random.default_rng(SEED).normal(0.0, 0.01, (80, 5))
     m[:40, 1] = 0.0  # a configuration out of the market for the first half
     m[40:, 2] = 2.0**-10  # a configuration earning a constant return in the second half
+    m[:40, 3] = -(2.0**-10)  # a configuration paying a constant fee in the first half
     got = np.asarray(a8.probability_of_backtest_overfitting(m, 4).logits)
     assert np.allclose(got, cscv_logits(m, 4), rtol=0, atol=1e-10), (
         "A subsample with zero standard deviation has Sharpe metric 0.0 when its mean is 0 and +-inf otherwise, "
@@ -666,6 +667,12 @@ def test_tiny_and_huge_returns() -> None:
             "Sharpe ratio and kurtosis of a series do not depend on its magnitude: at 1e155 a fourth power "
             "overflows and at 2**-1000 a square underflows unless the series is rescaled first (contract: scale)."
         )
+    losses = np.array([-3.0, -2.0, -1.0, 1e-170]) * 1e155  # dominated by large negative returns
+    sr, _, g4 = moments(np.array([-3.0, -2.0, -1.0, 0.0]))
+    assert close(a8.sharpe_ratio(losses), sr) and close(a8.sample_kurtosis(losses), g4), (
+        "Rescale by the power of two of the largest absolute value, not of the largest value: a series of large "
+        "losses and one tiny gain overflows otherwise (contract: scale)."
+    )
 
 
 def test_every_resample_and_subsample_is_rescaled() -> None:
@@ -679,6 +686,13 @@ def test_every_resample_and_subsample_is_rescaled() -> None:
     assert got.shape == (2,) and got.dtype == bool, (
         "romano_wolf must studentize every resample in its own scale, with no warning (contract: scale)."
     )
+    for first, rest in ((1e300, tiny), (1.0, np.where(np.arange(39) % 2 == 0, 1e-300, np.nextafter(1e-300, 1.0)))):
+        d = np.column_stack([np.r_[first, rest], rng.normal(0.0, 1.0, 40)])
+        got = np.asarray(a8.romano_wolf(d, 0.05, 200, 2.0, SEED))
+        assert got.shape == (2,) and got.dtype == bool, (
+            "A bootstrap statistic too large for a float is +-inf, quietly: guard the overflow when the column mean "
+            "is re-expressed in a resample's scale and when it is studentized (contract: romano_wolf, scale)."
+        )
     m = rng.normal(0.0, 0.01, (40, 4))
     m[:, 1] = np.r_[np.full(10, 0.02), tiny[:30]]
     logits = np.asarray(a8.probability_of_backtest_overfitting(m, 4).logits)
@@ -987,3 +1001,94 @@ def test_input_validation(call: Callable[[], object], condition: str) -> None:
 )
 def test_series_functions_validate_their_input(function: str, bad: list) -> None:
     must_raise(lambda: getattr(a8, function)(bad), f"{function} given an invalid series")
+
+
+def test_numpy_integer_and_float_arguments_are_accepted() -> None:
+    # (T5, T8) the contract's Scalars row: Python or NumPy numbers; an integer argument may be an integral float.
+    n, var = INST["n_trials"], float(np.var(INST["trial_sharpes"], ddof=1))
+    for as_given in (np.int64(n), np.float32(n), np.float64(n)):
+        assert close(a8.expected_max_sharpe(as_given, var), expected_max(n, var)), (
+            "An integer argument may be a NumPy integer or an integral float (contract: scalars)."
+        )
+    m, s = INST["performance"], INST["n_blocks"]
+    assert close(
+        a8.probability_of_backtest_overfitting(m, np.int64(s)).pbo, a8.probability_of_backtest_overfitting(m, s).pbo
+    )
+    d = INST["differentials"]
+    assert np.array_equal(
+        np.asarray(a8.romano_wolf(d, 0.05, np.int64(50), 10.0, np.int64(SEED))),
+        np.asarray(a8.romano_wolf(d, 0.05, 50, 10.0, SEED)),
+    ), "romano_wolf must accept NumPy integers for n_boot and seed (contract: scalars)."
+    trials = a8.TrialSet(m, np.argmax(m.mean(0) / m.std(0, ddof=1)), np.int64(252))
+    assert isinstance(trials.selected, int), "TrialSet must accept a NumPy integer selected, as np.argmax returns."
+
+
+@pytest.mark.parametrize(
+    ("call", "condition"),
+    [
+        # (T6) from_backtest validates, never truncates
+        pytest.param(
+            lambda: a8.TrialSet.from_backtest(
+                SimpleNamespace(
+                    trial_returns=np.random.default_rng(0).normal(size=(50, 4)), selected=1.5, periods_per_year=252
+                )
+            ),
+            "TrialSet.from_backtest with a fractional selected",
+            id="from-backtest-selected-fractional",
+        ),
+        pytest.param(
+            lambda: a8.TrialSet.from_backtest(
+                SimpleNamespace(
+                    trial_returns=np.random.default_rng(0).normal(size=(50, 4)),
+                    selected=float("inf"),
+                    periods_per_year=252,
+                )
+            ),
+            "TrialSet.from_backtest with an infinite selected",
+            id="from-backtest-selected-inf",
+        ),
+        pytest.param(
+            lambda: a8.TrialSet.from_backtest(
+                SimpleNamespace(
+                    trial_returns=np.random.default_rng(0).normal(size=(50, 4)), selected=0, periods_per_year=251.5
+                )
+            ),
+            "TrialSet.from_backtest with a fractional periods_per_year",
+            id="from-backtest-ppy-fractional",
+        ),
+        # (T7) integers beyond the contract's bound
+        pytest.param(
+            lambda: a8.expected_max_sharpe(10**400, 1.0), "expected_max_sharpe with N >= 2**1000", id="ems-n-huge"
+        ),
+        pytest.param(
+            lambda: a8.sharpe_ratio_std(0.1, 10**400, 0.0, 3.0),
+            "sharpe_ratio_std with n_obs >= 2**1000",
+            id="se-n-obs-huge",
+        ),
+        # (T10) integrality, not only finiteness
+        pytest.param(
+            lambda: a8.sharpe_ratio_std(0.1, 2.5, 0.0, 3.0),
+            "sharpe_ratio_std with a fractional n_obs",
+            id="se-n-obs-fractional",
+        ),
+        pytest.param(
+            lambda: a8.TrialSet(np.random.default_rng(0).normal(size=(50, 4)), 0, 251.5),
+            "TrialSet with a fractional periods_per_year",
+            id="trialset-periods-per-year-fractional",
+        ),
+        # (T9) seed
+        pytest.param(
+            lambda: a8.romano_wolf(_differentials(), 0.05, 20, 5.0, 1.5),
+            "romano_wolf with a fractional seed",
+            id="rw-seed-fractional",
+        ),
+    ],
+)
+def test_input_validation_round5(call: Callable[[], object], condition: str) -> None:
+    must_raise(call, condition)
+
+
+def test_expected_max_sharpe_near_the_integer_bound() -> None:
+    assert close(a8.expected_max_sharpe(2**999, 1.0), expected_max(2**999, 1.0)), (
+        "expected_max_sharpe must work for every N below 2**1000 (contract)."
+    )
