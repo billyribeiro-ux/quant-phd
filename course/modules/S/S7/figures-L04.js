@@ -203,8 +203,10 @@ function realityCheckVsSpa(el) {
           `SIMULATED universe of ten strategies, one with a true edge, plus ${s.poor} poor strategies. Each test reads its own observed statistic against its own null: ` +
           `the Reality Check's maximum √T·d̄ is ${now.v.toFixed(2)}, and the SPA-style maximum, studentized by each strategy's standard deviation, is ${now.tObs.toFixed(2)}. ` +
           (s.poor === 0
-            ? `With no poor strategies the Reality Check's p-value is ${now.pRc.toFixed(3)} and the SPA-style p-value ${now.pSpa.toFixed(3)}; they differ because the SPA-style statistic is studentized` +
-              `${now.recentred ? ` and keeps ${now.recentred} strateg${now.recentred === 1 ? "y" : "ies"} below its threshold at ${now.recentred === 1 ? "its" : "their"} own mean${now.recentred === 1 ? "" : "s"}` : ""}. ` +
+            ? (now.pRc === now.pSpa
+                ? `With no poor strategies both p-values are ${now.pRc.toFixed(3)}: in this universe studentization${now.recentred ? " and recentring" : ""} do not change the share of resamples at or above the observed statistic. `
+                : `With no poor strategies the Reality Check's p-value is ${now.pRc.toFixed(3)} and the SPA-style p-value ${now.pSpa.toFixed(3)}; they differ because the SPA-style statistic is studentized` +
+                  `${now.recentred ? ` and keeps ${now.recentred} strateg${now.recentred === 1 ? "y" : "ies"} below its threshold at ${now.recentred === 1 ? "its" : "their"} own mean${now.recentred === 1 ? "" : "s"}` : ""}. `) +
               `Adding poor strategies raises the Reality Check's p-value, because each is recentred at zero and competes for the maximum.`
             : `The Reality Check's p-value goes from ${base.pRc.toFixed(3)} with no poor strategies to ${now.pRc.toFixed(3)}, because every poor strategy is recentred at zero and competes for the maximum. ` +
               `The SPA-style p-value ${spaMoved ? `moves from ${base.pSpa.toFixed(3)} to ${now.pSpa.toFixed(3)}, because ${s.poor - now.recentred + base.recentred} poor strateg${s.poor - now.recentred + base.recentred === 1 ? "y escapes" : "ies escape"} the recentring threshold` : `stays at ${now.pSpa.toFixed(3)}`}.`),
@@ -219,7 +221,7 @@ function realityCheckVsSpa(el) {
         ],
       });
       return (
-        `Universe ${seed}${seed === DEFAULT_RC_SEED ? " (a median draw)" : ""}, ${s.poor} poor strategies: Reality Check p = ${now.pRc.toFixed(3)}; ` +
+        `Universe ${seed}${seed === DEFAULT_RC_SEED && s.poor === 0 ? " (a median draw)" : ""}, ${s.poor} poor strategies: Reality Check p = ${now.pRc.toFixed(3)}; ` +
         `SPA-style p = ${now.pSpa.toFixed(3)}, with ${now.recentred} of ${10 + s.poor} strategies recentred at their own means.`
       );
     },
