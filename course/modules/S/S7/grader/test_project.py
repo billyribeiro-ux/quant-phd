@@ -2,7 +2,10 @@
 
 Runs identically in the browser (Pyodide) and locally:
 
-    QF_SEED=<your seed> pytest test_project.py      # with your atlas package importable
+    QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
+
+with your atlas package importable. Warnings are failures, as in the browser:
+the contract says no function warns.
 
 Each test checks a property or a number against the definitions in
 atlas/A8.contract.md and the S7 lessons. A failure names the property it
@@ -11,9 +14,13 @@ checks and the idea to revisit; it never prints the expected value.
 
 from __future__ import annotations
 
+import ast
 import itertools
 import math
 import os
+import sys
+from collections.abc import Callable
+from pathlib import Path
 from statistics import NormalDist
 from types import SimpleNamespace
 
@@ -22,10 +29,21 @@ import pytest
 from atlas import integrity as a8
 from instance import make_instance
 
+pytestmark = pytest.mark.filterwarnings("error")  # the contract: no function warns
+
 SEED = int(os.environ.get("QF_SEED", "0"))
 INST = make_instance(SEED)
 PHI = NormalDist()
 GAMMA = 0.5772156649015329
+
+
+def must_raise(call: Callable[[], object], condition: str) -> None:
+    """Fail with a message naming the violated condition unless call() raises ValueError."""
+    try:
+        call()
+    except ValueError:
+        return
+    pytest.fail(f"{condition}: the contract requires a ValueError naming the violated condition.")
 
 
 def close(a: float, b: float, tol: float = 1e-9) -> bool:
@@ -48,10 +66,17 @@ def test_sharpe_ratio_definition() -> None:
     )
 
 
-@pytest.mark.parametrize("bad", [[0.01, 0.01, 0.01], [0.01], [0.01, float("nan")], [[0.01, 0.02], [0.03, 0.01]]])
-def test_sharpe_ratio_rejects_degenerate_input(bad: list) -> None:
-    with pytest.raises(ValueError):
-        a8.sharpe_ratio(bad)
+@pytest.mark.parametrize(
+    ("bad", "condition"),
+    [
+        pytest.param([0.01, 0.01, 0.01], "a series with zero sample variance", id="zero-variance"),
+        pytest.param([0.01], "a series with one observation", id="one-observation"),
+        pytest.param([0.01, float("nan")], "a series with a non-finite value", id="non-finite"),
+        pytest.param([[0.01, 0.02], [0.03, 0.01]], "a two-dimensional series", id="two-dimensional"),
+    ],
+)
+def test_sharpe_ratio_rejects_degenerate_input(bad: list, condition: str) -> None:
+    must_raise(lambda: a8.sharpe_ratio(bad), f"sharpe_ratio given {condition}")
 
 
 def test_moment_estimators() -> None:
@@ -70,8 +95,10 @@ def test_sharpe_ratio_std_formula() -> None:
     assert close(a8.sharpe_ratio_std(sr, n, g3, g4), expected), (
         "sharpe_ratio_std must use the non-normal variance 1 - skew*SR + (kurt-1)/4*SR^2 over n-1 (L07)."
     )
-    with pytest.raises(ValueError):
-        a8.sharpe_ratio_std(3.0, 100, 5.0, 3.0)  # the bracket is negative: no valid standard error
+    must_raise(
+        lambda: a8.sharpe_ratio_std(3.0, 100, 5.0, 3.0),
+        "sharpe_ratio_std with a non-positive variance bracket 1 - skew*SR + (kurt-1)/4*SR^2",
+    )
 
 
 # ---------------------------------------------------------------- probabilistic and deflated Sharpe ratios
@@ -130,9 +157,12 @@ def test_expected_max_sharpe_edge_cases() -> None:
     assert close(a8.expected_max_sharpe(50, 4.0), 2.0 * a8.expected_max_sharpe(50, 1.0)), (
         "The expected maximum must scale with the standard deviation of the trial Sharpe ratios."
     )
-    for bad in ((0, 1.0), (10, -1.0), (2.5, 1.0)):
-        with pytest.raises(ValueError):
-            a8.expected_max_sharpe(*bad)
+    for bad, condition in (
+        ((0, 1.0), "n_trials < 1"),
+        ((10, -1.0), "a negative sr_variance"),
+        ((2.5, 1.0), "a non-integer n_trials"),
+    ):
+        must_raise(lambda bad=bad: a8.expected_max_sharpe(*bad), f"expected_max_sharpe with {condition}")
 
 
 def test_expected_max_is_close_to_simulation() -> None:
@@ -207,10 +237,24 @@ def test_bh_is_aligned_with_input_order() -> None:
     ), "The mask must follow the input order, not the sorted order."
 
 
-@pytest.mark.parametrize("bad", [([0.1, 1.2], 0.05), ([0.1, -0.01], 0.05), ([0.1, 0.2], 0.0), ([[0.1, 0.2]], 0.05)])
-def test_bh_input_validation(bad: tuple) -> None:
-    with pytest.raises(ValueError):
-        a8.benjamini_hochberg(*bad)
+@pytest.mark.parametrize(
+    ("bad", "condition"),
+    [
+        pytest.param(([0.1, 1.2], 0.05), "a p-value above 1", id="p-above-1"),
+        pytest.param(([0.1, -0.01], 0.05), "a negative p-value", id="p-below-0"),
+        pytest.param(([0.1, 0.2], 0.0), "q = 0", id="q-zero"),
+        pytest.param(([[0.1, 0.2]], 0.05), "two-dimensional p-values", id="two-dimensional"),
+    ],
+)
+def test_bh_input_validation(bad: tuple, condition: str) -> None:
+    must_raise(lambda: a8.benjamini_hochberg(*bad), f"benjamini_hochberg given {condition}")
+
+
+def test_bh_rejects_on_the_line() -> None:
+    # 0.025 = 1 * 0.05 / 2 exactly in binary floating point, whatever the order of the arithmetic.
+    assert np.asarray(a8.benjamini_hochberg([0.025, 0.5], 0.05)).tolist() == [True, False], (
+        "A p-value exactly on its line is rejected: the condition is p_(k) <= kq/m, not < (L03 Definition 2.1)."
+    )
 
 
 def test_bh_empty_input() -> None:
@@ -256,6 +300,39 @@ def test_stepdown_rejects_in_steps() -> None:
     )
     assert not np.asarray(a8.stepdown_rejections(np.array([1.0, 0.5]), np.ones((20, 2)) * 2.0, 0.05)).any(), (
         "Nothing may be rejected when no statistic exceeds the first critical value."
+    )
+
+
+def test_stepdown_critical_value_is_the_order_statistic() -> None:
+    boot = np.arange(1.0, 16.0)[:, None]  # B = 15 draws; (1 - 0.1) * 15 = 13.5, so the critical value is the 14th
+    decisions = [bool(np.asarray(a8.stepdown_rejections([t], boot, 0.1))[0]) for t in (13.8, 14.0, 14.2)]
+    assert decisions == [False, False, True], (
+        "The critical value is the ceil((1-alpha)B)-th smallest bootstrap maximum, not an interpolated quantile or "
+        "the floor rank, and a hypothesis is rejected only when its statistic strictly exceeds it (contract; L05)."
+    )
+
+
+def test_romano_wolf_is_studentized() -> None:
+    rng = np.random.default_rng(SEED)
+    z = rng.standard_normal((400, 2))
+    z = (z - z.mean(0)) / z.std(0, ddof=1)
+    noisy = 10.0 * z[:, 0] + 10.0 * 1.0 / 20.0  # large mean, t-statistic exactly 1
+    precise = 0.1 * z[:, 1] + 0.1 * 6.0 / 20.0  # small mean, t-statistic exactly 6
+    got = np.asarray(a8.romano_wolf(np.column_stack([noisy, precise]), 0.05, 400, 5.0, SEED)).tolist()
+    assert got == [False, True], (
+        "Studentize: compare t-statistics, mean / (sd / sqrt(T)), so a precise small edge is not hidden by a noisy "
+        "column with a larger mean (L05 Section 5)."
+    )
+
+
+def test_romano_wolf_handles_constant_resamples() -> None:
+    d = np.zeros((6, 2))
+    d[5, 0] = 1.0  # a resample that misses period 5 is constant in column 0
+    d[:, 1] = [0.3, -0.2, 0.5, 0.1, -0.4, 0.2]
+    got = np.asarray(a8.romano_wolf(d, 0.05, 300, 2.0, SEED))
+    assert got.shape == (2,) and got.dtype == bool, (
+        "A resampled column with zero variance is studentized by the column's sample standard deviation, with "
+        "no warning and no error (contract)."
     )
 
 
@@ -316,6 +393,15 @@ def test_pbo_matches_cscv_definition() -> None:
     assert close(result.pbo, float(np.mean(expected <= 0))), "PBO is the share of logits at or below zero."
 
 
+def test_pbo_uses_average_ranks_for_ties() -> None:
+    m = np.random.default_rng(SEED).normal(0, 0.01, (243, 5))
+    twins = np.hstack([m, m])  # every configuration run twice: the in-sample winner always ties out of sample
+    got = np.asarray(a8.probability_of_backtest_overfitting(twins, 8).logits)
+    assert np.allclose(got, cscv_definition(twins, 8), rtol=0, atol=1e-10), (
+        "Rank ties out of sample by average rank: rank = 1 + #lower + 0.5 * #other configurations tied (L08)."
+    )
+
+
 def test_pbo_extremes() -> None:
     rng = np.random.default_rng(SEED)
     dominant = rng.normal(0, 0.01, (400, 6))
@@ -341,11 +427,21 @@ def test_pbo_drops_the_oldest_rows() -> None:
     )
 
 
-@pytest.mark.parametrize("args", [((40, 4), 3), ((40, 4), 42), ((40, 1), 4), ((40, 4), 0)])
-def test_pbo_input_validation(args: tuple) -> None:
-    shape, s = args
-    with pytest.raises(ValueError):
-        a8.probability_of_backtest_overfitting(np.random.default_rng(0).normal(size=shape), s)
+@pytest.mark.parametrize(
+    ("shape", "s", "condition"),
+    [
+        pytest.param((40, 4), 3, "an odd n_blocks", id="odd-S"),
+        pytest.param((40, 4), 42, "n_blocks larger than T", id="S-exceeds-T"),
+        pytest.param((40, 1), 4, "a single strategy", id="one-strategy"),
+        pytest.param((40, 4), 0, "n_blocks = 0", id="S-zero"),
+        pytest.param((3, 3), 2, "half-samples of one period", id="one-period-halves"),
+    ],
+)
+def test_pbo_input_validation(shape: tuple[int, int], s: int, condition: str) -> None:
+    m = np.random.default_rng(0).normal(size=shape)
+    must_raise(
+        lambda: a8.probability_of_backtest_overfitting(m, s), f"probability_of_backtest_overfitting with {condition}"
+    )
 
 
 # ---------------------------------------------------------------- the report attached to every backtest
@@ -378,7 +474,38 @@ def test_integrity_report_is_consistent() -> None:
     ), "romano_wolf_rejections apply StepM to the trial returns themselves."
 
 
-@pytest.mark.parametrize("selected", [-1, 99])
+def test_integrity_report_reduces_n_blocks() -> None:
+    r = np.random.default_rng(SEED).normal(0, 0.01, (12, 4))
+    trials = a8.TrialSet(r, 0, 252)
+    for n_blocks, used in ((16, 12), (7, 6)):
+        report = a8.integrity_report(trials, n_blocks=n_blocks, n_boot=50, seed=SEED)
+        assert close(report.pbo, a8.probability_of_backtest_overfitting(r, used).pbo), (
+            "integrity_report must use the largest even number of blocks <= min(n_blocks, T) (contract)."
+        )
+    short = a8.TrialSet(r[:3], 0, 252)
+    must_raise(lambda: a8.integrity_report(short, n_boot=50), "integrity_report on fewer than 4 periods")
+
+
+def test_depends_on_numpy_and_stdlib_only() -> None:
+    tree = ast.parse(Path(a8.__file__).read_text(encoding="utf-8"))
+    imported = {
+        name.split(".")[0]
+        for node in ast.walk(tree)
+        for name in (
+            [alias.name for alias in node.names]
+            if isinstance(node, ast.Import)
+            else [node.module or ""]
+            if isinstance(node, ast.ImportFrom) and node.level == 0
+            else []
+        )
+    }
+    allowed = set(sys.stdlib_module_names) | {"numpy", "__future__"}
+    assert imported <= allowed, "A8 may depend on NumPy and the Python standard library only (contract)."
+
+
+@pytest.mark.parametrize(
+    "selected", [pytest.param(-1, id="selected-negative"), pytest.param(99, id="selected-out-of-range")]
+)
 def test_trialset_validation(selected: int) -> None:
-    with pytest.raises(ValueError):
-        a8.TrialSet(np.random.default_rng(0).normal(size=(50, 4)), selected, 252)
+    r = np.random.default_rng(0).normal(size=(50, 4))
+    must_raise(lambda: a8.TrialSet(r, selected, 252), "TrialSet with selected outside the trial columns")

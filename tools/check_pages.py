@@ -98,6 +98,8 @@ def check_common(page: Page, u: Unit, problems: list[str]) -> None:
     ids = Counter(n.get("id") for n in page.dom.iter() if n.get("id"))
     problems.extend(f"{where}: duplicate id {i!r}" for i, n in ids.items() if n > 1)
 
+    check_figures(page, problems)
+
     text = visible_text(page.dom.first("main") or page.dom)
     for pattern in BANNED:
         for match in re.finditer(pattern, text, flags=re.IGNORECASE):
@@ -120,6 +122,32 @@ def check_common(page: Page, u: Unit, problems: list[str]) -> None:
             problems.append(f"{where}:{claim.line}: claim grade {grade!r} is not one of T A B C D X")
         elif grade != "T" and not claim.get("data-cite"):
             problems.append(f"{where}:{claim.line}: a grade-{grade} claim must cite registry keys")
+
+
+def check_figures(page: Page, problems: list[str]) -> None:
+    """Every [data-chart] is drawn by the page's figure module, inside a captioned figure, with D3 loaded."""
+    where = page.path.name
+    charts = page.dom.select(None, None, data_chart=None)
+    if not charts:
+        return
+    module = page.html.get("data-figures")
+    source = ""
+    if not module:
+        problems.append(f"{where}: [data-chart] figures need <html data-figures> naming the page's figure module")
+    elif not (page.path.parent / module).exists():
+        problems.append(f"{where}: figure module {module} does not exist")
+    else:
+        source = (page.path.parent / module).read_text(encoding="utf-8")
+    if not any("d3.min.js" in (s.get("src") or "") for s in page.dom.select("script")):
+        problems.append(f"{where}: a page that draws charts must load assets/vendor/d3/d3.min.js")
+    for chart in charts:
+        name = chart.get("data-chart")
+        if source and not re.search(rf"[\"']{re.escape(name)}[\"']\s*:", source):
+            problems.append(f"{where}:{chart.line}: figure {name!r} is not defined in {module}")
+        figure = next((n for n in chart.ancestors() if n.tag == "figure"), None)
+        caption = figure.first("figcaption") if figure else None
+        if caption is None or caption.first(None, "source") is None:
+            problems.append(f"{where}:{chart.line}: figure {name!r} needs a <figure> with <figcaption> and span.source")
 
 
 def section(page: Page, section_id: str) -> Node | None:
@@ -262,6 +290,8 @@ def check_hub(page: Page, u: Unit, lesson_hours: dict[str, float], problems: lis
     placement = page.dom.first("section", "quiz", id="placement")
     if placement is None or not placement.get("data-mastery"):
         problems.append(f"{where}: the placement diagnostic must be section.quiz#placement with data-mastery")
+    elif u.kind == "module" and len(placement.select("li", "item", data_skill=None)) < 2:
+        problems.append(f"{where}: the placement diagnostic needs two or more data-skill items on what rungs 1–2 teach")
     ladder = page.dom.first("ol", "ladder")
     if ladder is None or len(ladder.select("li")) < 4:
         problems.append(f"{where}: the project ladder needs four rungs")

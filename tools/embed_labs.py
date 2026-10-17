@@ -13,9 +13,15 @@ actually prints under ``python -I -W error``. Expected outputs are therefore nev
 typed by hand. Pages without markers are left untouched; run_labs.py then keeps
 page and twin in agreement.
 
+After editing a twin, ``--refresh`` turns the page's embedded labs back into
+markers and embeds them again: every lab's code and output, or only the listed
+lab ids. A completion lab keeps its blanked code; only its expected output (the
+completed twin's) is refreshed.
+
 Usage::
 
     python3 tools/embed_labs.py course/modules/S/S7/L01.html [more pages...]
+    python3 tools/embed_labs.py course/modules/S/S7/L04.html --refresh lab-S7-L04-3
 """
 
 from __future__ import annotations
@@ -29,6 +35,23 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MARKER = re.compile(r"@@(LAB|OUT):([A-Za-z0-9_.-]+\.py)@@")
+LAB_SECTION = re.compile(r'<section class="lab(?P<cls>[^"]*)" id="(?P<id>[^"]+)".*?</section>', re.S)
+CODE = re.compile(r'(<code class="language-python" data-run>).*?(</code>)', re.S)
+EXPECTED = re.compile(r'(<pre class="expected"[^>]*>).*?(</pre>)', re.S)
+
+
+def remark(text: str, twins: Path, only: set[str] | None = None) -> str:
+    """Replace embedded lab code and output with markers, for every lab with a twin (or only the listed ids)."""
+
+    def one(section: re.Match[str]) -> str:
+        lab_id, body = section.group("id"), section.group(0)
+        if (only and lab_id not in only) or not (twins / f"{lab_id}.py").exists():
+            return body
+        if "completion" not in section.group("cls").split():
+            body = CODE.sub(lambda m: f"{m.group(1)}@@LAB:{lab_id}.py@@{m.group(2)}", body, count=1)
+        return EXPECTED.sub(lambda m: f"{m.group(1)}@@OUT:{lab_id}.py@@{m.group(2)}", body, count=1)
+
+    return LAB_SECTION.sub(one, text)
 
 
 def run_twin(path: Path) -> str:
@@ -44,12 +67,14 @@ def run_twin(path: Path) -> str:
     return result.stdout.rstrip("\n")
 
 
-def embed(page: Path) -> int:
+def embed(page: Path, refresh: set[str] | None = None) -> int:
     unit = re.search(r'data-unit="([^"]+)"', page.read_text(encoding="utf-8"))
     if not unit:
         raise RuntimeError(f"{page}: <html> has no data-unit")
     twins = ROOT / "tests" / "labs" / unit.group(1)
     text = page.read_text(encoding="utf-8")
+    if refresh is not None:
+        text = remark(text, twins, refresh or None)
     outputs: dict[str, str] = {}
 
     def replace(match: re.Match[str]) -> str:
@@ -72,10 +97,12 @@ def embed(page: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("pages", nargs="+", type=Path)
+    parser.add_argument("--refresh", nargs="*", metavar="LAB_ID", help="re-embed labs from their twins (all, or these)")
     args = parser.parse_args()
+    refresh = None if args.refresh is None else set(args.refresh)
     try:
         for page in args.pages:
-            print(f"{page}: embedded {embed(page)} markers")
+            print(f"{page}: embedded {embed(page, refresh)} markers")
     except (RuntimeError, subprocess.TimeoutExpired) as exc:
         print(f"FAIL {exc}", file=sys.stderr)
         return 1

@@ -12,7 +12,7 @@ def benjamini_hochberg(pvalues: NDArray[np.float64], q: float) -> NDArray[np.boo
     m = p.size
     if m == 0:
         return np.zeros(0, dtype=bool)  # no hypotheses, no rejections
-    order = np.argsort(p, kind="stable")  # stable: ties keep input order, so results are reproducible
+    order = np.argsort(p)  # any sort order gives the same mask: ties never straddle k*
     lines = q * np.arange(1, m + 1) / m  # the BH line k*q/m for k = 1..m
     below = np.nonzero(p[order] <= lines)[0]  # every k whose ordered p-value is under its line
     reject = np.zeros(m, dtype=bool)

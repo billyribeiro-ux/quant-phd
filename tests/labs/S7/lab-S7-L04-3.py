@@ -2,7 +2,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 # SIMULATED universe: model 0 has a true edge (t-statistic about 3), nine models are null,
-# and P "poor" models with clearly negative mean differentials are added to the search.
+# and P "poor" models with strongly negative mean differentials (t near -7.9) are added to the search.
 rng = np.random.default_rng(2005)
 n_obs, n_boot, mean_block = 1000, 2000, 10.0
 
@@ -26,6 +26,7 @@ good_and_null = rng.standard_normal((n_obs, 10))
 good_and_null[:, 0] += 3.0 / np.sqrt(n_obs)
 poor_pool = rng.standard_normal((n_obs, 100)) - 0.25
 
+recentred_nulls: list[tuple[int, float]] = []
 print("poor_models_added  reality_check_p  spa_style_p")
 for n_poor in (0, 20, 100):
     d = np.hstack([good_and_null, poor_pool[:, :n_poor]])
@@ -45,3 +46,7 @@ for n_poor in (0, 20, 100):
     t_star = np.maximum((np.sqrt(n_obs) * (boot_means - means + centre) / sd).max(axis=1), 0.0)
     p_spa = np.mean(t_star >= t_obs)
     print(f"{n_poor} {p_rc:.3f} {p_spa:.3f}")
+    if n_poor == 0:  # null strategies the SPA-style rule recentres although their true mean is zero
+        recentred_nulls = [(int(k), float(np.sqrt(n_obs) * means[k] / sd[k])) for k in np.flatnonzero(centre < 0.0)]
+listed = ", ".join(f"strategy {k} (t = {t:.2f})" for k, t in recentred_nulls)
+print(f"null strategies recentred in the base universe: {listed}")

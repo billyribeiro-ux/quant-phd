@@ -127,7 +127,7 @@ L01.html … Lnn  # Lessons of 6–12 study hours; lessons sum to (module hours 
 project.html    # Ladder rungs 1–4, spec, submission, grader or rubric + exemplars, reading list
 grader/         # instance.py, reference.py, test_project.py, starter.py (see §5)
 cards.json      # Spaced-retrieval cards generated from the lessons (see §7)
-figures-Lnn.js  # Optional: a lesson's live charts (loaded via <html data-figures>)
+figures-Lnn.js  # A lesson's live figures (loaded via <html data-figures>); figures-index.js for the hub
 ```
 
 Start from `course/templates/` and read module S7 (`course/modules/S/S7/`),
@@ -187,6 +187,12 @@ deliverable component, give a one-line time estimate and its rationale.
 
 From tier M upward, rungs 1–2 are kept to the minimum (the expertise-reversal
 effect). Studios have no rungs 1–2. They are rung 3 at Part scale.
+
+A placement pass means meeting the hub quiz's `data-mastery` bar **and**
+answering every item marked `data-skill`. Mark at least two items that test
+the skills rungs 1–2 teach (the worked example's task and the completion
+problem's missing steps); the other items test the prerequisites, including
+every prerequisite module.
 
 ### 5.2 Spec (`project.html`)
 
@@ -280,7 +286,8 @@ Studios integrate every module listed in `requires`. A studio:
    (numbered in display order). Put `@@LAB:<file>@@` in the `<code>` and
    `@@OUT:<file>@@` in the expected-output block, then run
    `python tools/embed_labs.py <page>`: it inserts the escaped code and the
-   output the twin actually prints. Never type an expected output by hand.
+   output the twin actually prints. After editing a twin, add
+   `--refresh [<lab-id> ...]` to re-embed it. Never type an expected output by hand.
    Seed every RNG. No network access. Runtime under 10 s in Pyodide;
    precompute at build time if needed, and say so on the page. Twins are
    linted by ruff and type-checked by mypy strict like all other code.
@@ -291,9 +298,22 @@ Studios integrate every module listed in `requires`. A studio:
    state, and no warnings emitted.
 3. **Diagrams** are inline SVG with `<title>` and `<desc>`. Colours come from
    CSS tokens only. They must be legible at 360 px wide in light and dark mode.
-4. **Charts** use the `chart.js` wrappers: labelled axes with units, a source
-   line with the retrieval date from MANIFEST, and a caption that states the
-   one thing to see.
+4. **Charts** use `course/assets/js/chart.js`: `plot()` for layered x–y charts,
+   `mountFigure()` for a figure with controls and a live readout, `svgFrame()`
+   for diagrams. Charts draw at the container's real width, so text stays
+   legible at 360 px; colours come from the `.series-N` token classes. Every
+   chart has labelled axes with units, a source line (with the retrieval date
+   from MANIFEST for real data) and a caption that states the one thing to see.
+   A page's figures live in `figures-Lnn.js`, exporting `drawFigures()`; each
+   `<div class="chart" data-chart="<id>">` sits in a `<figure>` with a
+   `<figcaption>` and a `span.source`.
+   - **Interactive figures** recompute everything from formulas or seeded
+     simulations (`stats.rng(seed)`), rewrite the SVG `<desc>` and the readout
+     for the current state, and start from a representative state (a median
+     draw, or the lesson's own worked example), never a cherry-picked one.
+   - **Numbers a figure shows** come from `stats.js` and `multitest.js`, whose
+     tests (`tests/test_figure_kernels.py`) require the same answers as the
+     Python reference. A new kernel needs such a test before a figure uses it.
 5. Every figure must teach a mechanism, distribution, relationship or failure.
    Nothing decorative.
 6. **New data** goes under `DATA_REQUESTS` with the source URL, series ID,

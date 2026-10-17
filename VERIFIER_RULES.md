@@ -144,6 +144,10 @@
 - **SIMULATED** labels are present where needed.
 - Charts have axes, units, a source line and a caption. SVGs have an accurate
   `<title>` and `<desc>`, and render in light and dark mode at 360 px wide.
+- **Interactive figures:** move every control across its range. The readout,
+  the `<desc>` and the caption stay true in every state, the default state is
+  representative, and every number shown agrees with the lesson (recompute
+  at least the default state yourself).
 
 ### 2.9 Structure and prose: one row per template section, plus one per banned-phrase hit
 - Hub, lessons and project page are complete, in the order of BUILDER_RULES

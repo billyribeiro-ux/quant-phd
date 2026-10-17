@@ -38,6 +38,11 @@ autograded projects and a program-long engineering build ("Atlas").
   the page and as a byte-identical twin under `pytest`. Every autograder passes
   its reference on 50 seeds, rejects the verifier's deliberately wrong
   solutions, and runs identically in the browser and locally.
+- **Figures that compute.** Every chart and diagram is drawn in the browser
+  from the lesson's own formulas or seeded simulations, by kernels whose tests
+  require the same answers as the graded Python reference. Interactive figures
+  let you move the number of trials, the level, the block length or the prior
+  and watch every statistic respond.
 - **Measured, not promised.** Every hour figure, credential size and
   career-track length is computed from the curriculum graph by
   `tools/render_curriculum.py`.
@@ -63,7 +68,7 @@ These are content-equivalent credentials, not accredited degrees.
 | `atlas/` | Frozen interface contracts for the program-long Atlas build (A8 so far) |
 | `course/` | The static site: program map, concept index, review deck, released modules (S7) |
 | `tools/` | Curriculum validator, registry pipeline, site builder, vendor fetcher, page/DAG/project checks, lab and grader runners, mutation tests, Chromium smoke tests |
-| `tests/` | Tooling tests (each regression test names the real failure it prevents), every lab's twin, browser-module tests |
+| `tests/` | Tooling tests (each regression test names the real failure it prevents), every lab's twin, browser-module and figure-kernel tests |
 
 ## Working on it
 

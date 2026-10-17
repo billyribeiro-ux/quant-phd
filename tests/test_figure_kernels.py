@@ -26,7 +26,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 JS = ROOT / "course" / "assets" / "js"
-REFERENCE = ROOT / "course" / "modules" / "S" / "S7" / "grader" / "reference.py"
+S7 = ROOT / "course" / "modules" / "S" / "S7"
+REFERENCE = S7 / "grader" / "reference.py"
 
 
 @functools.cache
@@ -167,3 +168,37 @@ def test_stationary_bootstrap_follows_the_index_chain_and_the_generator_is_deter
     assert counts.min() > 0.9 * n / 10, "indices are spread uniformly over the sample"
     assert out["same"] and out["differ"], "the generator is deterministic per seed and differs across seeds"
     assert abs(out["m"]) < 0.01 and abs(out["sd"] - 1) < 0.01, "normal draws have mean 0 and variance 1"
+
+
+def test_forking_paths_rate_matches_closed_forms_and_simulation() -> None:
+    cases: list[tuple[int, float]] = [(1, 0.5), (10, 0.0), (10, 0.5), (10, 0.95), (40, 0.8), (5, 0.999)]
+    out = node(
+        f'import {{ falsePositiveRate }} from "{(S7 / "figures-L06.js").as_uri()}";\n'
+        "console.log(JSON.stringify(INPUT.map(([k, r]) => falsePositiveRate(k, r, 0.05))));",
+        cases,
+    )
+    assert out[0] == pytest.approx(0.05, abs=1e-9), "one analysis is a single test at its nominal level"
+    assert out[1] == pytest.approx(1 - 0.95**10, abs=1e-12), "independent analyses: 1 - (1 - alpha)^K"
+    rng = np.random.default_rng(43)
+    crit = NormalDist().inv_cdf(0.975)
+    draws = 400_000
+    for (k, rho), rate in zip(cases[2:], out[2:], strict=True):
+        common = math.sqrt(rho) * rng.standard_normal((draws, 1))
+        z = common + math.sqrt(1 - rho) * rng.standard_normal((draws, k))
+        simulated = float(np.mean(np.abs(z).max(axis=1) > crit))
+        assert abs(rate - simulated) < 4 * math.sqrt(rate * (1 - rate) / draws), (k, rho)
+        assert 0.05 <= rate <= min(1.0, k * 0.05), "Proposition 3.2's bounds"
+
+
+def test_dsr_explorer_matches_the_reference_and_example_3_2() -> None:
+    out = node(
+        f'import {{ benchmarkSharpe, sharpeStdError }} from "{(S7 / "figures-L07.js").as_uri()}";\n'
+        "console.log(JSON.stringify({sr0: INPUT.map(([n, s]) => benchmarkSharpe(n, s)),"
+        " se: sharpeStdError(0.09, 756, -1.5, 8)}));",
+        [[1, 0.03], [2, 0.03], [40, 0.03], [1000, 0.01]],
+    )
+    ref = reference()
+    for (n, sd), sr0 in zip([[1, 0.03], [2, 0.03], [40, 0.03], [1000, 0.01]], out["sr0"], strict=True):
+        assert sr0 == pytest.approx(ref.expected_max_sharpe(n, sd**2, 0.0), abs=1e-15)
+    assert out["se"] == pytest.approx(ref.sharpe_ratio_std(0.09, 756, -1.5, 8.0), rel=1e-14)
+    assert round(out["sr0"][2], 4) == 0.0657 and round(out["se"], 4) == 0.0390, "Example 3.2's printed values"

@@ -3,10 +3,9 @@ from statistics import NormalDist
 
 import numpy as np
 
-# SIMULATED null research loop. Each round picks the in-sample winner among null
-# configurations and checks it on the same one-year holdout. Under the null the
-# in-sample choice carries no information about the holdout, so each round's
-# holdout Sharpe ratio is a fresh draw; keeping the best round reports a maximum.
+# SIMULATED null research loop. Each round tests a new configuration on the same one-year
+# holdout, and that configuration's holdout returns are independent of every earlier
+# round's (an assumption: unrelated revisions); keeping the best round reports a maximum.
 rng = np.random.default_rng(11)
 n_oos, n_reps = 252, 2000
 phi, gamma_e = NormalDist(), 0.5772156649015329

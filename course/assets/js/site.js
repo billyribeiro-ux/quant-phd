@@ -168,7 +168,7 @@ async function main() {
   }
   const figures = document.documentElement.dataset.figures;
   if (figures) {
-    // A module's own figure code (computed live from formulas or embedded data), e.g. "figures.js".
+    // A page's own figure module (computed live from formulas or seeded simulations), e.g. "figures-L03.js".
     await step("figures", async () => (await import(new URL(figures, location.href).href)).drawFigures(root));
   }
   await step("progress", initProgress);

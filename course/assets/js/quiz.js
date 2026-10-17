@@ -53,6 +53,8 @@ export function initQuizzes(scope = document) {
     const unit = quiz.dataset.unit;
     const page = quiz.dataset.page;
     const items = [...quiz.querySelectorAll("li.item")];
+    // Placement skill checks: items marked data-skill test what the scaffolded rungs teach, and must all be right.
+    const skills = items.flatMap((item, index) => (item.hasAttribute("data-skill") ? [index] : []));
     const score = el("p", { class: "score", role: "status", "aria-live": "polite" });
     quiz.append(score);
     const results = new Map();
@@ -65,11 +67,15 @@ export function initQuizzes(scope = document) {
         const mastery = parseFloat(quiz.dataset.mastery || "");
         if (Number.isFinite(mastery)) {
           // Placement diagnostic: the mastery bar decides whether the scaffolded rungs can be skipped.
-          const passed = correct / items.length >= mastery;
+          const overall = correct / items.length >= mastery;
+          const skilled = skills.every((index) => results.get(index) === true);
+          const passed = overall && skilled;
           await store.put("progress", `${unit}/placement`, { done: passed, correct, total: items.length, at: Date.now() });
           score.textContent += passed
-            ? ` That meets the ${Math.round(mastery * 100)}% mastery bar: you may skip rungs 1–2 of the project ladder.`
-            : ` The mastery bar is ${Math.round(mastery * 100)}%: work through the lessons and every rung of the ladder.`;
+            ? ` That meets the ${Math.round(mastery * 100)}% mastery bar and every skill check: you may skip rungs 1–2 of the project ladder.`
+            : overall
+              ? " You met the overall bar but missed a skill check: work through rungs 1–2 of the project ladder."
+              : ` The mastery bar is ${Math.round(mastery * 100)}%: work through the lessons and every rung of the ladder.`;
           return;
         }
         const added = await addLessonCards(quiz.dataset.cards || "cards.json", unit, page);

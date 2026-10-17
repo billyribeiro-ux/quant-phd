@@ -326,7 +326,8 @@ no framework churn to maintain. Everything below is vendored, pinned and
 SHA-256-locked in `vendor/LOCK.json`, so nothing loads from a CDN at runtime:
 
 - KaTeX for math
-- D3 v7 plus hand-authored inline SVG for figures
+- D3 v7 for figures: responsive charts and diagrams drawn at the reader's screen width, interactive where a
+  control teaches something, with every number computed live by kernels tested against the Python reference
 - Pyodide (with NumPy, SciPy and pytest) for runnable Python; DuckDB-WASM and
   Emscripten output join the lock file with the first SQL and C++ modules
 - an FSRS-family scheduler for spaced retrieval

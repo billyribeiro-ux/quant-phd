@@ -22,6 +22,8 @@ def holm_adjusted(p: NDArray[np.float64]) -> NDArray[np.float64]:
 
 phi = NormalDist()
 recomputed_p = np.array([2 * (1 - phi.cdf(float(t))) for t in t_stats])
+print("reported p (%):  ", " ".join(f"{100 * p:.2f}" for p in reported_p))
+print("recomputed p (%):", " ".join(f"{100 * p:.2f}" for p in recomputed_p))
 for label, p in (("reported", reported_p), ("recomputed", recomputed_p)):
     bonferroni = np.flatnonzero(p <= alpha / m) + 1
     holm = np.flatnonzero(holm_adjusted(p) <= alpha) + 1
