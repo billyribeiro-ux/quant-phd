@@ -19,7 +19,7 @@ function fwerGrowth(el) {
         title: "Family-wise error rate of m independent true-null tests",
         desc:
           `Against the number of true nulls m on a log scale from 1 to 1,000: testing each at α = ${s.alpha.toFixed(2)} gives a family-wise error ` +
-          `rate 1 − (1 − α)^m that passes one half at m = ${half} and approaches 1; the Bonferroni correction holds it just below α for every m.`,
+          `rate 1 − (1 − α)^m that passes one half at m = ${half} and approaches 1; the Bonferroni correction holds it at or just below α for every m (exactly α at m = 1).`,
         x: { label: "Number of true null hypotheses m (log scale)", log: true, domain: [1, 1000], format: "~s" },
         y: { label: "Probability of at least one false rejection", domain: [0, 1], format: ".1f" },
         layers: [
@@ -28,7 +28,7 @@ function fwerGrowth(el) {
           { type: "rule", y: s.alpha, label: `α = ${s.alpha.toFixed(2)}` },
         ],
       });
-      return `α = ${s.alpha.toFixed(2)}: unadjusted testing makes a false rejection more likely than not from m = ${half} true nulls (${naive(20).toFixed(3)} at m = 20); Bonferroni stays at ${bonf(1000).toFixed(4)} or below.`;
+      return `α = ${s.alpha.toFixed(2)}: unadjusted testing makes a false rejection more likely than not from m = ${half} true nulls (${naive(20).toFixed(3)} at m = 20); Bonferroni stays at or below α: ${s.alpha.toFixed(2)} at m = 1, falling to ${bonf(1000).toFixed(4)} at m = 1,000.`;
     },
   });
 }

@@ -16,7 +16,9 @@ function maxSharpeDensity(el) {
       const T = s.years * PERIODS_PER_YEAR;
       // Under the null each trial's annualized Sharpe ratio is approximately N(0, P/T) (S1).
       const scale = Math.sqrt(PERIODS_PER_YEAR / T);
-      const xs = linspace(-1.5, 3, 361);
+      // The axis reaches past the right tail of the best of 1,000 in every state (its density is negligible beyond 5 standard errors).
+      const right = Math.max(3, Math.ceil(2 * scale * 5) / 2);
+      const xs = linspace(-1.5, right, 361);
       const layers = TRIALS.map((n, i) => ({
         type: "line",
         name: `best of N = ${n.toLocaleString("en-US")}`,
@@ -28,12 +30,12 @@ function maxSharpeDensity(el) {
       const tail = (n) => 1 - Math.pow(normCdf(1 / scale), n);
       plot(area, {
         width,
-        title: "Distribution of the best annualized Sharpe ratio among N skill-free strategies",
+        title: "Distribution of the best annualized Sharpe ratio among N independent skill-free strategies",
         desc:
-          `Densities of the largest annualized Sharpe ratio among N = 1, 10, 100 and 1,000 skill-free strategies, each estimated on ${s.years} ` +
-          `year${s.years > 1 ? "s" : ""} of daily data. As N grows the density moves right and narrows. The expected best of 100 is ` +
+          `Densities of the largest annualized Sharpe ratio among N = 1, 10, 100 and 1,000 independent skill-free strategies, each estimated on ${s.years} ` +
+          `year${s.years > 1 ? "s" : ""} of daily data. As N grows the density moves right and narrows; more data pulls every curve toward zero only like one over the square root of T. The expected best of 100 is ` +
           `${(scale * EXPECTED_MAX.get(100)).toFixed(2)} and it exceeds 1.0 with probability ${tail(100).toFixed(2)}.`,
-        x: { label: "Annualized Sharpe ratio of the selected (best) strategy", domain: [-1.5, 3], format: ".1f" },
+        x: { label: "Best annualized Sharpe ratio", domain: [-1.5, right], format: ".1f" },
         y: { label: "Probability density" },
         layers,
       });
@@ -54,7 +56,7 @@ function expectedMaxFigure(el) {
     title: "Expected maximum of N standard normal statistics",
     desc: "Three curves against the number of trials N on a log scale from 2 to 10,000: the exact expected maximum computed by numerical integration, the Bailey and López de Prado approximation, which lies below it at N = 2 and just above it from N = 3 on, and the bound square root of 2 ln N, which lies well above both. All three grow slowly with N.",
     xLabel: "Number of independent trials N (log scale)",
-    yLabel: "Expected maximum (standard-normal units)",
+    yLabel: "Expected maximum (SD units)",
     xLog: true,
     xDomain: [2, 10000],
     xFormat: "~s",
