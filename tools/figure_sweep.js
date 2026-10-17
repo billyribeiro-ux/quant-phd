@@ -87,6 +87,17 @@
         const repeated = ticks.filter((t, i) => ticks.indexOf(t) !== i);
         if (repeated.length) problems.push(`an axis repeats tick labels ${JSON.stringify([...new Set(repeated)])}`);
       }
+      // A plotted segment drawn outside the plot area is clipped away: its data are not shown.
+      const clip = svg.querySelector("clipPath rect");
+      if (clip) {
+        const area = clip.getBoundingClientRect();
+        for (const line of svg.querySelectorAll(".plot line.line")) {
+          const r = line.getBoundingClientRect();
+          if (r.bottom < area.top - 0.5 || r.top > area.bottom + 0.5 || r.right < area.left - 0.5 || r.left > area.right + 0.5) {
+            problems.push("a plotted segment lies outside the plot area");
+          }
+        }
+      }
       const points = markPoints(svg);
       const boxes = [...svg.querySelectorAll(".plot .dot, .plot .bar")].map((n) => {
         const r = n.getBoundingClientRect();

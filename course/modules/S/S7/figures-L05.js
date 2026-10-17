@@ -37,6 +37,14 @@ export function study(seed) {
 // studies (tests/test_figure_kernels.py checks all of this); the second button draws new studies until one does.
 export const DEFAULT_SEED = 101;
 
+/**
+ * The y range of the StepM figure: room below for the true-alpha markers, and above for the largest statistic and
+ * every step's critical value, so no critical-value line or its label can fall outside the plot.
+ */
+export function stepmYDomain(t, result) {
+  return [Math.min(-2.5, ...t) - 0.6, Math.max(...t, ...result.steps.map((s) => s.critical)) + 0.8];
+}
+
 /** The figure's SVG description of one study's StepM result. */
 export function stepmDescription(result) {
   const single = result.steps[0].rejected.length;
@@ -81,6 +89,7 @@ function stepmSteps(el) {
       const stepOf = new Map();
       result.steps.forEach((step, j) => step.rejected.forEach((k) => stepOf.set(k, j)));
       const layers = [];
+      const labels = [];
       result.steps.forEach((step, j) => {
         const xs = step.active.map((k) => pos.get(k));
         layers.push({
@@ -92,12 +101,12 @@ function stepmSteps(el) {
         });
         // Only the first and the last step are labelled in the plot (the readout lists every step): later critical
         // values can lie within a pixel or two of each other, too close for a label each. A label goes above the
-        // right end of its line, stacking upward past the first step's: every strategy there is unrejected, so its
-        // t lies below every critical value and no dot can reach the label. Below the line or at its left end only
-        // if the plot has no room above.
+        // right end of its line, stacking upward: every strategy there is unrejected, so its t lies below every
+        // critical value and no dot can reach the label. Below the line or at its left end only if the plot has no
+        // room above. The last step's label is placed first, so the lower line keeps the lower label.
         if (j > 0 && j < result.steps.length - 1) return;
         const left = Math.min(...xs) - 0.4;
-        layers.push({
+        labels.unshift({
           type: "text",
           x: u.K + 0.6,
           y: step.critical,
@@ -111,10 +120,11 @@ function stepmSteps(el) {
           ],
         });
       });
+      layers.push(...labels);
       const dots = order.map(([v, k]) => [pos.get(k), v, k]);
       layers.push({ type: "dots", name: "rejected", points: dots.filter((p) => stepOf.has(p[2])), series: 0, r: 5 });
       layers.push({ type: "dots", name: "not rejected", points: dots.filter((p) => !stepOf.has(p[2])), series: 5, hollow: true, r: 5 });
-      const floor = Math.min(-2.5, ...t) - 0.6;
+      const [floor, top] = stepmYDomain(t, result);
       layers.push({
         type: "dots",
         name: "true alpha (known only in a simulation)",
@@ -132,7 +142,7 @@ function stepmSteps(el) {
         title: "The StepM procedure, step by step",
         desc: stepmDescription(result),
         x: { label: "Strategy, sorted by t", domain: [0.3, u.K + 0.7], ticks: 10, format: "d" },
-        y: { label: "Studentized statistic t", domain: [floor, Math.max(...t) + 0.8], format: ".0f" },
+        y: { label: "Studentized statistic t", domain: [floor, top], format: ".0f" },
         layers,
       });
       return (

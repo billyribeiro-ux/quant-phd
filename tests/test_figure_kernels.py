@@ -457,6 +457,21 @@ def test_rc_spa_description_says_what_happened() -> None:
     assert "in this universe studentization and recentring do not change" in recentred["text"]
 
 
+def test_stepm_y_range_holds_every_critical_value() -> None:
+    l05 = (S7 / "figures-L05.js").as_uri()
+    seeds = [397, 619, 874, *range(0, 200)]  # the first three put a critical value above every statistic
+    out = node(
+        f'import * as f5 from "{l05}";\n'
+        f"console.log(JSON.stringify({seeds}.map((s) => {{ const {{ t, result }} = f5.study(s);"
+        " return {top: f5.stepmYDomain(t, result)[1], c: result.steps.map((x) => x.critical),"
+        " t: Math.max(...t)}; })));",
+        {},
+    )
+    assert any(max(row["c"]) > row["t"] for row in out[:3]), "the regression seeds have a critical value above every t"
+    for seed, row in zip(seeds, out, strict=True):
+        assert max(row["c"]) + 0.8 <= row["top"] + 1e-12, f"seed {seed}: a critical value lies in the top margin"
+
+
 def test_every_kernel_a_figure_imports_is_tested() -> None:
     """BUILDER_RULES 6.4: a figure may use a kernel only once a test here exercises it."""
     source = Path(__file__).read_text(encoding="utf-8")
