@@ -38,11 +38,12 @@ export function study(seed) {
 export const DEFAULT_SEED = 101;
 
 /**
- * The y range of the StepM figure: room below for the true-alpha markers, and above for the largest statistic and
- * every step's critical value, so no critical-value line or its label can fall outside the plot.
+ * The y range of the StepM figure: room below for the true-alpha markers, and above the largest statistic and every
+ * step's critical value for the two step labels, which stack above the right end of the critical-value lines.
  */
 export function stepmYDomain(t, result) {
-  return [Math.min(-2.5, ...t) - 0.6, Math.max(...t, ...result.steps.map((s) => s.critical)) + 0.8];
+  const top = Math.max(...t, ...result.steps.map((s) => s.critical));
+  return [Math.min(-2.5, ...t) - 0.6, top + 1.6];
 }
 
 /** The figure's SVG description of one study's StepM result. */
