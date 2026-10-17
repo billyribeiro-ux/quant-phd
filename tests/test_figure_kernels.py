@@ -320,7 +320,8 @@ def test_simulated_figure_defaults_are_median_draws() -> None:
         " const a = mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, 10);"
         " return [a.v, a.pRc, mt.realityCheckSpa(u.means, u.sds, u.bootMeans, 500, 110).pRc]; });\n"
         "const stepm = seeds(0, 299).map((s) => { const r = f5.study(s).result;"
-        " return [r.steps[0].rejected.length, r.mask.filter(Boolean).length]; });\n"
+        " return [r.steps[0].rejected.length, r.mask.filter(Boolean).length,"
+        " r.steps.length > 1 ? r.steps[0].critical - r.steps[1].critical : null]; });\n"
         "const pbo = seeds(1, 200).map((s) => mt.cscv(f8.simulate(s, false), 8).pbo);\n"
         "console.log(JSON.stringify({pi0, blocks, peaks, rc, stepm, pbo, d: [f3.PVALUE_DEFAULT_SEED,"
         " f4.DEFAULT_BLOCK_SEED, f4.DEFAULT_AR_SEED, f4.DEFAULT_RC_SEED, f5.DEFAULT_SEED, f8.DEFAULT_CSCV_SEED]}));",
@@ -336,4 +337,8 @@ def test_simulated_figure_defaults_are_median_draws() -> None:
         assert ranks_within([r[j] for r in out["rc"]], drc - 2000, 3), f"L04 RC/SPA statistic {j} near its median"
     single, total = ([s[j] for s in out["stepm"]] for j in (0, 1))
     assert single[d5] == sorted(single)[150] and total[d5] == sorted(total)[150], "L05 StepM: a median study"
+    falls = [s[2] for s in out["stepm"] if s[2] is not None]
+    middle = sorted(falls)[len(falls) // 2 - 1 : len(falls) // 2 + 1]
+    assert out["stepm"][d5][2] == pytest.approx(sum(middle) / 2, abs=5e-4), "L05 StepM: the median fall of c"
+    assert sum(t > s for s, t in zip(single, total, strict=True)) == 69, "L05 StepM: 23% (69 of 300) step down"
     assert ranks_within(out["pbo"], d8 - 1, 3), "L08 CSCV: a median history (PBO with no edge)"

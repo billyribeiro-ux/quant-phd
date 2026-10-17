@@ -32,10 +32,10 @@ export function study(seed) {
   return { u, t, result: stepdown(t, boot, 0.05) };
 }
 
-// The default, seed 0, is a median study: across seeds 0–299 its single-step and StepM counts equal the medians
-// (tests/test_figure_kernels.py checks this). A later step adds a rejection in a minority of studies; the second
-// button draws new studies until one does and reports how many it drew.
-export const DEFAULT_SEED = 0;
+// The default, seed 101, is a median study: across seeds 0–299 its single-step and StepM counts and the fall of its
+// critical value from step 1 to step 2 all equal the medians. A later step adds a rejection in 23% of those studies
+// (tests/test_figure_kernels.py checks all of this); the second button draws new studies until one does.
+export const DEFAULT_SEED = 101;
 
 function stepmSteps(el) {
   let seed = DEFAULT_SEED;
@@ -102,8 +102,10 @@ function stepmSteps(el) {
         desc:
           `Twenty SIMULATED strategies sorted by their studentized statistic, eight with a true alpha. The first step's critical value ` +
           `${result.steps[0].critical.toFixed(2)} is the single-step test and rejects ${single}. Each later step drops the rejected strategies ` +
-          `and recomputes the critical value over the rest, which is never higher${fell ? " and here falls" : " and here stays the same"}; ` +
-          `StepM rejects ${total} in ${steps} step${steps === 1 ? "" : "s"}.`,
+          (steps === 1
+            ? "Step 1 rejects nothing, so there is no later step and StepM rejects nothing."
+            : `and recomputes the critical value over the rest, which is never higher and here ${fell ? `falls by ${(result.steps[0].critical - result.steps[1].critical).toFixed(3)}` : "stays the same"}; ` +
+              `StepM rejects ${total} in ${steps} steps.`),
         x: { label: "Strategy, sorted by t", domain: [0.3, u.K + 0.7], ticks: 10, format: "d" },
         y: { label: "Studentized statistic t", domain: [floor, Math.max(...t) + 0.8], format: ".0f" },
         layers,
