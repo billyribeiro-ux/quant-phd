@@ -183,6 +183,44 @@ def test_working_paper_version_does_not_stand_in_for_article() -> None:
     assert resolve(c, [nber]).status == "unresolved"
 
 
+def test_correction_record_does_not_stand_in_for_the_original() -> None:
+    # A correction shares authors, venue and often the original's title words; it is not the article.
+    c = parse_source("Politis & White (2004), Econometric Reviews 23(1)")
+    correction = work(
+        title="Correction to “Automatic Block-Length Selection for the Dependent Bootstrap” by D. Politis and H. White",
+        authors=("Politis", "White"),
+        container="Econometric Reviews",
+        volume="23",
+        issue="1",
+        years=(2004,),
+    )
+    assert resolve(c, [correction]).status == "unresolved"
+
+
+def test_citation_that_names_a_correction_matches_it() -> None:
+    title = "Correction to “Automatic Block-Length Selection for the Dependent Bootstrap” by D. Politis and H. White"
+    c = parse_source(f"Patton, Politis & White (2009), '{title}', Econometric Reviews 28(4)")
+    correction = work(
+        title=title,
+        authors=("Patton", "Politis", "White"),
+        container="Econometric Reviews",
+        volume="28",
+        issue="4",
+        years=(2009,),
+    )
+    assert resolve(c, [correction]).status == "verified"
+    # Naming a different marker than the record carries is still not a match.
+    reply = work(
+        title=f"Reply to {title}",
+        authors=("Patton", "Politis", "White"),
+        container="Econometric Reviews",
+        volume="28",
+        issue="4",
+        years=(2009,),
+    )
+    assert resolve(c, [reply]).status == "unresolved"
+
+
 def test_working_paper_type_rejected_even_when_venue_matches() -> None:
     # The type rule must hold on its own, not only because a WP record lacks a venue.
     c = parse_source("Shiller (1981), 'Do Stock Prices Move Too Much', AER 71(3)")
@@ -296,3 +334,157 @@ def test_keys_are_stable_and_unique() -> None:
     assign_keys(entries)
     assert sorted(e.key for e in entries) == ["modigliani1958cost", "modigliani1958costb"]
     assert next(e for e in entries if e.work.doi == "10.1/a").key == "modigliani1958cost"
+
+
+# ---------------------------------------------------------------- non-DOI verification sources
+
+JMLR_PAGE = """<html><head><title>Scikit-learn: Machine Learning in Python</title>
+<meta name="citation_title" content="Scikit-learn: Machine Learning in Python">
+<meta name="citation_author" content="Fabian Pedregosa">
+<meta name="citation_author" content="Ga&euml;l Varoquaux">
+<meta name="citation_journal_title" content="Journal of Machine Learning Research">
+<meta name="citation_volume" content="12">
+<meta name="citation_issue" content="85">
+<meta name="citation_firstpage" content="2825">
+<meta name="citation_lastpage" content="2830">
+<meta name="citation_publication_date" content="2011">
+</head><body><h1>Scikit-learn</h1></body></html>"""
+
+
+def test_landing_meta_builds_a_work_the_matcher_accepts() -> None:
+    # JMLR registers no DOIs; its landing page carries Highwire citation_* tags.
+    from refs.web import citation_meta_to_work, landing_doi
+
+    page = citation_meta_to_work(JMLR_PAGE, "https://www.jmlr.org/papers/v12/pedregosa11a.html")
+    assert page is not None
+    assert page.authors[0].family == "Pedregosa" and page.authors[1].given == "Gaël"
+    assert (page.year, page.volume, page.pages, page.type) == (2011, "12", "2825-2830", "journal-article")
+    assert landing_doi(JMLR_PAGE) is None
+    res = resolve(parse_source("Pedregosa et al. (2011), Journal of Machine Learning Research 12"), [page])
+    assert res.status == "verified"
+    # Volume is the anchor here (no title in the string): a wrong volume must not pass.
+    wrong_volume = parse_source("Pedregosa et al. (2011), Journal of Machine Learning Research 13")
+    assert resolve(wrong_volume, [page]).work is None
+
+
+def test_landing_page_with_a_doi_is_detected() -> None:
+    from refs.web import landing_doi
+
+    assert landing_doi('<meta name="citation_doi" content="10.1111/j.1540-6261.1964.tb02865.x">') == (
+        "10.1111/j.1540-6261.1964.tb02865.x"
+    )
+
+
+def test_open_library_edition_builds_a_book_work() -> None:
+    from refs.web import edition_to_work
+
+    edition = {
+        "title": "Calculus",
+        "publish_date": "2008",
+        "publishers": ["Publish or Perish, inc"],
+        "isbn_13": ["9780914098911"],
+        "edition_name": "Fourth Edition",
+    }
+    book = edition_to_work(edition, ["Michael Spivak"], "https://openlibrary.org/books/OL28292750M")
+    assert (book.type, book.year, book.authors[0].family, book.isbn) == ("book", 2008, "Spivak", ("9780914098911",))
+    assert resolve(parse_source("Spivak, Calculus, 4th ed. (2008)"), [book]).status == "verified"
+    # Real Open Library record for the 1980 2nd edition: the year window rejects it.
+    old = edition_to_work(edition | {"publish_date": "1980"}, ["Michael Spivak"], "u")
+    assert resolve(parse_source("Spivak, Calculus, 4th ed. (2008)"), [old]).work is None
+
+
+@pytest.mark.parametrize(
+    ("text", "number"),
+    [
+        ("Spivak, Calculus, 4th ed. (2008)", 4),
+        ("Fourth Edition", 4),
+        ("2d ed.", 2),  # real Open Library edition statement for Spivak (1980)
+        ("3 edition", 3),
+        ("3rd, corrected ed.", None),  # ambiguous statement: no claim either way
+        ("Cochrane, Asset Pricing, revised ed. (2005)", None),
+        (None, None),
+    ],
+)
+def test_edition_number(text: str | None, number: int | None) -> None:
+    from refs.web import edition_number
+
+    assert edition_number(text) == number
+
+
+def test_primary_documents_need_an_authority_and_a_matching_title() -> None:
+    from refs.web import Authority, authority_for, primary_title, primary_to_work, title_recall
+
+    authorities = [Authority("federalreserve.gov", "Board of Governors of the Federal Reserve System", "frb")]
+    raw = "Federal Reserve SR 11-7, Guidance on Model Risk Management (2011) (primary)"
+    assert primary_title(raw) == "Federal Reserve SR 11-7, Guidance on Model Risk Management"
+    assert authority_for("https://www.federalreserve.gov/supervisionreg/srletters/sr1107.htm", authorities)
+    # A mirror on another domain is never authoritative, whatever its content.
+    assert authority_for("https://www.federalreserve.gov.example.com/sr1107.htm", authorities) is None
+    page = "<title>Supervisory Letter SR 11-7 on guidance on Model Risk Management -- April 4, 2011</title>"
+    work, recall = primary_to_work(raw, page, "https://www.federalreserve.gov/x", authorities[0])
+    assert recall >= 0.6 and work.year == 2011 and work.authors[0].family.startswith("Board of Governors")
+    assert title_recall(primary_title(raw), ["Monetary Policy Report"]) < 0.6
+    # A year the page does not confirm is not recorded.
+    assert primary_to_work(raw, "<title>Model Risk Management SR 11-7</title>", "u", authorities[0])[0].year is None
+
+
+# ---------------------------------------------------------------- registry integrity
+
+
+def _entry(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "key": "spivak2008calculus",
+        "doi": None,
+        "url": "https://openlibrary.org/books/OL28292750M",
+        "verified_by": "openlibrary",
+        "isbn": ["9780914098911"],
+        "type": "book",
+        "title": "Calculus",
+        "authors": [{"family": "Spivak", "given": "Michael"}],
+        "year": 2008,
+        "status": "verified",
+        "origin": "manual",
+        "used_by": ["M2"],
+    }
+    return base | overrides
+
+
+def test_integrity_accepts_non_doi_entries_with_a_verification_source() -> None:
+    from verify_refs import integrity
+
+    primary = _entry(key="frb2011sr", url="https://www.federalreserve.gov/x", verified_by="issuer", type="primary")
+    assert integrity([_entry(), primary | {"year": None, "isbn": []}]) == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "problem"),
+    [
+        ({"verified_by": "crossref"}, "verified by crossref but has no DOI"),
+        ({"url": None}, "verified by openlibrary but has no URL"),
+        ({"verified_by": "memory"}, "unknown verified_by"),
+        ({"year": None}, "missing ['year']"),  # only primary documents may be undated
+        ({"used_by": ["ZZ9"]}, "used_by unknown units"),
+    ],
+)
+def test_integrity_rejects_entries_without_a_verifiable_source(overrides: dict[str, object], problem: str) -> None:
+    from verify_refs import integrity
+
+    assert any(problem in p for p in integrity([_entry(**overrides)]))
+
+
+def test_seed_does_not_requeue_sources_admitted_by_hand() -> None:
+    # A book admitted by ISBN must not reappear in the review queue on the next seeding run.
+    from seed_references import Outcome, build
+
+    cand = parse_source("Spivak, Calculus, 4th ed. (2008)")
+    manual = _entry(source_strings=[cand.raw])
+    entries, review, _ = build([Outcome(cand, ["M2"], None)], [manual])
+    assert review == [] and entries == [manual]
+
+
+def test_seeded_keys_avoid_keys_admitted_by_hand() -> None:
+    # A re-seed must never mint a key that a manual entry (add_reference.py) already holds.
+    w = work(doi="10.1/a", title="Backtesting", authors=("Harvey",), years=(2015,))
+    entry = Entry("", w, "verified", "seed", [], [], {}, "now")
+    assign_keys([entry], frozenset({"harvey2015backtesting"}))
+    assert entry.key == "harvey2015backtestingb"

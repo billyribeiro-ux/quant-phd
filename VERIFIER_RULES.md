@@ -103,7 +103,10 @@
    - a hard-coded answer for seed 0
 
    **Every mutant must fail at least one test.** A surviving mutant is a FAIL.
-   Record each mutant's description and the test that killed it.
+   Write each mutant as a complete solution module in
+   `ledgers/{{ID}}/mutants/<name>.py` whose docstring's first line describes
+   the error, run `python tools/mutate_graders.py --unit {{ID}} --seeds 0-9`,
+   and record each mutant's description and the test that killed it.
 4. Failure messages name the violated property and never leak the answer.
 5. The same suite passes both in Pyodide (`page_smoke.py`) and in local
    pytest.

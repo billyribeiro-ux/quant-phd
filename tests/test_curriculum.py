@@ -61,6 +61,50 @@ def test_real_curriculum_is_valid() -> None:
             '{topic: "Derivatives", modules: [FC2, DV9]}',
             "unknown module DV9",
         ),
+        # Concept graph: each concept is defined once, and used only after its definition.
+        (
+            "01-foundations.yaml",
+            '          cscv: "Combinatorially symmetric cross-validation (CSCV)"\n',
+            '          cscv: "CSCV"\n          sharpe-ratio: "Sharpe ratio"\n',
+            "concept sharpe-ratio is introduced by S1, S7",
+        ),
+        (
+            "01-foundations.yaml",
+            "          - kurtosis\n",
+            "          - kurtosis\n          - purged-cross-validation\n",
+            "S7: uses purged-cross-validation from QR2, which is not in its prerequisite closure",
+        ),
+        (
+            "01-foundations.yaml",
+            "          - kurtosis\n",
+            "          - kurtosis\n          - cscv\n",
+            "which it introduces",
+        ),
+        (
+            "01-foundations.yaml",
+            "          - kurtosis\n",
+            "          - kurtosis\n          - no-such-concept\n",
+            "S7: uses unknown concept no-such-concept",
+        ),
+        (
+            "01-foundations.yaml",
+            "          cscv: ",
+            "          CSCV: ",
+            "concept id 'CSCV' must be lowercase kebab-case",
+        ),
+        (
+            "01-foundations.yaml",
+            "        introduces:\n          data-snooping-bias:",
+            "        introduced:\n          data-snooping-bias:",
+            "S7: introduces must be a non-empty mapping",
+        ),
+        # A reading scope may replace sources only in capstone modules.
+        (
+            "01-foundations.yaml",
+            "        introduces:\n          data-snooping-bias:",
+            '        reading: "all module sources"\n        introduces:\n          data-snooping-bias:',
+            "S7: only capstone modules may replace sources with a reading scope",
+        ),
     ],
 )
 def test_invariant_rejects_broken_copy(sandbox: Path, file: str, old: str, new: str, expected: str) -> None:

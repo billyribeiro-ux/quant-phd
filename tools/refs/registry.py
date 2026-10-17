@@ -70,16 +70,23 @@ class Entry:
     corrections: dict[str, dict[str, str]]
     resolved_at: str
     notes: dict[str, dict[str, str]] = field(default_factory=dict)
+    # Which record establishes identity: crossref (by DOI), openlibrary (by ISBN),
+    # landing (publisher citation_* meta tags) or issuer (an authority's own page).
+    verified_by: str = "crossref"
 
     def to_json(self) -> dict[str, Any]:
         w = self.work
         return {
             "key": self.key,
-            "doi": w.doi,
+            "doi": w.doi or None,
+            "url": w.url,
+            "verified_by": self.verified_by,
             "type": w.type,
             "title": w.title,
             "authors": [{"family": a.family, "given": a.given} for a in w.authors],
             "year": w.year,
+            # Every year the record carries (issued, print, online-first): display uses the print year.
+            "years": sorted(w.years),
             "container": w.container[0] if w.container else None,
             "volume": w.volume,
             "issue": w.issue,
@@ -100,16 +107,21 @@ def now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
-def assign_keys(entries: list[Entry]) -> None:
-    """Assign unique keys deterministically: collisions are suffixed b, c, ... in DOI order."""
+def assign_keys(entries: list[Entry], reserved: frozenset[str] = frozenset()) -> None:
+    """Assign unique keys deterministically: collisions are suffixed b, c, ... in DOI order.
+
+    ``reserved`` holds keys already taken by entries admitted by hand; seeded entries skip them.
+    """
     groups: dict[str, list[Entry]] = {}
     for entry in entries:
         override = entry.notes.get("crossref_author_name", {}).get("curriculum")
         groups.setdefault(base_key(entry.work, override), []).append(entry)
     for base, group in groups.items():
-        group.sort(key=lambda e: e.work.doi)
-        for index, entry in enumerate(group):
-            entry.key = base if index == 0 else f"{base}{chr(ord('a') + index)}"
+        group.sort(key=lambda e: e.work.doi or e.work.url or "")
+        candidates = (base if i == 0 else f"{base}{chr(ord('a') + i)}" for i in range(26))
+        free = [k for k in candidates if k not in reserved]
+        for entry, key in zip(group, free, strict=False):
+            entry.key = key
 
 
 def load(path: Path = REGISTRY) -> list[dict[str, Any]]:

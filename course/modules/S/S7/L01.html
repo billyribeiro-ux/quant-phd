@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="S7" data-page="L01" data-hours="7" data-figures="figures.js">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01 · The Selection Problem · S7 Research Integrity</title>
+  <meta name="description" content="Why the best of many backtests overstates skill: the expected maximum of null Sharpe ratios, a dependence-free bound, the Bailey–López de Prado approximation, and why reusing a holdout recreates the bias.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script defer src="../../../assets/vendor/d3/d3.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">S7 Research Integrity</a><span class="sep">›</span>
+      <span>L01</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">S7 · Lesson 1 of 8 · 7 study hours</p>
+        <h1>The Selection Problem: Why the Best Backtest Lies</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="sharpe-ratio" href="../../../concepts.html#sharpe-ratio">Sharpe ratio</a>, <a class="concept" data-concept="sharpe-ratio-standard-error-iid" href="../../../concepts.html#sharpe-ratio-standard-error-iid">its iid standard error</a>, <a class="concept" data-concept="normal-distribution" href="../../../concepts.html#normal-distribution">the normal distribution</a>, <a class="concept" data-concept="p-value" href="../../../concepts.html#p-value">p-values</a></li>
+          <li><strong>Introduces:</strong> data-snooping bias, the expected maximum Sharpe ratio</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Every strategy you will ever be shown is the survivor of a search. If a hundred variants were tried and the best one is reported, its Sharpe ratio is the maximum of a hundred noisy estimates, and a maximum of noise is not zero. This lesson measures how far that maximum drifts above the truth, proves a bound that holds whatever the dependence between variants, and shows why the usual defence, a holdout sample, fails as soon as it is consulted more than once. Lessons 2–8 build the corrections on this foundation.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Many strategies, one history</h2>
+
+      <p>A researcher studies one idea in \(N\) variants, called <em>trials</em>: lookback windows, holding periods, universes, stop rules. Trial \(n\) produces \(T\) per-period excess returns \(r_{n,1}, \dots, r_{n,T}\) and a sample <a class="concept" data-concept="sharpe-ratio" href="../../../concepts.html#sharpe-ratio">Sharpe ratio</a>
+      \[ \hSR_n = \frac{\bar r_n}{s_n}, \qquad \bar r_n = \frac1T \sum_{t=1}^T r_{n,t}, \qquad s_n^2 = \frac{1}{T-1}\sum_{t=1}^T (r_{n,t} - \bar r_n)^2 . \]
+      All of them are computed on the same history. White's paper on the problem opens with a precise definition:</p>
+
+      <blockquote>
+        <p>“Data snooping occurs when a given set of data is used more than once for purposes of inference or model selection.”</p>
+        <p>— <span class="ref" data-cite="white2000reality" data-locator="p. 1097, abstract"></span></p>
+      </blockquote>
+
+      <p>From S1 you know the sampling distribution of one Sharpe ratio. For iid normal returns with true Sharpe ratio \(\SR\), \(\sqrt{T}\,(\hSR - \SR) \dto \Normal(0,\, 1 + \SR^2/2)\), so under the null \(\SR = 0\) the estimate is approximately \(\Normal(0, 1/T)\) (<a class="concept" data-concept="sharpe-ratio-standard-error-iid" href="../../../concepts.html#sharpe-ratio-standard-error-iid">S1</a>). What S1 did not ask is what happens when the researcher reports the <em>largest</em> of the \(N\) estimates.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(data-snooping bias)</span></span>
+        <p>Let \(n^\ast = \argmax_n \hSR_n\) be the trial a researcher selects. The <dfn id="def-data-snooping-bias" data-concept="data-snooping-bias">data-snooping bias</dfn> (or selection bias) of the reported statistic is
+        \[ \E\big[\hSR_{n^\ast}\big] - \E\big[\SR_{n^\ast}\big], \]
+        the amount by which the selected estimate exceeds, on average, the true Sharpe ratio of the trial it selects.</p>
+      </div>
+
+      <p>When every trial is null (\(\SR_n = 0\) for all \(n\)), the bias is simply \(\E[\max_n \hSR_n]\), which is strictly positive for \(N \ge 2\) whenever the estimates are not perfectly correlated (Problem P2 gives the two-trial value exactly). The bias is not confined to strategy backtests. <span class="claim" data-grade="B" data-cite="lo1990data" data-locator="Abstract">Lo and MacKinlay show, analytically and by simulation, that tests of asset pricing models built on portfolios sorted by a characteristic chosen because it is correlated with returns in the same data can reject far too often, and conclude that the effects of this kind of data snooping can be substantial</span>. The mechanism is identical: a choice informed by the data, followed by inference that ignores the choice.</p>
+
+      <h2 id="s2"><span class="section-number">2</span>How far can the maximum drift? A bound for any dependence</h2>
+
+      <p>Standardize each null estimate, \(Z_n = \sqrt{T}\,\hSR_n\), so that each \(Z_n\) is approximately standard normal. The trials share one history, so the \(Z_n\) are typically correlated, in a pattern the researcher rarely knows. The following bound needs no assumption about that pattern.</p>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 2.1 <span class="name">(maximum of normals, any dependence)</span></span>
+        <p>Let \(Z_1, \dots, Z_N\) each have the standard normal distribution, with any joint distribution, and \(N \ge 2\). Then
+        \[ \E\Big[\max_{1 \le n \le N} Z_n\Big] \le \sqrt{2 \ln N}. \tag{1}\]</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Let \(M = \max_n Z_n\) and fix \(\lambda > 0\). The function \(x \mapsto e^{\lambda x}\) is convex, so Jensen's inequality gives \(e^{\lambda \E[M]} \le \E[e^{\lambda M}]\). Since \(e^{\lambda M} = \max_n e^{\lambda Z_n} \le \sum_n e^{\lambda Z_n}\) pointwise, and the moment generating function of a standard normal is \(\E[e^{\lambda Z_n}] = e^{\lambda^2/2}\),
+        \[ e^{\lambda \E[M]} \le \sum_{n=1}^N \E\big[e^{\lambda Z_n}\big] = N e^{\lambda^2/2}. \]
+        Taking logarithms, \(\E[M] \le \frac{\ln N}{\lambda} + \frac{\lambda}{2}\) for every \(\lambda > 0\). The right-hand side is minimized at \(\lambda = \sqrt{2 \ln N}\), where it equals \(\sqrt{2 \ln N}\). No step used independence: the sum bound holds for any joint distribution, and linearity of expectation needs none.</p>
+      </div>
+
+      <div class="block corollary">
+        <span class="block-title claim" data-grade="T">Corollary 2.2 <span class="name">(the luck hurdle)</span></span>
+        <p>If \(N\) trials all have true Sharpe ratio zero and \(\hSR_n \approx \Normal(0, 1/T)\), then
+        \[ \E\Big[\max_n \hSR_n\Big] \lesssim \sqrt{\frac{2 \ln N}{T}} \quad \text{per period}, \qquad \sqrt{\frac{2 P \ln N}{T}} \quad \text{annualized with } P \text{ periods per year}. \tag{2}\]</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 2.3 <span class="name">(five years of daily data, one hundred variants)</span></span>
+        <p>Take \(N = 100\), \(T = 1260\) daily observations and \(P = 252\). Then \(2 \ln 100 = 9.2103\), and
+        \[ \sqrt{\frac{2 P \ln N}{T}} = \sqrt{\frac{252 \times 9.2103}{1260}} = \sqrt{1.8421} = 1.357. \]
+        On average, the best of one hundred skill-free variants can show an annualized Sharpe ratio of up to 1.36 over five years. Bound (2) is an upper bound; Section 3 gives an estimate of where the expectation actually sits.</p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 2.4 <span class="name">(slow growth is not small growth)</span></span>
+        <p>The hurdle grows like \(\sqrt{\ln N}\) and falls like \(1/\sqrt{T}\). Growth in \(N\) is slow: a hundredfold larger search, from \(N = 10\) to \(N = 1000\), raises the bound only from 2.15 to 3.72 standard errors. Slow is not small, though. In Sharpe-ratio units these differences are the size of the gap between a fundable track record and noise (Example 2.3, Problem M1).</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Where the expectation sits: the extreme-value approximation</h2>
+
+      <p>Bound (1) holds for any dependence, which is also why it is loose. For <em>independent</em> trials the exact expectation can be computed, and a closed-form approximation tracks it closely.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.1 <span class="name">(expected maximum Sharpe ratio)</span></span>
+        <p>For \(N\) independent trials whose estimated Sharpe ratios are normal with mean \(\E[\hSR]\) and variance \(\Var[\hSR]\), the <dfn id="def-expected-maximum-sharpe" data-concept="expected-maximum-sharpe">expected maximum Sharpe ratio</dfn> is \(\E[\max_n \hSR_n]\). <span class="claim" data-grade="B" data-cite="bailey2014deflated bailey2014pseudo">Bailey and López de Prado use the extreme-value approximation
+        \[ \E\Big[\max_n \hSR_n\Big] \approx \E[\hSR] + \sqrt{\Var[\hSR]}\,\Big( (1 - \emgamma)\, \Phi^{-1}\!\big(1 - \tfrac1N\big) + \emgamma\, \Phi^{-1}\!\big(1 - \tfrac{1}{N e}\big) \Big), \tag{3}\]
+        with \(\emgamma \approx 0.5772\) the Euler–Mascheroni constant and \(e\) Euler's number, a result they attribute to Bailey, Borwein, López de Prado and Zhu</span>.</p>
+      </div>
+
+      <p>Approximation (3) is a large-\(N\) result. Whether it is accurate at the values of \(N\) a researcher actually uses is an empirical question about a formula, so we test it directly rather than trust it.</p>
+
+      <figure>
+        <div class="chart" data-chart="expected-max"></div>
+        <figcaption>The extreme-value approximation (3) sits slightly above the exact expectation for every \(N\), while the dependence-free bound (1) is loose by roughly half a standard deviation.
+          <span class="source">Computed live in your browser: the exact curve integrates \(x \cdot N\varphi(x)\Phi(x)^{N-1}\) numerically; no data are used.</span></figcaption>
+      </figure>
+
+      <section class="lab" id="lab-S7-L01-1" data-runtime="python" data-packages="numpy">
+        <h3>Lab 1 · Testing the approximation against simulation</h3>
+        <p class="hypothesis">For independent standard normals, the simulated mean maximum should sit below the bound \(\sqrt{2\ln N}\) for every \(N\), and approximation (3) should overstate it by a few percent at \(N = 10\), with the error shrinking as \(N\) grows.</p>
+        <pre><code class="language-python" data-run>import math
+from statistics import NormalDist
+
+import numpy as np
+
+phi = NormalDist()
+gamma_e = 0.5772156649015329
+rng = np.random.default_rng(7)
+
+print("N  simulated  approximation  bound  approx_error_pct")
+for n, reps in ((10, 40000), (100, 20000), (1000, 4000)):
+    simulated = rng.standard_normal((reps, n)).max(axis=1).mean()
+    approx = (1 - gamma_e) * phi.inv_cdf(1 - 1 / n) + gamma_e * phi.inv_cdf(1 - 1 / (n * math.e))
+    bound = math.sqrt(2 * math.log(n))
+    print(f"{n} {simulated:.3f} {approx:.3f} {bound:.3f} {100 * (approx - simulated) / simulated:.1f}")</code></pre>
+        <pre class="expected" data-tolerance="1e-6">N  simulated  approximation  bound  approx_error_pct
+10 1.538 1.575 2.146 2.4
+100 2.504 2.531 3.035 1.0
+1000 3.243 3.255 3.717 0.4</pre>
+        <p class="interpretation">The approximation errs on the high side by a few percent at \(N=10\) and by well under one percent at \(N=1000\): as a hurdle for skill it is slightly conservative, which is the safe direction. The bound is 15–40% too high at these values of \(N\). Neither number says anything about correlated trials; Problem P3 shows how correlation shrinks the expectation.</p>
+      </section>
+
+      <h2 id="s4"><span class="section-number">4</span>The bias in a full research loop</h2>
+
+      <p>Sections 2 and 3 concern the reported in-sample number. The next lab follows the selected strategy forward. It splits ten years of simulated daily returns into an in-sample half used for selection and an out-of-sample half that is looked at once.</p>
+
+      <section class="lab" id="lab-S7-L01-2" data-runtime="python" data-packages="numpy">
+        <h3>Lab 2 · The random-strategy overfitting engine</h3>
+        <p class="hypothesis">With 100 skill-free strategies and 630 in-sample days, the selected strategy's in-sample annualized Sharpe ratio should average close to the prediction of (3), \(2.531 \times \sqrt{252/630} = 1.60\). Its out-of-sample Sharpe ratio should average close to zero, and it should lose money out of sample about half the time.</p>
+        <pre><code class="language-python" data-run>import numpy as np
+
+# SIMULATED pure-noise strategies: no strategy has any skill.
+rng = np.random.default_rng(20261017)
+n_strategies, n_is, n_oos, n_reps = 100, 630, 630, 100
+annualize = np.sqrt(252)
+
+best_is = np.empty(n_reps)
+best_oos = np.empty(n_reps)
+for rep in range(n_reps):
+    r = rng.standard_normal((n_is + n_oos, n_strategies)) * 0.01  # daily excess returns
+    is_part, oos_part = r[:n_is], r[n_is:]
+    sr_is = is_part.mean(axis=0) / is_part.std(axis=0, ddof=1)
+    sr_oos = oos_part.mean(axis=0) / oos_part.std(axis=0, ddof=1)
+    k = int(np.argmax(sr_is))  # the researcher keeps the in-sample winner
+    best_is[rep] = sr_is[k] * annualize
+    best_oos[rep] = sr_oos[k] * annualize
+
+print(f"mean in-sample Sharpe of the selected strategy: {best_is.mean():.3f}")
+print(f"mean out-of-sample Sharpe of the same strategy: {best_oos.mean():.3f}")
+print(f"share of selections that lose money out of sample: {np.mean(best_oos &lt; 0):.2f}")</code></pre>
+        <pre class="expected" data-tolerance="1e-6">mean in-sample Sharpe of the selected strategy: 1.612
+mean out-of-sample Sharpe of the same strategy: 0.034
+share of selections that lose money out of sample: 0.52</pre>
+        <p class="interpretation">Selection alone manufactured an in-sample Sharpe ratio of about 1.6. All of it vanished out of sample, because none of it was skill. A single honest holdout told the truth here. This does not show that holdouts protect a research process in general; Section 5 shows how they stop doing so.</p>
+      </section>
+
+      <h2 id="s5"><span class="section-number">5</span>Why a reused holdout stops protecting you</h2>
+
+      <p>A holdout protects only the first time it is used. In practice a researcher selects in-sample, checks the holdout, is disappointed, revises the idea, and checks again. Each round is another trial evaluated on the same holdout, and the number finally reported is the best holdout result across rounds: a maximum again. <span class="claim" data-grade="B" data-cite="white2000reality" data-locator="p. 1097, abstract">White argues that the problem is practically unavoidable with time-series data, because typically only a single history of the phenomenon is available</span>.</p>
+
+      <section class="lab" id="lab-S7-L01-3" data-runtime="python" data-packages="numpy">
+        <h3>Lab 3 · Holdout reuse</h3>
+        <p class="hypothesis">Under the null, each round's holdout Sharpe ratio is a fresh draw, so the best of \(K\) rounds should behave like the expected maximum of \(K\) null statistics: near zero for \(K = 1\), and close to approximation (3) for \(K = 5\) and \(K = 20\).</p>
+        <pre><code class="language-python" data-run>import math
+from statistics import NormalDist
+
+import numpy as np
+
+# SIMULATED null research loop. Each round picks the in-sample winner among null
+# configurations and checks it on the same one-year holdout. Under the null the
+# in-sample choice carries no information about the holdout, so each round's
+# holdout Sharpe ratio is a fresh draw; keeping the best round reports a maximum.
+rng = np.random.default_rng(11)
+n_oos, n_reps = 252, 2000
+phi, gamma_e = NormalDist(), 0.5772156649015329
+
+print("rounds  mean_reported_holdout_sharpe  expected_max_approximation")
+for rounds in (1, 5, 20):
+    holdout = rng.standard_normal((n_reps, rounds, n_oos))
+    sharpe = holdout.mean(axis=2) / holdout.std(axis=2, ddof=1) * math.sqrt(252)
+    reported = sharpe.max(axis=1).mean()
+    if rounds == 1:
+        approx = 0.0
+    else:
+        z = (1 - gamma_e) * phi.inv_cdf(1 - 1 / rounds) + gamma_e * phi.inv_cdf(1 - 1 / (rounds * math.e))
+        approx = z * math.sqrt(252 / n_oos)
+    print(f"{rounds} {reported:.3f} {approx:.3f}")</code></pre>
+        <pre class="expected" data-tolerance="1e-6">rounds  mean_reported_holdout_sharpe  expected_max_approximation
+1 0.005 0.000
+5 1.179 1.193
+20 1.893 1.901</pre>
+        <p class="interpretation">Five peeks at a one-year holdout produce a reported out-of-sample Sharpe ratio above 1 from pure noise, and twenty peeks produce almost 2. The holdout has become part of the search. Its protection is restored only by counting the rounds as trials, which is what the corrections in Lessons 2–8 do.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s6"><span class="section-number">6</span>Where the canon breaks</h2>
+        <p>The textbook significance test in S1 assumes that one hypothesis was fixed before the data were seen. Applied to a reported strategy, it answers a question nobody asked: how surprising this statistic would be had it been the only one computed. Three facts break the textbook frame in practice.</p>
+        <ul>
+          <li><strong>The count of trials is unobserved.</strong> <span class="claim" data-grade="B" data-cite="harvey2015cross" data-locator="p. 8">Harvey, Liu and Zhu stress that what matters is the number of factors tested, not the number published, and that the former is unobservable because tests that fail are not published</span>. Every correction in this module needs \(N\), so the research process must record it (Problem R1).</li>
+          <li><strong>Trials are dependent.</strong> Theorem 2.1 survives any dependence, but approximation (3) assumes independence, and real variants (a 50-day versus a 55-day lookback) are highly correlated. Problem P3 shows that correlation shrinks the bias by the factor \(\sqrt{1-\rho}\). Estimating the number of effectively independent trials is a modelling choice taken up in Lesson 7.</li>
+          <li><strong>Normality is an approximation.</strong> \(\hSR \approx \Normal(0, 1/T)\) ignores skewness, fat tails and serial correlation, all common in strategy returns. Lesson 7 replaces the variance with one that accounts for skewness and kurtosis.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s7"><span class="section-number">7</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“A t-statistic of 2 means there is only a 5% chance my strategy is a fluke.”</p>
+            <p>This is wrong twice. First, a <a class="concept" data-concept="p-value" href="../../../concepts.html#p-value">p-value</a> is the probability of a statistic at least this extreme <em>given</em> the null hypothesis, not the probability that the null is true given the statistic. Converting one into the other needs prior odds (Lesson 6). Second, after a search the reported statistic is a maximum, and the maximum of \(N\) null statistics exceeds the single-test 5% critical value far more often than 5% of the time. Theorem 2.1 and Lab 2 show by how much.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Out-of-sample testing makes data snooping impossible.”</p>
+            <p>A holdout consulted once is a valid test of one hypothesis. Consulted repeatedly, it becomes in-sample data for the selection of the final strategy, and Lab 3 shows that the reported out-of-sample Sharpe ratio then inherits the full selection bias.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“With a long enough sample, selection bias disappears.”</p>
+            <p>By (2) the hurdle falls like \(1/\sqrt{T}\) but rises like \(\sqrt{\ln N}\). Longer samples invite larger searches. Holding \(N\) fixed, quadrupling the sample only halves the hurdle. The bias disappears only if \(T\) grows much faster than \(\ln N\), and nothing in a research process forces that.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“My variants are just small tweaks of one idea, so they do not count as separate trials.”</p>
+            <p>Correlated trials count partially, not zero times. Problem P3 shows that equicorrelated trials scale the expected maximum by \(\sqrt{1-\rho}\). At a pairwise correlation of 0.5 that removes only 29% of the bias.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s8"><span class="section-number">8</span>Problem set</h2>
+        <p>Every problem has a full worked solution. Attempt each one before opening it.</p>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Three years, twenty variants</span>
+            <p>A researcher tests \(N = 20\) independent variants on three years of daily data (\(T = 756\), \(P = 252\)) and reports the best annualized Sharpe ratio, 1.05. Assume every variant has a true Sharpe ratio of zero and \(\hSR_n \approx \Normal(0, 1/T)\). (a) Bound the expected maximum annualized Sharpe ratio with (2). (b) Estimate it with (3). (c) Is 1.05 evidence of skill?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>(a) \(\sqrt{2\ln 20} = \sqrt{5.9915} = 2.4477\). The per-period standard deviation is \(1/\sqrt{756} = 0.03637\). Annualizing multiplies by \(\sqrt{252} = 15.875\), so the bound is \(2.4477 \times 0.03637 \times 15.875 = 1.413\).</p>
+              <p>(b) \(\Phi^{-1}(1 - 1/20) = \Phi^{-1}(0.95) = 1.6449\) and \(\Phi^{-1}(1 - 1/(20e)) = \Phi^{-1}(0.98161) = 2.0881\). The bracket is \(0.4228 \times 1.6449 + 0.5772 \times 2.0881 = 0.6955 + 1.2052 = 1.9007\). Annualized, the estimate is \(1.9007 \times 0.03637 \times 15.875 = 1.097\).</p>
+              <p>(c) No. The reported 1.05 is <em>below</em> what the best of twenty skill-free variants delivers on average (about 1.10). Nothing in the number distinguishes it from luck.</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · Monthly data</span>
+            <p>A fund reports an annualized Sharpe ratio of 1.0 from five years of monthly returns (\(T = 60\), \(P = 12\)), selected from \(N = 50\) configurations. Compute the bound (2) and the estimate (3) of the expected maximum under the null.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The per-period standard deviation is \(1/\sqrt{60} = 0.12910\), and annualizing multiplies by \(\sqrt{12} = 3.4641\). The bound is \(\sqrt{2\ln 50} = 2.7971\), giving \(2.7971 \times 0.12910 \times 3.4641 = 1.251\). For the estimate, the bracket at \(N = 50\) is \((1-\emgamma)\Phi^{-1}(0.98) + \emgamma\Phi^{-1}(1 - 1/(50e)) = 0.4228 \times 2.0537 + 0.5772 \times 2.4393 = 2.2763\), so the estimate is \(2.2763 \times 0.12910 \times 3.4641 = 1.018\). The reported 1.0 is exactly what luck produces on average. Short monthly track records cannot carry a search over fifty configurations.</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · The probability that some null strategy looks good</span>
+            <p>Each of \(N = 20\) independent null strategies has \(T = 1000\) daily observations. (a) What is the standard error of \(\hSR\) under the null? (b) What is the probability that one given strategy shows \(\hSR > 0.05\) per day? (c) What is the probability that at least one of the twenty does?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>(a) Under the null the iid-normal variance is \((1 + 0^2/2)/T = 1/1000\), so the standard error is \(1/\sqrt{1000} = 0.03162\).</p>
+              <p>(b) \(\Prob(\hSR > 0.05) = 1 - \Phi(0.05 \times \sqrt{1000}) = 1 - \Phi(1.5811) = 0.0569\).</p>
+              <p>(c) By independence, \(1 - (1 - 0.0569)^{20} = 1 - 0.9431^{20} = 1 - 0.3097 = 0.690\). An event that is unusual for one strategy is the expected outcome across twenty.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Sub-Gaussian trials</span>
+            <p>A random variable \(X\) is sub-Gaussian with variance proxy \(\sigma^2\) if \(\E[e^{\lambda X}] \le e^{\lambda^2\sigma^2/2}\) for all real \(\lambda\). Prove that if \(X_1, \dots, X_N\) are each sub-Gaussian with proxy \(\sigma^2\), with any joint distribution, then \(\E[\max_n X_n] \le \sigma\sqrt{2\ln N}\) for \(N \ge 2\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Repeat the proof of Theorem 2.1 with the weaker moment bound. For \(\lambda > 0\), Jensen's inequality and \(e^{\lambda \max_n X_n} \le \sum_n e^{\lambda X_n}\) give \(e^{\lambda\E[\max X_n]} \le \sum_n \E[e^{\lambda X_n}] \le N e^{\lambda^2\sigma^2/2}\). Taking logarithms, \(\E[\max X_n] \le \ln N/\lambda + \lambda\sigma^2/2\). Minimizing over \(\lambda\) gives \(\lambda = \sqrt{2\ln N}/\sigma\) and the bound \(\sigma\sqrt{2\ln N}\). Theorem 2.1 is the case \(\sigma = 1\), since a standard normal satisfies the moment condition with equality. The result matters because bounded or light-tailed statistics also obey it.</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Two trials, exactly</span>
+            <p>Let \((Z_1, Z_2)\) be bivariate normal with standard normal margins and correlation \(\rho \in [-1, 1]\). Prove that \(\E[\max(Z_1, Z_2)] = \sqrt{(1-\rho)/\pi}\), and evaluate it at \(\rho = 0\) and \(\rho = 1\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For any reals, \(\max(a,b) = \tfrac{a+b}{2} + \tfrac{|a-b|}{2}\). Taking expectations, \(\E[(Z_1+Z_2)/2] = 0\). The difference \(W = Z_1 - Z_2\) is normal with mean 0 and variance \(1 + 1 - 2\rho = 2(1-\rho)\). For \(W \sim \Normal(0, s^2)\), \(\E|W| = s\sqrt{2/\pi}\). Hence \(\E|Z_1 - Z_2| = \sqrt{2(1-\rho)}\sqrt{2/\pi} = 2\sqrt{(1-\rho)/\pi}\), and \(\E[\max(Z_1,Z_2)] = \sqrt{(1-\rho)/\pi}\). At \(\rho = 0\) this is \(1/\sqrt{\pi} = 0.5642\). At \(\rho = 1\) it is 0: two identical trials are one trial, and choosing between them creates no bias.</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · Equicorrelated trials</span>
+            <p>Let \(Z_n = \sqrt{\rho}\,W + \sqrt{1-\rho}\,\varepsilon_n\) for \(n = 1, \dots, N\), where \(\rho \in [0,1]\) and \(W, \varepsilon_1, \dots, \varepsilon_N\) are independent standard normals. Show that each \(Z_n\) is standard normal, that \(\Corr(Z_m, Z_n) = \rho\) for \(m \ne n\), and that \(\E[\max_n Z_n] = \sqrt{1-\rho}\;\E[\max_n \varepsilon_n]\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>\(Z_n\) is a linear combination of independent normals, so it is normal with mean 0 and variance \(\rho + (1-\rho) = 1\). For \(m \ne n\), \(\Cov(Z_m, Z_n) = \rho\Var(W) = \rho\), which is the correlation because the variances are 1. Since \(\sqrt{\rho}\,W\) does not depend on \(n\), \(\max_n Z_n = \sqrt{\rho}\,W + \sqrt{1-\rho}\max_n\varepsilon_n\). Taking expectations and using \(\E[W] = 0\) gives the result. Correlation among trials therefore scales the selection bias by \(\sqrt{1-\rho}\): by 0.71 at \(\rho = 0.5\), by 0.32 at \(\rho = 0.9\). It does not divide the number of trials by any fixed factor.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Scaling with the number of trials</span>
+            <p>Modify Lab 2 to run with \(N \in \{10, 100, 1000\}\) strategies, keeping 630 in-sample days. Before running, predict the mean in-sample annualized Sharpe ratio of the selected strategy from approximation (3) and from the exact expectation. Then run and compare.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Scale a standard-normal maximum to an annualized Sharpe ratio by multiplying by \(\sqrt{252/630} = 0.6325\). From (3): \(1.5746 \times 0.6325 = 0.996\), \(2.5306 \times 0.6325 = 1.600\) and \(3.2551 \times 0.6325 = 2.059\). The exact expectations, which the figure in Section 3 computes live, are 1.5388, 2.5076 and 3.2414, giving 0.973, 1.586 and 2.050. With 100 replications the simulated means carry Monte Carlo error. The maximum of \(N\) normals has a standard deviation below 0.6 for these \(N\), so the error is about \(0.6 \times 0.6325/\sqrt{100} \approx 0.04\). Your results should therefore sit within about ±0.08 of the exact values, slightly below the approximation. The sketch: wrap the lab's loop in <code>for n_strategies in (10, 100, 1000):</code> and print the mean of <code>best_is</code>.</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Correlated variants</span>
+            <p>Change Lab 2 so that the strategies share a common component, <code>r = 0.01 * (np.sqrt(rho) * w + np.sqrt(1 - rho) * e)</code> with <code>w</code> of shape <code>(T, 1)</code> and <code>e</code> of shape <code>(T, N)</code>, and set \(\rho = 0.5\). Predict the mean in-sample Sharpe ratio of the selected strategy using P3, then verify.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By P3 the expected maximum of the standardized statistics scales by \(\sqrt{1-\rho} = 0.7071\). The exact independent value for \(N = 100\) is 2.5076, so the prediction is \(0.7071 \times 2.5076 \times 0.6325 = 1.121\) annualized, against 1.586 for independent strategies. One subtlety: each column's sample mean contains the common term \(\sqrt{\rho}\,\bar w\), divided by a standard deviation that is nearly the same for every column. That term hardly changes which trial wins, and because \(\E[\bar w] = 0\) it contributes nothing on average across replications. Your simulated mean should therefore be close to 1.12, with Monte Carlo error of a few hundredths.</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · A momentum grid</span>
+            <p>A researcher evaluates a time-series momentum rule on twenty years of monthly data (\(T = 240\), \(P = 12\)) over a grid of lookbacks \(J \in \{3,6,9,12\}\) and holding periods \(K \in \{3,6,9,12\}\). Compute \(N\), the estimate (3) and the bound (2) for the expected maximum annualized Sharpe ratio under the null. Then argue in which direction the grid's structure moves the true expectation.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>\(N = 16\). The per-period standard deviation is \(1/\sqrt{240} = 0.06455\), and annualizing multiplies by \(\sqrt{12} = 3.4641\). The bracket in (3) is 1.8005, giving \(1.8005 \times 0.06455 \times 3.4641 = 0.403\). The bound is \(\sqrt{2\ln 16} = 2.3548\), giving \(2.3548 \times 0.06455 \times 3.4641 = 0.527\). Neighbouring cells of the grid share most of their positions (a 9-month and a 12-month lookback overlap for nine months), so the trials are strongly positively correlated. By P3 that lowers the expectation below the independent value of 0.40. Approximation (3) with \(N = 16\) is therefore conservative for this grid. The exact amount depends on the correlation matrix, which Lesson 7 estimates.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Making N observable</span>
+            <p>Design a trial log for a research team so that every correction in this module can be computed from it. Specify what is recorded, when, by whom, and how variants of one idea are grouped.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>A complete answer covers six points.</p>
+              <ol>
+                <li><strong>An append-only record per evaluation.</strong> Each time any performance statistic is computed on any data, record a timestamp, the code commit, the full parameter vector, the data vintage and sample window, the statistic, and whether the result was viewed. The log is written by the backtester itself (Atlas A9 does this through A8's interface), never by hand, so no evaluation escapes it.</li>
+                <li><strong>A holdout register.</strong> Every access to reserved data is a logged event, and each access counts as a trial against that holdout (Lab 3).</li>
+                <li><strong>Grouping.</strong> Variants of one idea share an idea identifier, so analysts can report both the raw count and an effective count estimated from the correlation of the variants' return series (Lesson 7).</li>
+                <li><strong>Pre-registration.</strong> Before touching data, record the primary hypothesis, the statistic, the sample and the decision rule. Departures are allowed but flagged.</li>
+                <li><strong>Reporting.</strong> Every strategy proposal carries N, the dispersion of the trial Sharpe ratios and the deflated statistics of Lessons 7–8.</li>
+                <li><strong>Limitations.</strong> Ideas that were considered and rejected without running any code are invisible to any log, and grouping is a judgement call. The log reduces the unobserved part of N but does not eliminate it.</li>
+              </ol>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Interrogating a pitch</span>
+            <p>A manager says: “We tested 400 variants in-sample, and the chosen one has an out-of-sample Sharpe ratio of 1.5 over three years.” Write the questions you would ask, and explain how each answer would change your assessment.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Start from the best case. If the out-of-sample period was used exactly once, for this one strategy, then it is a valid single test. An annualized Sharpe ratio of 1.5 over three years has a t-statistic of about \(1.5\sqrt{3} = 2.60\) (one-sided p-value 0.005), which is genuine evidence. The questions decide whether that best case holds.</p>
+              <ol>
+                <li><strong>How many times was the out-of-sample period consulted, and for how many candidates?</strong> If \(K\) rounds peeked at it, the reported number is a maximum over \(K\) (Lab 3). For instance, \(K = 5\) moves the null expectation from 0 to about 1.19 for a one-year holdout, or \(1.19/\sqrt{3} = 0.69\) for three years.</li>
+                <li><strong>Was the out-of-sample period chosen after seeing results</strong>, for example by starting it after a drawdown? If so, its boundaries are themselves a trial.</li>
+                <li><strong>How correlated were the 400 variants?</strong> This matters for the in-sample statistics (P3), though not for a single clean holdout.</li>
+                <li><strong>What are the skewness and kurtosis of the returns?</strong> Strategies that sell volatility can show high Sharpe ratios over three calm years, and Lesson 7 adjusts for this.</li>
+                <li><strong>Can the trial log be audited</strong> (R1)?</li>
+              </ol>
+              <p>A manager who cannot answer the first question has not shown out-of-sample evidence.</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · A single history</span>
+            <p>White argues that data snooping is practically unavoidable with time-series data because only a single history is available. Propose three partial remedies, and state the cost or failure mode of each.</p>
+            <details class="solution"><summary>Solution</summary>
+              <ol>
+                <li><strong>Correct for the search inside the sample.</strong> Use the FWER, FDR and bootstrap methods of Lessons 2–5, or deflate the reported statistic (Lessons 7–8). The cost is power, and every method needs N and the dependence between trials, which (Section 6) are imperfectly known.</li>
+                <li><strong>Find genuinely new data.</strong> Look to other markets, other asset classes, earlier periods recovered from archives, or the future (paper trading). This is the strongest remedy, because the new data played no part in the search. Its failure modes are that markets may differ for real economic reasons, so failure abroad is not proof of luck at home, and that waiting for the future is slow.</li>
+                <li><strong>Restrict the search in advance.</strong> Use theory and pre-registration to cut N before looking. This lowers the hurdle legitimately, but it can exclude true discoveries, and it works only if the restriction is credible to an outside reader, which requires the trial log of R1.</li>
+              </ol>
+              <p>No remedy removes the single-history problem. Each trades power, speed or scope for credibility.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s9"><span class="section-number">9</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>For standard normal statistics with any dependence, \(\E[\max_n Z_n] \le \sqrt{2\ln N}\) (Theorem 2.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2</td></tr>
+              <tr><td>Under the null, the best of \(N\) Sharpe ratios has expectation at most \(\sqrt{2\ln N/T}\) per period (Corollary 2.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2</td></tr>
+              <tr><td>The extreme-value approximation (3) to the expected maximum, slightly conservative at practical N</td><td><span class="grade" data-grade="B">B</span></td><td><span class="ref" data-cite="bailey2014deflated"></span>; checked in Lab 1</td></tr>
+              <tr><td>Equicorrelation \(\rho\) scales the expected maximum by \(\sqrt{1-\rho}\)</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P3</td></tr>
+              <tr><td>Sorting on characteristics chosen in-sample can severely bias asset-pricing tests</td><td><span class="grade" data-grade="B">B</span></td><td><span class="ref" data-cite="lo1990data"></span></td></tr>
+              <tr><td>Reusing a holdout \(K\) times makes the reported holdout statistic a maximum over \(K\)</td><td><span class="grade" data-grade="T">T</span></td><td>§5 and Lab 3</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="S7" data-page="L01" data-cards="cards.json">
+        <h2 id="s10"><span class="section-number">10</span>Retrieval quiz</h2>
+        <p>Answer from memory, then check. Finishing the quiz adds this lesson's cards to your review deck.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under the null, with \(N\) trials, how does the bound on the expected maximum of the standardized statistics grow with \(N\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q1"> Linearly in \(N\)</label>
+              <label class="option"><input type="radio" name="L01q1"> Like \(\sqrt{N}\)</label>
+              <label class="option" data-correct><input type="radio" name="L01q1"> Like \(\sqrt{2\ln N}\)</label>
+              <label class="option"><input type="radio" name="L01q1"> It does not grow</label>
+            </fieldset>
+            <div class="explain" hidden><p>Theorem 2.1: \(\E[\max Z_n] \le \sqrt{2\ln N}\). Growth is slow, but it never stops.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="3.035" data-tolerance="0.01">
+            <p class="prompt">Evaluate the bound \(\sqrt{2\ln N}\) at \(N = 100\) (two decimals).</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(2\ln 100 = 9.2103\) and \(\sqrt{9.2103} = 3.035\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Does Theorem 2.1 require the trials to be independent?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q3"> Yes, independence is used in the moment generating function</label>
+              <label class="option" data-correct><input type="radio" name="L01q3"> No, it holds for any joint distribution</label>
+              <label class="option"><input type="radio" name="L01q3"> Only positive correlation is allowed</label>
+            </fieldset>
+            <div class="explain" hidden><p>The proof bounds the maximum by a sum and uses only each marginal's moment generating function.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.5642" data-tolerance="0.002">
+            <p class="prompt">For two independent standard normals, what is \(\E[\max(Z_1, Z_2)]\)? (four decimals)</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Problem P2 gives \(\sqrt{(1-\rho)/\pi}\), which at \(\rho = 0\) is \(1/\sqrt{\pi} = 0.5642\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">For equicorrelated trials with correlation \(\rho\), the expected maximum equals the independent value multiplied by…</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q5"> \(1 - \rho\)</label>
+              <label class="option" data-correct><input type="radio" name="L01q5"> \(\sqrt{1 - \rho}\)</label>
+              <label class="option"><input type="radio" name="L01q5"> \(1/N\)</label>
+              <label class="option"><input type="radio" name="L01q5"> \(\rho\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>Problem P3: the common factor drops out of the maximum, and the idiosyncratic part has standard deviation \(\sqrt{1-\rho}\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a holdout sample stop protecting against data snooping once it is reused?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q6"> Because its returns become non-stationary</label>
+              <label class="option" data-correct><input type="radio" name="L01q6"> Because the reported holdout statistic becomes a maximum over the rounds that consulted it</label>
+              <label class="option"><input type="radio" name="L01q6"> Because holdouts are always too short</label>
+            </fieldset>
+            <div class="explain" hidden><p>Each round is a trial evaluated on the same data. Lab 3 shows the reported number rising with the number of rounds.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">A p-value of 0.05 is…</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q7"> the probability that the null hypothesis is true</label>
+              <label class="option" data-correct><input type="radio" name="L01q7"> the probability, under the null, of a statistic at least as extreme as the one observed</label>
+              <label class="option"><input type="radio" name="L01q7"> the probability that the strategy will lose money</label>
+            </fieldset>
+            <div class="explain" hidden><p>It conditions on the null. The probability that the null is true needs prior odds (Lesson 6).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which input to every correction in this module is usually unobservable to an outside reader of a backtest?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q8"> The sample length \(T\)</label>
+              <label class="option" data-correct><input type="radio" name="L01q8"> The number of trials \(N\)</label>
+              <label class="option"><input type="radio" name="L01q8"> The reported Sharpe ratio</label>
+            </fieldset>
+            <div class="explain" hidden><p>Failed trials are rarely reported, as Harvey, Liu and Zhu emphasize for published factors. That is why a trial log matters (Problem R1).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.794" data-tolerance="0.002">
+            <p class="prompt">A strategy has a daily Sharpe ratio of 0.05. What is its annualized Sharpe ratio with 252 trading days? (three decimals)</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Annualizing multiplies by \(\sqrt{252} = 15.875\): \(0.05 \times 15.875 = 0.794\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In Lab 2, what happened to the in-sample winner's Sharpe ratio out of sample?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q10"> It stayed near its in-sample value</label>
+              <label class="option"><input type="radio" name="L01q10"> It halved</label>
+              <label class="option" data-correct><input type="radio" name="L01q10"> It fell to roughly zero, losing money about half the time</label>
+            </fieldset>
+            <div class="explain" hidden><p>None of the in-sample performance was skill. The selected strategy had a true Sharpe ratio of zero.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s11"><span class="section-number">11</span>References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="index.html"><span class="dir">Module</span>S7 overview</a>
+        <a class="next" href="L02.html"><span class="dir">Next</span>L02 · Family-Wise Error</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">S7 · Research Integrity &amp; Multiple Testing · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

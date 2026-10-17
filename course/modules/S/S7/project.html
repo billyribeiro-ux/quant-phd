@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="S7" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S7 Project · Atlas A8: the Research-Integrity Module</title>
+  <meta name="description" content="Build atlas.integrity, the research-integrity module of the program's research platform: deflated Sharpe ratio, probability of backtest overfitting, Romano–Wolf and Benjamini–Hochberg, attached to every backtest. Autograded on your own instance.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">S7 Research Integrity</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="24">
+      <header class="page-head">
+        <p class="eyebrow">S7 project · Atlas milestone A8 · 24 hours · autograded</p>
+        <h1>Atlas A8: The Research-Integrity Module</h1>
+        <p class="lede">Every backtest the program's platform runs from here on will carry an integrity report: the deflated Sharpe ratio of the chosen strategy, the probability that the selection process overfit, and which trials survive Romano–Wolf and Benjamini–Hochberg. You build the module that produces it.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>At the master's tier rungs 1 and 2 are short, because the scaffolding that helps a novice slows down someone who already has the skill. If you met the placement bar on the <a href="index.html#placement">module page</a>, go straight to rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: Benjamini–Hochberg, solved and annotated.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: fill in the two missing lines of the probabilistic Sharpe ratio. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification and autograder in <a href="#spec">§3</a> and <a href="#grader">§5</a>.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">§7</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-S7-project-1" data-runtime="python" data-packages="numpy">
+          <h3>Lab 1 · Worked example: Benjamini–Hochberg, line by line</h3>
+          <p class="hypothesis">BH is a step-up procedure. Here the third-smallest p-value sits above its own line \(3q/m\), yet it is rejected because the fourth-smallest passes its line (<a href="L03.html">L03</a>).</p>
+          <pre><code class="language-python" data-run>import numpy as np
+from numpy.typing import NDArray
+
+
+def benjamini_hochberg(pvalues: NDArray[np.float64], q: float) -&gt; NDArray[np.bool_]:
+    """Benjamini-Hochberg step-up at FDR level q; returns a mask in the input order."""
+    if not 0.0 &lt; q &lt; 1.0:
+        raise ValueError("q must lie strictly between 0 and 1")  # a level of 0 or 1 is not a test
+    p = np.asarray(pvalues, dtype=np.float64)
+    if p.ndim != 1 or np.any(~np.isfinite(p)) or np.any((p &lt; 0.0) | (p &gt; 1.0)):
+        raise ValueError("pvalues must be a 1-D array in [0, 1]")
+    m = p.size
+    if m == 0:
+        return np.zeros(0, dtype=bool)  # no hypotheses, no rejections
+    order = np.argsort(p, kind="stable")  # stable: ties keep input order, so results are reproducible
+    lines = q * np.arange(1, m + 1) / m  # the BH line k*q/m for k = 1..m
+    below = np.nonzero(p[order] &lt;= lines)[0]  # every k whose ordered p-value is under its line
+    reject = np.zeros(m, dtype=bool)
+    if below.size:
+        k_star = below[-1] + 1  # step-UP: the LARGEST passing k, not the first failure
+        reject[order[:k_star]] = True  # reject the k* smallest p-values, including any above their own line
+    return reject
+
+
+# Eight p-values from a hypothetical strategy grid (illustrative inputs, not data).
+p = np.array([0.041, 0.001, 0.300, 0.012, 0.024, 0.700, 0.020, 0.049])
+mask = benjamini_hochberg(p, 0.05)
+print("rejected (input order):", "".join("R" if r else "." for r in mask))
+print("number rejected:", int(mask.sum()))
+print("largest rejected p-value:", f"{p[mask].max():.3f}")
+third = float(np.sort(p)[2])
+print(
+    "third-smallest p-value:",
+    f"{third:.3f}",
+    "| its own line:",
+    f"{3 * 0.05 / p.size:.4f}",
+    "| rejected:",
+    bool(third &lt;= p[mask].max()),
+)</code></pre>
+          <pre class="expected" data-tolerance="1e-9">rejected (input order): .R.RR.R.
+number rejected: 4
+largest rejected p-value: 0.024
+third-smallest p-value: 0.020 | its own line: 0.0188 | rejected: True</pre>
+          <p class="interpretation">The comments carry the reasons. A stable sort makes ties reproducible. The mask is returned in input order because callers index trials, not ranks. The procedure looks for the <em>largest</em> passing \(k\). An implementation that stops at the first p-value above its line is step-down. It would reject only two hypotheses here, and the autograder's test <code>test_bh_steps_up_not_down</code> rejects it.</p>
+        </section>
+
+        <section class="lab completion" id="lab-S7-project-2" data-runtime="python" data-packages="numpy">
+          <h3>Lab 2 · Completion problem: the probabilistic Sharpe ratio</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression from <a href="L07.html">L07</a>. When both lines are right, the three PSR values match the expected output and the status turns green. The returns are SIMULATED with a negative-skew crash component.</p>
+          <pre><code class="language-python" data-run>import math
+from statistics import NormalDist
+
+import numpy as np
+from numpy.typing import NDArray
+
+
+def probabilistic_sharpe_ratio(returns: NDArray[np.float64], sr_benchmark: float) -&gt; float:
+    """PSR of per-period excess returns against a per-period benchmark Sharpe ratio."""
+    n = returns.size
+    centred = returns - returns.mean()
+    m2, m3, m4 = (float(np.mean(centred**k)) for k in (2, 3, 4))
+    sr = float(returns.mean() / returns.std(ddof=1))
+    skew, kurt = m3 / m2**1.5, m4 / m2**2
+    bracket = ___
+    se = ___
+    return NormalDist().cdf((sr - sr_benchmark) / se)
+
+
+rng = np.random.default_rng(3)
+# SIMULATED daily excess returns with a negative-skew jump component.
+crashes = (rng.random(1000) &lt; 0.02) * rng.exponential(0.03, 1000)
+r = rng.normal(0.0012, 0.01, 1000) - crashes
+for bench in (0.0, 0.02, 0.05):
+    print(f"PSR against {bench:.2f}: {probabilistic_sharpe_ratio(r, bench):.4f}")</code></pre>
+          <pre class="expected" data-tolerance="1e-9">PSR against 0.00: 0.9774
+PSR against 0.02: 0.9182
+PSR against 0.05: 0.6841</pre>
+          <p class="interpretation">The first blank is the variance bracket of the non-normal Sharpe ratio. Its \(-\gamma_3\,\SR\) term is where negative skewness raises the standard error. The second blank divides by \(T-1\), as the A8 contract specifies. Dividing by \(T\) instead shifts the second and third PSR values in the fourth decimal, so the check fails.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A research desk evaluates hundreds of strategy configurations a week and proposes a few for capital. The investment committee will no longer accept a Sharpe ratio without the number of trials behind it, the probability that the selection overfit, and multiple-testing-adjusted decisions. Atlas A9, the backtester, will call your module on every result it returns.</dd>
+          <dt>Inputs</dt>
+          <dd>Your instance comes from <code>grader/instance.py</code>, seeded by your workspace ID. It holds a set of p-values with a planted share of true effects, a skewed return series for the proposed strategy, the Sharpe ratios of the trials behind it, a trial-by-period backtest matrix, and performance differentials with a common factor and serial correlation. All data are SIMULATED, so no market data are needed.</dd>
+          <dt>Required outputs</dt>
+          <dd>One file, <code>atlas/integrity.py</code>, implementing exactly the interface in the <a href="#contract">A8 contract</a>: <code>sharpe_ratio</code>, <code>sample_skewness</code>, <code>sample_kurtosis</code>, <code>sharpe_ratio_std</code>, <code>probabilistic_sharpe_ratio</code>, <code>expected_max_sharpe</code>, <code>deflated_sharpe_ratio</code>, <code>benjamini_hochberg</code>, <code>stationary_bootstrap_indices</code>, <code>stepdown_rejections</code>, <code>romano_wolf</code>, <code>probability_of_backtest_overfitting</code> with <code>PBOResult</code>, <code>TrialSet</code> with <code>from_backtest</code>, and <code>integrity_report</code> with <code>IntegrityReport</code>. Start from <a href="grader/starter.py">the starter file</a>, whose dataclasses are complete.</dd>
+          <dt>Constraints</dt>
+          <dd>Use NumPy and the Python standard library only. Functions are pure: they validate inputs, raise <code>ValueError</code> naming the violated condition, and never print, warn or mutate their arguments. Follow the contract's conventions exactly: ddof, moment estimators, \(T-1\) in the standard error, step-up BH, the order-statistic critical value, the CSCV row-dropping rule, average ranks and the combination order. The whole suite must finish within 60 seconds in your browser.</dd>
+          <dt>Grading mode</dt>
+          <dd>Autograded by <code>grader/test_project.py</code>: 41 checks of definitions, numbers to stated tolerances, invariants (step-up behaviour, nesting in \(\alpha\), joint resampling, CSCV symmetry) and failure behaviour. The same file runs in your browser and on your machine. It is not secret. Its integrity comes from your seeded instance, and the credential is the module you can show and defend.</dd>
+        </dl>
+
+        <h3 id="contract">The A8 contract, in brief</h3>
+        <p>The binding text is <code>atlas/A8.contract.md</code> in the program repository, and later milestones depend on it, so it is frozen once released. Its key conventions are these:</p>
+        <ul>
+          <li>Sharpe ratios are per period, \(\bar r / s\) with \(s\) using ddof = 1. Skewness and kurtosis are the moment estimators \(m_3/m_2^{3/2}\) and \(m_4/m_2^2\), and kurtosis is not excess.</li>
+          <li>\(\operatorname{se}(\hSR) = \sqrt{(1 - \gamma_3\hSR + \tfrac{\gamma_4 - 1}{4}\hSR^2)/(T-1)}\). PSR is \(\Phi((\hSR - \SR^\ast)/\operatorname{se})\), and DSR is the PSR at \(\SR_0\) given by L01's expected-maximum formula, with the trial variance taken at ddof = 1.</li>
+          <li>BH rejects the \(k^\ast\) smallest p-values, \(k^\ast = \max\{k : p_{(k)} \le kq/m\}\), with the mask in input order.</li>
+          <li>The stationary bootstrap starts a new block with probability \(1/b\) at each step and wraps around. Romano–Wolf uses studentized statistics, resamples whole periods jointly, and takes as critical value the \(\lceil (1-\alpha)B\rceil\)-th smallest bootstrap maximum over the active set.</li>
+          <li>CSCV uses an even \(S\), drops the oldest \(T \bmod S\) rows, and takes all \(\binom{S}{S/2}\) splits in itertools order. Ranks are average ranks, \(\omega = \text{rank}/(N+1)\), and PBO is the share of logits at or below zero.</li>
+        </ul>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Read the contract, set up the package, run the starter against the suite</td><td class="num">1</td><td>Every test fails with <code>NotImplementedError</code>; the failures are your checklist.</td></tr>
+              <tr><td>Sharpe ratio, moments, standard error, PSR, expected maximum, DSR</td><td class="num">4</td><td>Closed forms derived in L01 and L07; the time goes into validation and the ddof conventions.</td></tr>
+              <tr><td>Benjamini–Hochberg</td><td class="num">2</td><td>Short code, but ties, input order and step-up behaviour are where implementations fail.</td></tr>
+              <tr><td>Stationary bootstrap and Romano–Wolf StepM</td><td class="num">6</td><td>The hardest part: vectorizing the resample, studentizing per draw, and the step-down loop with the order-statistic critical value.</td></tr>
+              <tr><td>Probability of backtest overfitting by CSCV</td><td class="num">5</td><td>Combinatorial splits, average ranks with ties, and the row-dropping and ordering rules.</td></tr>
+              <tr><td><code>TrialSet</code> and <code>integrity_report</code></td><td class="num">2</td><td>Composition of the above, plus the one-sided normal p-values.</td></tr>
+              <tr><td>Edge cases, error messages, local and in-browser runs on your seed</td><td class="num">4</td><td>About a third of the suite tests failure behaviour and invariants rather than happy paths.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>24</strong></td><td>30% of the module's 80 hours.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>atlas/integrity.py</code> and run the suite on your own instance. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="S7" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="atlas/integrity.py" data-starter="starter.py" data-packages="numpy"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Atlas lives in your own git repository (BLUEPRINT §5.1). Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your repository's <code>atlas</code> package, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain test_project.py</code></pre>
+        <p><code>--assert=plain</code> keeps the failure messages to the property that failed, as in the browser. Use Python 3.12 or later with NumPy 2.2 and pytest 8.3.</p>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Holm, Benjamini–Yekutieli and SPA.</strong> Add them to A8 with the same validation discipline, and add tests in the style of the suite that kill the plausible wrong versions you can think of.</li>
+          <li><strong>An effective number of trials.</strong> Estimate it from the trials' correlation matrix (L07), report the DSR under each estimate, and show how sensitive the decision is.</li>
+          <li><strong>HAC-studentized StepM.</strong> Replace the iid studentization with a Newey–West standard error inside each bootstrap draw. Measure the size of both versions under a serially correlated null.</li>
+          <li><strong>An audit.</strong> Take a published strategy grid you can reconstruct from open data (for example, momentum lookback and holding periods on the French data library) and write the integrity report an investment committee should have seen.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <ol class="reading-list">
+          <li data-cite="bailey2014deflated"></li>
+          <li data-cite="bailey2016probability"></li>
+          <li data-cite="romano2005stepwise"></li>
+          <li data-cite="politis1994stationary"></li>
+          <li data-cite="benjamini1995controlling"></li>
+          <li data-cite="white2000reality"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L08.html"><span class="dir">Previous</span>L08 · Backtest Overfitting</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>S7 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">S7 project · Atlas A8 · The autograder runs in your browser; nothing you write leaves it.</footer>
+</body>
+</html>

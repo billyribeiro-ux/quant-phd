@@ -72,7 +72,7 @@ three things about each:
 | Credential | What it covers | Modules | Graded projects | Hours | Credit equivalent | FTE years |
 |---|---|---|---|---|---|---|
 | **Finance Degree — Bachelor's Level** | Business and quantitative core (calculus, statistics, econometrics, programming, micro, macro, financial and managerial accounting, law and ethics, communication), plus the full finance major (corporate finance I–II, investments, markets and institutions, statement analysis, valuation, financial modeling, short-term finance, fixed income, derivatives, risk management and international finance, asset management, wealth management, financial history), plus a senior capstone | 42 | 47 | 3,881 | ≈86 credits | 1.80 |
-| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 76 | 84 | 7,546 | ≈168 credits | 3.49 |
+| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 77 | 85 | 7,646 | ≈170 credits | 3.54 |
 | **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 83 | 87 | 9,171 | ≈204 credits | 4.25 |
 
 Some facts about these numbers:
@@ -129,7 +129,10 @@ The savings come from six mechanisms, and every one of them is designed in:
 2. **No re-teaching across degree levels.** A university teaches CAPM,
    regression and options three times: in the bachelor's, the master's and the
    PhD. Here each concept is defined exactly once in the prerequisite graph and
-   then reused. `check_dag.py` enforces this.
+   then reused. The curriculum assigns each of its 1,121 concepts to exactly
+   one module (`render_curriculum.py` rejects a concept introduced twice or
+   used outside its prerequisites), and `check_dag.py` holds every page to
+   that assignment.
 3. **Year-round calendar.** Two 15-week semesters give about 30 instructional
    weeks a year. The program runs 48.
 4. **Placement test-outs.** Each module opens with a diagnostic. A student who
@@ -168,7 +171,10 @@ The rules that follow from it:
   published counter-evidence. One-sided treatment is a build failure.
 - **Memory is a lead, not a source.** Model recall supplies candidate
   citations and numbers. Every citation enters the registry only through a
-  DOI→Crossref lookup. An independent verifier then checks every attribution
+  machine lookup of an authoritative record, checked against the citation
+  string by the same identity rules: Crossref by DOI, Open Library by ISBN,
+  or the publisher's or issuer's own page on an allow-listed domain
+  (`references/authorities.yaml`). An independent verifier then checks every attribution
   and every quoted number against the source (`VERIFIER_RULES.md`). Errors are
   caught by machinery rather than by trusting any model's confidence. This is
   what lets the program survive hostile review by the people it cites.
@@ -311,7 +317,7 @@ page documents the required schema and validates it.
 | **C++20** | The language of pricing libraries (QuantLib) and low-latency systems | CS5, CS6, DV4, the CS studio | Emscripten → WASM at build time; native locally |
 | **SQL** | Research data access; point-in-time and as-of joins | CS3, QR1, the data layer | DuckDB-WASM in page; DuckDB locally |
 | **q / kdb+, R** | Tick-data analytics at banks and HFT firms (q); academic econometrics (R) | Reading literacy | Static, annotated code |
-| **Rust, OCaml** | Trading infrastructure; Jane Street documents its OCaml use (Minsky 2011, *ACM Queue*) | Context only | — |
+| **Rust, OCaml** | Trading infrastructure; Jane Street documents its OCaml use (Minsky 2011, *Communications of the ACM*) | Context only | — |
 
 No usage percentages are claimed unless a verified survey is in the registry.
 
@@ -321,7 +327,8 @@ SHA-256-locked in `vendor/LOCK.json`, so nothing loads from a CDN at runtime:
 
 - KaTeX for math
 - D3 v7 plus hand-authored inline SVG for figures
-- Pyodide (with pytest), DuckDB-WASM, and Emscripten output for runnable code
+- Pyodide (with NumPy, SciPy and pytest) for runnable Python; DuckDB-WASM and
+  Emscripten output join the lock file with the first SQL and C++ modules
 - an FSRS-family scheduler for spaced retrieval
 - IndexedDB for progress, cards and the workspace, with JSON and zip export
   and every access wrapped in try/catch
@@ -338,37 +345,44 @@ pre-installed Chromium, and a Crossref/DOI client.
 ## 7. Repository and site architecture
 
 The repository separates authoring and tooling, at the root, from the deployable
-static site in `course/`. ✅ marks what already exists; everything else is built
-in the remaining Phase 0 steps.
+static site in `course/`. ✅ marks what exists; the rest arrives with the
+modules that need it.
 
 ```
 quant-finance/
 ├── BLUEPRINT.md  BUILDER_RULES.md  VERIFIER_RULES.md       ✅ architecture and agent contracts
 ├── CURRICULUM.md                                           ✅ generated; never hand-edited
 ├── curriculum/
-│   ├── meta.yaml  NN-*.yaml                                ✅ source of truth: tiers, credentials, tracks, Atlas, modules
-│   └── curriculum.json                                     ✅ generated: DAG, topological order, computed stats
+│   ├── meta.yaml  NN-*.yaml                                ✅ source of truth: tiers, credentials, tracks, Atlas, modules, concepts
+│   └── curriculum.json                                     ✅ generated: DAG, concept index, topological order, computed stats
 ├── references/
-│   ├── references.json                                     ✅ THE citation registry: Crossref-verified entries only
+│   ├── references.json                                     ✅ THE citation registry: verified entries only (Crossref, Open Library, publisher or issuer page)
 │   ├── review_queue.json  SEED_REPORT.md                   ✅ everything not yet verifiable, with the reason
-│   ├── extra_sources.yaml  doi_hints.yaml                  ✅ blueprint-level citations; DOI hypotheses (still verified)
+│   ├── extra_sources.yaml  doi_hints.yaml  authorities.yaml ✅ blueprint citations; DOI hypotheses; authoritative domains
+├── notation/notation.json                                  ✅ binding macro and symbol registry
+├── atlas/<A-ID>.contract.md                                ✅ A8 · frozen interfaces, one per milestone
+├── ledgers/<ID>.verification.json  ledgers/<ID>/mutants/   # verifier output; release gated on all-PASS
 ├── tools/
-│   ├── render_curriculum.py                                ✅ validates the DAG, tiers, studios, credentials; renders
+│   ├── render_curriculum.py                                ✅ validates the DAG, tiers, studios, credentials, concepts; renders
 │   ├── seed_references.py  verify_refs.py  add_reference.py  refs/   ✅ registry pipeline
-│   ├── fetch_data.py                                       # public data → assets/data + MANIFEST (licence, hash)
-│   ├── run_labs.py  run_graders.py  mutate_graders.py
-│   ├── check_pages.py  check_dag.py  check_projects.py
-│   └── page_smoke.py                                       # Playwright: zero console errors, math, labs, graders
-├── tests/                                                  ✅ tooling tests (each encodes a real failure mode)
-├── notation/{notation,glossary}.json
-├── ledgers/<ID>.verification.json                          # verifier output; merge gated on all-PASS
-└── course/                                                 # the deployable static site
-    ├── index.html                                          # program map: DAG, credentials, tracks, progress, search
-    ├── placement/                                          # program-wide and per-module diagnostics
-    ├── modules/<PART>/<ID>/{index,L01…Lnn,project}.html + grader/ + cards.json
+│   ├── build_site.py  site_templates/                      ✅ program map, concept index, site data (generated, checked in CI)
+│   ├── fetch_vendor.py  vendor_spec.yaml                   ✅ vendored runtime, SHA-256-locked
+│   ├── check_pages.py  check_dag.py  check_projects.py     ✅ page contract, concept order, project contract
+│   ├── run_labs.py  embed_labs.py                          ✅ labs run locally and match their pages
+│   ├── run_graders.py  mutate_graders.py                   ✅ reference on 50 seeds; every verifier mutant killed
+│   ├── page_smoke.py                                       ✅ Chromium: every page, both themes, 360 px, labs and graders in Pyodide
+│   └── fetch_data.py                                       # public data → assets/data + MANIFEST (licence, hash)
+├── tests/                                                  ✅ tooling tests, every lab's twin (tests/labs), browser-module tests (tests/js)
+└── course/                                                 ✅ the deployable static site
+    ├── index.html  concepts.html  review.html              ✅ program map, concept index, spaced-review deck
+    ├── placement/                                          # program-wide diagnostic (per-module diagnostics live on each hub)
+    ├── modules/<PART>/<ID>/{index,L01…Lnn,project}.html + grader/ + cards.json   ✅ S7
     ├── studios/<STUDIO-ID>/  atlas/
-    └── assets/{css,js,vendor,data,wasm}                    # vendor/ fetched per vendor/LOCK.json (SHA-256), not committed
+    └── assets/{css,js,data,vendor}                         ✅ vendor/ fetched per vendor/LOCK.json (SHA-256), not committed
 ```
+
+Deployment publishes `course/` with `fetch_vendor.py` run first, and excludes
+every `grader/reference.py`: the suites are public, the reference solutions are not.
 
 **Design system.**
 
@@ -413,7 +427,7 @@ Each module consists of a hub page, its lessons, and a project page.
 
 | Phase | Output | Gate |
 |---|---|---|
-| **0 — Foundations** | Design system; templates (hub, lesson, project, studio); all `tools/`; vendored runtimes with lock file; grader harness (Pyodide + local); spaced-retrieval engine; `references.json` seeded from every source in `curriculum/*.yaml` via `seed_references.py` (✅ done: see `references/SEED_REPORT.md`); `notation.json` | `render_curriculum.py` valid; `verify_refs.py` 100% resolved or removed; `page_smoke.py` green on every template |
+| **0 — Foundations** | Design system ✅; templates (hub, lesson, project, studio) ✅; the checking and build `tools/` ✅; vendored runtimes with lock file ✅; grader harness, Pyodide and local ✅; spaced-retrieval engine ✅; concept graph ✅; `references.json` seeded and the non-DOI admission paths built ✅ (see `references/SEED_REPORT.md`); `notation.json` ✅ | `render_curriculum.py` valid; `verify_refs.py` 100% resolved or removed; `page_smoke.py` green on every template |
 | **1 — Pilot** | Three modules end to end, chosen to calibrate every style: **S7** (theory + autograder), **AP1** (proof-heavy), **AC2** (applied, rubric + Atlas milestone). Ten pilot learners | Full ledger PASS; hours recalibrated from pilot data; templates and rules revised once |
 | **2 — Fan-out** | All remaining modules and studios in topological order (`curriculum.json` → `topological_order`), in batches of up to 8 modules. Each module gets one builder agent and one independent verifier agent | Ledger PASS + `check_dag.py` + `check_projects.py` (incl. mutation tests) + architect review |
 | **3 — Integration** | Program map, placement system, Atlas cumulative test suites, capstone, quals bank, thesis rubric | Full-site Playwright run; zero broken links; zero unresolved keys |

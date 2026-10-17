@@ -16,6 +16,11 @@ exit code on any structural defect:
 * a credential whose prerequisite closure exceeds its tier, whose studios need
   modules outside the closure, or whose course map points outside the closure
 * a body-of-knowledge coverage map that names an unknown module
+* a module that introduces no concepts, or a malformed concept ID
+* a concept introduced by more than one module (each concept is defined once
+  in the program and reused; this is what prevents re-teaching across levels)
+* a module that declares it ``uses`` a concept not introduced in its strict
+  prerequisite closure (a DAG defect: the student would meet it undefined)
 
 Usage::
 
@@ -27,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -43,6 +49,7 @@ MD_OUT = ROOT / "CURRICULUM.md"
 
 GRADING_MODES = frozenset({"autograder", "rubric", "both"})
 REQUIRED_MODULE_KEYS = ("id", "title", "tier", "hours", "prereqs", "core", "sources", "lab", "project")
+CONCEPT_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 REQUIRED_PROJECT_KEYS = ("title", "brief", "deliverable", "grading")
 REQUIRED_STUDIO_KEYS = ("id", "title", "tier", "requires", "hours", "grading", "brief", "deliverables")
 # U.S. federal credit-hour definition (34 CFR 600.2): one credit is roughly one
@@ -75,6 +82,16 @@ class Module:
     prereqs: list[str]
     part_code: str
     raw: dict[str, Any]
+
+    @property
+    def introduces(self) -> dict[str, str]:
+        value = self.raw.get("introduces")
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def uses(self) -> list[str]:
+        value = self.raw.get("uses", [])
+        return [str(v) for v in value] if isinstance(value, list) else []
 
 
 @dataclass
@@ -153,8 +170,10 @@ def validate(meta: dict[str, Any], parts: list[Part]) -> tuple[dict[str, Tier], 
                 errors.append(f"{module.id}: unknown tier {module.tier}")
             if module.hours <= 0:
                 errors.append(f"{module.id}: hours must be positive")
-            if not module.raw["sources"]:
-                errors.append(f"{module.id}: at least one source is required")
+            if not module.raw["sources"] and not module.raw.get("reading"):
+                errors.append(f"{module.id}: needs at least one source, or a reading scope for an integrative module")
+            if module.raw.get("reading") and module.part_code != "CAP":
+                errors.append(f"{module.id}: only capstone modules may replace sources with a reading scope")
             project = module.raw["project"]
             missing = [key for key in REQUIRED_PROJECT_KEYS if not project.get(key)]
             if missing:
@@ -228,6 +247,7 @@ def validate(meta: dict[str, Any], parts: list[Part]) -> tuple[dict[str, Tier], 
             errors.append(f"prerequisite cycle: {' -> '.join(exc.args[1])}")
     if not errors:
         errors.extend(validate_credentials(meta, parts, tiers, modules))
+        errors.extend(validate_concepts(modules))
 
     if errors:
         raise CurriculumError("\n".join(f"  - {e}" for e in errors))
@@ -285,6 +305,54 @@ def validate_credentials(
             outside = [m for m in entry["modules"] if m not in required]
             if outside:
                 errors.append(f"credential {cid}: course '{entry['course']}' maps outside the closure {outside}")
+    return errors
+
+
+def concept_index(modules: dict[str, Module]) -> dict[str, list[str]]:
+    """Concept ID -> every module that introduces it (more than one is a defect)."""
+    index: dict[str, list[str]] = defaultdict(list)
+    for module in modules.values():
+        for concept in module.introduces:
+            index[str(concept)].append(module.id)
+    return index
+
+
+def validate_concepts(modules: dict[str, Module]) -> list[str]:
+    """Each concept is introduced exactly once, and only used where its definition is a prerequisite."""
+    errors: list[str] = []
+    for module in modules.values():
+        raw = module.raw.get("introduces")
+        if not isinstance(raw, dict) or not raw:
+            errors.append(f"{module.id}: introduces must be a non-empty mapping of concept-id: name")
+            continue
+        for concept, name in raw.items():
+            if not CONCEPT_ID.match(str(concept)):
+                errors.append(f"{module.id}: concept id {concept!r} must be lowercase kebab-case")
+            if not isinstance(name, str) or not name.strip():
+                errors.append(f"{module.id}: concept {concept} needs a display name")
+        if "uses" in module.raw and not isinstance(module.raw["uses"], list):
+            errors.append(f"{module.id}: uses must be a list of concept ids")
+
+    index = concept_index(modules)
+    for concept, owners in sorted(index.items()):
+        if len(owners) > 1:
+            errors.append(
+                f"concept {concept} is introduced by {', '.join(owners)}: define it once and link to it from the others"
+            )
+
+    for module in modules.values():
+        ancestors = closure(module.prereqs, modules)
+        for concept in module.uses:
+            defined_in = index.get(concept, [])
+            if not defined_in:
+                errors.append(f"{module.id}: uses unknown concept {concept}")
+            elif module.id in defined_in:
+                errors.append(f"{module.id}: uses {concept}, which it introduces itself")
+            elif not any(owner in ancestors for owner in defined_in):
+                errors.append(
+                    f"{module.id}: uses {concept} from {defined_in[0]}, which is not in its prerequisite closure "
+                    "(DAG defect)"
+                )
     return errors
 
 
@@ -375,6 +443,7 @@ def compute_stats(
         "projects": projects,
         "studios": sum(1 for p in parts if p.studio),
         "atlas_milestones": len(meta.get("atlas", [])),
+        "concepts": sum(len(m.introduces) for m in modules.values()),
         "module_count_by_tier": dict(module_count_by_tier),
         "module_hours_by_tier": dict(module_hours_by_tier),
         "studio_hours_by_tier": dict(studio_hours_by_tier),
@@ -388,7 +457,14 @@ def compute_stats(
     }
 
 
-def render_json(meta: dict[str, Any], parts: list[Part], order: list[str], stats: dict[str, Any]) -> str:
+def render_json(
+    meta: dict[str, Any], parts: list[Part], modules: dict[str, Module], order: list[str], stats: dict[str, Any]
+) -> str:
+    concepts = {
+        concept: {"name": name, "module": module.id}
+        for module in (modules[m] for m in order)
+        for concept, name in module.introduces.items()
+    }
     payload = {
         "program": meta["program"],
         "tiers": meta["tiers"],
@@ -398,6 +474,7 @@ def render_json(meta: dict[str, Any], parts: list[Part], order: list[str], stats
         "credentials": meta.get("credentials", []),
         "bodies_of_knowledge": meta.get("bodies_of_knowledge", []),
         "topological_order": order,
+        "concepts": dict(sorted(concepts.items())),
         "stats": stats,
         "parts": [
             {
@@ -437,6 +514,7 @@ def render_markdown(
         f"({stats['modules']} module projects + {stats['studios']} studio projects) |"
     )
     out.append(f"| Atlas milestones | {stats['atlas_milestones']} |")
+    out.append(f"| Concepts (each introduced exactly once) | {stats['concepts']:,} |")
     out.append(f"| Total design hours | {stats['total_hours']:,} |")
     out.append(
         f"| Credit-hour equivalent | ≈{stats['credit_hour_equivalent']:,} credits "
@@ -514,10 +592,15 @@ def render_markdown(
             prereqs = ", ".join(module.prereqs) if module.prereqs else "none"
             atlas = f" · ⚑ {project['atlas']}" if project.get("atlas") else ""
             debate = f"\n  - ⚖ *Debate:* {md_escape(raw['debate'])}" if raw.get("debate") else ""
+            introduces = "; ".join(md_escape(name) for name in module.introduces.values())
+            sources = "; ".join(md_escape(s) for s in raw["sources"]) or "none of its own"
+            reading = f"  - *Reading scope:* {md_escape(raw['reading'])}\n" if raw.get("reading") else ""
             out.append(
                 f"- **{module.id} · {module.title}** · {module.tier} · {module.hours} h · ← {prereqs}{atlas}\n"
                 f"  - *Core:* {md_escape(raw['core'])}\n"
-                f"  - *Sources:* {'; '.join(md_escape(s) for s in raw['sources'])}\n"
+                f"  - *Introduces:* {introduces}\n"
+                f"  - *Sources:* {sources}\n"
+                f"{reading}"
                 f"  - *Lab:* {md_escape(raw['lab'])}\n"
                 f"  - *Project — {project['title']}* (`{project['grading']}`): {md_escape(project['brief'])} "
                 f"*Deliverable:* {md_escape(project['deliverable'])}"
@@ -593,7 +676,7 @@ def main() -> int:
     if args.check:
         return 0
 
-    JSON_OUT.write_text(render_json(meta, parts, order, stats), encoding="utf-8")
+    JSON_OUT.write_text(render_json(meta, parts, modules, order, stats), encoding="utf-8")
     MD_OUT.write_text(render_markdown(meta, parts, tiers, modules, stats), encoding="utf-8")
     print(f"wrote {JSON_OUT.relative_to(ROOT)} and {MD_OUT.relative_to(ROOT)}")
     return 0

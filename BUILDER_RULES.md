@@ -125,9 +125,25 @@ money: precise, complete, dense, and without filler.
 index.html      # Hub: objectives (4–8, measurable verbs), prereq links, hours, placement test, lesson map, project ladder
 L01.html … Lnn  # Lessons of 6–12 study hours; lessons sum to (module hours − project hours)
 project.html    # Ladder rungs 1–4, spec, submission, grader or rubric + exemplars, reading list
-grader/         # instance.py, reference.py, test_project.py (see §5)
+grader/         # instance.py, reference.py, test_project.py, starter.py (see §5)
 cards.json      # Spaced-retrieval cards generated from the lessons (see §7)
+figures-Lnn.js  # Optional: a lesson's live charts (loaded via <html data-figures>)
 ```
+
+Start from `course/templates/` and read module S7 (`course/modules/S/S7/`),
+the reference instance of every template, before writing anything. Page
+conventions the tools enforce:
+
+- `<html lang data-root data-unit data-page>`; lessons also declare their
+  study hours in `data-hours` (6–12).
+- A concept the curriculum assigns to your unit is defined exactly once, as
+  `<dfn id="def-<concept-id>" data-concept="<concept-id>">`. Every use of a
+  concept from elsewhere is a link: `<a class="concept" data-concept="<id>"
+  href="../../../concepts.html#<id>">` for prerequisite modules, or
+  `href="Lnn.html#def-<id>"` for an earlier lesson of your unit. A lesson
+  never links a concept defined in a later lesson.
+- A theorem's grade sits on its title:
+  `<span class="block-title claim" data-grade="T">Theorem 2.1 …</span>`.
 
 ### 4.2 Each lesson contains, in this order
 
@@ -260,9 +276,17 @@ Studios integrate every module listed in `requires`. A studio:
      <p class="interpretation">What the output means, and what it does not mean.</p>
    </section>
    ```
-   Each lab has a byte-identical pytest twin in `tests/labs/`. Seed
-   every RNG. No network access. Runtime under 10 s in Pyodide; precompute at
-   build time if needed, and say so on the page.
+   The code lives once, in its twin `tests/labs/<UNIT>/lab-<UNIT>-<page>-<n>.py`
+   (numbered in display order). Put `@@LAB:<file>@@` in the `<code>` and
+   `@@OUT:<file>@@` in the expected-output block, then run
+   `python tools/embed_labs.py <page>`: it inserts the escaped code and the
+   output the twin actually prints. Never type an expected output by hand.
+   Seed every RNG. No network access. Runtime under 10 s in Pyodide;
+   precompute at build time if needed, and say so on the page. Twins are
+   linted by ruff and type-checked by mypy strict like all other code.
+   A project's rung-2 completion problem is a lab with `class="lab completion"`
+   whose code shows `___` blanks; its twin is the completed solution, and every
+   line must equal the twin's or contain a blank.
 2. **Code quality:** type hints, docstrings that state units, no global mutable
    state, and no warnings emitted.
 3. **Diagrams** are inline SVG with `<title>` and `<desc>`. Colours come from
@@ -285,8 +309,12 @@ Generate one atomic card for each definition, theorem statement, key formula,
 key empirical result (with its grade) and misconception:
 
 ```json
-{"id": "S7-c014", "front": "...", "back": "...", "cite": ["harvey2016zoo"], "grade": "B", "lesson": "L03"}
+{"id": "S7-c014", "front": "...", "back": "...", "cite": ["harvey2015cross"], "grade": "B", "lesson": "L06"}
 ```
+
+Ids run `<UNIT>-c001` upward. A card that states a graded result other than a
+theorem cites the registry keys behind it. Finishing a lesson's quiz adds that
+lesson's cards to the learner's review deck (`course/review.html`, FSRS-4.5).
 
 Each card tests one fact. The back must be checkable against the lesson text.
 Do not make cards of trivia.
@@ -311,12 +339,12 @@ Do not make cards of trivia.
 Run all of these and fix every failure before handing off:
 
 ```bash
-python tools/check_pages.py    --unit {{ID}}
+python tools/check_pages.py    --unit {{ID}}            # --page Lnn while lessons are in progress
 python tools/check_dag.py      --unit {{ID}}
 python tools/check_projects.py --unit {{ID}}
-python tools/run_labs.py       --unit {{ID}}
+python tools/run_labs.py       --unit {{ID}}            # --page Lnn likewise
 python tools/run_graders.py    --unit {{ID}} --seeds 0-49
-python tools/page_smoke.py     --unit {{ID}}
+python tools/page_smoke.py     --unit {{ID}}            # Chromium: both themes, 360 px, labs and grader in Pyodide
 ```
 
 Then re-read everything as the hostile author of the papers you cite. For each

@@ -102,9 +102,15 @@ class Resolution:
     info: dict[str, tuple[str, str]] = field(default_factory=dict)
 
 
-def _is_original(work: Work) -> bool:
+def _is_original(work: Work, cand: Candidate) -> bool:
+    """False when the record is an erratum, reply or similar that the citation does not itself name.
+
+    A citation whose own title opens with the same marker ("Correction to ...") cites
+    that item deliberately, so the record may stand for it.
+    """
     title = norm(work.title)
-    return not any(title.startswith(norm(marker)) for marker in _NOT_ORIGINAL)
+    marker = next((m for m in _NOT_ORIGINAL if title.startswith(norm(m))), None)
+    return marker is None or (cand.title is not None and norm(cand.title).startswith(norm(marker)))
 
 
 def _year_ok(cand_year: int | None, work: Work) -> tuple[bool, bool]:
@@ -157,7 +163,7 @@ def assess_article(cand: Candidate, work: Work) -> Assessment:
         "volume": volume_ok or not both_volumes,
         "anchor": volume_ok or title_ok,
         "issue": issue_ok is not False or title_ok,
-        "original": _is_original(work),
+        "original": _is_original(work, cand),
         "type": work.type in ARTICLE_TYPES or ("WP" in cand.flags and work.type in WORKING_PAPER_TYPES),
     }
     a.identity = all(checks.values())

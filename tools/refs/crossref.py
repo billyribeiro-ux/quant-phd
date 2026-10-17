@@ -80,6 +80,8 @@ class Work:
     year: int | None
     isbn: tuple[str, ...]
     publisher: str | None
+    # Set for works verified outside Crossref (Open Library edition, landing page, issuer page).
+    url: str | None = None
 
     @classmethod
     def from_message(cls, item: dict[str, Any]) -> Work:

@@ -15,7 +15,8 @@ for citations made in the blueprint itself) this script:
    at the source;
 7. writes ``references/SEED_REPORT.md``.
 
-Entries added by hand through ``add_reference.py`` (origin ``manual``) are preserved.
+Entries added through ``add_reference.py`` (origin ``manual``) are preserved, and
+a source string already admitted that way is not searched or queued again.
 
 Usage::
 
@@ -119,6 +120,11 @@ def search(client: Crossref, cand: Candidate) -> list[Work]:
     return works
 
 
+def manual_sources(preserved: list[dict[str, Any]]) -> set[str]:
+    """Source strings already admitted by hand; they need no search and never re-enter the queue."""
+    return {s for e in preserved if e.get("origin") == "manual" for s in e.get("source_strings") or []}
+
+
 def process(client: Crossref, cand: Candidate, used_by: list[str]) -> Outcome:
     if cand.kind not in ("article", "book"):
         return Outcome(cand, used_by, None)
@@ -172,7 +178,10 @@ def build(
     review: list[dict[str, Any]] = []
     stamp = registry.now()
 
+    admitted = manual_sources(preserved)
     for out in outcomes:
+        if out.candidate.raw in admitted:
+            continue
         res = out.resolution
         if res is not None and res.work is not None:
             entry = by_doi.get(res.work.doi)
@@ -233,9 +242,9 @@ def build(
         review.append(item)
 
     entries = list(by_doi.values())
-    registry.assign_keys(entries)
+    manual = [e for e in preserved if e.get("origin") == "manual" and e.get("doi") not in by_doi]
+    registry.assign_keys(entries, frozenset(e["key"] for e in manual))
     seeded = [e.to_json() for e in entries]
-    manual = [e for e in preserved if e.get("origin") == "manual" and e["doi"] not in by_doi]
     return seeded + manual, review, corrections
 
 
@@ -246,7 +255,11 @@ def write_report(
     outcomes: list[Outcome],
 ) -> None:
     kinds = Counter(o.candidate.kind for o in outcomes)
-    statuses = Counter((o.resolution.status if o.resolution else "not-searched") for o in outcomes)
+    admitted = manual_sources(entries)
+    statuses = Counter(
+        "manual" if o.candidate.raw in admitted else (o.resolution.status if o.resolution else "not-searched")
+        for o in outcomes
+    )
     lines = [
         "# Reference seeding report",
         "",
@@ -288,12 +301,19 @@ def main() -> int:
     args = parser.parse_args()
 
     client = Crossref(None if args.no_cache else CACHE_DIR)
+    preserved = registry.load()
+    admitted = manual_sources(preserved)
     sources = collect_sources()
     candidates = [(parse_source(s), used_by) for s, used_by in sources.items()]
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        outcomes = list(pool.map(lambda pair: process(client, *pair), candidates))
+        outcomes = list(
+            pool.map(
+                lambda pair: Outcome(pair[0], pair[1], None) if pair[0].raw in admitted else process(client, *pair),
+                candidates,
+            )
+        )
 
-    entries, review, corrections = build(outcomes, registry.load())
+    entries, review, corrections = build(outcomes, preserved)
     registry.save(entries)
     (REFS_DIR / "review_queue.json").write_text(json.dumps(review, indent=2, ensure_ascii=False) + "\n", "utf-8")
     (REFS_DIR / "corrections.json").write_text(json.dumps(corrections, indent=2, ensure_ascii=False) + "\n", "utf-8")
