@@ -28,7 +28,7 @@ function fwerGrowth(el) {
           { type: "rule", y: s.alpha, label: `α = ${s.alpha.toFixed(2)}` },
         ],
       });
-      return `α = ${s.alpha.toFixed(2)}: unadjusted testing makes a false rejection more likely than not from m = ${half} true nulls (${naive(20).toFixed(3)} at m = 20); Bonferroni stays at or below α: ${s.alpha.toFixed(2)} at m = 1, falling to ${bonf(1000).toFixed(4)} at m = 1,000.`;
+      return `α = ${s.alpha.toFixed(2)}: unadjusted testing makes a false rejection more likely than not from m = ${half} true nulls (${naive(20).toFixed(3)} at m = 20); Bonferroni stays at or below α: ${s.alpha.toFixed(2)} at m = 1, falling to ${bonf(1000).toPrecision(3)} at m = 1,000.`;
     },
   });
 }
@@ -64,6 +64,8 @@ function holmStaircase(el) {
       const bonfTests = b.map((r, i) => (r ? i + 1 : 0)).filter(Boolean);
       plot(area, {
         width,
+        // Taller than the default on phones, so every rank label fits directly above or below its own dot.
+        height: Math.round(Math.min(420, Math.max(290, width * 0.58))),
         title: "Holm's step-down on Harvey, Liu and Zhu's ten tests",
         desc:
           `The ten p-values sorted from smallest to largest, ${s.source === "reported" ? "as published to two decimals" : "recomputed from the published t-statistics"}, ` +
