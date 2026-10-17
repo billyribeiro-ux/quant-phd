@@ -11,7 +11,7 @@ const ROWS = [
     series: 0,
   },
   {
-    claim: "These particular strategies beat it, and the probability of even one false claim among them is at most α.",
+    claim: "These particular strategies beat it, and the probability of even one false claim among them is at most α (for StepM, asymptotically).",
     tools: [
       { text: "Bonferroni and Holm (L02)", lesson: "L02" },
       { text: "Romano–Wolf StepM (L05)", lesson: "L05" },

@@ -148,7 +148,8 @@ function bootstrapVariancePlot(el) {
         y: { label: "Bootstrap s.e. / true s.e.", domain: [0, Math.max(1.3, best[1] * 1.08)], format: ".1f" },
         layers: [
           { type: "line", name: "exact bootstrap s.e., formula (2)", points, series: 0 },
-          { type: "rule", y: 1, label: "true s.e.", tone: "strong" },
+          // Named in the legend: in some samples the curve rises above 1 beneath any label placed on this line.
+          { type: "rule", y: 1, name: "true s.e. (ratio 1)", tone: "strong" },
           // Named in the legend: the curve starts at this level at b = 1, so a label on the line would sit on it.
           { type: "rule", y: iidTrue, name: "iid level √((1−ϕ)/(1+ϕ))" },
         ],

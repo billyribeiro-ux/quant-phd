@@ -7,7 +7,10 @@ run the autograder on the S7 project page, or locally with the browser's flags:
 
 The dataclasses are complete.
 Every function must validate its inputs and raise ValueError naming the
-violated condition; none may print, warn or mutate its arguments.
+violated condition; none may print, warn or mutate its arguments. A series
+has zero variance when all its values are equal (test that, not std == 0),
+and every statistic must be unchanged when the returns are multiplied by a
+power of two, at any magnitude (the contract's Scale row).
 """
 
 from __future__ import annotations
@@ -22,17 +25,17 @@ EULER_MASCHERONI = 0.5772156649015329
 
 
 def sharpe_ratio(returns: ArrayLike) -> float:
-    """Per-period Sharpe ratio: mean / std(ddof=1). Needs >= 2 finite observations and positive variance."""
+    """Per-period Sharpe ratio: mean / std(ddof=1). Needs >= 2 finite observations, not all equal."""
     raise NotImplementedError("sharpe_ratio")
 
 
 def sample_skewness(returns: ArrayLike) -> float:
-    """Moment estimator m3 / m2**1.5 with m_k = mean((r - mean(r))**k)."""
+    """Moment estimator m3 / m2**1.5 with m_k = mean((r - mean(r))**k). Zero variance raises ValueError."""
     raise NotImplementedError("sample_skewness")
 
 
 def sample_kurtosis(returns: ArrayLike) -> float:
-    """Moment estimator m4 / m2**2 (not excess: 3 for a normal)."""
+    """Moment estimator m4 / m2**2 (not excess: 3 for a normal). Zero variance raises ValueError."""
     raise NotImplementedError("sample_kurtosis")
 
 
@@ -78,7 +81,11 @@ def romano_wolf(
     mean_block: float = 10.0,
     seed: int = 0,
 ) -> NDArray[np.bool_]:
-    """Studentized StepM with the stationary bootstrap, resampling whole periods jointly."""
+    """Studentized StepM with the stationary bootstrap, resampling whole periods jointly.
+
+    Draw idx_b = stationary_bootstrap_indices(T, mean_block, rng) for b = 1, ..., n_boot in order, all from the
+    single rng = np.random.default_rng(seed).
+    """
     raise NotImplementedError("romano_wolf")
 
 

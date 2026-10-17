@@ -129,14 +129,25 @@ export function plot(parent, spec) {
   if (spec.legend !== false) legend(parent, spec.layers);
   const xs = spec.layers.flatMap((l) => layerValues(l, "x"));
   const ys = spec.layers.flatMap((l) => layerValues(l, "y"));
-  const x = scale(spec.x, [margin.left, width - margin.right], xs);
   const svg = svgFrame(parent, { width, height, title: spec.title, desc: spec.desc });
-  const inner = { w: width - margin.left - margin.right, h: height - margin.top - margin.bottom };
-  const placed = layoutRuleLabels(svg, spec.layers, x, margin, width);
-  const y = scale(spec.y, [height - margin.bottom, margin.top], withHeadroom(spec.y, ys, inner.h, placed.band));
+  const yTicks = tickCount(height - margin.top - margin.bottom, { ticks: spec.y.ticks ?? 6 });
+  let x, inner, placed, y;
+  const layout = () => {
+    x = scale(spec.x, [margin.left, width - margin.right], xs);
+    inner = { w: width - margin.left - margin.right, h: height - margin.top - margin.bottom };
+    placed = layoutRuleLabels(svg, spec.layers, x, margin, width);
+    y = scale(spec.y, [height - margin.bottom, margin.top], withHeadroom(spec.y, ys, inner.h, placed.band));
+  };
+  layout();
+  // The left margin holds the y tick labels and the rotated y-axis label: widen it to the widest tick label as
+  // rendered, so no font or locale can push them into each other (Y_LABEL_BAND is the label's glyph band).
+  const needed = Math.ceil(widestTick(svg, y, yTicks, spec.y.format) + TICK_OFFSET + Y_LABEL_BAND);
+  if (needed > margin.left) {
+    margin.left = needed;
+    layout();
+  }
 
   const xTicks = tickCount(inner.w, spec.x);
-  const yTicks = tickCount(inner.h, { ticks: spec.y.ticks ?? 6 });
   svg
     .append("g")
     .attr("class", "grid")
@@ -478,6 +489,25 @@ export function scatterChart(container, spec) {
       });
     },
   });
+}
+
+const TICK_OFFSET = 9; // d3 tick length 6 plus padding 3
+const Y_LABEL_BAND = 25; // the rotated y label's glyphs span x = 5..17, plus 8 px clear of the tick labels
+
+/** Width of the widest tick label the y axis will draw, measured as rendered in an axis group. */
+function widestTick(svg, y, count, format) {
+  const ticks = count ? y.ticks(count) : [];
+  if (!ticks.length) return 0;
+  const fmt = y.tickFormat(count, format);
+  const probe = svg.append("g").attr("class", "axis").append("text");
+  let widest = 0;
+  for (const t of ticks) {
+    probe.text(fmt(t));
+    const node = probe.node();
+    widest = Math.max(widest, (typeof node.getComputedTextLength === "function" ? node.getComputedTextLength() : 0) || String(fmt(t)).length * 6.6);
+  }
+  probe.node().parentNode.remove();
+  return widest;
 }
 
 const LABEL_GAP = 5;

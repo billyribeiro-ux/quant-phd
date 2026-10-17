@@ -236,12 +236,12 @@ def test_studentized_bootstrap_reproduces_the_reference_romano_wolf(
     for idx in indices:
         sample = d[idx]
         sd_b = sample.std(0, ddof=1)
-        sd_b = np.where(sd_b == 0.0, sd, sd_b)
+        sd_b = np.where(sample.max(0) == sample.min(0), sd, sd_b)  # the contract's all-equal rule
         expected.append((sample.mean(0) - mean) / (sd_b / math.sqrt(periods)))
     np.testing.assert_allclose(out["boot"], expected, rtol=1e-10, atol=1e-12)
     assert out["mask"] == ref.romano_wolf(d, 0.1, n_boot, mean_block, seed).tolist(), "same decisions as romano_wolf"
     cols = np.array([[d[draw[k], k] for k in range(5)] for draw in separate])  # (B, K, T)
-    sep_sd = np.where(cols.std(2, ddof=1) == 0.0, sd, cols.std(2, ddof=1))
+    sep_sd = np.where(cols.max(2) == cols.min(2), sd, cols.std(2, ddof=1))
     np.testing.assert_allclose(
         out["sep"], (cols.mean(2) - mean) / (sep_sd / math.sqrt(periods)), rtol=1e-10, atol=1e-12
     )

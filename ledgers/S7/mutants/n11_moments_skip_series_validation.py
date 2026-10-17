@@ -2,6 +2,7 @@
 
 Verifier mutant (round 2) of course/modules/S/S7/grader/reference.py (S7 / Atlas A8): one realistic
 student error, otherwise identical to the reference.
+Rebased in round 3 onto the reference's np.ptp zero-variance checks; the error is unchanged.
 """
 
 from __future__ import annotations
@@ -56,10 +57,9 @@ def _level(value: float, name: str) -> float:
 def sharpe_ratio(returns: ArrayLike) -> float:
     """Per-period Sharpe ratio mean / std(ddof=1) of an excess-return series."""
     x = _series(returns)
-    sd = float(np.std(x, ddof=1))
-    if sd == 0.0:
-        raise ValueError("returns have zero sample variance")
-    return float(np.mean(x)) / sd
+    if np.ptp(x) == 0.0:  # all values equal; a floating-point std can be a tiny nonzero number here
+        raise ValueError("returns have zero sample variance (all values are equal)")
+    return float(np.mean(x)) / float(np.std(x, ddof=1))
 
 
 def _central_moment(x: NDArray[np.float64], k: int) -> float:
@@ -69,18 +69,18 @@ def _central_moment(x: NDArray[np.float64], k: int) -> float:
 def sample_skewness(returns: ArrayLike) -> float:
     """Moment estimator m3 / m2**1.5."""
     x = np.asarray(returns, dtype=np.float64)
+    if np.ptp(x) == 0.0:
+        raise ValueError("returns have zero sample variance (all values are equal)")
     m2 = _central_moment(x, 2)
-    if m2 == 0.0:
-        raise ValueError("returns have zero sample variance")
     return _central_moment(x, 3) / math.pow(m2, 1.5)
 
 
 def sample_kurtosis(returns: ArrayLike) -> float:
     """Moment estimator m4 / m2**2 (not excess; 3 under normality)."""
     x = np.asarray(returns, dtype=np.float64)
+    if np.ptp(x) == 0.0:
+        raise ValueError("returns have zero sample variance (all values are equal)")
     m2 = _central_moment(x, 2)
-    if m2 == 0.0:
-        raise ValueError("returns have zero sample variance")
     return _central_moment(x, 4) / m2**2
 
 
@@ -211,8 +211,8 @@ def romano_wolf(
         raise ValueError("n_boot must be a positive integer")
     n_obs = d.shape[0]
     sd = np.std(d, axis=0, ddof=1)
-    if np.any(sd == 0.0):
-        raise ValueError("every column of differentials needs positive sample variance")
+    if np.any(np.ptp(d, axis=0) == 0.0):
+        raise ValueError("every column of differentials needs positive sample variance (a constant column has none)")
     means = d.mean(axis=0)
     t_obs = means / (sd / math.sqrt(n_obs))
     rng = np.random.default_rng(seed)
@@ -220,7 +220,7 @@ def romano_wolf(
     for b in range(int(n_boot)):
         sample = d[stationary_bootstrap_indices(n_obs, mean_block, rng)]
         sd_b = np.std(sample, axis=0, ddof=1)
-        sd_b = np.where(sd_b == 0.0, sd, sd_b)  # a constant resampled column is studentized by its sample sd
+        sd_b = np.where(np.ptp(sample, axis=0) == 0.0, sd, sd_b)  # a constant resampled column: use the sample sd
         t_boot[b] = (sample.mean(axis=0) - means) / (sd_b / math.sqrt(n_obs))
     return stepdown_rejections(t_obs, t_boot, alpha)
 
@@ -238,9 +238,10 @@ class PBOResult:
 def _sharpe_columns(block: NDArray[np.float64]) -> NDArray[np.float64]:
     mean = block.mean(axis=0)
     sd = block.std(axis=0, ddof=1)
+    constant = np.ptp(block, axis=0) == 0.0
     out: NDArray[np.float64] = np.empty(mean.shape, dtype=np.float64)
     for j in range(mean.size):
-        if sd[j] > 0.0:
+        if not constant[j]:
             out[j] = mean[j] / sd[j]
         elif mean[j] == 0.0:
             out[j] = 0.0

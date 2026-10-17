@@ -511,7 +511,12 @@ def test_trialset_validation(selected: int) -> None:
     must_raise(lambda: a8.TrialSet(r, selected, 252), "TrialSet with selected outside the trial columns")
 
 
-# ---------------------------------------------------------------- bootstrap statistics, flat subsamples, validation
+# ---------------------------------------------------------------- bootstrap statistics and flat subsamples
+
+
+def all_equal(x: np.ndarray) -> bool:
+    """The contract's zero variance: all values equal (not std == 0)."""
+    return bool(x.max() == x.min())
 
 
 def rw_one_column_critical_value(x: np.ndarray, alpha: float, n_boot: int, mean_block: float, seed: int) -> float:
@@ -521,8 +526,8 @@ def rw_one_column_critical_value(x: np.ndarray, alpha: float, n_boot: int, mean_
     stats = []
     for _ in range(n_boot):
         s = x[np.asarray(a8.stationary_bootstrap_indices(n, mean_block, rng))]
-        sd_b = float(s.std(ddof=1))
-        stats.append((s.mean() - x.mean()) / ((sd_b if sd_b > 0.0 else sd) / math.sqrt(n)))
+        sd_b = sd if all_equal(s) else float(s.std(ddof=1))
+        stats.append((s.mean() - x.mean()) / (sd_b / math.sqrt(n)))
     return float(np.sort(stats)[math.ceil((1 - alpha) * n_boot) - 1])
 
 
@@ -536,8 +541,10 @@ def test_romano_wolf_bootstrap_statistic_is_the_contracts() -> None:
         want = t_obs > rw_one_column_critical_value(col, 0.05, 400, 5.0, SEED)
         got = bool(np.asarray(a8.romano_wolf(col[:, None], 0.05, 400, 5.0, SEED))[0])
         assert got == want, (
-            "Each bootstrap statistic is (mean(d*) - mean(d)) / (std(d*, ddof=1) / sqrt(T)), studentized by the "
-            "draw's own standard deviation with ddof=1 (contract; L05)."
+            "The first critical value differs from the contract's. Check both halves of it: the draws are "
+            "idx_b = stationary_bootstrap_indices(T, mean_block, rng) for b = 1, ..., n_boot in order, all from the "
+            "single rng = np.random.default_rng(seed); and each statistic is (mean(d*) - mean(d)) / "
+            "(std(d*, ddof=1) / sqrt(T)), studentized by the draw's own standard deviation (contract; L05)."
         )
 
 
@@ -554,12 +561,40 @@ def test_romano_wolf_constant_resample_uses_the_sample_sd() -> None:
         )
 
 
+def test_romano_wolf_constant_non_dyadic_resample() -> None:
+    # 59 periods of 1e-4 and one loss: a resample that misses the loss is constant, but its floating-point
+    # standard deviation is about 3e-20, not 0. Observed t = 0.5 and 1.5; every constant draw has t* = 1.
+    for loss, rejected in ((0.004, False), (0.0024, True)):
+        x = np.full(60, 1e-4)
+        x[59] = 1e-4 - loss
+        got = bool(np.asarray(a8.romano_wolf(x[:, None], 0.05, 400, 2.0, SEED))[0])
+        assert got == rejected, (
+            "A resampled column whose values are all equal is constant, whatever its floating-point standard "
+            "deviation: studentize it by the column's sample standard deviation (contract: zero variance)."
+        )
+
+
 def cscv_metric(block: np.ndarray) -> np.ndarray:
     mean, sd = block.mean(0), block.std(0, ddof=1)
+    flat = block.max(0) == block.min(0)  # a constant subsample (the contract's zero-variance rule)
     with np.errstate(divide="ignore", invalid="ignore"):
-        out = mean / sd
-    flat = np.ptp(block, axis=0) == 0.0  # a constant subsample (the contract's zero-variance rule)
-    out[flat] = np.where(mean[flat] == 0.0, 0.0, np.copysign(np.inf, mean[flat]))
+        out = mean / np.where(flat, 1.0, sd)
+    out[flat] = np.where(block[0, flat] == 0.0, 0.0, np.copysign(np.inf, block[0, flat]))
+    return out
+
+
+def cscv_logits(m: np.ndarray, s: int) -> list[float]:
+    """CSCV logits with the contract's metric, including its rule for constant subsamples."""
+    blocks = np.split(m[m.shape[0] % s :], s)
+    n = m.shape[1]
+    out = []
+    for combo in itertools.combinations(range(s), s // 2):
+        train = np.vstack([blocks[i] for i in combo])
+        test = np.vstack([blocks[i] for i in range(s) if i not in combo])
+        best = int(np.argmax(cscv_metric(train)))
+        oos = cscv_metric(test)
+        rank = 1 + np.sum(oos < oos[best]) + 0.5 * (np.sum(oos == oos[best]) - 1)
+        out.append(math.log(rank / (n + 1 - rank)))
     return out
 
 
@@ -567,19 +602,21 @@ def test_pbo_handles_flat_subsamples() -> None:
     m = np.random.default_rng(SEED).normal(0.0, 0.01, (80, 5))
     m[:40, 1] = 0.0  # a configuration out of the market for the first half
     m[40:, 2] = 2.0**-10  # a configuration earning a constant return in the second half
-    blocks = np.split(m, 4)
-    expected = []
-    for combo in itertools.combinations(range(4), 2):
-        train = np.vstack([blocks[i] for i in combo])
-        test = np.vstack([blocks[i] for i in range(4) if i not in combo])
-        best = int(np.argmax(cscv_metric(train)))
-        oos = cscv_metric(test)
-        rank = 1 + np.sum(oos < oos[best]) + 0.5 * (np.sum(oos == oos[best]) - 1)
-        expected.append(math.log(rank / (6 - rank)))
     got = np.asarray(a8.probability_of_backtest_overfitting(m, 4).logits)
-    assert np.allclose(got, expected, rtol=0, atol=1e-10), (
+    assert np.allclose(got, cscv_logits(m, 4), rtol=0, atol=1e-10), (
         "A subsample with zero standard deviation has Sharpe metric 0.0 when its mean is 0 and +-inf otherwise, "
         "with no warning (contract)."
+    )
+
+
+def test_pbo_constant_configurations_tie_at_infinity() -> None:
+    m = np.random.default_rng(SEED).normal(0.0, 0.01, (120, 5))
+    m[:, 1] = 1e-4  # two cash-like configurations earning different constant returns
+    m[:, 3] = 3e-4
+    got = np.asarray(a8.probability_of_backtest_overfitting(m, 4).logits)
+    assert np.allclose(got, cscv_logits(m, 4), rtol=0, atol=1e-10), (
+        "A subsample whose values are all equal has Sharpe metric +-inf (0.0 at mean 0), so two constant "
+        "configurations with positive means tie, however small their floating-point standard deviations (contract)."
     )
 
 
@@ -587,6 +624,235 @@ def test_stationary_bootstrap_starts_uniformly() -> None:
     rng = np.random.default_rng(SEED)
     firsts = {int(np.asarray(a8.stationary_bootstrap_indices(50, 10.0, rng))[0]) for _ in range(200)}
     assert len(firsts) >= 25, "The first block starts at a uniformly drawn period, not at a fixed one (L04)."
+
+
+# ---------------------------------------------------------------- zero variance and extreme magnitudes
+
+
+@pytest.mark.parametrize(
+    "function", ["sharpe_ratio", "sample_skewness", "sample_kurtosis", "probabilistic_sharpe_ratio"]
+)
+def test_a_constant_series_has_zero_variance(function: str) -> None:
+    # 1e-4 is not a dyadic fraction, so np.std of a constant series is a tiny nonzero number, not 0.0.
+    must_raise(
+        lambda: getattr(a8, function)(np.full(250, 1e-4)), f"{function} given a constant series (all values equal)"
+    )
+
+
+def test_a_constant_column_has_zero_variance() -> None:
+    r = np.random.default_rng(SEED).normal(0, 0.01, (60, 4))
+    r[:, 2] = 2e-4
+    must_raise(lambda: a8.romano_wolf(r, 0.05, 50, 5.0, SEED), "romano_wolf given a constant column")
+    must_raise(
+        lambda: a8.integrity_report(a8.TrialSet(r, 0, 252), n_boot=50),
+        "integrity_report on a trial set with a constant trial (all values equal)",
+    )
+
+
+def test_tiny_and_huge_returns() -> None:
+    assert close(a8.sharpe_ratio([0.0, 0.0, 0.0, 5e-324]), 0.5), (
+        "A series of three zeros and one subnormal has the Sharpe ratio of [0, 0, 0, 1], 0.5: rescale by a power "
+        "of two before squaring, or the squares underflow to zero (contract: scale)."
+    )
+    for x in (np.array([1.0, 2.0, 3.0]) * 1e155, np.array([1.0, 2.0, 3.0]) * 2.0**-1000):
+        assert close(a8.sharpe_ratio(x), 2.0) and close(a8.sample_kurtosis(x), 1.5), (
+            "Sharpe ratio and kurtosis of a series do not depend on its magnitude: at 1e155 a fourth power "
+            "overflows and at 2**-1000 a square underflows unless the series is rescaled first (contract: scale)."
+        )
+
+
+@pytest.mark.parametrize("k", [pytest.param(500, id="times-2^500"), pytest.param(-500, id="times-2^-500")])
+def test_statistics_are_invariant_to_power_of_two_scaling(k: int) -> None:
+    x, trials = INST["returns"], INST["trial_sharpes"]
+    big = np.ldexp(x, k)
+    for function in ("sharpe_ratio", "sample_skewness", "sample_kurtosis", "probabilistic_sharpe_ratio"):
+        assert close(getattr(a8, function)(big), getattr(a8, function)(x), 1e-12), (
+            f"{function}: multiplying the returns by 2**{k} must change nothing and warn nothing (contract: scale)."
+        )
+    assert close(a8.deflated_sharpe_ratio(big, trials), a8.deflated_sharpe_ratio(x, trials), 1e-12), (
+        f"deflated_sharpe_ratio: multiplying the returns by 2**{k} must change nothing (contract: scale)."
+    )
+    d = INST["differentials"]
+    signs = np.where(np.arange(d.shape[1]) % 2 == 0, k, -k)  # alternate columns up and down by 2**|k|
+    assert np.array_equal(
+        np.asarray(a8.romano_wolf(np.ldexp(d, signs), 0.05, 200, 10.0, SEED)),
+        np.asarray(a8.romano_wolf(d, 0.05, 200, 10.0, SEED)),
+    ), "romano_wolf: scaling each column by a power of two must leave every decision unchanged (contract: scale)."
+    m, s = INST["performance"], INST["n_blocks"]
+    scaled_m = np.ldexp(m, np.where(np.arange(m.shape[1]) % 2 == 0, k, -k))
+    assert np.allclose(
+        np.asarray(a8.probability_of_backtest_overfitting(scaled_m, s).logits),
+        np.asarray(a8.probability_of_backtest_overfitting(m, s).logits),
+        rtol=0,
+        atol=1e-12,
+    ), "PBO: CSCV ranks Sharpe ratios, so scaling a configuration by a power of two changes nothing (contract: scale)."
+
+
+# ---------------------------------------------------------------- input validation
+
+
+def _matrix_cases(function: Callable[[object], object], name: str) -> list[object]:
+    return [
+        pytest.param(
+            lambda: function([0.01, 0.02, 0.03, 0.01]), f"{name} given a one-dimensional matrix", id=f"{name}-1d"
+        ),
+        pytest.param(
+            lambda: function([[0.01, 0.02], [float("nan"), 0.01], [0.03, 0.02], [0.0, 0.01]]),
+            f"{name} given a non-finite value",
+            id=f"{name}-non-finite",
+        ),
+    ]
+
+
+def _differentials() -> np.ndarray:
+    return np.random.default_rng(SEED).normal(0.0, 1.0, (40, 3))
+
+
+@pytest.mark.parametrize(
+    ("call", "condition"),
+    [
+        pytest.param(
+            lambda: a8.stationary_bootstrap_indices(50, 0.5, np.random.default_rng(SEED)),
+            "stationary_bootstrap_indices with mean_block < 1",
+            id="sb-mean-block-below-1",
+        ),
+        pytest.param(
+            lambda: a8.stationary_bootstrap_indices(50, float("nan"), np.random.default_rng(SEED)),
+            "stationary_bootstrap_indices with a non-finite mean_block",
+            id="sb-mean-block-nan",
+        ),
+        pytest.param(
+            lambda: a8.stationary_bootstrap_indices(0, 5.0, np.random.default_rng(SEED)),
+            "stationary_bootstrap_indices with n_obs = 0",
+            id="sb-n-obs-zero",
+        ),
+        pytest.param(
+            lambda: a8.stationary_bootstrap_indices(2.5, 5.0, np.random.default_rng(SEED)),
+            "stationary_bootstrap_indices with a non-integer n_obs",
+            id="sb-n-obs-fractional",
+        ),
+        pytest.param(
+            lambda: a8.stepdown_rejections([1.0, 2.0], np.zeros((10, 2)), 0.0),
+            "stepdown_rejections with alpha = 0",
+            id="stepdown-alpha-zero",
+        ),
+        pytest.param(
+            lambda: a8.stepdown_rejections([1.0, 2.0], np.zeros((10, 3)), 0.05),
+            "stepdown_rejections with t_boot columns that do not match t_obs",
+            id="stepdown-shape",
+        ),
+        pytest.param(
+            lambda: a8.stepdown_rejections([1.0, 2.0], np.zeros((0, 2)), 0.05),
+            "stepdown_rejections with no bootstrap draws",
+            id="stepdown-no-draws",
+        ),
+        pytest.param(
+            lambda: a8.stepdown_rejections([1.0, float("nan")], np.zeros((10, 2)), 0.05),
+            "stepdown_rejections with a non-finite statistic",
+            id="stepdown-non-finite",
+        ),
+        pytest.param(
+            lambda: a8.romano_wolf(_differentials(), 0.05, 0, 5.0, SEED),
+            "romano_wolf with n_boot = 0",
+            id="rw-n-boot-zero",
+        ),
+        pytest.param(
+            lambda: a8.romano_wolf(_differentials(), 0.05, 12.5, 5.0, SEED),
+            "romano_wolf with a non-integer n_boot",
+            id="rw-n-boot-fractional",
+        ),
+        pytest.param(
+            lambda: a8.romano_wolf(_differentials(), 1.5, 20, 5.0, SEED),
+            "romano_wolf with alpha outside (0, 1)",
+            id="rw-alpha",
+        ),
+        pytest.param(
+            lambda: a8.romano_wolf(_differentials(), 0.05, 20, 0.5, SEED),
+            "romano_wolf with mean_block < 1",
+            id="rw-mean-block",
+        ),
+        pytest.param(
+            lambda: a8.sharpe_ratio_std(0.1, 1, 0.0, 3.0), "sharpe_ratio_std with n_obs = 1", id="se-n-obs-one"
+        ),
+        pytest.param(
+            lambda: a8.sharpe_ratio_std(float("nan"), 100, 0.0, 3.0),
+            "sharpe_ratio_std with a non-finite Sharpe ratio",
+            id="se-non-finite",
+        ),
+        pytest.param(
+            lambda: a8.sharpe_ratio_std(1e200, 100, 0.0, 3.0),
+            "sharpe_ratio_std with a variance bracket that overflows",
+            id="se-overflow",
+        ),
+        pytest.param(
+            lambda: a8.sharpe_ratio_std(2.0, 100, 0.5, 1.0),  # 1 - 0.5 * 2 + 0 * 4 = 0 exactly
+            "sharpe_ratio_std with a zero variance bracket (it must be positive)",
+            id="se-zero-bracket",
+        ),
+        pytest.param(
+            lambda: a8.probabilistic_sharpe_ratio(INST["returns"], float("nan")),
+            "probabilistic_sharpe_ratio with a non-finite benchmark",
+            id="psr-benchmark-nan",
+        ),
+        pytest.param(
+            lambda: a8.expected_max_sharpe(10, 1.0, float("nan")),
+            "expected_max_sharpe with a non-finite sr_mean",
+            id="ems-sr-mean-nan",
+        ),
+        pytest.param(
+            lambda: a8.expected_max_sharpe(10, float("inf")),
+            "expected_max_sharpe with a non-finite sr_variance",
+            id="ems-sr-variance-inf",
+        ),
+        pytest.param(
+            lambda: a8.deflated_sharpe_ratio(INST["returns"], [0.05]),
+            "deflated_sharpe_ratio with one trial Sharpe ratio",
+            id="dsr-one-trial",
+        ),
+        pytest.param(
+            lambda: a8.deflated_sharpe_ratio(INST["returns"], [0.05, float("nan")]),
+            "deflated_sharpe_ratio with a non-finite trial Sharpe ratio",
+            id="dsr-non-finite",
+        ),
+        pytest.param(
+            lambda: a8.deflated_sharpe_ratio(INST["returns"], [1e200, -1e200]),
+            "deflated_sharpe_ratio with trial Sharpe ratios whose variance exceeds the largest float",
+            id="dsr-variance-overflow",
+        ),
+        pytest.param(
+            lambda: a8.deflated_sharpe_ratio(INST["returns"], INST["trial_sharpes"], 0),
+            "deflated_sharpe_ratio with n_trials = 0",
+            id="dsr-n-trials-zero",
+        ),
+        *_matrix_cases(lambda m: a8.romano_wolf(m, 0.05, 20, 2.0, SEED), "romano_wolf"),
+        *_matrix_cases(lambda m: a8.probability_of_backtest_overfitting(m, 2), "probability_of_backtest_overfitting"),
+        *_matrix_cases(lambda m: a8.TrialSet(m, 0, 252), "TrialSet"),
+        pytest.param(
+            lambda: a8.TrialSet(np.random.default_rng(0).normal(size=(1, 4)), 0, 252),
+            "TrialSet with one period",
+            id="trialset-one-period",
+        ),
+        pytest.param(
+            lambda: a8.TrialSet(np.random.default_rng(0).normal(size=(50, 1)), 0, 252),
+            "TrialSet with one trial",
+            id="trialset-one-trial",
+        ),
+        pytest.param(
+            lambda: a8.TrialSet(np.random.default_rng(0).normal(size=(50, 4)), 0, 0),
+            "TrialSet with periods_per_year = 0",
+            id="trialset-periods-per-year",
+        ),
+        pytest.param(
+            lambda: a8.integrity_report(
+                a8.TrialSet(np.random.default_rng(0).normal(size=(50, 4)), 0, 252), q=0.0, n_blocks=4, n_boot=20
+            ),
+            "integrity_report with q = 0",
+            id="report-q-zero",
+        ),
+    ],
+)
+def test_input_validation(call: Callable[[], object], condition: str) -> None:
+    must_raise(call, condition)
 
 
 @pytest.mark.parametrize("function", ["sample_skewness", "sample_kurtosis", "probabilistic_sharpe_ratio"])
@@ -599,14 +865,3 @@ def test_stationary_bootstrap_starts_uniformly() -> None:
 )
 def test_series_functions_validate_their_input(function: str, bad: list) -> None:
     must_raise(lambda: getattr(a8, function)(bad), f"{function} given an invalid series")
-
-
-def test_a_constant_series_has_zero_variance() -> None:
-    # 1e-4 is not a dyadic fraction, so np.std of a constant series is a tiny nonzero number, not 0.0.
-    must_raise(lambda: a8.sharpe_ratio(np.full(250, 1e-4)), "sharpe_ratio given a constant series")
-    r = np.random.default_rng(SEED).normal(0, 0.01, (60, 4))
-    r[:, 2] = 2e-4
-    must_raise(
-        lambda: a8.integrity_report(a8.TrialSet(r, 0, 252), n_boot=50),
-        "integrity_report on a trial set with a constant trial (all values equal)",
-    )
