@@ -1,4 +1,4 @@
-"""Integer arguments are checked with isinstance(x, int), so a NumPy integer (np.int64 from a shape, argmax or array) is rejected with ValueError although the contract accepts NumPy numbers.
+"""Integer arguments are checked with isinstance(x, int), so a NumPy integer (np.int64 from np.argmax or an array element) is rejected with ValueError although the contract accepts NumPy numbers.
 
 Verifier mutant (round 5) of course/modules/S/S7/grader/reference.py (S7 / Atlas A8): one realistic
 student error, otherwise identical to the reference at df84c85.
