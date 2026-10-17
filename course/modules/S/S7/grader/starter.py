@@ -87,7 +87,7 @@ def romano_wolf(
     """Studentized StepM with the stationary bootstrap, resampling whole periods jointly.
 
     Draw idx_b = stationary_bootstrap_indices(T, mean_block, rng) for b = 1, ..., n_boot in order, all from the
-    single rng = np.random.default_rng(seed).
+    single rng = np.random.default_rng(int(seed)).
     """
     raise NotImplementedError("romano_wolf")
 

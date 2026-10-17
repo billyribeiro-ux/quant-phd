@@ -1004,7 +1004,7 @@ def test_series_functions_validate_their_input(function: str, bad: list) -> None
 
 
 def test_numpy_integer_and_float_arguments_are_accepted() -> None:
-    # (T5, T8) the contract's Scalars row: Python or NumPy numbers; an integer argument may be an integral float.
+    # The contract's Scalars row: Python or NumPy numbers; an integer argument may be an integral float.
     n, var = INST["n_trials"], float(np.var(INST["trial_sharpes"], ddof=1))
     for as_given in (np.int64(n), np.float32(n), np.float64(n)):
         assert close(a8.expected_max_sharpe(as_given, var), expected_max(n, var)), (
@@ -1013,7 +1013,7 @@ def test_numpy_integer_and_float_arguments_are_accepted() -> None:
     m, s = INST["performance"], INST["n_blocks"]
     assert close(
         a8.probability_of_backtest_overfitting(m, np.int64(s)).pbo, a8.probability_of_backtest_overfitting(m, s).pbo
-    )
+    ), "probability_of_backtest_overfitting must accept a NumPy integer n_blocks (contract: scalars)."
     d = INST["differentials"]
     assert np.array_equal(
         np.asarray(a8.romano_wolf(d, 0.05, np.int64(50), 10.0, np.int64(SEED))),
@@ -1026,7 +1026,7 @@ def test_numpy_integer_and_float_arguments_are_accepted() -> None:
 @pytest.mark.parametrize(
     ("call", "condition"),
     [
-        # (T6) from_backtest validates, never truncates
+        # from_backtest validates, never truncates
         pytest.param(
             lambda: a8.TrialSet.from_backtest(
                 SimpleNamespace(
@@ -1056,7 +1056,7 @@ def test_numpy_integer_and_float_arguments_are_accepted() -> None:
             "TrialSet.from_backtest with a fractional periods_per_year",
             id="from-backtest-ppy-fractional",
         ),
-        # (T7) integers beyond the contract's bound
+        # integers beyond the contract's bound
         pytest.param(
             lambda: a8.expected_max_sharpe(10**400, 1.0), "expected_max_sharpe with N >= 2**1000", id="ems-n-huge"
         ),
@@ -1065,7 +1065,7 @@ def test_numpy_integer_and_float_arguments_are_accepted() -> None:
             "sharpe_ratio_std with n_obs >= 2**1000",
             id="se-n-obs-huge",
         ),
-        # (T10) integrality, not only finiteness
+        # integrality, not only finiteness
         pytest.param(
             lambda: a8.sharpe_ratio_std(0.1, 2.5, 0.0, 3.0),
             "sharpe_ratio_std with a fractional n_obs",
@@ -1076,19 +1076,122 @@ def test_numpy_integer_and_float_arguments_are_accepted() -> None:
             "TrialSet with a fractional periods_per_year",
             id="trialset-periods-per-year-fractional",
         ),
-        # (T9) seed
+        # seed
         pytest.param(
             lambda: a8.romano_wolf(_differentials(), 0.05, 20, 5.0, 1.5),
             "romano_wolf with a fractional seed",
             id="rw-seed-fractional",
         ),
+        pytest.param(
+            lambda: a8.romano_wolf(_differentials(), 0.05, 20, 5.0, -1),
+            "romano_wolf with a negative seed",
+            id="rw-seed-negative",
+        ),
     ],
 )
-def test_input_validation_round5(call: Callable[[], object], condition: str) -> None:
+def test_integer_argument_validation(call: Callable[[], object], condition: str) -> None:
     must_raise(call, condition)
 
 
 def test_expected_max_sharpe_near_the_integer_bound() -> None:
     assert close(a8.expected_max_sharpe(2**999, 1.0), expected_max(2**999, 1.0)), (
         "expected_max_sharpe must work for every N below 2**1000 (contract)."
+    )
+
+
+# ---------------------------------------------------------------- integer arguments, extreme floats, report wiring
+
+
+def test_integral_float_arguments_act_as_integers() -> None:
+    d, m, s = INST["differentials"], INST["performance"], INST["n_blocks"]
+    assert np.array_equal(
+        np.asarray(a8.romano_wolf(d, 0.05, 50.0, 10.0, float(SEED))),
+        np.asarray(a8.romano_wolf(d, 0.05, 50, 10.0, SEED)),
+    ), "An integral float seed or n_boot is that integer: draw from np.random.default_rng(int(seed)) (contract)."
+    assert np.array_equal(
+        np.asarray(a8.probability_of_backtest_overfitting(m, float(s)).logits),
+        np.asarray(a8.probability_of_backtest_overfitting(m, s).logits),
+    ), "An integral float n_blocks is that integer: convert it before slicing and combining blocks (contract: scalars)."
+    assert close(a8.sharpe_ratio_std(0.1, np.float32(100.0), 0.0, 3.0), math.sqrt(1.005 / 99), 1e-12), (
+        "An integral NumPy float n_obs must not lower the precision of the standard error (contract: scalars)."
+    )
+    assert close(a8.sharpe_ratio_std(1e20, np.float32(100.0), 0.0, 3.0), math.sqrt((1.0 + 0.5e40) / 99)), (
+        "A finite variance bracket must not overflow because n_obs is a NumPy float32 (contract: scalars)."
+    )
+    for seed in range(50):
+        assert np.array_equal(
+            np.asarray(a8.stationary_bootstrap_indices(1000, np.float16(3.0), np.random.default_rng(seed))),
+            np.asarray(a8.stationary_bootstrap_indices(1000, 3.0, np.random.default_rng(seed))),
+        ), "Convert a NumPy mean_block with float() before computing 1/mean_block (contract: scalars)."
+
+
+@pytest.mark.parametrize(
+    ("call", "condition"),
+    [
+        pytest.param(
+            lambda: a8.expected_max_sharpe(2**1000, 1.0), "expected_max_sharpe with N = 2**1000", id="ems-n-bound"
+        ),
+        pytest.param(
+            lambda: a8.sharpe_ratio_std(0.1, 2**1000, 0.0, 3.0),
+            "sharpe_ratio_std with n_obs = 2**1000",
+            id="se-n-bound",
+        ),
+        pytest.param(
+            lambda: a8.expected_max_sharpe(1e305, 1.0),
+            "expected_max_sharpe with an integral float N above 2**1000",
+            id="ems-float-n-huge",
+        ),
+        pytest.param(
+            lambda: a8.sharpe_ratio_std(0.1, 1e305, 0.0, 3.0),
+            "sharpe_ratio_std with an integral float n_obs above 2**1000",
+            id="se-float-n-huge",
+        ),
+    ],
+)
+def test_integer_bound_is_strict_for_ints_and_floats(call: Callable[[], object], condition: str) -> None:
+    must_raise(call, condition)
+
+
+def test_largest_floats() -> None:
+    x = np.array([1e308, -1e308, 5e307, 2e307])  # the range exceeds the largest float; the largest |value| > 2**1023
+    sr, _, g4 = moments(np.ldexp(x, -1024))  # exact
+    assert close(a8.sharpe_ratio(x), sr) and close(a8.sample_kurtosis(x), g4), (
+        "At the largest floats, test zero variance by comparing max and min (np.ptp overflows) and rescale with "
+        "np.ldexp (2.0**1024 overflows) (contract: zero variance, scale)."
+    )
+
+
+def _rw_matrix() -> np.ndarray:
+    z = np.random.default_rng(2026).standard_normal((60, 6))
+    z = (z - z.mean(0)) / z.std(0, ddof=1)
+    return 0.01 * (z + np.array([2.6, 2.3, 2.0, 1.7, 1.2, 0.5]) / np.sqrt(60))
+
+
+def test_integrity_report_forwards_alpha_and_seed() -> None:
+    m = _rw_matrix()  # borderline columns: the decisions depend on alpha and on the bootstrap draws
+    trials = a8.TrialSet(m, 0, 252)
+    for alpha, seed in ((0.05, 1), (0.25, 0)):
+        report = a8.integrity_report(trials, alpha=alpha, n_blocks=6, n_boot=50, seed=seed)
+        assert np.array_equal(
+            np.asarray(report.romano_wolf_rejections), np.asarray(a8.romano_wolf(m, alpha, 50, 10.0, seed))
+        ), "romano_wolf_rejections must use the report's alpha, n_boot, mean_block and seed (contract)."
+
+
+@pytest.mark.parametrize("k", [pytest.param(600, id="times-2^600"), pytest.param(-600, id="times-2^-600")])
+def test_integrity_report_is_invariant_to_power_of_two_scaling(k: int) -> None:
+    m, s = INST["performance"], INST["n_blocks"]
+    base = a8.integrity_report(a8.TrialSet(m, 0, 252), n_blocks=s, n_boot=50, seed=SEED)
+    big = a8.integrity_report(a8.TrialSet(np.ldexp(m, k), 0, 252), n_blocks=s, n_boot=50, seed=SEED)
+    assert np.array_equal(np.asarray(big.bh_rejections), np.asarray(base.bh_rejections)) and close(big.dsr, base.dsr), (
+        "integrity_report: scaling every trial by a power of two changes nothing and warns nothing; compute the "
+        "trials' t-statistics in each trial's own scale (contract: scale)."
+    )
+
+
+def test_equal_trial_sharpe_ratios_are_valid() -> None:
+    x = INST["returns"]
+    assert a8.expected_max_sharpe(10, 0.0) == 0.0, "With zero trial variance the expected maximum is sr_mean."
+    assert close(a8.deflated_sharpe_ratio(x, [0.05, 0.05, 0.05]), a8.probabilistic_sharpe_ratio(x, 0.0)), (
+        "Equal trial Sharpe ratios have variance 0, so SR0 = 0 and the DSR is the PSR against 0: the zero-variance "
+        "rule is for return series, not for trial_sharpes (contract: deflated_sharpe_ratio)."
     )
