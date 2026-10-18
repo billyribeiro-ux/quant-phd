@@ -289,17 +289,31 @@ by the user or the browser, so the page tells students to export their work.
 
 ### 5.3 Data for projects
 
-**Embedded data** comes only from sources that permit redistribution:
+**Embedded data** comes only from sources whose issuer states that the data
+may be copied and redistributed. The statement is quoted, with the page that
+makes it, in `tools/data_sources.yaml`, and the snapshot is recorded in
+`course/assets/data/market/MANIFEST.json` (BUILDER_RULES §6.6).
 
-- public-domain FRED series
-- the Kenneth French Data Library
-- Shiller's data
-- U.S. Treasury yields
-- Federal Reserve datasets
-- the Open Source Asset Pricing dataset
-- SEC EDGAR / XBRL filings
-- FFIEC call reports
-- BIS statistics where the terms permit
+- **Cleared and embedded** (checked 2026-10-17): Federal Reserve Board
+  releases H.10 (foreign exchange rates) and H.15 (selected interest rates).
+  The Board states: "Unless otherwise indicated, information on Board's
+  website is in the public domain and may be copied and distributed without
+  permission." H.15's constant-maturity yields come from the U.S. Treasury,
+  a work of the United States Government (17 U.S.C. 105(a)).
+- **Checked and not cleared** (2026-10-17):
+  - The Kenneth French Data Library carries only a copyright line.
+  - The Open Source Asset Pricing site asks users to cite its paper but
+    grants no redistribution right for the data.
+
+  Labs that need either use bring-your-own-data mode.
+- **Candidates, each to be checked the same way before use:**
+  - public-domain FRED series (FRED also carries third-party series under
+    their owners' terms);
+  - Shiller's data;
+  - U.S. Treasury yields direct from the Treasury;
+  - SEC EDGAR / XBRL filings;
+  - FFIEC call reports;
+  - BIS statistics where the terms permit.
 
 **Bring-your-own-data mode.** Projects that need prices the program cannot
 redistribute accept a student-supplied CSV that never leaves the browser. The
@@ -372,7 +386,7 @@ quant-finance/
 │   ├── run_labs.py  embed_labs.py                          ✅ labs run locally and match their pages
 │   ├── run_graders.py  mutate_graders.py                   ✅ reference on 50 seeds; every verifier mutant killed
 │   ├── page_smoke.py                                       ✅ Chromium: every page, both themes, 360 px, labs and graders in Pyodide
-│   └── fetch_data.py                                       # public data → assets/data + MANIFEST (licence, hash)
+│   └── fetch_data.py  data_sources.yaml                    ✅ public data → assets/data/market + MANIFEST (licence, hash)
 ├── tests/                                                  ✅ tooling tests, every lab's twin (tests/labs), browser-module tests (tests/js)
 └── course/                                                 ✅ the deployable static site
     ├── index.html  concepts.html  review.html              ✅ program map, concept index, spaced-review deck
