@@ -317,7 +317,18 @@ def test_online_first_year_is_info_not_correction() -> None:
 
 
 @pytest.mark.parametrize(
-    ("ours", "theirs", "ok"), [("4", "4, Part 2", True), ("2-3", "2–3", True), ("2", "2-3", False)]
+    ("ours", "theirs", "ok"),
+    [
+        ("4", "4, Part 2", True),
+        ("2-3", "2–3", True),
+        ("2", "2-3", False),
+        # Crossref zero-pads some issues (Econometric Theory 24 records "02"); the number is the same issue.
+        ("2", "02", True),
+        ("02", "2", True),
+        ("2", "12", False),
+        ("2", "20", False),
+        ("02", "20", False),
+    ],
 )
 def test_issue_matching(ours: str, theirs: str, ok: bool) -> None:
     assert issue_matches(ours, theirs) is ok

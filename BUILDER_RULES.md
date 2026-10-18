@@ -333,10 +333,52 @@ Studios integrate every module listed in `requires`. A studio:
      first and last, and list every value in the readout.
 5. Every figure must teach a mechanism, distribution, relationship or failure.
    Nothing decorative.
-6. **New data** goes under `DATA_REQUESTS` with the source URL, series ID,
-   licence (which must permit redistribution, per BLUEPRINT §5.3) and
-   transform. Licensed data is described, never embedded. Use
-   bring-your-own-data mode when needed.
+6. **Data.** A lab runs on real data only when the data's issuer states that
+   it may be redistributed.
+   - **Embedded snapshots** live in `course/assets/data/market/`. They are
+     built by `tools/fetch_data.py` from `tools/data_sources.yaml` and recorded
+     in that folder's `MANIFEST.json`: source URL, licence quote and URL,
+     retrieval date, SHA-256 of the raw download and of the snapshot, rows,
+     columns, date range and transform. Never edit a snapshot or MANIFEST by
+     hand. `python tools/fetch_data.py --check` (offline, a gate) fails on any
+     difference. Read a dataset's `note` in the spec before using it, because
+     it states what the series do not contain.
+   - **Adding a dataset.**
+     1. Read the issuer's terms yourself. Quote, in `licence`, the sentence
+        that permits copying and redistribution, and give the page that states
+        it in `licence_url`.
+     2. None of these counts as permission: a copyright line alone, a request
+        to cite, a licence that covers only code, or terms you could not read.
+        Record such a source under `rejected`, with what you found and the
+        date.
+     3. Treat BLUEPRINT §5.3's list as candidates, not cleared sources. On
+        2026-10-17 the Kenneth French Data Library and Open Source Asset
+        Pricing were checked: neither grants redistribution.
+     4. Run `python tools/fetch_data.py --fetch --only <id>`; it sends no
+        personal data.
+     5. Commit the spec entry, the snapshot and MANIFEST together.
+
+     A transform pins its end date, so refetching reproduces the snapshot byte
+     for byte unless the issuer revises history. The scheduled CI job refetches
+     every week to catch exactly that, or a dead URL.
+   - **Using a dataset in a lab.**
+     - List every file the lab reads in its section's `data-files`
+       (`<section class="lab" … data-runtime="python" data-files="fx_daily.csv ust_daily.csv">`).
+     - Open each one as `data/<file>`, for example `Path("data") / "fx_daily.csv"`.
+     - Cite the dataset's `citation` and MANIFEST's retrieval date in the lab's
+       hypothesis or interpretation, and in any figure's source line.
+
+     The browser writes exactly those files to `data/` before every run.
+     `run_labs.py` and `embed_labs.py` run the twin in a directory whose
+     `data/` holds copies of the same files, so opening a file the section
+     does not list fails in both. `check_pages.py` requires every listed name
+     to be in MANIFEST and on disk.
+   - **Data that cannot be embedded** (licensed data, or a source under
+     `rejected`) is described, never embedded. Use bring-your-own-data mode
+     (BLUEPRINT §5.3): the page documents the schema and validates the
+     student's file, which never leaves the browser. Request a new source
+     under `DATA_REQUESTS`, with the source URL, series ID, licence evidence
+     and transform.
 
 ---
 

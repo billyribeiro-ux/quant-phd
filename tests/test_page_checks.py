@@ -1,12 +1,13 @@
-"""The figure contract in tools/check_pages.py catches each way a figure can be wired wrong."""
+"""The figure, code and data-files contracts in tools/check_pages.py catch each way a page can be wired wrong."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
-from check_pages import check_code, check_figures
+from check_pages import check_code, check_data_files, check_figures
 from coursekit import load_page
 
 D3 = '<script defer src="../../../assets/vendor/d3/d3.min.js"></script>'
@@ -95,3 +96,44 @@ def test_python_on_a_page_must_have_run(tmp_path: Path, body: str, ok: bool) -> 
     found: list[str] = []
     check_code(load_page(page), found)
     assert (found == []) is ok, found
+
+
+def data_problems(tmp_path: Path, body: str) -> list[str]:
+    """check_data_files on a page whose market folder lists fx_daily.csv (on disk) and gone.csv (not on disk)."""
+    market = tmp_path / "market"
+    market.mkdir(exist_ok=True)
+    entries = [{"id": "fx_daily", "file": "fx_daily.csv"}, {"id": "gone", "file": "gone.csv"}]
+    (market / "MANIFEST.json").write_text(json.dumps({"schema": 1, "datasets": entries}))
+    (market / "fx_daily.csv").write_text("date,EUR\n2000-01-03,1.0000\n")
+    page = tmp_path / "L02.html"
+    page.write_text(f'<!doctype html><html lang="en"><head></head><body><main>{body}</main></body></html>')
+    found: list[str] = []
+    check_data_files(load_page(page), found, market)
+    return found
+
+
+def lab(files: str, runtime: str = "python") -> str:
+    return f'<section class="lab" id="lab-S7-L02-1" data-runtime="{runtime}" data-files="{files}"></section>'
+
+
+def test_a_lab_naming_an_embedded_snapshot_passes(tmp_path: Path) -> None:
+    assert data_problems(tmp_path, lab("fx_daily.csv")) == []
+    assert data_problems(tmp_path, "<p>No data.</p>") == []
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        pytest.param(lab("ff_factors.csv"), "is not a dataset", id="not-in-manifest"),
+        pytest.param(lab("gone.csv"), "missing from", id="in-manifest-not-on-disk"),
+        pytest.param(lab("../market/fx_daily.csv"), "file name", id="a-path"),
+        pytest.param(lab("MANIFEST.json"), "file name", id="the-manifest"),
+        pytest.param(lab("fx_daily.csv fx_daily.csv"), "more than once", id="duplicate"),
+        pytest.param(lab(""), "empty data-files", id="empty"),
+        pytest.param(lab("fx_daily.csv", runtime="sql"), "belongs on", id="not-a-python-lab"),
+        pytest.param('<div data-files="fx_daily.csv"></div>', "belongs on", id="not-a-lab"),
+    ],
+)
+def test_each_data_files_fault_is_reported(tmp_path: Path, body: str, expected: str) -> None:
+    found = data_problems(tmp_path, body)
+    assert any(expected in p for p in found), found
