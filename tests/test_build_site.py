@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from build_site import _fix_case, short_cite
+from build_site import _fix_case, family_name, short_cite
 from refs.registry import cited_years, display_year
 from verify_refs import integrity
 
@@ -93,3 +93,34 @@ def test_all_caps_names_are_recased_but_initials_are_kept(word: str, shown: str)
 def test_short_cite_uses_the_print_year() -> None:
     record = full_entry(print_year=2008, years=[2008, 2009])
     assert short_cite(record) == "Bollen & Pool (2008)"
+
+
+@pytest.mark.parametrize(
+    ("family", "source", "shown"),
+    [
+        pytest.param(
+            "GORDON LAN",
+            "Lan & DeMets (1983), 'Discrete Sequential Boundaries', Biometrika 70(3)",
+            "Lan",
+            id="given-name-filed-as-family",
+        ),
+        pytest.param(
+            "POCOCK", "Pocock (1977), 'Group Sequential Methods', Biometrika 64(2)", "Pocock", id="whole-name-in-source"
+        ),
+        pytest.param(
+            "GORDON LAN",
+            "DeMets & Lan (1994), 'Interim Analysis', Statistics in Medicine 13",
+            "Lan",
+            id="not-first-author",
+        ),
+        pytest.param(
+            "VAN DER LAAN", "van der Laan, Dudoit & Pollard (2004), SAGMB 3(1)", "van der Laan", id="particles-kept"
+        ),
+        pytest.param("GORDON LAN", "Planck (1900), 'Lanthanum', Annalen 4", "Gordon Lan", id="no-whole-word-match"),
+        pytest.param(
+            "GORDON LAN", "Smith (2001), 'On Lan's Test', Biometrika 88", "Gordon Lan", id="title-words-ignored"
+        ),
+    ],
+)
+def test_all_caps_family_names_take_the_citation_strings_surname(family: str, source: str, shown: str) -> None:
+    assert family_name(family, [source]) == shown
