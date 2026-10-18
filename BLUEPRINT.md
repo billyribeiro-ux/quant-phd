@@ -72,8 +72,8 @@ three things about each:
 | Credential | What it covers | Modules | Graded projects | Hours | Credit equivalent | FTE years |
 |---|---|---|---|---|---|---|
 | **Finance Degree — Bachelor's Level** | Business and quantitative core (calculus, statistics, econometrics, programming, micro, macro, financial and managerial accounting, law and ethics, communication), plus the full finance major (corporate finance I–II, investments, markets and institutions, statement analysis, valuation, financial modeling, short-term finance, fixed income, derivatives, risk management and international finance, asset management, wealth management, financial history), plus a senior capstone | 42 | 47 | 3,881 | ≈86 credits | 1.80 |
-| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 77 | 85 | 7,646 | ≈170 credits | 3.54 |
-| **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 83 | 87 | 9,171 | ≈204 credits | 4.25 |
+| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 77 | 85 | 7,658 | ≈170 credits | 3.55 |
+| **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 83 | 87 | 9,183 | ≈204 credits | 4.25 |
 
 Some facts about these numbers:
 
@@ -112,9 +112,9 @@ replaces. Every hour figure includes the module's project.
 | Milestone | Cumulative hours | Full-time years* |
 |---|---|---|
 | All F + U tiers (whole major incl. economics & computing) | 4,345 | 2.01 |
-| + all M tier (Master's-equivalent breadth) | 11,135 | 5.16 |
-| + all D tier, quals (Doctoral Candidate) | 12,495 | 5.78 |
-| + thesis (Doctoral) | 13,695 | 6.34 |
+| + all M tier (Master's-equivalent breadth) | 11,147 | 5.16 |
+| + all D tier, quals (Doctoral Candidate) | 12,507 | 5.79 |
+| + thesis (Doctoral) | 13,707 | 6.35 |
 
 \*At 45 hours/week for 48 weeks/year. That is a full-time professional pace,
 not a student pace.
@@ -129,7 +129,7 @@ The savings come from six mechanisms, and every one of them is designed in:
 2. **No re-teaching across degree levels.** A university teaches CAPM,
    regression and options three times: in the bachelor's, the master's and the
    PhD. Here each concept is defined exactly once in the prerequisite graph and
-   then reused. The curriculum assigns each of its 1,121 concepts to exactly
+   then reused. The curriculum assigns each of its 1,138 concepts to exactly
    one module (`render_curriculum.py` rejects a concept introduced twice or
    used outside its prerequisites), and `check_dag.py` holds every page to
    that assignment.

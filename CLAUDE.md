@@ -33,7 +33,8 @@
    shows the new behaviour is right.
 5. **Hours and credential sizes are computed.** Never type them into
    documentation without re-running `render_curriculum.py` and copying its
-   output.
+   output. `tests/test_docs_figures.py` fails when BLUEPRINT.md or README.md
+   quotes a figure that `curriculum/curriculum.json` no longer has.
 
 ## Gates (all must pass before committing; CI runs the same)
 

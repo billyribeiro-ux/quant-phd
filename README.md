@@ -27,7 +27,7 @@ autograded projects and a program-long engineering build ("Atlas").
   machine lookup of an authoritative record (Crossref by DOI, Open Library by
   ISBN, or the publisher's or issuer's own page), are checked against the
   source string, and are re-verified weekly in CI.
-- **Every concept is taught once.** The curriculum assigns each of its 1,121
+- **Every concept is taught once.** The curriculum assigns each of its 1,138
   concepts to exactly one module. The validator rejects a concept defined twice
   or used before its prerequisites, and `check_dag.py` holds every page to that.
 - **Projects first.** There are 157 graded projects: one per module and one
@@ -50,8 +50,8 @@ autograded projects and a program-long engineering build ("Atlas").
 | Credential (content-equivalent) | Modules | Graded projects | Hours | Full-time years |
 |---|---|---|---|---|
 | Finance Degree, bachelor's level | 42 | 47 | 3,881 | 1.80 |
-| Master's in Finance / Financial Engineering | 77 | 85 | 7,646 | 3.54 |
-| PhD in Finance | 83 | 87 | 9,171 | 4.25 |
+| Master's in Finance / Financial Engineering | 77 | 85 | 7,658 | 3.55 |
+| PhD in Finance | 83 | 87 | 9,183 | 4.25 |
 
 These are content-equivalent credentials, not accredited degrees.
 
@@ -62,7 +62,7 @@ These are content-equivalent credentials, not accredited degrees.
 | [`BLUEPRINT.md`](BLUEPRINT.md) | Master architecture: mission, evidence standard, learning system, projects, build plan |
 | [`CURRICULUM.md`](CURRICULUM.md) | The full curriculum, generated from `curriculum/*.yaml` |
 | [`BUILDER_RULES.md`](BUILDER_RULES.md) / [`VERIFIER_RULES.md`](VERIFIER_RULES.md) | Binding system prompts for the agents that build and verify each module |
-| `curriculum/` | Source of truth: tiers, credentials, tracks, Atlas, 134 modules, 1,121 concepts |
+| `curriculum/` | Source of truth: tiers, credentials, tracks, Atlas, 134 modules, 1,138 concepts |
 | `references/` | Verified citation registry, review queue, seeding report, authoritative domains |
 | `notation/` | The binding notation registry (KaTeX macros and program-wide symbols) |
 | `atlas/` | Frozen interface contracts for the program-long Atlas build (A8 so far) |
