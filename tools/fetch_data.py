@@ -43,6 +43,7 @@ import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import ROUND_HALF_EVEN, Decimal
 from pathlib import Path
 from typing import Any
 
@@ -159,10 +160,17 @@ def _sdmx_series(raw: bytes, member: str, wanted: set[str]) -> dict[str, dict[st
 
 
 def _invert(value: str) -> str:
-    """1 / value to eight significant digits, in plain decimal notation."""
-    inverse = 1.0 / float(value)
-    digits = 8 - 1 - int(f"{inverse:e}".split("e")[1])
-    return f"{inverse:.{max(digits, 0)}f}"
+    """1 / value rounded (half to even) to eight significant digits, in plain decimal notation.
+
+    The quotient is computed in decimal, so the eighth digit is the exact quotient's: a value just above a power
+    of ten inverts to 0.99999999, not to a seven-digit 1.0000000.
+    """
+    inverse = Decimal(1) / Decimal(value)
+    lead = inverse.adjusted()
+    rounded = inverse.quantize(Decimal(1).scaleb(lead - 7), rounding=ROUND_HALF_EVEN)
+    if rounded.adjusted() > lead:  # rounding carried into a new leading digit: 9.99999996 -> 10.000000
+        rounded = inverse.quantize(Decimal(1).scaleb(lead - 6), rounding=ROUND_HALF_EVEN)
+    return f"{rounded:f}"
 
 
 def fed_sdmx(raw: bytes, spec: dict[str, Any]) -> Table:
@@ -303,7 +311,18 @@ def check(datasets: list[Dataset], manifest: dict[str, dict[str, Any]]) -> list[
             problems.append(f"{dataset.id}: header {rows[0]} differs from MANIFEST")
         if len(rows) - 1 != entry["rows"]:
             problems.append(f"{dataset.id}: {len(rows) - 1} rows, MANIFEST says {entry['rows']}")
+        if len(blob) != entry.get("bytes"):
+            problems.append(f"{dataset.id}: snapshot is {len(blob)} bytes, MANIFEST says {entry.get('bytes')}")
+        body = [row for row in rows[1:] if row]
+        for field, shown in (("first", body[0][0] if body else None), ("last", body[-1][0] if body else None)):
+            if entry.get(field) != shown:
+                problems.append(
+                    f"{dataset.id}: snapshot's {field} key is {shown!r}, MANIFEST says {entry.get(field)!r}"
+                )
         for field, value in (
+            ("title", dataset.title),
+            ("issuer", dataset.issuer),
+            ("citation", dataset.citation),
             ("licence", dataset.licence),
             ("licence_url", dataset.licence_url),
             ("source_url", dataset.url),

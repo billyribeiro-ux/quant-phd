@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from check_pages import check_code, check_data_files, check_figures
-from check_projects import grading_problems
-from coursekit import load_page
+from check_projects import grading_problems, rubric_problems
+from coursekit import load_page, parse_html
 
 D3 = '<script defer src="../../../assets/vendor/d3/d3.min.js"></script>'
 FIGURE = (
@@ -159,3 +159,37 @@ def test_the_grading_entry_must_name_the_curriculum_mode(grading: str, mode: str
         assert found == []
     else:
         assert len(found) == 1 and expected in found[0], found
+
+
+def rubric_page(levels: list[int], exemplars: list[str | None]) -> str:
+    head = "<tr><th>Criterion</th>" + "".join(f"<th>{n}</th>" for n in range(4, 0, -1)) + "</tr>"
+    rows = "".join(f"<tr><th>C{i}</th>" + "<td>x</td>" * n + "</tr>" for i, n in enumerate(levels, 1))
+    shown = "".join(
+        f'<section class="exemplar" data-level="{level}"></section>'
+        if level is not None
+        else '<section class="exemplar"></section>'
+        for level in exemplars
+    )
+    return f'<main><table class="rubric">{head}{rows}</table>{shown}</main>'
+
+
+@pytest.mark.parametrize(
+    ("levels", "exemplars", "expected"),
+    [
+        pytest.param([4, 4, 4, 4], ["2", "4"], None, id="valid"),
+        pytest.param([4, 4, 4], ["2", "4"], "4-7 criteria", id="too-few-criteria"),
+        pytest.param([4, 4, 5, 4], ["2", "4"], "exactly four performance levels", id="five-levels"),
+        pytest.param([4, 4, 3, 4], ["2", "4"], "exactly four performance levels", id="three-levels"),
+        pytest.param([4, 4, 4, 4], ["4", None], "data-level from 1 to 4", id="exemplar-without-level"),
+        pytest.param([4, 4, 4, 4], ["4", "4"], "two or more levels", id="one-level-only"),
+        pytest.param([4, 4, 4, 4], ["4", "high"], "data-level from 1 to 4", id="level-not-1-to-4"),
+    ],
+)
+def test_rubric_criteria_and_exemplar_levels(
+    levels: list[int], exemplars: list[str | None], expected: str | None
+) -> None:
+    found = rubric_problems(parse_html(rubric_page(levels, exemplars)))
+    if expected is None:
+        assert found == []
+    else:
+        assert any(expected in p for p in found), found

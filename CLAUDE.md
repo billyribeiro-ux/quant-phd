@@ -18,7 +18,7 @@
    `SEED_REPORT.md` come from the registry tools; `course/assets/data/market/`
    (snapshots and `MANIFEST.json`) from `tools/fetch_data.py`. Edit the sources
    (`curriculum/*.yaml`, `references/extra_sources.yaml`,
-   `references/doi_hints.yaml`) and regenerate.
+   `references/doi_hints.yaml`, `tools/data_sources.yaml`) and regenerate.
 2. **Cite only registry keys.** A source that is not in
    `references/references.json` cannot be cited. Admit it with
    `tools/add_reference.py` (by DOI, ISBN, or an allow-listed publisher or

@@ -28,7 +28,7 @@ import argparse
 import re
 import sys
 
-from coursekit import ROOT, Unit, built_units, load_page, registry_keys, unit
+from coursekit import ROOT, Node, Unit, built_units, load_page, registry_keys, unit
 
 RUNGS = ("worked example", "completion", "independent", "stretch")
 SPEC_TERMS = ("context", "inputs", "required outputs", "constraints", "grading")
@@ -53,6 +53,23 @@ def grading_problems(grading: str, mode: str) -> list[str]:
 def number(text: str) -> float | None:
     found = re.search(r"\d+(?:\.\d+)?", text)
     return float(found.group()) if found else None
+
+
+def rubric_problems(dom: Node) -> list[str]:
+    """BUILDER_RULES §5.4: 4-7 criteria with exactly four levels each, and exemplars at two or more levels 1-4."""
+    problems: list[str] = []
+    rubric = dom.first("table", "rubric")
+    criteria = rubric.select("tr")[1:] if rubric else []
+    if not 4 <= len(criteria) <= 7:
+        problems.append(f"the rubric needs 4-7 criteria (found {len(criteria)})")
+    if any(len(row.select("td")) != 4 for row in criteria):
+        problems.append("every rubric criterion needs exactly four performance levels")
+    levels = [e.get("data-level") for e in dom.select(None, "exemplar")]
+    if any(level not in {"1", "2", "3", "4"} for level in levels):
+        problems.append("every exemplar needs a data-level from 1 to 4")
+    if len({level for level in levels if level in {"1", "2", "3", "4"}}) < 2:
+        problems.append("rubric projects need annotated exemplars at two or more levels")
+    return problems
 
 
 def check_unit(u: Unit) -> list[str]:
@@ -119,16 +136,7 @@ def check_unit(u: Unit) -> list[str]:
             if instance.exists() and "def make_instance(seed: int)" not in instance.read_text(encoding="utf-8"):
                 problems.append("grader/instance.py must define make_instance(seed: int)")
     if grading in ("rubric", "both"):
-        rubric = page.dom.first("table", "rubric")
-        criteria = rubric.select("tr")[1:] if rubric else []
-        if not 4 <= len(criteria) <= 7:
-            problems.append(f"the rubric needs 4-7 criteria (found {len(criteria)})")
-        for row in criteria:
-            if len(row.select("td")) < 4:
-                problems.append("every rubric criterion needs four performance levels")
-        exemplars = page.dom.select(None, "exemplar")
-        if len({e.get("data-level") for e in exemplars}) < 2:
-            problems.append("rubric projects need annotated exemplars at two or more levels")
+        problems.extend(rubric_problems(page.dom))
     bank = page.dom.first(None, None, id="question-bank")
     if bank is not None and len(bank.select("li")) < 15:
         problems.append("an adversarial project's question bank needs at least 15 attack angles")

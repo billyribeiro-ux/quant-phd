@@ -92,7 +92,21 @@ def test_month_end_drops_an_incomplete_final_month() -> None:
 
 @pytest.mark.parametrize(
     ("value", "inverse"),
-    [("1.25", "0.80000000"), ("105.00", "0.0095238095"), ("0.5", "2.0000000"), ("0.0001", "10000.000")],
+    [
+        ("1.25", "0.80000000"),
+        ("105.00", "0.0095238095"),
+        ("0.5", "2.0000000"),
+        ("0.0001", "10000.000"),
+        # Just above a power of ten the inverse stays below it: eight digits, not a rounded-up seven.
+        ("1.0000000051", "0.99999999"),
+        ("10.000000051", "0.099999999"),
+        # Rounding that carries into a new leading digit keeps eight significant digits.
+        ("0.100000005", "9.9999995"),
+        ("0.1000000004", "10.000000"),
+        # Ties go to even, on the exact quotient.
+        ("0.8", "1.2500000"),
+        ("1.6", "0.62500000"),
+    ],
 )
 def test_inversion_keeps_eight_significant_digits_in_plain_decimal(value: str, inverse: str) -> None:
     assert fetch_data._invert(value) == inverse
@@ -201,6 +215,9 @@ def test_a_stray_file_in_the_data_folder_is_caught(market: Path) -> None:
         ({"licence_url": "https://example.org/terms"}, "licence_url"),
         ({"url": "https://www.federalreserve.gov/datadownload/Output.aspx?rel=H15&filetype=zip"}, "source_url"),
         ({"transform": spec(end="2000-01-31")}, "transform"),
+        ({"title": "Another title"}, "title"),
+        ({"issuer": "Another issuer"}, "issuer"),
+        ({"citation": "Another citation"}, "citation"),
     ],
 )
 def test_a_spec_change_without_a_rebuild_is_caught(market: Path, change: dict[str, Any], field: str) -> None:
@@ -255,3 +272,20 @@ def test_the_default_mode_is_offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_requests_carry_no_personal_data() -> None:
     assert "@" not in fetch_data.USER_AGENT and "mailto" not in fetch_data.USER_AGENT.lower()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("first", "1999-01-04", "first key is"),
+        ("last", "2026-10-30", "last key is"),
+        ("bytes", 1, "bytes, MANIFEST says 1"),
+        ("title", "Edited", "MANIFEST title differs"),
+        ("issuer", "Edited", "MANIFEST issuer differs"),
+        ("citation", "Edited", "MANIFEST citation differs"),
+    ],
+)
+def test_a_hand_edited_manifest_field_is_caught(market: Path, field: str, value: object, message: str) -> None:
+    ds, manifest = built(market)
+    edited = {ds.id: {**manifest[ds.id], field: value}}
+    assert any(message in p for p in check([ds], edited))
