@@ -118,7 +118,7 @@ def sharpe_ratio_std(sharpe: float, n_obs: int, skewness: float, kurtosis: float
         raise ValueError("sharpe, skewness and kurtosis must be finite and the variance bracket must not overflow")
     if bracket <= 0.0:
         raise ValueError("the variance bracket 1 - skew*SR + (kurt-1)/4*SR^2 must be positive")
-    return math.sqrt(bracket / (n_obs - 1))
+    return math.sqrt(bracket / (int(n_obs) - 1))  # int(): an integral NumPy float must not do float32 arithmetic
 
 
 def probabilistic_sharpe_ratio(returns: ArrayLike, sr_benchmark: float = 0.0) -> float:
@@ -193,6 +193,7 @@ def stationary_bootstrap_indices(n_obs: int, mean_block: float, rng: np.random.G
     """One stationary-bootstrap resample of the time indices 0..n_obs-1."""
     if not _whole(n_obs) or n_obs < 1:
         raise ValueError("n_obs must be a positive integer")
+    mean_block = float(mean_block)  # a NumPy scalar (np.float16) would set the restart probability in its own precision
     if not math.isfinite(mean_block) or mean_block < 1.0:
         raise ValueError("mean_block must be at least 1")
     n = int(n_obs)
