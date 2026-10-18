@@ -16,7 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 STATS: dict[str, Any] = json.loads((ROOT / "curriculum" / "curriculum.json").read_text(encoding="utf-8"))["stats"]
 CREDENTIALS: dict[str, dict[str, Any]] = {c["id"]: c for c in STATS["credentials"]}
-# BLUEPRINT §1.2: full-time years are hours at 45 hours a week for 48 weeks a year.
+# BLUEPRINT §2: full-time years are hours at 45 hours a week for 48 weeks a year.
 HOURS_PER_YEAR = 45 * 48
 
 

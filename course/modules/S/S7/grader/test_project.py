@@ -307,6 +307,12 @@ def test_stepdown_rejects_in_steps() -> None:
     assert not np.asarray(a8.stepdown_rejections(np.array([1.0, 0.5]), np.ones((20, 2)) * 2.0, 0.05)).any(), (
         "Nothing may be rejected when no statistic exceeds the first critical value."
     )
+    boot = np.zeros((10, 2))
+    boot[8], boot[9] = [1.5, 3.0], [3.0, 1.5]  # each column's 9th value is 1.5; the 9th smallest row maximum is 3.0
+    assert not np.asarray(a8.stepdown_rejections([2.0, 2.0], boot, 0.10)).any(), (
+        "The critical value is the ceil((1-alpha)B)-th smallest of the bootstrap MAXIMA over the active hypotheses, "
+        "not a quantile of each hypothesis's own draws (contract; L05)."
+    )
 
 
 def test_stepdown_critical_value_is_the_order_statistic() -> None:
@@ -632,6 +638,11 @@ def test_stationary_bootstrap_starts_uniformly() -> None:
     rng = np.random.default_rng(SEED)
     firsts = {int(np.asarray(a8.stationary_bootstrap_indices(50, 10.0, rng))[0]) for _ in range(200)}
     assert len(firsts) >= 25, "The first block starts at a uniformly drawn period, not at a fixed one (L04)."
+    starts = [int(np.asarray(a8.stationary_bootstrap_indices(5, 10.0, rng))[0]) for _ in range(2000)]
+    share = np.bincount(starts, minlength=5) / len(starts)  # each share has standard error 0.009
+    assert share.size == 5 and bool(np.all(np.abs(share - 0.2) < 0.05)), (
+        "Block starts are uniform on 0, ..., n_obs - 1, including the last period (L04)."
+    )
 
 
 # ---------------------------------------------------------------- zero variance and extreme magnitudes
@@ -1175,6 +1186,29 @@ def test_integrity_report_forwards_alpha_and_seed() -> None:
         assert np.array_equal(
             np.asarray(report.romano_wolf_rejections), np.asarray(a8.romano_wolf(m, alpha, 50, 10.0, seed))
         ), "romano_wolf_rejections must use the report's alpha, n_boot, mean_block and seed (contract)."
+    for mean_block in (2.0, 40.0):
+        report = a8.integrity_report(trials, alpha=0.05, n_blocks=6, n_boot=50, mean_block=mean_block, seed=SEED)
+        assert np.array_equal(
+            np.asarray(report.romano_wolf_rejections), np.asarray(a8.romano_wolf(m, 0.05, 50, mean_block, SEED))
+        ), "romano_wolf_rejections must use the report's mean_block (contract)."
+    t_stats = m.mean(axis=0) / (m.std(axis=0, ddof=1) / math.sqrt(m.shape[0]))
+    pvalues = np.array([1.0 - PHI.cdf(float(t)) for t in t_stats])
+    for q in (0.01, 0.25):
+        report = a8.integrity_report(trials, alpha=0.05, q=q, n_blocks=6, n_boot=50, seed=SEED)
+        assert np.array_equal(np.asarray(report.bh_rejections), np.asarray(a8.benjamini_hochberg(pvalues, q))), (
+            "bh_rejections must use the report's q, not alpha (contract)."
+        )
+
+
+def test_report_pvalues_use_the_sample_standard_deviation() -> None:
+    z = np.random.default_rng(SEED).standard_normal((40, 3))
+    z = (z - z.mean(0)) / z.std(0, ddof=1)
+    trials = a8.TrialSet(0.01 * (z + 1.635 / math.sqrt(40)), 0, 12)  # every t-statistic is 1.635: p = 0.0510
+    report = a8.integrity_report(trials, n_blocks=4, n_boot=50)
+    assert not np.asarray(report.bh_rejections).any(), (
+        "The one-sided p-values use t = mean / (sd / sqrt(T)) with the sample standard deviation (ddof=1); with "
+        "ddof=0 every t-statistic here would be 1.656 and every p-value 0.049 (contract: integrity_report)."
+    )
 
 
 @pytest.mark.parametrize("k", [pytest.param(600, id="times-2^600"), pytest.param(-600, id="times-2^-600")])
