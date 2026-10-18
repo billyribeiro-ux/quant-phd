@@ -41,6 +41,7 @@ function call(message) {
 }
 
 export const isStarted = () => worker !== null;
-export const runPython = (code, packages = []) => call({ type: "run", code, packages });
+// files: [{name, bytes}] written to data/<name> before the code runs (labs.js loads a lab's data-files).
+export const runPython = (code, packages = [], files = []) => call({ type: "run", code, packages, files });
 export const runPytest = ({ files, test, env, packages = [], workdir = "/home/pyodide/work" }) =>
   call({ type: "pytest", files, test, env, packages, workdir });

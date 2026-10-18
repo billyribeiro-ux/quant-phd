@@ -9,6 +9,8 @@ For every page of the unit (hub, lessons, project) this checks:
 * banned strings (BUILDER_RULES §1.3-1.4) in visible prose, outside code and math
 * claims: a valid grade; every non-theorem claim cites; every key is in the
   verified registry; locators are non-empty
+* data-files: only on a Python lab section; every name is a snapshot listed in
+  course/assets/data/market/MANIFEST.json and present on disk (tools/fetch_data.py)
 * lessons: the section order of §4.2 with its minimum counts (labs with
   hypothesis/code/interpretation, ≥3 misconceptions, ≥3 problems in each of the
   four tiers each with a worked solution, a key-results table, an 8-15 item quiz
@@ -35,8 +37,22 @@ import json
 import re
 import sys
 from collections import Counter
+from pathlib import Path
 
-from coursekit import COURSE, Node, Page, Unit, built_units, load_page, registry_keys, unit, visible_text
+from coursekit import (
+    COURSE,
+    MARKET_DATA,
+    ROOT,
+    Node,
+    Page,
+    Unit,
+    built_units,
+    load_page,
+    market_files,
+    registry_keys,
+    unit,
+    visible_text,
+)
 
 GRADES = frozenset("TABCDX")
 BANNED = (
@@ -100,6 +116,7 @@ def check_common(page: Page, u: Unit, problems: list[str]) -> None:
 
     check_figures(page, problems)
     check_code(page, problems)
+    check_data_files(page, problems)
 
     text = visible_text(page.dom.first("main") or page.dom)
     for pattern in BANNED:
@@ -140,6 +157,31 @@ def check_code(page: Page, problems: list[str]) -> None:
             )
         elif name not in outputs:
             problems.append(f'{where}:{code.line}: snippet {name!r} has no <pre class="expected" data-check>')
+
+
+def check_data_files(page: Page, problems: list[str], market: Path = MARKET_DATA) -> None:
+    """A lab's data-files name embedded snapshots: each listed in MANIFEST.json and on disk (BUILDER_RULES §6.6)."""
+    where = page.path.name
+    listed = market_files(market)
+    shown = market.relative_to(ROOT) if market.is_relative_to(ROOT) else market
+    for node in page.dom.select(None, None, data_files=None):
+        if node.tag != "section" or "lab" not in node.classes or node.get("data-runtime") != "python":
+            problems.append(f'{where}:{node.line}: data-files belongs on a <section class="lab" data-runtime="python">')
+        names = node.get("data-files").split()
+        if not names:
+            problems.append(f"{where}:{node.line}: empty data-files")
+        twice = [n for n, k in Counter(names).items() if k > 1]
+        problems.extend(f"{where}:{node.line}: data-files names {n!r} more than once" for n in twice)
+        for name in dict.fromkeys(names):
+            if Path(name).name != name or name == "MANIFEST.json":
+                problems.append(f"{where}:{node.line}: data-files entry {name!r} must be a snapshot's file name")
+            elif name not in listed:
+                problems.append(
+                    f"{where}:{node.line}: data-files {name!r} is not a dataset in {shown}/MANIFEST.json "
+                    "(add it with tools/fetch_data.py)"
+                )
+            elif not (market / name).is_file():
+                problems.append(f"{where}:{node.line}: data-files {name!r} is in MANIFEST but missing from {shown}")
 
 
 def check_figures(page: Page, problems: list[str]) -> None:

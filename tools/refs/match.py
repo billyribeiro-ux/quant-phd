@@ -44,11 +44,11 @@ _LEADING_NUMBER = re.compile(r"\d+")
 
 
 def issue_matches(ours: str, theirs: str) -> bool:
-    """'4' matches '4, Part 2'; a hyphenated range matches its en-dash spelling."""
+    """'4' matches '4, Part 2'; a hyphenated range matches its en-dash spelling; '2' matches Crossref's '02'."""
     if norm_issue(ours) == norm_issue(theirs):
         return True
     a, b = _LEADING_NUMBER.match(ours.strip()), _LEADING_NUMBER.match(theirs.strip())
-    return bool(a and b and a.group() == b.group() and not ("-" in ours or "-" in theirs))
+    return bool(a and b and int(a.group()) == int(b.group()) and not ("-" in ours or "-" in theirs))
 
 
 Status = Literal["verified", "verified_with_corrections", "unresolved"]
