@@ -32,7 +32,11 @@ data. Every record matched its citation string, and the dry run printed the same
 # ADDED prado2026deflated -> 10.3905/jpm.2026.070
 ```
 
-After all four, `verify_refs.py --offline` reported "519 entries, 0 problems".
+I ran the four commands first on the earlier base, then again after merging main at
+8722a86. Both times they produced the same keys. On the merged base the registry
+went from 536 to 540 entries, and `verify_refs.py --offline` reported "540 entries,
+0 problems". On the earlier base the live `verify_refs.py` run reported 0 problems
+over all 519 entries, the four new ones included.
 `prado2026deflated` is an online-first record: Crossref has no volume or issue
 yet, and the page `jpm.2026.070`. The live `verify_refs.py` run will need its
 volume and issue backfilled once JPM assigns them.
@@ -88,15 +92,16 @@ Add to `sources:`, after the Opdyke (2007) line:
           - "López de Prado & Porcu (2026), 'The Deflated Sharpe Ratio: A Unified Framework for Search-Adjusted Performance Inference', Journal of Portfolio Management"
 ```
 
-With these edits `render_curriculum.py` reported "25 parts, 134 modules, 157
-projects, 13,695 h (6.34 FTE years)": the hours are unchanged, because I did not
-change them in the branch.
+On the merged base (main at 8722a86, S7 at 86 h), these edits leave
+`render_curriculum.py` at "25 parts, 134 modules, 157 projects, 13,701 h (6.34 FTE
+years)": I changed no hours in the branch.
 
-### Hours: recommended change, not applied
+### Hours: proposed new data-hours for L07 (not applied)
 
-L07 still declares `data-hours="7"`, and the hub still splits S7 as 56 lesson
-hours and 24 project hours. G8 adds about 40% to L07. I estimated the added study
-time with the item rates that reproduce L07's current 7 h:
+**Proposal: L07 `data-hours` 7 → 10.** You recompute the hub split and the module
+total centrally. The branch still declares `data-hours="7"`, and its eyebrow still
+reads "7 study hours"; both change to 10 with the hours. G8 adds about 40% to L07.
+I estimated the added study time with the item rates that reproduce L07's current 7 h:
 
 | Added item | Estimate |
 |---|---|
@@ -107,15 +112,10 @@ time with the item rates that reproduce L07's current 7 h:
 | Two misconceptions, four quiz items, key results | 0.15 h |
 | **Total** | **≈ 3.5 h** |
 
-Recommendation: raise L07 from 7 h to 10 h and S7 from 80 h to 83 h, keeping the
-project at 24 h (29% of 83, inside the 10–40% rule). If adopted, these
-non-central edits must land together, or `check_pages.py` fails:
-
-- `course/modules/S/S7/L07.html`: `data-hours="10"`; eyebrow "S7 · Lesson 7 of 8 · 10 study hours".
-- `course/modules/S/S7/index.html`: `data-hours-lessons="59"`; the hours-split aria-label and the bar; "80 hours" in the meta description and the eyebrow becomes 83; "Eight lessons of seven study hours each" becomes "Seven lessons of seven study hours and one of ten"; card kicker "L07 · 10 h".
-- `curriculum/01-foundations.yaml`: S7 `hours: 83`, then re-render. Credential and program totals change by +3 h, and BLUEPRINT's tables must be re-copied from `render_curriculum.py`'s output (CLAUDE.md rule 5).
-
-A smaller option is +2 h (L07 at 9 h, S7 at 82 h), treating R4 and E4 as stretch work.
+So 7 + 3.5 rounds to 10 h. A smaller option is 9 h, treating R4 and E4 as stretch
+work. If you adopt it, the L07 edits are `data-hours="10"` (or 9) and the eyebrow
+"S7 · Lesson 7 of 8 · 10 study hours". The hub card kicker "L07 · 7 h" and the
+module figures follow from your central recomputation.
 
 ## 3. New cards for `course/modules/S/S7/cards.json`
 
@@ -133,7 +133,7 @@ convention for definitions and misconceptions (for example S7-c089 and S7-c097).
   {"id": "S7-cNEW-7", "lesson": "L07", "front": "For iid pairs of returns, what is the asymptotic variance \\(\\theta\\) of \\(\\sqrt{T}(\\hSR_1 - \\hSR_2)\\)?", "back": "\\(\\theta = \\Var(\\psi_1 - \\psi_2)\\) with \\(\\psi_i = u_i - \\tfrac{\\SR_i}{2}(u_i^2 - 1)\\), \\(u_i\\) the standardized return: \\(V_1 + V_2 - 2\\rho + \\SR_1\\kappa_{21} + \\SR_2\\kappa_{12} - \\tfrac12\\SR_1\\SR_2(\\kappa_{22} - 1)\\), where \\(\\kappa_{ab} = \\E[u_1^a u_2^b]\\).", "grade": "T"},
   {"id": "S7-cNEW-8", "lesson": "L07", "front": "What is the corrected Jobson–Korkie variance of a Sharpe-ratio difference?", "back": "For iid bivariate-normal returns, \\(\\theta = 2(1-\\rho) + \\tfrac12(\\SR_1^2 + \\SR_2^2) - \\SR_1\\SR_2\\rho^2\\), divided by \\(T\\): the normal special case of the general delta-method variance.", "grade": "T", "cite": ["ledoit2008robust"]},
   {"id": "S7-cNEW-9", "lesson": "L07", "front": "What goes wrong if two correlated strategies' Sharpe ratios are tested as if the strategies were independent?", "back": "The test uses \\(V_1 + V_2\\) instead of \\(\\theta\\). Under positive correlation it is undersized and nearly powerless (no rejections in 4000 samples at \\(\\rho = 0.9\\) in the L07 Lab 4 simulation); under negative correlation it rejects a true null too often.", "grade": "T"},
-  {"id": "S7-cNEW-10", "lesson": "L07", "front": "How does the paired test of two Sharpe ratios relate to White's Reality Check?", "back": "It is the \\(K = 1\\) case: one challenger against a benchmark. Picking the best of \\(K\\) strategies by Sharpe ratio and then running the paired test on it is data snooping; the Reality Check, with statistic \\(\\max_k \\sqrt{T}(\\hSR_k - \\hSR_0)\\), prices the search."},
+  {"id": "S7-cNEW-10", "lesson": "L07", "front": "How does the paired test of two Sharpe ratios relate to White's Reality Check?", "back": "It is the \\(K = 1\\) case, one challenger against a benchmark, and the Sharpe-ratio analogue of the Diebold–Mariano test (L04), applied to the linearized differential \\(\\psi_{1,t} - \\psi_{2,t}\\). Picking the best of \\(K\\) strategies by Sharpe ratio and then running the paired test on it is data snooping; the Reality Check, with statistic \\(\\max_k \\sqrt{T}(\\hSR_k - \\hSR_0)\\), prices the search."},
   {"id": "S7-cNEW-11", "lesson": "L07", "front": "What do Ledoit and Wolf (2008) find about the corrected Jobson–Korkie test, and what do they propose instead?", "back": "In simulations with 120 observations it rejects a true null too often under heavy tails or serial dependence, and HAC standard errors are often liberal. They propose a studentized time-series bootstrap interval for the difference, which works well for iid and time-series data in their designs.", "grade": "B", "cite": ["ledoit2008robust"]},
   {"id": "S7-cNEW-12", "lesson": "L07", "front": "Misconception: “A record longer than MinTRL proves skill.” Why is it wrong?", "back": "Computed from the record's own estimates, MinTRL restates the PSR test: a longer record rejects \\(\\SR \\le \\SR^\\ast\\) at level \\(\\alpha\\), which is not a probability of skill. Computed from a true Sharpe ratio, it is a break-even length that passes only about half the time."},
   {"id": "S7-cNEW-13", "lesson": "L07", "front": "Misconception: “Two Sharpe ratios whose confidence intervals overlap cannot be told apart.” Why is it wrong?", "back": "The standard error of the difference depends on the correlation. In L07 Example 5.5 each annualized Sharpe ratio has a standard error of about 0.45, yet a difference of 0.32 is significant (p = 0.025), because \\(\\hat\\rho = 0.95\\) makes the paired standard error 4.5 times smaller than the naive one."},
@@ -162,6 +162,10 @@ convention for definitions and misconceptions (for example S7-c089 and S7-c097).
   new key-results rows. It also needs re-checking of the renumbered sections
   (old §5–§11 are now §6–§12) and the small edits to Remark 1.5, §3, the "why it
   matters" paragraph and the canon-breaks dependence bullet.
+- **Link to the new L04 material.** After the merge, Remark 5.6 links L04's
+  `diebold-mariano-test` (Definition 1.2): the paired test is the Sharpe-ratio
+  analogue of the one-challenger test, and a DM statistic on \(\psi_{1,t} -
+  \psi_{2,t}\) with its long-run variance is the dependence-robust version.
 - **Cross-references kept stable.** §1–§4 and every block in them keep their
   numbers, so S7-c069 ("L07 Proposition 4.2"), S7-c090 ("L07 Definition 4.1") and
   L08's "Lesson 7, Section 4" stay correct. No page links to L07's `#s5`–`#s11`.
