@@ -72,8 +72,8 @@ three things about each:
 | Credential | What it covers | Modules | Graded projects | Hours | Credit equivalent | FTE years |
 |---|---|---|---|---|---|---|
 | **Finance Degree — Bachelor's Level** | Business and quantitative core (calculus, statistics, econometrics, programming, micro, macro, financial and managerial accounting, law and ethics, communication), plus the full finance major (corporate finance I–II, investments, markets and institutions, statement analysis, valuation, financial modeling, short-term finance, fixed income, derivatives, risk management and international finance, asset management, wealth management, financial history), plus a senior capstone | 42 | 47 | 3,881 | ≈86 credits | 1.80 |
-| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 77 | 85 | 7,658 | ≈170 credits | 3.55 |
-| **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 83 | 87 | 9,183 | ≈204 credits | 4.25 |
+| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 77 | 85 | 7,666 | ≈170 credits | 3.55 |
+| **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 83 | 87 | 9,191 | ≈204 credits | 4.26 |
 
 Some facts about these numbers:
 
@@ -112,9 +112,9 @@ replaces. Every hour figure includes the module's project.
 | Milestone | Cumulative hours | Full-time years* |
 |---|---|---|
 | All F + U tiers (whole major incl. economics & computing) | 4,345 | 2.01 |
-| + all M tier (Master's-equivalent breadth) | 11,147 | 5.16 |
-| + all D tier, quals (Doctoral Candidate) | 12,507 | 5.79 |
-| + thesis (Doctoral) | 13,707 | 6.35 |
+| + all M tier (Master's-equivalent breadth) | 11,155 | 5.16 |
+| + all D tier, quals (Doctoral Candidate) | 12,515 | 5.79 |
+| + thesis (Doctoral) | 13,715 | 6.35 |
 
 \*At 45 hours/week for 48 weeks/year. That is a full-time professional pace,
 not a student pace.
@@ -443,7 +443,7 @@ Each module consists of a hub page, its lessons, and a project page.
 | Phase | Output | Gate |
 |---|---|---|
 | **0 — Foundations** | Design system ✅; templates (hub, lesson, project, studio) ✅; the checking and build `tools/` ✅; vendored runtimes with lock file ✅; grader harness, Pyodide and local ✅; spaced-retrieval engine ✅; concept graph ✅; `references.json` seeded and the non-DOI admission paths built ✅ (see `references/SEED_REPORT.md`); `notation.json` ✅ | `render_curriculum.py` valid; `verify_refs.py` 100% resolved or removed; `page_smoke.py` green on every template |
-| **1 — Pilot** | Three modules end to end, chosen to calibrate every style: **S7** (theory + autograder), **AP1** (proof-heavy), **AC2** (applied, rubric + Atlas milestone). Ten pilot learners | Full ledger PASS; hours recalibrated from pilot data; templates and rules revised once |
+| **1 — Pilot** | Three modules end to end, chosen to calibrate every style: **S7** (theory, autograder and a rubric-graded memo), **AP1** (proof-heavy), **AC2** (applied, rubric + Atlas milestone). Ten pilot learners | Full ledger PASS; hours recalibrated from pilot data; templates and rules revised once |
 | **2 — Fan-out** | All remaining modules and studios in topological order (`curriculum.json` → `topological_order`), in batches of up to 8 modules. Each module gets one builder agent and one independent verifier agent | Ledger PASS + `check_dag.py` + `check_projects.py` (incl. mutation tests) + architect review |
 | **3 — Integration** | Program map, placement system, Atlas cumulative test suites, capstone, quals bank, thesis rubric | Full-site Playwright run; zero broken links; zero unresolved keys |
 | **4 — Freshness** | 2025–2026 literature pass on every debate and working paper | Ledgers re-run on touched modules |
