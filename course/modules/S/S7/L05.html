@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en" data-root="../../../" data-unit="S7" data-page="L05" data-hours="7" data-figures="figures-L05.js">
+<html lang="en" data-root="../../../" data-unit="S7" data-page="L05" data-hours="10" data-figures="figures-L05.js">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>L05 · Stepwise Multiple Testing · S7 Research Integrity</title>
-  <meta name="description" content="The Romano–Wolf StepM: a step-down bootstrap procedure that controls the family-wise error rate while adapting to the dependence between strategies, with proofs of its monotonicity, of why dates are resampled jointly, and of its relation to Holm.">
+  <meta name="description" content="The Romano–Wolf StepM: a step-down bootstrap procedure that controls the family-wise error rate while adapting to the dependence between strategies, with proofs of its monotonicity, of why dates are resampled jointly, and of its relation to Holm; the bootstrap sup-t band built from the same draws; and step-down control of the k-FWER and of false discovery exceedance.">
   <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
   <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
   <link rel="stylesheet" href="../../../assets/css/course.css">
@@ -33,11 +33,11 @@
     <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
     <main id="main" class="prose">
       <header class="page-head">
-        <p class="eyebrow">S7 · Lesson 5 of 8 · 7 study hours</p>
+        <p class="eyebrow">S7 · Lesson 5 of 8 · 10 study hours</p>
         <h1>Stepwise Multiple Testing: The Romano–Wolf StepM</h1>
         <ul class="meta-row">
-          <li><strong>Uses:</strong> <a class="concept" data-concept="family-wise-error-rate" href="L02.html#def-family-wise-error-rate">family-wise error rate</a>, <a class="concept" data-concept="holm-stepdown" href="L02.html#def-holm-stepdown">Holm's step-down</a>, <a class="concept" data-concept="stationary-bootstrap" href="L04.html#def-stationary-bootstrap">stationary bootstrap</a>, <a class="concept" data-concept="reality-check" href="L04.html#def-reality-check">Reality Check</a>, <a class="concept" data-concept="t-statistic" href="../../../concepts.html#t-statistic">t-statistics</a></li>
-          <li><strong>Introduces:</strong> the Romano–Wolf StepM procedure</li>
+          <li><strong>Uses:</strong> <a class="concept" data-concept="family-wise-error-rate" href="L02.html#def-family-wise-error-rate">family-wise error rate</a>, <a class="concept" data-concept="holm-stepdown" href="L02.html#def-holm-stepdown">Holm's step-down</a>, <a class="concept" data-concept="stationary-bootstrap" href="L04.html#def-stationary-bootstrap">stationary bootstrap</a>, <a class="concept" data-concept="reality-check" href="L04.html#def-reality-check">Reality Check</a>, <a class="concept" data-concept="t-statistic" href="../../../concepts.html#t-statistic">t-statistics</a>, <a class="concept" data-concept="confidence-interval" href="../../../concepts.html#confidence-interval">confidence intervals</a>, <a class="concept" data-concept="false-discovery-rate" href="L03.html#def-false-discovery-rate">false discovery rate</a>, <a class="concept" data-concept="benjamini-hochberg" href="L03.html#def-benjamini-hochberg">Benjamini–Hochberg</a></li>
+          <li><strong>Introduces:</strong> the Romano–Wolf StepM procedure, simultaneous confidence bands, the false coverage-statement rate, the k-familywise error rate, false discovery exceedance</li>
         </ul>
       </header>
 
@@ -418,8 +418,67 @@ normal benchmarks: one statistic 1.645, max of 10 independent 2.568</pre>
       <section class="lab" id="lab-S7-L05-4" data-runtime="python" data-packages="numpy">
         <h3>Lab 4 · Three bands for twenty strategies</h3>
         <p class="hypothesis">In a SIMULATED version of Lab 1's universe with returns (20 strategies over 250 periods, eight true alphas), each 95% pointwise interval should cover its own mean about 95% of the time, while all twenty should be covered together far less often. The Bonferroni band and the bootstrap sup-t band should both cover all twenty in about 95% of studies or more. By Remark 6.5, at Lab 1's correlation of 0.3 the two should have nearly the same width, and at correlation 0.9 the sup-t band should be much narrower. StepM's one-sided first-step critical value should sit below the band's (Proposition 6.4(b)).</p>
-        <pre><code class="language-python" data-run>@@LAB:lab-S7-L05-4.py@@</code></pre>
-        <pre class="expected" data-tolerance="1e-6">@@OUT:lab-S7-L05-4.py@@</pre>
+        <pre><code class="language-python" data-run>import math
+from statistics import NormalDist
+
+import numpy as np
+
+# SIMULATED returns version of Lab 1's universe: 20 strategies over 250 serially independent periods,
+# unit-variance differentials with pairwise correlation rho, and eight true alphas whose expected
+# t-statistics are Lab 1's drifts. Three 95% bands for the 20 means: pointwise, Bonferroni, and the
+# sup-t band from the joint bootstrap draws of Definition 1.1 (block length 1, as in Lab 2).
+rng = np.random.default_rng(506)
+n_obs, n_strat, n_boot, n_reps, alpha = 250, 20, 199, 400, 0.05
+drift = np.zeros(n_strat)
+drift[:8] = [4.5, 4.0, 3.6, 3.3, 3.1, 2.9, 2.8, 2.7]
+mu = drift / math.sqrt(n_obs)  # true mean differentials, per period
+normal = NormalDist()
+z_pointwise = normal.inv_cdf(1 - alpha / 2)
+z_bonferroni = normal.inv_cdf(1 - alpha / (2 * n_strat))
+rank = math.ceil((1 - alpha) * n_boot)
+cells = n_obs * np.arange(n_boot)[:, None]  # offsets that place draw b's dates in row b of a (B, T) table
+
+print("rho  band  mean_critical_value  simultaneous_coverage")
+for rho in (0.3, 0.9):
+    covered = np.zeros(3)
+    one_interval = 0.0
+    c_band = np.empty(n_reps)
+    c_stepm = np.empty(n_reps)
+    for rep in range(n_reps):
+        d = (
+            mu
+            + math.sqrt(rho) * rng.standard_normal((n_obs, 1))
+            + math.sqrt(1 - rho) * rng.standard_normal((n_obs, n_strat))
+        )
+        means, se = d.mean(axis=0), d.std(axis=0, ddof=1) / math.sqrt(n_obs)
+        # Joint bootstrap of whole dates: weight[b, t] is the share of draw b's rows that are date t,
+        # so one matrix product gives every strategy's resampled mean and second moment.
+        dates = rng.integers(0, n_obs, size=(n_boot, n_obs))
+        weight = np.bincount((dates + cells).ravel(), minlength=n_boot * n_obs).reshape(n_boot, n_obs) / n_obs
+        boot_mean = weight @ d
+        boot_se = np.sqrt((weight @ (d * d) - boot_mean**2) / (n_obs - 1))  # s*/sqrt(T), divisor T - 1
+        t_star = (boot_mean - means) / boot_se
+        c_band[rep] = np.sort(np.abs(t_star).max(axis=1))[rank - 1]  # two-sided, over all 20 strategies
+        c_stepm[rep] = np.sort(t_star.max(axis=1))[rank - 1]  # StepM's first-step critical value
+        tau = np.abs(means - mu) / se
+        covered += [tau.max() &lt;= z_pointwise, tau.max() &lt;= z_bonferroni, tau.max() &lt;= c_band[rep]]
+        one_interval += float(np.mean(tau &lt;= z_pointwise))
+    print(f"{rho:.1f} pointwise {z_pointwise:.3f} {covered[0] / n_reps:.3f}")
+    print(f"{rho:.1f} Bonferroni {z_bonferroni:.3f} {covered[1] / n_reps:.3f}")
+    print(f"{rho:.1f} sup-t {c_band.mean():.3f} {covered[2] / n_reps:.3f}")
+    print(f"{rho:.1f} coverage of one pointwise interval: {one_interval / n_reps:.3f}")
+    print(f"{rho:.1f} StepM first-step critical value: {c_stepm.mean():.3f}")</code></pre>
+        <pre class="expected" data-tolerance="1e-6">rho  band  mean_critical_value  simultaneous_coverage
+0.3 pointwise 1.960 0.455
+0.3 Bonferroni 3.023 0.963
+0.3 sup-t 3.031 0.950
+0.3 coverage of one pointwise interval: 0.950
+0.3 StepM first-step critical value: 2.785
+0.9 pointwise 1.960 0.848
+0.9 Bonferroni 3.023 0.988
+0.9 sup-t 2.508 0.943
+0.9 coverage of one pointwise interval: 0.951
+0.9 StepM first-step critical value: 2.189</pre>
         <p class="interpretation">The pointwise band fails. Each of its intervals covers 95.0% of the time at \(\rho = 0.3\), yet all twenty are covered together in only 45.5% of studies; at \(\rho = 0.9\) the intervals move together and the figure rises to 84.8%, still short. The other two hold: Bonferroni at 96.3% and 98.8%, the sup-t band at 95.0% and 94.3%, against a Monte Carlo standard error of \(\sqrt{0.05 \times 0.95/400} = 0.011\). At \(\rho = 0.3\) the sup-t band is not narrower: its mean critical value of 3.031 is 0.3% above Bonferroni's 3.023. Two effects nearly cancel there. A correlation of 0.3 lowers the far tail of the two-sided maximum very little (Remark 6.5: 3.016 against 3.023 even under independence), and the bootstrap estimates the distribution of the studentized means at \(T = 250\), whose tails are slightly heavier than the normal quantiles of the other two bands assume. At \(\rho = 0.9\) the sup-t band is 17% narrower (\(2.508/3.023 = 0.830\)) and still covers, while Bonferroni spends the difference on over-coverage. The advantage is a property of the dependence, so it is largest in books of closely related variants. StepM's first-step critical values, 2.785 and 2.189, sit below the band's, as Proposition 6.4(b) requires: a one-sided test at the boundary asks less than a two-sided statement about every mean.</p>
       </section>
 
@@ -541,7 +600,7 @@ normal benchmarks: one statistic 1.645, max of 10 independent 2.568</pre>
         <p>Suppose the original procedure makes no false rejection. The augmented procedure rejects \(R = R_0 + A'\) hypotheses, with \(A' = \min(A, m - R_0) \le A\), and at most the \(A'\) added ones are false. If \(R = 0\), then \(\FDP = 0\). Otherwise \(\FDP \le A'/(R_0 + A') \le A/(R_0 + A)\), because \(x \mapsto x/(R_0 + x)\) is increasing. And \(A \le \gamma R_0/(1-\gamma)\) is equivalent to \(A \le \gamma(R_0 + A)\), so \(\FDP \le \gamma\). Hence \(\{\FDP > \gamma\}\) requires a false rejection by the original procedure, which has probability at most \(\alpha\).</p>
       </div>
 
-      <p>The construction is van der Laan, Dudoit and Pollard's <span class="ref" data-cite="laan2004augmentation" data-locator="Abstract"></span>, who give the same augmentation for tail probabilities of the number of false positives. <span class="claim" data-grade="B" data-cite="romano2007control" data-locator="Section 5">Romano and Wolf argue that augmentation for the k-FWER seems suboptimal: it assumes the worst case, that the \(k - 1\) added hypotheses are all true, it rejects them even when their p-values are clearly not significant, and it rejects more than \(k - 1\) hypotheses only if the family-wise procedure rejects something</span>. <span class="claim" data-grade="B" data-cite="laan2004augmentation" data-locator="Abstract">Van der Laan, Dudoit and Pollard counter that augmenting step-down procedures that control the FWER asymptotically exactly at level \(\alpha\) yields exact asymptotic control of these error rates</span>. Lab 5 compares the two approaches on one design.</p>
+      <p>The construction is van der Laan, Dudoit and Pollard's <span class="ref" data-cite="laan2004augmentation" data-locator="Abstract"></span>, who give the same augmentation for tail probabilities of the number of false positives. <span class="claim" data-grade="B" data-cite="romano2007control" data-locator="Section 5">Romano and Wolf argue that augmentation for the k-FWER seems suboptimal: it assumes the worst case, that the \(k - 1\) added hypotheses are all true, it rejects them even when their p-values show no sign of significance, and it rejects more than \(k - 1\) hypotheses only if the family-wise procedure rejects something</span>. <span class="claim" data-grade="B" data-cite="laan2004augmentation" data-locator="Abstract">Van der Laan, Dudoit and Pollard counter that augmenting step-down procedures that control the FWER asymptotically exactly at level \(\alpha\) yields exact asymptotic control of these error rates</span>. Lab 5 compares the two approaches on one design.</p>
 
       <p><strong>The bootstrap version: k-StepM.</strong> Theorem 7.4, like Holm, ignores the dependence between tests, and the bootstrap repairs that for the k-FWER the way StepM repairs Holm. In what follows \(i\) indexes strategies, with the statistics of Section 1, and \(\max^{(k)}_{i \in A}\) denotes the \(k\)-th largest value over \(A\) (\(-\infty\) if \(|A| \lt k\)).</p>
 
@@ -571,8 +630,74 @@ normal benchmarks: one statistic 1.645, max of 10 independent 2.568</pre>
       <section class="lab" id="lab-S7-L05-5" data-runtime="python" data-packages="numpy">
         <h3>Lab 5 · Bounding the exceedance</h3>
         <p class="hypothesis">Rerun Lesson 3's Lab 3 with its seed: \(m = 500\) equicorrelated one-sided z-tests, 50 real effects of mean 3, \(\rho \in \{0, 0.5, 0.8\}\), all SIMULATED. BH at \(q = 0.10\) should reproduce that lab exactly, including the 10.6% chance that \(\FDP > 0.2\) at \(\rho = 0.5\). The two procedures proved here to bound the exceedance under any dependence, Holm with augmentation (Proposition 7.8) and the corrected constants of Theorem 7.7, should keep \(\Prob(\FDP > 0.2)\) at or below \(\alpha = 0.05\) at every \(\rho\). The uncorrected constants (3) have no guarantee from this lesson in this design: the shared shock ties the true-null statistics to the false-null ones, so condition (27) fails. Bounding the exceedance should cost discoveries.</p>
-        <pre><code class="language-python" data-run>@@LAB:lab-S7-L05-5.py@@</code></pre>
-        <pre class="expected" data-tolerance="1e-6">@@OUT:lab-S7-L05-5.py@@</pre>
+        <pre><code class="language-python" data-run>import math
+
+import numpy as np
+import numpy.typing as npt
+
+# SIMULATED: Lesson 3's Lab 3 design and seed. m = 500 equicorrelated one-sided z-tests,
+# z_i = sqrt(rho) W + sqrt(1 - rho) e_i + mu_i, with 50 real effects of mean 3.
+rng = np.random.default_rng(304)
+m, m1, q, n_reps, effect = 500, 50, 0.10, 1000, 3.0
+gamma_num, gamma_den, alpha = 1, 5, 0.05  # exceedance target: P(FDP &gt; 1/5) &lt;= 0.05
+upper_tail = np.frompyfunc(lambda z: 0.5 * math.erfc(z / math.sqrt(2.0)), 1, 1)
+mu = np.zeros(m)
+mu[:m1] = effect
+
+i = np.arange(1, m + 1)
+allowed = (gamma_num * i) // gamma_den + 1  # floor(gamma i) + 1
+lehmann_romano = allowed * alpha / (m + allowed - i)  # step-down constants (26)
+n_terms = (gamma_num * m) // gamma_den + 1
+harmonic = float(np.sum(1.0 / np.arange(1, n_terms + 1)))  # C_j = 1 + 1/2 + ... + 1/j at j = floor(gamma m) + 1
+
+
+def step_down(ordered: npt.NDArray[np.float64], line: npt.NDArray[np.float64]) -&gt; npt.NDArray[np.int64]:
+    """Rejections per study: how many of the smallest p-values lie at or below the line before the first miss."""
+    passing = ordered &lt;= line
+    return np.where(passing.all(axis=1), m, np.argmin(passing, axis=1)).astype(np.int64)
+
+
+def step_up(ordered: npt.NDArray[np.float64], line: npt.NDArray[np.float64]) -&gt; npt.NDArray[np.int64]:
+    """Rejections per study: the largest rank whose p-value lies at or below the line (BH)."""
+    passing = ordered &lt;= line
+    return np.where(passing.any(axis=1), m - np.argmax(passing[:, ::-1], axis=1), 0).astype(np.int64)
+
+
+print(f"C_{n_terms} = {harmonic:.4f}")
+print("rho  procedure  P(FDP&gt;0.2)  mean_FDP  true_discoveries")
+for rho in (0.0, 0.5, 0.8):
+    w = rng.standard_normal((n_reps, 1))
+    z = math.sqrt(rho) * w + math.sqrt(1.0 - rho) * rng.standard_normal((n_reps, m)) + mu
+    p = upper_tail(z).astype(float)
+    order = np.argsort(p, axis=1)
+    ordered = np.take_along_axis(p, order, axis=1)
+    nulls_so_far = np.cumsum(order &gt;= m1, axis=1)  # true nulls among the j smallest p-values
+    holm = step_down(ordered, alpha / (m - i + 1))
+    rejections = {
+        "BH(q=0.1)": step_up(ordered, q * i / m),
+        "Holm+augmentation": np.minimum(holm + (gamma_num * holm) // (gamma_den - gamma_num), m),
+        "LR(26)": step_down(ordered, lehmann_romano),
+        "LR(26)/C": step_down(ordered, lehmann_romano / harmonic),
+    }
+    for name, r in rejections.items():
+        v = np.where(r &gt; 0, nulls_so_far[np.arange(n_reps), np.maximum(r, 1) - 1], 0)
+        exceeds = gamma_den * v &gt; gamma_num * r  # FDP = v / r &gt; 1/5, in integers
+        fdp = v / np.maximum(r, 1)
+        print(f"{rho:.1f} {name} {exceeds.mean():.4f} {fdp.mean():.4f} {(r - v).mean():.2f}")</code></pre>
+        <pre class="expected" data-tolerance="1e-6">C_101 = 5.1973
+rho  procedure  P(FDP&gt;0.2)  mean_FDP  true_discoveries
+0.0 BH(q=0.1) 0.0150 0.0913 36.17
+0.0 Holm+augmentation 0.0000 0.0071 14.34
+0.0 LR(26) 0.0000 0.0120 18.58
+0.0 LR(26)/C 0.0010 0.0031 8.98
+0.5 BH(q=0.1) 0.1060 0.0690 33.19
+0.5 Holm+augmentation 0.0050 0.0058 13.97
+0.5 LR(26) 0.0140 0.0112 17.97
+0.5 LR(26)/C 0.0030 0.0023 9.80
+0.8 BH(q=0.1) 0.0610 0.0496 33.30
+0.8 Holm+augmentation 0.0090 0.0164 14.46
+0.8 LR(26) 0.0130 0.0114 19.54
+0.8 LR(26)/C 0.0060 0.0027 11.22</pre>
         <p class="interpretation">BH's rows match Lesson 3's Lab 3 digit for digit (mean FDP 0.0913, 0.0690 and 0.0496; exceedance 0.0150, 0.1060 and 0.0610), because the seed and design are the same. Every exceedance procedure keeps \(\Prob(\FDP > 0.2)\) at or below 0.014, far under 0.05 (the Monte Carlo standard error at 0.05 would be \(\sqrt{0.05 \times 0.95/1000} = 0.007\)). The price is discoveries. Of the 50 real effects, BH finds 33 to 36 per study, the uncorrected constants (3) 18 to 20, Holm with augmentation about 14, and the corrected constants of Theorem 7.7 only 9 to 11: here the factor \(C_{101} = 5.197\) costs about half of what (3) finds, and augmentation beats it. The low exceedance of the uncorrected constants is evidence about this design, not a guarantee. A guarantee has to come from Theorem 7.7, from Proposition 7.8, or from the assumptions of Lehmann and Romano's Theorems 3.1–3.2.</p>
       </section>
 
@@ -896,6 +1021,14 @@ studentized 1.959 0.8486 0.8499</pre>
               <tr><td>Under the global null, StepM and the single-step test have the same family-wise error rate (Proposition 3.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3</td></tr>
               <tr><td>Joint resampling of dates makes duplicates add no multiplicity; independent resampling inflates the critical value (Proposition 4.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §4; Lab 3</td></tr>
               <tr><td>For independent normal statistics, StepM's critical values never exceed Holm's (Proposition 5.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §5</td></tr>
+              <tr><td>The bootstrap sup-t band built from StepM's joint draws covers all \(K\) means at once with probability tending to \(1-\alpha\) (Theorem 6.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §6; Lab 4</td></tr>
+              <tr><td>The band excludes zero exactly where the two-sided single-step max-\(|t|\) test rejects; its critical value is at least StepM's first-step value, so the strategies it places above zero are among StepM's rejections, possibly strictly (Proposition 6.4)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §6</td></tr>
+              <tr><td>In a simulated 20-strategy book, the sup-t band was as wide as Bonferroni's at correlation 0.3 and 17% narrower at 0.9, covering at both; pointwise intervals covered all twenty together in 45.5% and 84.8% of studies</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 4 (simulation)</td></tr>
+              <tr><td>The step-down with constants \(k\alpha/m\) for \(i \le k\) and \(k\alpha/(m+k-i)\) for \(i > k\) controls the k-FWER under any dependence (Theorem 7.4)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §7; <span class="ref" data-cite="lehmann2005generalizations"></span></td></tr>
+              <tr><td>The step-down with constants (3) divided by \(C_{\lfloor \gamma m \rfloor + 1}\) controls \(\Prob(\FDP > \gamma)\) under any dependence (Theorem 7.7)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §7; <span class="ref" data-cite="lehmann2005generalizations"></span>; Lab 5</td></tr>
+              <tr><td>Adding \(\lfloor \gamma R_0/(1-\gamma) \rfloor\) rejections to a procedure that controls the FWER controls \(\Prob(\FDP > \gamma)\) (Proposition 7.8)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §7; <span class="ref" data-cite="laan2004augmentation"></span>; Lab 5</td></tr>
+              <tr><td>k-StepM controls the k-FWER asymptotically, given bootstrap consistency for the \(k\)-th largest statistic over the true hypotheses (Theorem 7.10)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §7; procedure from <span class="ref" data-cite="romano2007control"></span></td></tr>
+              <tr><td>Selecting the largest of 20 independent null t-statistics leaves its conventional 95% interval with coverage 0.603</td><td><span class="grade" data-grade="T">T</span></td><td>Derived in Problem R4</td></tr>
             </tbody>
           </table>
         </div>
@@ -986,6 +1119,29 @@ studentized 1.959 0.8486 0.8499</pre>
               <label class="option" data-correct><input type="radio" name="L05q10"> No, it was selected for being large and remains biased upward</label>
             </fieldset>
             <div class="explain" hidden><p>StepM controls false claims of skill, not the size of the claimed skill. Selection bias (Lesson 1) remains.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">With the same bootstrap draws, how does the sup-t band's critical value \(c^{\pm}_\alpha\) compare with StepM's first-step critical value \(c_\alpha(\{1, \dots, K\})\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q11"> It is at least as large</label>
+              <label class="option"><input type="radio" name="L05q11"> It is at most as large</label>
+              <label class="option"><input type="radio" name="L05q11"> Either can be larger, depending on the data</label>
+            </fieldset>
+            <div class="explain" hidden><p>Draw by draw, \(\max_k t^{\ast}_{b,k} \le \max_k |t^{\ast}_{b,k}|\), and order statistics keep the inequality (Proposition 6.4(b)). The band is two-sided and must cover every mean, including those StepM has rejected.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.001613" data-tolerance="0.000005">
+            <p class="prompt">Lehmann and Romano's k-FWER step-down with \(m = 100\) hypotheses, \(k = 3\) and \(\alpha = 0.05\): what is the constant \(\alpha_{10}\)? (four significant digits)</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Since \(10 > k\), \(\alpha_{10} = k\alpha/(m + k - 10) = 0.15/93 = 0.001613\) (Theorem 7.4).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does controlling the false discovery exceedance at \((\gamma, \alpha)\) guarantee?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L05q13"> The expected false discovery proportion is at most \(\gamma\)</label>
+              <label class="option" data-correct><input type="radio" name="L05q13"> The probability that the false discovery proportion exceeds \(\gamma\) is at most \(\alpha\)</label>
+              <label class="option"><input type="radio" name="L05q13"> The probability of any false rejection is at most \(\alpha\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 7.1: the exceedance is \(\Prob(\FDP > \gamma)\). It bounds the false discovery proportion of the study at hand with probability \(1-\alpha\), which FDR control does not (Lemma 7.2, Lab 5).</p></div>
           </li>
         </ol>
       </section>
