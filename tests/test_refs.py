@@ -328,6 +328,18 @@ def test_online_first_year_is_info_not_correction() -> None:
         ("2", "12", False),
         ("2", "20", False),
         ("02", "20", False),
+        # A single issue never matches a double issue, in any spelling a range can take.
+        ("2", "02–03", False),
+        ("2", "2–3", False),
+        ("2", "2—3", False),
+        ("2", "2/3", False),
+        ("2", "2 3", False),
+        ("2–3", "2", False),
+        ("02-03", "2-3", True),
+        ("2–3", "2/3", True),
+        # Not ranges: a part or a letter suffix still matches its issue.
+        ("366", "366a", True),
+        ("4", "4, Part 1", True),
     ],
 )
 def test_issue_matching(ours: str, theirs: str, ok: bool) -> None:

@@ -41,14 +41,23 @@ from .parse import Candidate
 from .text import norm, norm_issue, similarity, surname_fuzzy, surname_matches
 
 _LEADING_NUMBER = re.compile(r"\d+")
+# A double issue in any spelling norm_issue treats as a range: two numbers joined by a hyphen, a Unicode hyphen
+# or dash (U+2010 to U+2014), a slash or a space.
+_RANGE = re.compile(r"^\s*(\d+)\s*(?:[-\u2010-\u2014/]|\s)\s*(\d+)")
 
 
 def issue_matches(ours: str, theirs: str) -> bool:
-    """'4' matches '4, Part 2'; a hyphenated range matches its en-dash spelling; '2' matches Crossref's '02'."""
+    """'4' matches '4, Part 2'; a range matches its other spellings; '2' matches Crossref's '02', '2-3' its '02-03'.
+
+    A single issue never matches a double issue that starts with it ('2' against '2-3' or '02/03').
+    """
     if norm_issue(ours) == norm_issue(theirs):
         return True
+    ra, rb = _RANGE.match(ours), _RANGE.match(theirs)
+    if ra or rb:
+        return bool(ra and rb and tuple(map(int, ra.groups())) == tuple(map(int, rb.groups())))
     a, b = _LEADING_NUMBER.match(ours.strip()), _LEADING_NUMBER.match(theirs.strip())
-    return bool(a and b and int(a.group()) == int(b.group()) and not ("-" in ours or "-" in theirs))
+    return bool(a and b and int(a.group()) == int(b.group()))
 
 
 Status = Literal["verified", "verified_with_corrections", "unresolved"]
