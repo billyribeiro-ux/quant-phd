@@ -50,7 +50,7 @@ export async function initGrader(panel) {
   const seedNote = el(
     "p",
     { class: "notice" },
-    `Your instance seed is ${seed} (derived from your workspace ID). Locally: QF_SEED=${seed} pytest ${suite}`,
+    `Your instance seed is ${seed} (derived from your workspace ID). Locally: QF_SEED=${seed} pytest -q -p no:cacheprovider --assert=plain -W error ${suite}`,
   );
   const results = el("ul", { class: "test-results", "aria-label": "Test results" });
   panel.append(seedNote, label, editor, controls, results);
