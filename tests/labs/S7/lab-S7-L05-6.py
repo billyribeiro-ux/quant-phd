@@ -13,23 +13,36 @@ currencies, days = rows[0][1:], [row[0] for row in rows[1:]]
 prices = np.array([[float(v) for v in row[1:]] for row in rows[1:]])
 print(f"fx_daily.csv: {len(days)} days from {days[0]} to {days[-1]}, {len(currencies)} currencies")
 
-# The universe, fixed before running: on day t a rule is long (short) the currency when the previous day's rate
-# lies above (below) its moving average over the previous n days. Benchmark: cash, so each differential is the
-# rule's spot return; the interest differential and trading costs are not in the data.
+
+def exact(column: list[str]) -> NDArray[np.int64]:
+    """The published decimals as integers: each value times 10 to the column's largest number of decimal places."""
+    places = max(len(v.partition(".")[2]) for v in column)
+    digits = [int(v.replace(".", "") + "0" * (places - len(v.partition(".")[2]))) for v in column]
+    return np.array(digits, dtype=np.int64)  # int64 everywhere: the window sums exceed 32 bits
+
+
+# The universe: on day t a rule is long (short) the currency when the previous day's rate
+# lies above (below) its moving average over the previous n days, and flat when the two are equal. Benchmark:
+# cash, so each differential is the rule's spot return; the interest differential and trading costs are not in
+# the data. The comparison is made in integers scaled from the published decimals, so a tie is exactly zero: a
+# floating-point average would break it by rounding noise.
 windows = (10, 20, 50, 100, 200)
 t = np.arange(max(windows), len(days))  # the first day on which every rule has a signal, to the last
 spot = prices[t] / prices[t - 1] - 1.0
-running = np.vstack([np.zeros((1, len(currencies))), np.cumsum(prices, axis=0)])
-names, columns = [], []
+names, columns, ties = [], [], 0
 for c, currency in enumerate(currencies):
+    scaled = exact([row[c + 1] for row in rows[1:]])
+    running = np.concatenate([np.zeros(1, dtype=np.int64), np.cumsum(scaled, dtype=np.int64)])
     for n in windows:
-        average = (running[t, c] - running[t - n, c]) / n  # mean rate over days t - n .. t - 1
-        columns.append(np.sign(prices[t - 1, c] - average) * spot[:, c])
+        gap = n * scaled[t - 1] - (running[t] - running[t - n])  # n times (rate - its average over t - n .. t - 1)
+        columns.append(np.sign(gap) * spot[:, c])
         names.append(f"{currency}-MA{n}")
+        ties += int((gap == 0).sum())
 d = np.column_stack(columns)
 n_obs, n_rules = d.shape
 corr = np.corrcoef(d, rowvar=False)[~np.eye(n_rules, dtype=bool)].mean()
 print(f"{n_rules} rules over {n_obs} days from {days[t[0]]} to {days[-1]}, mean pairwise correlation {corr:.3f}")
+print(f"rule-days on which the rate equals its average exactly, held flat: {ties}")
 
 means, se = d.mean(axis=0), d.std(axis=0, ddof=1) / math.sqrt(n_obs)
 t_obs = means / se

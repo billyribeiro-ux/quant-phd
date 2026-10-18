@@ -110,7 +110,12 @@ async function safely(fn, fallback) {
 }
 
 export const get = (store, key) => safely((b) => b.get(store, key), undefined);
-export const put = (store, key, value) => safely((b) => b.put(store, key, value), undefined);
+/** Stores a value; resolves true when the backend accepted it and false when it refused (quota, blocked storage). */
+export const put = (store, key, value) =>
+  safely(async (b) => {
+    await b.put(store, key, value);
+    return true;
+  }, false);
 export const remove = (store, key) => safely((b) => b.delete(store, key), undefined);
 export const entries = (store) => safely((b) => b.entries(store), []);
 

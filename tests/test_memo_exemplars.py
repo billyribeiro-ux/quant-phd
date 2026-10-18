@@ -44,6 +44,17 @@ S7 = ROOT / "course" / "modules" / "S" / "S7"
 TWINS = ROOT / "tests" / "labs" / "S7"
 PROJECT = S7 / "project.html"
 DSR_BAR = 0.95  # the exemplars' decision bar for the DSR: Lesson 7's conventional 0.95
+PBO_BAR = 0.5  # the level-4 exemplar's decision bar for the PBO, at every block count it reports
+# The brief's five sections, in order, and its length rules (project.html, #memo-brief).
+BRIEF_HEADINGS = [
+    "Recommendation",
+    "The proposal and the search",
+    "Evidence",
+    "Limitations",
+    "What would change the decision",
+]
+BODY_WORDS = (1200, 1800)
+RECOMMENDATION_WORDS = 100
 S_CHECKS = (8, 10)  # the block counts the exemplars report as checks on PBO
 BLOCK_CHECKS = (5.0, 20.0)  # the mean block lengths the exemplars report as checks on StepM
 # References to course material, which the memo text may contain besides pinned numbers.
@@ -63,6 +74,7 @@ def reference() -> ModuleType:
     return module
 
 
+@functools.cache
 def run_twin(name: str) -> dict[str, Any]:
     """The globals of a lab twin, run as run_labs.py runs it: in a directory whose data/ holds fx_monthly.csv."""
     here = Path.cwd()
@@ -72,6 +84,38 @@ def run_twin(name: str) -> dict[str, Any]:
             return runpy.run_path(str(TWINS / name))
         finally:
             os.chdir(here)
+
+
+def body_words(exemplar: Node) -> dict[str, int]:
+    """Words of body text per section, by the brief's rule: every whitespace-separated word in the memo's
+    paragraphs and lists, with headings, the To/From header block and the evidence table left out. A passage
+    without a heading continues the section before it."""
+    counts: dict[str, int] = {}
+    section = ""
+
+    def walk(node: Node) -> None:
+        nonlocal section
+        if node.tag == "h5":
+            section = node.text().strip()
+            counts.setdefault(section, 0)
+            return
+        if node.tag == "table" or "memo-head" in node.classes:
+            return
+        for child in node.children:
+            if isinstance(child, str):
+                counts[section] = counts.get(section, 0) + len(child.split())
+            else:
+                walk(child)
+
+    for memo in exemplar.select(None, "memo-text"):
+        walk(memo)
+    return counts
+
+
+def exemplar(name: str) -> Node:
+    node = load_page(PROJECT).dom.first("article", "exemplar", id=name)
+    assert node is not None, f"no exemplar #{name}"
+    return node
 
 
 def joined(values: list[int]) -> str:
@@ -92,17 +136,18 @@ def values() -> dict[str, Any]:
     p_values = [1.0 - NormalDist().cdf(float(s) * math.sqrt(n_obs)) for s in sharpe]
     n_blocks = defaults["n_blocks"]
     manifest = {e["file"]: e for e in json.loads((MARKET_DATA / "MANIFEST.json").read_text())["datasets"]}
-    lab2 = load_page(S7 / "L08.html").dom.first(None, None, id="lab-S7-L08-2")
-    expected = lab2.first("pre", "expected") if lab2 is not None else None
-    largest = re.search(r"largest (\d+\.\d+)", expected.text() if expected is not None else "")
-    assert largest is not None, "Lesson 8's Lab 2 output no longer reports its largest pure-noise PBO"
     months = memo["months"]
 
     def checked_rejections(mean_block: float) -> int:
         return int(ref.romano_wolf(trials, defaults["alpha"], defaults["n_boot"], mean_block, defaults["seed"]).sum())
 
     file_months = [row[0] for row in memo["rows"][1:]]
+    words_a, words_b = body_words(exemplar("exemplar-a")), body_words(exemplar("exemplar-b"))
     return {
+        "body_words_a": sum(words_a.values()),
+        "body_words_b": sum(words_b.values()),
+        "rec_words_b": words_b.get("Recommendation", 0),
+        "pbo_bar": PBO_BAR,
         "retrieved": manifest["fx_monthly.csv"]["retrieved"],
         "n_currencies": len(memo["currencies"]),
         "prices_from": months[0],
@@ -134,7 +179,6 @@ def values() -> dict[str, Any]:
         "dsr_p": 1.0 - report.dsr,
         "dsr_bar": DSR_BAR,
         "pbo": report.pbo,
-        "pbo_null": math.floor((n_trials + 1) / 2) / n_trials,
         "n_blocks": n_blocks,
         "n_splits": math.comb(n_blocks, n_blocks // 2),
         "block_months": n_obs // n_blocks,
@@ -143,7 +187,6 @@ def values() -> dict[str, Any]:
         "s_check_2": S_CHECKS[1],
         "pbo_check_1": ref.probability_of_backtest_overfitting(trials, S_CHECKS[0]).pbo,
         "pbo_check_2": ref.probability_of_backtest_overfitting(trials, S_CHECKS[1]).pbo,
-        "lab2_null_max": float(largest.group(1)),
         "alpha": defaults["alpha"],
         "q": defaults["q"],
         "n_boot": defaults["n_boot"],
@@ -162,6 +205,9 @@ def values() -> dict[str, Any]:
         "n_eff": lab4["n_eff"],
         "sr0_eff": lab4["sr0_eff"],
         "dsr_eff": lab4["psr"](lab4["selected"], lab4["sr0_eff"]),
+        "null_grids": lab4["n_null"],
+        "null_pbo_mean": float(lab4["null_pbo"].mean()),
+        "null_tail": lab4["tail"],
     }
 
 
@@ -246,6 +292,28 @@ def test_annotations_agree_with_the_exemplar_scores() -> None:
             assert reached == score, f"{name}: {criterion} meets level {reached}, scored {score}"
             assert all(m > score for m in misses), f"{name}: {criterion} misses a level at or below its score {score}"
     assert len(set(levels)) >= 2, "exemplars at two or more levels"
+
+
+def test_the_level_4_exemplar_follows_the_brief() -> None:
+    best = exemplar("exemplar-b")
+    words = body_words(best)
+    headings = [h.text().strip() for h in best.select("h5")]
+    assert headings == BRIEF_HEADINGS, f"the brief's five headings, in order: {headings}"
+    total = sum(words.values())
+    assert BODY_WORDS[0] <= total <= BODY_WORDS[1], f"{total} words of body text"
+    assert words["Recommendation"] <= RECOMMENDATION_WORDS, f"Recommendation of {words['Recommendation']} words"
+    table = best.first("table")
+    assert table is not None and len(table.select("tbody")[0].select("tr")) >= 10, "every required evidence row"
+    pinned = {s.get("data-num") for s in table.select(None, None, data_num=None)}
+    assert {"window_start", "window_end", "n_trials", "n_obs", "dsr", "pbo", "p_min"} <= pinned
+
+
+def test_the_level_2_exemplar_breaks_the_brief_as_annotated() -> None:
+    weak = exemplar("exemplar-a")
+    headings = [h.text().strip() for h in weak.select("h5")]
+    assert weak.first("table") is None, "exemplar A is annotated as having no evidence table"
+    assert sum(h in BRIEF_HEADINGS for h in headings) < 3, "exemplar A is annotated as having fewer than 3 sections"
+    assert sum(body_words(weak).values()) < BODY_WORDS[0]
 
 
 @pytest.mark.parametrize("key", ["dsr", "pbo", "psr", "sr_ann", "n_trials", "stepm_rejections", "bh_rejections"])

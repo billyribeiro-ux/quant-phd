@@ -90,11 +90,11 @@ export async function loadRecord(key, criteria, targets, store = defaultStore) {
   }
 }
 
-/** Saves the record; returns whether storage accepted it. */
+/** Saves the record; returns whether storage accepted it. store.js's put resolves false when the backend
+ * refused the write (it catches the error itself), and a store that throws counts as a refusal too. */
 export async function saveRecord(key, record, store = defaultStore) {
   try {
-    await store.put("kv", key, record);
-    return true;
+    return (await store.put("kv", key, record)) !== false;
   } catch {
     return false;
   }
@@ -231,7 +231,9 @@ export async function initRubric(section, { store = defaultStore } = {}) {
   const persist = async (message) => {
     const ok = await saveRecord(key, record, store);
     const kept = ok && store.persistent !== false;
-    status.textContent = kept ? message : `${message} Not kept: this browser is not storing data for the course.`;
+    status.textContent = kept
+      ? message
+      : "Not saved: this browser is not storing data for the course, so these scores last only until you leave the page.";
   };
 
   const render = () => {
