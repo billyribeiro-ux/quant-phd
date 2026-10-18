@@ -12,7 +12,10 @@ from __future__ import annotations
 import html
 import json
 import re
+import shutil
+import tempfile
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import cache
 from html.parser import HTMLParser
@@ -22,6 +25,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 COURSE = ROOT / "course"
 LAB_TWINS = ROOT / "tests" / "labs"
+# Embedded market data (tools/fetch_data.py). A lab lists the files it reads in data-files and opens them as
+# data/<file>: the browser writes exactly those files there in Pyodide, and a twin runs in a scratch directory
+# whose data/ holds copies of the same files (twin_workdir).
+MARKET_DATA = COURSE / "assets" / "data" / "market"
 LEDGERS = ROOT / "ledgers"
 
 _VOID = frozenset(
@@ -159,6 +166,15 @@ def registry_keys() -> frozenset[str]:
     return frozenset(e["key"] for e in data["entries"] if e.get("status") == "verified")
 
 
+@cache
+def market_files(directory: Path = MARKET_DATA) -> frozenset[str]:
+    """The snapshot files listed in the directory's MANIFEST.json (tools/fetch_data.py): what data-files may name."""
+    manifest = directory / "MANIFEST.json"
+    if not manifest.exists():
+        return frozenset()
+    return frozenset(e["file"] for e in json.loads(manifest.read_text(encoding="utf-8"))["datasets"])
+
+
 @dataclass(frozen=True)
 class Unit:
     id: str
@@ -247,6 +263,7 @@ class Lab:
     packages: tuple[str, ...]
     completion: bool = False  # project rung 2: page code has ___ blanks; the twin is the solution
     snippet: bool = False  # checked solution code (data-check): run locally, not in the page's lab runner
+    files: tuple[str, ...] = ()  # data-files: snapshots under MARKET_DATA, read as data/<file>
 
     @property
     def unit(self) -> str:
@@ -272,6 +289,7 @@ def labs_in(page: Page) -> list[Lab]:
                 tolerance=float(expected.get("data-tolerance", "0") or 0) if expected else 0.0,
                 packages=tuple(section.get("data-packages").split()),
                 completion="completion" in section.classes,
+                files=tuple(section.get("data-files").split()),
             )
         )
     return found
@@ -332,3 +350,20 @@ def visible_text(node: Node) -> str:
     text = html.unescape(" ".join(parts))
     text = re.sub(r"\\\[.*?\\\]", " ", text, flags=re.DOTALL)
     return re.sub(r"\\\(.*?\\\)", " ", text, flags=re.DOTALL)
+
+
+@contextmanager
+def twin_workdir(files: tuple[str, ...] = (), source: Path = MARKET_DATA) -> Iterator[Path]:
+    """A fresh working directory for running a lab twin: data/ holds copies of exactly the lab's data-files.
+
+    The browser runtime writes the same files, and only those, to data/ before a lab runs (py-worker.js), so a twin
+    that opens a file its section does not declare fails here as it would on the page. Copies, not links, so a twin
+    cannot alter a committed snapshot. A name with no snapshot is skipped; the twin's open() then fails.
+    """
+    with tempfile.TemporaryDirectory(prefix="lab-") as tmp:
+        work = Path(tmp)
+        (work / "data").mkdir()
+        for name in files:
+            if Path(name).name == name and (source / name).is_file():
+                shutil.copyfile(source / name, work / "data" / name)
+        yield work

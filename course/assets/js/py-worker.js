@@ -3,8 +3,9 @@
 // vendored (course/assets/vendor/pyodide, locked by SHA-256); nothing is fetched
 // from a CDN.
 //
-// Protocol: {id, type: "run", code, packages}            -> {id, stdout, stderr, error, ms}
+// Protocol: {id, type: "run", code, packages, files}     -> {id, stdout, stderr, error, ms}
 //           {id, type: "pytest", files, test, env, packages, workdir} -> {id, exit, results, stdout, error, ms}
+// A run's files are [{name, bytes}], the embedded market data its lab names in data-files (labs.js).
 
 import { loadPyodide } from "../vendor/pyodide/pyodide.mjs";
 
@@ -28,9 +29,42 @@ async function prepare(py, packages, code) {
   if (code) await py.loadPackagesFromImports(code, { messageCallback: () => {} });
 }
 
-async function run({ code, packages }) {
+// Every lab runs in a fresh LAB_DIR whose data/ holds exactly the files its section names in data-files, so
+// open("data/<file>") reads the same bytes here as in the lab's local twin (tools/coursekit.py twin_workdir).
+const LAB_DIR = "/home/pyodide/lab";
+
+function remove(py, path) {
+  if (!py.FS.analyzePath(path).exists) return;
+  if (py.FS.isDir(py.FS.stat(path).mode)) {
+    for (const name of py.FS.readdir(path)) {
+      if (name !== "." && name !== "..") remove(py, `${path}/${name}`);
+    }
+    py.FS.rmdir(path);
+  } else {
+    py.FS.unlink(path);
+  }
+}
+
+function stage(py, files) {
+  const os = py.pyimport("os");
+  try {
+    os.chdir("/");
+    remove(py, LAB_DIR);
+    py.FS.mkdirTree(`${LAB_DIR}/data`);
+    for (const file of files || []) {
+      if (!/^[A-Za-z0-9_.-]+$/.test(file.name)) throw new Error(`bad data file name ${JSON.stringify(file.name)}`);
+      py.FS.writeFile(`${LAB_DIR}/data/${file.name}`, file.bytes);
+    }
+    os.chdir(LAB_DIR);
+  } finally {
+    os.destroy();
+  }
+}
+
+async function run({ code, packages, files }) {
   const py = await boot();
   await prepare(py, packages, code);
+  stage(py, files);
   out = [];
   err = [];
   const namespace = py.globals.get("dict")();
