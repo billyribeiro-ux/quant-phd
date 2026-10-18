@@ -175,6 +175,24 @@ bar widths `74%`/`26%` → `70%`/`30%`; `68 h lessons · 24 h project (26%)` →
 each.` → `…seven to eleven…`; card kickers `L05 · 10 h` → `L05 · 11 h`,
 `L08 · 7 h` → `L08 · 8 h`.
 
+## 4a. BLUEPRINT.md and README.md: the quoted credential hours
+
+`tests/test_docs_figures.py` (integrate-r7 at e791141) holds these tables to
+`curriculum.json`, so the +8 h moves them. With the edits of section 2 applied,
+the test fails on seven rows until they read as below; with these replacements
+it passes. Copied from `curriculum.json` after `render_curriculum.py`; recompute
+centrally together with the module total.
+
+| File, row | Old | New |
+|---|---|---|
+| BLUEPRINT.md, Master's in Finance / Financial Engineering | `\| 7,658 \| ≈170 credits \| 3.55 \|` | `\| 7,666 \| ≈170 credits \| 3.55 \|` |
+| BLUEPRINT.md, PhD in Finance | `\| 9,183 \| ≈204 credits \| 4.25 \|` | `\| 9,191 \| ≈204 credits \| 4.26 \|` |
+| BLUEPRINT.md, + all M tier (Master's-equivalent breadth) | `\| 11,147 \| 5.16 \|` | `\| 11,155 \| 5.16 \|` |
+| BLUEPRINT.md, + all D tier, quals (Doctoral Candidate) | `\| 12,507 \| 5.79 \|` | `\| 12,515 \| 5.79 \|` |
+| BLUEPRINT.md, + thesis (Doctoral) | `\| 13,707 \| 6.35 \|` | `\| 13,715 \| 6.35 \|` |
+| README.md, Master's in Finance / Financial Engineering | `\| 7,658 \| 3.55 \|` | `\| 7,666 \| 3.55 \|` |
+| README.md, PhD in Finance | `\| 9,183 \| 4.25 \|` | `\| 9,191 \| 4.26 \|` |
+
 ## 5. New cards for `course/modules/S/S7/cards.json`
 
 Ids to be assigned after S7-c163 (the last id on the merged base). Grade T cards need no citation; the two C
@@ -218,7 +236,10 @@ changed after its results were seen.
 
 Final run on 2026-10-18, on this branch merged with integrate-r7 at 12847fd and
 7bcf0e8 (which contain `claude/phase0-foundations-s7-pilot` at 8722a86), with
-every edit of sections 1–4 applied and the cards of section 5 not applied. The
+every edit of sections 1–4 applied and the cards of section 5 not applied.
+integrate-r7 then gained e791141 (documentation figures and their test); after
+merging it I re-ran `pytest` with the edits of sections 1–4a applied (result in
+the pytest row); its other changes touch no gate input of this branch. The
 central edits were then reverted with `git checkout` on the seven files; the
 branch commits none of them. Outputs as printed:
 
@@ -227,7 +248,7 @@ branch commits none of them. Outputs as printed:
 | `ruff check .` | `All checks passed!` |
 | `ruff format --check .` | `79 files already formatted` |
 | `mypy` (strict) | `Success: no issues found in 75 source files` |
-| `pytest` | exit 0, 247 tests, including `test_memo_exemplars.py` (12), the new `test_page_checks.py` cases (8), `test_labs.py`'s real-data lab tests (3 + the embed test), and `tests/js/rubric.test.mjs` (9 Node tests) through `test_js.py` |
+| `pytest` | exit 0: 247 tests before e791141 and 261 after it (its 14 docs-figure tests pass with section 4a applied), including `test_memo_exemplars.py` (12), the new `test_page_checks.py` cases (8), `test_labs.py`'s real-data lab tests (3 + the embed test), and `tests/js/rubric.test.mjs` (9 Node tests) through `test_js.py` |
 | `render_curriculum.py` | `curriculum valid: 25 parts, 134 modules, 157 projects, 13,715 h (6.35 FTE years)`; a second run left `CURRICULUM.md` and `curriculum.json` byte-identical |
 | `build_site.py --check` | `site data current: 6 outputs` |
 | `verify_refs.py --offline` | `offline integrity: 548 entries, 0 problems` (no live run: no new source was admitted) |
