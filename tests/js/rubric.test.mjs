@@ -101,6 +101,33 @@ test("a store that throws costs persistence, never the form", async () => {
   assert.equal(await saveRecord("rubric:x", {}, synchronous), false);
 });
 
+test("a store that refuses a write quietly is reported as not saved", async () => {
+  // store.js catches backend errors (quota, blocked storage) and resolves put to false instead of throwing.
+  const refusing = {
+    async get() {
+      return undefined;
+    },
+    async put() {
+      return false;
+    },
+  };
+  assert.equal(await saveRecord("rubric:x", emptyRecord(CRITERIA, TARGETS), refusing), false);
+  const accepting = {
+    async get() {
+      return undefined;
+    },
+    async put() {
+      return true;
+    },
+  };
+  assert.equal(await saveRecord("rubric:x", emptyRecord(CRITERIA, TARGETS), accepting), true);
+});
+
+test("store.js put reports whether the write was accepted", async () => {
+  assert.equal(await store.put("kv", "probe:put", 1), true, "the memory backend accepts every write");
+  assert.equal(await store.get("kv", "probe:put"), 1);
+});
+
 test("scores round-trip through store.js, which falls back to memory without IndexedDB", async () => {
   const record = emptyRecord(CRITERIA, TARGETS);
   record.scores.self.C1 = 3;
