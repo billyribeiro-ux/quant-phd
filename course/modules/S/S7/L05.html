@@ -707,11 +707,11 @@ rho  procedure  P(FDP&gt;0.2)  mean_FDP  true_discoveries
 
       <p>The data are spot rates, and a spot return is not what a currency position earns. Quote the rate \(S_t\) in dollars per unit of foreign currency. A dollar investor who goes long for one period converts one dollar into \(1/S_{t-1}\) units, deposits them at the foreign interest rate \(i^\ast\) for the period, converts back at \(S_t\), and repays the dollar, borrowed at the dollar rate \(i\). The excess return per dollar is
       \[ \frac{(1+i^\ast)\,S_t}{S_{t-1}} - (1+i) = r_t + (i^\ast - i) + i^\ast r_t, \qquad r_t = \frac{S_t}{S_{t-1}} - 1, \tag{4}\]
-      as expanding \((1+i^\ast)(1+r_t) - (1+i)\) shows, and a short position earns the negative. The files hold \(r_t\) only. A rule with position \(w_t \in \{-1, 1\}\) earns \(w_t r_t\) in the lab, and its tradable excess return differs by three terms. The carry \(w_t(i^\ast - i)\) raises the rule's mean when it tends to be long the currency with the higher interest rate and lowers it otherwise. The cross term \(w_t i^\ast r_t\) is a product of two per-period rates. Trading costs lower every rule's return, and lower most the returns of the rules that trade most. Every conclusion below is therefore a conclusion about spot returns.</p>
+      as expanding \((1+i^\ast)(1+r_t) - (1+i)\) shows, and a short position earns the negative. The files hold \(r_t\) only. A rule with position \(w_t \in \{-1, 0, 1\}\) earns \(w_t r_t\) in the lab, and its tradable excess return differs by three terms. The carry \(w_t(i^\ast - i)\) raises the rule's mean when it tends to be long the currency with the higher interest rate and lowers it otherwise. The cross term \(w_t i^\ast r_t\) is a product of two per-period rates. Trading costs lower every rule's return, and lower most the returns of the rules that trade most. Every conclusion below is therefore a conclusion about spot returns.</p>
 
       <section class="lab" id="lab-S7-L05-6" data-runtime="python" data-packages="numpy" data-files="fx_daily.csv">
         <h3>Lab 6 · A rule universe on six exchange rates</h3>
-        <p class="hypothesis">The design was fixed before the code was first run. The data are daily spot rates in dollars per unit of six currencies (<code>fx_daily.csv</code>: Board of Governors of the Federal Reserve System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), retrieved 2026-10-17). For each currency and each window \(n \in \{10, 20, 50, 100, 200\}\) days, a rule is long the currency on day \(t\) when the previous day's rate lies above its average over the previous \(n\) days, and short when it lies below: \(K = 30\) rules, evaluated on the same days. The benchmark is cash, so each rule's differential is its spot return \(w_t r_t\) of (4); means are annualized as 252 times the daily mean. One set of \(B = 1{,}000\) joint <a class="concept" data-concept="stationary-bootstrap" href="L04.html#def-stationary-bootstrap">stationary-bootstrap</a> draws with mean block length 10, the choice of Lesson 4's labs and the A8 default, feeds the <a class="concept" data-concept="reality-check" href="L04.html#def-reality-check">Reality Check</a>, the SPA-style test of <a class="concept" data-concept="superior-predictive-ability" href="L04.html#def-superior-predictive-ability">Lesson 4, Definition 6.1</a>, StepM at 5% and the 95% sup-t band; block lengths 5 and 20 are checks (§9). If no rule has an edge in spot terms, every procedure should reject nothing, and the per-rule one-sided 5% tests should reject \(30 \times 0.05 = 1.5\) rules on average by chance, more or fewer in one sample because the rules are correlated. A rule StepM rejects should have a band interval that excludes zero only if its t-statistic also clears the band's larger critical value (Proposition 6.4).</p>
+        <p class="hypothesis">The design was fixed before the code was first run. The data are daily spot rates in dollars per unit of six currencies (<code>fx_daily.csv</code>: Board of Governors of the Federal Reserve System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), retrieved 2026-10-17). For each currency and each window \(n \in \{10, 20, 50, 100, 200\}\) days, a rule is long the currency on day \(t\) when the previous day's rate lies above its average over the previous \(n\) days, short when it lies below, and flat when the two are equal: \(K = 30\) rules, evaluated on the same days. The comparison is exact, in integers scaled from the published decimals: an average computed in floating point would turn a tie into a long or short position by rounding noise. The benchmark is cash, so each rule's differential is its spot return \(w_t r_t\) of (4); means are annualized as 252 times the daily mean. One set of \(B = 1{,}000\) joint <a class="concept" data-concept="stationary-bootstrap" href="L04.html#def-stationary-bootstrap">stationary-bootstrap</a> draws with mean block length 10, the choice of Lesson 4's labs and the A8 default, feeds the <a class="concept" data-concept="reality-check" href="L04.html#def-reality-check">Reality Check</a>, the SPA-style test of <a class="concept" data-concept="superior-predictive-ability" href="L04.html#def-superior-predictive-ability">Lesson 4, Definition 6.1</a>, StepM at 5% and the 95% sup-t band; block lengths 5 and 20 are checks (§9). If no rule has an edge in spot terms, every procedure should reject nothing, and the per-rule one-sided 5% tests should reject \(30 \times 0.05 = 1.5\) rules on average by chance, more or fewer in one sample because the rules are correlated. A rule StepM rejects should have a band interval that excludes zero only if its t-statistic also clears the band's larger critical value (Proposition 6.4).</p>
         <pre><code class="language-python" data-run>import csv
 import math
 from pathlib import Path
@@ -727,23 +727,36 @@ currencies, days = rows[0][1:], [row[0] for row in rows[1:]]
 prices = np.array([[float(v) for v in row[1:]] for row in rows[1:]])
 print(f"fx_daily.csv: {len(days)} days from {days[0]} to {days[-1]}, {len(currencies)} currencies")
 
+
+def exact(column: list[str]) -&gt; NDArray[np.int64]:
+    """The published decimals as integers: each value times 10 to the column's largest number of decimal places."""
+    places = max(len(v.partition(".")[2]) for v in column)
+    digits = [int(v.replace(".", "") + "0" * (places - len(v.partition(".")[2]))) for v in column]
+    return np.array(digits, dtype=np.int64)  # int64 everywhere: the window sums exceed 32 bits
+
+
 # The universe, fixed before running: on day t a rule is long (short) the currency when the previous day's rate
-# lies above (below) its moving average over the previous n days. Benchmark: cash, so each differential is the
-# rule's spot return; the interest differential and trading costs are not in the data.
+# lies above (below) its moving average over the previous n days, and flat when the two are equal. Benchmark:
+# cash, so each differential is the rule's spot return; the interest differential and trading costs are not in
+# the data. The comparison is made in integers scaled from the published decimals, so a tie is exactly zero: a
+# floating-point average would break it by rounding noise.
 windows = (10, 20, 50, 100, 200)
 t = np.arange(max(windows), len(days))  # the first day on which every rule has a signal, to the last
 spot = prices[t] / prices[t - 1] - 1.0
-running = np.vstack([np.zeros((1, len(currencies))), np.cumsum(prices, axis=0)])
-names, columns = [], []
+names, columns, ties = [], [], 0
 for c, currency in enumerate(currencies):
+    scaled = exact([row[c + 1] for row in rows[1:]])
+    running = np.concatenate([np.zeros(1, dtype=np.int64), np.cumsum(scaled, dtype=np.int64)])
     for n in windows:
-        average = (running[t, c] - running[t - n, c]) / n  # mean rate over days t - n .. t - 1
-        columns.append(np.sign(prices[t - 1, c] - average) * spot[:, c])
+        gap = n * scaled[t - 1] - (running[t] - running[t - n])  # n times (rate - its average over t - n .. t - 1)
+        columns.append(np.sign(gap) * spot[:, c])
         names.append(f"{currency}-MA{n}")
+        ties += int((gap == 0).sum())
 d = np.column_stack(columns)
 n_obs, n_rules = d.shape
 corr = np.corrcoef(d, rowvar=False)[~np.eye(n_rules, dtype=bool)].mean()
 print(f"{n_rules} rules over {n_obs} days from {days[t[0]]} to {days[-1]}, mean pairwise correlation {corr:.3f}")
+print(f"rule-days on which the rate equals its average exactly, held flat: {ties}")
 
 means, se = d.mean(axis=0), d.std(axis=0, ddof=1) / math.sqrt(n_obs)
 t_obs = means / se
@@ -831,24 +844,25 @@ for mean_block in (5.0, 20.0):
     print(f"Reality Check p {reality_check(boot_mean):.3f}")</code></pre>
         <pre class="expected" data-tolerance="1e-6">fx_daily.csv: 6706 days from 2000-01-03 to 2026-09-30, 6 currencies
 30 rules over 6506 days from 2000-10-17 to 2026-09-30, mean pairwise correlation 0.221
+rule-days on which the rate equals its average exactly, held flat: 14
 t-statistics of the rules' mean spot returns (rows: currency; columns: moving-average days)
 currency MA10 MA20 MA50 MA100 MA200
-AUD -0.262 0.026 0.149 -0.612 0.258
+AUD -0.232 0.021 0.134 -0.612 0.258
 CAD -1.217 -1.112 -0.412 0.123 -0.170
 CHF -1.013 -1.249 -1.326 -1.100 -0.563
-EUR 0.126 -0.819 1.105 0.687 0.890
-GBP -0.686 -1.013 -0.573 0.409 0.195
+EUR 0.119 -0.811 1.105 0.687 0.890
+GBP -0.706 -1.013 -0.573 0.409 0.195
 JPY -0.802 0.181 0.048 0.603 0.402
 one-sided 5% critical values: per rule 1.645 Holm's first step 2.935
 StepM first step 2.837 two-sided sup-t band 3.032
 rejections: per rule 0 StepM 0 after 1 step(s)
-Reality Check p 0.852 SPA-style p 0.821 with 0 rules recentred
+Reality Check p 0.853 SPA-style p 0.821 with 0 rules recentred
 95% sup-t band in percent per year: best rule EUR-MA50 mean 1.97 from -3.43 to 7.36
 band half-widths from 5.04 to 7.26 percent per year
 bands above zero 0 below zero 0
-mean block 5: StepM first step 2.799 rejects 0 Reality Check p 0.876
-mean block 20: StepM first step 2.772 rejects 0 Reality Check p 0.854</pre>
-        <p class="interpretation">Nothing survives, and nothing needed a multiplicity correction to fail. The largest t-statistic, 1.105 for EUR-MA50, does not clear even the per-rule 1.645, so the per-rule tests reject none of the 30 rules against the 1.5 expected by chance. The bars that account for the search are far higher: 2.935 for Holm's first step, 2.837 for StepM's, lower as the rules' positive dependence predicts (mean correlation 0.221; §5), and 3.032 for the two-sided band, which must cover every mean (Proposition 6.4). The Reality Check p-value is 0.852 and the SPA-style p-value 0.821; no rule's mean lies far enough below zero to be recentred, so the two differ only through studentization. The band is the informative output. The best rule's mean spot return, 1.97% a year, has a simultaneous interval from −3.43% to 7.36%, and every rule's interval contains zero with a half-width between 5.04 and 7.26 percentage points a year, so each spans at least 10.08 points. Daily data from 2000-10-17 to 2026-09-30 do not pin down the spot-return mean of any of these rules. The verdict is the same at mean block lengths 5 and 20. Two limits apply. The returns are spot returns, not tradable excess returns: by (4) the omitted carry could move any rule's mean in either direction by an amount these files cannot measure, and costs would lower every rule. And the verdict covers these 30 rules on these six rates over this sample; it says nothing about rules outside the universe, which is why the universe was fixed before the first run.</p>
+mean block 5: StepM first step 2.799 rejects 0 Reality Check p 0.874
+mean block 20: StepM first step 2.771 rejects 0 Reality Check p 0.854</pre>
+        <p class="interpretation">Nothing survives, and nothing needed a multiplicity correction to fail. The largest t-statistic, 1.105 for EUR-MA50, does not clear even the per-rule 1.645, so the per-rule tests reject none of the 30 rules against the 1.5 expected by chance. The bars that account for the search are far higher: 2.935 for Holm's first step, 2.837 for StepM's, lower as the rules' positive dependence predicts (mean correlation 0.221; §5), and 3.032 for the two-sided band, which must cover every mean (Proposition 6.4). The Reality Check p-value is 0.853 and the SPA-style p-value 0.821; no rule's mean lies far enough below zero to be recentred, so the two differ only through studentization. The band is the informative output. The best rule's mean spot return, 1.97% a year, has a simultaneous interval from −3.43% to 7.36%, and every rule's interval contains zero with a half-width between 5.04 and 7.26 percentage points a year, so each spans at least 10.08 points. Daily data from 2000-10-17 to 2026-09-30 do not pin down the spot-return mean of any of these rules. The verdict is the same at mean block lengths 5 and 20. On 14 rule-days a rate equalled its moving average exactly in the published decimals, and those rules held no position, as the design says; an average computed in floating point would have broken those ties by rounding noise and shifted six of the t-statistics, though none of the conclusions. Two limits apply. The returns are spot returns, not tradable excess returns: by (4) the omitted carry could move any rule's mean in either direction by an amount these files cannot measure, and costs would lower every rule. And the verdict covers these 30 rules on these six rates over this sample; it says nothing about rules outside the universe, which is why the universe was fixed before the first run.</p>
       </section>
 
       <section class="canon-breaks" id="canon-breaks">
