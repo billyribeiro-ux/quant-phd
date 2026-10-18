@@ -5,7 +5,8 @@
   independent project, stretch); studios carry rung 3 only
 * rung 2 is graded instantly: a completion lab (``.lab.completion``) or a quiz
 * the specification names context, inputs, required outputs, constraints and
-  the grading mode, and the grading mode matches the curriculum
+  the grading mode, and the grading mode matches the curriculum: autograder,
+  rubric, or both (BLUEPRINT §5.2), in which case the entry names both
 * the time budget's components sum to the declared project hours, which equal
   the hub's figure
 * autograded projects: a grader panel whose files exist, an instance generator
@@ -31,6 +32,22 @@ from coursekit import ROOT, Unit, built_units, load_page, registry_keys, unit
 
 RUNGS = ("worked example", "completion", "independent", "stretch")
 SPEC_TERMS = ("context", "inputs", "required outputs", "constraints", "grading")
+
+
+# What the spec's grading entry must say for each curriculum grading mode (BLUEPRINT §5.2).
+GRADING_WORDS = {"autograder": ("autograd",), "rubric": ("rubric",), "both": ("autograd", "rubric")}
+
+
+def grading_problems(grading: str, mode: str) -> list[str]:
+    """The spec's grading entry must name the curriculum's mode; for "both", the autograder and the rubric."""
+    text = mode.lower()
+    missing = [word for word in GRADING_WORDS.get(grading, ()) if word not in text]
+    if not missing:
+        return []
+    if grading == "both":
+        named = " and ".join("autograder" if w == "autograd" else w for w in missing)
+        return [f"the curriculum grades this project by both autograder and rubric; the spec must name the {named}"]
+    return [f"the curriculum grades this project by {grading}; the spec must say so"]
 
 
 def number(text: str) -> float | None:
@@ -62,10 +79,8 @@ def check_unit(u: Unit) -> list[str]:
             problems.append(f"the specification has no '{term}' entry")
     pairs = zip(spec.select("dt"), spec.select("dd"), strict=False) if spec else iter(())
     mode = next((dd for dt, dd in pairs if "grading" in dt.text().lower()), None)
-    if mode is not None and grading == "autograder" and "autograd" not in mode.text().lower():
-        problems.append("the curriculum grades this project by autograder; the spec must say so")
-    if mode is not None and grading == "rubric" and "rubric" not in mode.text().lower():
-        problems.append("the curriculum grades this project by rubric; the spec must say so")
+    if mode is not None:
+        problems.extend(grading_problems(grading, mode.text()))
 
     main = page.dom.first("main")
     declared = float(main.get("data-hours-project") or "nan") if main else float("nan")

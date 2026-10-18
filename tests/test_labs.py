@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -48,8 +49,7 @@ def test_refresh_re_marks_labs_but_keeps_completion_blanks() -> None:
 
 
 LISTING = 'from pathlib import Path\n\nprint(sorted(p.name for p in Path("data").iterdir()))\n'
-DEMO = ROOT / "tests" / "labs" / "S7" / "draft-realdata-check.py"
-SNAPSHOTS = ("fx_daily.csv", "fx_monthly.csv", "ust_daily.csv")
+TWINS = ROOT / "tests" / "labs" / "S7"
 
 
 def data_lab(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, code: str, files: tuple[str, ...]) -> Lab:
@@ -88,37 +88,48 @@ def test_an_undeclared_data_file_is_reported(tmp_path: Path, monkeypatch: pytest
     assert any("not embedded snapshots" in p for p in check_lab(lab))
 
 
-def demo_output() -> str:
-    with twin_workdir(SNAPSHOTS) as work:
+# The real-data labs: each twin's first line reports the snapshot it read, as MANIFEST records it.
+REAL_DATA_LABS = {
+    "lab-S7-L05-6": ("fx_daily.csv",),
+    "lab-S7-L08-4": ("fx_monthly.csv",),
+    "lab-S7-project-3": ("fx_monthly.csv",),
+}
+
+
+def twin_output(lab_id: str) -> str:
+    """The twin's stdout, run as run_labs.py runs it, in a directory whose data/ holds exactly its data-files."""
+    with twin_workdir(REAL_DATA_LABS[lab_id]) as work:
         result = subprocess.run(
-            [sys.executable, "-I", "-W", "error", str(DEMO)], capture_output=True, text=True, check=True, cwd=work
+            [sys.executable, "-I", "-W", "error", str(TWINS / f"{lab_id}.py")],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=work,
         )
     assert result.stderr == ""
     return result.stdout
 
 
-def test_the_real_data_demo_twin_reports_what_manifest_records() -> None:
-    lines = demo_output().splitlines()
-    manifest = {e["file"]: e for e in json.loads((MARKET_DATA / "MANIFEST.json").read_text())["datasets"]}
-    for line in lines[1 : 1 + len(SNAPSHOTS)]:
-        name, rows, columns, first, last, _ = line.split()
-        entry = manifest[name]
-        assert (int(rows), int(columns), first, last) == (
-            entry["rows"],
-            len(entry["columns"]),
-            entry["first"],
-            entry["last"],
-        )
+@pytest.mark.parametrize("lab_id", sorted(REAL_DATA_LABS))
+def test_each_real_data_lab_reports_what_manifest_records(lab_id: str) -> None:
+    pages = {lab.id: lab for lab in all_labs()}
+    assert pages[lab_id].files == REAL_DATA_LABS[lab_id], "the page's data-files and this test must agree"
+    first = twin_output(lab_id).splitlines()[0]
+    found = re.match(r"(\S+): (\d+) (?:days|months) from (\S+) to ([^,\s]+)", first)
+    assert found, f"{lab_id} must open by reporting its snapshot: {first!r}"
+    name, rows, start, end = found.groups()
+    entry = {e["file"]: e for e in json.loads((MARKET_DATA / "MANIFEST.json").read_text())["datasets"]}[name]
+    assert (int(rows), start, end) == (entry["rows"], entry["first"], entry["last"])
 
 
 def test_embed_labs_runs_a_twin_with_its_data_files(tmp_path: Path) -> None:
     page = tmp_path / "L09.html"
     page.write_text(
-        '<html data-unit="S7"><section class="lab" id="draft-realdata-check" data-runtime="python" '
-        f'data-files="{" ".join(SNAPSHOTS)}"><pre><code class="language-python" data-run>'
-        "@@LAB:draft-realdata-check.py@@</code></pre>"
-        '<pre class="expected" data-tolerance="1e-9">@@OUT:draft-realdata-check.py@@</pre></section></html>'
+        '<html data-unit="S7"><section class="lab" id="lab-S7-project-3" data-runtime="python" '
+        'data-files="fx_monthly.csv"><pre><code class="language-python" data-run>'
+        "@@LAB:lab-S7-project-3.py@@</code></pre>"
+        '<pre class="expected" data-tolerance="1e-9">@@OUT:lab-S7-project-3.py@@</pre></section></html>'
     )
     assert embed(page) == 2
     expected = load_page(page).dom.first("pre", "expected")
-    assert expected is not None and expected.text() == demo_output().rstrip("\n")
+    assert expected is not None and expected.text() == twin_output("lab-S7-project-3").rstrip("\n")

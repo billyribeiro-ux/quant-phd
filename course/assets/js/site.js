@@ -160,6 +160,10 @@ async function main() {
   for (const panel of document.querySelectorAll(".grader-panel[data-unit]")) {
     await step("grader", async () => (await import("./grader.js")).initGrader(panel));
   }
+  for (const form of document.querySelectorAll("section.rubric-self[data-rubric]")) {
+    // Rubric-graded work: self-assessment, then calibration against the annotated exemplars (rubric.js).
+    await step("rubric", async () => (await import("./rubric.js")).initRubric(form));
+  }
   if (document.querySelector("[data-program-map]")) {
     await step("map", async () => (await import("./map.js")).initMap(root));
   }

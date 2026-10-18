@@ -159,7 +159,8 @@ function comparisonTable(criteria, record, exemplars) {
   const head = el("tr");
   head.append(el("th", { scope: "col" }, "Criterion"), el("th", { scope: "col", class: "num" }, "Your memo"));
   for (const e of exemplars) {
-    head.append(el("th", { scope: "col", class: "num" }, `${e.label}: you`), el("th", { scope: "col", class: "num" }, "official"));
+    head.append(el("th", { scope: "col", class: "num" }, `${e.label}: you`));
+    head.append(el("th", { scope: "col", class: "num" }, `${e.label}: official`));
   }
   table.append(el("thead"));
   table.tHead.append(head);
@@ -212,21 +213,25 @@ export async function initRubric(section, { store = defaultStore } = {}) {
   const blocks = [{ id: SELF, label: "Your memo" }, ...exemplars];
   for (const target of blocks) {
     const box = el("fieldset", { class: "rubric-target" });
-    box.append(el("legend", {}, target.id === SELF ? "Your memo" : `${target.label}, scored before you reveal its annotations`));
-    for (const criterion of criteria) box.append(radioGroup(prefix, target.id, criterion, record.scores[target.id][criterion.id]));
+    const title = target.id === SELF ? "Your memo" : `${target.label}, scored before you reveal its annotations`;
+    box.append(el("legend", {}, title));
+    for (const criterion of criteria) {
+      box.append(radioGroup(prefix, target.id, criterion, record.scores[target.id][criterion.id]));
+    }
     form.append(box);
   }
   const status = el("p", { class: "rubric-status", role: "status", "aria-live": "polite" });
   const actions = el("div", { class: "rubric-actions" });
-  const reveal = el("button", { type: "button", class: "button" }, "Reveal the official scoring");
-  const clear = el("button", { type: "button", class: "button secondary" }, "Clear my scores");
+  const reveal = el("button", { type: "button", class: "button primary" }, "Reveal the official scoring");
+  const clear = el("button", { type: "button", class: "button" }, "Clear my scores");
   actions.append(reveal, clear);
   const results = el("div", { class: "rubric-results" });
   host.append(form, actions, status, results);
 
   const persist = async (message) => {
     const ok = await saveRecord(key, record, store);
-    status.textContent = ok && store.persistent !== false ? message : `${message} Not kept: this browser is not storing data for the course.`;
+    const kept = ok && store.persistent !== false;
+    status.textContent = kept ? message : `${message} Not kept: this browser is not storing data for the course.`;
   };
 
   const render = () => {
@@ -239,10 +244,13 @@ export async function initRubric(section, { store = defaultStore } = {}) {
     const wrap = el("div", { class: "table-wrap" });
     wrap.append(compareTable);
     results.append(wrap);
-    for (const [i, e] of exemplars.entries()) results.append(el("p", { class: "rubric-summary" }, summarize(e.label, comparisons[i])));
-    const generous = comparisons.flatMap((c) => c.higher);
+    for (const [i, e] of exemplars.entries()) {
+      results.append(el("p", { class: "rubric-summary" }, summarize(e.label, comparisons[i])));
+    }
+    const generous = [...new Set(comparisons.flatMap((c) => c.higher))];
     if (generous.length) {
-      results.append(el("p", { class: "rubric-summary" }, `Where you were more generous than the rubric (${list([...new Set(generous)])}), re-read your own memo against that criterion's descriptors before you keep your score.`));
+      const advice = `You were more generous than the rubric on ${list(generous)}: re-read your own memo against those descriptors before you keep your score.`;
+      results.append(el("p", { class: "rubric-summary" }, advice));
     }
     const label = el("label", { class: "rubric-copy" }, "Summary to keep as memo/self_assessment.md");
     const text = el("textarea", { readonly: "", rows: String(criteria.length + exemplars.length + 4) });

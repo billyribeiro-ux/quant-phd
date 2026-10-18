@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from check_pages import check_code, check_data_files, check_figures
+from check_projects import grading_problems
 from coursekit import load_page
 
 D3 = '<script defer src="../../../assets/vendor/d3/d3.min.js"></script>'
@@ -137,3 +138,24 @@ def test_a_lab_naming_an_embedded_snapshot_passes(tmp_path: Path) -> None:
 def test_each_data_files_fault_is_reported(tmp_path: Path, body: str, expected: str) -> None:
     found = data_problems(tmp_path, body)
     assert any(expected in p for p in found), found
+
+
+@pytest.mark.parametrize(
+    ("grading", "mode", "expected"),
+    [
+        pytest.param("autograder", "Autograded by grader/test_project.py.", None, id="autograder-named"),
+        pytest.param("autograder", "Graded by rubric.", "by autograder", id="autograder-missing"),
+        pytest.param("rubric", "Graded by rubric with exemplars.", None, id="rubric-named"),
+        pytest.param("rubric", "Autograded.", "by rubric", id="rubric-missing"),
+        pytest.param("both", "The code is autograded; the memo is graded by rubric.", None, id="both-named"),
+        pytest.param("both", "Autograded by grader/test_project.py.", "name the rubric", id="both-without-rubric"),
+        pytest.param("both", "Graded by rubric.", "name the autograder", id="both-without-autograder"),
+        pytest.param("both", "Graded by a committee.", "name the autograder and rubric", id="both-without-either"),
+    ],
+)
+def test_the_grading_entry_must_name_the_curriculum_mode(grading: str, mode: str, expected: str | None) -> None:
+    found = grading_problems(grading, mode)
+    if expected is None:
+        assert found == []
+    else:
+        assert len(found) == 1 and expected in found[0], found
