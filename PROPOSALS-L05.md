@@ -313,4 +313,36 @@ and `build_site.py` were run. The gates were then run. Afterwards
 `references/references.json`, the S7 curriculum entry, `CURRICULUM.md`,
 `curriculum/curriculum.json`, `course/assets/data/*`, `course/index.html`,
 `course/concepts.html`, the hub and `cards.json` were restored with
-`git checkout`. The results are in the branch's final report.
+`git checkout`.
+
+The branch already had main (727ed58) merged in. Results with the edits
+applied:
+
+| Gate | Result |
+|---|---|
+| `ruff check .` and `ruff format --check .` | pass |
+| `mypy` (strict) | no issues in 64 source files |
+| `pytest` | 163 passed |
+| `render_curriculum.py`, then `build_site.py --check` | site data current |
+| `check_pages.py --all`, `check_dag.py --all`, `check_projects.py --all` | PASS |
+| `run_labs.py --unit S7` | PASS (33/33) |
+| `verify_refs.py --offline` | 522 entries, 0 problems |
+| `page_smoke.py --unit S7 --pages L05`, with labs and the figure sweep | PASS |
+
+Pyodide lab times in the `page_smoke` run, all under the 10 s limit:
+
+| Lab | Time |
+|---|---|
+| L05-1 | 2.3 s |
+| L05-2 | 4.4 s |
+| L05-3 | 0.3 s |
+| L05-4 | 2.8 s |
+| L05-5 | 0.7 s |
+
+`run_graders.py` and `mutate_graders.py` were not run. No grader file changed.
+
+**Without these edits, the branch fails two gates:**
+
+- `check_pages` fails because L05 declares 10 h and the hub still says 56
+  lesson hours.
+- `check_dag` fails because S7 does not yet introduce the four new concepts.
