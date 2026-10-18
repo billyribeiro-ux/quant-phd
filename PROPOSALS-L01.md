@@ -1,12 +1,14 @@
 # PROPOSALS-L01: central edits for gap G7 (anytime-valid inference), S7 L01
 
-Branch `worktree-agent-a7b15d7e14bc99240`. The lesson (`course/modules/S/S7/L01.html`) and its
-new lab twin (`tests/labs/S7/lab-S7-L01-4.py`) are committed. Everything below is central and is
-**not** in the branch: apply it, then regenerate with `tools/render_curriculum.py` and
-`tools/build_site.py`. Until it is applied, `check_pages --unit S7` fails on the hours split
-(L01 declares 10 h, the hub still says 56 lesson hours, the curriculum 80 h) and on the eight new
-citation keys, which are not yet in the registry. With all of it applied, every gate passed in the
-worktree (see the report).
+Branch `worktree-agent-a7b15d7e14bc99240`, merged with `claude/phase0-foundations-s7-pilot` at
+8722a86. The lesson (`course/modules/S/S7/L01.html`) and its new lab twin
+(`tests/labs/S7/lab-S7-L01-4.py`) are committed. Everything below is central and is **not** in the
+branch: apply it, then regenerate with `tools/render_curriculum.py` and `tools/build_site.py`.
+Until it is applied, the branch alone fails `check_pages --unit S7` on the eight new citation keys
+(not yet in the registry) and on the hours split (L01 declares 10 h; the hub still sums the other
+lessons with L01 at 7 h), and fails `check_dag --unit S7` on the seven new concepts (not yet in
+S7's `introduces`). With all of it applied on the 8722a86 base, every gate passed in the worktree
+(see the report).
 
 ## 1. References admitted
 
@@ -32,7 +34,9 @@ Each was admitted by DOI from Crossref with `tools/add_reference.py` in the work
 # ADDED lan1983discrete -> 10.1093/biomet/70.3.659
 ```
 
-After admission, `tools/verify_refs.py --offline` reported 523 entries, 0 problems.
+I ran the commands first on the original base and again, unchanged, after merging 8722a86; both
+times they produced the same eight keys. None of the eight DOIs was already in the merged registry.
+After admission on the merged base, `tools/verify_refs.py --offline` reported 544 entries, 0 problems.
 
 Notes on admission:
 
@@ -66,9 +70,10 @@ published Statistical Science article would need a locator change.
 
 ## 2. Curriculum edits (`curriculum/01-foundations.yaml`, module S7)
 
-**Hours: 80 → 83.** L01 grows from 7 to 10 study hours; the project stays at 24 h (A8 contract,
-grader and project are unchanged), so lessons go from 56 to 59 h and the project share from 30.0%
-to 28.9%. Justification, itemized for an M-tier student:
+**Hours: L01's `data-hours` goes from 7 to 10** (already in the branch: `<html data-hours="10">`
+and the eyebrow "10 study hours"). The hub split and the module total are yours to recompute; the
+project stays at 24 h (A8 contract, grader and project are unchanged). Justification for +3 h,
+itemized for an M-tier student:
 
 | New material | Estimate |
 |---|---|
@@ -78,10 +83,15 @@ to 28.9%. Justification, itemized for an M-tier student:
 | New misconception and four quiz items | 5 min |
 | **Itemized total** | **165 min ≈ 2.75 h** |
 
-The same itemization of the existing L01 (sections 1–5, Labs 1–3, twelve problems, ten quiz
+The same itemization of the pre-existing L01 (sections 1–5, Labs 1–3, twelve problems, ten quiz
 items) gives about 5.2 h against its declared 7 h, a ratio of 1.35; applied to 2.75 h that is
 3.7 h. I propose +3 h. It is a design target like every other figure; pilot data should recalibrate
 it.
+
+For the gate run only, on the 8722a86 base (S7 86 h, lessons 62 h), I set the hub to
+`data-hours-lessons="65"` and S7 to `hours: 89`; `render_curriculum.py` then reported
+`curriculum valid: 25 parts, 134 modules, 157 projects, 13,704 h (6.34 FTE years)`. Those two
+numbers are not proposals; recompute them with the other workers' changes.
 
 **Introduces** (append to S7's `introduces`; each is defined once in L01 with `<dfn>`):
 
@@ -98,10 +108,10 @@ it.
 No existing concept in the curriculum collides with these ids or labels (checked by searching every
 `curriculum/*.yaml`).
 
-**Uses** (append to S7's `uses`; all are in S7's prerequisite closure and L01 now links them):
+**Uses** (append to S7's `uses`; both are in S7's prerequisite closure and L01 now links them;
+`confidence-interval`, which L01 also links, is already listed on the 8722a86 base):
 
 ```yaml
-          - confidence-interval                  # S1
           - conditional-expectation-elementary   # M4
           - law-of-large-numbers                 # M4
 ```
@@ -119,53 +129,29 @@ No existing concept in the curriculum collides with these ids or labels (checked
           - "Ramdas, Grünwald, Vovk & Shafer (2023), 'Game-Theoretic Statistics and Safe Anytime-Valid Inference', Statistical Science 38(4)"
 ```
 
-**What `render_curriculum.py` reported with these edits** (copied from its output and from
-`git diff -U0 -- CURRICULUM.md`; on the merge base, before any other worker's edits):
-
-```
-curriculum valid: 25 parts, 134 modules, 157 projects, 13,698 h (6.34 FTE years)
-```
-
-| Figure in CURRICULUM.md | Before | After |
-|---|---|---|
-| Concepts (each introduced exactly once) | 1,121 | 1,128 |
-| Total design hours | 13,695 | 13,698 |
-| Master's in Finance / Financial Engineering, hours | 7,646 | 7,649 (≈170 credits, 3.54 FTE years, unchanged) |
-| PhD in Finance, hours | 9,171 | 9,174 (≈204 credits, 4.25, unchanged) |
-| Course map "Financial Econometrics" (S3, S4, S7) | 290 | 293 |
-| Tier M hours | 5,770 | 5,773 |
-| Master's-Equivalent milestone | 11,135 (5.16) | 11,138 (5.16) |
-| Doctoral Candidate milestone | 12,495 (5.78) | 12,498 (5.79) |
-| Doctoral milestone | 13,695 (6.34) | 13,698 (6.34) |
-| Quantitative Researcher track | 4,056 (1.88) | 4,059 (1.88) |
-| Quant Developer track | 3,756 (1.74) | 3,759 (1.74) |
-| Research doctorate path | 5,626 (2.60) | 5,629 (2.61) |
-| S7 line | 80 h | 83 h |
-
-If other G-gap workers also change S7's hours, these figures must be re-rendered from the combined
-sources, not added by hand.
+Append the sources after the last existing S7 source (on 8722a86, "Efron & Morris (1975)").
 
 ## 3. Hub edits (`course/modules/S/S7/index.html`)
 
-Kept out of the branch because every S7 lesson worker touches the same hours line. Required:
+Kept out of the branch because every S7 lesson worker touches the same lines. Recompute
+`data-hours-lessons` centrally (L01 contributes 10 h instead of 7 h). The L01 card:
 
 ```diff
--    <main id="main" class="prose" data-hours-lessons="56" data-hours-project="24">
-+    <main id="main" class="prose" data-hours-lessons="59" data-hours-project="24">
 -<span class="card-kicker">L01 · 7 h</span>
 +<span class="card-kicker">L01 · 10 h</span>
 -...the extreme-value approximation, holdout reuse.</span>
 +...the extreme-value approximation, holdout reuse, and anytime-valid monitoring of a live record.</span>
 ```
 
-Optional (not applied anywhere): an eighth objective, which keeps the hub within 4–8:
+Optional (not applied anywhere): an eighth objective, if the hub still has room within 4–8:
 "**Prove** Ville's inequality and **build** an anytime-valid monitor for a live track record,
 **stating** what its guarantee assumes about the scale and tails of returns."
 
 ## 4. New retrieval cards (`course/modules/S/S7/cards.json`)
 
-Twelve cards for L01, to be renumbered from S7-c109. With them appended as S7-c109 to S7-c120,
-`check_pages --unit S7` passed (cards check included). Theorem cards are grade T; the definition
+Twelve cards for L01, ids S7-cNEW-1 to S7-cNEW-12 for you to renumber. For the gate run on the
+8722a86 base they were appended as S7-c138 to S7-c149, and `check_pages --unit S7` passed
+(cards check included). Theorem cards are grade T; the definition
 and misconception cards carry no grade, like S7-c001 and S7-c009; the lab card names its basis
 exactly as the key-results row does.
 
@@ -209,10 +195,9 @@ S7's own closure grows by M5 and M6 (280 h). I recommend keeping the page as bui
 
 ## 6. Other central items
 
-- **BLUEPRINT.md and README.md quote figures that change** (rule 5 of CLAUDE.md: re-render and copy
-  them; do not type them): BLUEPRINT §1.1 (7,646 and 9,171), §2 milestones table (11,135; 12,495
-  and 5.78; 13,695) and §2 item 2 ("1,121 concepts"); README lines 30, 53, 54 and 65 (1,121;
-  7,646; 9,171).
+- **BLUEPRINT.md and README.md quote computed figures** (credential hours, milestone hours and the
+  concept count) that this change moves: seven new concepts and L01's extra hours. Per rule 5 of
+  CLAUDE.md, re-render and copy them after the central merge; I did not type any.
 - **Regenerate** after applying §§1–4: `CURRICULUM.md`, `curriculum/curriculum.json`,
   `course/assets/data/*`, `course/index.html`, `course/concepts.html`.
 - **benchmarks/S7.md** lists G7 as open; once merged it can point to L01 §6. I did not edit it.
