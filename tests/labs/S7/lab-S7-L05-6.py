@@ -21,7 +21,7 @@ def exact(column: list[str]) -> NDArray[np.int64]:
     return np.array(digits, dtype=np.int64)  # int64 everywhere: the window sums exceed 32 bits
 
 
-# The universe, fixed before running: on day t a rule is long (short) the currency when the previous day's rate
+# The universe: on day t a rule is long (short) the currency when the previous day's rate
 # lies above (below) its moving average over the previous n days, and flat when the two are equal. Benchmark:
 # cash, so each differential is the rule's spot return; the interest differential and trading costs are not in
 # the data. The comparison is made in integers scaled from the published decimals, so a tie is exactly zero: a

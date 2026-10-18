@@ -6,6 +6,9 @@ Two things need central action.
 
 ## 1. Card S7-c167 in `course/modules/S/S7/cards.json`
 
+**Superseded by `PROPOSALS-L08-r7.md`, card S7-c167.** Apply that entry instead of the
+table below.
+
 Its back repeats the PBO reading the verifier failed. Exact replacement (the
 old string occurs once):
 

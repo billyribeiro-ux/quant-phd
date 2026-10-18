@@ -2,8 +2,8 @@
 
 The round-7 verifier failed row `L05-lab-6`: the twin built each moving average
 from a floating-point running sum, so an exact tie between a rate and its
-average, where the pre-registered rule holds no position, was broken by
-rounding noise.
+average, where the stated rule holds no position, was broken by rounding
+noise.
 
 ## What changed on the branch (committed)
 

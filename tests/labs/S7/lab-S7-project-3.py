@@ -21,10 +21,10 @@ grid = list(itertools.product((1, 3, 6, 9, 12), (1, 3, 6, 12), (0, 1)))  # lookb
 first = max(h for _, h, _ in grid) + max(s for _, _, s in grid) + max(lb for lb, _, _ in grid)
 
 
-def tsmom(lookback: int, hold: int, skip: int) -> NDArray[np.float64]:
-    """Monthly spot return, months first..last, of time-series momentum: each currency is held long (short) when
-    its lookback-month log change, ending `skip` months before formation, is positive (negative); positions formed
-    at each of the last `hold` month-ends are averaged, and currencies are equally weighted."""
+def sign_rule(lookback: int, hold: int, skip: int) -> NDArray[np.float64]:
+    """Monthly spot return, months first..last, of one sign rule: each currency is held long (short) when its
+    lookback-month log change, ending `skip` months before formation, is positive (negative); positions formed at
+    each of the last `hold` month-ends are averaged, and currencies are equally weighted."""
     t = np.arange(first, len(months))
     weight = np.zeros((t.size, len(currencies)))
     for h in range(1, hold + 1):
@@ -33,7 +33,7 @@ def tsmom(lookback: int, hold: int, skip: int) -> NDArray[np.float64]:
     return np.asarray((weight / hold * spot[t - 1]).mean(axis=1))
 
 
-trials = np.column_stack([tsmom(*spec) for spec in grid])  # (T, N): the TrialSet's returns, column n = grid[n]
+trials = np.column_stack([sign_rule(*spec) for spec in grid])  # (T, N): the TrialSet's returns, column n = grid[n]
 n_obs, n_trials = trials.shape
 labels = [f"L{lb}-H{h}-skip{s}" for lb, h, s in grid]
 sharpe = trials.mean(axis=0) / trials.std(axis=0, ddof=1)

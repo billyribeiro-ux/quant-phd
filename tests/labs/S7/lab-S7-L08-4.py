@@ -22,10 +22,10 @@ grid = list(itertools.product((1, 3, 6, 9, 12), (1, 3, 6, 12), (0, 1)))  # lookb
 first = max(h for _, h, _ in grid) + max(s for _, _, s in grid) + max(lb for lb, _, _ in grid)
 
 
-def tsmom(lookback: int, hold: int, skip: int) -> NDArray[np.float64]:
-    """Monthly spot return, months first..last, of time-series momentum: each currency is held long (short) when
-    its lookback-month log change, ending `skip` months before formation, is positive (negative); positions formed
-    at each of the last `hold` month-ends are averaged, and currencies are equally weighted."""
+def sign_rule(lookback: int, hold: int, skip: int) -> NDArray[np.float64]:
+    """Monthly spot return, months first..last, of one sign rule: each currency is held long (short) when its
+    lookback-month log change, ending `skip` months before formation, is positive (negative); positions formed at
+    each of the last `hold` month-ends are averaged, and currencies are equally weighted."""
     t = np.arange(first, len(months))
     weight = np.zeros((t.size, len(currencies)))
     for h in range(1, hold + 1):
@@ -77,7 +77,7 @@ def psr(r: NDArray[np.float64], benchmark: float) -> float:
     return phi.cdf((sr - benchmark) / math.sqrt((1.0 - g3 * sr + (g4 - 1.0) / 4.0 * sr**2) / (r.size - 1)))
 
 
-trials = np.column_stack([tsmom(*spec) for spec in grid])
+trials = np.column_stack([sign_rule(*spec) for spec in grid])
 n_obs, n_trials = trials.shape
 srs = sharpe(trials)
 pick = int(np.argmax(srs))
@@ -110,3 +110,77 @@ sr0_eff = expected_max_z(n_eff) / math.sqrt(n_obs)
 print(f"N_eff {n_eff:.2f} and variance 1/T give SR0 {sr0_eff:.4f} per month and DSR {psr(selected, sr0_eff):.4f}")
 for n_blocks in (8, 10, 16):
     print(f"PBO with S = {n_blocks} ({math.comb(n_blocks, n_blocks // 2)} splits): {pbo(trials, n_blocks):.4f}")
+
+
+# This grid's own null. Theorem 4.1 assumes exchangeable trials and independent months, and neither holds here:
+# the rules differ in lookback, holding and skip, and overlapping cohorts tie each month to the ones before it.
+# So resample whole months of the ten currencies' log changes with replacement, which keeps their joint spread
+# and tails but removes every dependence across months (no rule can have an edge), rebuild the price paths and
+# all 40 rules, and recompute the PBO with S = 16 and the in-sample best's DSR. The two functions below give the
+# same numbers as sign_rule() and pbo() faster: signals are summed by cumulative sums, and each split's Sharpe ratios
+# are built from per-block sums.
+def grid_fast(path: NDArray[np.float64]) -> NDArray[np.float64]:
+    """All 40 trials on a log-price path, in grid order, as sign_rule() builds them."""
+    t = np.arange(first, len(path))
+    moves = np.exp(np.diff(path, axis=0)) - 1.0
+    out = np.empty((t.size, len(grid)))
+    for k, (lookback, hold, skip) in enumerate(grid):
+        signal = np.zeros_like(path)
+        signal[lookback:] = np.sign(path[lookback:] - path[:-lookback])  # signal[s] compares months s and s - L
+        total = np.cumsum(signal, axis=0)
+        held = total[t - 1 - skip] - total[t - 1 - skip - hold]  # signals formed at months t - h - skip, h = 1..H
+        out[:, k] = (held / hold * moves[t - 1]).mean(axis=1)
+    return out
+
+
+def halves(n_blocks: int) -> tuple[NDArray[np.float64], NDArray[np.intp]]:
+    """One row per CSCV split, in itertools order (1 for a block in sample), and the row of each split's mirror."""
+    combos = list(itertools.combinations(range(n_blocks), n_blocks // 2))
+    member = np.zeros((len(combos), n_blocks))
+    for row, combo in enumerate(combos):
+        member[row, list(combo)] = 1.0
+    index = {combo: row for row, combo in enumerate(combos)}
+    mirror = [index[tuple(b for b in range(n_blocks) if b not in combo)] for combo in combos]
+    return member, np.array(mirror)
+
+
+def pbo_fast(m: NDArray[np.float64], member: NDArray[np.float64], mirror: NDArray[np.intp]) -> float:
+    """pbo() from per-block sums. Every half's Sharpe ratios come from one matrix product; a split's out-of-sample
+    half is its mirror's in-sample half (Proposition 3.2); ranks need only the order of the Sharpe ratios, which
+    mean * |mean| / variance keeps; and a logit is at most zero exactly when rank <= (N + 1) / 2."""
+    n_blocks = member.shape[1]
+    m = m[m.shape[0] % n_blocks :]
+    size, n = m.shape[0] // n_blocks, m.shape[1]
+    rows = size * (n_blocks // 2)
+    mean = member @ m.reshape(n_blocks, size, n).sum(axis=1) / rows
+    second = member @ (m * m).reshape(n_blocks, size, n).sum(axis=1)
+    half_sharpe = mean * np.abs(mean) / (second - rows * mean**2)  # same order as the Sharpe ratio
+    oos = half_sharpe[mirror]
+    mine = oos[np.arange(len(member)), np.argmax(half_sharpe, axis=1)][:, None]
+    rank = 1 + (oos < mine).sum(axis=1) + 0.5 * ((oos == mine).sum(axis=1) - 1)
+    return float(np.mean(rank <= (n + 1) / 2))
+
+
+observed_pbo, observed_dsr = pbo(trials, 16), psr(selected, sr0)
+sixteen = halves(16)
+same = np.array_equal(grid_fast(log_p), trials) and pbo_fast(trials, *sixteen) == observed_pbo
+print(f"fast builders reproduce the grid and its 16-block PBO exactly: {same}")
+rng = np.random.default_rng(4008)
+changes, n_null = np.diff(log_p, axis=0), 100
+null_pbo, null_dsr = np.empty(n_null), np.empty(n_null)
+for b in range(n_null):
+    draw = changes[rng.integers(0, len(changes), size=len(changes))]
+    resampled = grid_fast(np.vstack([log_p[:1], log_p[0] + np.cumsum(draw, axis=0)]))
+    null_srs = sharpe(resampled)
+    hurdle = math.sqrt(float(np.var(null_srs, ddof=1))) * expected_max_z(n_trials)
+    null_pbo[b] = pbo_fast(resampled, *sixteen)
+    null_dsr[b] = psr(resampled[:, int(np.argmax(null_srs))], hurdle)
+print(
+    f"null from {n_null} grids on resampled months: PBO mean {null_pbo.mean():.3f} sd {null_pbo.std(ddof=1):.3f}",
+    end=" ",
+)
+tail = float(np.mean(null_pbo >= observed_pbo))
+print(f"share at or above {observed_pbo:.4f}: {tail:.3f}", end=" ")
+print(f"(Monte Carlo standard error {math.sqrt(tail * (1 - tail) / n_null):.3f})")
+print(f"  DSR of the in-sample best: median {np.median(null_dsr):.3f}", end=" ")
+print(f"share at or above {observed_dsr:.4f}: {np.mean(null_dsr >= observed_dsr):.3f}")

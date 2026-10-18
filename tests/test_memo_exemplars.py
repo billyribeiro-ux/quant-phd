@@ -74,6 +74,7 @@ def reference() -> ModuleType:
     return module
 
 
+@functools.cache
 def run_twin(name: str) -> dict[str, Any]:
     """The globals of a lab twin, run as run_labs.py runs it: in a directory whose data/ holds fx_monthly.csv."""
     here = Path.cwd()
@@ -135,10 +136,6 @@ def values() -> dict[str, Any]:
     p_values = [1.0 - NormalDist().cdf(float(s) * math.sqrt(n_obs)) for s in sharpe]
     n_blocks = defaults["n_blocks"]
     manifest = {e["file"]: e for e in json.loads((MARKET_DATA / "MANIFEST.json").read_text())["datasets"]}
-    lab2 = load_page(S7 / "L08.html").dom.first(None, None, id="lab-S7-L08-2")
-    expected = lab2.first("pre", "expected") if lab2 is not None else None
-    largest = re.search(r"largest (\d+\.\d+)", expected.text() if expected is not None else "")
-    assert largest is not None, "Lesson 8's Lab 2 output no longer reports its largest pure-noise PBO"
     months = memo["months"]
 
     def checked_rejections(mean_block: float) -> int:
@@ -182,7 +179,6 @@ def values() -> dict[str, Any]:
         "dsr_p": 1.0 - report.dsr,
         "dsr_bar": DSR_BAR,
         "pbo": report.pbo,
-        "pbo_null": math.floor((n_trials + 1) / 2) / n_trials,
         "n_blocks": n_blocks,
         "n_splits": math.comb(n_blocks, n_blocks // 2),
         "block_months": n_obs // n_blocks,
@@ -191,7 +187,6 @@ def values() -> dict[str, Any]:
         "s_check_2": S_CHECKS[1],
         "pbo_check_1": ref.probability_of_backtest_overfitting(trials, S_CHECKS[0]).pbo,
         "pbo_check_2": ref.probability_of_backtest_overfitting(trials, S_CHECKS[1]).pbo,
-        "lab2_null_max": float(largest.group(1)),
         "alpha": defaults["alpha"],
         "q": defaults["q"],
         "n_boot": defaults["n_boot"],
@@ -210,6 +205,9 @@ def values() -> dict[str, Any]:
         "n_eff": lab4["n_eff"],
         "sr0_eff": lab4["sr0_eff"],
         "dsr_eff": lab4["psr"](lab4["selected"], lab4["sr0_eff"]),
+        "null_grids": lab4["n_null"],
+        "null_pbo_mean": float(lab4["null_pbo"].mean()),
+        "null_tail": lab4["tail"],
     }
 
 
