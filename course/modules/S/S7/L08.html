@@ -338,6 +338,142 @@ for n_trials in (2, 20, 200):
       </div>
       <p>The tools are complements, not rivals. <span class="ref" data-cite="bailey2014deflated"></span> deflates the reported statistic. <span class="ref" data-cite="romano2005stepwise"></span> controls the error rate of the decisions. CSCV audits the rule that produced them. A configuration can be a genuine, StepM-significant discovery with a DSR well above one half and still come from a process whose PBO is far from zero: one real edge among many tries, which the process finds in some splits only. Problem R3 builds such a case.</p>
 
+      <h3 id="s6-fx">Both tools on market data: a currency momentum grid</h3>
+
+      <p>Every lab so far knew the truth, because it simulated it. On market data neither the null nor the alternative is known, and the tools are the only judges. The grid below is <em>time-series momentum</em>: hold each asset long or short by the sign of its own past return. <span class="claim" data-grade="B" data-cite="moskowitz2012time" data-locator="Abstract">Moskowitz, Ooi and Pedersen document significant time-series momentum in equity index, currency, commodity and bond futures for each of the 58 liquid instruments they consider, with returns persisting for 1 to 12 months and partially reversing over longer horizons</span>. <span class="claim" data-grade="B" data-cite="huang2020time" data-locator="Title">The evidence is contested: the study of Huang, Li, Wang and Zhou is titled “Time series momentum: Is it there?”</span>. The grid applies the idea to spot exchange rates, which are not the futures returns that study used: Lesson 5, Section 8 shows what a spot return leaves out.</p>
+
+      <section class="lab" id="lab-S7-L08-4" data-runtime="python" data-packages="numpy" data-files="fx_monthly.csv">
+        <h3>Lab 4 · PBO and DSR for 40 momentum rules on ten currencies</h3>
+        <p class="hypothesis">The design was fixed before the code was first run. The data are month-end spot rates in dollars per unit of ten currencies (<code>fx_monthly.csv</code>: Board of Governors of the Federal Reserve System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), retrieved 2026-10-17), from the first month in which all ten have a rate. Each of the \(N = 40\) trials goes long or short every currency by the sign of its log change over the past \(L \in \{1, 3, 6, 9, 12\}\) months, measured up to the formation month or one month before it (a skip of 0 or 1), holds the position for \(H \in \{1, 3, 6, 12\}\) months in overlapping monthly cohorts, and weights the currencies equally. Returns are simple monthly spot returns, and every trial is evaluated on the same months. The selected trial has the highest full-sample Sharpe ratio. PBO uses \(S = 16\), the A8 default, with \(S = 8\) and \(10\) as checks; the DSR follows <a class="concept" data-concept="deflated-sharpe-ratio" href="L07.html#def-deflated-sharpe-ratio">Lesson 7</a>, with the <a class="concept" data-concept="effective-number-of-trials" href="L07.html#def-effective-number-of-trials">effective number of trials</a> as a second pairing. If the grid holds no spot-return edge, Theorem 4.1 puts the PBO near one half, give or take the 0.20 that Lab 2 found for a single history, and the selected trial's DSR should fall far short of 0.95. A strong and persistent trend effect in spot rates would show as a PBO well below one half and a high DSR.</p>
+        <pre><code class="language-python" data-run>import csv
+import itertools
+import math
+from pathlib import Path
+from statistics import NormalDist
+
+import numpy as np
+from numpy.typing import NDArray
+
+# Month-end spot rates, USD per unit of foreign currency (Federal Reserve H.10 noon buying rates in New York).
+with (Path("data") / "fx_monthly.csv").open(newline="", encoding="utf-8") as handle:
+    rows = list(csv.reader(handle))
+currencies, months = rows[0][1:], [row[0] for row in rows[1:]]
+prices = np.array([[float(v) if v else math.nan for v in row[1:]] for row in rows[1:]])
+start = int(np.argmax(~np.isnan(prices).any(axis=1)))  # the first month in which every currency has a rate
+print(f"fx_monthly.csv: {len(months)} months from {months[0]} to {months[-1]}")
+print(f"all {len(currencies)} currencies have a rate from {months[start]}")
+
+months, log_p = months[start:], np.log(prices[start:])
+spot = np.exp(np.diff(log_p, axis=0)) - 1.0  # spot[t - 1]: simple spot return over month t, long the currency
+grid = list(itertools.product((1, 3, 6, 9, 12), (1, 3, 6, 12), (0, 1)))  # lookback, holding, skip, in months
+first = max(h for _, h, _ in grid) + max(s for _, _, s in grid) + max(lb for lb, _, _ in grid)
+
+
+def tsmom(lookback: int, hold: int, skip: int) -&gt; NDArray[np.float64]:
+    """Monthly spot return, months first..last, of time-series momentum: each currency is held long (short) when
+    its lookback-month log change, ending `skip` months before formation, is positive (negative); positions formed
+    at each of the last `hold` month-ends are averaged, and currencies are equally weighted."""
+    t = np.arange(first, len(months))
+    weight = np.zeros((t.size, len(currencies)))
+    for h in range(1, hold + 1):
+        end = t - h - skip  # the signal formed at the end of month t - h uses prices up to month t - h - skip
+        weight += np.sign(log_p[end] - log_p[end - lookback])
+    return np.asarray((weight / hold * spot[t - 1]).mean(axis=1))
+
+
+def sharpe(x: NDArray[np.float64]) -&gt; NDArray[np.float64]:
+    """Per-column Sharpe ratio of per-period returns."""
+    return np.asarray(x.mean(axis=0) / x.std(axis=0, ddof=1))
+
+
+def pbo(m: NDArray[np.float64], n_blocks: int) -&gt; float:
+    """CSCV estimate of the probability of backtest overfitting (Sharpe ratio as the metric)."""
+    m = m[m.shape[0] % n_blocks :]
+    blocks = np.split(m, n_blocks)
+    n = m.shape[1]
+    logits = []
+    for combo in itertools.combinations(range(n_blocks), n_blocks // 2):
+        train = np.vstack([blocks[i] for i in combo])
+        test = np.vstack([blocks[i] for i in range(n_blocks) if i not in combo])
+        best = int(np.argmax(sharpe(train)))
+        oos = sharpe(test)
+        rank = 1 + np.sum(oos &lt; oos[best]) + 0.5 * (np.sum(oos == oos[best]) - 1)
+        omega = rank / (n + 1)
+        logits.append(math.log(omega / (1 - omega)))
+    return float(np.mean(np.array(logits) &lt;= 0))
+
+
+phi, gamma_e = NormalDist(), 0.5772156649015329
+
+
+def expected_max_z(n: float) -&gt; float:
+    """The bracket of approximation (3) of Lesson 1: the expected maximum of n independent standard normals."""
+    return (1 - gamma_e) * phi.inv_cdf(1 - 1 / n) + gamma_e * phi.inv_cdf(1 - 1 / (n * math.e))
+
+
+def moments(r: NDArray[np.float64]) -&gt; tuple[float, float, float]:
+    """Sharpe ratio (ddof=1), skewness and kurtosis (moment estimators), per period."""
+    c = r - r.mean()
+    m2, m3, m4 = (float(np.mean(c**k)) for k in (2, 3, 4))
+    return float(r.mean() / r.std(ddof=1)), m3 / m2**1.5, m4 / m2**2
+
+
+def psr(r: NDArray[np.float64], benchmark: float) -&gt; float:
+    """Probabilistic Sharpe ratio of `r` against a per-period benchmark Sharpe ratio (Lesson 7)."""
+    sr, g3, g4 = moments(r)
+    return phi.cdf((sr - benchmark) / math.sqrt((1.0 - g3 * sr + (g4 - 1.0) / 4.0 * sr**2) / (r.size - 1)))
+
+
+trials = np.column_stack([tsmom(*spec) for spec in grid])
+n_obs, n_trials = trials.shape
+srs = sharpe(trials)
+pick = int(np.argmax(srs))
+selected = trials[:, pick]
+sr, g3, g4 = moments(selected)
+yearly = math.sqrt(12)
+print(f"evaluation window: {months[first]} to {months[-1]}, {n_obs} months, {n_trials} trials")
+print(f"annualized trial Sharpe ratios: min {srs.min() * yearly:.3f} median {np.median(srs) * yearly:.3f}")
+print(f"in-sample best: L{grid[pick][0]}-H{grid[pick][1]}-skip{grid[pick][2]}")
+print(f"  monthly SR {sr:.4f} annualized {sr * yearly:.3f} skewness {g3:.3f} kurtosis {g4:.3f}")
+print(f"  PSR against zero: {psr(selected, 0.0):.4f}")
+spread = math.sqrt(float(np.var(srs, ddof=1)))
+sr0 = spread * expected_max_z(n_trials)
+print(f"raw N {n_trials} and cross-sectional sd {spread:.4f}", end=" ")
+print(f"give SR0 {sr0:.4f} per month and DSR {psr(selected, sr0):.4f}")
+
+corr = np.corrcoef(trials, rowvar=False)
+rho = float(corr[~np.eye(n_trials, dtype=bool)].mean())
+eigenvalues = np.linalg.eigvalsh(corr)
+participation = float(eigenvalues.sum() ** 2 / (eigenvalues**2).sum())
+target = math.sqrt(1 - rho) * expected_max_z(n_trials)
+lo, hi = 1.0 + 1e-9, float(n_trials)
+for _ in range(60):  # bisection (Lesson 7, Lab 3): the bracket at N_eff is sqrt(1 - rho) times the bracket at N
+    mid = 0.5 * (lo + hi)
+    lo, hi = (mid, hi) if expected_max_z(mid) &lt; target else (lo, mid)
+n_eff = 0.5 * (lo + hi)
+print(f"mean pairwise correlation {rho:.3f} participation ratio {participation:.2f} matching N_eff {n_eff:.2f}")
+print(f"cross-sectional sd expected of skill-free trials, sqrt((1 - rho) / T): {math.sqrt((1 - rho) / n_obs):.4f}")
+sr0_eff = expected_max_z(n_eff) / math.sqrt(n_obs)
+print(f"N_eff {n_eff:.2f} and variance 1/T give SR0 {sr0_eff:.4f} per month and DSR {psr(selected, sr0_eff):.4f}")
+for n_blocks in (8, 10, 16):
+    print(f"PBO with S = {n_blocks} ({math.comb(n_blocks, n_blocks // 2)} splits): {pbo(trials, n_blocks):.4f}")</code></pre>
+        <pre class="expected" data-tolerance="1e-6">fx_monthly.csv: 669 months from 1971-01 to 2026-09
+all 10 currencies have a rate from 1999-01
+evaluation window: 2001-02 to 2026-09, 308 months, 40 trials
+annualized trial Sharpe ratios: min -0.087 median 0.006
+in-sample best: L1-H3-skip0
+  monthly SR 0.0408 annualized 0.141 skewness 1.574 kurtosis 15.229
+  PSR against zero: 0.7695
+raw N 40 and cross-sectional sd 0.0193 give SR0 0.0424 per month and DSR 0.4890
+mean pairwise correlation 0.567 participation ratio 2.37 matching N_eff 7.74
+cross-sectional sd expected of skill-free trials, sqrt((1 - rho) / T): 0.0375
+N_eff 7.74 and variance 1/T give SR0 0.0821 per month and DSR 0.2279
+PBO with S = 8 (70 splits): 0.7429
+PBO with S = 10 (252 splits): 0.7143
+PBO with S = 16 (12870 splits): 0.7330</pre>
+        <p class="interpretation">Nothing in the output supports the grid. The in-sample best, L1-H3-skip0 (one-month lookback, three-month holding, no skip), has an annualized Sharpe ratio of 0.141, and its PSR against zero, 0.7695, is one minus a one-sided p-value of 0.23 before the search is counted at all. Against the luck of 40 trials its DSR is 0.4890: its monthly Sharpe ratio, 0.0408, sits just below the hurdle \(\SR_0 = 0.0424\), the expected best of 40 skill-free trials. The PBO is 0.7330 with \(S = 16\), and 0.7429 and 0.7143 with \(S = 8\) and \(10\). That is above the null value of one half, but Lab 2's pure-noise estimates reached 0.77, so it is what a selection that carries no information produces. It is not evidence that momentum loses, and it is not a 73% chance of losing money (Misconception 1). The trials are strongly dependent: a mean pairwise correlation of 0.567 gives a participation ratio of 2.37 and a matching effective number of 7.74, treating the trials as equicorrelated at that mean. Pairing \(N_{\text{eff}}\) with the single-trial variance \(1/T\), as Lesson 7 prescribes for an effective count, gives \(\SR_0 = 0.0821\) and a DSR of 0.2279. The two hurdles differ because this history's 40 Sharpe ratios are less dispersed (standard deviation 0.0193) than skill-free trials with this mean correlation would be on average: by Problem P4 their expected cross-sectional variance is close to \((1-\bar\rho)/T\) whatever the correlation matrix, with \(\bar\rho\) its mean off-diagonal entry, a standard deviation of 0.0375 here. One cross-section of dependent trials estimates that variance noisily. Under either pairing the DSR is far below 0.95. These are spot returns of a dollar investor, not tradable excess returns: they omit the interest differential each position earns or pays and every trading cost (Lesson 5, Section 8). The omitted carry can raise or lower each trial's mean, depending on whether the trial tends to be long the higher-yielding currencies, so it can also reorder the trials that PBO ranks; costs lower every trial, most for those that trade most. The verdict is about this grid on spot rates from 2001-02 to 2026-09. It does not test the futures-based evidence above, and it leaves 1971–1998 untouched for nine of the ten currencies, a holdout the project memo can use.</p>
+      </section>
+
       <section class="canon-breaks" id="canon-breaks">
         <h2 id="s7"><span class="section-number">7</span>Where the canon breaks</h2>
         <p>Theorem 4.1 tells you what CSCV measures when its assumptions hold. Each assumption fails in some practical setting.</p>
@@ -347,6 +483,7 @@ for n_trials in (2, 20, 200):
           <li><strong>Small \(S\) and small \(N\) make the estimate coarse.</strong> With \(S = 4\) there are six splits, so \(\widehat{\PBO}\) moves in steps of \(1/6\). With small \(N\), one median finish changes it materially (Lab 1). Large \(S\) means short blocks, in which the Sharpe ratio is itself noisy.</li>
           <li><strong>The estimate is noisy even when the assumptions hold.</strong> Lab 2 found PBO estimates from 0.03 to 0.77 for the same null process. A single PBO is one draw of a heavily dependent average.</li>
           <li><strong>The trial matrix must be complete.</strong> Like every tool in this module, CSCV only sees the trials it is given (Lesson 1, Problem R1). <span class="claim" data-grade="C" data-cite="bailey2016probability" data-locator="Section 5.2 (revised version of February 2015)">Bailey, Borwein, López de Prado and Zhu warn that hiding trials leads to an underestimate of the overfitting</span>. The direction is not fixed. If the trials that vanish from a log are the ones that did worst over the full sample, dropping them raises the estimate: in Problem E2(b), keeping only the 20 best of 100 pure-noise configurations moves the mean PBO from about one half to about 0.8. Either way, a PBO computed from an incomplete log describes a search that was not the one run.</li>
+          <li><strong>The returns must be the ones the strategy would earn.</strong> CSCV ranks whatever returns it is given. Lab 4's spot returns omit each position's interest differential and every trading cost (Lesson 5, Section 8). An omitted return that is roughly constant for each trial shifts that trial's column, and Problem P2 shows that such shifts can change every logit. A PBO computed on spot returns audits the selection of spot-return rules, not of the strategies a desk would trade.</li>
         </ul>
       </section>
 
@@ -422,6 +559,14 @@ for n_trials in (2, 20, 200):
             <p>Suppose column 1 of \(M\) has the highest Sharpe ratio on every union of \(S/2\) blocks, and also on every complementary union. Prove that \(\widehat{\PBO} = 0\) whenever \(N \ge 2\). Then explain why "highest Sharpe ratio in every block" is not enough for the conclusion.</p>
             <details class="solution"><summary>Solution</summary>
               <p>In every split, column 1 wins in sample by hypothesis (lowest index on ties, so it wins even when tied). Out of sample it again has the highest Sharpe ratio, so its rank is \(N\) or, with ties, \(N - \tfrac12 k\) for \(k\) tied rivals. Without ties, \(\omega = N/(N+1) \gt 1/2\) and \(\lambda \gt 0\) for \(N \ge 2\), so no split counts and \(\widehat{\PBO} = 0\). If column 1 ties for the top with \(k\) others, its average rank is \(N - k/2\), which exceeds \((N+1)/2\) unless \(k = N - 1\), that is, unless all \(N\) configurations tie (then \(\lambda = 0\) and the split counts). Read "the highest" as strictly highest, and the conclusion holds. Block-wise dominance is not enough because a Sharpe ratio on a union of blocks is not a function of the block-wise Sharpe ratios. It depends on the block means and the pooled dispersion, so a configuration that wins each block by a little but has very different means across blocks can lose on a union. The hypothesis must be stated on the unions CSCV actually evaluates.</p>
+            </details>
+          </div>
+          <div class="problem" id="P4">
+            <span class="problem-title">P4 · How dispersed should dependent trials be?</span>
+            <p>Let \(X_1, \dots, X_N\), \(N \ge 2\), have a common mean \(\mu\), a common variance \(\sigma^2\) and correlations \(\rho_{nm}\), and let \(\bar\rho = \frac{1}{N(N-1)}\sum_{n \ne m} \rho_{nm}\). Prove that the sample variance across trials, \(s^2 = \frac{1}{N-1}\sum_n (X_n - \bar X)^2\), has \(\E[s^2] = \sigma^2(1 - \bar\rho)\). Then show how unequal means change the result, and use both facts to explain why Lab 4's two hurdles differ.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Write \(\sum_n (X_n - \bar X)^2 = \sum_n (X_n - \mu)^2 - N(\bar X - \mu)^2\). The first term has expectation \(N\sigma^2\). For the second, \(\Var(\bar X) = N^{-2}\big(N\sigma^2 + \sigma^2\textstyle\sum_{n \ne m}\rho_{nm}\big) = \frac{\sigma^2}{N}\big(1 + (N-1)\bar\rho\big)\). Hence \(\E\big[\sum_n (X_n - \bar X)^2\big] = N\sigma^2 - \sigma^2\big(1 + (N-1)\bar\rho\big) = (N-1)\sigma^2(1 - \bar\rho)\), and dividing by \(N - 1\) gives the claim. Equicorrelation, \(\rho_{nm} = \rho\), is Lesson 7's Proposition 4.2(i); nothing else about the correlation matrix matters for the expectation. With means \(\mu_n\), the same algebra applied to \(X_n - \mu_n\) adds the dispersion of the means: \(\E[s^2] = \sigma^2(1 - \bar\rho) + \frac{1}{N-1}\sum_n (\mu_n - \bar\mu)^2\), with \(\bar\mu\) the average mean, since the cross term has expectation zero.</p>
+              <p>For skill-free trials the Sharpe ratios have common mean zero and, for large \(T\), variance close to \(1/T\) and correlations close to those of the returns, so the cross-sectional variance should be close to \((1 - \bar\rho)/T\) on average. In Lab 4 that standard deviation is 0.0375, while the realized one was 0.0193. The identity concerns an expectation. With a participation ratio of 2.37 the 40 Sharpe ratios move along few independent directions, so one history's dispersion can sit far from its mean, and the raw-\(N\) hurdle of the A8 contract inherits that noise. Pairing \(N_{\text{eff}}\) with \(1/T\) avoids it, at the price of the equicorrelation approximation behind the matching estimator. The second formula adds a caution in the other direction: trials with genuinely different Sharpe ratios are more dispersed than skill-free ones, which raises the raw-\(N\) hurdle even though the extra dispersion is skill, not luck.</p>
             </details>
           </div>
         </div>
@@ -610,6 +755,8 @@ mean daily Sharpe ratio of the pick on days 501-1000: -0.193</pre>
               <tr><td>In Lab 3 the mean PBO rose from 0.12 at 2 trials to 0.34 at 200</td><td>—</td><td>Lab 3 (SIMULATED)</td></tr>
               <tr><td>CSCV gives reasonable PBO estimates in its authors' test cases</td><td><span class="grade" data-grade="C">C</span></td><td><span class="ref" data-cite="bailey2016probability"></span></td></tr>
               <tr><td>PBO is invariant to positive rescaling (leverage) of any configuration, not to adding constants</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P2</td></tr>
+              <tr><td>For trials with a common mean, a common variance \(\sigma^2\) and mean pairwise correlation \(\bar\rho\), the expected cross-sectional sample variance is \(\sigma^2(1-\bar\rho)\), whatever the correlation matrix</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P4</td></tr>
+              <tr><td>On H.10 month-end spot rates from 2001-02 to 2026-09, the best of 40 time-series momentum rules on ten currencies has DSR 0.489 (0.228 with the effective number of trials), and the grid's PBO is 0.733 with \(S = 16\) and 0.714–0.743 with \(S = 8, 10\)</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 4 (H.10 spot rates, retrieved 2026-10-17)</td></tr>
             </tbody>
           </table>
         </div>
@@ -697,6 +844,15 @@ mean daily Sharpe ratio of the pick on days 501-1000: -0.193</pre>
               <label class="option"><input type="radio" name="L08q10"> Which strategies beat the benchmark with FWER control</label>
             </fieldset>
             <div class="explain" hidden><p>DSR judges one statistic, and Romano–Wolf controls errors across hypotheses. CSCV audits the process (Section 6).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Lab 4's grid of 40 currency momentum rules has a PBO of 0.73. What is the right reading?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q11"> The selected rule has a 73% chance of losing money</label>
+              <label class="option"><input type="radio" name="L08q11"> Momentum in currencies has negative skill</label>
+              <label class="option" data-correct><input type="radio" name="L08q11"> The selection carries no detectable information out of sample: a pure-noise search averages one half, and single estimates scatter widely</label>
+            </fieldset>
+            <div class="explain" hidden><p>Theorem 4.1 gives one half for a skill-free search, and Lab 2's pure-noise estimates reached 0.77. A PBO of 0.73 is therefore what an uninformative selection produces. It is neither a loss probability (Misconception 1) nor evidence of negative skill.</p></div>
           </li>
         </ol>
       </section>
