@@ -140,6 +140,9 @@
 ### 2.8 Data and figures: one row per figure
 - The dataset is in MANIFEST with source, licence, date, SHA-256 and
   transform, and the licence permits redistribution.
+- For every dataset that a lab (`data-files`) or figure reads, open its
+  `licence_url` yourself and find the quoted licence text on that page. The
+  row fails if the quote is not there or does not grant redistribution.
 - Bring-your-own-data schemas are documented and validated.
 - **SIMULATED** labels are present where needed.
 - Charts have axes, units, a source line and a caption. SVGs have an accurate
