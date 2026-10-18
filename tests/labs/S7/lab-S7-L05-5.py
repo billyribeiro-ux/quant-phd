@@ -16,7 +16,7 @@ i = np.arange(1, m + 1)
 allowed = (gamma_num * i) // gamma_den + 1  # floor(gamma i) + 1
 lehmann_romano = allowed * alpha / (m + allowed - i)  # step-down constants (26)
 n_terms = (gamma_num * m) // gamma_den + 1
-harmonic = float(np.sum(1.0 / np.arange(1, n_terms + 1)))  # C_j = 1 + 1/2 + ... + 1/j at j = floor(gamma m) + 1
+harmonic = float(np.sum(1.0 / np.arange(1, n_terms + 1)))  # c(j) = 1 + 1/2 + ... + 1/j at j = floor(gamma m) + 1
 
 
 def step_down(ordered: npt.NDArray[np.float64], line: npt.NDArray[np.float64]) -> npt.NDArray[np.int64]:
@@ -31,7 +31,7 @@ def step_up(ordered: npt.NDArray[np.float64], line: npt.NDArray[np.float64]) -> 
     return np.where(passing.any(axis=1), m - np.argmax(passing[:, ::-1], axis=1), 0).astype(np.int64)
 
 
-print(f"C_{n_terms} = {harmonic:.4f}")
+print(f"c({n_terms}) = {harmonic:.4f}")
 print("rho  procedure  P(FDP>0.2)  mean_FDP  true_discoveries")
 for rho in (0.0, 0.5, 0.8):
     w = rng.standard_normal((n_reps, 1))
