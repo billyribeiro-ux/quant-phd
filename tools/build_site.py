@@ -65,14 +65,26 @@ def _fix_case(word: str) -> str:
 
 
 def family_name(family: str, source_strings: list[str]) -> str:
-    """Display spelling of a family name; all-caps Crossref names take the curriculum's spelling."""
+    """Display spelling of a family name; all-caps Crossref names take the curriculum's spelling.
+
+    Crossref sometimes files given names with the family name ('GORDON LAN' for K. K. Gordon Lan). When the
+    whole name is not in a citation string's author list but its last words are, those words are the surname.
+    """
     if not family.isupper():
         return family
     for source in source_strings:
         match = re.search(re.escape(family), source, flags=re.IGNORECASE)
         if match and not match.group().isupper():
             return match.group()
-    return " ".join(_fix_case(w) for w in family.split())
+    words = family.split()
+    for start in range(1, len(words)):
+        tail = " ".join(words[start:])
+        for source in source_strings:
+            authors = source.split("(", 1)[0]
+            match = re.search(rf"(?<![\w-]){re.escape(tail)}(?![\w-])", authors, flags=re.IGNORECASE)
+            if match and not match.group().isupper():
+                return match.group()
+    return " ".join(_fix_case(w) for w in words)
 
 
 def title_case(title: str) -> str:
