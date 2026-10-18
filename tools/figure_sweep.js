@@ -91,19 +91,20 @@
         const repeated = ticks.filter((t, i) => ticks.indexOf(t) !== i);
         if (repeated.length) problems.push(`an axis repeats tick labels ${JSON.stringify([...new Set(repeated)])}`);
       }
-      // A plotted segment drawn outside the plot area is clipped away: its data are not shown.
-      const clip = svg.querySelector("clipPath rect");
-      if (clip) {
-        // A clipPath rect is never rendered (its client rect is empty): map its own attributes to the screen.
+      // A plotted segment must lie wholly inside the plot area (chart.js records it as data-area on the plot group;
+      // the clip is 4 px taller): a segment on or beyond an edge is clipped away or drawn on the axis.
+      const plotGroup = svg.querySelector(".plot[data-area]");
+      if (plotGroup) {
         const m = svg.getScreenCTM();
-        const [x, y, w, h] = ["x", "y", "width", "height"].map((a) => clip[a].baseVal.value);
+        const [x, y, w, h] = plotGroup.dataset.area.split(" ").map(Number);
         const a = new DOMPoint(x, y).matrixTransform(m);
         const b = new DOMPoint(x + w, y + h).matrixTransform(m);
         const area = { left: Math.min(a.x, b.x), right: Math.max(a.x, b.x), top: Math.min(a.y, b.y), bottom: Math.max(a.y, b.y) };
-        for (const line of svg.querySelectorAll(".plot line.line")) {
-          const r = line.getBoundingClientRect();
-          if (r.bottom < area.top - 0.5 || r.top > area.bottom + 0.5 || r.right < area.left - 0.5 || r.left > area.right + 0.5) {
-            problems.push("a plotted segment lies outside the plot area");
+        for (const line of plotGroup.querySelectorAll("line.line")) {
+          const lm = line.getScreenCTM();
+          const ends = [["x1", "y1"], ["x2", "y2"]].map(([px, py]) => new DOMPoint(line[px].baseVal.value, line[py].baseVal.value).matrixTransform(lm));
+          if (ends.some((p) => p.x < area.left - 0.5 || p.x > area.right + 0.5 || p.y < area.top - 0.5 || p.y > area.bottom + 0.5)) {
+            problems.push("a plotted segment reaches outside the plot area");
           }
         }
       }

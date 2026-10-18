@@ -197,6 +197,9 @@ export function plot(parent, spec) {
     .attr("width", inner.w)
     .attr("height", inner.h + 8);
   plotArea.attr("clip-path", `url(#${clip})`);
+  // The exact plot area (the clip adds 4 px above and below so markers on the edge stay whole): the figure
+  // sweep checks plotted segments against it.
+  plotArea.attr("data-area", [margin.left, margin.top, inner.w, inner.h].join(" "));
 
   let obstacles = null;
   for (const layer of spec.layers) {
