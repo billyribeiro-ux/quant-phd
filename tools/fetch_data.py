@@ -137,14 +137,15 @@ class Table:
         return out.getvalue().encode("utf-8")
 
 
-_PLAIN_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+_PLAIN_NUMBER = re.compile(r"-?[0-9]+(?:\.[0-9]+)?")
+_ISO_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 def _observations(series: ET.Element, member: str, name: str) -> dict[str, str]:
     """{date: value} for one series' available observations (OBS_STATUS "A"), refusing a malformed one.
 
-    A date must be an ISO date and a value a plain decimal number: a published value is kept as text, so a stray
-    word would otherwise reach the snapshot. A date may appear only once in a series.
+    A date must be an ISO calendar date (YYYY-MM-DD) and a value a plain decimal number in ASCII digits: a published
+    value is kept as text, so a stray word would otherwise reach the snapshot. A date may appear only once in a series.
     """
     values: dict[str, str] = {}
     for obs in series:
@@ -152,6 +153,8 @@ def _observations(series: ET.Element, member: str, name: str) -> dict[str, str]:
             continue
         day, value = obs.get("TIME_PERIOD") or "", obs.get("OBS_VALUE") or ""
         try:
+            if not _ISO_DATE.fullmatch(day):
+                raise ValueError(day)
             date.fromisoformat(day)
         except ValueError:
             raise DataError(f"{member}: {name} has an available observation dated {day!r}, not an ISO date") from None

@@ -332,6 +332,14 @@ def zip_with(xml: str, member: str = "H10_data.xml") -> bytes:
             "not a plain decimal number",
         ),
         (zip_with(document(series_block("RXI$US_N.B.EU", [("2000-02-30", "1.0000", "A")]))), "not an ISO date"),
+        # date.fromisoformat also accepts the basic and week forms; the release files use YYYY-MM-DD only.
+        (zip_with(document(series_block("RXI$US_N.B.EU", [("20000131", "1.0000", "A")]))), "not an ISO date"),
+        (zip_with(document(series_block("RXI$US_N.B.EU", [("2000-W05-1", "1.0000", "A")]))), "not an ISO date"),
+        # \d would accept other scripts' digits, which would then reach the snapshot as text.
+        (
+            zip_with(document(series_block("RXI$US_N.B.EU", [("2000-01-31", "\u0661.0000", "A")]))),
+            "not a plain decimal number",
+        ),
         (
             zip_with(
                 document(series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A"), ("2000-01-31", "1.0001", "A")]))
