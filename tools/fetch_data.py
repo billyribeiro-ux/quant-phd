@@ -213,7 +213,7 @@ def _invert(value: str) -> str:
 
 
 def fed_sdmx(raw: bytes, spec: dict[str, Any]) -> Table:
-    """Selected series of a Federal Reserve DDP release, daily or sampled at month end.
+    """Selected series of a Federal Reserve Board release, daily or sampled at month end.
 
     spec: member (XML file in the zip), series ({column: SERIES_NAME}), invert (columns quoted per USD, shown
     as USD per unit by taking 1/x to eight significant digits), start and end (ISO dates, inclusive),

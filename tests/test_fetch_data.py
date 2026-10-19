@@ -20,7 +20,7 @@ FRB = "http://www.federalreserve.gov/structure/compact/common"
 MESSAGE = "http://www.SDMX.org/resources/SDMXML/schemas/v1_0/message"
 COMMON = "http://www.SDMX.org/resources/SDMXML/schemas/v1_0/common"
 
-# (date, value, status) per series, shaped like the DDP's H10_data.xml: an annotated series, holidays as "ND".
+# (date, value, status) per series, shaped like the Board's H10_data.xml: an annotated series, holidays as "ND".
 SERIES = {
     "RXI$US_N.B.EU": [
         ("1999-12-31", "0.9000", "A"),
@@ -142,7 +142,7 @@ def dataset(**overrides: Any) -> Dataset:
         "id": "fx_test",
         "title": "Test FX",
         "issuer": "Board of Governors of the Federal Reserve System",
-        "url": "https://www.federalreserve.gov/datadownload/Output.aspx?rel=H10&filetype=zip",
+        "url": "https://www.federalreserve.gov/releases/h10/data/FRB_h10_xml.zip",
         "licence": '"in the public domain"',
         "licence_url": "https://www.federalreserve.gov/disclaimer.htm",
         "citation": "Board of Governors of the Federal Reserve System, H.10",
@@ -219,7 +219,7 @@ def test_a_stray_file_in_the_data_folder_is_caught(market: Path) -> None:
     [
         ({"licence": '"all rights reserved"'}, "licence"),
         ({"licence_url": "https://example.org/terms"}, "licence_url"),
-        ({"url": "https://www.federalreserve.gov/datadownload/Output.aspx?rel=H15&filetype=zip"}, "source_url"),
+        ({"url": "https://www.federalreserve.gov/releases/h15/data/FRB_h15_xml.zip"}, "source_url"),
         ({"transform": spec(end="2000-01-31")}, "transform"),
         ({"title": "Another title"}, "title"),
         ({"issuer": "Another issuer"}, "issuer"),
@@ -398,3 +398,9 @@ def test_fetch_downloads_each_dataset_and_keeps_the_date_of_unchanged_bytes(
     assert fetch_data.main() == 0
     assert fetched == [ds.url]
     assert load_manifest()[ds.id]["retrieved"] == "2026-10-17"
+
+
+def test_every_dataset_is_read_from_a_board_release_page() -> None:
+    for ds in load_spec():
+        assert ds.url.startswith("https://www.federalreserve.gov/releases/h"), ds.id
+        assert ds.url.endswith("_xml.zip"), ds.id
