@@ -8,7 +8,7 @@ names a value computed here from the code that produces it, and the format spec 
   matrix of Lesson 8's Lab 4 twin;
 * every integrity statistic: the A8 reference solution (``grader/reference.py``), called with the contract's
   defaults, as the memo specification requires of the student's own module;
-* the effective number of trials: the Lesson 8 Lab 4 twin; the pure-noise PBO range: Lesson 8's Lab 2 output;
+* the effective number of trials: the Lesson 8 Lab 4 twin; the grid's own null: the Lesson 8 Lab 4 twin;
 * the retrieval date: MANIFEST.json.
 
 A regenerated value that changes therefore breaks this test. The memo text may contain no other digits, apart
@@ -88,8 +88,9 @@ def run_twin(name: str) -> dict[str, Any]:
 
 def body_words(exemplar: Node) -> dict[str, int]:
     """Words of body text per section, by the brief's rule: every whitespace-separated word in the memo's
-    paragraphs and lists, with headings, the To/From header block and the evidence table left out. A passage
-    without a heading continues the section before it."""
+    paragraphs and lists, with headings, the To/From header block and the evidence table left out. A word is
+    counted in a paragraph's or list item's whole text, as a reader sees it: "(8, 10 and" is three words, not
+    the five its separate text nodes would give. A passage without a heading continues the section before it."""
     counts: dict[str, int] = {}
     section = ""
 
@@ -101,10 +102,11 @@ def body_words(exemplar: Node) -> dict[str, int]:
             return
         if node.tag == "table" or "memo-head" in node.classes:
             return
+        if node.tag in ("p", "li"):
+            counts[section] = counts.get(section, 0) + len(node.text().split())
+            return
         for child in node.children:
-            if isinstance(child, str):
-                counts[section] = counts.get(section, 0) + len(child.split())
-            else:
+            if not isinstance(child, str):
                 walk(child)
 
     for memo in exemplar.select(None, "memo-text"):
