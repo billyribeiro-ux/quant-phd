@@ -1489,3 +1489,26 @@ def test_signature_defaults_are_the_contracts() -> None:
 def test_the_last_column_can_be_the_proposed_strategy() -> None:
     trials = a8.TrialSet(np.random.default_rng(SEED).normal(0.0, 0.01, (50, 4)), 3, 252)
     assert trials.selected == 3, "selected indexes a column of returns, the last one included (contract: TrialSet)."
+
+
+# ---------------------------------------------------------------- round-11 additions (verifier-proposed fix)
+
+
+def test_a_p_value_of_one_still_counts_in_m() -> None:
+    got = np.asarray(a8.benjamini_hochberg([0.02, 0.5, 1.0], 0.05)).tolist()
+    assert got == [False, False, False], (
+        "A p-value of 1 is a test that found nothing, and it still counts in m: the step-up lines are k q / m with "
+        "m = 3 (contract: benjamini_hochberg)."
+    )
+
+
+def test_every_new_block_can_start_at_any_period() -> None:
+    rng = np.random.default_rng(SEED)
+    counts = np.zeros(5)
+    for _ in range(2000):
+        counts += np.bincount(np.asarray(a8.stationary_bootstrap_indices(5, 1.0, rng)), minlength=5)
+    share = counts / counts.sum()  # mean_block = 1: every step starts a new block, so every index is a uniform draw
+    assert bool(np.all(np.abs(share - 0.2) < 0.02)), (
+        "A new block starts at a uniformly drawn period at every step, not only at the first one, so period 0 is "
+        "hit with probability 1/n_obs (contract: stationary_bootstrap_indices)."
+    )
