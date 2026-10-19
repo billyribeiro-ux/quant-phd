@@ -1,0 +1,137 @@
+# Round-10 verifier: tests that kill the survivors w01-w11 and w17-w22 and make w12 and w16 fail on every seed (append to
+# grader/test_project.py; this text is already ruff-formatted at line length 120 and ruff-clean). Each passes on
+# grader/reference.py for seeds 0-49 and on an independent loop-based contract-faithful variant for seeds 0-49, and fails its mutants:
+#   test_report_pvalues_divide_by_sqrt_t_not_sqrt_t_minus_one        kills w01
+#   test_a_fractional_mean_block_is_used_as_given                    kills w02
+#   test_a_series_of_two_observations_is_valid                       kills w03, w09
+#   test_one_or_two_trial_sharpe_ratios_can_deflate                  kills w07, w08 (and w03)
+#   test_the_smallest_bootstrap_inputs_the_contract_allows_are_valid kills w04, w05, w06
+#   test_the_result_classes_are_frozen_dataclasses                   kills w10
+#   test_rejection_masks_are_boolean_arrays                          kills w11
+#   test_signature_defaults_are_the_contracts                        kills w17-w22 (every default of the contract's signatures)
+#   test_p_values_of_exactly_zero_and_one_are_valid                  fails w12 on every seed (w12 otherwise dies only by accident, at seed 1)
+#   test_the_last_column_can_be_the_proposed_strategy                fails w16 on every seed (w16 otherwise dies only by accident, at seed 3)
+# They use only helpers already in the file (must_raise, close, expected_max, moments, _differentials, INST, SEED, PHI, a8, np,
+# math, pytest) and a local `import inspect`. The suite then collects 160 tests: update "150 checks" on project.html.
+
+
+# ---------------------------------------------------------------- round-10 additions (verifier-proposed fix)
+
+
+def test_report_pvalues_divide_by_sqrt_t_not_sqrt_t_minus_one() -> None:
+    z = np.random.default_rng(SEED).standard_normal((40, 3))
+    z = (z - z.mean(0)) / z.std(0, ddof=1)
+    trials = a8.TrialSet(0.01 * (z + 1.655 / math.sqrt(40)), 0, 12)  # every t-statistic is 1.655: p = 0.0490
+    report = a8.integrity_report(trials, n_blocks=4, n_boot=50)
+    assert np.asarray(report.bh_rejections).all(), (
+        "The one-sided p-values use t = mean / (sd / sqrt(T)): the standard error of a mean divides by sqrt(T), "
+        "not by sqrt(T - 1) (contract: integrity_report)."
+    )
+
+
+def test_a_fractional_mean_block_is_used_as_given() -> None:
+    rng = np.random.default_rng(SEED)
+    breaks = []
+    for _ in range(30):
+        idx = np.asarray(a8.stationary_bootstrap_indices(2000, 2.5, rng))
+        breaks.append(np.mean(idx[1:] != (idx[:-1] + 1) % 2000))
+    assert abs(float(np.mean(breaks)) - 0.4) < 0.015, (
+        "A new block starts with probability 1/mean_block for any real mean_block >= 1: do not round the mean block "
+        "length (contract: stationary_bootstrap_indices)."
+    )
+
+
+def test_a_series_of_two_observations_is_valid() -> None:
+    x = [0.01, 0.03]  # two points: Sharpe ratio sqrt(2), skewness 0, kurtosis 1, standard error 1
+    assert (
+        close(a8.sharpe_ratio(x), math.sqrt(2.0))
+        and close(a8.sample_skewness(x), 0.0)
+        and close(a8.sample_kurtosis(x), 1.0)
+    ), "A series needs at least 2 observations, no more (contract: conventions, series input)."
+    assert close(a8.probabilistic_sharpe_ratio(x, 0.0), PHI.cdf(math.sqrt(2.0))), (
+        "probabilistic_sharpe_ratio accepts a series of exactly two observations (contract: conventions)."
+    )
+    assert close(a8.sharpe_ratio_std(0.5, 2, 0.0, 3.0), math.sqrt(1.0 + 0.5 * 0.25)), (
+        "sharpe_ratio_std accepts n_obs = 2 (contract: n_obs >= 2)."
+    )
+
+
+def test_one_or_two_trial_sharpe_ratios_can_deflate() -> None:
+    x = INST["returns"]
+    sr, g3, g4 = moments(x)
+    sr0 = expected_max(2, float(np.var([0.03, 0.05], ddof=1)))
+    z = (sr - sr0) * math.sqrt(x.size - 1) / math.sqrt(1 - g3 * sr + (g4 - 1) / 4 * sr**2)
+    assert close(a8.deflated_sharpe_ratio(x, [0.03, 0.05]), PHI.cdf(z)), (
+        "deflated_sharpe_ratio needs len(trial_sharpes) >= 2, no more (contract: deflated_sharpe_ratio)."
+    )
+    assert close(a8.deflated_sharpe_ratio(x, INST["trial_sharpes"], 1), a8.probabilistic_sharpe_ratio(x, 0.0)), (
+        "n_trials = 1 is valid: one trial involves no selection, so SR0 = 0 (contract: deflated_sharpe_ratio, N >= 1)."
+    )
+
+
+def test_the_smallest_bootstrap_inputs_the_contract_allows_are_valid() -> None:
+    assert np.asarray(a8.stationary_bootstrap_indices(1, 5.0, np.random.default_rng(SEED))).tolist() == [0], (
+        "n_obs = 1 is a positive integer: the only resample of one period is that period (contract)."
+    )
+    got = np.asarray(a8.stepdown_rejections([6.0, 0.0], np.array([[1.0, 0.5]]), 0.05)).tolist()
+    assert got == [True, False], "A single bootstrap draw (B = 1) is allowed: B >= 1 (contract: stepdown_rejections)."
+    one = np.asarray(a8.romano_wolf(_differentials(), 0.05, 1, 5.0, SEED))
+    assert one.shape == (3,) and one.dtype == bool, "n_boot = 1 is allowed: only n_boot < 1 raises (contract)."
+
+
+def test_the_result_classes_are_frozen_dataclasses() -> None:
+    performance = np.random.default_rng(SEED).normal(0.0, 0.01, (40, 3))
+    trials = a8.TrialSet(performance, 0, 252)
+    for obj, attribute in (
+        (a8.probability_of_backtest_overfitting(performance, 4), "pbo"),
+        (trials, "selected"),
+        (a8.integrity_report(trials, n_blocks=4, n_boot=20), "dsr"),
+    ):
+        try:
+            setattr(obj, attribute, 0)
+        except AttributeError:
+            continue
+        pytest.fail(f"{type(obj).__name__} is a frozen dataclass: assigning to its field {attribute} must raise.")
+
+
+def test_p_values_of_exactly_zero_and_one_are_valid() -> None:
+    got = np.asarray(a8.benjamini_hochberg([0.0, 1.0, 0.5, 0.0], 0.05)).tolist()
+    assert got == [True, False, False, True], (
+        "A p-value is any number in [0, 1], the end points included: 0 is rejected and 1 never is (contract)."
+    )
+
+
+def test_rejection_masks_are_boolean_arrays() -> None:
+    for name, mask in (
+        ("benjamini_hochberg", a8.benjamini_hochberg([0.001, 0.2, 0.03], 0.05)),
+        ("stepdown_rejections", a8.stepdown_rejections([6.0, 0.0], np.array([[1.0, 0.5], [0.9, 0.4]]), 0.05)),
+        ("romano_wolf", a8.romano_wolf(_differentials(), 0.05, 20, 5.0, SEED)),
+    ):
+        assert isinstance(mask, np.ndarray) and mask.dtype == bool, (
+            f"{name} returns a NumPy array of booleans, one per hypothesis (contract: NDArray[np.bool_])."
+        )
+
+
+def test_signature_defaults_are_the_contracts() -> None:
+    import inspect
+
+    contract = {
+        "probabilistic_sharpe_ratio": {"sr_benchmark": 0.0},
+        "expected_max_sharpe": {"sr_mean": 0.0},
+        "deflated_sharpe_ratio": {"n_trials": None},
+        "romano_wolf": {"alpha": 0.05, "n_boot": 1000, "mean_block": 10.0, "seed": 0},
+        "probability_of_backtest_overfitting": {"n_blocks": 16},
+        "integrity_report": {"alpha": 0.05, "q": 0.05, "n_blocks": 16, "n_boot": 1000, "mean_block": 10.0, "seed": 0},
+    }
+    for function, defaults in contract.items():
+        parameters = inspect.signature(getattr(a8, function)).parameters
+        for name, value in defaults.items():
+            assert name in parameters and parameters[name].default == value, (
+                f"{function}: parameter {name} must exist with the default the contract gives it "
+                "(contract: Functions); A9 calls these with their defaults."
+            )
+
+
+def test_the_last_column_can_be_the_proposed_strategy() -> None:
+    trials = a8.TrialSet(np.random.default_rng(SEED).normal(0.0, 0.01, (50, 4)), 3, 252)
+    assert trials.selected == 3, "selected indexes a column of returns, the last one included (contract: TrialSet)."
