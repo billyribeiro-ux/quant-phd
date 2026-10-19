@@ -295,3 +295,106 @@ def test_a_hand_edited_manifest_field_is_caught(market: Path, field: str, value:
     ds, manifest = built(market)
     edited = {ds.id: {**manifest[ds.id], field: value}}
     assert any(message in p for p in check([ds], edited))
+
+
+def document(*blocks: str) -> str:
+    """An SDMX message holding the given series blocks, with the namespaces the release files use."""
+    return (
+        f'<?xml version="1.0" encoding="UTF-8"?><message:MessageGroup xmlns:message="{MESSAGE}" '
+        f'xmlns:common="{COMMON}" xmlns:frb="{FRB}"><message:Header><message:ID>H10</message:ID></message:Header>'
+        f'<frb:DataSet id="H10" xmlns:kf="{KF}">{"".join(blocks)}</frb:DataSet></message:MessageGroup>'
+    )
+
+
+def series_block(name: str, observations: list[tuple[str, str, str]]) -> str:
+    obs = "".join(f'<frb:Obs OBS_STATUS="{s}" OBS_VALUE="{v}" TIME_PERIOD="{d}" />' for d, v, s in observations)
+    return f'<kf:Series FREQ="9" SERIES_NAME="{name}">{obs}</kf:Series>'
+
+
+def zip_with(xml: str, member: str = "H10_data.xml") -> bytes:
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as archive:
+        archive.writestr(member, xml)
+    return out.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        (b"<html>not a zip</html>", "not a zip archive"),
+        (
+            zip_with(document(series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A")])), "H10_struct.xml"),
+            "no such member",
+        ),
+        (zip_with("<message:MessageGroup><unclosed>"), "unreadable"),
+        (
+            zip_with(document(series_block("RXI$US_N.B.EU", [("2000-01-31", "1,0000", "A")]))),
+            "not a plain decimal number",
+        ),
+        (zip_with(document(series_block("RXI$US_N.B.EU", [("2000-02-30", "1.0000", "A")]))), "not an ISO date"),
+        (
+            zip_with(
+                document(series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A"), ("2000-01-31", "1.0001", "A")]))
+            ),
+            "two available observations dated 2000-01-31",
+        ),
+        (
+            zip_with(
+                document(
+                    series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A")]),
+                    series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A")]),
+                )
+            ),
+            "appears twice",
+        ),
+        (
+            zip_with(
+                document(
+                    series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A")]),
+                    series_block("RXI_N.B.JA", [("2000-01-31", "0.0000", "A")]),
+                )
+            ),
+            "cannot be inverted",
+        ),
+    ],
+)
+def test_a_malformed_download_is_refused_with_a_data_error(raw: bytes, message: str) -> None:
+    with pytest.raises(DataError, match=message):
+        fed_sdmx(raw, spec())
+
+
+def test_negative_rates_are_kept_as_published() -> None:
+    raw = zip_with(
+        document(series_block("RIFSGFSM03_N.B", [("2000-01-03", "-0.0400", "A"), ("2000-01-04", "4.5000", "A")]))
+    )
+    table = fed_sdmx(raw, spec(series={"TBILL": "RIFSGFSM03_N.B"}, invert=[]))
+    assert table.rows == (("2000-01-03", "-0.0400"), ("2000-01-04", "4.5000"))
+
+
+def test_bytes_retrieved_again_keep_their_retrieval_date(market: Path) -> None:
+    raw = sdmx_zip(SERIES)
+    previous = build(dataset(), raw, "2026-10-17")
+    assert fetch_data.retrieval_date(previous, raw, "2026-10-19") == "2026-10-17"
+    changed = sdmx_zip({**SERIES, "RXI_N.B.SZ": [("2000-01-31", "1.6001", "A")]})
+    assert fetch_data.retrieval_date(previous, changed, "2026-10-19") == "2026-10-19"
+    assert fetch_data.retrieval_date(None, raw, "2026-10-19") == "2026-10-19"
+
+
+def test_fetch_downloads_each_dataset_and_keeps_the_date_of_unchanged_bytes(
+    market: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ds = dataset()
+    raw = sdmx_zip(SERIES)
+    save_manifest({ds.id: build(ds, raw, "2026-10-17")})
+    fetched: list[str] = []
+
+    def fake_download(url: str, *, attempts: int = 4) -> bytes:
+        fetched.append(url)
+        return raw
+
+    monkeypatch.setattr(fetch_data, "load_spec", lambda *_args, **_kwargs: [ds])
+    monkeypatch.setattr(fetch_data, "download", fake_download)
+    monkeypatch.setattr(sys, "argv", ["fetch_data.py", "--fetch"])
+    assert fetch_data.main() == 0
+    assert fetched == [ds.url]
+    assert load_manifest()[ds.id]["retrieved"] == "2026-10-17"

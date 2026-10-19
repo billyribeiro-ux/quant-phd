@@ -34,12 +34,14 @@ import hashlib
 import io
 import json
 import os
+import re
 import ssl
 import sys
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -135,24 +137,59 @@ class Table:
         return out.getvalue().encode("utf-8")
 
 
-def _sdmx_series(raw: bytes, member: str, wanted: set[str]) -> dict[str, dict[str, str]]:
-    """{series name: {date: published value}} for the wanted series of a Federal Reserve DDP SDMX zip.
+_PLAIN_NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
 
-    Only observations with OBS_STATUS "A" (available) are kept; holidays and gaps ("ND") are dropped.
+
+def _observations(series: ET.Element, member: str, name: str) -> dict[str, str]:
+    """{date: value} for one series' available observations (OBS_STATUS "A"), refusing a malformed one.
+
+    A date must be an ISO date and a value a plain decimal number: a published value is kept as text, so a stray
+    word would otherwise reach the snapshot. A date may appear only once in a series.
     """
+    values: dict[str, str] = {}
+    for obs in series:
+        if not obs.tag.endswith("}Obs") or obs.get("OBS_STATUS") != "A":
+            continue
+        day, value = obs.get("TIME_PERIOD") or "", obs.get("OBS_VALUE") or ""
+        try:
+            date.fromisoformat(day)
+        except ValueError:
+            raise DataError(f"{member}: {name} has an available observation dated {day!r}, not an ISO date") from None
+        if not _PLAIN_NUMBER.fullmatch(value):
+            raise DataError(f"{member}: {name} on {day} has the value {value!r}, not a plain decimal number")
+        if day in values:
+            raise DataError(f"{member}: {name} has two available observations dated {day}")
+        values[day] = value
+    return values
+
+
+def _sdmx_series(raw: bytes, member: str, wanted: set[str]) -> dict[str, dict[str, str]]:
+    """{series name: {date: published value}} for the wanted series of a Federal Reserve Board SDMX zip.
+
+    Only observations with OBS_STATUS "A" (available) are kept; holidays and gaps ("ND") are dropped. A download that
+    is not a zip archive, a zip without the member, XML that does not parse, a series given twice, and a malformed
+    or repeated observation are each refused with a DataError.
+    """
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile as exc:
+        raise DataError(f"{member}: the download is not a zip archive") from exc
     found: dict[str, dict[str, str]] = {}
-    with zipfile.ZipFile(io.BytesIO(raw)) as archive, archive.open(member) as stream:
-        for _, element in ET.iterparse(stream, events=("end",)):
-            if not element.tag.endswith("}Series"):
-                continue
-            name = element.get("SERIES_NAME") or ""
-            if name in wanted:
-                found[name] = {
-                    obs.get("TIME_PERIOD") or "": obs.get("OBS_VALUE") or ""
-                    for obs in element
-                    if obs.tag.endswith("}Obs") and obs.get("OBS_STATUS") == "A"
-                }
-            element.clear()
+    with archive:
+        if member not in archive.namelist():
+            raise DataError(f"{member}: the archive has no such member")
+        try:
+            with archive.open(member) as stream:
+                for _, element in ET.iterparse(stream, events=("end",)):
+                    if element.tag.endswith("}Series"):
+                        name = element.get("SERIES_NAME") or ""
+                        if name in wanted:
+                            if name in found:
+                                raise DataError(f"{member}: series {name} appears twice")
+                            found[name] = _observations(element, member, name)
+                        element.clear()
+        except (zipfile.BadZipFile, zlib.error, ET.ParseError) as exc:
+            raise DataError(f"{member}: unreadable ({exc})") from exc
     missing = sorted(wanted - found.keys())
     if missing:
         raise DataError(f"{member}: series not found: {missing}")
@@ -165,6 +202,8 @@ def _invert(value: str) -> str:
     The quotient is computed in decimal, so the eighth digit is the exact quotient's: a value just above a power
     of ten inverts to 0.99999999, not to a seven-digit 1.0000000.
     """
+    if Decimal(value) == 0:
+        raise DataError(f"a zero rate {value!r} cannot be inverted to USD per unit")
     inverse = Decimal(1) / Decimal(value)
     lead = inverse.adjusted()
     rounded = inverse.quantize(Decimal(1).scaleb(lead - 7), rounding=ROUND_HALF_EVEN)
@@ -229,6 +268,17 @@ def describe(spec: dict[str, Any]) -> str:
 
 def sha256(blob: bytes) -> str:
     return hashlib.sha256(blob).hexdigest()
+
+
+def retrieval_date(previous: dict[str, Any] | None, raw: bytes, today: str) -> str:
+    """The date recorded for a download: the day its bytes were first retrieved.
+
+    Bytes equal to the recorded raw SHA-256 keep the recorded date, so a snapshot keeps the date its data came in and
+    a change of download URL alone does not restate it. Changed bytes take today's date.
+    """
+    if previous is not None and previous.get("raw_sha256") == sha256(raw):
+        return str(previous["retrieved"])
+    return today
 
 
 def _shown(path: Path) -> Path:
@@ -362,7 +412,8 @@ def main() -> int:
             if args.keep_raw:
                 args.keep_raw.mkdir(parents=True, exist_ok=True)
                 (args.keep_raw / f"{dataset.id}.raw").write_bytes(raw)
-            entry = manifest[dataset.id] = build(dataset, raw, retrieved)
+            previous = manifest.get(dataset.id)
+            entry = manifest[dataset.id] = build(dataset, raw, retrieval_date(previous, raw, retrieved))
             span = f"{entry['first']} to {entry['last']}"
             print(f"built {dataset.id}: {entry['rows']} rows, {entry['bytes']} bytes, {span}")
         manifest = {k: v for k, v in manifest.items() if k in {d.id for d in datasets}}
