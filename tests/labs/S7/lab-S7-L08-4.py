@@ -108,63 +108,89 @@ print(f"mean pairwise correlation {rho:.3f} participation ratio {participation:.
 print(f"cross-sectional sd expected of skill-free trials, sqrt((1 - rho) / T): {math.sqrt((1 - rho) / n_obs):.4f}")
 sr0_eff = expected_max_z(n_eff) / math.sqrt(n_obs)
 print(f"N_eff {n_eff:.2f} and variance 1/T give SR0 {sr0_eff:.4f} per month and DSR {psr(selected, sr0_eff):.4f}")
-for n_blocks in (8, 10, 16):
-    print(f"PBO with S = {n_blocks} ({math.comb(n_blocks, n_blocks // 2)} splits): {pbo(trials, n_blocks):.4f}")
+pbo_by_blocks = {n_blocks: pbo(trials, n_blocks) for n_blocks in (8, 10)}  # S = 16 comes from pbo_fast() below
 
 
 # This grid's own null. Theorem 4.1 assumes exchangeable trials and independent months, and neither holds here:
 # the rules differ in lookback, holding and skip, and overlapping cohorts tie each month to the ones before it.
 # So resample whole months of the ten currencies' log changes with replacement, which keeps their joint spread
 # and tails but removes every dependence across months (no rule can have an edge), rebuild the price paths and
-# all 40 rules, and recompute the PBO with S = 16 and the in-sample best's DSR. The two functions below give the
-# same numbers as sign_rule() and pbo() faster: signals are summed by cumulative sums, and each split's Sharpe ratios
-# are built from per-block sums.
+# all 40 rules, and recompute the PBO with S = 16 and the in-sample best's DSR. The functions below give the same
+# numbers as sign_rule() and pbo() faster: signals are summed by cumulative sums, and each split's Sharpe ratios are
+# built from per-block sums. pbo() would take 12,870 passes over the data for S = 16, so the 16-block PBO, observed
+# and null, comes from pbo_fast(), checked against pbo() at S = 8 and 10 here and at S = 16 by the course's tests.
 def grid_fast(path: NDArray[np.float64]) -> NDArray[np.float64]:
     """All 40 trials on a log-price path, in grid order, as sign_rule() builds them."""
     t = np.arange(first, len(path))
     moves = np.exp(np.diff(path, axis=0)) - 1.0
-    out = np.empty((t.size, len(grid)))
-    for k, (lookback, hold, skip) in enumerate(grid):
+    totals = {}  # running sums of the signals, one per lookback (the grid has five)
+    for lookback in sorted({lb for lb, _, _ in grid}):
         signal = np.zeros_like(path)
         signal[lookback:] = np.sign(path[lookback:] - path[:-lookback])  # signal[s] compares months s and s - L
-        total = np.cumsum(signal, axis=0)
+        totals[lookback] = np.cumsum(signal, axis=0)
+    out = np.empty((t.size, len(grid)))
+    for k, (lookback, hold, skip) in enumerate(grid):
+        total = totals[lookback]
         held = total[t - 1 - skip] - total[t - 1 - skip - hold]  # signals formed at months t - h - skip, h = 1..H
         out[:, k] = (held / hold * moves[t - 1]).mean(axis=1)
     return out
 
 
-def halves(n_blocks: int) -> tuple[NDArray[np.float64], NDArray[np.intp]]:
-    """One row per CSCV split, in itertools order (1 for a block in sample), and the row of each split's mirror."""
-    combos = list(itertools.combinations(range(n_blocks), n_blocks // 2))
-    member = np.zeros((len(combos), n_blocks))
-    for row, combo in enumerate(combos):
-        member[row, list(combo)] = 1.0
+def halves(n_blocks: int) -> tuple[NDArray[np.float64], NDArray[np.intp], NDArray[np.intp], NDArray[np.intp]]:
+    """CSCV splits in itertools order, for pbo_fast(). A half is half of the blocks from the first half of them and
+    the rest from the second; it is described by those two subsets (rows `low` and `high` of `subsets`, which lists
+    every subset of n_blocks / 2 blocks), and `mirror` gives the row of each split's complementary split."""
+    half = n_blocks // 2
+    combos = list(itertools.combinations(range(n_blocks), half))
+    subsets = np.array([[(mask >> b) & 1 for b in range(half)] for mask in range(1 << half)], dtype=np.float64)
+    low = np.array([sum(1 << b for b in combo if b < half) for combo in combos])
+    high = np.array([sum(1 << (b - half) for b in combo if b >= half) for combo in combos])
     index = {combo: row for row, combo in enumerate(combos)}
-    mirror = [index[tuple(b for b in range(n_blocks) if b not in combo)] for combo in combos]
-    return member, np.array(mirror)
+    mirror = np.array([index[tuple(b for b in range(n_blocks) if b not in combo)] for combo in combos])
+    return subsets, low, high, mirror
 
 
-def pbo_fast(m: NDArray[np.float64], member: NDArray[np.float64], mirror: NDArray[np.intp]) -> float:
-    """pbo() from per-block sums. Every half's Sharpe ratios come from one matrix product; a split's out-of-sample
-    half is its mirror's in-sample half (Proposition 3.2); ranks need only the order of the Sharpe ratios, which
-    mean * |mean| / variance keeps; and a logit is at most zero exactly when rank <= (N + 1) / 2."""
-    n_blocks = member.shape[1]
+def pbo_fast(
+    m: NDArray[np.float64],
+    subsets: NDArray[np.float64],
+    low: NDArray[np.intp],
+    high: NDArray[np.intp],
+    mirror: NDArray[np.intp],
+) -> float:
+    """pbo() from per-block sums. A half's sums are a subset sum of the first half of the blocks plus one of the
+    second, so every half comes from two small matrix products; a split's out-of-sample half is its mirror's
+    in-sample half (Proposition 3.2); ranks need only the order of the Sharpe ratios, which mean * |mean| /
+    variance keeps; and a logit is at most zero exactly when rank <= (N + 1) / 2."""
+    half = subsets.shape[1]
+    n_blocks = 2 * half
     m = m[m.shape[0] % n_blocks :]
     size, n = m.shape[0] // n_blocks, m.shape[1]
-    rows = size * (n_blocks // 2)
-    mean = member @ m.reshape(n_blocks, size, n).sum(axis=1) / rows
-    second = member @ (m * m).reshape(n_blocks, size, n).sum(axis=1)
-    half_sharpe = mean * np.abs(mean) / (second - rows * mean**2)  # same order as the Sharpe ratio
+    rows = size * half
+    block_sum = m.reshape(n_blocks, size, n).sum(axis=1)
+    block_sq = (m * m).reshape(n_blocks, size, n).sum(axis=1)
+    mean = (subsets @ block_sum[:half])[low] + (subsets @ block_sum[half:])[high]
+    mean /= rows
+    spread = (subsets @ block_sq[:half])[low] + (subsets @ block_sq[half:])[high]
+    spread -= rows * np.square(mean)  # the half's sum of squared deviations
+    half_sharpe = mean * np.abs(mean)
+    half_sharpe /= spread  # same order as the Sharpe ratio
     oos = half_sharpe[mirror]
-    mine = oos[np.arange(len(member)), np.argmax(half_sharpe, axis=1)][:, None]
+    mine = oos[np.arange(len(low)), np.argmax(half_sharpe, axis=1)][:, None]
     rank = 1 + (oos < mine).sum(axis=1) + 0.5 * ((oos == mine).sum(axis=1) - 1)
     return float(np.mean(rank <= (n + 1) / 2))
 
 
-observed_pbo, observed_dsr = pbo(trials, 16), psr(selected, sr0)
 sixteen = halves(16)
-same = np.array_equal(grid_fast(log_p), trials) and pbo_fast(trials, *sixteen) == observed_pbo
-print(f"fast builders reproduce the grid and its 16-block PBO exactly: {same}")
+pbo_by_blocks[16] = pbo_fast(trials, *sixteen)
+for n_blocks, value in pbo_by_blocks.items():
+    print(f"PBO with S = {n_blocks} ({math.comb(n_blocks, n_blocks // 2)} splits): {value:.4f}")
+
+
+observed_pbo, observed_dsr = pbo_by_blocks[16], psr(selected, sr0)
+same = np.array_equal(grid_fast(log_p), trials) and all(
+    pbo_fast(trials, *halves(b)) == pbo_by_blocks[b] for b in (8, 10)
+)
+print(f"fast builders reproduce the grid and its 8- and 10-block PBOs exactly: {same}")
 rng = np.random.default_rng(4008)
 changes, n_null = np.diff(log_p, axis=0), 100
 null_pbo, null_dsr = np.empty(n_null), np.empty(n_null)

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import os
 import re
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -108,6 +112,21 @@ def twin_output(lab_id: str) -> str:
         )
     assert result.stderr == ""
     return result.stdout
+
+
+def test_l08_lab4_fast_pbo_is_the_definition_at_16_blocks() -> None:
+    """Lesson 8's Lab 4 takes its 16-block PBO from pbo_fast(). In the browser it checks pbo_fast() against pbo()
+    at 8 and 10 blocks only, because pbo()'s 12,870 passes would exceed the lab's time limit; here the 16-block
+    identity is checked too, on the lab's own trials."""
+    here = Path.cwd()
+    with twin_workdir(REAL_DATA_LABS["lab-S7-L08-4"]) as work, contextlib.redirect_stdout(io.StringIO()):
+        os.chdir(work)
+        try:
+            lab = runpy.run_path(str(TWINS / "lab-S7-L08-4.py"))
+        finally:
+            os.chdir(here)
+    by_definition = lab["pbo"](lab["trials"], 16)
+    assert by_definition == lab["pbo_fast"](lab["trials"], *lab["halves"](16)) == lab["observed_pbo"]
 
 
 @pytest.mark.parametrize("lab_id", sorted(REAL_DATA_LABS))
