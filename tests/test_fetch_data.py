@@ -103,9 +103,12 @@ def test_month_end_drops_an_incomplete_final_month() -> None:
         # Rounding that carries into a new leading digit keeps eight significant digits.
         ("0.100000005", "9.9999995"),
         ("0.1000000004", "10.000000"),
-        # Ties go to even, on the exact quotient.
+        # Quotients that terminate within eight digits.
         ("0.8", "1.2500000"),
         ("1.6", "0.62500000"),
+        # Exact ties at the ninth digit go to even: 1/4096 = 0.000244140625, 1/0.4096 = 2.44140625.
+        ("4096", "0.00024414062"),
+        ("0.4096", "2.4414062"),
     ],
 )
 def test_inversion_keeps_eight_significant_digits_in_plain_decimal(value: str, inverse: str) -> None:

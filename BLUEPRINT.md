@@ -300,9 +300,9 @@ makes it, in `tools/data_sources.yaml`, and the snapshot is recorded in
   website is in the public domain and may be copied and distributed without
   permission." H.15's constant-maturity yields come from the U.S. Treasury,
   a work of the United States Government (17 U.S.C. 105(a)).
-- **Checked and not cleared** (2026-10-17):
-  - The Kenneth French Data Library states no grant: its pages carry a copyright line, and their HTML source
-    reserves use of the site's images and code.
+- **Checked and not cleared** (2026-10-17; the French pages re-read 2026-10-18):
+  - The Kenneth French Data Library states no grant: its library, portfolio-description and home pages
+    carry a copyright line, and the HTML source of its pages reserves use of the site's images and code.
   - The Open Source Asset Pricing site asks users to cite its paper but
     grants no redistribution right for the data.
 

@@ -183,6 +183,9 @@ def rubric_page(levels: list[int], exemplars: list[str | None]) -> str:
         pytest.param([4, 4, 4, 4], ["4", None], "data-level from 1 to 4", id="exemplar-without-level"),
         pytest.param([4, 4, 4, 4], ["4", "4"], "two or more levels", id="one-level-only"),
         pytest.param([4, 4, 4, 4], ["4", "high"], "data-level from 1 to 4", id="level-not-1-to-4"),
+        pytest.param([4, 4, 4, 4], ["4", "0"], "data-level from 1 to 4", id="level-zero"),
+        pytest.param([4] * 7, ["2", "4"], None, id="seven-criteria"),
+        pytest.param([4] * 8, ["2", "4"], "4-7 criteria", id="eight-criteria"),
     ],
 )
 def test_rubric_criteria_and_exemplar_levels(
