@@ -347,6 +347,7 @@ def test_online_first_year_is_info_not_correction() -> None:
         ("1-2", "3-4", False),
         ("2-3", "2-4", False),
         ("1-3", "2-3", False),
+        ("2-3", "1-3", False),
         ("02-03", "2-4", False),
         ("1-2", "1-2, Suppl", True),
         # Not ranges: a part or a letter suffix still matches its issue.

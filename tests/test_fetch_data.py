@@ -109,6 +109,9 @@ def test_month_end_drops_an_incomplete_final_month() -> None:
         # Exact ties at the ninth digit go to even: 1/4096 = 0.000244140625, 1/0.4096 = 2.44140625.
         ("4096", "0.00024414062"),
         ("0.4096", "2.4414062"),
+        # A tie below 1e-4 and a quotient below 1e-6 stay exact in plain decimal (a float or str() would not).
+        ("40960", "0.000024414062"),
+        ("20000000", "0.000000050000000"),
     ],
 )
 def test_inversion_keeps_eight_significant_digits_in_plain_decimal(value: str, inverse: str) -> None:
