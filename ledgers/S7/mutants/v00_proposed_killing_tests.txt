@@ -1,0 +1,76 @@
+# Round-9 verifier: tests that kill the five survivors v01, v02, v03, v04 and v06 (append to grader/test_project.py; this text is
+# already ruff-formatted at line length 120). Each passes on grader/reference.py for seeds 0-49 and on a contract-faithful variant
+# (loop BH, different bootstrap draws), and fails its mutant. They use only helpers already in the file (must_raise, close,
+# cscv_definition, _differentials, SEED, a8, np, math, pytest). The suite then collects 150 tests: update "145 checks" on project.html.
+
+
+# ---------------------------------------------------------------- round-9 additions (verifier-proposed fix)
+
+
+def test_a_level_of_zero_or_one_is_not_a_level() -> None:
+    trials = a8.TrialSet(np.random.default_rng(0).normal(size=(50, 4)), 0, 252)
+    must_raise(lambda: a8.benjamini_hochberg([0.01, 0.2], 1.0), "benjamini_hochberg with q = 1")
+    must_raise(lambda: a8.stepdown_rejections([1.0, 2.0], np.zeros((10, 2)), 1.0), "stepdown_rejections with alpha = 1")
+    for alpha in (0.0, 1.0):
+        must_raise(
+            lambda alpha=alpha: a8.romano_wolf(_differentials(), alpha, 20, 5.0, SEED),
+            f"romano_wolf with alpha = {alpha}",
+        )
+        must_raise(
+            lambda alpha=alpha: a8.integrity_report(trials, alpha=alpha, n_blocks=4, n_boot=20),
+            f"integrity_report with alpha = {alpha}",
+        )
+    must_raise(lambda: a8.integrity_report(trials, q=1.0, n_blocks=4, n_boot=20), "integrity_report with q = 1")
+
+
+def test_the_smallest_trial_set_the_contract_allows_is_valid() -> None:
+    r = np.random.default_rng(SEED).normal(0.0, 0.01, (4, 3))  # T = 4: four one-period blocks, two-period halves
+    report = a8.integrity_report(a8.TrialSet(r, 0, 12), n_blocks=16, n_boot=20, seed=SEED)
+    assert report.n_trials == 3 and close(report.pbo, a8.probability_of_backtest_overfitting(r, 4).pbo), (
+        "integrity_report accepts T = 4 (contract: needs T >= 4, so each CSCV half-sample has 2 periods)."
+    )
+
+
+def test_a_mean_block_of_one_is_the_iid_bootstrap() -> None:
+    indices = np.asarray(a8.stationary_bootstrap_indices(50, 1.0, np.random.default_rng(SEED)))
+    assert indices.shape == (50,) and indices.min() >= 0 and indices.max() < 50, (
+        "mean_block = 1 is allowed (contract: a finite number >= 1): every step starts a new block."
+    )
+    m = np.random.default_rng(SEED).normal(0.0, 1.0, (60, 3))
+    assert np.asarray(a8.romano_wolf(m, 0.05, 20, 1.0, SEED)).shape == (3,), "romano_wolf accepts mean_block = 1."
+
+
+def _skewed_columns(skew_sign: float, t_stat: float, n_obs: int = 40, n_cols: int = 3) -> np.ndarray:
+    """Columns with the same strongly skewed, heavy-tailed shape, each with t-statistic exactly t_stat."""
+    rng = np.random.default_rng(SEED)
+    base = skew_sign * (rng.exponential(1.0, n_obs) ** 2)
+    base = (base - base.mean()) / base.std(ddof=1)
+    columns = [np.roll(base, shift) + t_stat / math.sqrt(n_obs) for shift in range(n_cols)]
+    return 0.01 * np.column_stack(columns)
+
+
+def test_report_pvalues_are_the_normal_tail_of_the_t_statistic_whatever_the_skewness() -> None:
+    # t = 1.60 gives p = 0.0548 and t = 1.70 gives p = 0.0446. A p-value built from the PSR (which adjusts the standard
+    # error for skewness and kurtosis) would be on the other side of 0.05 for these shapes.
+    for skew_sign, t_stat, expected in ((1.0, 1.60, False), (-1.0, 1.70, True)):
+        m = _skewed_columns(skew_sign, t_stat)
+        report = a8.integrity_report(a8.TrialSet(m, 0, 12), n_blocks=4, n_boot=20)
+        assert (
+            bool(np.asarray(report.bh_rejections).all()) is expected
+            and bool(np.asarray(report.bh_rejections).any()) is expected
+        ), (
+            "The report's p-values are 1 - Phi(mean / (sd / sqrt(T))), whatever the trials' skewness and kurtosis "
+            "(contract: integrity_report); skewness and kurtosis enter the PSR, not these tests."
+        )
+
+
+def test_pbo_uses_every_split_for_twelve_and_sixteen_blocks() -> None:
+    m = np.random.default_rng(SEED).normal(0.0, 0.01, (120, 4))
+    twelve = a8.probability_of_backtest_overfitting(m, 12)
+    assert twelve.n_combinations == math.comb(12, 6) and np.allclose(
+        np.asarray(twelve.logits), cscv_definition(m, 12), rtol=0, atol=1e-10
+    ), "CSCV uses all C(S, S/2) splits, however many there are (L08): no sampling and no cap."
+    sixteen = a8.probability_of_backtest_overfitting(np.random.default_rng(SEED).normal(0.0, 0.01, (32, 3)), 16)
+    assert sixteen.n_combinations == math.comb(16, 8) and len(sixteen.logits) == 12870, (
+        "The memo's default S = 16 has 12,870 splits, and PBO is the share over all of them."
+    )
