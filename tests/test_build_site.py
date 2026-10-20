@@ -114,6 +114,24 @@ def test_tex_inline_math_in_a_title_is_shown_as_plain_text(title: str, shown: st
     assert full_cite(full_entry(title=title)).split(" (2008). ", 1)[1].startswith(shown.rstrip("?"))
 
 
+@pytest.mark.parametrize(
+    ("title", "shown"),
+    [
+        pytest.param("Two $AR$ and $MA$ Terms", "Two AR and MA Terms", id="several-multi-character-spans"),
+        pytest.param("A $(1+\\rho)$ Estimator", "A (1+\\rho) Estimator", id="math-that-is-not-word-characters"),
+        pytest.param("The $AR$ Model", "The AR Model", id="two-character-math"),
+    ],
+)
+def test_tex_math_spans_of_any_length_and_content_are_shown_as_plain_text(title: str, shown: str) -> None:
+    assert plain_title(title) == shown
+
+
+def test_a_shouting_title_is_recased_after_its_math_is_made_plain() -> None:
+    # Recasing first would lower-case the math and leave "$t$-statistic" for plain_title: "The Student t-statistic".
+    shown = full_cite(full_entry(title="THE STUDENT $T$-STATISTIC"))
+    assert shown.split(" (2008). ", 1)[1].startswith("The Student T-statistic.")
+
+
 def test_no_displayed_reference_carries_tex_math_delimiters() -> None:
     payload = references_payload(json.loads(REGISTRY.read_text(encoding="utf-8"))["entries"])
     assert [key for key, shown in payload.items() if plain_title(shown["full"]) != shown["full"]] == []

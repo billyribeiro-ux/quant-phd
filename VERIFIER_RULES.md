@@ -39,8 +39,9 @@
 
 ### 2.1 Citations: one row per distinct key
 - `verify_refs.py --unit <UNIT>` re-resolves every registry entry the unit
-  uses (without `--unit` it re-resolves the whole registry). Title, authors,
-  year and venue match Crossref.
+  uses. Title, authors, year and venue match Crossref. A unit's ledger records
+  this run; the run without `--unit`, over the whole registry, is the
+  scheduled CI job's, and the integrity checks of both cover every entry.
 - **Attribution:** the attached claim is what the paper shows. Read at least
   the abstract. For any `data-locator`, open the source and confirm the number
   at that locator.

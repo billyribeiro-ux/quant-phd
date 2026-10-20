@@ -535,6 +535,31 @@ def test_a_unit_live_run_refuses_an_unknown_unit_and_other_modes(
     assert stop.value.code == 2
 
 
+def test_a_unit_live_run_re_fetches_its_entries_but_checks_the_whole_registry(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import verify_refs
+    from refs import registry
+
+    scoped = _entry(key="scoped", used_by=["S7"], url="https://openlibrary.org/books/OL1M", isbn=["9780000000011"])
+    other = _entry(key="other", url="https://openlibrary.org/books/OL2M", isbn=["9780000000022"])
+    broken = _entry(key="broken", used_by=["ZZ9"], url="https://openlibrary.org/books/OL3M", isbn=["9780000000033"])
+    fetched: list[object] = []
+
+    def live_check(entry: dict[str, object], crossref: object, fetcher: object) -> list[str]:
+        fetched.append(entry["key"])
+        return []
+
+    monkeypatch.setattr(registry, "load", lambda: [scoped, other, broken])
+    monkeypatch.setattr(verify_refs, "live_check", live_check)
+    monkeypatch.setattr("sys.argv", ["verify_refs.py", "--unit", "S7"])
+    assert verify_refs.main() == 1  # an integrity problem outside the unit still fails the run
+    assert fetched == ["scoped"]
+    out = capsys.readouterr().out.splitlines()
+    assert "FAIL broken: used_by unknown units ['ZZ9']" in out
+    assert out[-1] == "live re-verification of S7: 1 of 3 entries, 1 problems"
+
+
 def test_seed_does_not_requeue_sources_admitted_by_hand() -> None:
     # A book admitted by ISBN must not reappear in the review queue on the next seeding run.
     from seed_references import Outcome, build
