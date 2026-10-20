@@ -98,7 +98,7 @@ function holmStaircase(el) {
           })),
         ],
       });
-      // Close-up of step five, where the decision turns on the third significant digit of test 6.
+      // Close-up of step five, where the decision turns on the second significant digit of test 6.
       const close = width < 520 ? 150 : 132;
       plot(area, {
         width,
