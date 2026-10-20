@@ -35,6 +35,11 @@ SERIES = {
 }
 
 
+def zip_member(name: str) -> zipfile.ZipInfo:
+    """A member with a fixed timestamp, so the same document always zips to the same bytes."""
+    return zipfile.ZipInfo(name, date_time=(2026, 10, 19, 0, 0, 0))
+
+
 def sdmx_zip(series: dict[str, list[tuple[str, str, str]]], member: str = "H10_data.xml") -> bytes:
     blocks = []
     for name, observations in series.items():
@@ -51,8 +56,8 @@ def sdmx_zip(series: dict[str, list[tuple[str, str, str]]], member: str = "H10_d
     )
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w") as archive:
-        archive.writestr(member, xml)
-        archive.writestr("H10_struct.xml", "<structure/>")
+        archive.writestr(zip_member(member), xml)
+        archive.writestr(zip_member("H10_struct.xml"), "<structure/>")
     return out.getvalue()
 
 
@@ -320,7 +325,7 @@ def series_block(name: str, observations: list[tuple[str, str, str]]) -> str:
 def zip_with(xml: str, member: str = "H10_data.xml") -> bytes:
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w") as archive:
-        archive.writestr(member, xml)
+        archive.writestr(zip_member(member), xml)
     return out.getvalue()
 
 
@@ -370,6 +375,19 @@ def zip_with(xml: str, member: str = "H10_data.xml") -> bytes:
             ),
             "cannot be inverted",
         ),
+    ],
+    ids=[
+        "not-a-zip",
+        "missing-member",
+        "unreadable-xml",
+        "decimal-comma",
+        "impossible-date",
+        "basic-date-form",
+        "week-date-form",
+        "non-ascii-digit",
+        "duplicate-date",
+        "duplicate-series",
+        "zero-rate",
     ],
 )
 def test_a_malformed_download_is_refused_with_a_data_error(raw: bytes, message: str) -> None:
