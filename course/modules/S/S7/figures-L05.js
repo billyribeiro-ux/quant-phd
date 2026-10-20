@@ -181,8 +181,8 @@ function jointVsIndependent(el) {
         y: { label: "Bootstrap statistic of strategy 2", domain: [-4, 4], format: ".0f" },
         height: Math.min(440, Math.max(300, width * 0.75)),
         layers: [
-          { type: "dots", name: "whole dates resampled (joint)", points: joint.boot.map((r) => [r[0], r[1]]), series: 0, r: 2.4 },
           { type: "dots", name: "each strategy resampled separately", points: indep.boot.map((r) => [r[0], r[1]]), series: 1, r: 2.4, hollow: true },
+          { type: "dots", name: "whole dates resampled (joint)", points: joint.boot.map((r) => [r[0], r[1]]), series: 0, r: 2.4 },
         ],
       });
       return `Correlation of the two bootstrap statistics: ${corr(joint.boot).toFixed(2)} joint, ${corr(indep.boot).toFixed(2)} separate. 95% critical value of the maximum over ten strategies: ${crit(joint.boot).toFixed(2)} joint, ${crit(indep.boot).toFixed(2)} separate.`;
