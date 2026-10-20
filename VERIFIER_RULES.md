@@ -107,6 +107,13 @@
    `ledgers/{{ID}}/mutants/<name>.py` whose docstring's first line describes
    the error, run `python tools/mutate_graders.py --unit {{ID}} --seeds 0-9`,
    and record each mutant's description and the test that killed it.
+   A change that no input can distinguish from the original (an equivalent
+   mutant) is not a fault and cannot fail a test. If you write one, prove
+   the equivalence in a row (the argument, and an exhaustive or randomized
+   check) and leave it out of `mutants`: `tools/ledger.py` counts every
+   listed mutant as a fault that must be killed. A mutant that is
+   equivalent only on the data a lab or test happens to use is not
+   equivalent: write a test whose input tells it apart.
 4. Failure messages name the violated property and never leak the answer.
 5. The same suite passes both in Pyodide (`page_smoke.py`) and in local
    pytest.
