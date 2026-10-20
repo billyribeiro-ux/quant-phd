@@ -589,6 +589,8 @@ def test_a_dry_run_reports_what_the_run_would_do(
 ) -> None:
     # A dry run for a DOI the registry already holds said WOULD ADD, though the run itself updates that entry.
     # used_by is the union of the held units and S7: S7 neither repeated when held nor dropped when new.
+    import copy
+
     import add_reference
     from refs import registry
 
@@ -598,20 +600,24 @@ def test_a_dry_run_reports_what_the_run_would_do(
     monkeypatch.setattr(add_reference, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(add_reference, "by_doi", lambda cand, doi: (work(doi=doi), {}, ""))
     monkeypatch.setattr(registry, "load", lambda: [stored])
-    monkeypatch.setattr(registry, "save", saved.append)
+    monkeypatch.setattr(
+        registry, "save", lambda entries: saved.append(copy.deepcopy(entries))
+    )  # as saved, not as later
     source = "Smith (1995), Journal of Finance 50(1)"
     monkeypatch.setattr("sys.argv", ["add_reference.py", *argv, "--source", source, "--used-by", "S7"])
     assert add_reference.main() == 0
     assert capsys.readouterr().out == expected + "\n"  # one line: a dry run never reports both outcomes
     assert len(saved) == writes
     if writes:
-        assert saved[0] == [stored] and stored["source_strings"] == [source] and stored["used_by"] == ["M2", "S7"]
+        (entry,) = saved[0]
+        assert entry["source_strings"] == [source] and entry["used_by"] == ["M2", "S7"]
 
 
 _HOLDERS = (
     _entry(key="by_doi", doi="10.1/a", url="https://example.org/a", isbn=[]),
     _entry(key="by_isbn", doi=None, isbn=["9780000000011", "9780000000022"], url="https://openlibrary.org/books/OL1M"),
     _entry(key="by_url", doi=None, isbn=[], url="https://example.org/u"),
+    _entry(key="by_doi_only", doi="10.1/d", isbn=[], url=None),  # no URL: a work without one must not match it
 )
 
 
@@ -641,6 +647,60 @@ def test_registered_finds_the_entry_that_holds_the_work(
     assert (found["key"] if found else None) == holder
     if found is not None:
         assert any(found is e for e in entries)  # the stored entry itself, which the run updates and saves
+
+
+def _admit_with(
+    held: list[dict[str, object]], argv: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[int, list[list[dict[str, object]]]]:
+    import copy
+
+    import add_reference
+    from refs import registry
+
+    saved: list[list[dict[str, object]]] = []
+    monkeypatch.setattr(add_reference, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(add_reference, "by_doi", lambda cand, doi: (work(doi=doi), {}, ""))
+    monkeypatch.setattr(registry, "load", lambda: held)
+    monkeypatch.setattr(registry, "save", lambda entries: saved.append(copy.deepcopy(entries)))
+    monkeypatch.setattr("sys.argv", ["add_reference.py", *argv])
+    return add_reference.main(), saved
+
+
+_SOURCE = ["--source", "Smith (1995), Journal of Finance 50(1)"]
+
+
+def test_admit_adds_a_new_work_with_its_unit_source_and_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, saved = _admit_with([], ["--doi", "10.1/new", *_SOURCE, "--used-by", "S7"], monkeypatch, tmp_path)
+    assert code == 0 and capsys.readouterr().out == "ADDED smith1995title -> 10.1/new\n"
+    ((entry,),) = saved
+    assert entry["key"] == "smith1995title" and entry["doi"] == "10.1/new"
+    assert entry["used_by"] == ["S7"] and entry["source_strings"] == [_SOURCE[1]]
+    assert (entry["status"], entry["origin"], entry["verified_by"]) == ("verified", "manual", "crossref")
+
+
+def test_admit_does_not_reuse_a_key_the_registry_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    other = _entry(key="smith1995title", doi="10.1/other", url=None, isbn=[], source_strings=[])
+    code, saved = _admit_with([other], ["--doi", "10.1/new", *_SOURCE, "--used-by", "S7"], monkeypatch, tmp_path)
+    assert code == 0 and capsys.readouterr().out == "ADDED smith1995titleb -> 10.1/new\n"
+    assert [e["key"] for e in saved[0]] == ["smith1995title", "smith1995titleb"]
+
+
+def test_admitting_a_reference_needs_a_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, saved = _admit_with([], ["--doi", "10.1/new", *_SOURCE], monkeypatch, tmp_path)
+    assert code == 1 and saved == []
+    assert "--used-by is required" in capsys.readouterr().err
+
+
+def test_describe_names_the_first_author() -> None:
+    from add_reference import describe
+
+    assert describe(work(authors=("Smith", "Jones"))).startswith("Smith (1995) ")
 
 
 def test_describe_names_the_first_container_title_only() -> None:
