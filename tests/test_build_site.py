@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
 
-from build_site import _fix_case, family_name, short_cite
+from build_site import REGISTRY, _fix_case, family_name, full_cite, plain_title, references_payload, short_cite
 from refs.registry import cited_years, display_year
 from verify_refs import integrity
 
@@ -93,6 +94,29 @@ def test_all_caps_names_are_recased_but_initials_are_kept(word: str, shown: str)
 def test_short_cite_uses_the_print_year() -> None:
     record = full_entry(print_year=2008, years=[2008, 2009])
     assert short_cite(record) == "Bollen & Pool (2008)"
+
+
+@pytest.mark.parametrize(
+    ("title", "shown"),
+    [
+        pytest.param(
+            "When is the Student $t$-statistic asymptotically standard normal?",
+            "When is the Student t-statistic asymptotically standard normal?",
+            id="tex-inline-math",
+        ),
+        pytest.param("A $p$-value and an $F$ test", "A p-value and an F test", id="two-spans"),
+        pytest.param("Costs of $5 and more", "Costs of $5 and more", id="lone-dollar-kept"),
+        pytest.param("From $5 to $10 a Share", "From $5 to $10 a Share", id="prices-kept"),
+    ],
+)
+def test_tex_inline_math_in_a_title_is_shown_as_plain_text(title: str, shown: str) -> None:
+    assert plain_title(title) == shown
+    assert full_cite(full_entry(title=title)).split(" (2008). ", 1)[1].startswith(shown.rstrip("?"))
+
+
+def test_no_displayed_reference_carries_tex_math_delimiters() -> None:
+    payload = references_payload(json.loads(REGISTRY.read_text(encoding="utf-8"))["entries"])
+    assert [key for key, shown in payload.items() if plain_title(shown["full"]) != shown["full"]] == []
 
 
 @pytest.mark.parametrize(
