@@ -27,6 +27,7 @@ good_and_null[:, 0] += 3.0 / np.sqrt(n_obs)
 poor_pool = rng.standard_normal((n_obs, 100)) - 0.25
 
 recentred_nulls: list[tuple[int, float]] = []
+base_v = 0.0
 print("poor_models_added  reality_check_p  spa_style_p")
 for n_poor in (0, 20, 100):
     d = np.hstack([good_and_null, poor_pool[:, :n_poor]])
@@ -47,6 +48,8 @@ for n_poor in (0, 20, 100):
     p_spa = np.mean(t_star >= t_obs)
     print(f"{n_poor} {p_rc:.3f} {p_spa:.3f}")
     if n_poor == 0:  # null strategies the SPA-style rule recentres although their true mean is zero
+        base_v = float(v)
         recentred_nulls = [(int(k), float(np.sqrt(n_obs) * means[k] / sd[k])) for k in np.flatnonzero(centre < 0.0)]
 listed = ", ".join(f"strategy {k} (t = {t:.2f})" for k, t in recentred_nulls)
 print(f"null strategies recentred in the base universe: {listed}")
+print(f"Reality Check statistic V_K in the base universe: {base_v:.3f}")
