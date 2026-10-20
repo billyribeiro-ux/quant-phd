@@ -6,6 +6,8 @@ names it, so the regression stays explained.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from refs.crossref import Author, Work, clean
@@ -558,6 +560,40 @@ def test_a_unit_live_run_re_fetches_its_entries_but_checks_the_whole_registry(
     out = capsys.readouterr().out.splitlines()
     assert "FAIL broken: used_by unknown units ['ZZ9']" in out
     assert out[-1] == "live re-verification of S7: 1 of 3 entries, 1 problems"
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected", "writes"),
+    [
+        (["--doi", "10.1/held", "--dry-run"], "WOULD UPDATE held1995title used_by=['M2', 'S7']", 0),
+        (["--doi", "10.1/held"], "UPDATED held1995title used_by=['M2', 'S7']", 1),
+        (["--doi", "10.1/new", "--dry-run"], "WOULD ADD (crossref): Smith (1995) 'A Title'", 0),
+    ],
+    ids=["dry-run-registered", "run-registered", "dry-run-new"],
+)
+def test_a_dry_run_reports_what_the_run_would_do(
+    argv: list[str],
+    expected: str,
+    writes: int,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A dry run for a DOI the registry already holds said WOULD ADD, though the run itself updates that entry.
+    import add_reference
+    from refs import registry
+
+    held = _entry(key="held1995title", doi="10.1/held", url=None, isbn=[], verified_by="crossref")
+    saved: list[object] = []
+    monkeypatch.setattr(add_reference, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(add_reference, "by_doi", lambda cand, doi: (work(doi=doi), {}, ""))
+    monkeypatch.setattr(registry, "load", lambda: [dict(held, source_strings=[])])
+    monkeypatch.setattr(registry, "save", saved.append)
+    source = ["--source", "Smith (1995), Journal of Finance 50(1)", "--used-by", "S7"]
+    monkeypatch.setattr("sys.argv", ["add_reference.py", *argv, *source])
+    assert add_reference.main() == 0
+    assert capsys.readouterr().out.startswith(expected)
+    assert len(saved) == writes
 
 
 def test_seed_does_not_requeue_sources_admitted_by_hand() -> None:
