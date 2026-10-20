@@ -71,7 +71,7 @@ def reject(message: str) -> int:
 
 def describe(work: Work) -> str:
     first = work.authors[0].family if work.authors else "?"
-    return f"{first} ({work.year}) '{work.title}', {work.container[:1]} {work.volume}({work.issue})"
+    return f"{first} ({work.year}) '{work.title}', {', '.join(work.container[:1])} {work.volume}({work.issue})"
 
 
 def judged(cand: Candidate, work: Work, label: str = "record") -> tuple[Work | None, dict[str, dict[str, str]], str]:

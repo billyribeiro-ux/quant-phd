@@ -567,7 +567,11 @@ def test_a_unit_live_run_re_fetches_its_entries_but_checks_the_whole_registry(
     [
         (["--doi", "10.1/held", "--dry-run"], "WOULD UPDATE held1995title used_by=['M2', 'S7']", 0),
         (["--doi", "10.1/held"], "UPDATED held1995title used_by=['M2', 'S7']", 1),
-        (["--doi", "10.1/new", "--dry-run"], "WOULD ADD (crossref): Smith (1995) 'A Title'", 0),
+        (
+            ["--doi", "10.1/new", "--dry-run"],
+            "WOULD ADD (crossref): Smith (1995) 'A Title', Journal of Finance 50(1) url=None isbn=[] notes={}",
+            0,
+        ),
     ],
     ids=["dry-run-registered", "run-registered", "dry-run-new"],
 )
@@ -580,20 +584,57 @@ def test_a_dry_run_reports_what_the_run_would_do(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     # A dry run for a DOI the registry already holds said WOULD ADD, though the run itself updates that entry.
+    # The entry already lists S7, so the reported used_by must be the union, not the two lists run together.
     import add_reference
     from refs import registry
 
-    held = _entry(key="held1995title", doi="10.1/held", url=None, isbn=[], verified_by="crossref")
-    saved: list[object] = []
+    held = _entry(key="held1995title", doi="10.1/held", url=None, isbn=[], verified_by="crossref", used_by=["M2", "S7"])
+    stored = dict(held, source_strings=[])
+    saved: list[list[dict[str, object]]] = []
     monkeypatch.setattr(add_reference, "CACHE_DIR", tmp_path)
     monkeypatch.setattr(add_reference, "by_doi", lambda cand, doi: (work(doi=doi), {}, ""))
-    monkeypatch.setattr(registry, "load", lambda: [dict(held, source_strings=[])])
+    monkeypatch.setattr(registry, "load", lambda: [stored])
     monkeypatch.setattr(registry, "save", saved.append)
-    source = ["--source", "Smith (1995), Journal of Finance 50(1)", "--used-by", "S7"]
-    monkeypatch.setattr("sys.argv", ["add_reference.py", *argv, *source])
+    source = "Smith (1995), Journal of Finance 50(1)"
+    monkeypatch.setattr("sys.argv", ["add_reference.py", *argv, "--source", source, "--used-by", "S7"])
     assert add_reference.main() == 0
-    assert capsys.readouterr().out.startswith(expected)
+    assert capsys.readouterr().out == expected + "\n"  # one line: a dry run never reports both outcomes
     assert len(saved) == writes
+    if writes:
+        assert saved[0] == [stored] and stored["source_strings"] == [source]
+
+
+_HOLDERS = (
+    _entry(key="by_doi", doi="10.1/a", url="https://example.org/a", isbn=[]),
+    _entry(key="by_isbn", doi=None, isbn=["9780000000011", "9780000000022"], url="https://openlibrary.org/books/OL1M"),
+    _entry(key="by_url", doi=None, isbn=[], url="https://example.org/u"),
+)
+
+
+@pytest.mark.parametrize(
+    ("doi", "isbn", "url", "holder"),
+    [
+        ("10.1/a", (), None, "by_doi"),
+        ("10.1/z", (), "https://example.org/u", None),  # a DOI decides: a URL alone does not make it the same work
+        ("", ("9780000000022", "9780000000033"), None, "by_isbn"),  # one shared ISBN is enough
+        ("", (), "https://example.org/u", "by_url"),
+        ("", (), "https://example.org/other", None),
+        ("", (), None, None),  # no identifier matches nothing
+    ],
+    ids=["doi", "doi-beats-url", "shared-isbn", "url", "other-url", "no-identifier"],
+)
+def test_registered_finds_the_entry_that_holds_the_work(
+    doi: str, isbn: tuple[str, ...], url: str | None, holder: str | None
+) -> None:
+    from dataclasses import replace
+
+    from add_reference import registered
+
+    entries = [dict(e) for e in _HOLDERS]
+    found = registered(entries, replace(work(doi=doi), isbn=isbn, url=url))
+    assert (found["key"] if found else None) == holder
+    if found is not None:
+        assert any(found is e for e in entries)  # the stored entry itself, which the run updates and saves
 
 
 def test_seed_does_not_requeue_sources_admitted_by_hand() -> None:
