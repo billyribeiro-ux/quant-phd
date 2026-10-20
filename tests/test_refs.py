@@ -563,20 +563,24 @@ def test_a_unit_live_run_re_fetches_its_entries_but_checks_the_whole_registry(
 
 
 @pytest.mark.parametrize(
-    ("argv", "expected", "writes"),
+    ("argv", "held_units", "expected", "writes"),
     [
-        (["--doi", "10.1/held", "--dry-run"], "WOULD UPDATE held1995title used_by=['M2', 'S7']", 0),
-        (["--doi", "10.1/held"], "UPDATED held1995title used_by=['M2', 'S7']", 1),
+        (["--doi", "10.1/held", "--dry-run"], ["M2", "S7"], "WOULD UPDATE held1995title used_by=['M2', 'S7']", 0),
+        (["--doi", "10.1/held"], ["M2", "S7"], "UPDATED held1995title used_by=['M2', 'S7']", 1),
+        (["--doi", "10.1/held", "--dry-run"], ["M2"], "WOULD UPDATE held1995title used_by=['M2', 'S7']", 0),
+        (["--doi", "10.1/held"], ["M2"], "UPDATED held1995title used_by=['M2', 'S7']", 1),
         (
             ["--doi", "10.1/new", "--dry-run"],
+            ["M2", "S7"],
             "WOULD ADD (crossref): Smith (1995) 'A Title', Journal of Finance 50(1) url=None isbn=[] notes={}",
             0,
         ),
     ],
-    ids=["dry-run-registered", "run-registered", "dry-run-new"],
+    ids=["dry-run-unit-held", "run-unit-held", "dry-run-unit-added", "run-unit-added", "dry-run-new"],
 )
 def test_a_dry_run_reports_what_the_run_would_do(
     argv: list[str],
+    held_units: list[str],
     expected: str,
     writes: int,
     tmp_path: Path,
@@ -584,11 +588,11 @@ def test_a_dry_run_reports_what_the_run_would_do(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     # A dry run for a DOI the registry already holds said WOULD ADD, though the run itself updates that entry.
-    # The entry already lists S7, so the reported used_by must be the union, not the two lists run together.
+    # used_by is the union of the held units and S7: S7 neither repeated when held nor dropped when new.
     import add_reference
     from refs import registry
 
-    held = _entry(key="held1995title", doi="10.1/held", url=None, isbn=[], verified_by="crossref", used_by=["M2", "S7"])
+    held = _entry(key="held1995title", doi="10.1/held", url=None, isbn=[], verified_by="crossref", used_by=held_units)
     stored = dict(held, source_strings=[])
     saved: list[list[dict[str, object]]] = []
     monkeypatch.setattr(add_reference, "CACHE_DIR", tmp_path)
@@ -601,7 +605,7 @@ def test_a_dry_run_reports_what_the_run_would_do(
     assert capsys.readouterr().out == expected + "\n"  # one line: a dry run never reports both outcomes
     assert len(saved) == writes
     if writes:
-        assert saved[0] == [stored] and stored["source_strings"] == [source]
+        assert saved[0] == [stored] and stored["source_strings"] == [source] and stored["used_by"] == ["M2", "S7"]
 
 
 _HOLDERS = (
@@ -620,8 +624,10 @@ _HOLDERS = (
         ("", (), "https://example.org/u", "by_url"),
         ("", (), "https://example.org/other", None),
         ("", (), None, None),  # no identifier matches nothing
+        ("", ("9780000000033", "9780000000022"), None, "by_isbn"),  # the shared ISBN need not come first
+        ("", ("9780000000099",), "https://example.org/u", "by_url"),  # an ISBN that matches nothing leaves the URL
     ],
-    ids=["doi", "doi-beats-url", "shared-isbn", "url", "other-url", "no-identifier"],
+    ids=["doi", "doi-beats-url", "shared-isbn", "url", "other-url", "no-identifier", "isbn-second", "isbn-miss-url"],
 )
 def test_registered_finds_the_entry_that_holds_the_work(
     doi: str, isbn: tuple[str, ...], url: str | None, holder: str | None
@@ -635,6 +641,24 @@ def test_registered_finds_the_entry_that_holds_the_work(
     assert (found["key"] if found else None) == holder
     if found is not None:
         assert any(found is e for e in entries)  # the stored entry itself, which the run updates and saves
+
+
+def test_describe_names_the_first_container_title_only() -> None:
+    from dataclasses import replace
+
+    from add_reference import describe
+
+    two = replace(work(), container=("Journal of Finance", "J. Fin."))
+    assert describe(two) == "Smith (1995) 'A Title', Journal of Finance 50(1)"
+
+
+def test_describe_handles_a_work_without_a_container() -> None:
+    # A book admitted by ISBN has no container title.
+    from dataclasses import replace
+
+    from add_reference import describe
+
+    assert describe(replace(work(), container=())).startswith("Smith (1995) 'A Title',")
 
 
 def test_seed_does_not_requeue_sources_admitted_by_hand() -> None:
