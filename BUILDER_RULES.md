@@ -341,7 +341,9 @@ Studios integrate every module listed in `requires`. A studio:
      retrieval date, SHA-256 of the raw download and of the snapshot, rows,
      columns, date range and transform. Never edit a snapshot or MANIFEST by
      hand. `python tools/fetch_data.py --check` (offline, a gate) fails on any
-     difference. Read a dataset's `note` in the spec before using it, because
+     difference it can compare offline: every snapshot field and every MANIFEST field except `raw_sha256` and
+     `retrieved`, which record the download and are checked only by `python tools/fetch_data.py --fetch`. Read a
+     dataset's `note` in the spec before using it, because
      it states what the series do not contain.
    - **Adding a dataset.**
      1. Read the issuer's terms yourself. Quote, in `licence`, the sentence
