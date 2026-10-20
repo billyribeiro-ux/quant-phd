@@ -511,6 +511,30 @@ def test_integrity_rejects_entries_without_a_verifiable_source(overrides: dict[s
     assert any(problem in p for p in integrity([_entry(**overrides)]))
 
 
+def test_a_unit_live_run_re_fetches_only_the_entries_the_unit_uses() -> None:
+    from verify_refs import live_scope
+
+    s7, both, other = _entry(key="a", used_by=["S7"]), _entry(key="b", used_by=["M2", "S7"]), _entry(key="c")
+    assert live_scope([s7, both, other], "S7") == [s7, both]
+    assert live_scope([s7, both, other], None) == [s7, both, other]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--unit", "ZZ9"], ["--unit", "S7", "--offline"], ["--unit", "S7", "--backfill-print-years"]],
+    ids=["unknown-unit", "offline", "backfill"],
+)
+def test_a_unit_live_run_refuses_an_unknown_unit_and_other_modes(
+    argv: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import verify_refs
+
+    monkeypatch.setattr("sys.argv", ["verify_refs.py", *argv])
+    with pytest.raises(SystemExit) as stop:
+        verify_refs.main()
+    assert stop.value.code == 2
+
+
 def test_seed_does_not_requeue_sources_admitted_by_hand() -> None:
     # A book admitted by ISBN must not reappear in the review queue on the next seeding run.
     from seed_references import Outcome, build

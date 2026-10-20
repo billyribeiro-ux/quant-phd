@@ -38,8 +38,9 @@
 ## 2. Checks (each produces ledger rows)
 
 ### 2.1 Citations: one row per distinct key
-- `verify_refs.py` re-resolves the DOI. Title, authors, year and venue match
-  Crossref.
+- `verify_refs.py --unit <UNIT>` re-resolves every registry entry the unit
+  uses (without `--unit` it re-resolves the whole registry). Title, authors,
+  year and venue match Crossref.
 - **Attribution:** the attached claim is what the paper shows. Read at least
   the abstract. For any `data-locator`, open the source and confirm the number
   at that locator.

@@ -24,6 +24,7 @@ Usage::
 
     python3 tools/verify_refs.py             # full live re-verification
     python3 tools/verify_refs.py --offline   # integrity checks only (no network)
+    python3 tools/verify_refs.py --unit S7   # live re-verification of the entries S7 uses (integrity: whole registry)
     python3 tools/verify_refs.py --backfill-print-years   # record Crossref's print year where it is missing
 """
 
@@ -147,6 +148,11 @@ def live_check(entry: dict[str, Any], crossref: Crossref, fetcher: Fetcher) -> l
     return [] if recall >= PRIMARY_TITLE_RECALL else [f"issuer page title now covers {recall:.0%} of the citation"]
 
 
+def live_scope(entries: list[dict[str, Any]], unit: str | None) -> list[dict[str, Any]]:
+    """The entries a live run re-fetches: all of them, or only those whose ``used_by`` names the unit."""
+    return entries if unit is None else [e for e in entries if unit in e.get("used_by", [])]
+
+
 def backfill_print_years(entries: list[dict[str, Any]], workers: int) -> int:
     """Store print_year on every Crossref entry from its live record; nothing else in an entry changes."""
     crossref = Crossref(None)
@@ -195,7 +201,16 @@ def main() -> int:
         action="store_true",
         help="fetch each Crossref entry's record and store its published-print year (entries added before it existed)",
     )
+    parser.add_argument(
+        "--unit",
+        help="re-verify live only the entries this unit uses; the integrity checks still cover the whole registry",
+    )
     args = parser.parse_args()
+    if args.unit is not None:
+        if args.offline or args.backfill_print_years:
+            parser.error("--unit selects the entries of a live run")
+        if args.unit not in curriculum_units():
+            parser.error(f"--unit {args.unit!r} is not a curriculum unit")
 
     entries = registry.load()
     if args.backfill_print_years:
@@ -211,14 +226,19 @@ def main() -> int:
             except (CrossrefError, WebError) as exc:
                 return [f"{entry['key']}: {exc}"]
 
+        live = live_scope(entries, args.unit)
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
-            for result in pool.map(check, entries):
+            for result in pool.map(check, live):
                 problems.extend(result)
 
     for problem in problems:
         print(f"FAIL {problem}")
-    mode = "offline integrity" if args.offline else "live re-verification"
-    print(f"{mode}: {len(entries)} entries, {len(problems)} problems")
+    if args.offline:
+        print(f"offline integrity: {len(entries)} entries, {len(problems)} problems")
+    elif args.unit is None:
+        print(f"live re-verification: {len(entries)} entries, {len(problems)} problems")
+    else:
+        print(f"live re-verification of {args.unit}: {len(live)} of {len(entries)} entries, {len(problems)} problems")
     return 1 if problems else 0
 
 
