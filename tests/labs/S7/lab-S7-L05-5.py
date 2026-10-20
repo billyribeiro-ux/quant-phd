@@ -32,6 +32,7 @@ def step_up(ordered: npt.NDArray[np.float64], line: npt.NDArray[np.float64]) -> 
 
 
 print(f"c({n_terms}) = {harmonic:.4f}")
+print(f"c({m}) = {float(np.sum(1.0 / np.arange(1, m + 1))):.4f}")
 print("rho  procedure  P(FDP>0.2)  mean_FDP  true_discoveries")
 for rho in (0.0, 0.5, 0.8):
     w = rng.standard_normal((n_reps, 1))
