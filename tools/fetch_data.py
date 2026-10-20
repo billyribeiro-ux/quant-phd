@@ -45,7 +45,8 @@ import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -202,17 +203,22 @@ def _sdmx_series(raw: bytes, member: str, wanted: set[str]) -> dict[str, dict[st
 def _invert(value: str) -> str:
     """1 / value rounded (half to even) to eight significant digits, in plain decimal notation.
 
-    The quotient is computed in decimal, so the eighth digit is the exact quotient's: a value just above a power
-    of ten inverts to 0.99999999, not to a seven-digit 1.0000000.
+    The quotient is an exact fraction and is rounded once, so the eighth digit is the exact quotient's: a value just
+    above a power of ten inverts to 0.99999999, not to a seven-digit 1.0000000, and a quotient just below a tie
+    rounds down however many digits the value has (a 28-digit decimal quotient would round onto the tie first).
     """
-    if Decimal(value) == 0:
+    exact = Fraction(value)
+    if exact == 0:
         raise DataError(f"a zero rate {value!r} cannot be inverted to USD per unit")
-    inverse = Decimal(1) / Decimal(value)
-    lead = inverse.adjusted()
-    rounded = inverse.quantize(Decimal(1).scaleb(lead - 7), rounding=ROUND_HALF_EVEN)
-    if rounded.adjusted() > lead:  # rounding carried into a new leading digit: 9.99999996 -> 10.000000
-        rounded = inverse.quantize(Decimal(1).scaleb(lead - 6), rounding=ROUND_HALF_EVEN)
-    return f"{rounded:f}"
+    inverse = 1 / abs(exact)
+    lead = len(str(inverse.numerator)) - len(str(inverse.denominator))
+    if inverse < Fraction(10) ** lead:
+        lead -= 1  # now 10**lead <= inverse < 10**(lead + 1)
+    digits = round(inverse / Fraction(10) ** (lead - 7))  # Fraction rounds half to even
+    if digits == 10**8:  # rounding carried into a new leading digit: 9.99999996 -> 10.000000
+        digits, lead = 10**7, lead + 1
+    rounded = Decimal(digits).scaleb(lead - 7)
+    return f"{-rounded if exact < 0 else rounded:f}"
 
 
 def fed_sdmx(raw: bytes, spec: dict[str, Any]) -> Table:

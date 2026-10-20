@@ -112,6 +112,12 @@ def test_month_end_drops_an_incomplete_final_month() -> None:
         # A tie below 1e-4 and a quotient below 1e-6 stay exact in plain decimal (a float or str() would not).
         ("40960", "0.000024414062"),
         ("20000000", "0.000000050000000"),
+        # Thirty-digit values whose quotients lie just below and just above the tie 1.00000015: a quotient rounded
+        # to 28 digits first lands on the tie and goes to even (1.0000002) from both sides.
+        ("0.999999850000022499996625000507", "1.0000001"),
+        ("0.999999850000022499996625000506", "1.0000002"),
+        # The sign is kept.
+        ("-0.4096", "-2.4414062"),
     ],
 )
 def test_inversion_keeps_eight_significant_digits_in_plain_decimal(value: str, inverse: str) -> None:
