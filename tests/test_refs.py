@@ -737,3 +737,274 @@ def test_seeded_keys_avoid_keys_admitted_by_hand() -> None:
     entry = Entry("", w, "verified", "seed", [], [], {}, "now")
     assign_keys([entry], frozenset({"harvey2015backtesting"}))
     assert entry.key == "harvey2015backtestingb"
+
+
+# ---------------------------------------------------------------- add_reference: every mode and every stored field
+
+
+def test_admit_stores_the_identity_and_the_notes_of_a_new_book(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A book admitted by ISBN keeps its ISBN, URL, author, title, year and the notes recorded at admission.
+    import copy
+    from dataclasses import replace
+
+    import add_reference
+    from refs import registry
+
+    book = replace(
+        work(),
+        doi="",
+        type="book",
+        title="Calculus",
+        authors=(Author(family="Spivak", given="Michael"),),
+        container=(),
+        volume=None,
+        issue=None,
+        isbn=("9780914098911",),
+        url="https://openlibrary.org/books/OL28292750M",
+        years=frozenset({2008}),
+        year=2008,
+    )
+    notes = {"year": {"curriculum": "2008", "openlibrary": "2008"}}
+    saved: list[list[dict[str, object]]] = []
+    monkeypatch.setattr(registry, "load", lambda: [])
+    monkeypatch.setattr(registry, "save", lambda entries: saved.append(copy.deepcopy(entries)))
+    source = "Spivak, Calculus, 4th ed. (2008)"
+    assert add_reference.admit(book, source=source, used_by=["M2"], verified_by="openlibrary", notes=notes) == 0
+    assert capsys.readouterr().out == "ADDED spivak2008calculus -> https://openlibrary.org/books/OL28292750M\n"
+    ((entry,),) = saved
+    assert entry["isbn"] == ["9780914098911"] and entry["url"] == "https://openlibrary.org/books/OL28292750M"
+    assert entry["title"] == "Calculus" and entry["authors"] == [{"family": "Spivak", "given": "Michael"}]
+    assert entry["year"] == 2008 and entry["notes"] == notes and entry["verified_by"] == "openlibrary"
+
+
+def test_admit_keys_an_issuer_document_from_the_issuer_short_name(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The key of a primary document starts from the issuer's short name (authorities.yaml), not the record's author.
+    import add_reference
+    from refs import registry
+
+    monkeypatch.setattr(registry, "load", lambda: [])
+    monkeypatch.setattr(registry, "save", lambda entries: None)
+    code = add_reference.admit(
+        work(),
+        source="Smith (1995), Journal of Finance 50(1)",
+        used_by=["S7"],
+        verified_by="issuer",
+        notes={},
+        short="frb",
+    )
+    assert code == 0 and capsys.readouterr().out == "ADDED frb1995title -> 10.1/x\n"
+
+
+def test_by_isbn_refuses_a_citation_of_another_edition(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A 2nd-edition citation is not admitted against the record of the 3rd edition.
+    import add_reference
+    from refs.parse import parse_source
+    from refs.web import Fetcher
+
+    class Record:
+        def __init__(self, fetcher: Fetcher) -> None:
+            self.fetcher = fetcher
+
+        def edition_record(self, isbn: str, *, use_cache: bool = True) -> tuple[Work, str | None]:
+            return work(), "3 edition"
+
+    monkeypatch.setattr(add_reference, "OpenLibrary", Record)
+    found, _, reason = add_reference.by_isbn(
+        parse_source("Spivak, Calculus, 2nd ed. (2008)"), "9780914098911", Fetcher(None)
+    )
+    assert found is None and reason == "edition mismatch: citation says 2, the record says '3 edition'"
+
+
+def test_by_landing_refuses_a_page_that_declares_a_doi(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A page that declares a DOI is admitted with --doi, so that Crossref verifies it, never through --url.
+    from add_reference import by_landing
+    from refs.parse import parse_source
+    from refs.web import Fetcher
+
+    fetcher = Fetcher(None)
+    page = '<meta name="citation_doi" content="10.1111/j.1540-6261.1964.tb02865.x">'
+    monkeypatch.setattr(fetcher, "get", lambda url, **kwargs: (url, page))
+    url = "https://www.jmlr.org/papers/v12/pedregosa11a.html"
+    found, _, reason = by_landing(
+        parse_source("Pedregosa et al. (2011), Journal of Machine Learning Research 12"), url, fetcher
+    )
+    assert found is None and reason.startswith("the page declares DOI 10.1111/j.1540-6261.1964.tb02865.x")
+
+
+def test_by_landing_refuses_a_site_that_is_not_a_publisher(monkeypatch: pytest.MonkeyPatch) -> None:
+    from add_reference import by_landing
+    from refs.parse import parse_source
+    from refs.web import Fetcher
+
+    fetcher = Fetcher(None)
+    monkeypatch.setattr(fetcher, "get", lambda url, **kwargs: pytest.fail("fetched a site that is not a publisher"))
+    found, _, reason = by_landing(
+        parse_source("Smith (1995), Journal of Finance 50(1)"), "https://example.org/a", fetcher
+    )
+    assert (
+        found is None and reason == "https://example.org/a is not on a publishers domain in references/authorities.yaml"
+    )
+
+
+def test_by_doi_resolves_only_articles_and_books() -> None:
+    from add_reference import by_doi
+    from refs.parse import parse_source
+
+    found, _, reason = by_doi(parse_source("Dirks v. SEC, 463 U.S. 646 (1983)"), "10.1/x")
+    assert found is None and reason == "source parses as 'primary'; only articles and books resolve by DOI"
+
+
+def test_a_primary_document_is_admitted_only_from_its_issuer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import add_reference
+    from refs import registry
+
+    monkeypatch.setattr(registry, "load", lambda: [])  # a refusal must never reach the real registry
+    monkeypatch.setattr(registry, "save", lambda entries: pytest.fail("a refused document was saved"))
+
+    monkeypatch.setattr(add_reference, "CACHE_DIR", tmp_path)
+    source = "Federal Reserve SR 11-7, Guidance on Model Risk Management (2011) (primary)"
+    monkeypatch.setattr(
+        "sys.argv",
+        ["add_reference.py", "--url", "https://example.org/sr1107.htm", "--source", source, "--used-by", "S7"],
+    )
+    assert add_reference.main() == 1
+    assert "is not on an issuers domain" in capsys.readouterr().err
+
+
+def test_a_primary_document_must_carry_its_own_title(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import add_reference
+    from refs import registry
+
+    monkeypatch.setattr(registry, "load", lambda: [])  # a refusal must never reach the real registry
+    monkeypatch.setattr(registry, "save", lambda entries: pytest.fail("a refused document was saved"))
+
+    monkeypatch.setattr(add_reference, "CACHE_DIR", tmp_path)
+    from refs.web import Fetcher
+
+    monkeypatch.setattr(Fetcher, "get", lambda self, page, **kwargs: (page, "<title>Monetary Policy Report</title>"))
+    source = "Federal Reserve SR 11-7, Guidance on Model Risk Management (2011) (primary)"
+    url = "https://www.federalreserve.gov/supervisionreg/srletters/sr1107.htm"
+    monkeypatch.setattr("sys.argv", ["add_reference.py", "--url", url, "--source", source, "--used-by", "S7"])
+    assert add_reference.main() == 1
+    assert "the page's title covers" in capsys.readouterr().err
+
+
+def _admitted_by_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, argv: list[str], patch: dict[str, object]
+) -> dict[str, object]:
+    import copy
+
+    import add_reference
+    from refs import registry
+
+    saved: list[list[dict[str, object]]] = []
+    monkeypatch.setattr(add_reference, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(registry, "load", lambda: [])
+    monkeypatch.setattr(registry, "save", lambda entries: saved.append(copy.deepcopy(entries)))
+    for name, value in patch.items():
+        monkeypatch.setattr(add_reference, name, value)
+    monkeypatch.setattr("sys.argv", ["add_reference.py", *argv])
+    assert add_reference.main() == 0
+    ((entry,),) = saved
+    return entry
+
+
+def test_an_isbn_admission_is_verified_by_open_library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    book = replace(
+        work(),
+        doi="",
+        type="book",
+        container=(),
+        volume=None,
+        issue=None,
+        isbn=("9780914098911",),
+        url="https://openlibrary.org/books/OL28292750M",
+    )
+    entry = _admitted_by_mode(
+        monkeypatch,
+        tmp_path,
+        ["--isbn", "9780914098911", *_SOURCE, "--used-by", "M2"],
+        {"by_isbn": lambda cand, isbn, fetcher: (book, {}, "")},
+    )
+    assert entry["verified_by"] == "openlibrary"
+
+
+def test_a_landing_page_admission_is_verified_by_its_landing_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace
+
+    url = "https://www.jmlr.org/papers/v12/pedregosa11a.html"
+    article = replace(work(), url=url)
+    entry = _admitted_by_mode(
+        monkeypatch,
+        tmp_path,
+        ["--url", url, *_SOURCE, "--used-by", "S7"],
+        {"by_landing": lambda cand, page, fetcher: (article, {}, "")},
+    )
+    assert entry["verified_by"] == "landing"
+
+
+def test_a_primary_document_admission_is_verified_by_its_issuer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = "https://www.federalreserve.gov/supervisionreg/srletters/sr1107.htm"
+    source = "Federal Reserve SR 11-7, Guidance on Model Risk Management (2011) (primary)"
+    entry = _issuer_admitted(monkeypatch, tmp_path, url, source)
+    assert entry["verified_by"] == "issuer"
+
+
+def _issuer_admitted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, url: str, source: str) -> dict[str, object]:
+    import copy
+
+    import add_reference
+    from refs import registry
+
+    saved: list[list[dict[str, object]]] = []
+    monkeypatch.setattr(add_reference, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(registry, "load", lambda: [])
+    monkeypatch.setattr(registry, "save", lambda entries: saved.append(copy.deepcopy(entries)))
+    from refs.web import Fetcher
+
+    monkeypatch.setattr(
+        Fetcher,
+        "get",
+        lambda self, page, **kwargs: (
+            page,
+            "<title>Federal Reserve SR 11-7, Guidance on Model Risk Management</title>",
+        ),
+    )
+    monkeypatch.setattr("sys.argv", ["add_reference.py", "--url", url, "--source", source, "--used-by", "S7"])
+    assert add_reference.main() == 0
+    ((entry,),) = saved
+    return entry
+
+
+def test_judged_refuses_a_citation_whose_string_differs_from_the_record() -> None:
+    from dataclasses import replace
+
+    from add_reference import judged
+    from refs.parse import parse_source
+
+    record = replace(work(), authors=(Author(family="Smith", given=""), Author(family="Jones", given="")))
+    found, _, reason = judged(parse_source("Smith (1995), Journal of Finance 50(1)"), record)
+    assert found is None and reason.startswith("citation string differs from the record: {'authors'")
+
+
+def test_judged_says_why_a_record_does_not_match() -> None:
+    from add_reference import judged
+    from refs.parse import parse_source
+
+    found, _, reason = judged(parse_source("Smith (1995), Journal of Finance 50(2)"), work())
+    assert found is None and reason.startswith("record does not match the citation (")
+    assert reason.endswith("record: Smith (1995) 'A Title', Journal of Finance 50(1)")
