@@ -165,6 +165,27 @@ def test_l08_lab4_pbo_counts_ties_and_the_median_rank_as_the_definition_does() -
     assert lab["pbo_fast"](m, *lab["halves"](n_blocks)) == by_count
 
 
+def test_l08_lab3_pbo_counts_the_median_rank_as_overfit() -> None:
+    """Lab 3 runs 2, 20 and 200 configurations, an even count, where the selected one can never sit at the median
+    out of sample, so its logit is never exactly 0. Here three configurations over four blocks put the in-sample
+    winner at the middle rank 2 in all six splits: every logit is 0, which PBO counts as overfit (logit <= 0)."""
+    m = np.array(
+        [
+            [0.35, 0.82, 0.33],
+            [-1.3, 0.91, 0.45],
+            [-0.54, 0.58, 0.36],
+            [0.29, 0.03, 0.55],
+            [-0.74, -0.16, -0.48],
+            [0.6, 0.04, -0.29],
+            [-0.78, -0.26, 0.01],
+            [-0.28, 1.29, 1.01],
+        ]
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        lab = runpy.run_path(str(TWINS / "lab-S7-L08-3.py"))
+    assert lab["pbo"](m, 4) == 1.0
+
+
 @pytest.mark.parametrize("lab_id", sorted(REAL_DATA_LABS))
 def test_each_real_data_lab_reports_what_manifest_records(lab_id: str) -> None:
     pages = {lab.id: lab for lab in all_labs()}
