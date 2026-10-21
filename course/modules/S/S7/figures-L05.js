@@ -177,8 +177,8 @@ function jointVsIndependent(el) {
           `Each dot is one bootstrap draw of the centred statistics of two of ten SIMULATED strategies whose returns have correlation ${rho}. ` +
           `Resampling whole dates keeps the correlation (${corr(joint.boot).toFixed(2)} across draws); resampling each strategy separately destroys it ` +
           `(${corr(indep.boot).toFixed(2)}), which inflates the 95% quantile of the maximum over the ten strategies from ${crit(joint.boot).toFixed(2)} to ${crit(indep.boot).toFixed(2)}.`,
-        x: { label: "Bootstrap statistic of strategy 1", domain: [-4, 4], format: ".0f" },
-        y: { label: "Bootstrap statistic of strategy 2", domain: [-4, 4], format: ".0f" },
+        x: { label: "Bootstrap t-statistic, strategy 1", domain: [-4, 4], format: ".0f" },
+        y: { label: "Bootstrap t-statistic, strategy 2", domain: [-4, 4], format: ".0f" },
         height: Math.min(440, Math.max(300, width * 0.75)),
         layers: [
           { type: "dots", name: "each strategy resampled separately", points: indep.boot.map((r) => [r[0], r[1]]), series: 1, r: 2.4, hollow: true },
