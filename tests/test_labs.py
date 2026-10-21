@@ -166,9 +166,10 @@ def test_l08_lab4_pbo_counts_ties_and_the_median_rank_as_the_definition_does() -
 
 
 def test_l08_lab3_pbo_counts_the_median_rank_as_overfit() -> None:
-    """Lab 3 runs 2, 20 and 200 configurations, an even count, where the selected one can never sit at the median
-    out of sample, so its logit is never exactly 0. Here three configurations over four blocks put the in-sample
-    winner at the middle rank 2 in all six splits: every logit is 0, which PBO counts as overfit (logit <= 0)."""
+    """Lab 3 runs 2, 20 and 200 configurations, an even count, and draws continuous returns, so no two out-of-sample
+    metrics tie and the selected one never sits at the median rank: its logit is never exactly 0. Here three
+    configurations over four blocks put the in-sample winner at the middle rank 2 in all six splits: every logit is
+    0, which PBO counts as overfit (logit <= 0)."""
     m = np.array(
         [
             [0.35, 0.82, 0.33],
