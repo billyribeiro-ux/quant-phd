@@ -38,8 +38,10 @@
 ## 2. Checks (each produces ledger rows)
 
 ### 2.1 Citations: one row per distinct key
-- `verify_refs.py` re-resolves the DOI. Title, authors, year and venue match
-  Crossref.
+- `verify_refs.py --unit <UNIT>` re-resolves every registry entry the unit
+  uses. Title, authors, year and venue match Crossref. A unit's ledger records
+  this run; the run without `--unit`, over the whole registry, is the
+  scheduled CI job's, and the integrity checks of both cover every entry.
 - **Attribution:** the attached claim is what the paper shows. Read at least
   the abstract. For any `data-locator`, open the source and confirm the number
   at that locator.
@@ -107,6 +109,13 @@
    `ledgers/{{ID}}/mutants/<name>.py` whose docstring's first line describes
    the error, run `python tools/mutate_graders.py --unit {{ID}} --seeds 0-9`,
    and record each mutant's description and the test that killed it.
+   A change that no input can distinguish from the original (an equivalent
+   mutant) is not a fault and cannot fail a test. If you write one, prove
+   the equivalence in a row (the argument, and an exhaustive or randomized
+   check) and leave it out of `mutants`: `tools/ledger.py` counts every
+   listed mutant as a fault that must be killed. A mutant that is
+   equivalent only on the data a lab or test happens to use is not
+   equivalent: write a test whose input tells it apart.
 4. Failure messages name the violated property and never leak the answer.
 5. The same suite passes both in Pyodide (`page_smoke.py`) and in local
    pytest.

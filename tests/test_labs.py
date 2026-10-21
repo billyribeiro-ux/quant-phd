@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import itertools
 import json
+import os
 import re
+import runpy
 import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import coursekit
@@ -108,6 +114,77 @@ def twin_output(lab_id: str) -> str:
         )
     assert result.stderr == ""
     return result.stdout
+
+
+def test_l08_lab4_fast_pbo_is_the_definition_at_16_blocks() -> None:
+    """Lesson 8's Lab 4 takes its 16-block PBO from pbo_fast(). In the browser it checks pbo_fast() against pbo()
+    at 8 and 10 blocks only, to keep the lab fast (pbo() at 16 blocks makes 12,870 passes); here the 16-block
+    identity is checked too, on the lab's own trials."""
+    here = Path.cwd()
+    with twin_workdir(REAL_DATA_LABS["lab-S7-L08-4"]) as work, contextlib.redirect_stdout(io.StringIO()):
+        os.chdir(work)
+        try:
+            lab = runpy.run_path(str(TWINS / "lab-S7-L08-4.py"))
+        finally:
+            os.chdir(here)
+    by_definition = lab["pbo"](lab["trials"], 16)
+    assert by_definition == lab["pbo_fast"](lab["trials"], *lab["halves"](16)) == lab["observed_pbo"]
+
+
+def test_l08_lab4_pbo_counts_ties_and_the_median_rank_as_the_definition_does() -> None:
+    """The lab's trials never tie and never put the selected configuration at the median out of sample, so the
+    identity above cannot tell a tie's half credit or the logit's non-strict inequality from their mistakes. Here a
+    duplicated column ties exactly with the selected one in some splits, and five configurations put the selected
+    one at the median rank 3 in others; pbo(), pbo_fast() and a direct count of the definition must agree."""
+    here = Path.cwd()
+    with twin_workdir(REAL_DATA_LABS["lab-S7-L08-4"]) as work, contextlib.redirect_stdout(io.StringIO()):
+        os.chdir(work)
+        try:
+            lab = runpy.run_path(str(TWINS / "lab-S7-L08-4.py"))
+        finally:
+            os.chdir(here)
+    base = np.random.default_rng(16).normal(0.0, 1.0, (64, 4))
+    m = np.column_stack([base[:, 0], base])  # columns 0 and 1 are identical: their Sharpe ratios tie exactly
+    n_blocks, n = 16, m.shape[1]
+    blocks = np.split(m, n_blocks)
+    overfit = ties = medians = splits = 0
+    for combo in itertools.combinations(range(n_blocks), n_blocks // 2):
+        train = np.vstack([blocks[i] for i in combo])
+        test = np.vstack([blocks[i] for i in range(n_blocks) if i not in combo])
+        best = int(np.argmax(train.mean(axis=0) / train.std(axis=0, ddof=1)))
+        oos = test.mean(axis=0) / test.std(axis=0, ddof=1)
+        below, equal = int(np.sum(oos < oos[best])), int(np.sum(oos == oos[best])) - 1
+        rank = 1 + below + 0.5 * equal  # tied configurations share the average of their ranks
+        overfit += rank <= (n + 1) / 2  # logit(rank / (N + 1)) <= 0
+        ties += equal > 0
+        medians += rank == (n + 1) / 2
+        splits += 1
+    assert ties > 0 and medians > 0, "the test matrix must exercise a tie and the median rank"
+    by_count = overfit / splits
+    assert lab["pbo"](m, n_blocks) == by_count
+    assert lab["pbo_fast"](m, *lab["halves"](n_blocks)) == by_count
+
+
+def test_l08_lab3_pbo_counts_the_median_rank_as_overfit() -> None:
+    """Lab 3 runs 2, 20 and 200 configurations, an even count, and draws continuous returns, so no two out-of-sample
+    metrics tie and the selected one never sits at the median rank: its logit is never exactly 0. Here three
+    configurations over four blocks put the in-sample winner at the middle rank 2 in all six splits: every logit is
+    0, which PBO counts as overfit (logit <= 0)."""
+    m = np.array(
+        [
+            [0.35, 0.82, 0.33],
+            [-1.3, 0.91, 0.45],
+            [-0.54, 0.58, 0.36],
+            [0.29, 0.03, 0.55],
+            [-0.74, -0.16, -0.48],
+            [0.6, 0.04, -0.29],
+            [-0.78, -0.26, 0.01],
+            [-0.28, 1.29, 1.01],
+        ]
+    )
+    with contextlib.redirect_stdout(io.StringIO()):
+        lab = runpy.run_path(str(TWINS / "lab-S7-L08-3.py"))
+    assert lab["pbo"](m, 4) == 1.0
 
 
 @pytest.mark.parametrize("lab_id", sorted(REAL_DATA_LABS))

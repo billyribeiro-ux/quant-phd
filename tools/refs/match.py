@@ -41,9 +41,10 @@ from .parse import Candidate
 from .text import norm, norm_issue, similarity, surname_fuzzy, surname_matches
 
 _LEADING_NUMBER = re.compile(r"\d+")
-# A double issue in any spelling norm_issue treats as a range: two numbers joined by a hyphen, a Unicode hyphen
-# or dash (U+2010 to U+2014), a slash or a space.
-_RANGE = re.compile(r"^\s*(\d+)\s*(?:[-\u2010-\u2014/]|\s)\s*(\d+)")
+# A double issue in any spelling norm_issue treats as a range: two leading numbers joined by any run of
+# characters that are neither digits nor letters ('2-3', '2/3', '2 3', '2, 3', '2&3', a dash of any kind).
+# '4, Part 2' and '366a' are not ranges, because a letter follows the first number's separator or the number.
+_RANGE = re.compile(r"^\s*(\d+)[^0-9A-Za-z]+(\d+)")
 
 
 def issue_matches(ours: str, theirs: str) -> bool:

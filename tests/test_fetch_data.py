@@ -20,7 +20,7 @@ FRB = "http://www.federalreserve.gov/structure/compact/common"
 MESSAGE = "http://www.SDMX.org/resources/SDMXML/schemas/v1_0/message"
 COMMON = "http://www.SDMX.org/resources/SDMXML/schemas/v1_0/common"
 
-# (date, value, status) per series, shaped like the DDP's H10_data.xml: an annotated series, holidays as "ND".
+# (date, value, status) per series, shaped like the Board's H10_data.xml: an annotated series, holidays as "ND".
 SERIES = {
     "RXI$US_N.B.EU": [
         ("1999-12-31", "0.9000", "A"),
@@ -33,6 +33,11 @@ SERIES = {
     "RXI_N.B.JA": [("2000-01-31", "105.00", "A"), ("2000-02-28", "110.00", "A"), ("2000-02-29", "ND", "ND")],
     "RXI_N.B.SZ": [("2000-01-31", "1.6000", "A")],
 }
+
+
+def zip_member(name: str) -> zipfile.ZipInfo:
+    """A member with a fixed timestamp, so the same document always zips to the same bytes."""
+    return zipfile.ZipInfo(name, date_time=(2026, 10, 19, 0, 0, 0))
 
 
 def sdmx_zip(series: dict[str, list[tuple[str, str, str]]], member: str = "H10_data.xml") -> bytes:
@@ -51,8 +56,8 @@ def sdmx_zip(series: dict[str, list[tuple[str, str, str]]], member: str = "H10_d
     )
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w") as archive:
-        archive.writestr(member, xml)
-        archive.writestr("H10_struct.xml", "<structure/>")
+        archive.writestr(zip_member(member), xml)
+        archive.writestr(zip_member("H10_struct.xml"), "<structure/>")
     return out.getvalue()
 
 
@@ -103,9 +108,21 @@ def test_month_end_drops_an_incomplete_final_month() -> None:
         # Rounding that carries into a new leading digit keeps eight significant digits.
         ("0.100000005", "9.9999995"),
         ("0.1000000004", "10.000000"),
-        # Ties go to even, on the exact quotient.
+        # Quotients that terminate within eight digits.
         ("0.8", "1.2500000"),
         ("1.6", "0.62500000"),
+        # Exact ties at the ninth digit go to even: 1/4096 = 0.000244140625, 1/0.4096 = 2.44140625.
+        ("4096", "0.00024414062"),
+        ("0.4096", "2.4414062"),
+        # A tie below 1e-4 and a quotient below 1e-6 stay exact in plain decimal (a float or str() would not).
+        ("40960", "0.000024414062"),
+        ("20000000", "0.000000050000000"),
+        # Thirty-digit values whose quotients lie just below and just above the tie 1.00000015: a quotient rounded
+        # to 28 digits first lands on the tie and goes to even (1.0000002) from both sides.
+        ("0.999999850000022499996625000507", "1.0000001"),
+        ("0.999999850000022499996625000506", "1.0000002"),
+        # The sign is kept.
+        ("-0.4096", "-2.4414062"),
     ],
 )
 def test_inversion_keeps_eight_significant_digits_in_plain_decimal(value: str, inverse: str) -> None:
@@ -136,7 +153,7 @@ def dataset(**overrides: Any) -> Dataset:
         "id": "fx_test",
         "title": "Test FX",
         "issuer": "Board of Governors of the Federal Reserve System",
-        "url": "https://www.federalreserve.gov/datadownload/Output.aspx?rel=H10&filetype=zip",
+        "url": "https://www.federalreserve.gov/releases/h10/data/FRB_h10_xml.zip",
         "licence": '"in the public domain"',
         "licence_url": "https://www.federalreserve.gov/disclaimer.htm",
         "citation": "Board of Governors of the Federal Reserve System, H.10",
@@ -213,7 +230,7 @@ def test_a_stray_file_in_the_data_folder_is_caught(market: Path) -> None:
     [
         ({"licence": '"all rights reserved"'}, "licence"),
         ({"licence_url": "https://example.org/terms"}, "licence_url"),
-        ({"url": "https://www.federalreserve.gov/datadownload/Output.aspx?rel=H15&filetype=zip"}, "source_url"),
+        ({"url": "https://www.federalreserve.gov/releases/h15/data/FRB_h15_xml.zip"}, "source_url"),
         ({"transform": spec(end="2000-01-31")}, "transform"),
         ({"title": "Another title"}, "title"),
         ({"issuer": "Another issuer"}, "issuer"),
@@ -289,3 +306,133 @@ def test_a_hand_edited_manifest_field_is_caught(market: Path, field: str, value:
     ds, manifest = built(market)
     edited = {ds.id: {**manifest[ds.id], field: value}}
     assert any(message in p for p in check([ds], edited))
+
+
+def document(*blocks: str) -> str:
+    """An SDMX message holding the given series blocks, with the namespaces the release files use."""
+    return (
+        f'<?xml version="1.0" encoding="UTF-8"?><message:MessageGroup xmlns:message="{MESSAGE}" '
+        f'xmlns:common="{COMMON}" xmlns:frb="{FRB}"><message:Header><message:ID>H10</message:ID></message:Header>'
+        f'<frb:DataSet id="H10" xmlns:kf="{KF}">{"".join(blocks)}</frb:DataSet></message:MessageGroup>'
+    )
+
+
+def series_block(name: str, observations: list[tuple[str, str, str]]) -> str:
+    obs = "".join(f'<frb:Obs OBS_STATUS="{s}" OBS_VALUE="{v}" TIME_PERIOD="{d}" />' for d, v, s in observations)
+    return f'<kf:Series FREQ="9" SERIES_NAME="{name}">{obs}</kf:Series>'
+
+
+def zip_with(xml: str, member: str = "H10_data.xml") -> bytes:
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as archive:
+        archive.writestr(zip_member(member), xml)
+    return out.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        (b"<html>not a zip</html>", "not a zip archive"),
+        (
+            zip_with(document(series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A")])), "H10_struct.xml"),
+            "no such member",
+        ),
+        (zip_with("<message:MessageGroup><unclosed>"), "unreadable"),
+        (
+            zip_with(document(series_block("RXI$US_N.B.EU", [("2000-01-31", "1,0000", "A")]))),
+            "not a plain decimal number",
+        ),
+        (zip_with(document(series_block("RXI$US_N.B.EU", [("2000-02-30", "1.0000", "A")]))), "not an ISO date"),
+        # date.fromisoformat also accepts the basic and week forms; the release files use YYYY-MM-DD only.
+        (zip_with(document(series_block("RXI$US_N.B.EU", [("20000131", "1.0000", "A")]))), "not an ISO date"),
+        (zip_with(document(series_block("RXI$US_N.B.EU", [("2000-W05-1", "1.0000", "A")]))), "not an ISO date"),
+        # \d would accept other scripts' digits, which would then reach the snapshot as text.
+        (
+            zip_with(document(series_block("RXI$US_N.B.EU", [("2000-01-31", "\u0661.0000", "A")]))),
+            "not a plain decimal number",
+        ),
+        (
+            zip_with(
+                document(series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A"), ("2000-01-31", "1.0001", "A")]))
+            ),
+            "two available observations dated 2000-01-31",
+        ),
+        (
+            zip_with(
+                document(
+                    series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A")]),
+                    series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A")]),
+                )
+            ),
+            "appears twice",
+        ),
+        (
+            zip_with(
+                document(
+                    series_block("RXI$US_N.B.EU", [("2000-01-31", "1.0000", "A")]),
+                    series_block("RXI_N.B.JA", [("2000-01-31", "0.0000", "A")]),
+                )
+            ),
+            "cannot be inverted",
+        ),
+    ],
+    ids=[
+        "not-a-zip",
+        "missing-member",
+        "unreadable-xml",
+        "decimal-comma",
+        "impossible-date",
+        "basic-date-form",
+        "week-date-form",
+        "non-ascii-digit",
+        "duplicate-date",
+        "duplicate-series",
+        "zero-rate",
+    ],
+)
+def test_a_malformed_download_is_refused_with_a_data_error(raw: bytes, message: str) -> None:
+    with pytest.raises(DataError, match=message):
+        fed_sdmx(raw, spec())
+
+
+def test_negative_rates_are_kept_as_published() -> None:
+    raw = zip_with(
+        document(series_block("RIFSGFSM03_N.B", [("2000-01-03", "-0.0400", "A"), ("2000-01-04", "4.5000", "A")]))
+    )
+    table = fed_sdmx(raw, spec(series={"TBILL": "RIFSGFSM03_N.B"}, invert=[]))
+    assert table.rows == (("2000-01-03", "-0.0400"), ("2000-01-04", "4.5000"))
+
+
+def test_bytes_retrieved_again_keep_their_retrieval_date(market: Path) -> None:
+    raw = sdmx_zip(SERIES)
+    previous = build(dataset(), raw, "2026-10-17")
+    assert fetch_data.retrieval_date(previous, raw, "2026-10-19") == "2026-10-17"
+    changed = sdmx_zip({**SERIES, "RXI_N.B.SZ": [("2000-01-31", "1.6001", "A")]})
+    assert fetch_data.retrieval_date(previous, changed, "2026-10-19") == "2026-10-19"
+    assert fetch_data.retrieval_date(None, raw, "2026-10-19") == "2026-10-19"
+
+
+def test_fetch_downloads_each_dataset_and_keeps_the_date_of_unchanged_bytes(
+    market: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ds = dataset()
+    raw = sdmx_zip(SERIES)
+    save_manifest({ds.id: build(ds, raw, "2026-10-17")})
+    fetched: list[str] = []
+
+    def fake_download(url: str, *, attempts: int = 4) -> bytes:
+        fetched.append(url)
+        return raw
+
+    monkeypatch.setattr(fetch_data, "load_spec", lambda *_args, **_kwargs: [ds])
+    monkeypatch.setattr(fetch_data, "download", fake_download)
+    monkeypatch.setattr(sys, "argv", ["fetch_data.py", "--fetch"])
+    assert fetch_data.main() == 0
+    assert fetched == [ds.url]
+    assert load_manifest()[ds.id]["retrieved"] == "2026-10-17"
+
+
+def test_every_dataset_is_read_from_a_board_release_page() -> None:
+    for ds in load_spec():
+        assert ds.url.startswith("https://www.federalreserve.gov/releases/h"), ds.id
+        assert ds.url.endswith("_xml.zip"), ds.id

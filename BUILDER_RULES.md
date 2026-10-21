@@ -340,9 +340,14 @@ Studios integrate every module listed in `requires`. A studio:
      in that folder's `MANIFEST.json`: source URL, licence quote and URL,
      retrieval date, SHA-256 of the raw download and of the snapshot, rows,
      columns, date range and transform. Never edit a snapshot or MANIFEST by
-     hand. `python tools/fetch_data.py --check` (offline, a gate) fails on any
-     difference. Read a dataset's `note` in the spec before using it, because
-     it states what the series do not contain.
+     hand. `python tools/fetch_data.py --check` (offline, a gate) fails when a
+     snapshot's bytes, header, row count, size or first and last keys differ from its MANIFEST entry, or when an
+     entry's descriptive fields (title, issuer, citation, licence and its URL, source URL, transform) differ from
+     `tools/data_sources.yaml`. It does not compare `raw_sha256`, `retrieved` or the top-level `schema`.
+     `python tools/fetch_data.py --fetch` rewrites `raw_sha256` from the live download and keeps the recorded
+     `retrieved` date while the bytes are unchanged, and the weekly CI job compares only the CSV snapshots, so a
+     change to either field shows only in the `git diff` of `MANIFEST.json`. Read a dataset's `note` in the spec
+     before using it, because it states what the series do not contain.
    - **Adding a dataset.**
      1. Read the issuer's terms yourself. Quote, in `licence`, the sentence
         that permits copying and redistribution, and give the page that states

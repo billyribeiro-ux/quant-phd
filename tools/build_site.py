@@ -102,6 +102,14 @@ def title_case(title: str) -> str:
     return " ".join(out)
 
 
+_TEX_INLINE_MATH = re.compile(r"\$(\S|\S[^$]*\S)\$")  # TeX math hugs its delimiters; prices do not
+
+
+def plain_title(title: str) -> str:
+    """Crossref keeps TeX inline math in titles ('the Student $t$-statistic'); the reference list is plain text."""
+    return _TEX_INLINE_MATH.sub(r"\1", title)
+
+
 def short_cite(entry: dict[str, Any]) -> str:
     names = [family_name(a["family"], entry["source_strings"]) for a in entry["authors"]]
     year = display_year(entry)
@@ -127,7 +135,7 @@ def full_cite(entry: dict[str, Any]) -> str:
         people = [*people[:10], "et al."]
     authors = "; ".join(people)
     year = display_year(entry)
-    title = title_case(entry["title"]).rstrip(".")
+    title = title_case(plain_title(entry["title"])).rstrip(".")
     parts = [f"{authors} ({year})." if year else f"{authors}.", title if title.endswith(("?", "!")) else f"{title}."]
     container = entry.get("container")
     if container:

@@ -71,7 +71,7 @@ def reject(message: str) -> int:
 
 def describe(work: Work) -> str:
     first = work.authors[0].family if work.authors else "?"
-    return f"{first} ({work.year}) '{work.title}', {work.container[:1]} {work.volume}({work.issue})"
+    return f"{first} ({work.year}) '{work.title}', {', '.join(work.container[:1])} {work.volume}({work.issue})"
 
 
 def judged(cand: Candidate, work: Work, label: str = "record") -> tuple[Work | None, dict[str, dict[str, str]], str]:
@@ -85,10 +85,8 @@ def judged(cand: Candidate, work: Work, label: str = "record") -> tuple[Work | N
     return res.work, {k: {"curriculum": a, label: b} for k, (a, b) in res.info.items()}, ""
 
 
-def admit(
-    work: Work, *, source: str, used_by: list[str], verified_by: str, notes: dict[str, dict[str, str]], short: str = ""
-) -> int:
-    entries = registry.load()
+def registered(entries: list[dict[str, Any]], work: Work) -> dict[str, Any] | None:
+    """The entry that already holds ``work``: the same DOI, else a shared ISBN or the same URL."""
 
     def same(e: dict[str, Any]) -> bool:
         if work.doi:
@@ -97,7 +95,14 @@ def admit(
             return True
         return bool(work.url and e.get("url") == work.url)
 
-    existing = next((e for e in entries if same(e)), None)
+    return next((e for e in entries if same(e)), None)
+
+
+def admit(
+    work: Work, *, source: str, used_by: list[str], verified_by: str, notes: dict[str, dict[str, str]], short: str = ""
+) -> int:
+    entries = registry.load()
+    existing = registered(entries, work)
     if existing is not None:
         existing["used_by"] = sorted(set(existing["used_by"]) | set(used_by))
         existing["source_strings"] = sorted(set(existing["source_strings"]) | {source})
@@ -222,7 +227,11 @@ def main() -> int:
     if work is None:
         return reject(reason)
     if args.dry_run:
-        print(f"WOULD ADD ({verified_by}): {describe(work)} url={work.url} isbn={list(work.isbn)} notes={notes}")
+        existing = registered(registry.load(), work)
+        if existing is not None:
+            print(f"WOULD UPDATE {existing['key']} used_by={sorted(set(existing['used_by']) | set(args.used_by))}")
+        else:
+            print(f"WOULD ADD ({verified_by}): {describe(work)} url={work.url} isbn={list(work.isbn)} notes={notes}")
         return 0
     return admit(work, source=args.source, used_by=args.used_by, verified_by=verified_by, notes=notes, short=short)
 

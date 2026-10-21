@@ -1229,3 +1229,286 @@ def test_equal_trial_sharpe_ratios_are_valid() -> None:
         "Equal trial Sharpe ratios have variance 0, so SR0 = 0 and the DSR is the PSR against 0: the zero-variance "
         "rule is for return series, not for trial_sharpes (contract: deflated_sharpe_ratio)."
     )
+
+
+# ---------------------------------------------------------------- round-8 additions (verifier-proposed fix)
+
+
+def test_integrity_report_describes_the_proposed_column_and_periods_per_year() -> None:
+    m = INST["performance"]
+    sharpes = m.mean(0) / m.std(0, ddof=1)
+    chosen = int(np.argsort(sharpes)[m.shape[1] // 2])  # a middling trial, not the in-sample best
+    assert chosen != int(np.argmax(sharpes))
+    backtest = SimpleNamespace(trial_returns=m, selected=chosen, periods_per_year=12)
+    trials = a8.TrialSet.from_backtest(backtest)
+    assert trials.selected == chosen and trials.periods_per_year == 12, (
+        "TrialSet.from_backtest must keep the backtest result's own selected column and periods_per_year (contract)."
+    )
+    report = a8.integrity_report(trials, n_blocks=INST["n_blocks"], n_boot=50, seed=SEED)
+    x = m[:, chosen]
+    assert close(report.selected_sharpe, float(sharpes[chosen])), (
+        "integrity_report describes the proposed column TrialSet.selected, which need not be the in-sample best."
+    )
+    assert close(report.psr, a8.probabilistic_sharpe_ratio(x, 0.0)) and close(
+        report.dsr, a8.deflated_sharpe_ratio(x, sharpes)
+    ), "psr and dsr are those of the proposed column (contract: IntegrityReport)."
+    assert close(report.selected_sharpe_annualized, float(sharpes[chosen]) * math.sqrt(12)), (
+        "Annualize with the trial set's own periods_per_year (contract: IntegrityReport)."
+    )
+
+
+def test_functions_neither_print_nor_change_their_arguments(capsys: pytest.CaptureFixture[str]) -> None:
+    rng = np.random.default_rng(SEED)  # fresh arrays: INST's arrays may already have been rescaled in place
+    args = {
+        "returns": rng.normal(0.001, 0.02, 300),
+        "trial_sharpes": rng.normal(0.0, 0.05, 30),
+        "pvalues": rng.random(40),
+        "performance": rng.normal(0.0, 0.01, (96, 6)),
+        "differentials": rng.normal(0.1, 3.0, (120, 4)),
+        "t_obs": np.array([6.0, 0.5, -1.0]),
+        "t_boot": rng.standard_normal((40, 3)),
+    }
+    before = {name: value.copy() for name, value in args.items()}
+    a8.sharpe_ratio(args["returns"])
+    a8.sample_skewness(args["returns"])
+    a8.sample_kurtosis(args["returns"])
+    a8.probabilistic_sharpe_ratio(args["returns"], 0.01)
+    a8.deflated_sharpe_ratio(args["returns"], args["trial_sharpes"])
+    a8.benjamini_hochberg(args["pvalues"], 0.10)
+    a8.stepdown_rejections(args["t_obs"], args["t_boot"], 0.10)
+    a8.romano_wolf(args["differentials"], 0.05, 50, 10.0, SEED)
+    a8.probability_of_backtest_overfitting(args["performance"], 8)
+    a8.integrity_report(a8.TrialSet(args["performance"], 0, 252), n_blocks=8, n_boot=50, seed=SEED)
+    for name, value in args.items():
+        assert np.array_equal(value, before[name]), f"A function changed its argument {name}: never mutate inputs."
+    assert capsys.readouterr().out == "", "No function prints (contract)."
+
+
+def test_pbo_breaks_in_sample_ties_by_the_lowest_index() -> None:
+    x = [0.02, 0.01, 0.03, 0.01]
+    first = [*x, 0.05, 0.02, 0.04, 0.03]  # ties with the second configuration in the first half, wins the second
+    second = [*x, -0.03, 0.01, -0.02, 0.0]
+    decoy = [0.0, -0.01, 0.01, -0.02, 0.01, -0.01, 0.0, 0.01]
+    m = np.column_stack([first, second, decoy])
+    got = np.asarray(a8.probability_of_backtest_overfitting(m, 2).logits)
+    assert np.allclose(got, cscv_definition(m, 2), rtol=0, atol=1e-10), (
+        "When several configurations tie for the best in-sample metric, n* is the lowest index (contract: CSCV)."
+    )
+
+
+# ---------------------------------------------------------------- round-9 additions (verifier-proposed fix)
+
+
+def test_a_level_of_zero_or_one_is_not_a_level() -> None:
+    trials = a8.TrialSet(np.random.default_rng(0).normal(size=(50, 4)), 0, 252)
+    must_raise(lambda: a8.benjamini_hochberg([0.01, 0.2], 1.0), "benjamini_hochberg with q = 1")
+    must_raise(lambda: a8.stepdown_rejections([1.0, 2.0], np.zeros((10, 2)), 1.0), "stepdown_rejections with alpha = 1")
+    for alpha in (0.0, 1.0):
+        must_raise(
+            lambda alpha=alpha: a8.romano_wolf(_differentials(), alpha, 20, 5.0, SEED),
+            f"romano_wolf with alpha = {alpha}",
+        )
+        must_raise(
+            lambda alpha=alpha: a8.integrity_report(trials, alpha=alpha, n_blocks=4, n_boot=20),
+            f"integrity_report with alpha = {alpha}",
+        )
+    must_raise(lambda: a8.integrity_report(trials, q=1.0, n_blocks=4, n_boot=20), "integrity_report with q = 1")
+
+
+def test_the_smallest_trial_set_the_contract_allows_is_valid() -> None:
+    r = np.random.default_rng(SEED).normal(0.0, 0.01, (4, 3))  # T = 4: four one-period blocks, two-period halves
+    report = a8.integrity_report(a8.TrialSet(r, 0, 12), n_blocks=16, n_boot=20, seed=SEED)
+    assert report.n_trials == 3 and close(report.pbo, a8.probability_of_backtest_overfitting(r, 4).pbo), (
+        "integrity_report accepts T = 4 (contract: needs T >= 4, so each CSCV half-sample has 2 periods)."
+    )
+
+
+def test_a_mean_block_of_one_is_the_iid_bootstrap() -> None:
+    indices = np.asarray(a8.stationary_bootstrap_indices(50, 1.0, np.random.default_rng(SEED)))
+    assert indices.shape == (50,) and indices.min() >= 0 and indices.max() < 50, (
+        "mean_block = 1 is allowed (contract: a finite number >= 1): every step starts a new block."
+    )
+    m = np.random.default_rng(SEED).normal(0.0, 1.0, (60, 3))
+    assert np.asarray(a8.romano_wolf(m, 0.05, 20, 1.0, SEED)).shape == (3,), "romano_wolf accepts mean_block = 1."
+
+
+def _skewed_columns(skew_sign: float, t_stat: float, n_obs: int = 40, n_cols: int = 3) -> np.ndarray:
+    """Columns with the same strongly skewed, heavy-tailed shape, each with t-statistic exactly t_stat."""
+    rng = np.random.default_rng(SEED)
+    base = skew_sign * (rng.exponential(1.0, n_obs) ** 2)
+    base = (base - base.mean()) / base.std(ddof=1)
+    columns = [np.roll(base, shift) + t_stat / math.sqrt(n_obs) for shift in range(n_cols)]
+    return 0.01 * np.column_stack(columns)
+
+
+def test_report_pvalues_are_the_normal_tail_of_the_t_statistic_whatever_the_skewness() -> None:
+    # t = 1.60 gives p = 0.0548 and t = 1.70 gives p = 0.0446. A p-value built from the PSR (which adjusts the standard
+    # error for skewness and kurtosis) would be on the other side of 0.05 for these shapes.
+    for skew_sign, t_stat, expected in ((1.0, 1.60, False), (-1.0, 1.70, True)):
+        m = _skewed_columns(skew_sign, t_stat)
+        report = a8.integrity_report(a8.TrialSet(m, 0, 12), n_blocks=4, n_boot=20)
+        assert (
+            bool(np.asarray(report.bh_rejections).all()) is expected
+            and bool(np.asarray(report.bh_rejections).any()) is expected
+        ), (
+            "The report's p-values are 1 - Phi(mean / (sd / sqrt(T))), whatever the trials' skewness and kurtosis "
+            "(contract: integrity_report); skewness and kurtosis enter the PSR, not these tests."
+        )
+
+
+def test_pbo_uses_every_split_for_twelve_and_fourteen_blocks() -> None:
+    m = np.random.default_rng(SEED).normal(0.0, 0.01, (120, 4))
+    twelve = a8.probability_of_backtest_overfitting(m, 12)
+    assert twelve.n_combinations == math.comb(12, 6) and np.allclose(
+        np.asarray(twelve.logits), cscv_definition(m, 12), rtol=0, atol=1e-10
+    ), "CSCV uses all C(S, S/2) splits, however many there are (L08): no sampling and no cap."
+    # S = 14 (3,432 splits) rather than the default 16 (12,870), so the test stays within its time budget in Pyodide.
+    fourteen = a8.probability_of_backtest_overfitting(np.random.default_rng(SEED).normal(0.0, 0.01, (28, 3)), 14)
+    assert fourteen.n_combinations == math.comb(14, 7) and len(fourteen.logits) == 3432, (
+        "CSCV with S = 14 has 3,432 splits, and PBO is the share over all of them: no sampling and no cap."
+    )
+
+
+# ---------------------------------------------------------------- round-10 additions (verifier-proposed fix)
+
+
+def test_report_pvalues_divide_by_sqrt_t_not_sqrt_t_minus_one() -> None:
+    z = np.random.default_rng(SEED).standard_normal((40, 3))
+    z = (z - z.mean(0)) / z.std(0, ddof=1)
+    trials = a8.TrialSet(0.01 * (z + 1.655 / math.sqrt(40)), 0, 12)  # every t-statistic is 1.655: p = 0.0490
+    report = a8.integrity_report(trials, n_blocks=4, n_boot=50)
+    assert np.asarray(report.bh_rejections).all(), (
+        "The one-sided p-values use t = mean / (sd / sqrt(T)): the standard error of a mean divides by sqrt(T), "
+        "not by sqrt(T - 1) (contract: integrity_report)."
+    )
+
+
+def test_a_fractional_mean_block_is_used_as_given() -> None:
+    rng = np.random.default_rng(SEED)
+    breaks = []
+    for _ in range(30):
+        idx = np.asarray(a8.stationary_bootstrap_indices(2000, 2.5, rng))
+        breaks.append(np.mean(idx[1:] != (idx[:-1] + 1) % 2000))
+    assert abs(float(np.mean(breaks)) - 0.4) < 0.015, (
+        "A new block starts with probability 1/mean_block for any real mean_block >= 1: do not round the mean block "
+        "length (contract: stationary_bootstrap_indices)."
+    )
+
+
+def test_a_series_of_two_observations_is_valid() -> None:
+    x = [0.01, 0.03]  # two points: Sharpe ratio sqrt(2), skewness 0, kurtosis 1, standard error 1
+    assert (
+        close(a8.sharpe_ratio(x), math.sqrt(2.0))
+        and close(a8.sample_skewness(x), 0.0)
+        and close(a8.sample_kurtosis(x), 1.0)
+    ), "A series needs at least 2 observations, no more (contract: conventions, series input)."
+    assert close(a8.probabilistic_sharpe_ratio(x, 0.0), PHI.cdf(math.sqrt(2.0))), (
+        "probabilistic_sharpe_ratio accepts a series of exactly two observations (contract: conventions)."
+    )
+    assert close(a8.sharpe_ratio_std(0.5, 2, 0.0, 3.0), math.sqrt(1.0 + 0.5 * 0.25)), (
+        "sharpe_ratio_std accepts n_obs = 2 (contract: n_obs >= 2)."
+    )
+
+
+def test_one_or_two_trial_sharpe_ratios_can_deflate() -> None:
+    x = INST["returns"]
+    sr, g3, g4 = moments(x)
+    sr0 = expected_max(2, float(np.var([0.03, 0.05], ddof=1)))
+    z = (sr - sr0) * math.sqrt(x.size - 1) / math.sqrt(1 - g3 * sr + (g4 - 1) / 4 * sr**2)
+    assert close(a8.deflated_sharpe_ratio(x, [0.03, 0.05]), PHI.cdf(z)), (
+        "deflated_sharpe_ratio needs len(trial_sharpes) >= 2, no more (contract: deflated_sharpe_ratio)."
+    )
+    assert close(a8.deflated_sharpe_ratio(x, INST["trial_sharpes"], 1), a8.probabilistic_sharpe_ratio(x, 0.0)), (
+        "n_trials = 1 is valid: one trial involves no selection, so SR0 = 0 (contract: deflated_sharpe_ratio, N >= 1)."
+    )
+
+
+def test_the_smallest_bootstrap_inputs_the_contract_allows_are_valid() -> None:
+    assert np.asarray(a8.stationary_bootstrap_indices(1, 5.0, np.random.default_rng(SEED))).tolist() == [0], (
+        "n_obs = 1 is a positive integer: the only resample of one period is that period (contract)."
+    )
+    got = np.asarray(a8.stepdown_rejections([6.0, 0.0], np.array([[1.0, 0.5]]), 0.05)).tolist()
+    assert got == [True, False], "A single bootstrap draw (B = 1) is allowed: B >= 1 (contract: stepdown_rejections)."
+    one = np.asarray(a8.romano_wolf(_differentials(), 0.05, 1, 5.0, SEED))
+    assert one.shape == (3,) and one.dtype == bool, "n_boot = 1 is allowed: only n_boot < 1 raises (contract)."
+
+
+def test_the_result_classes_are_frozen_dataclasses() -> None:
+    performance = np.random.default_rng(SEED).normal(0.0, 0.01, (40, 3))
+    trials = a8.TrialSet(performance, 0, 252)
+    for obj, attribute in (
+        (a8.probability_of_backtest_overfitting(performance, 4), "pbo"),
+        (trials, "selected"),
+        (a8.integrity_report(trials, n_blocks=4, n_boot=20), "dsr"),
+    ):
+        try:
+            setattr(obj, attribute, 0)
+        except AttributeError:
+            continue
+        pytest.fail(f"{type(obj).__name__} is a frozen dataclass: assigning to its field {attribute} must raise.")
+
+
+def test_p_values_of_exactly_zero_and_one_are_valid() -> None:
+    got = np.asarray(a8.benjamini_hochberg([0.0, 1.0, 0.5, 0.0], 0.05)).tolist()
+    assert got == [True, False, False, True], (
+        "A p-value is any number in [0, 1], the end points included: 0 is rejected and 1 never is (contract)."
+    )
+
+
+def test_rejection_masks_are_boolean_arrays() -> None:
+    for name, mask in (
+        ("benjamini_hochberg", a8.benjamini_hochberg([0.001, 0.2, 0.03], 0.05)),
+        ("stepdown_rejections", a8.stepdown_rejections([6.0, 0.0], np.array([[1.0, 0.5], [0.9, 0.4]]), 0.05)),
+        ("romano_wolf", a8.romano_wolf(_differentials(), 0.05, 20, 5.0, SEED)),
+    ):
+        assert isinstance(mask, np.ndarray) and mask.dtype == bool, (
+            f"{name} returns a NumPy array of booleans, one per hypothesis (contract: NDArray[np.bool_])."
+        )
+
+
+def test_signature_defaults_are_the_contracts() -> None:
+    import inspect
+
+    contract = {
+        "probabilistic_sharpe_ratio": {"sr_benchmark": 0.0},
+        "expected_max_sharpe": {"sr_mean": 0.0},
+        "deflated_sharpe_ratio": {"n_trials": None},
+        "romano_wolf": {"alpha": 0.05, "n_boot": 1000, "mean_block": 10.0, "seed": 0},
+        "probability_of_backtest_overfitting": {"n_blocks": 16},
+        "integrity_report": {"alpha": 0.05, "q": 0.05, "n_blocks": 16, "n_boot": 1000, "mean_block": 10.0, "seed": 0},
+    }
+    for function, defaults in contract.items():
+        parameters = inspect.signature(getattr(a8, function)).parameters
+        for name, value in defaults.items():
+            assert name in parameters and parameters[name].default == value, (
+                f"{function}: parameter {name} must exist with the default the contract gives it "
+                "(contract: Functions); A9 calls these with their defaults."
+            )
+
+
+def test_the_last_column_can_be_the_proposed_strategy() -> None:
+    trials = a8.TrialSet(np.random.default_rng(SEED).normal(0.0, 0.01, (50, 4)), 3, 252)
+    assert trials.selected == 3, "selected indexes a column of returns, the last one included (contract: TrialSet)."
+
+
+# ---------------------------------------------------------------- round-11 additions (verifier-proposed fix)
+
+
+def test_a_p_value_of_one_still_counts_in_m() -> None:
+    got = np.asarray(a8.benjamini_hochberg([0.02, 0.5, 1.0], 0.05)).tolist()
+    assert got == [False, False, False], (
+        "A p-value of 1 is a test that found nothing, and it still counts in m: the step-up lines are k q / m with "
+        "m = 3 (contract: benjamini_hochberg)."
+    )
+
+
+def test_every_new_block_can_start_at_any_period() -> None:
+    rng = np.random.default_rng(SEED)
+    counts = np.zeros(5)
+    for _ in range(2000):
+        counts += np.bincount(np.asarray(a8.stationary_bootstrap_indices(5, 1.0, rng)), minlength=5)
+    share = counts / counts.sum()  # mean_block = 1: every step starts a new block, so every index is a uniform draw
+    assert bool(np.all(np.abs(share - 0.2) < 0.02)), (
+        "A new block starts at a uniformly drawn period at every step, not only at the first one, so period 0 is "
+        "hit with probability 1/n_obs (contract: stationary_bootstrap_indices)."
+    )

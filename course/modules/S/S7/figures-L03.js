@@ -49,8 +49,11 @@ function bhGeometry(el) {
         title: "The Benjamini–Hochberg step-up on the ten p-values of Example 2.2",
         desc:
           `The ten sorted p-values of Example 2.2 plotted against their rank k, with the BH line k·q/m at q = ${s.q.toFixed(3)}. ` +
-          `The largest rank whose p-value lies on or under the line is k* = ${bh.kStar}, so BH rejects the ${bh.kStar} smallest p-values` +
-          (carried.length ? `, including rank ${carried.join(" and ")}, which lies above its own line but is carried by the step-up. ` : ". ") +
+          (bh.kStar === 0
+            ? "No p-value lies on or under the line, so BH rejects nothing. "
+            : `The largest rank whose p-value lies on or under the line is k* = ${bh.kStar}, so BH rejects ` +
+              (bh.kStar === 1 ? "the smallest p-value" : `the ${bh.kStar} smallest p-values`) +
+              (carried.length ? `, including rank ${carried.join(" and ")}, which lies above its own line but is carried by the step-up. ` : ". ")) +
           `Holm rejects ${count(hm.mask)} and Bonferroni ${bonf}.`,
         x: { label: "Rank k of the sorted p-value", domain: [0, m + 0.5], ticks: m, format: "d" },
         y: { label: "p-value", domain: [0, yTop], format: ".2f" },
