@@ -8,8 +8,8 @@ Conventions (the project specification, project.html §3):
   exactly.
 * Prices are a length-N vector, in the same units as the payoffs.
 * A pricing error is E[m x] - p: positive when the SDF assigns the payoff more value than its price.
-* x* = x' b with b = E[x x']^{-1} p is the unique SDF in the payoff space (Lesson 6). The minimum-variance
-  SDF with mean v is m_v = v + (x - E[x])' beta with beta = Cov(x)^{-1} (p - v E[x]) (Lesson 6, Theorem 4.2).
+* x* = x' b with b = E[x x']^{-1} p is the unique SDF in the payoff space (Lesson 4, Theorem 3.2). The minimum-variance
+  SDF with mean v is m_v = v + (x - E[x])' beta with beta = Cov(x)^{-1} (p - v E[x]) (Lesson 5, Theorem 2.1).
 
 Every function is pure: it validates its inputs, raises ValueError naming the violated condition, and
 never prints, warns or mutates its arguments.

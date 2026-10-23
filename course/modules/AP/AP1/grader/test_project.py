@@ -38,6 +38,8 @@ PROBS: np.ndarray = INST["probs"]
 PAYOFFS: np.ndarray = INST["payoffs"]
 WITH_NAN = TRAIN.copy()
 WITH_NAN[1, 0] = np.nan
+TEST_WITH_NAN = TEST.copy()
+TEST_WITH_NAN[0, 0] = np.nan
 
 
 def must_raise(call: Callable[[], object], condition: str) -> None:
@@ -83,14 +85,14 @@ def test_x_star_prices_the_training_sample_exactly() -> None:
     b = sol.x_star_weights(TRAIN, PRICES)
     m = TRAIN @ np.asarray(b)
     assert close(TRAIN.T @ m / TRAIN.shape[0], PRICES, 1e-9), (
-        "x* must price every training payoff exactly in sample: E_T[x* x] = p (L08, the sample pricing identity)."
+        "x* must price every training payoff exactly in sample: E_T[x* x] = p (L07, Proposition 2.1)."
     )
 
 
 def test_x_star_matches_the_projection_formula() -> None:
     b = np.asarray(sol.x_star_weights(TRAIN, PRICES))
     assert close(TRAIN @ b, sample_x_star(TRAIN, PRICES)), (
-        "x* is the unique SDF in the payoff space: x' E[x x']^{-1} p (L05, Theorem on existence and uniqueness)."
+        "x* is the unique SDF in the payoff space: x' E[x x']^{-1} p (L04, Theorem 3.2)."
     )
 
 
@@ -103,7 +105,7 @@ def test_x_star_is_invariant_to_units() -> None:
     m = sol.sdf_values(TRAIN, sol.x_star_weights(TRAIN, PRICES))
     scaled = sol.sdf_values(3.0 * TRAIN, sol.x_star_weights(3.0 * TRAIN, 3.0 * PRICES))
     assert close(scaled, m), (
-        "Measuring every payoff and price in other units (x -> c x, p -> c p) cannot change the SDF (L05)."
+        "Measuring every payoff and price in other units (x -> c x, p -> c p) cannot change the SDF (L04, Theorem 3.2)."
     )
 
 
@@ -115,7 +117,7 @@ def test_x_star_depends_only_on_the_payoff_space() -> None:
     repackaged = sol.sdf_values(TRAIN @ a, sol.x_star_weights(TRAIN @ a, a.T @ PRICES))
     assert close(repackaged, m, 1e-7), (
         "Repackaging the assets into portfolios (x -> A'x, priced by the law of one price at A'p) spans the same "
-        "payoff space, so x* must not change: it is unique in the payoff space (L01 and L05)."
+        "payoff space, so x* must not change: it is unique in the payoff space (L01 and L04)."
     )
 
 
@@ -126,7 +128,8 @@ def test_x_star_has_the_smallest_second_moment() -> None:
         other = m + 0.3 * orthogonal_noise(TRAIN, rng)
         assert close(TRAIN.T @ other / TRAIN.shape[0], PRICES, 1e-8), "internal: the comparison SDF prices the payoffs"
         assert np.mean(m**2) <= np.mean(other**2) + 1e-12, (
-            "Every SDF is x* plus a noise orthogonal to the payoffs, so x* has the smallest second moment (L06)."
+            "Every SDF is x* plus a noise orthogonal to the payoffs, so x* has the smallest second moment "
+            "(L04, Theorem 4.1)."
         )
 
 
@@ -136,10 +139,10 @@ def test_population_x_star_is_the_projection_of_the_true_sdf() -> None:
     resid = m_true - x_star
     assert close(PAYOFFS.T @ (PROBS * resid), np.zeros(PAYOFFS.shape[1]), 1e-9), (
         "The true SDF minus x* must be orthogonal to every payoff under the state probabilities: x* is the "
-        "projection of any SDF onto the payoff space (L05, L06)."
+        "projection of any SDF onto the payoff space (L04, Theorem 4.1)."
     )
     assert float(PROBS @ x_star**2) <= float(PROBS @ m_true**2) + 1e-12, (
-        "x* has a smaller second moment than the true SDF that generated the prices (L06)."
+        "x* has a smaller second moment than the true SDF that generated the prices (L04, Theorem 4.1)."
     )
 
 
@@ -158,7 +161,8 @@ def test_riskless_payoff_pins_the_mean_of_x_star() -> None:
     m = sol.sdf_values(TRAIN, sol.x_star_weights(TRAIN, PRICES))
     if INST["riskless"]:
         assert math.isclose(float(m.mean()), float(PRICES[0]), rel_tol=1e-9, abs_tol=1e-12), (
-            "With a riskless payoff of 1 traded at price p_0, every SDF that prices it has mean p_0 = 1/R_f (L02)."
+            "With a riskless payoff of 1 traded at price p_0, every SDF that prices it has mean p_0 = 1/R_f "
+            "(L05, Proposition 1.2)."
         )
     else:
         assert np.all(np.isfinite(m)), "x* must be finite."
@@ -220,7 +224,8 @@ def test_min_variance_sdf_beats_every_other_sdf_with_its_mean(mean: float) -> No
     for _ in range(5):
         other = m + 0.2 * orthogonal_noise(x, rng, with_constant=True)
         assert other.std() >= m.std() - 1e-12, (
-            "Among SDFs with a given mean that price the payoffs, the one in span{1, x} has the least variance (L06)."
+            "Among SDFs with a given mean that price the payoffs, the one in span{1, x} has the least variance "
+            "(L05, Theorem 2.1)."
         )
     assert math.isclose(sol.min_sdf_std(x, p, mean), float(m.std()), rel_tol=1e-8), (
         "min_sdf_std must equal the standard deviation (divide by T) of the minimum-variance SDF with that mean."
@@ -233,7 +238,7 @@ def test_x_star_is_the_minimum_variance_sdf_at_its_own_mean() -> None:
     m_star = x @ np.asarray(sol.x_star_weights(x, p))
     a, b = sol.min_variance_sdf(x, p, float(m_star.mean()))
     assert close(a + x @ np.asarray(b), m_star, 1e-7), (
-        "x* minimizes E[m^2] over all SDFs, so at its own mean it is the minimum-variance SDF (L06)."
+        "x* minimizes E[m^2] over all SDFs, so at its own mean it is the minimum-variance SDF (L05, Proposition 2.3)."
     )
 
 
@@ -252,8 +257,8 @@ def test_variance_bound_dominates_every_sharpe_ratio() -> None:
             if sd == 0.0:
                 continue
             assert bound >= mean * abs(float(excess.mean())) / sd - 1e-9, (
-                "sigma(m) >= E(m) |E(R^e)| / sigma(R^e) for every excess return: the variance bound of L06 "
-                "(Theorem 4.4) must hold for the minimum-variance SDF."
+                "sigma(m) >= E(m) |E(R^e)| / sigma(R^e) for every excess return: the variance bound of L05 "
+                "(Theorem 2.4) must hold for the minimum-variance SDF."
             )
 
 
@@ -267,7 +272,8 @@ def test_recover_sdf_reports_in_and_out_of_sample_errors() -> None:
     assert close(out.in_sample_errors, np.zeros(PRICES.size), 1e-9), "x* prices the training sample exactly."
     expected = TEST.T @ (TEST @ b) / TEST.shape[0] - PRICES
     assert close(out.out_of_sample_errors, expected, 1e-7), (
-        "Out-of-sample errors must be E_test[m x] - p with the weights estimated on the training sample (L08)."
+        "Out-of-sample errors must be E_test[m x] - p with the weights estimated on the training sample "
+        "(L07, Definition 4.1)."
     )
     assert math.isclose(out.out_of_sample_rms, float(np.sqrt(np.mean(expected**2))), rel_tol=1e-7), (
         "out_of_sample_rms is the root mean square of the out-of-sample pricing errors."
@@ -283,14 +289,26 @@ def test_recover_sdf_summary_statistics() -> None:
         "train_std is the standard deviation of x* on the training sample, dividing by T."
     )
     assert math.isclose(out.test_share_negative, float(np.mean(m_test < 0.0)), abs_tol=1e-12), (
-        "test_share_negative is the share of test observations in which x* is negative: x* need not be positive (L06)."
+        "test_share_negative is the share of test observations in which x* is negative: x* need not be positive "
+        "(L04, Example 5.1)."
+    )
+
+
+def test_share_negative_counts_test_rows() -> None:
+    mirrored = np.vstack([TEST, -TEST])  # the mirrored rows make about half of x*'s test values negative, on every seed
+    out = sol.recover_sdf(TRAIN, mirrored, PRICES)
+    m = mirrored @ np.linalg.solve(TRAIN.T @ TRAIN / TRAIN.shape[0], PRICES)
+    assert math.isclose(out.test_share_negative, float(np.mean(m < 0.0)), abs_tol=1e-12), (
+        "test_share_negative is the share of TEST observations with x* < 0, computed with the training weights; "
+        "x* need not be positive (L04, Example 5.1)."
     )
 
 
 def test_out_of_sample_errors_are_not_identically_zero() -> None:
     out = sol.recover_sdf(TRAIN, TEST, PRICES)
     assert out.out_of_sample_rms > 1e-6, (
-        "On a fresh sample x* does not price the payoffs exactly: estimate on train, evaluate on test (L08)."
+        "On a fresh sample x* does not price the payoffs exactly: estimate on train, evaluate on test "
+        "(L07, Definition 4.1)."
     )
 
 
@@ -308,6 +326,13 @@ def test_recover_sdf_result_is_frozen() -> None:
     [
         pytest.param(lambda: sol.x_star_weights(TRAIN[:, 0], PRICES[:1]), "one-dimensional payoffs", id="1d"),
         pytest.param(lambda: sol.x_star_weights(WITH_NAN, PRICES), "a payoff sample with a NaN", id="nan"),
+        pytest.param(lambda: sol.second_moment_matrix(WITH_NAN), "a payoff sample with a NaN", id="nan-moments"),
+        pytest.param(
+            lambda: sol.pricing_errors(WITH_NAN, PRICES, np.ones(WITH_NAN.shape[0])),
+            "a payoff sample with a NaN",
+            id="nan-errors",
+        ),
+        pytest.param(lambda: sol.recover_sdf(TRAIN, TEST_WITH_NAN, PRICES), "a test sample with a NaN", id="nan-test"),
         pytest.param(lambda: sol.x_star_weights(TRAIN, PRICES[:-1]), "one price too few", id="short-prices"),
         pytest.param(
             lambda: sol.x_star_weights(np.column_stack([TRAIN, TRAIN[:, 0]]), np.append(PRICES, PRICES[0])),
