@@ -40,6 +40,8 @@ WITH_NAN = TRAIN.copy()
 WITH_NAN[1, 0] = np.nan
 TEST_WITH_NAN = TEST.copy()
 TEST_WITH_NAN[0, 0] = np.nan
+WITH_INF = np.where(np.isnan(WITH_NAN), np.inf, WITH_NAN)
+PRICES_WITH_NAN = np.where(np.arange(PRICES.size) == 0, np.nan, PRICES)
 
 
 def must_raise(call: Callable[[], object], condition: str) -> None:
@@ -304,6 +306,18 @@ def test_share_negative_counts_test_rows() -> None:
     )
 
 
+def test_share_negative_uses_the_training_weights() -> None:
+    rng = np.random.default_rng(SEED + 505)
+    # Random signs make the share depend on the weights; the zero row has x* = 0, which is not negative.
+    probe = np.vstack([rng.normal(0.0, 1.0, (200, TRAIN.shape[1])), np.zeros((1, TRAIN.shape[1]))])
+    out = sol.recover_sdf(TRAIN, probe, PRICES)
+    m = probe @ np.linalg.solve(TRAIN.T @ TRAIN / TRAIN.shape[0], PRICES)
+    assert math.isclose(out.test_share_negative, float(np.mean(m < 0.0)), abs_tol=1e-12), (
+        "test_share_negative counts test observations with x* < 0 (strictly), using the weights estimated on the "
+        "training sample only (L07, Definition 4.1; L04, Example 5.1)."
+    )
+
+
 def test_out_of_sample_errors_are_not_identically_zero() -> None:
     out = sol.recover_sdf(TRAIN, TEST, PRICES)
     assert out.out_of_sample_rms > 1e-6, (
@@ -333,6 +347,18 @@ def test_recover_sdf_result_is_frozen() -> None:
             id="nan-errors",
         ),
         pytest.param(lambda: sol.recover_sdf(TRAIN, TEST_WITH_NAN, PRICES), "a test sample with a NaN", id="nan-test"),
+        pytest.param(lambda: sol.x_star_weights(WITH_INF, PRICES), "a payoff sample with an infinite value", id="inf"),
+        pytest.param(
+            lambda: sol.second_moment_matrix(WITH_INF), "a payoff sample with an infinite value", id="inf-moments"
+        ),
+        pytest.param(lambda: sol.x_star_weights(TRAIN, PRICES_WITH_NAN), "a NaN price", id="nan-price"),
+        pytest.param(
+            lambda: sol.min_sdf_std(
+                TRAIN[:, 1:] if INST["riskless"] else TRAIN, PRICES[1:] if INST["riskless"] else PRICES, float("nan")
+            ),
+            "a NaN mean",
+            id="nan-mean-std",
+        ),
         pytest.param(lambda: sol.x_star_weights(TRAIN, PRICES[:-1]), "one price too few", id="short-prices"),
         pytest.param(
             lambda: sol.x_star_weights(np.column_stack([TRAIN, TRAIN[:, 0]]), np.append(PRICES, PRICES[0])),
