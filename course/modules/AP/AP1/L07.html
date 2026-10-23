@@ -110,7 +110,7 @@
         <p>\(\E_T[\hat x^{\ast2}] = \hat b^\top\hat S\hat b = p^\top\hat S^{-1}p = f(\hat S)\), and \(\E[x^{\ast2}] = f(S)\) (Lesson 4, Problem P1). \(f\) is convex (Lemma 3.2), so Jensen's inequality for the random matrix \(\hat S\) gives \(\E[f(\hat S)] \ge f(\E[\hat S]) = f(S)\). Jensen's inequality applies because a convex function is the supremum of the affine functions below it, here \(g_\cdot(c)\), each of which commutes with expectation, and \(f(\E\hat S) = \sup_c \E[g_{\hat S}(c)] \le \E[\sup_c g_{\hat S}(c)]\).</p>
       </div>
 
-      <p>With a riskless payoff, \(\E[x^{\ast2}] = 1/R_f^2 + \Var(x^\ast)\), and the mean of \(x^\ast\) is pinned at \(1/R_f\) in every sample, so the bias is all in the variance: the sample variance bound of Lesson 5 is biased upward, and so is the sample maximum Sharpe ratio it equals. The proof is about the second moment of \(\hat x^\ast\) in its own sample; Lab 1 measures the bias and shows what it does to pricing out of sample.</p>
+      <p>With a riskless payoff, \(\E[x^{\ast2}] = 1/R_f^2 + \Var(x^\ast)\), and the mean of \(x^\ast\) is pinned at \(1/R_f\) in every sample, so the bias is all in the variance: the sample variance bound of Lesson 5 is biased upward, and so is the square of the sample maximum Sharpe ratio it equals. The proof is about the second moment of \(\hat x^\ast\) in its own sample; Lab 1 measures the bias and shows what it does to pricing out of sample.</p>
 
       <section class="lab" id="lab-AP1-L07-1" data-runtime="python" data-packages="numpy">
         <h3>Lab 1 · In sample, out of sample, and the bias</h3>
@@ -189,7 +189,7 @@ for n_risky in (2, 8):
 
       <p>The penalty \(\lambda\) must be chosen without the test sample, or the test is contaminated: a \(\lambda\) chosen to minimize test errors is fitted to the test sample. Lab 2 chooses it by validation inside the training sample.</p>
 
-      <section class="lab" id="lab-AP1-L07-2" data-runtime="python" data-packages="numpy" data-files="fx_monthly.csv">
+      <section class="lab" id="lab-AP1-L07-2" data-runtime="python" data-packages="numpy scipy" data-files="fx_monthly.csv">
         <h3>Lab 2 · Out-of-sample pricing of nine currency payoffs</h3>
         <p class="hypothesis">The data are Lesson 1's month-end spot rates (Board of Governors of the Federal Reserve System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), retrieved 2026-10-19), turned into nine one-month currency payoffs costing one dollar each, DKK left out. The first half of the months trains \(\hat b\); the second half tests it. The penalty is chosen on the training sample alone: fit on its first three quarters, validate on its last quarter, over a grid. The sample \(x^\ast\) should price the training half exactly and price the test half with large errors; ridge should give up a little in-sample fit and, if the validation choice transfers, price the test half better. Both are compared with the constant SDF \(m = 1\), which prices each payoff at its test-sample mean.</p>
         <pre><code class="language-python" data-run>import csv
@@ -198,6 +198,7 @@ from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.optimize import linprog  # type: ignore[import-untyped]
 
 # Nine one-month currency payoffs (DKK left out, Lesson 1), each costing one dollar: p = 1.
 with (Path("data") / "fx_monthly.csv").open(newline="", encoding="utf-8") as handle:
@@ -212,6 +213,8 @@ p = np.ones(x.shape[1])
 half = x.shape[0] // 2
 train, test = x[:half], x[half:]
 print(f"train {ends[0]} to {ends[half - 1]} ({half} months); test {ends[half]} to {ends[-1]} ({len(test)} months)")
+sd_bp = 1e4 * x.std(axis=0)
+print(f"monthly s.d. of the nine payoffs: {sd_bp.min():.1f} to {sd_bp.max():.1f} bp")
 
 
 def weights(sample: NDArray[np.float64], lam: float) -&gt; NDArray[np.float64]:
@@ -242,8 +245,24 @@ for label, lam in (("sample x*", 0.0), (f"ridge, lam = {chosen:.0e}", chosen)):
 # Benchmark: the constant SDF m = 1 prices each payoff at its test-sample mean.
 print(f"constant m = 1: test rms {1e4 * np.sqrt(np.mean((test.mean(axis=0) - p) ** 2)):.1f} bp")
 # Problem E1: the same split reversed (train on the second half, test on the first).
-print(f"reversed split, sample x*: test rms {rms_bp(train, weights(test, 0.0)):.1f} bp")</code></pre>
+print(f"reversed split, sample x*: test rms {rms_bp(train, weights(test, 0.0)):.1f} bp")
+
+
+def max_min_state_price(sample: NDArray[np.float64]) -&gt; float:
+    """Largest t with state prices q_s &gt;= t in every month that price all payoffs, sum_s q_s x_s = p (Lesson 3)."""
+    months_, n_assets = sample.shape
+    cost = np.zeros(months_ + 1)
+    cost[-1] = -1.0  # maximize t
+    a_ub = np.hstack([-np.eye(months_), np.ones((months_, 1))])  # t - q_s &lt;= 0
+    a_eq = np.hstack([sample.T, np.zeros((n_assets, 1))])
+    res = linprog(cost, A_ub=a_ub, b_ub=np.zeros(months_), A_eq=a_eq, b_eq=p, bounds=[(None, None)] * (months_ + 1))
+    return float(-res.fun)
+
+
+# Problem R3: a strictly positive SDF prices each half exactly when the largest minimum state price is positive.
+print(f"largest minimum state price: test {max_min_state_price(test):.4f}, train {max_min_state_price(train):.4f}")</code></pre>
         <pre class="expected" data-tolerance="1e-6">train 1999-02 to 2012-11 (166 months); test 2012-12 to 2026-09 (166 months)
+monthly s.d. of the nine payoffs: 237.1 to 360.7 bp
 lam      validation rms (bp)
   0e+00      43.5
   1e-05      54.1
@@ -254,7 +273,8 @@ lam      validation rms (bp)
 sample x*: train rms 0.00 bp, test rms 270.0 bp, test s.d. of m 0.2034, test min of m 0.0401
 ridge, lam = 1e-02: train rms 15.39 bp, test rms 80.2 bp, test s.d. of m 0.0199, test min of m 0.9462
 constant m = 1: test rms 20.1 bp
-reversed split, sample x*: test rms 505.9 bp</pre>
+reversed split, sample x*: test rms 505.9 bp
+largest minimum state price: test 0.0053, train 0.0056</pre>
         <p class="interpretation">The sample \(x^\ast\) prices the training half to 0.00 basis points and the test half with a root-mean-square error of 270 basis points per dollar of price: 2.7 cents on a one-dollar payoff over one month. Ridge with the validation-chosen \(\lambda = 10^{-2}\) has 15.39 basis points of error in sample and 80.2 out of sample, less than a third of the unshrunk error, and its SDF has a test-sample standard deviation of 0.0199 against 0.2034. The constant \(m = 1\), with no estimated parameter, does better than both, at 20.1 basis points: over these 14 years, one-month currency payoffs priced at one dollar had sample means close to one dollar, and no estimated SDF beat that. The validation grid is not smooth (the score rises from \(\lambda = 0\) to \(10^{-4}\) and falls again), which is what one validation quarter of 42 months can produce, so the chosen \(\lambda\) is itself noisy. The lab measures one split of one data set. It does not show that currency risk is unpriced; the payoffs omit the interest each currency earns on deposit, and with that included the picture could differ.</p>
       </section>
 
@@ -262,7 +282,7 @@ reversed split, sample x*: test rms 505.9 bp</pre>
         <h2 id="s5"><span class="section-number">5</span>Where the canon breaks</h2>
         <ul>
           <li><strong>Stationarity.</strong> Proposition 3.1 assumes \(\hat S\) converges to a fixed \(S\). If the joint distribution of payoffs changes over time (the euro's introduction, a change in policy regime), the training sample estimates a different \(S\) from the test sample's, and out-of-sample errors mix estimation error with change in the economy. Lab 2 cannot separate the two.</li>
-          <li><strong>Unconditional pricing.</strong> The sample \(x^\ast\) is the projection onto fixed payoffs. If the true SDF varies with information known at the start of each month, the unconditional \(x^\ast\) is the projection of a conditional object onto a small space, and it can price the test assets badly even when a conditional model would price them well. Managed portfolios (payoffs multiplied by lagged signals) enlarge the payoff space to capture this.</li>
+          <li><strong>Unconditional pricing.</strong> The sample \(x^\ast\) is the projection onto fixed payoffs. If the true SDF varies with information known at the start of each month, the unconditional \(x^\ast\) is the projection of a conditional object onto a small space, and it can price the test assets badly even when a conditional model would price them well. Multiplying payoffs by a signal \(z_t\) known at the start of the month enlarges the payoff space: if \(p_t = \E_t[m\,x_{t+1}]\), the tower property gives \(\E[z_tp_t] = \E[m\,z_tx_{t+1}]\), so \(z_tx_{t+1}\) is a payoff with price \(z_tp_t\) that every conditional SDF also prices unconditionally.</li>
           <li><strong>The choice of test assets drives the result.</strong> Every number in Lab 2 is for nine currency payoffs. A different set of test assets, a different split date, or the inclusion of deposit interest gives different errors. Report the split, the assets and the rule for \(\lambda\) before looking at the test sample.</li>
           <li><strong>One split is one draw.</strong> A single train–test split gives one realization of the out-of-sample error. Rolling or repeated splits give a distribution, at the cost of overlapping training samples and dependent errors. The project asks for one fixed split so that the grader can check the numbers, and asks the proof appendix to state what one split can and cannot show.</li>
         </ul>
@@ -307,14 +327,14 @@ reversed split, sample x*: test rms 505.9 bp</pre>
             <span class="problem-title">M2 · Ridge by hand</span>
             <p>In M1's training sample, compute \(\hat b_\lambda\) for \(\lambda = 0.125\) and its in-sample pricing error, and check the formula \(-\lambda\hat b_\lambda\).</p>
             <details class="solution"><summary>Solution</summary>
-              <p>\(\hat b_\lambda = 1/(1.125 + 0.125) = 0.8\). In-sample: \(\hat S\hat b_\lambda - 1 = 1.125 \times 0.8 - 1 = -0.1\), and \(-\lambda\hat b_\lambda = -0.125 \times 0.8 = -0.1\) ✓. On period 3: \(0.8 \times 1.05^2 - 1 = -0.118\), worse than the unshrunk \(-0.02\) here; shrinkage helps only when the unshrunk weights are unstable, which needs more than one asset.</p>
+              <p>\(\hat b_\lambda = 1/(1.125 + 0.125) = 0.8\). In-sample: \(\hat S\hat b_\lambda - 1 = 1.125 \times 0.8 - 1 = -0.1\), and \(-\lambda\hat b_\lambda = -0.125 \times 0.8 = -0.1\) ✓. On period 3: \(0.8 \times 1.05^2 - 1 = -0.118\), worse than the unshrunk \(-0.02\) here. Whether shrinkage helps out of sample depends on the test draw: with \(x_3 = 1.2\) it would cut the error from \(0.888889 \times 1.44 - 1 = 0.280\) to \(0.8 \times 1.44 - 1 = 0.152\). Its systematic benefit comes from stabilizing weights when payoffs are nearly redundant, which needs more than one asset.</p>
             </details>
           </div>
           <div class="problem" id="M3">
             <span class="problem-title">M3 · Reading Lab 2's units</span>
-            <p>Lab 2 reports a test-sample root-mean-square error of 270.0 basis points for the sample \(x^\ast\). Express it in dollars per dollar invested, and compare it with the payoffs' monthly volatility of about 260 basis points (Lesson 1, Lab 2).</p>
+            <p>Lab 2 reports a test-sample root-mean-square error of 270.0 basis points for the sample \(x^\ast\). Express it in dollars per dollar invested, and compare it with the payoffs' monthly standard deviations, which Lab 2's second line prints.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>270 basis points is 0.027 dollars per one-dollar payoff, per month. Lesson 1's Lab 2 reports a monthly standard deviation of 261.9 basis points for the DKK payoff, and the other currencies are of the same order. So the pricing error of the estimated SDF is as large as a typical month's movement in the payoff itself: the estimate has priced the second half of the sample about as badly as it is possible to price a one-dollar payoff without systematic error, while the constant \(m = 1\) errs by 20.1 basis points.</p>
+              <p>270 basis points is 0.027 dollars per one-dollar payoff, per month. Lab 2 prints monthly standard deviations of 237.1 to 360.7 basis points for the nine payoffs. So the pricing error of the estimated SDF is comparable to one month's standard deviation of the payoff itself, while the constant \(m = 1\) errs by 20.1 basis points.</p>
             </details>
           </div>
         </div>
@@ -348,9 +368,9 @@ reversed split, sample x*: test rms 505.9 bp</pre>
           <h3>Empirical</h3>
           <div class="problem" id="E1">
             <span class="problem-title">E1 · Reverse the split</span>
-            <p>Predict what happens to Lab 2's sample-\(x^\ast\) test error if the second half trains and the first half tests, then compare with the last line Lab 2 prints.</p>
+            <p>Predict what happens to Lab 2's sample-\(x^\ast\) test error if the second half trains and the first half tests, then compare with the "reversed split" line Lab 2 prints.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>The in-sample error is again zero (Proposition 2.1). The test error has no reason to be the same: it depends on how different the two halves' second-moment matrices are in the directions where \(\hat S^{-1}\) is large. Lab 2's last line runs it: 505.9 basis points, nearly twice the forward split's 270.0. A single split's number is fragile; the project reports one fixed split, and the proof appendix discusses this.</p>
+              <p>The in-sample error is again zero (Proposition 2.1). The test error has no reason to be the same: it depends on how different the two halves' second-moment matrices are in the directions where \(\hat S^{-1}\) is large. Lab 2's "reversed split" line runs it: 505.9 basis points, nearly twice the forward split's 270.0. A single split's number is fragile; the project reports one fixed split, and the proof appendix discusses this.</p>
             </details>
           </div>
           <div class="problem" id="E2">
@@ -395,7 +415,7 @@ reversed split, sample x*: test rms 505.9 bp</pre>
             <span class="problem-title">R3 · Is a large out-of-sample error a rejection of no arbitrage?</span>
             <p>Lab 2's estimated SDF misprices the test half by 270 basis points. Does that indicate an arbitrage in the currency market?</p>
             <details class="solution"><summary>Solution</summary>
-              <p>No. No arbitrage is a statement about prices and payoffs state by state (Lesson 2), and an SDF that prices the test half exists: the test half's own sample \(x^\ast\), for one. The 270 basis points measure how badly one estimate of the projection, from one period, prices another period. That reflects estimation error, a change in the distribution of payoffs between the halves, or both. It says nothing about whether prices admit a portfolio that never loses.</p>
+              <p>No. No arbitrage is a statement about prices and payoffs state by state (Lesson 2), and a strictly positive SDF that prices the test half exists: Lab 2's last line runs Lesson 3's linear program on the test half's 166 months and finds state prices that price all nine payoffs with every month's state price at least 0.0053 (0.0056 on the training half). The test half's own sample \(x^\ast\), by contrast, prices it but is negative in one month, so it witnesses only the law of one price. The 270 basis points measure how badly one estimate of the projection, from one period, prices another period. That reflects estimation error, a change in the distribution of payoffs between the halves, or both. It says nothing about whether prices admit a portfolio that never loses.</p>
             </details>
           </div>
         </div>
@@ -411,7 +431,7 @@ reversed split, sample x*: test rms 505.9 bp</pre>
               <tr><td>The sample weights \(\hat S^{-1}p\) are consistent when \(\hat S \to S\)</td><td><span class="grade" data-grade="T">T</span></td><td>Proposition 3.1</td></tr>
               <tr><td>\(A \mapsto p^\top A^{-1}p\) is convex; the sample \(x^\ast\)'s second moment is biased upward</td><td><span class="grade" data-grade="T">T</span></td><td>Lemma 3.2, Theorem 3.3</td></tr>
               <tr><td>Ridge weights \((\hat S + \lambda I)^{-1}p\) are the penalized projection of any SDF; in-sample errors \(-\lambda\hat b_\lambda\)</td><td><span class="grade" data-grade="T">T</span></td><td>Proposition 4.2</td></tr>
-              <tr><td>Nine currency payoffs, 1999-02 to 2026-09 split in half: sample \(x^\ast\) test error 270.0 bp; ridge 80.2 bp; constant \(m = 1\) 20.1 bp</td><td><span class="grade" data-grade="T">T</span></td><td>Lab 2 (computed on the embedded H.10 data)</td></tr>
+              <tr><td>Nine currency payoffs, 1999-02 to 2026-09 split in half: sample \(x^\ast\) test error 270.0 bp; ridge 80.2 bp; constant \(m = 1\) 20.1 bp</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 2 (single sample: H.10 month-end spot rates, retrieved 2026-10-19)</td></tr>
             </tbody>
           </table>
         </div>

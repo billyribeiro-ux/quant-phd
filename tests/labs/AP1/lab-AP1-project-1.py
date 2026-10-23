@@ -17,7 +17,7 @@ print("b =", np.round(b, 6), "| x* by state =", np.round(x_star, 6))
 # Step 3. Verify that it prices both assets. This is the check the autograder runs, to rounding.
 print("E[x* x] - p =", np.round(X.T @ (probs * x_star) - p, 12) + 0.0)
 
-# Step 4. A sample of 8 months drawn from the states: the sample x* uses equal weights 1/T (L07, Definition 1.1).
+# Step 4. A SIMULATED sample of 8 months from the states: the sample x* uses equal weights 1/T (L07, Definition 1.1).
 rng = np.random.default_rng(1)
 train = X[rng.choice(3, size=8, p=probs)]
 test = X[rng.choice(3, size=8, p=probs)]

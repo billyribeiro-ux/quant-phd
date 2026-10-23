@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.optimize import linprog  # type: ignore[import-untyped]
 
 # Nine one-month currency payoffs (DKK left out, Lesson 1), each costing one dollar: p = 1.
 with (Path("data") / "fx_monthly.csv").open(newline="", encoding="utf-8") as handle:
@@ -18,6 +19,8 @@ p = np.ones(x.shape[1])
 half = x.shape[0] // 2
 train, test = x[:half], x[half:]
 print(f"train {ends[0]} to {ends[half - 1]} ({half} months); test {ends[half]} to {ends[-1]} ({len(test)} months)")
+sd_bp = 1e4 * x.std(axis=0)
+print(f"monthly s.d. of the nine payoffs: {sd_bp.min():.1f} to {sd_bp.max():.1f} bp")
 
 
 def weights(sample: NDArray[np.float64], lam: float) -> NDArray[np.float64]:
@@ -49,3 +52,18 @@ for label, lam in (("sample x*", 0.0), (f"ridge, lam = {chosen:.0e}", chosen)):
 print(f"constant m = 1: test rms {1e4 * np.sqrt(np.mean((test.mean(axis=0) - p) ** 2)):.1f} bp")
 # Problem E1: the same split reversed (train on the second half, test on the first).
 print(f"reversed split, sample x*: test rms {rms_bp(train, weights(test, 0.0)):.1f} bp")
+
+
+def max_min_state_price(sample: NDArray[np.float64]) -> float:
+    """Largest t with state prices q_s >= t in every month that price all payoffs, sum_s q_s x_s = p (Lesson 3)."""
+    months_, n_assets = sample.shape
+    cost = np.zeros(months_ + 1)
+    cost[-1] = -1.0  # maximize t
+    a_ub = np.hstack([-np.eye(months_), np.ones((months_, 1))])  # t - q_s <= 0
+    a_eq = np.hstack([sample.T, np.zeros((n_assets, 1))])
+    res = linprog(cost, A_ub=a_ub, b_ub=np.zeros(months_), A_eq=a_eq, b_eq=p, bounds=[(None, None)] * (months_ + 1))
+    return float(-res.fun)
+
+
+# Problem R3: a strictly positive SDF prices each half exactly when the largest minimum state price is positive.
+print(f"largest minimum state price: test {max_min_state_price(test):.4f}, train {max_min_state_price(train):.4f}")
