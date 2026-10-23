@@ -1,46 +1,40 @@
 import numpy as np
 from numpy.typing import NDArray
 
-# SIMULATED market: 8 states, a riskless payoff and 3 risky payoffs, priced by a strictly positive SDF m.
-rng = np.random.default_rng(606)
-probs = rng.dirichlet(np.full(8, 5.0))
-m = np.exp(rng.normal(0.0, 0.3, 8))
-m *= 0.98 / float(probs @ m)  # scale so that E[m] = 0.98: a riskless rate of about 2% for the period
-risky = 1.0 + 0.25 * rng.standard_normal((8, 3))
-X = np.column_stack([np.ones(8), risky])
-p = X.T @ (probs * m)
+# SIMULATED market without a riskless payoff: 10 states, 4 risky payoffs priced by a strictly positive SDF.
+rng = np.random.default_rng(653)
+probs = rng.dirichlet(np.full(10, 5.0))
+m_true = np.exp(rng.normal(0.0, 0.35, 10))
+m_true *= 0.97 / float(probs @ m_true)
+X = 1.0 + 0.3 * rng.standard_normal((10, 4))
+p = X.T @ (probs * m_true)
+mu = X.T @ probs  # E[x]
+cov = X.T @ (probs[:, None] * X) - np.outer(mu, mu)  # Cov(x)
 
 
-def E(v: NDArray[np.float64]) -> float:  # noqa: N802  expectation under the state probabilities
-    return float(probs @ v)
+def sigma_min(v: float) -> float:
+    """Smallest standard deviation of an SDF with mean v that prices x (Theorem 2.2)."""
+    g = p - v * mu
+    return float(np.sqrt(g @ np.linalg.solve(cov, g)))
 
 
-x_star = X @ np.linalg.solve(X.T @ (probs[:, None] * X), p)
-r_f = 1.0 / p[0]
-R = risky / p[1:]  # gross returns of the risky assets
-Re = R - r_f  # excess returns
-print(f"R_f = {r_f:.6f}, E[x*] = {E(x_star):.6f} = 1/R_f: {np.isclose(E(x_star), 1 / r_f)}")
+def max_sharpe(v: float) -> float:
+    """Largest Sharpe ratio of a zero-price payoff x'theta - (p'theta / v) * 1, if a riskless asset cost v."""
+    best = 0.0
+    for theta in np.vstack([np.linalg.solve(cov, p - v * mu), rng.standard_normal((2000, 4))]):
+        y = X @ theta - (p @ theta) / v
+        sd = float(np.sqrt(probs @ (y - probs @ y) ** 2))
+        best = max(best, abs(float(probs @ y)) / sd)
+    return best
 
-# R* = x*/p(x*) with p(x*) = E[x*^2]; it is the gross return with the smallest second moment (Theorem 3.2).
-r_star = x_star / E(x_star**2)
-print(f"E[R*^2] = {E(r_star**2):.6f}; 1/E[x*^2] = {1 / E(x_star**2):.6f}; E[R*] = {E(r_star):.6f} <= R_f")
-for w in rng.dirichlet(np.ones(3), size=3):
-    other = R @ w
-    print(f"  another return: E[R^2] = {E(other**2):.6f} >= E[R*^2]: {E(other**2) >= E(r_star**2)}")
 
-# R^e* = projection of 1 on the excess returns; mean-variance frontier = {R* + w R^e*} (Theorem 3.5).
-g = np.linalg.solve(Re.T @ (probs[:, None] * Re), Re.T @ probs)
-re_star = Re @ g
-mu = Re.T @ probs
-cov = Re.T @ (probs[:, None] * Re) - np.outer(mu, mu)
-max_sr = float(np.sqrt(mu @ np.linalg.solve(cov, mu)))
-print(f"E[R^e*] = {E(re_star):.6f} = E[R^e*^2] = {E(re_star**2):.6f}")
-print(f"maximum Sharpe ratio of the excess returns: {max_sr:.6f}")
-for w in (-2.0, 0.0, 2.0):
-    frontier = r_star + w * re_star
-    sd = float(np.sqrt(E(frontier**2) - E(frontier) ** 2))
-    print(f"  w = {w:+.1f}: E[R] = {E(frontier):.6f}, s.d. {sd:.6f}, |SR| = {abs(E(frontier) - r_f) / sd:.6f}")
+def sd(z: NDArray[np.float64]) -> float:
+    return float(np.sqrt(probs @ (z - probs @ z) ** 2))
 
-# The variance bound (Theorem 4.4): sigma(m) / E(m) >= max Sharpe ratio, with equality for x* (in span{1, x}).
-for name, sdf in (("true m", m), ("x*", x_star)):
-    print(f"{name}: sigma/E = {np.sqrt(E(sdf**2) - E(sdf) ** 2) / E(sdf):.6f}")
+
+print("  v      sigma_min(v)  sigma_min(v)/v  max Sharpe at R_f = 1/v")
+for v in (0.90, 0.95, 0.97, 1.00, 1.05):
+    print(f"{v:5.2f}   {sigma_min(v):.6f}      {sigma_min(v) / v:.6f}        {max_sharpe(v):.6f}")
+print(f"true SDF: mean {probs @ m_true:.6f}, s.d. {sd(m_true):.6f} >= sigma_min at its mean {sigma_min(0.97):.6f}")
+v_star = float(mu @ np.linalg.solve(cov, p) / (mu @ np.linalg.solve(cov, mu)))
+print(f"the mean with the smallest bound: v = {v_star:.6f}, sigma_min = {sigma_min(v_star):.6f}")
