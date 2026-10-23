@@ -28,7 +28,9 @@ the dark theme is not swept.
 
 Then, once per page at desktop width: runs every lab in Pyodide and requires
 its output to match the page within 10 s of runtime (the runtime is started
-first, so boot time is not charged to a lab); completion labs are filled with
+first, and every package the page's labs declare or import is loaded before
+any lab's timer starts; both times are printed separately, so boot and wheel
+loading are not charged to a lab); completion labs are filled with
 their solution twin first. On a project page with an autograder, it pastes the
 reference solution into the in-browser grader and requires every test to pass
 within 60 s: the same suite therefore passes in Pyodide and in local pytest.
@@ -56,7 +58,7 @@ from typing import Any
 
 from playwright.sync_api import Locator, Page, sync_playwright
 
-from coursekit import COURSE, Unit, built_units, labs_in, load_page, unit
+from coursekit import COURSE, Lab, Unit, built_units, labs_in, load_page, unit
 
 LAB_LIMIT_S = 10.0
 GRADER_LIMIT_S = 60.0
@@ -213,13 +215,38 @@ def sweep_chart(chart: Locator, where: str, presses: list[int]) -> list[str]:
     return problems
 
 
+IMPORT_LINE = re.compile(r"^(?:import|from)[ \t]+[A-Za-z_][\w.]*(?:[ \t].*)?$", re.MULTILINE)
+
+
+def lab_preload(labs: list[Lab]) -> tuple[str, list[str]]:
+    """The labs' top-level import statements, deduplicated in order, and the union of their data-packages.
+
+    The worker runs the import lines after loadPackagesFromImports, so every wheel a lab needs is loaded before
+    any lab's timer starts; importing is side-effect free for the standard library, NumPy and SciPy.
+    """
+    lines = dict.fromkeys(m.group(0).strip() for lab in labs for m in IMPORT_LINE.finditer(lab.code))
+    packages = list(dict.fromkeys(p for lab in labs for p in lab.packages))
+    return "\n".join(lines), packages
+
+
 def run_labs(page: Page, page_path: Path) -> list[str]:
     problems: list[str] = []
     labs = labs_in(load_page(page_path))
     if not labs:
         return problems
     warm = "async () => { const m = await import('/assets/js/python.js'); await m.runPython('pass', ['numpy']); }"
+    started = time.perf_counter()
     page.evaluate(warm)  # start Pyodide first, so no lab is charged for the runtime's boot
+    print(f"  runtime boot (with numpy): {time.perf_counter() - started:.1f} s")
+    imports, packages = lab_preload(labs)
+    started = time.perf_counter()
+    # Load every package the labs declare or import, so no lab's timer includes downloading a wheel.
+    page.evaluate(
+        "async ([code, packages]) => { const m = await import('/assets/js/python.js'); "
+        "const r = await m.runPython(code, packages); if (r.error) throw new Error(r.error); }",
+        [imports, packages],
+    )
+    print(f"  package preload ({', '.join(packages) or 'none'}): {time.perf_counter() - started:.1f} s")
     for lab in labs:
         section = page.locator(f"#{lab.id}")
         if lab.completion:
