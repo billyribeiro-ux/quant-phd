@@ -32,7 +32,7 @@ others = [0, 1, 2, 4, 5]
 lowest = linprog(X[:, 3], A_eq=X[:, others].T, b_eq=fair[others], bounds=[(0, None)] * 12, method="highs").fun
 gap = float(fair[3] - lowest)
 print(f"exact gap: {gap:.7f}")
-for label, shade in (("0.2078", 0.2078), ("gap - 1e-12", gap - 1e-12), ("exact gap", gap)):
+for label, shade in (("0.2078", 0.2078), ("gap - 1e-9", gap - 1e-9), ("gap - 1e-12", gap - 1e-12), ("exact gap", gap)):
     p = fair.copy()
     p[3] -= shade
     value, theta = detect(p)

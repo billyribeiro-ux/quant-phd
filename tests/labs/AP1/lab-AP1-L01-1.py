@@ -35,3 +35,19 @@ print("direction of ker X':", np.round(direction, 6))
 for t in (0.0, 0.25, 0.7):
     psi = psi0 + t * direction
     print(f"t = {t:+.2f}: psi = {np.round(psi, 4)}, prices all three: {bool(np.allclose(X.T @ psi, p_fixed))}")
+
+# Example 3.2: the forward price as a law-of-one-price instance, on the same three states.
+# Illustrative numbers: spot S0 = 1.10 dollars per unit, dollar rate r = 4%, foreign rate r* = 2%, and a date-1 spot
+# rate S1 that differs across the states.
+S0, r, r_for = 1.10, 0.04, 0.02
+S1 = np.array([1.25, 1.10, 0.95])
+dollar_bond = np.ones(3)  # pays 1 dollar; costs 1/(1 + r) dollars
+foreign_bond = S1 * 1.0  # pays 1 unit of currency, worth S1 dollars; costs S0/(1 + r*) dollars
+F = S0 * (1 + r) / (1 + r_for)
+forward = S1 - F  # buy one unit at F dollars; costs nothing today
+# One foreign bond minus F dollar bonds has the forward's payoff in every state, so it must cost what the forward does.
+replica = foreign_bond - F * dollar_bond
+print(f"forward price F = {F:.6f}; same payoff as the replica in every state: {bool(np.allclose(replica, forward))}")
+for quote in (F, F + 0.01):
+    cost = S0 / (1 + r_for) - quote / (1 + r)
+    print(f"quoted F = {quote:.6f}: replica cost {round(cost, 12) + 0.0:+.6f}")
