@@ -151,13 +151,26 @@ function setRevealed(exemplars, revealed) {
   }
 }
 
-function comparisonTable(criteria, record, exemplars) {
+/**
+ * The words the form uses for the learner's own work, read from optional data attributes on the
+ * self-assessment section; the defaults are S7's memo wording.
+ */
+export function workWording(dataset = {}) {
+  const pick = (value, fallback) => (typeof value === "string" && value.trim() ? value.trim() : fallback);
+  return {
+    label: pick(dataset.workLabel, "Your memo"),
+    noun: pick(dataset.workNoun, "memo"),
+    summaryPath: pick(dataset.summaryPath, "memo/self_assessment.md"),
+  };
+}
+
+function comparisonTable(criteria, record, exemplars, ownLabel) {
   const ids = criteria.map((c) => c.id);
   const results = exemplars.map((e) => compare(record.scores[e.id], e.official, ids));
   const table = el("table", { class: "rubric-compare" });
   table.append(el("caption", {}, "Your scoring against the official scoring, criterion by criterion"));
   const head = el("tr");
-  head.append(el("th", { scope: "col" }, "Criterion"), el("th", { scope: "col", class: "num" }, "Your memo"));
+  head.append(el("th", { scope: "col" }, "Criterion"), el("th", { scope: "col", class: "num" }, ownLabel));
   for (const e of exemplars) {
     head.append(el("th", { scope: "col", class: "num" }, `${e.label}: you`));
     head.append(el("th", { scope: "col", class: "num" }, `${e.label}: official`));
@@ -201,6 +214,7 @@ export async function initRubric(section, { store = defaultStore } = {}) {
       if (!node || !official) throw new Error(`exemplar #${id} is missing or has no data-scores for every criterion`);
       return { id, node, official, label: node.dataset.label || id };
     });
+  const wording = workWording(section.dataset);
   const targets = [SELF, ...exemplars.map((e) => e.id)];
   const key = `rubric:${section.dataset.storeKey || location.pathname}`;
   const prefix = key.replace(/[^A-Za-z0-9]+/g, "-");
@@ -210,10 +224,10 @@ export async function initRubric(section, { store = defaultStore } = {}) {
   host.replaceChildren();
   const form = el("form", { class: "rubric-form", novalidate: "" });
   form.addEventListener("submit", (event) => event.preventDefault());
-  const blocks = [{ id: SELF, label: "Your memo" }, ...exemplars];
+  const blocks = [{ id: SELF, label: wording.label }, ...exemplars];
   for (const target of blocks) {
     const box = el("fieldset", { class: "rubric-target" });
-    const title = target.id === SELF ? "Your memo" : `${target.label}, scored before you reveal its annotations`;
+    const title = target.id === SELF ? wording.label : `${target.label}, scored before you reveal its annotations`;
     box.append(el("legend", {}, title));
     for (const criterion of criteria) {
       box.append(radioGroup(prefix, target.id, criterion, record.scores[target.id][criterion.id]));
@@ -242,7 +256,7 @@ export async function initRubric(section, { store = defaultStore } = {}) {
     reveal.textContent = record.revealed ? "Hide the official scoring" : "Reveal the official scoring";
     reveal.setAttribute("aria-expanded", String(record.revealed));
     if (!record.revealed) return;
-    const { table: compareTable, results: comparisons } = comparisonTable(criteria, record, exemplars);
+    const { table: compareTable, results: comparisons } = comparisonTable(criteria, record, exemplars, wording.label);
     const wrap = el("div", { class: "table-wrap" });
     wrap.append(compareTable);
     results.append(wrap);
@@ -251,10 +265,10 @@ export async function initRubric(section, { store = defaultStore } = {}) {
     }
     const generous = [...new Set(comparisons.flatMap((c) => c.higher))];
     if (generous.length) {
-      const advice = `You were more generous than the rubric on ${list(generous)}: re-read your own memo against those descriptors before you keep your score.`;
+      const advice = `You were more generous than the rubric on ${list(generous)}: re-read your own ${wording.noun} against those descriptors before you keep your score.`;
       results.append(el("p", { class: "rubric-summary" }, advice));
     }
-    const label = el("label", { class: "rubric-copy" }, "Summary to keep as memo/self_assessment.md");
+    const label = el("label", { class: "rubric-copy" }, `Summary to keep as ${wording.summaryPath}`);
     const text = el("textarea", { readonly: "", rows: String(criteria.length + exemplars.length + 4) });
     text.value = plainSummary(criteria, record, exemplars);
     label.append(text);

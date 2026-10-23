@@ -7,7 +7,8 @@ each page, in light and dark themes, each at desktop width and at 360 px:
 * waits for ``<html data-ready="true">`` (site.js finished)
 * zero console errors, page errors, failed requests and site.js step errors
 * zero requests to any host but the local server (everything is vendored)
-* zero unrendered math (``.katex-error``)
+* zero unrendered math (``.katex-error``), and every rendered expression re-parses with KaTeX's
+  ``throwOnError: true, strict: "error"`` (an undefined command renders as red text, not as an error)
 * no horizontal scrolling at 360 px
 * every chart's SVG carries ``<title>`` and ``<desc>``
 * every chart's text lies inside its SVG
@@ -43,6 +44,7 @@ from __future__ import annotations
 import argparse
 import functools
 import http.server
+import json
 import math
 import re
 import socketserver
@@ -115,6 +117,7 @@ def load(page: Page, url: str, origin: str) -> list[str]:
     problems.extend(f"site.js: {e}" for e in page.evaluate("window.__qf.errors"))
     if (n := page.locator(".katex-error").count()) > 0:
         problems.append(f"{n} math expressions failed to render")
+    problems.extend(strict_math(page))
     for chart in page.locator("[data-chart]").all():
         if chart.locator("svg > title").count() == 0 or chart.locator("svg > desc").count() == 0:
             problems.append(f"chart {chart.get_attribute('data-chart')} lacks an SVG <title> or <desc>")
@@ -137,6 +140,25 @@ ESCAPED_TEXT = """() => [...document.querySelectorAll("[data-chart] svg")].flatM
 
 
 SWEEP_SCRIPT = Path(__file__).with_name("figure_sweep.js")
+STRICT_MATH_SCRIPT = Path(__file__).with_name("katex_strict.js")
+NOTATION = COURSE / "assets" / "data" / "notation.json"
+
+
+@functools.cache
+def notation_macros() -> dict[str, str]:
+    notation = json.loads(NOTATION.read_text(encoding="utf-8"))
+    return {name: str(entry["tex"]) for name, entry in notation["macros"].items()}
+
+
+def strict_math(page: Page) -> list[str]:
+    """Re-parse every rendered expression strictly (tools/katex_strict.js); one problem per failing expression."""
+    page.evaluate(STRICT_MATH_SCRIPT.read_text(encoding="utf-8"))
+    errors = page.evaluate(
+        "(macros) => window.__strictMath.strictMathErrors(window.katex, window.__strictMath.renderedMath(document),"
+        " macros)",
+        notation_macros(),
+    )
+    return [f"math does not parse strictly: {e['tex']!r}: {e['message']}" for e in errors]
 
 
 def control_values(control: dict[str, Any]) -> list[Any]:
