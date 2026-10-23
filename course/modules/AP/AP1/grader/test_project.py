@@ -42,6 +42,8 @@ TEST_WITH_NAN = TEST.copy()
 TEST_WITH_NAN[0, 0] = np.nan
 WITH_INF = np.where(np.isnan(WITH_NAN), np.inf, WITH_NAN)
 PRICES_WITH_NAN = np.where(np.arange(PRICES.size) == 0, np.nan, PRICES)
+RISKY = TRAIN[:, 1:] if INST["riskless"] else TRAIN  # without the riskless payoff the SDF mean is free
+RISKY_P = PRICES[1:] if INST["riskless"] else PRICES
 
 
 def must_raise(call: Callable[[], object], condition: str) -> None:
@@ -358,6 +360,39 @@ def test_recover_sdf_result_is_frozen() -> None:
             ),
             "a NaN mean",
             id="nan-mean-std",
+        ),
+        pytest.param(
+            lambda: sol.population_x_star(np.where(np.arange(PROBS.size) == 0, np.nan, PROBS), PAYOFFS, PRICES),
+            "a NaN state probability",
+            id="nan-probs",
+        ),
+        pytest.param(lambda: sol.sdf_values(TEST, np.full(TEST.shape[1], np.nan)), "NaN weights", id="nan-weights"),
+        pytest.param(
+            lambda: sol.pricing_errors(TEST, PRICES, np.where(np.arange(TEST.shape[0]) == 0, np.nan, 1.0)),
+            "an SDF with a NaN value",
+            id="nan-sdf",
+        ),
+        pytest.param(
+            lambda: sol.x_star_weights(TRAIN, np.where(np.arange(PRICES.size) == 0, np.inf, PRICES)),
+            "an infinite price",
+            id="inf-price",
+        ),
+        pytest.param(lambda: sol.min_sdf_std(RISKY, RISKY_P, float("inf")), "an infinite mean", id="inf-mean-std"),
+        pytest.param(
+            lambda: sol.min_variance_sdf(
+                np.column_stack([RISKY, RISKY[:, 0] * 0.3 + RISKY[:, 1] * 0.7]),
+                np.append(RISKY_P, RISKY_P[0] * 0.3 + RISKY_P[1] * 0.7),
+                0.97,
+            ),
+            "a redundant combination of risky payoffs, whose covariance matrix is singular",
+            id="redundant-cov",
+        ),
+        pytest.param(
+            lambda: sol.x_star_weights(
+                np.column_stack([TRAIN, TRAIN[:, 0] + TRAIN[:, 1]]), np.append(PRICES, PRICES[0] + PRICES[1])
+            ),
+            "a redundant payoff (the sum of two others), whose second-moment matrix is singular",
+            id="redundant-sum",
         ),
         pytest.param(lambda: sol.x_star_weights(TRAIN, PRICES[:-1]), "one price too few", id="short-prices"),
         pytest.param(
