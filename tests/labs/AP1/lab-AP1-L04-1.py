@@ -24,3 +24,5 @@ print(
     "| its state prices pi * x* =",
     np.round(probs * x_star, 6),
 )
+t_star = float((probs * x_star)[1] / end_b[1])  # position of x*'s state prices on the segment from end_a to end_b
+print(f"x*'s state prices lie on the segment at s = {t_star:.6f}")
