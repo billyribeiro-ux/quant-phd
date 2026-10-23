@@ -7,7 +7,8 @@ each page, in light and dark themes, each at desktop width and at 360 px:
 * waits for ``<html data-ready="true">`` (site.js finished)
 * zero console errors, page errors, failed requests and site.js step errors
 * zero requests to any host but the local server (everything is vendored)
-* zero unrendered math (``.katex-error``)
+* zero unrendered math (``.katex-error``), and every rendered expression re-parses with KaTeX's
+  ``throwOnError: true, strict: "error"`` (an undefined command renders as red text, not as an error)
 * no horizontal scrolling at 360 px
 * every chart's SVG carries ``<title>`` and ``<desc>``
 * every chart's text lies inside its SVG
@@ -27,7 +28,9 @@ the dark theme is not swept.
 
 Then, once per page at desktop width: runs every lab in Pyodide and requires
 its output to match the page within 10 s of runtime (the runtime is started
-first, so boot time is not charged to a lab); completion labs are filled with
+first, and every package the page's labs declare or import is loaded before
+any lab's timer starts; both times are printed separately, so boot and wheel
+loading are not charged to a lab); completion labs are filled with
 their solution twin first. On a project page with an autograder, it pastes the
 reference solution into the in-browser grader and requires every test to pass
 within 60 s: the same suite therefore passes in Pyodide and in local pytest.
@@ -43,6 +46,7 @@ from __future__ import annotations
 import argparse
 import functools
 import http.server
+import json
 import math
 import re
 import socketserver
@@ -54,7 +58,7 @@ from typing import Any
 
 from playwright.sync_api import Locator, Page, sync_playwright
 
-from coursekit import COURSE, Unit, built_units, labs_in, load_page, unit
+from coursekit import COURSE, Lab, Unit, built_units, labs_in, load_page, unit
 
 LAB_LIMIT_S = 10.0
 GRADER_LIMIT_S = 60.0
@@ -115,6 +119,7 @@ def load(page: Page, url: str, origin: str) -> list[str]:
     problems.extend(f"site.js: {e}" for e in page.evaluate("window.__qf.errors"))
     if (n := page.locator(".katex-error").count()) > 0:
         problems.append(f"{n} math expressions failed to render")
+    problems.extend(strict_math(page))
     for chart in page.locator("[data-chart]").all():
         if chart.locator("svg > title").count() == 0 or chart.locator("svg > desc").count() == 0:
             problems.append(f"chart {chart.get_attribute('data-chart')} lacks an SVG <title> or <desc>")
@@ -137,6 +142,25 @@ ESCAPED_TEXT = """() => [...document.querySelectorAll("[data-chart] svg")].flatM
 
 
 SWEEP_SCRIPT = Path(__file__).with_name("figure_sweep.js")
+STRICT_MATH_SCRIPT = Path(__file__).with_name("katex_strict.js")
+NOTATION = COURSE / "assets" / "data" / "notation.json"
+
+
+@functools.cache
+def notation_macros() -> dict[str, str]:
+    notation = json.loads(NOTATION.read_text(encoding="utf-8"))
+    return {name: str(entry["tex"]) for name, entry in notation["macros"].items()}
+
+
+def strict_math(page: Page) -> list[str]:
+    """Re-parse every rendered expression strictly (tools/katex_strict.js); one problem per failing expression."""
+    page.evaluate(STRICT_MATH_SCRIPT.read_text(encoding="utf-8"))
+    errors = page.evaluate(
+        "(macros) => window.__strictMath.strictMathErrors(window.katex, window.__strictMath.renderedMath(document),"
+        " macros)",
+        notation_macros(),
+    )
+    return [f"math does not parse strictly: {e['tex']!r}: {e['message']}" for e in errors]
 
 
 def control_values(control: dict[str, Any]) -> list[Any]:
@@ -191,13 +215,38 @@ def sweep_chart(chart: Locator, where: str, presses: list[int]) -> list[str]:
     return problems
 
 
+IMPORT_LINE = re.compile(r"^(?:import|from)[ \t]+[A-Za-z_][\w.]*(?:[ \t].*)?$", re.MULTILINE)
+
+
+def lab_preload(labs: list[Lab]) -> tuple[str, list[str]]:
+    """The labs' top-level import statements, deduplicated in order, and the union of their data-packages.
+
+    The worker runs the import lines after loadPackagesFromImports, so every wheel a lab needs is loaded before
+    any lab's timer starts; importing is side-effect free for the standard library, NumPy and SciPy.
+    """
+    lines = dict.fromkeys(m.group(0).strip() for lab in labs for m in IMPORT_LINE.finditer(lab.code))
+    packages = list(dict.fromkeys(p for lab in labs for p in lab.packages))
+    return "\n".join(lines), packages
+
+
 def run_labs(page: Page, page_path: Path) -> list[str]:
     problems: list[str] = []
     labs = labs_in(load_page(page_path))
     if not labs:
         return problems
     warm = "async () => { const m = await import('/assets/js/python.js'); await m.runPython('pass', ['numpy']); }"
+    started = time.perf_counter()
     page.evaluate(warm)  # start Pyodide first, so no lab is charged for the runtime's boot
+    print(f"  runtime boot (with numpy): {time.perf_counter() - started:.1f} s")
+    imports, packages = lab_preload(labs)
+    started = time.perf_counter()
+    # Load every package the labs declare or import, so no lab's timer includes downloading a wheel.
+    page.evaluate(
+        "async ([code, packages]) => { const m = await import('/assets/js/python.js'); "
+        "const r = await m.runPython(code, packages); if (r.error) throw new Error(r.error); }",
+        [imports, packages],
+    )
+    print(f"  package preload ({', '.join(packages) or 'none'}): {time.perf_counter() - started:.1f} s")
     for lab in labs:
         section = page.locator(f"#{lab.id}")
         if lab.completion:

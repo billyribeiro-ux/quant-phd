@@ -24,8 +24,8 @@ Named credentials are explicit views over the curriculum graph. The validator pr
 | Credential | Modules | Studios | Graded projects | Hours | Credit equivalent | FTE years |
 |---|---|---|---|---|---|---|
 | **Finance Degree — Bachelor's Level** | 42 | 5 | 47 | 3,881 | ≈86 credits | 1.80 |
-| **Master's in Finance / Financial Engineering** | 77 | 8 | 85 | 7,666 | ≈170 credits | 3.55 |
-| **PhD in Finance** | 83 | 4 | 87 | 9,191 | ≈204 credits | 4.26 |
+| **Master's in Finance / Financial Engineering** | 78 | 8 | 86 | 7,736 | ≈172 credits | 3.58 |
+| **PhD in Finance** | 84 | 4 | 88 | 9,301 | ≈207 credits | 4.31 |
 
 Credential hours include every prerequisite the credential pulls in. Credentials overlap: a student completing the Master's has already completed most of the Bachelor's.
 
@@ -87,7 +87,7 @@ Credential hours include every prerequisite the credential pulls in. Credentials
 | Electives | **Volatility & Structured Products** | DV5 · Variance Risk Premium & Volatility Trading<br>DV6 · Exotics, Structured Products & Dealer Hedging | 140 |
 
 *Studios:* STUDIO-SC, STUDIO-DV, STUDIO-FI, STUDIO-CR, STUDIO-F, STUDIO-PR, STUDIO-CF, STUDIO-QR  
-*Supporting prerequisites pulled in by the graph:* AC1, AC2, AP2, CF1, CF2, CF3, CF4, CS1, CS2, CS3, CS4, CS5, E1, E2, E3, E4, E5, E8, FC2, FI1, M1, M2, M3, M4, M5, M6, M7, P0.1, S0, S1, S2, S5, S6, SC6
+*Supporting prerequisites pulled in by the graph:* AC1, AC2, AP2, CF1, CF2, CF3, CF4, CS1, CS2, CS3, CS4, CS5, E1, E2, E3, E4, E5, E8, FC1, FC2, FI1, M1, M2, M3, M4, M5, M6, M7, P0.1, S0, S1, S2, S5, S6, SC6
 
 ### PhD in Finance
 
@@ -113,7 +113,7 @@ Credential hours include every prerequisite the credential pulls in. Credentials
 | Milestones | **Dissertation & Defense** | CAP4 · Research Thesis & Defense | 1200 |
 
 *Studios:* STUDIO-S, STUDIO-E, STUDIO-AP, STUDIO-F  
-*Supporting prerequisites pulled in by the graph:* AC1, AC2, AP2, BK1, CF1, CF4, CS1, CS2, CS3, CS4, DV1, DV2, DV5, E8, F3, FC1, FC2, FC3, FI1, FI3, GM1, GM2, GM4, M1, M2, M3, M4, M5, M6, M7, P0.1, PR1, PR2, PR3, QR1, QR2, QR3, S0, S7, X1, X2
+*Supporting prerequisites pulled in by the graph:* AC1, AC2, AP2, BK1, CF1, CF4, CS1, CS2, CS3, CS4, DV1, DV2, DV5, E8, F3, FC1, FC2, FC3, FI1, FI3, GM1, GM2, GM4, M1, M2, M3, M4, M5, M6, M7, M8, P0.1, PR1, PR2, PR3, QR1, QR2, QR3, S0, S7, X1, X2
 
 ### External coverage check: CFA Program curriculum topic areas [V]
 
@@ -159,7 +159,7 @@ Credential hours include every prerequisite the credential pulls in. Credentials
 | Equity Research / Asset Management | FC4, CF7, F7, BK2, PR2, PC2 | 36 | 3,261 | 1.51 |
 | Quant Developer | CS6, QR2, MS2, DV4 | 36 | 3,776 | 1.75 |
 | Risk & Financial Stability | PR4, SR3, SR4, BK3 | 31 | 2,936 | 1.36 |
-| Research doctorate (minimum prerequisite path to thesis) | CAP4 | 42 | 5,646 | 2.61 |
+| Research doctorate (minimum prerequisite path to thesis) | CAP4 | 46 | 5,976 | 2.77 |
 
 ## Atlas — the program-long build
 
@@ -638,7 +638,7 @@ Compute Hansen–Jagannathan bounds from embedded consumption and return data. S
   - *Sources:* Markowitz (1952), JF 7(1); Tobin (1958), REStud 25(2); Sharpe (1964), JF 19(3); Lintner (1965), REStat 47(1); Roll (1977), JFE 4(2); Merton (1973), Econometrica 41(5); Ross (1976), JET 13(3); Fama & French (1992), JF 47(2)
   - *Lab:* Security market line on French portfolios.
   - *Project — CAPM on trial* (`both`): Test the CAPM with time-series and cross-sectional methods on open data, and write the verdict with the Roll critique addressed. *Deliverable:* Code plus verdict.
-- **AP1 · No-Arbitrage & the Stochastic Discount Factor** · M · 120 h · ← M6, AP2
+- **AP1 · No-Arbitrage & the Stochastic Discount Factor** · M · 120 h · ← M6, AP2, FC1, FC2, M8, E4
   - *Core:* Law of one price, the fundamental theorem of asset pricing, state prices, p = E[mx], existence and uniqueness of the SDF, mean-variance frontier geometry in SDF terms.
   - *Introduces:* Law of one price; State price; Stochastic discount factor (p = E[mx]); Fundamental theorem of asset pricing; Equivalent martingale measure; Existence and uniqueness of the SDF; Minimum-variance SDF in the payoff space; Mean-variance frontier in SDF terms; Arbitrage detection as a linear program
   - *Sources:* Harrison & Kreps (1979), JET 20(3); Harrison & Pliska (1981), Stochastic Processes and their Applications 11(3); Delbaen & Schachermayer (1994), Mathematische Annalen 300; Cochrane, Asset Pricing, revised ed. (2005); Duffie, Dynamic Asset Pricing Theory, 3rd ed. (2001)

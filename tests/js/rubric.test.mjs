@@ -15,6 +15,7 @@ import {
   plainSummary,
   saveRecord,
   summarize,
+  workWording,
 } from "../../course/assets/js/rubric.js";
 import * as store from "../../course/assets/js/store.js";
 
@@ -152,4 +153,15 @@ test("the plain-text summary lists every self-score and one calibration line per
   assert.deepEqual(lines.slice(1, 4), ["C1 name: level 4", "C2 name: level 3", "C3 name: not scored"]);
   assert.ok(lines.includes("Exemplar A: you matched the official level on 6 of 6 criteria scored."));
   assert.ok(lines.includes("Exemplar B: not scored yet."));
+});
+
+test("the work wording defaults to S7's memo and follows the section's data attributes", () => {
+  const memo = { label: "Your memo", noun: "memo", summaryPath: "memo/self_assessment.md" };
+  assert.deepEqual(workWording(), memo);
+  assert.deepEqual(workWording({}), memo);
+  assert.deepEqual(workWording({ workLabel: " ", workNoun: "", summaryPath: undefined }), memo, "blank values fall back");
+  assert.deepEqual(
+    workWording({ workLabel: "Your report", workNoun: "report", summaryPath: "report/self_assessment.md" }),
+    { label: "Your report", noun: "report", summaryPath: "report/self_assessment.md" },
+  );
 });

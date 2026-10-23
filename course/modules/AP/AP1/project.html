@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="AP1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AP1 Project · SDF Recovery</title>
+  <meta name="description" content="Recover the minimum-variance stochastic discount factor from a set of test assets, verify that it prices them, and measure its out-of-sample pricing errors on Federal Reserve exchange-rate data. The code is autograded on your own instance; the report and its proof appendix are graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">AP1 No-Arbitrage &amp; the SDF</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="36">
+      <header class="page-head">
+        <p class="eyebrow">AP1 project · 36 hours · autograded code and a rubric-graded report with a proof appendix</p>
+        <h1>SDF Recovery</h1>
+        <p class="lede">A research group wants to know whether a stochastic discount factor recovered from one decade of prices tells it anything about the next. You will write the code that recovers the minimum-variance SDF from a set of test assets, prove the results it rests on, and run it on fourteen years of currency payoffs to measure how well it prices the following fourteen.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>At the master's tier rungs 1 and 2 are short, because <span class="claim" data-grade="A" data-cite="kalyuga2003expertise tetzlaff2025cornerstone" data-locator="Abstract">instructional techniques that are highly effective with inexperienced learners can lose their effectiveness, and even have negative consequences, with more experienced learners; an independent meta-analysis of 60 experimental studies (176 effect sizes) finds the effect, though asymmetric (assisting novices helps more than withholding assistance from experts) and less clear for younger students and for the humanities and language learning</span>. If you met the placement bar on the <a href="index.html#placement">module page</a>, go straight to rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: \(x^\ast\) for Lesson 4's three-state market and for a sample drawn from it, every step annotated.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: fill in the two lines that compute the sample \(x^\ast\) weights. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">§3</a>: the module <code>sdf_recovery.py</code>, autograded in <a href="#grader-section">§5</a>, and a report on the currency payoffs with a proof appendix, graded by the rubric of <a href="#report">§7</a> with annotated exemplars and a self-assessment.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">§8</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-AP1-project-1" data-runtime="python" data-packages="numpy">
+          <h3>Lab 1 · Worked example: \(x^\ast\) in population and in a sample</h3>
+          <p class="hypothesis">In Lesson 4's market, \(x^\ast = (0.824242, 0.940606, 1.134545)\) should price both assets exactly. A SIMULATED sample of eight months drawn from the same states should give a sample \(x^\ast\) that prices its own eight months exactly and a fresh eight months with nonzero errors.</p>
+          <pre><code class="language-python" data-run>import numpy as np
+
+# Worked example: x* for Lesson 4's bond-and-stock market, then for a sample drawn from it.
+probs = np.array([0.25, 0.5, 0.25])  # state probabilities: E[f] = probs @ f
+X = np.array([[1.0, 1.4], [1.0, 1.1], [1.0, 0.6]])  # rows are states, columns are the bond and the stock
+p = np.array([0.96, 0.976])  # prices of one unit of each asset
+
+# Step 1. Second-moment matrix E[x x'] = X' diag(probs) X. It must be invertible: no redundant payoff.
+second = X.T @ (probs[:, None] * X)
+print("E[x x'] =", np.round(second, 6).tolist(), "| determinant:", round(float(np.linalg.det(second)), 6))
+
+# Step 2. Weights b solve E[x x'] b = p; x* = x'b is the unique SDF in the payoff space (L04, Theorem 3.2).
+b = np.linalg.solve(second, p)  # solve, never invert explicitly: same answer, better conditioned
+x_star = X @ b
+print("b =", np.round(b, 6), "| x* by state =", np.round(x_star, 6))
+
+# Step 3. Verify that it prices both assets. This is the check the autograder runs, to rounding.
+print("E[x* x] - p =", np.round(X.T @ (probs * x_star) - p, 12) + 0.0)
+
+# Step 4. A SIMULATED sample of 8 months from the states: the sample x* uses equal weights 1/T (L07, Definition 1.1).
+rng = np.random.default_rng(1)
+train = X[rng.choice(3, size=8, p=probs)]
+test = X[rng.choice(3, size=8, p=probs)]
+b_hat = np.linalg.solve(train.T @ train / len(train), p)
+in_err = train.T @ (train @ b_hat) / len(train) - p  # zero by construction (L07, Proposition 2.1)
+out_err = test.T @ (test @ b_hat) / len(test) - p  # the only informative number
+print("sample b =", np.round(b_hat, 6), "| in-sample errors =", np.round(in_err, 12) + 0.0)
+print("out-of-sample errors =", np.round(out_err, 6), "| rms =", round(float(np.sqrt(np.mean(out_err**2))), 6))</code></pre>
+          <pre class="expected" data-tolerance="1e-6">E[x x'] = [[1.0, 1.05], [1.05, 1.185]] | determinant: 0.0825
+b = [ 1.367273 -0.387879] | x* by state = [0.824242 0.940606 1.134545]
+E[x* x] - p = [0. 0.]
+sample b = [0.22303  0.775758] | in-sample errors = [0. 0.]
+out-of-sample errors = [0.048485 0.096364] | rms = 0.076278</pre>
+          <p class="interpretation">The comments carry the reasons. The determinant check is where redundancy would show up: a zero determinant means no unique \(x^\ast\) weights (Lesson 4, Theorem 3.2 needs linearly independent payoffs). The sample weights \((0.22303, 0.775758)\) are far from the population's \((1.367273, -0.387879)\): eight draws from three states identify the payoff space but estimate its second-moment matrix badly, and the out-of-sample errors of about 5 and 10 cents per dollar of price show it. In-sample errors are zero in both cases and prove nothing about the estimate (Lesson 7, Proposition 2.1).</p>
+        </section>
+
+        <section class="lab completion" id="lab-AP1-project-2" data-runtime="python" data-packages="numpy">
+          <h3>Lab 2 · Completion problem: the sample \(x^\ast\) weights</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression from Lesson 7, Definition 1.1: the sample second-moment matrix with equal weights \(1/T\), then the weights that solve \(\E_T[xx^\top]\,b = p\). When both lines are right, the in-sample errors vanish to rounding, the weights and out-of-sample errors match the expected output, and the status turns green. The data are SIMULATED.</p>
+          <pre><code class="language-python" data-run>import numpy as np
+from numpy.typing import NDArray
+
+
+def recover(
+    train: NDArray[np.float64], test: NDArray[np.float64], prices: NDArray[np.float64]
+) -&gt; tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    """Sample x* weights from `train`, and its pricing errors E[m x] - p on `train` and on `test`."""
+    second = ___
+    b = ___
+    in_errors = train.T @ (train @ b) / len(train) - prices
+    out_errors = test.T @ (test @ b) / len(test) - prices
+    return np.asarray(b, dtype=np.float64), in_errors, out_errors
+
+
+# SIMULATED: 4 payoffs (one riskless) priced by a lognormal SDF; 120 training and 120 test months.
+rng = np.random.default_rng(2)
+shock = rng.standard_normal(240)
+m = np.exp(-0.01 - 0.5 * 0.2**2 - 0.2 * shock)
+x = np.column_stack([np.ones(240), 1.0 + np.outer(shock, [0.03, 0.06, 0.09]) + 0.1 * rng.standard_normal((240, 3))])
+prices = np.array([np.exp(-0.01), *(x[:, 1:].T @ m / 240)])  # prices of the risky payoffs: their sample E[m x]
+b, in_errors, out_errors = recover(x[:120], x[120:], prices)
+print("weights:", np.round(b, 4))
+print("max |in-sample error|:", f"{np.abs(in_errors).max():.1e}")
+print("out-of-sample errors:", np.round(out_errors, 5))</code></pre>
+          <pre class="expected" data-tolerance="1e-6">weights: [ 1.9386  0.0537 -0.0123 -1.0058]
+max |in-sample error|: 3.3e-16
+out-of-sample errors: [-0.00619  0.00056  0.01017 -0.00345]</pre>
+          <p class="interpretation">The first blank is \(\tfrac1T\sum_t x_tx_t^\top\), <code>train.T @ train / len(train)</code>; dividing by \(T - 1\) instead scales the weights by \((T-1)/T\) and breaks the in-sample identity. The second solves the normal equations, <code>np.linalg.solve(second, prices)</code>. The weight on the riskless payoff, 1.9386, is nearly twice the SDF's mean: the risky weights carry the rest. The risky payoffs' prices are their full-sample \(\E[mx]\), so the out-of-sample errors here measure estimation error alone, without any change in the economy between the halves.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A research group prices a set of test assets with the SDF it recovers from their own history, and wants to know whether that SDF is evidence about anything beyond the sample it was fitted to. You write the recovery code to the interface below, prove the four results the code and its interpretation rest on, and run it on nine currency payoffs: fit on the first half of the months, price the second half, and report what the errors say and do not say.</dd>
+          <dt>Inputs</dt>
+          <dd>The autograder's instance comes from <code>grader/instance.py</code>, seeded by your workspace ID. It holds a finite market (state probabilities, a payoff matrix, prices generated by a strictly positive SDF, with or without a riskless payoff) and a training and a test sample of states drawn from it. All of it is SIMULATED. The report uses market data: the embedded month-end spot rates <code>fx_monthly.csv</code> (MANIFEST id <code>fx_monthly</code>; Board of Governors of the Federal Reserve System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), in the public domain, retrieved 2026-10-19; <a href="../../../assets/data/market/fx_monthly.csv" download>download the file</a>), turned into the nine payoffs and the split by <a href="#lab-AP1-project-3">Lab 3</a>.</dd>
+          <dt>Required outputs</dt>
+          <dd>Everything lives in a repository of your own: <code>sdf_recovery.py</code> at its root and the <code>report/</code> folder beside it. The module <code>sdf_recovery.py</code> has exactly these functions, in the conventions of the next section: <code>second_moment_matrix(payoffs)</code>, <code>x_star_weights(payoffs, prices)</code>, <code>sdf_values(payoffs, weights)</code>, <code>pricing_errors(payoffs, prices, sdf)</code>, <code>population_x_star(probs, payoffs, prices)</code>, <code>min_variance_sdf(payoffs, prices, mean)</code> returning <code>(a, b)</code>, <code>min_sdf_std(payoffs, prices, mean)</code>, and <code>recover_sdf(train, test, prices)</code> returning the frozen dataclass <code>SDFRecovery</code>. Start from <a href="grader/starter.py">the starter file</a>, whose docstrings and dataclass are complete. For the report, commit three more files: <code>report/run_report.py</code>, which builds the payoffs exactly as Lab 3 does, calls your <code>recover_sdf</code>, and prints every number the report quotes, rounded as quoted; <code>report/sdf_report.md</code> (or a PDF), the report of <a href="#brief">§7</a> with its proof appendix; and <code>report/self_assessment.md</code>, the summary the self-assessment form produces once you reveal the exemplar scoring.</dd>
+          <dt>Constraints</dt>
+          <dd>NumPy and the Python standard library only. Functions are pure: they validate their inputs, raise <code>ValueError</code> naming the violated condition, and never print, warn or change their arguments. Every array argument (payoffs, prices, probabilities, SDF values, weights) and the mean must be finite; a NaN or an infinite value raises <code>ValueError</code>. A payoff sample is a two-dimensional array of observations by assets; sample moments divide by \(T\), never \(T - 1\); a pricing error is \(\E[m\,x] - p\). <code>x_star_weights</code> raises on redundant payoffs (linearly dependent columns) and on fewer observations than assets. <code>min_variance_sdf</code> and <code>min_sdf_std</code> raise when the payoff covariance matrix is singular, for example when a riskless payoff is among the assets: then the SDF's mean is pinned, and <code>x_star_weights</code> is the right function (Lesson 5, Proposition 2.2). <code>population_x_star</code> requires strictly positive probabilities that sum to one. The report reviews the split as specified: no other split, no other payoffs, and checks may vary only the ridge penalty of Lesson 7, labelled as a check. The whole suite must finish within 60 seconds in your browser.</dd>
+          <dt>Grading mode</dt>
+          <dd>Both modes apply (BLUEPRINT §5.2). The code is autograded by <code>grader/test_project.py</code>, 53 checks run with warnings as errors: the definitions, exact in-sample pricing, invariance to units and to repackaging the assets into portfolios, the projection and minimum-second-moment properties of \(x^\ast\), the minimum-variance SDF and the variance bound, the out-of-sample errors with training-sample weights, failure behaviour on invalid input, purity, and imports. The same file runs in your browser and on your machine; it is not secret, and its integrity comes from your seeded instance. The report and its proof appendix are graded by rubric, against the six criteria of <a href="#rubric">the report rubric</a>, each with four observable levels. You score it yourself with the form in <a href="#self-assessment">§7</a> and calibrate that scoring on two annotated exemplars. The report meets the bar at level 3 or above on every criterion.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions, in brief</h3>
+        <ul>
+          <li>A sample of \(T\) observations of \(N\) payoffs is a \((T, N)\) array; row \(t\) is the payoff vector in observed state \(t\). <code>second_moment_matrix</code> is \(X^\top X/T\).</li>
+          <li><code>x_star_weights</code> returns \(b = \E_T[xx^\top]^{-1}p\); <code>sdf_values</code> returns \(Xb\), one value per observation.</li>
+          <li><code>pricing_errors</code> returns \(\E_T[m\,x] - p\) for given SDF values \(m\), one per asset.</li>
+          <li><code>population_x_star</code> returns the values of \(x^\ast\) in each of \(S\) states with probabilities \(\pi\): \(X b\) with \(X^\top\diag(\pi)X\,b = p\).</li>
+          <li><code>min_variance_sdf</code> returns \((a, b)\) with \(m = a + x^\top b\), \(b = \Sigma^{-1}(p - v\mu)\) and \(a = v - \mu^\top b\), where \(\mu\) and \(\Sigma\) are the sample mean and covariance (dividing by \(T\)); <code>min_sdf_std</code> returns \(\sqrt{(p - v\mu)^\top\Sigma^{-1}(p - v\mu)}\) (Lesson 5, Theorem 2.1).</li>
+          <li><code>recover_sdf</code> estimates \(b\) on <code>train</code> only, and reports the in-sample and out-of-sample errors, their root mean square out of sample, the training mean and standard deviation of \(x^\ast\) (dividing by \(T\)), and the share of test observations with \(x^\ast &lt; 0\).</li>
+        </ul>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Read the specification, set up, run the starter against the suite</td><td class="num">1</td><td>Every test that calls a function you implement fails with <code>NotImplementedError</code>; the failures are your checklist.</td></tr>
+              <tr><td>Second moments, \(x^\ast\) weights and values, pricing errors</td><td class="num">3</td><td>Short code from Lesson 4's Theorem 3.2 and Lesson 7's Definition 1.1; the time goes into validation and the divide-by-\(T\) convention.</td></tr>
+              <tr><td>Population \(x^\ast\) under state probabilities</td><td class="num">1</td><td>One weighted second-moment matrix; the probability checks are the work.</td></tr>
+              <tr><td>Minimum-variance SDF and its standard deviation</td><td class="num">4</td><td>Lesson 5's Theorem 2.1 in code, plus detecting a singular covariance matrix, which a riskless payoff produces.</td></tr>
+              <tr><td><code>recover_sdf</code>, edge cases and error messages</td><td class="num">4</td><td>Composition of the above with the train–test discipline; every invalid input the specification names has a test.</td></tr>
+              <tr><td>Local and in-browser runs on your seed</td><td class="num">1</td><td>The suite takes seconds; the hour is for reading failures.</td></tr>
+              <tr><td>Run the report's data with <code>report/run_report.py</code> and check it against Lab 3</td><td class="num">2</td><td>Lab 3's code is given; wiring it to your module and matching its printed numbers is the work.</td></tr>
+              <tr><td>The proof appendix: four results with every assumption and every step</td><td class="num">12</td><td>Four proofs, each with a statement of its assumptions; Lessons 4, 5 and 7 contain them, and writing them yourself, with every step justified, is the slowest part of the project.</td></tr>
+              <tr><td>Write the report</td><td class="num">6</td><td>Five sections, 500 to 1,200 words of body text; most of the time goes into saying what the out-of-sample errors do and do not show.</td></tr>
+              <tr><td>Self-assess, score the two exemplars blind, calibrate and revise</td><td class="num">2</td><td>Six criteria for your report and each exemplar, then a revision pass on the criteria where your scoring diverged.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>36</strong></td><td>16 hours for the code and its data run, 20 for the report and its proofs; the hub gives the module's split between lessons and project.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>sdf_recovery.py</code> and run the suite on your own instance. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="AP1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="sdf_recovery.py" data-starter="starter.py" data-packages="numpy"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>sdf_recovery.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> keeps failure messages to the property that failed, and <code>-W error</code> turns warnings into failures, both as in the browser. Use Python 3.12 or later with NumPy 2.2 and pytest 8.3.</p>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The report</h2>
+        <p>The report runs your module on real payoffs and states, with proofs, what the result means. The payoffs are Lesson 7's Lab 2 data: nine one-month currency payoffs costing one dollar each, DKK left out because Lesson 1's Lab 2 shows it is nearly redundant with EUR. The split is the same: the first half of the months trains, the second half tests.</p>
+
+        <section class="lab" id="lab-AP1-project-3" data-runtime="python" data-packages="numpy" data-files="fx_monthly.csv">
+          <h3>Lab 3 · The report's payoffs and the reference numbers</h3>
+          <p class="hypothesis">This lab builds the payoffs from <code>fx_monthly.csv</code> (Board of Governors of the Federal Reserve System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), retrieved 2026-10-19) and runs the recovery with plain NumPy. Copy its first part into <code>report/run_report.py</code> and replace the recovery with a call to your <code>recover_sdf</code>. Run on the downloaded file, it must print the same checksums (the sum and the sum of squares of every payoff), and your module must reproduce every number below.</p>
+          <pre><code class="language-python" data-run>import csv
+import math
+from pathlib import Path
+
+import numpy as np
+
+# The report's data: nine one-month currency payoffs, each costing one dollar (DKK left out: Lesson 1, Lab 2).
+with (Path("data") / "fx_monthly.csv").open(newline="", encoding="utf-8") as handle:
+    rows = list(csv.reader(handle))
+currencies, months = rows[0][1:], [row[0] for row in rows[1:]]
+rates = np.array([[float(v) if v else math.nan for v in row[1:]] for row in rows[1:]])
+start = int(np.argmax(~np.isnan(rates).any(axis=1)))  # first month with a rate for every currency
+keep = [i for i, c in enumerate(currencies) if c != "DKK"]
+names = [currencies[i] for i in keep]
+x = rates[start + 1 :, keep] / rates[start:-1, keep]  # (T, 9): dollars received per dollar of currency held
+ends = months[start + 1 :]  # the month in which each payoff is received
+prices = np.ones(len(keep))
+half = x.shape[0] // 2
+train, test = x[:half], x[half:]
+print(f"payoffs: {', '.join(names)}")
+print(f"train {ends[0]} to {ends[half - 1]} ({half} months); test {ends[half]} to {ends[-1]} ({len(test)} months)")
+print(f"checksums: sum {x.sum():.10f} sum of squares {(x**2).sum():.10f}")
+
+b = np.linalg.solve(train.T @ train / half, prices)
+m_train, m_test = train @ b, test @ b
+in_err = train.T @ m_train / half - prices
+out_err = test.T @ m_test / len(test) - prices
+print(f"max |in-sample error|: {np.abs(in_err).max():.1e}")
+print("out-of-sample errors (bp):", " ".join(f"{c} {1e4 * e:.1f}" for c, e in zip(names, out_err, strict=True)))
+print(f"out-of-sample rms: {1e4 * np.sqrt(np.mean(out_err**2)):.1f} bp")
+print(f"x* on train: mean {m_train.mean():.4f}, s.d. {m_train.std():.4f}")
+print(f"x* on test: share negative {np.mean(m_test &lt; 0):.4f}, min {m_test.min():.4f}")
+print(f"benchmark m = 1, test rms: {1e4 * np.sqrt(np.mean((test.mean(axis=0) - prices) ** 2)):.1f} bp")</code></pre>
+          <pre class="expected" data-tolerance="1e-6">payoffs: AUD, CAD, CHF, EUR, GBP, JPY, NOK, NZD, SEK
+train 1999-02 to 2012-11 (166 months); test 2012-12 to 2026-09 (166 months)
+checksums: sum 2989.0264134608 sum of squares 2992.6599604987
+max |in-sample error|: 1.1e-14
+out-of-sample errors (bp): AUD 249.4 CAD 266.3 CHF 289.2 EUR 295.1 GBP 301.4 JPY 243.7 NOK 248.1 NZD 259.0 SEK 271.2
+out-of-sample rms: 270.0 bp
+x* on train: mean 0.9981, s.d. 0.1824
+x* on test: share negative 0.0000, min 0.0401
+benchmark m = 1, test rms: 20.1 bp</pre>
+          <p class="interpretation">These are the reference numbers your report quotes. The in-sample identity holds to rounding. Every currency is overpriced by the recovered SDF in the test half, by 244 to 301 basis points per dollar; the constant SDF \(m = 1\), which has no estimated parameter, errs by 20.1. The recovered SDF is positive in every test month but reaches 0.0401. None of these numbers is yet an argument: the report has to say what a single split of spot payoffs can show.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Write for a reader who knows Lessons 4, 5 and 7, not for a referee of this exact data. Use these five sections, in this order and under these headings, followed by the appendix.</p>
+        <ol>
+          <li><strong>Summary</strong>: the question, the answer in one sentence, and the two numbers that carry it.</li>
+          <li><strong>Data and method</strong>: the payoffs and their prices, what they include and omit, why DKK is left out, the split, and the estimator, with the formula and the convention for sample moments.</li>
+          <li><strong>In-sample verification</strong>: the training sample's pricing errors, and why they are not evidence (with the result that says so).</li>
+          <li><strong>Out-of-sample pricing</strong>: the test half's errors, per currency and their root mean square, against the constant-SDF benchmark; what the size and the common sign of the errors suggest; and the shape of \(x^\ast\) on both halves.</li>
+          <li><strong>Limitations</strong>: what one split can and cannot show, stationarity, unconditional pricing, the omitted deposit interest, and how the result would change with a different estimator (the ridge check of Lesson 7 may be quoted as a lesson figure).</li>
+        </ol>
+        <p><strong>Appendix A · Proofs.</strong> Four results, each stated with every assumption, each with a complete proof in your own words: <strong>A1</strong> existence and uniqueness of the SDF in the payoff space, \(x^\ast = x^\top\E[xx^\top]^{-1}p\) (Lesson 4, Theorem 3.2); <strong>A2</strong> every SDF is \(x^\ast\) plus a noise orthogonal to the payoffs, and \(x^\ast\) has the least second moment (Lesson 4, Theorem 4.1); <strong>A3</strong> the sample pricing identity and the upward bias of the sample \(x^\ast\)'s second moment (Lesson 7, Proposition 2.1 and Theorem 3.3, with Lemma 3.2); <strong>A4</strong> the minimum-variance SDF with mean \(v\) and its variance (Lesson 5, Theorem 2.1). A proof may cite an earlier proof in the appendix and any result from a prerequisite module by name.</p>
+        <p><strong>Length.</strong> The body (the five sections) runs 500 to 1,200 words, the Summary at most 100 of them. The appendix has no limit. A word is a run of characters between spaces, counting inline mathematics as it is typed.</p>
+        <p><strong>Numbers.</strong> Every number taken from the data is printed by <code>report/run_report.py</code>, with its unit (basis points of the one-dollar price, or per month) and at most four significant digits; dates and counts are exact. Figures quoted from the lessons name their lesson and lab.</p>
+        <p><strong>Scoring.</strong> Each criterion scores the highest level whose every element the report shows. Each level contains the one below it: level 4 is level 3 plus the elements its cell names; level 2 is any attempt that misses an element of level 3 or makes an error its cell names; level 1 is the absence its cell names. The report meets the bar at level 3 or above on every criterion.</p>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The SDF-recovery report: six criteria, four levels each, scored by the rule above. The report meets the bar at level 3 or above on every criterion.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Proof A1: existence and uniqueness of x*</th><td>Everything in level 3, and shows that \(\E[xx^\top]\) is positive definite from linear independence and \(\pi \gg 0\), and says what fails when the payoffs are redundant.</td><td>States the assumptions (finitely many states, \(\pi \gg 0\), the law of one price or a price vector given by some SDF, linearly independent payoffs); proves existence by exhibiting \(x^\top b\) with \(\E[xx^\top]b = p\) or by Riesz representation; proves uniqueness in the payoff space by an argument that uses \(\E[(x^\ast - y)^2] = 0\) or invertibility.</td><td>States the result and gives the formula, but misses an element of level 3: an assumption is missing, uniqueness is asserted without proof, or the proof uses the inverse of \(\E[xx^\top]\) without showing it exists.</td><td>No proof, or a proof of a different statement.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Proof A2: projection and minimum second moment</th><td>Everything in level 3, and states that \(x^\ast\) need not be positive, with an example or a reference to one, and says why that limits pricing of new payoffs.</td><td>Shows that \(m - x^\ast\) is orthogonal to every payoff, that every \(x^\ast + \varepsilon\) with \(\varepsilon \perp M\) is an SDF, and that \(\E[m^2] = \E[x^{\ast2}] + \E[\varepsilon^2]\), with equality only for \(m = x^\ast\).</td><td>Proves one direction or the inequality but misses an element of level 3, for example asserts the Pythagorean identity without the orthogonality that justifies it.</td><td>No proof.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Proof A3: in-sample identity and bias</th><td>Everything in level 3, and states when the bias is zero or strict (constant \(\hat S\); strict convexity for \(N = 1\)) and connects the bias to the in-sample variance bound.</td><td>Proves \(\E_T[\hat x^\ast x] = p\) for any sample with invertible \(\hat S\); proves convexity of \(A \mapsto p^\top A^{-1}p\) (as a supremum of affine functions or otherwise) and applies Jensen's inequality with \(\E[\hat S] = S\) stated as an assumption.</td><td>Proves the identity but not the bias, or asserts convexity without proof, or omits the assumption \(\E[\hat S] = S\).</td><td>No proof.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Proof A4 and the empirical results</th><td>Everything in level 3, and reports the shape of \(x^\ast\) on both halves (its training mean and standard deviation, its smallest test value) and says what its size implies for the variance bound of Lesson 5.</td><td>Proves that \(v + (x-\mu)^\top\Sigma^{-1}(p - v\mu)\) is feasible and has least variance, with \(\Sigma\) invertible as an assumption; reports the training errors, every currency's test error and their root mean square, and the constant-SDF benchmark, each with its unit and the split dates.</td><td>Misses an element of level 3: the proof omits feasibility or minimality, or the report omits the benchmark, the per-currency errors or the dates, or quotes a number its script does not print.</td><td>No proof and no out-of-sample number.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Interpretation and limitations</th><td>Everything in level 3, and reads the common sign of the test errors (all positive) as evidence about the change in the payoffs' means between halves, not only about estimation noise, and proposes a check that would separate the two.</td><td>Says the in-sample errors are zero by construction and are not evidence; says one split is one draw; names at least three of: stationarity, unconditional pricing, the omitted deposit interest, the near-singular second-moment matrix; says the result is not evidence of an arbitrage.</td><td>Names limitations but misses an element of level 3, or reads the zero in-sample errors as evidence of fit, or reads the out-of-sample errors as an arbitrage.</td><td>No interpretation beyond the numbers.</td></tr>
+              <tr data-criterion="C6"><th scope="row">C6 · Brief compliance</th><td>Everything in level 3, and every number follows the brief's rules: printed by <code>report/run_report.py</code>, with its unit and at most four significant digits, or labelled as a lesson figure.</td><td>The five sections under the brief's headings and in its order, followed by the appendix with A1–A4; 500 to 1,200 words of body text; a Summary of at most 100 words.</td><td>Has at least three of the five sections and some of the appendix, but misses an element of level 3.</td><td>Fewer than three sections, or no appendix.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two reports written to this brief, at different levels. Their numbers are Lab 3's output. Each passage carries an annotation naming the descriptors it meets or misses. With JavaScript on, the annotations stay hidden until you reveal the official scoring with the form below, so score both exemplars first.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,1,2,2,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 1 · C4 2 · C5 2 · C6 2. The proofs assert their key steps, A3 is missing, the empirical section omits the benchmark, and the interpretation reads the zero in-sample errors as evidence of fit.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>We recover the minimum-variance SDF from nine currency payoffs. It prices them perfectly in the training sample, which confirms the method, and it prices them less well out of sample, with an average error of 270.0 basis points, which is large. Currency markets appear to be harder to price after 2012.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="misses" data-criterion="C5" data-level="3">Misses C5 level 3: reads the exact in-sample pricing as confirmation, although Lesson 7's Proposition 2.1 makes it hold for any data.</li>
+                <li class="meets" data-criterion="C6" data-level="2">Meets C6 level 2: a Summary under the brief's heading, but it gives one of the two carrying numbers and no benchmark.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Data and method</h5>
+              <p>We use monthly exchange rates for nine currencies from 1999 to 2026, from the Federal Reserve, and compute \(b = \E[xx^\top]^{-1}p\) on the first half. The second half is the test sample.</p>
+              <h5>Out-of-sample pricing</h5>
+              <p>The out-of-sample root-mean-square pricing error is 270.0 basis points. The SDF has a mean of 0.9981 in the training sample.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: one out-of-sample number with its unit.</li>
+                <li class="misses" data-criterion="C4" data-level="3">Misses C4 level 3: no per-currency errors, no constant-SDF benchmark, no split dates; the data section never says DKK is left out or that the payoffs omit deposit interest.</li>
+                <li class="misses" data-criterion="C6" data-level="3">Misses C6 level 3: the "In-sample verification" and "Limitations" sections are missing, and the body has 103 words against the brief's 500.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Appendix A · Proofs</h5>
+              <p><strong>A1.</strong> The SDF must satisfy \(\E[mx] = p\). Try \(m = x^\top b\). Then \(\E[xx^\top]b = p\), so \(b = \E[xx^\top]^{-1}p\). This SDF is in the payoff space, and it is unique because the solution of a linear system is unique.</p>
+              <p><strong>A2.</strong> Any SDF can be written \(m = x^\ast + \varepsilon\). Then \(\E[m^2] = \E[x^{\ast2}] + \E[\varepsilon^2] \ge \E[x^{\ast2}]\), so \(x^\ast\) has the smallest second moment.</p>
+              <p><strong>A4.</strong> The minimum-variance SDF with mean \(v\) is \(v + (x - \mu)^\top\Sigma^{-1}(p - v\mu)\), which is what <code>min_variance_sdf</code> computes, and it is the regression of any SDF on the payoffs, so it has the least variance.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: the formula and an existence argument.</li>
+                <li class="misses" data-criterion="C1" data-level="3">Misses C1 level 3: no assumptions stated; inverts \(\E[xx^\top]\) without showing it is invertible; "the solution of a linear system is unique" proves uniqueness among SDFs of the form \(x^\top b\) only if the system is nonsingular, which is not shown.</li>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: the Pythagorean identity and the inequality.</li>
+                <li class="misses" data-criterion="C2" data-level="3">Misses C2 level 3: never shows \(\E[\varepsilon x] = 0\), which is what makes the cross term vanish, nor that every \(x^\ast + \varepsilon\) with \(\varepsilon \perp M\) is an SDF.</li>
+                <li class="meets" data-criterion="C3" data-level="1">Meets C3 at level 1 only: A3 is missing.</li>
+                <li class="misses" data-criterion="C4" data-level="3">Misses C4 level 3 in A4 as well: asserts minimality by analogy with regression, without the feasibility check or the variance decomposition.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,4,3,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 3 · C6 4. Complete proofs with their assumptions, every required number with its unit and source, and a careful reading of what one split shows. It falls short of level 4 once: it notices that every test error is positive but does not propose a check that would separate a change in the payoffs' means from estimation noise.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>Does the minimum-second-moment SDF recovered from 166 months of nine currency payoffs price the next 166 months? No. It prices its own months exactly, as it must, and the next 166 with a root-mean-square error of 270.0 basis points per dollar of price, against 20.1 for the constant SDF \(m = 1\). The estimate adds error rather than information.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C6" data-level="4">Meets C6 level 4 in part: the question, a one-sentence answer and the two carrying numbers with units, in 59 words.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Data and method</h5>
+              <p>The payoffs are one dollar held for one month in each of AUD, CAD, CHF, EUR, GBP, JPY, NOK, NZD and SEK, converted back at the next month-end spot rate: payoff \(S_{t+1}/S_t\), price one dollar. The rates are the Federal Reserve's G.5/H.10 noon buying rates in New York, month-end values, retrieved 2026-10-19. The payoffs omit the interest a deposit in each currency would earn, so they price currency held as cash. DKK is left out because its payoff is nearly a multiple of EUR's (Lesson 1, Lab 2: a regression \(R^2\) of 0.99891), which makes the second-moment matrix nearly singular. The sample runs from 1999-02 to 2026-09; the first 166 months (1999-02 to 2012-11) train and the last 166 (2012-12 to 2026-09) test. On the training months, \(\hat b = \hat S^{-1}p\) with \(\hat S = \tfrac1T\sum_t x_tx_t^\top\), dividing by \(T = 166\), and \(\hat x^\ast_t = x_t^\top\hat b\). The script prints the checksums of Lab 3 (sum 2989.0264134608, sum of squares 2992.6599604987), so the payoffs are the reference payoffs.</p>
+              <h5>In-sample verification</h5>
+              <p>The largest absolute training-sample pricing error is \(1.1 \times 10^{-14}\), rounding error. This verifies the code, not the economics: by Proposition 2.1 of Lesson 7, proved as A3 below, the sample \(x^\ast\) prices its own sample exactly for any data with an invertible \(\hat S\). Payoffs drawn at random would pass the same check.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4 in part: payoffs, prices, omissions, the DKK exclusion with its lesson figure, the split dates and the estimator with its moment convention.</li>
+                <li class="meets" data-criterion="C5" data-level="3">Meets C5 level 3 in part: the zero in-sample errors are read as a code check, with the result that makes them uninformative.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Out-of-sample pricing</h5>
+              <p>With the training weights, the test-half pricing errors, \(\E_{\text{test}}[\hat x^\ast x] - 1\), are, in basis points of the one-dollar price: AUD 249.4, CAD 266.3, CHF 289.2, EUR 295.1, GBP 301.4, JPY 243.7, NOK 248.1, NZD 259.0, SEK 271.2. Their root mean square is 270.0. The constant SDF \(m = 1\), which prices each payoff at its test-half mean, errs by 20.1. Every error is positive: the recovered SDF values every currency above its price in the test half. On the training months \(\hat x^\ast\) has mean 0.9981 and standard deviation 0.1824 per month; on the test months it stays positive, with a smallest value of 0.0401. By Lesson 5's Proposition 2.3 the training \(\hat x^\ast\) is the minimum-variance SDF at its own mean for the training sample, so 0.1824 is the sample variance bound there. By Theorem 3.3 of Lesson 7 the sample second moment of \(\hat x^\ast\), \(0.9981^2 + 0.1824^2\), overstates the population second moment in expectation; with no riskless payoff the theorem says nothing directly about the standard deviation.</p>
+              <h5>Limitations</h5>
+              <p>One split is one draw: a different split date or the reversed split would give a different number. The errors mix two things the design cannot separate: estimation error in \(\hat S^{-1}\), which is large because the payoffs are strongly correlated, and a change in the payoffs' distribution between 1999–2012 and 2012–2026. The estimate is unconditional; an SDF that varies with information known at each month-end would need managed payoffs. The payoffs omit deposit interest, so the result is about currency held as cash; with interest, the prices stay at one dollar but the payoffs change. Shrinkage helps but does not reverse the conclusion: Lesson 7's Lab 2 reports 80.2 basis points for ridge with a penalty chosen inside the training half. Nothing here is evidence of an arbitrage, which is a statement about every state, not about one estimate's fit.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: every per-currency error, the root mean square and the benchmark with units; the shape of \(x^\ast\) on both halves; and the link to the variance bound, with the bias result stated for the second moment, which is what Theorem 3.3 covers.</li>
+                <li class="meets" data-criterion="C5" data-level="3">Meets C5 level 3: one split, four limitations, the ridge figure labelled as a lesson figure, and the arbitrage reading ruled out.</li>
+                <li class="misses" data-criterion="C5" data-level="4">Misses C5 level 4: notes that every error is positive but does not propose a check that would separate a shift in the payoffs' means from estimation noise, for example pricing the test half with the test half's own means and the training half's \(\hat S\).</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Appendix A · Proofs</h5>
+              <p><strong>Setting.</strong> Finitely many states \(s = 1, \dots, S\) with probabilities \(\pi_s &gt; 0\); payoffs \(x = (x_1, \dots, x_N)\) with \(N\) linearly independent columns of the payoff matrix \(X\); prices \(p\) given by some SDF, \(p = \E[mx]\) (equivalently, the law of one price holds). Inner product \(\E[yz] = \sum_s\pi_sy_sz_s\), positive definite because \(\pi \gg 0\). The sample results treat \(T\) observations as \(T\) equally likely states.</p>
+              <p><strong>A1 (existence and uniqueness of \(x^\ast\)).</strong> For \(c \ne 0\), \(c^\top\E[xx^\top]c = \E[(x^\top c)^2] = \sum_s\pi_s(Xc)_s^2 &gt; 0\), because \(Xc \ne 0\) by linear independence and every \(\pi_s &gt; 0\). So \(\E[xx^\top]\) is positive definite and invertible. Let \(b = \E[xx^\top]^{-1}p\) and \(x^\ast = x^\top b \in M\). Then \(\E[x^\ast x] = \E[xx^\top]b = p\): \(x^\ast\) is an SDF in \(M\). If \(y = x^\top c \in M\) is also an SDF, then \(\E[xx^\top](b - c) = p - p = 0\), so \(b = c\) and \(y = x^\ast\). With redundant payoffs, \(\E[xx^\top]\) is singular, \(b\) is not unique, but \(x^\top b\) still is, by the same argument applied to a maximal independent subset.</p>
+              <p><strong>A2 (projection).</strong> If \(m\) is an SDF, \(\E[(m - x^\ast)x_n] = p_n - p_n = 0\) for every \(n\), so \(\varepsilon = m - x^\ast\) is orthogonal to every element of \(M\). Conversely, if \(\varepsilon \perp M\), \(\E[(x^\ast + \varepsilon)x_n] = p_n\). Since \(x^\ast \in M\), \(\E[x^\ast\varepsilon] = 0\), and \(\E[m^2] = \E[x^{\ast2}] + 2\E[x^\ast\varepsilon] + \E[\varepsilon^2] = \E[x^{\ast2}] + \E[\varepsilon^2] \ge \E[x^{\ast2}]\), with equality iff \(\E[\varepsilon^2] = 0\) iff \(\varepsilon = 0\), using \(\pi \gg 0\). \(x^\ast\) need not be positive: Lesson 4's Example 5.1 has \(x^\ast = (1.15, 0.383333, -0.383333)\) in a market with no arbitrage. So \(x^\ast\) cannot be used to price a payoff outside \(M\) without risking an arbitrage price.</p>
+              <p><strong>A3 (sample identity and bias).</strong> With \(\hat S = \tfrac1T\sum_tx_tx_t^\top\) invertible, \(\E_T[\hat x^\ast x] = \hat S\hat S^{-1}p = p\), for any data. For the bias, let \(f(A) = p^\top A^{-1}p\) on positive-definite \(A\). For fixed \(c\), \(g_A(c) = 2c^\top p - c^\top Ac\) is concave in \(c\) with maximum at \(c = A^{-1}p\), equal to \(f(A)\); so \(f(A) = \sup_c g_A(c)\), a supremum of functions affine in \(A\), hence convex. Assume \(\hat S\) is positive definite almost surely, \(\E[\hat S] = S\) and \(\E[f(\hat S)] &lt; \infty\). Then \(f(S) = \sup_c\E[g_{\hat S}(c)] \le \E[\sup_cg_{\hat S}(c)] = \E[f(\hat S)]\). Since \(\E_T[\hat x^{\ast2}] = \hat b^\top\hat S\hat b = f(\hat S)\) and \(\E[x^{\ast2}] = f(S)\), the sample second moment is biased upward. It is unbiased if \(\hat S = S\) almost surely, and strictly biased for \(N = 1\) when \(\hat S\) is not constant, because \(s \mapsto p^2/s\) is strictly convex. With a riskless payoff the mean is pinned at \(1/R_f\) in every sample, so the bias is in the variance, which is the in-sample variance bound of Lesson 5.</p>
+              <p><strong>A4 (minimum-variance SDF with mean \(v\)).</strong> Assume \(\Sigma = \Cov(x)\) is invertible and let \(\mu = \E[x]\). Let \(m_v = v + (x - \mu)^\top\beta\), \(\beta = \Sigma^{-1}(p - v\mu)\). Feasibility: \(\E[m_v] = v\), and \(\E[m_vx] = v\mu + \E[x(x - \mu)^\top]\beta = v\mu + \Sigma\beta = p\). Minimality: if \(m\) is feasible, \(\varepsilon = m - m_v\) has \(\E[\varepsilon] = 0\) and \(\E[\varepsilon x] = 0\), so \(\Cov(\varepsilon, x_n) = 0\) and \(\Cov(\varepsilon, m_v) = 0\); hence \(\Var(m) = \Var(m_v) + \Var(\varepsilon)\), with equality iff \(\varepsilon\) is constant, and that constant is 0. Its variance is \(\beta^\top\Sigma\beta = (p - v\mu)^\top\Sigma^{-1}(p - v\mu)\). With a riskless payoff \(\Sigma\) is singular and the mean is pinned; then A2's \(x^\ast\) is the minimum-variance SDF.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: the assumptions, positive definiteness from independence and \(\pi \gg 0\), existence by construction, uniqueness by invertibility, and what happens with redundant payoffs.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: orthogonality shown in both directions, the identity with its justification, the equality case, and the positivity caveat with an example.</li>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: the identity, convexity as a supremum of affine functions, Jensen with its assumptions, the equality and strict cases, and the link to the variance bound.</li>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4 for A4: feasibility, minimality with the equality case, the variance, and the riskless case.</li>
+                <li class="meets" data-criterion="C6" data-level="4">Meets C6 level 4: the five sections in order, A1–A4, a body of 596 words with a 59-word Summary, and every number printed by the script or labelled as a lesson figure.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="AP1/project/report" data-work-label="Your report" data-work-noun="report" data-summary-path="report/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own report on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own report. Your scores stay in this browser; keep the summary the form produces as <code>report/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Separate the two sources of error.</strong> Price the test half with the training weights but the test half's own second-moment matrix, and with the test half's weights but the training half's moments, and say which source dominates the 270 basis points.</li>
+          <li><strong>Rolling recovery.</strong> Re-estimate \(x^\ast\) every month on a trailing window and price the next month; report the distribution of errors and its dependence on the window length.</li>
+          <li><strong>A positive SDF.</strong> Recover the SDF with the least second moment subject to \(m \ge 0\) (Lesson 4, Lab 3; Lesson 5, Problem R3) as a quadratic program, and compare its out-of-sample errors with \(x^\ast\)'s.</li>
+          <li><strong>Deposits instead of cash.</strong> Bring deposit or forward rates for the same currencies in bring-your-own-data mode (the embedded files contain no foreign interest rates), rebuild the payoffs with interest, and rerun the report.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <ol class="reading-list">
+          <li data-cite="cochrane2005asset"></li>
+          <li data-cite="hansen1991implications"></li>
+          <li data-cite="harrison1979martingales"></li>
+          <li data-cite="harrison1981martingales"></li>
+          <li data-cite="delbaen1994general"></li>
+          <li data-cite="duffie2001dynamic"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L07.html"><span class="dir">Previous</span>L07 · Recovering the SDF from Data</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>AP1 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">AP1 project · SDF Recovery · The autograder and the self-assessment run in your browser; nothing you write leaves it.</footer>
+</body>
+</html>
