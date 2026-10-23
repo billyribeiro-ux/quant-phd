@@ -47,3 +47,5 @@ for label, lam in (("sample x*", 0.0), (f"ridge, lam = {chosen:.0e}", chosen)):
     )
 # Benchmark: the constant SDF m = 1 prices each payoff at its test-sample mean.
 print(f"constant m = 1: test rms {1e4 * np.sqrt(np.mean((test.mean(axis=0) - p) ** 2)):.1f} bp")
+# Problem E1: the same split reversed (train on the second half, test on the first).
+print(f"reversed split, sample x*: test rms {rms_bp(train, weights(test, 0.0)):.1f} bp")
