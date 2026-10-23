@@ -72,8 +72,8 @@ three things about each:
 | Credential | What it covers | Modules | Graded projects | Hours | Credit equivalent | FTE years |
 |---|---|---|---|---|---|---|
 | **Finance Degree — Bachelor's Level** | Business and quantitative core (calculus, statistics, econometrics, programming, micro, macro, financial and managerial accounting, law and ethics, communication), plus the full finance major (corporate finance I–II, investments, markets and institutions, statement analysis, valuation, financial modeling, short-term finance, fixed income, derivatives, risk management and international finance, asset management, wealth management, financial history), plus a senior capstone | 42 | 47 | 3,881 | ≈86 credits | 1.80 |
-| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 77 | 85 | 7,666 | ≈170 credits | 3.55 |
-| **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 83 | 87 | 9,191 | ≈204 credits | 4.26 |
+| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 78 | 86 | 7,736 | ≈172 credits | 3.58 |
+| **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 84 | 88 | 9,301 | ≈207 credits | 4.31 |
 
 Some facts about these numbers:
 
