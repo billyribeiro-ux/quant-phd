@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-# Lab 1's SIMULATED market, rebuilt: 8 states, a riskless payoff and 3 risky payoffs priced by a positive SDF.
+# Lab 2's SIMULATED market, rebuilt: 8 states, a riskless payoff and 3 risky payoffs priced by a positive SDF.
 rng = np.random.default_rng(606)
 probs = rng.dirichlet(np.full(8, 5.0))
 m = np.exp(rng.normal(0.0, 0.3, 8))
