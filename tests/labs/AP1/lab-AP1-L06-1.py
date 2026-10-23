@@ -2,7 +2,7 @@ import itertools
 import math
 
 # SIMULATED two-period tree: the stock moves up (x1.2) or down (x0.9) each period; the bond earns 2% a period.
-# Discounted prices S_t / B_t must be a Q-martingale node by node (Theorem 3.3).
+# Discounted prices S_t / B_t must be a Q-martingale node by node (Theorem 3.2).
 up, down, rate, s0, p_up = 1.2, 0.9, 0.02, 100.0, 0.6
 q = (1 + rate - down) / (up - down)  # one-step risk-neutral probability of "up"
 print(f"one-step q(up) = {q:.6f}  (no arbitrage needs 0 < q < 1: down < 1 + r < up)")

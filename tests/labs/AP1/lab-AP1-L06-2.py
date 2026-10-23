@@ -1,6 +1,6 @@
 import numpy as np
 
-# SIMULATED doubling strategy on a fair coin (Lesson 4, Section 5): stake 1, double after every loss, stop at
+# SIMULATED doubling strategy on a fair coin (Section 5): stake 1, double after every loss, stop at
 # the first win or at the horizon n. Exactly: P(win by n) = 1 - 2^-n; gain +1 on a win, -(2^n - 1) otherwise.
 rng = np.random.default_rng(404)
 n_paths = 400_000
