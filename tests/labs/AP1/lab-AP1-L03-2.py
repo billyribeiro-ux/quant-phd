@@ -2,7 +2,7 @@ import numpy as np
 from scipy.optimize import linprog  # type: ignore[import-untyped]
 
 # Arbitrage bounds on a new payoff z: the primal (cheapest super-replication, dearest sub-replication) and the
-# dual (extreme state-price values psi'z over psi >= 0 with X'psi = p) give the same numbers (Theorem 4.2).
+# dual (extreme state-price values psi'z over psi >= 0 with X'psi = p) give the same numbers (Theorem 4.1).
 X = np.array([[1.0, 1.4], [1.0, 1.1], [1.0, 0.6]])  # bond and stock, Lesson 1's three states
 p = np.array([0.96, 0.976])
 z = np.maximum(X[:, 1] - 1.0, 0.0)  # a call on the stock struck at 1

@@ -13,7 +13,7 @@ cov = X.T @ (probs[:, None] * X) - np.outer(mu, mu)  # Cov(x)
 
 
 def sigma_min(v: float) -> float:
-    """Smallest standard deviation of an SDF with mean v that prices x (Theorem 2.2)."""
+    """Smallest standard deviation of an SDF with mean v that prices x (Theorem 2.1)."""
     g = p - v * mu
     return float(np.sqrt(g @ np.linalg.solve(cov, g)))
 
