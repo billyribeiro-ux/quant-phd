@@ -13,7 +13,14 @@ def detect(prices: NDArray[np.float64]) -> tuple[float, NDArray[np.float64]]:
     """Lesson 3's detection program: (optimal value, optimal theta)."""
     a_ub = np.vstack([-X, prices[None, :], X, -prices[None, :]])
     b_ub = np.concatenate([np.zeros(12), [0.0], np.ones(12), [1.0]])
-    res = linprog(-(X.sum(axis=0) - prices), A_ub=a_ub, b_ub=b_ub, bounds=[(None, None)] * 6, method="highs")
+    res = linprog(
+        -(X.sum(axis=0) - prices),
+        A_ub=a_ub,
+        b_ub=b_ub,
+        bounds=[(None, None)] * 6,
+        method="highs",
+        options={"primal_feasibility_tolerance": 1e-7},  # HiGHS accepts constraint violations up to this size
+    )
     return float(-res.fun), np.asarray(res.x)
 
 
