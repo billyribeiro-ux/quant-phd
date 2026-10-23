@@ -69,7 +69,7 @@
 
 ### 2.5 Labs: one row per lab
 - You ran `run_labs.py --unit {{ID}}` yourself, and it passed.
-- The lab and its twin are byte-identical.
+- `run_labs.py` extracts and passes the lab under CPython 3.14, the Pyodide interpreter version.
 - The lab demonstrates its hypothesis, and the interpretation does not
   overreach.
 - RNGs are seeded, there is no network access, and runtime is under 10 s in
