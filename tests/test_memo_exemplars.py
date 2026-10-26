@@ -130,7 +130,7 @@ def values() -> dict[str, Any]:
     ref = reference()
     memo, lab4 = run_twin("lab-S7-project-3.py"), run_twin("lab-S7-L08-4.py")
     trials, pick, grid = memo["trials"], memo["pick"], memo["grid"]
-    n_obs, n_trials = trials.shape
+    n_obs, _n_trials = trials.shape
     defaults = {k: p.default for k, p in inspect.signature(ref.integrity_report).parameters.items() if k != "trials"}
     report = ref.integrity_report(ref.TrialSet(trials, pick, 12), **defaults)
     selected = trials[:, pick]

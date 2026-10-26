@@ -379,7 +379,7 @@ def render_concepts(program: dict[str, Any], curriculum: dict[str, Any], glossar
         by_module.setdefault(concept["module"], []).append((concept_id, concept["name"]))
     sections = []
     for module_id in curriculum["topological_order"]:
-        part, m = modules[module_id]
+        _part, m = modules[module_id]
         title = (
             f'<a href="{esc(m["href"])}">{esc(module_id)} · {esc(m["title"])}</a>'
             if m["href"]
