@@ -229,7 +229,11 @@ def lab_preload(labs: list[Lab]) -> tuple[str, list[str]]:
     lines: dict[str, None] = {}
     for lab in labs:
         source = lab.twin.read_text(encoding="utf-8") if lab.completion else lab.code
-        for node in ast.parse(source).body:
+        try:
+            body = ast.parse(source).body
+        except SyntaxError as error:
+            raise SyntaxError(f"{lab.id}: not valid Python ({error.msg}, line {error.lineno})") from error
+        for node in body:
             if isinstance(node, ast.ImportFrom) and node.module == "__future__":
                 continue
             if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -247,7 +251,10 @@ def run_labs(page: Page, page_path: Path) -> list[str]:
     started = time.perf_counter()
     page.evaluate(warm)  # start Pyodide first, so no lab is charged for the runtime's boot
     print(f"  runtime boot (with numpy): {time.perf_counter() - started:.1f} s")
-    imports, packages = lab_preload(labs)
+    try:
+        imports, packages = lab_preload(labs)
+    except SyntaxError as error:
+        return [f"{page_path.name}: lab code cannot be preloaded, {error}"]
     started = time.perf_counter()
     # Load every package the labs declare or import, so no lab's timer includes downloading a wheel.
     try:
