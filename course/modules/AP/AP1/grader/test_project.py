@@ -19,6 +19,7 @@ import io
 import math
 import os
 import sys
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 
@@ -635,6 +636,78 @@ def test_functions_do_not_mutate_or_print() -> None:
     assert np.array_equal(train, TRAIN) and np.array_equal(test, TEST) and np.array_equal(prices, PRICES), (
         "Functions must not modify their arguments."
     )
+
+
+def call_every_public_function(
+    train: np.ndarray,
+    test: np.ndarray,
+    prices: np.ndarray,
+    probs: np.ndarray,
+    payoffs: np.ndarray,
+    sdf: np.ndarray,
+    weights: np.ndarray,
+    risky: np.ndarray,
+    risky_p: np.ndarray,
+) -> None:
+    """Call each of the eight public functions once on valid inputs."""
+    sol.second_moment_matrix(payoffs)
+    sol.x_star_weights(train, prices)
+    sol.sdf_values(test, weights)
+    sol.pricing_errors(test, prices, sdf)
+    sol.population_x_star(probs, payoffs, prices)
+    sol.min_variance_sdf(risky, risky_p, 0.97)
+    sol.min_sdf_std(risky, risky_p, 0.97)
+    sol.recover_sdf(train, test, prices)
+
+
+def test_every_public_function_is_silent_and_pure() -> None:
+    args = (
+        TRAIN.copy(),
+        TEST.copy(),
+        PRICES.copy(),
+        PROBS.copy(),
+        PAYOFFS.copy(),
+        np.ones(TEST.shape[0]),
+        np.full(TEST.shape[1], 0.1),
+        RISKY.copy(),
+        RISKY_P.copy(),
+    )
+    names = ("train", "test", "prices", "probs", "payoffs", "sdf", "weights", "risky", "risky_p")
+    before = [a.copy() for a in args]
+    out, err = io.StringIO(), io.StringIO()
+    with (
+        warnings.catch_warnings(record=True) as caught,
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(err),
+    ):
+        warnings.simplefilter("always")
+        call_every_public_function(*args)
+    assert out.getvalue() == "", "Functions must not print to standard output."
+    assert err.getvalue() == "", "Functions must not write to standard error."
+    assert not caught, "Functions must not warn on valid inputs."
+    for name, a, b in zip(names, args, before, strict=True):
+        assert np.array_equal(a, b), f"Functions must not modify their arguments: {name} changed."
+
+
+def test_ill_conditioned_payoffs_emit_no_warning() -> None:
+    rng = np.random.default_rng(20260501)  # fixed, independent of the seed: the sample is the same on every seed
+    x = rng.normal(0.0, 1.0, (200, 3)) * np.array(
+        [1.0, 1.0, 1e-4]
+    )  # full rank, but the second moments are ill-conditioned
+    assert np.linalg.cond(x.T @ x / x.shape[0]) > 1e6, "internal: the second-moment matrix must be ill-conditioned"
+    p = np.array([1.0, 0.99, 1e-4])
+    probs = np.full(x.shape[0], 1.0 / x.shape[0])
+    sdf, weights = np.ones(x.shape[0]), np.full(x.shape[1], 0.1)
+    out, err = io.StringIO(), io.StringIO()
+    with (
+        warnings.catch_warnings(record=True) as caught,
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(err),
+    ):
+        warnings.simplefilter("always")
+        call_every_public_function(x, x, p, probs, x, sdf, weights, x, p)
+    assert not caught, "A valid but ill-conditioned payoff sample must not trigger a warning from any function."
+    assert out.getvalue() == "" and err.getvalue() == "", "Functions must not print or write to stderr."
 
 
 def test_imports_only_numpy_and_the_standard_library() -> None:
