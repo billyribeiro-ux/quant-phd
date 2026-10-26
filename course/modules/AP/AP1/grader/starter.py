@@ -7,8 +7,8 @@ or locally with the browser's flags:
 
 Conventions: a payoff sample is a (T, N) array whose row t is the payoff vector in observed state t;
 sample moments divide by T; a pricing error is E[m x] - p. Every function must validate its inputs and
-raise ValueError naming the violated condition; none may print, warn or mutate its arguments. Use NumPy
-and the standard library only. The dataclass is complete.
+raise ValueError (a message saying what was wrong helps you debug); none may print, warn or mutate its
+arguments. Use NumPy and the standard library only. The dataclass is complete.
 """
 
 from __future__ import annotations
