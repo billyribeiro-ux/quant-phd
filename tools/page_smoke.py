@@ -44,6 +44,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import ast
 import functools
 import http.server
 import json
@@ -56,6 +57,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Locator, Page, sync_playwright
 
 from coursekit import COURSE, Lab, Unit, built_units, labs_in, load_page, unit
@@ -215,16 +217,23 @@ def sweep_chart(chart: Locator, where: str, presses: list[int]) -> list[str]:
     return problems
 
 
-IMPORT_LINE = re.compile(r"^(?:import|from)[ \t]+[A-Za-z_][\w.]*(?:[ \t].*)?$", re.MULTILINE)
-
-
 def lab_preload(labs: list[Lab]) -> tuple[str, list[str]]:
     """The labs' top-level import statements, deduplicated in order, and the union of their data-packages.
 
-    The worker runs the import lines after loadPackagesFromImports, so every wheel a lab needs is loaded before
-    any lab's timer starts; importing is side-effect free for the standard library, NumPy and SciPy.
+    Imports are read from the parsed source, so text inside a string, a parenthesized multi-line import and a
+    statement sharing a line with an import are all handled. A ``from __future__`` import is dropped because it
+    is legal only at the top of a file. Completion labs are parsed from their twin, since their page code has
+    ``___`` blanks. The worker runs the import lines after loadPackagesFromImports, so every wheel a lab needs is
+    loaded before any lab's timer starts; importing is side-effect free for the standard library, NumPy and SciPy.
     """
-    lines = dict.fromkeys(m.group(0).strip() for lab in labs for m in IMPORT_LINE.finditer(lab.code))
+    lines: dict[str, None] = {}
+    for lab in labs:
+        source = lab.twin.read_text(encoding="utf-8") if lab.completion else lab.code
+        for node in ast.parse(source).body:
+            if isinstance(node, ast.ImportFrom) and node.module == "__future__":
+                continue
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                lines.setdefault(ast.unparse(node))
     packages = list(dict.fromkeys(p for lab in labs for p in lab.packages))
     return "\n".join(lines), packages
 
@@ -241,11 +250,15 @@ def run_labs(page: Page, page_path: Path) -> list[str]:
     imports, packages = lab_preload(labs)
     started = time.perf_counter()
     # Load every package the labs declare or import, so no lab's timer includes downloading a wheel.
-    page.evaluate(
-        "async ([code, packages]) => { const m = await import('/assets/js/python.js'); "
-        "const r = await m.runPython(code, packages); if (r.error) throw new Error(r.error); }",
-        [imports, packages],
-    )
+    try:
+        page.evaluate(
+            "async ([code, packages]) => { const m = await import('/assets/js/python.js'); "
+            "const r = await m.runPython(code, packages); if (r.error) throw new Error(r.error); }",
+            [imports, packages],
+        )
+    except PlaywrightError as error:
+        problems.append(f"package preload failed: {error}")
+        return problems
     print(f"  package preload ({', '.join(packages) or 'none'}): {time.perf_counter() - started:.1f} s")
     for lab in labs:
         section = page.locator(f"#{lab.id}")

@@ -44,6 +44,20 @@ WITH_INF = np.where(np.isnan(WITH_NAN), np.inf, WITH_NAN)
 PRICES_WITH_NAN = np.where(np.arange(PRICES.size) == 0, np.nan, PRICES)
 RISKY = TRAIN[:, 1:] if INST["riskless"] else TRAIN  # without the riskless payoff the SDF mean is free
 RISKY_P = PRICES[1:] if INST["riskless"] else PRICES
+ZERO_PROB = PROBS.copy()  # sums to one, with one state of probability zero
+ZERO_PROB[0], ZERO_PROB[1] = 0.0, PROBS[0] + PROBS[1]
+TEST_WITH_INF = TEST.copy()
+TEST_WITH_INF[0, 0] = np.inf
+PAYOFFS_WITH_NAN = PAYOFFS.copy()
+PAYOFFS_WITH_NAN[0, 0] = np.nan
+PAYOFFS_WITH_INF = PAYOFFS.copy()
+PAYOFFS_WITH_INF[0, 0] = np.inf
+PRICES_WITH_INF = np.where(np.arange(PRICES.size) == 0, np.inf, PRICES)
+RISKY_WITH_NAN = RISKY.copy()  # built from RISKY, so the NaN is never dropped by the riskless column selection
+RISKY_WITH_NAN[1, 0] = np.nan
+RISKY_WITH_INF = np.where(np.isnan(RISKY_WITH_NAN), np.inf, RISKY_WITH_NAN)
+RISKY_P_WITH_NAN = np.where(np.arange(RISKY_P.size) == 0, np.nan, RISKY_P)
+RISKY_P_WITH_INF = np.where(np.arange(RISKY_P.size) == 0, np.inf, RISKY_P)
 
 
 def must_raise(call: Callable[[], object], condition: str) -> None:
@@ -110,6 +124,25 @@ def test_x_star_is_invariant_to_units() -> None:
     scaled = sol.sdf_values(3.0 * TRAIN, sol.x_star_weights(3.0 * TRAIN, 3.0 * PRICES))
     assert close(scaled, m), (
         "Measuring every payoff and price in other units (x -> c x, p -> c p) cannot change the SDF (L04, Theorem 3.2)."
+    )
+
+
+def test_x_star_accepts_small_units() -> None:
+    c = 1e-5  # small units: the redundancy test must not depend on the absolute size of the payoffs
+    m_small = sol.sdf_values(c * TRAIN, sol.x_star_weights(c * TRAIN, c * PRICES))
+    m_unit = sol.sdf_values(TRAIN, sol.x_star_weights(TRAIN, PRICES))
+    assert close(m_small, m_unit, 1e-7), (
+        "Measuring every payoff and price in small units (x -> c x, p -> c p) cannot change the SDF, so a "
+        "redundancy check must not depend on the absolute size of the payoffs (L04, Theorem 3.2)."
+    )
+
+
+def test_x_star_accepts_as_many_observations_as_assets() -> None:
+    square = PAYOFFS[: PRICES.size]  # T = N: the payoffs of N states, linearly independent on every seed
+    b = np.asarray(sol.x_star_weights(square, PRICES))
+    assert close(square.T @ (square @ b) / square.shape[0], PRICES, 1e-9), (
+        "With T = N observations and independent payoffs, x* still prices every payoff: only fewer observations "
+        "than assets is invalid (L07, Proposition 2.1)."
     )
 
 
@@ -420,10 +453,172 @@ def test_recover_sdf_result_is_frozen() -> None:
             id="sum",
         ),
         pytest.param(lambda: sol.min_variance_sdf(TRAIN, PRICES, float("nan")), "a NaN mean", id="nan-mean"),
+        pytest.param(lambda: sol.min_variance_sdf(RISKY, RISKY_P, float("inf")), "an infinite mean", id="inf-mean-var"),
+        pytest.param(lambda: sol.second_moment_matrix(TRAIN[:, 0]), "a one-dimensional payoff sample", id="1d-moments"),
+        pytest.param(
+            lambda: sol.population_x_star(ZERO_PROB, PAYOFFS, PRICES), "a zero state probability", id="zero-probs"
+        ),
+        pytest.param(
+            lambda: sol.population_x_star(np.array([1.0]), PAYOFFS, PRICES),
+            "probabilities of the wrong length",
+            id="probs-len",
+        ),
+        pytest.param(
+            lambda: sol.population_x_star(np.where(np.arange(PROBS.size) == 0, np.inf, PROBS), PAYOFFS, PRICES),
+            "an infinite state probability",
+            id="inf-probs",
+        ),
+        pytest.param(
+            lambda: sol.pricing_errors(TEST, PRICES, np.where(np.arange(TEST.shape[0]) == 0, np.inf, 1.0)),
+            "an SDF with an infinite value",
+            id="inf-sdf",
+        ),
+        pytest.param(
+            lambda: sol.sdf_values(TEST, np.where(np.arange(TEST.shape[1]) == 0, np.inf, 1.0)),
+            "infinite weights",
+            id="inf-weights",
+        ),
+        pytest.param(
+            lambda: sol.pricing_errors(WITH_INF, PRICES, np.ones(WITH_INF.shape[0])),
+            "a payoff sample with an infinite value",
+            id="inf-errors",
+        ),
+        pytest.param(
+            lambda: sol.recover_sdf(TRAIN, TEST_WITH_INF, PRICES), "a test sample with an infinite value", id="inf-test"
+        ),
+        pytest.param(
+            lambda: sol.population_x_star(PROBS, PAYOFFS_WITH_INF, PRICES),
+            "a payoff sample with an infinite value",
+            id="inf-population",
+        ),
+        pytest.param(
+            lambda: sol.population_x_star(PROBS, PAYOFFS_WITH_NAN, PRICES),
+            "a payoff sample with a NaN",
+            id="nan-population",
+        ),
+        pytest.param(lambda: sol.sdf_values(TRAIN[:, 0], np.ones(1)), "one-dimensional payoffs", id="1d-sdf"),
+        pytest.param(
+            lambda: sol.pricing_errors(TRAIN[:, 0], PRICES[:1], np.ones(TRAIN.shape[0])),
+            "one-dimensional payoffs",
+            id="1d-errors",
+        ),
+        pytest.param(
+            lambda: sol.recover_sdf(TRAIN[:, 0], TEST, PRICES[:1]), "one-dimensional training payoffs", id="1d-train"
+        ),
+        pytest.param(lambda: sol.recover_sdf(TRAIN, TEST[:, 0], PRICES), "one-dimensional test payoffs", id="1d-test"),
+        pytest.param(
+            lambda: sol.population_x_star(PROBS, PAYOFFS[:, 0], PRICES[:1]),
+            "one-dimensional payoffs",
+            id="1d-population",
+        ),
+        pytest.param(
+            lambda: sol.min_variance_sdf(TRAIN[:, 0], PRICES[:1], 0.97), "one-dimensional payoffs", id="1d-minvar"
+        ),
+        pytest.param(lambda: sol.min_sdf_std(TRAIN[:, 0], PRICES[:1], 0.97), "one-dimensional payoffs", id="1d-minstd"),
+        pytest.param(
+            lambda: sol.min_sdf_std(np.column_stack([RISKY, np.ones(RISKY.shape[0])]), np.append(RISKY_P, 1.0), 0.97),
+            "a riskless (constant) payoff, whose covariance matrix is singular",
+            id="constant-std",
+        ),
+        pytest.param(
+            lambda: sol.min_variance_sdf(
+                np.column_stack([RISKY, np.ones(RISKY.shape[0])]), np.append(RISKY_P, 1.0), 0.97
+            ),
+            "a riskless (constant) payoff, whose covariance matrix is singular",
+            id="constant-var",
+        ),
+        pytest.param(
+            lambda: sol.pricing_errors(TEST, PRICES_WITH_NAN, np.ones(TEST.shape[0])),
+            "a NaN price",
+            id="nan-price-errors",
+        ),
+        pytest.param(
+            lambda: sol.sdf_values(TEST_WITH_NAN, np.ones(TEST.shape[1])),
+            "a payoff sample with a NaN",
+            id="nan-sdf-values",
+        ),
+        pytest.param(
+            lambda: sol.sdf_values(TEST_WITH_INF, np.ones(TEST.shape[1])),
+            "a payoff sample with an infinite value",
+            id="inf-sdf-values",
+        ),
+        pytest.param(
+            lambda: sol.min_variance_sdf(RISKY_WITH_NAN, RISKY_P, 0.97),
+            "a payoff sample with a NaN",
+            id="nan-payoffs-minvar",
+        ),
+        pytest.param(
+            lambda: sol.min_variance_sdf(RISKY_WITH_INF, RISKY_P, 0.97),
+            "a payoff sample with an infinite value",
+            id="inf-payoffs-minvar",
+        ),
+        pytest.param(
+            lambda: sol.min_sdf_std(RISKY_WITH_NAN, RISKY_P, 0.97),
+            "a payoff sample with a NaN",
+            id="nan-payoffs-minstd",
+        ),
+        pytest.param(
+            lambda: sol.min_sdf_std(RISKY_WITH_INF, RISKY_P, 0.97),
+            "a payoff sample with an infinite value",
+            id="inf-payoffs-minstd",
+        ),
+        pytest.param(
+            lambda: sol.recover_sdf(WITH_NAN, TEST, PRICES),
+            "a training sample with a NaN",
+            id="nan-train-recover",
+        ),
+        pytest.param(
+            lambda: sol.recover_sdf(WITH_INF, TEST, PRICES),
+            "a training sample with an infinite value",
+            id="inf-train-recover",
+        ),
+        pytest.param(
+            lambda: sol.pricing_errors(TEST, PRICES_WITH_INF, np.ones(TEST.shape[0])),
+            "an infinite price",
+            id="inf-price-errors",
+        ),
+        pytest.param(lambda: sol.recover_sdf(TRAIN, TEST, PRICES_WITH_NAN), "a NaN price", id="nan-price-recover"),
+        pytest.param(
+            lambda: sol.recover_sdf(TRAIN, TEST, PRICES_WITH_INF), "an infinite price", id="inf-price-recover"
+        ),
+        pytest.param(
+            lambda: sol.population_x_star(PROBS, PAYOFFS, PRICES_WITH_NAN), "a NaN price", id="nan-price-population"
+        ),
+        pytest.param(
+            lambda: sol.population_x_star(PROBS, PAYOFFS, PRICES_WITH_INF),
+            "an infinite price",
+            id="inf-price-population",
+        ),
+        pytest.param(lambda: sol.min_variance_sdf(RISKY, RISKY_P_WITH_NAN, 0.97), "a NaN price", id="nan-price-minvar"),
+        pytest.param(
+            lambda: sol.min_variance_sdf(RISKY, RISKY_P_WITH_INF, 0.97), "an infinite price", id="inf-price-minvar"
+        ),
+        pytest.param(lambda: sol.min_sdf_std(RISKY, RISKY_P_WITH_NAN, 0.97), "a NaN price", id="nan-price-minstd"),
+        pytest.param(
+            lambda: sol.min_sdf_std(RISKY, RISKY_P_WITH_INF, 0.97), "an infinite price", id="inf-price-minstd"
+        ),
+        pytest.param(
+            lambda: sol.min_sdf_std(
+                np.column_stack([RISKY, RISKY[:, 0] * 0.3 + RISKY[:, 1] * 0.7]),
+                np.append(RISKY_P, RISKY_P[0] * 0.3 + RISKY_P[1] * 0.7),
+                0.97,
+            ),
+            "a redundant combination of risky payoffs, whose covariance matrix is singular",
+            id="redundant-cov-std",
+        ),
     ],
 )
 def test_invalid_input_raises(bad: Callable[[], object], condition: str) -> None:
     must_raise(bad, condition)
+
+
+def test_min_sdf_std_does_not_change_its_prices() -> None:
+    p = np.asarray(RISKY_P, dtype=np.float64).copy()
+    before = p.copy()
+    sol.min_sdf_std(RISKY, p, 0.97)
+    assert np.array_equal(p, before), (
+        "Functions must not modify their arguments (min_sdf_std must not form p - v E[x] in place)."
+    )
 
 
 def test_functions_do_not_mutate_or_print() -> None:
