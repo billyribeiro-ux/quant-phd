@@ -62,12 +62,12 @@ RISKY_P_WITH_INF = np.where(np.arange(RISKY_P.size) == 0, np.inf, RISKY_P)
 
 
 def must_raise(call: Callable[[], object], condition: str) -> None:
-    """Fail with a message naming the violated condition unless call() raises ValueError."""
+    """Fail unless call() raises ValueError: the grader checks the exception type."""
     try:
         call()
     except ValueError:
         return
-    pytest.fail(f"{condition}: the specification requires a ValueError naming the violated condition.")
+    pytest.fail(f"{condition}: the specification requires a ValueError.")
 
 
 def close(a: object, b: object, tol: float = 1e-8) -> bool:
@@ -708,6 +708,64 @@ def test_ill_conditioned_payoffs_emit_no_warning() -> None:
         call_every_public_function(x, x, p, probs, x, sdf, weights, x, p)
     assert not caught, "A valid but ill-conditioned payoff sample must not trigger a warning from any function."
     assert out.getvalue() == "" and err.getvalue() == "", "Functions must not print or write to stderr."
+
+
+@pytest.mark.parametrize("delta", [5e-4, 1e-6], ids=["sum-1.0005", "sum-1-plus-1e-6"])
+def test_probabilities_off_one_beyond_rounding_raise(delta: float) -> None:
+    q = PROBS.copy()
+    q[0] += delta
+    must_raise(
+        lambda: sol.population_x_star(q, PAYOFFS, PRICES),
+        "probabilities whose sum differs from one by more than float rounding",
+    )
+
+
+def test_probability_rounding_is_accepted() -> None:
+    x_star = np.asarray(sol.population_x_star(PROBS, PAYOFFS, PRICES))
+    for delta in (1e-12, -1e-12):
+        q = PROBS.copy()
+        q[0] += delta
+        out = np.asarray(sol.population_x_star(q, PAYOFFS, PRICES))
+        assert close(out, x_star, 1e-7), "Probabilities that sum to one up to float rounding must be accepted."
+
+
+def test_negative_sdf_values_are_legal_and_silent() -> None:
+    b = -np.ones(TEST.shape[1])  # the weights are unconstrained, so the SDF values may be negative
+    args = (TEST.copy(), PRICES.copy(), b.copy())
+    out, err = io.StringIO(), io.StringIO()
+    with (
+        warnings.catch_warnings(record=True) as caught,
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(err),
+    ):
+        warnings.simplefilter("always")
+        values = np.asarray(sol.sdf_values(args[0], args[2]))
+        errors = np.asarray(sol.pricing_errors(args[0], args[1], values))
+    assert np.any(values < 0.0), "internal: the check needs negative SDF values"
+    assert not caught and out.getvalue() == "" and err.getvalue() == "", (
+        "A negative SDF value is legal: functions must neither warn nor print on it."
+    )
+    assert close(values, TEST @ b), "sdf_values must return x' b in every state, negative or not."
+    assert close(errors, TEST.T @ values / TEST.shape[0] - PRICES), (
+        "pricing_errors must be E_T[m x] - p for any finite SDF values, negative or not."
+    )
+
+
+@pytest.mark.parametrize("scale", [1e-11, 1e11], ids=["tiny-units", "huge-units"])
+def test_rank_check_is_scale_invariant(scale: float) -> None:
+    unit = np.asarray(sol.sdf_values(TRAIN, sol.x_star_weights(TRAIN, PRICES)))
+    small = np.asarray(sol.sdf_values(scale * TRAIN, sol.x_star_weights(scale * TRAIN, scale * PRICES)))
+    assert close(small, unit, 1e-7), (
+        "Measuring payoffs and prices in other units cannot change x*, so the redundancy check must not depend on "
+        "the absolute size of the payoffs (L04, Theorem 3.2)."
+    )
+    pop_unit = np.asarray(sol.population_x_star(PROBS, PAYOFFS, PRICES))
+    pop = np.asarray(sol.population_x_star(PROBS, scale * PAYOFFS, scale * PRICES))
+    assert close(pop, pop_unit, 1e-7), "population_x_star must not depend on the absolute size of the payoffs."
+    out = sol.recover_sdf(scale * TRAIN, scale * TEST, scale * PRICES)
+    assert close(scale * np.asarray(out.weights), np.asarray(sol.x_star_weights(TRAIN, PRICES)), 1e-7), (
+        "recover_sdf must not depend on the absolute size of the payoffs."
+    )
 
 
 def test_imports_only_numpy_and_the_standard_library() -> None:
