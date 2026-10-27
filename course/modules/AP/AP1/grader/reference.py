@@ -11,7 +11,7 @@ Conventions (the project specification, project.html §3):
 * x* = x' b with b = E[x x']^{-1} p is the unique SDF in the payoff space (Lesson 4, Theorem 3.2). The minimum-variance
   SDF with mean v is m_v = v + (x - E[x])' beta with beta = Cov(x)^{-1} (p - v E[x]) (Lesson 5, Theorem 2.1).
 
-Every function is pure: it validates its inputs, raises ValueError (its message says what was wrong), and
+Every function is pure: it validates its inputs, raises ValueError, and
 never prints, warns or mutates its arguments.
 """
 
