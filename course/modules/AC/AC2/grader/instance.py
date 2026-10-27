@@ -72,10 +72,9 @@ FLOW_ITEMS: frozenset[str] = frozenset(
 )
 
 BENEISH_STATUS = (
-    "UNCONFIRMED. Reproduced by one secondary web source (the English Wikipedia article 'Beneish M-score', read "
-    "2026-10-27), which cites Beneish (1999) without a table or page locator. Not checked against the paper "
-    "(Financial Analysts Journal 55(5), registry key beneish1999detection), which was not readable here. Grade C "
-    "at best until a locator into the paper's table is confirmed."
+    "UNCONFIRMED. ONE secondary source, the Wikipedia page 'Beneish M-score' (read 2026-10-27), reproduces these "
+    "values; nothing else could be read. The values have not been checked against Beneish (1999), registry key "
+    "beneish1999detection, and no table or page locator into the paper is confirmed. Grade C at most."
 )
 BENEISH_INTERCEPT: float = -4.84
 BENEISH_COEFFICIENTS: Mapping[str, float] = {

@@ -61,7 +61,8 @@ TAG_PRIORITY: Mapping[str, tuple[str, ...]] = {
     "equity": ("StockholdersEquity",),
     "shares_outstanding": ("CommonStockSharesOutstanding",),
 }
-# The Beneish (1999) constants are UNCONFIRMED: reproduced by one secondary web source without a locator.
+# The Beneish (1999) constants are UNCONFIRMED: ONE secondary source (the Wikipedia page
+# 'Beneish M-score', read 2026-10-27) reproduces them; nothing else could be read.
 BENEISH_INTERCEPT: float = -4.84
 BENEISH_COEFFICIENTS: Mapping[str, float] = {
     "DSRI": 0.920,
@@ -356,7 +357,10 @@ _MJ_KEYS = ("total_accruals", "lag_assets", "d_revenue", "d_receivables", "ppe")
 
 
 def modified_jones(sample: Sequence[Mapping[str, float]]) -> dict[str, Any]:
-    """Modified Jones model (Dechow, Sloan & Sweeney 1995), estimated by OLS without an intercept."""
+    """Modified Jones model (registry key dechow1995detecting, 'Detecting Earnings Management').
+
+    Estimated by OLS without an intercept.
+    """
     if not isinstance(sample, Sequence) or isinstance(sample, str):
         raise ValueError("sample must be a sequence of firm-year mappings")
     rows: list[list[float]] = []

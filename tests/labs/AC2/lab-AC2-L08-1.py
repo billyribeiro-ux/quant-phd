@@ -4,10 +4,11 @@ and the false-positive base-rate arithmetic for a screen.
 Every firm is SIMULATED (seeded generator, no filer represented). Index definitions are the
 contract's (atlas/A15.contract.md, beneish_m_score), which follow Beneish (1999).
 
-UNCONFIRMED CONSTANTS. The intercept and the eight weights below are candidate values reported
-by secondary web sources. They have NOT been confirmed against Beneish (1999) or a source that
-reproduces its table. Two sources disagree on the TATA weight (4.679 and 4.697). The M-values
-printed here are therefore illustrations of the arithmetic, not evidence of anything.
+UNCONFIRMED CONSTANTS. The intercept and the eight weights below are candidate values taken from
+the Wikipedia page "Beneish M-score" (https://en.wikipedia.org/wiki/Beneish_M-score, read by plain
+curl on 2026-10-27), a secondary source. They have NOT been confirmed against Beneish (1999) or a
+source that reproduces its table. The M-values printed here are therefore illustrations of the
+arithmetic, not evidence of anything.
 
 The base-rate section uses illustrative inputs (a sensitivity of 0.5 and the grid of prevalences
 and specificities printed below). They are assumptions, not estimates from any study.
@@ -249,12 +250,13 @@ def main() -> None:
 
     # Each index is a ratio of money items, so every index and M are unchanged when money scales.
     unchanged = 0
-    for p, t in clean_pairs[:100]:
+    all_pairs = clean_pairs + planted_pairs
+    for p, t in all_pairs:
         a = beneish_indices(t, p)
         b = beneish_indices(scale(t, 1000.0), scale(p, 1000.0))
         if all(abs(a[k] - b[k]) <= 1e-9 * max(1.0, abs(a[k])) for k in a):
             unchanged += 1
-    print(f"indices unchanged under money x1000 (first 100 clean): {unchanged}/100")
+    print(f"indices unchanged under money x1000 (all clean and planted firm-years): {unchanged}/{len(all_pairs)}")
 
     print("base-rate table (illustrative sensitivity 0.5):")
     print("  prevalence  specificity   FPR    PPV     false flags per 1000")

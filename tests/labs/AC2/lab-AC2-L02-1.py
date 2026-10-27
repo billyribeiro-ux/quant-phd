@@ -1,6 +1,6 @@
 """AC2 lab L02: ratio analysis and the DuPont identity on a SIMULATED generated filer.
 
-SIMULATED: the filer is generated from a seeded RNG (make_filer, the same mapping as Lab 1). Nothing here is a real
+SIMULATED: the filer is generated from a seeded RNG (make_filer, as in Lesson 1's lab). Nothing here is a real
 company's data. The ratios follow atlas/A15.contract.md (Ratios, Conventions). The lab checks the identity
 roe == net_margin * asset_turnover * leverage to relative 1e-12 in every year that has a previous year, and shows
 how the choice of denominator (year-end or average) moves ROE. Standard library only; no network.
@@ -146,16 +146,29 @@ def _as_of_pick(
     rows = block.get("units", {}).get(unit, [])
     if not isinstance(rows, list):
         raise ValueError(f"{tag} [{unit}]: observations must be a list")
-    best: dict[date, Observation] = {}
+    candidates: dict[date, list[Observation]] = {}
     for raw in rows:
         obs = _observation(raw, tag, unit)
         if not _is_annual(obs, flow):
             continue
         if cutoff is not None and obs.filed > cutoff:
             continue
-        current = best.get(obs.end)
-        if current is None or (obs.filed, obs.accn) > (current.filed, current.accn):
-            best[obs.end] = obs
+        candidates.setdefault(obs.end, []).append(obs)
+    best: dict[date, Observation] = {}
+    for end, group in candidates.items():
+        # Rank by (filed, accn or ""), best first. Contract: if the two best tie on that key and carry different
+        # val, the facts are inconsistent and standardize raises ValueError. Equal values are not a conflict.
+        ranked = sorted(group, key=lambda o: (o.filed, o.accn), reverse=True)
+        top = ranked[0]
+        if len(ranked) > 1:
+            runner = ranked[1]
+            if (top.filed, top.accn) == (runner.filed, runner.accn) and top.val != runner.val:
+                raise ValueError(
+                    f"{tag} at period end {end.isoformat()}: two annual observations tie on "
+                    f"(filed {top.filed.isoformat()}, accn {top.accn!r}) with different values "
+                    f"{top.val!r} and {runner.val!r}"
+                )
+        best[end] = top
     return best
 
 
@@ -380,6 +393,13 @@ def scaled(statements: Statements, factor: float) -> dict[str, dict[str, float]]
     }
 
 
+def tie_filer(first: float, second: float) -> dict[str, Any]:
+    """A SIMULATED one-tag mapping with two annual observations filed the same day under the same accession."""
+    row = {"end": "2023-12-31", "filed": "2024-02-15", "form": "10-K", "fp": "FY", "accn": "SIM-2023-K"}
+    rows = [{**row, "val": first}, {**row, "val": second}]
+    return {"facts": {"us-gaap": {"Assets": {"units": {"USD": rows}}}}}
+
+
 def millions(value: float) -> str:
     return f"{value / 1e6:,.1f}"
 
@@ -436,6 +456,16 @@ def main() -> None:
         share = math.log(later[factor] / earlier[factor])
         print(f"  {factor}: log change {share:.4f}, share of the change {100 * share / log_total:.1f}%")
 
+    for label, payload in (
+        ("conflicting tie", tie_filer(1.0, 2.0)),
+        ("equal-valued tie", tie_filer(1.0, 1.0)),
+    ):
+        try:
+            standardize(payload)
+        except ValueError as exc:
+            print(f"ValueError ({label}): {exc}")
+        else:
+            print(f"no error ({label})")
     scaled_stmt = scaled(statements, 1000.0)
     same = all(
         abs(dupont(scaled_stmt, end)[k] - dupont(statements, end)[k]) <= 1e-12 * abs(dupont(statements, end)[k])

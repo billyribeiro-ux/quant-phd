@@ -3,7 +3,8 @@
 SIMULATED: every firm-year is generated here from the seeded model below. No filing is read.
 The manipulation is planted by the author: a known share of firms receives a positive discretionary
 accrual of SHIFT times lagged assets. The lab asks whether the regression recovers it, and reports
-the limits of that recovery. A flagged firm in this lab is a firm the generator made manipulate.
+the limits of that recovery. The generator records which firm-years manipulate, so every flag can be scored.
+The flag scores quoted in the lesson are one simulated draw (seed 606) and are not averages over seeds.
 In real data, a large discretionary accrual is evidence of a candidate, not of intent.
 
 Model, per firm i (all money in currency units, CU; ratios are per unit of lagged assets):
@@ -117,6 +118,8 @@ def report(label: str, s: Sample) -> None:
         f"{label} oracle_top10pct true_positive_rate {float(np.mean(flagged_o[m])):.4f} "
         f"false_positive_rate {float(np.mean(flagged_o[~m])):.4f}"
     )
+    print(f"{label} flags_only_all_firms {int(np.sum(flagged & ~flagged_o))}")
+    print(f"{label} flags_only_oracle {int(np.sum(flagged_o & ~flagged))}")
     print(f"{label} flags_differing_all_vs_oracle {int(np.sum(flagged != flagged_o))}")
 
 

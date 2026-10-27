@@ -3,9 +3,10 @@
 SIMULATED: every firm is generated here from a seeded generator. No filing is read.
 Units: currency units (CU) for every money item, and ratios are unitless.
 
-The generator builds balance sheets first. Cash is the balancing item, and the cash-flow statement
-is derived from the balance sheet by the indirect-method identity, so the statements articulate by
-construction. Scenario "clean" keeps non-current operating items and long-term debt unchanged;
+The generator draws cash and the operating items for two year-ends, takes equity as the balance-sheet
+residual (assets less liabilities), and derives net income from the change in equity plus distributions
+(clean surplus). The cash-flow statement is then built from the balance-sheet changes, so the statements
+articulate by construction. Scenario "clean" keeps non-current operating items and long-term debt unchanged;
 scenario "moving" lets them move, which is where the two measures part company.
 """
 

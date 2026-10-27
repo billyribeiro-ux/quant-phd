@@ -57,9 +57,9 @@
         <p>A <dfn id="def-financial-ratio-analysis" data-concept="financial-ratio-analysis">financial ratio</dfn> is a quotient of two standardized items, or of one item and the average of two of its year-end values, with a stated denominator timing. The ratio is dimensionless. The A15 engine reads its inputs from the standardized table of <a class="concept" data-concept="xbrl-standardization" href="L01.html#def-xbrl-standardization">Lesson 1</a>, and every ratio it returns is defined on that table alone.</p>
       </div>
 
-      <p>The A15 contract fixes three conventions that every ratio here obeys. The previous year is the latest period end 350 to 380 days earlier. An average is \((x_t + x_{t-1})/2\) of year-end balances. A missing item, or a missing previous year, raises <code>ValueError</code> and is never imputed. The conventions are the A15 contract's. The module's core reading for the ratio framework is Penman (2013). The chapter that carries these conventions has not been read for this build, so no locator is given for them.</p>
+      <p>The A15 contract fixes three conventions that every ratio here obeys. The previous year is the latest period end 350 to 380 days earlier. An average is \((x_t + x_{t-1})/2\) of year-end balances. A missing item, or a missing previous year, raises <code>ValueError</code> and is never imputed. The conventions are the A15 contract's. The module's core reading for the ratio framework is Penman (2013). The passage locator for these conventions is not confirmed.</p>
 
-      <p><span class="claim" data-grade="C" data-cite="penman2013financial" data-locator="unconfirmed: the ratio and return chapters were not read in this build">The ratio framework used here, with average balances for return measures and year-end balances for solvency and liquidity measures, is the one Penman (2013) presents as the standard analysis of reported statements.</span> The grade is C because it is a single textbook's presentation, and the claim has not been checked against the page.</p>
+      <p><span class="claim" data-grade="C" data-cite="penman2013financial" data-locator="passage locator not confirmed">The ratio framework used here, with average balances for return measures and year-end balances for solvency and liquidity measures, is the one Penman (2013) presents as the standard analysis of reported statements.</span> The grade is C because it is a single textbook's presentation, and the claim has not been checked against the page.</p>
 
       <div class="block proposition">
         <span class="block-title claim" data-grade="T">Proposition 1.2 <span class="name">(scale invariance)</span></span>
@@ -83,11 +83,11 @@
       </div>
 
       <section class="lab" id="lab-AC2-L02-1" data-runtime="python">
-        <h3>Lab 2 · The DuPont identity and the ratio conventions on a SIMULATED filer</h3>
-        <p class="hypothesis">The lab runs the same SIMULATED filer as Lab 1 through the standardizer, then computes the five DuPont measures with average balances for each year that has a previous year, and the other ratios on year-end balances. Predicted from the rules, before running: the identity holds to relative 1e-12 in every year that has a previous year; the 2020 year end raises <code>ValueError</code> for DuPont, because it has no previous year in the table; multiplying every money item by 1000 leaves every ratio unchanged; and the average-based ROE for 2022 is higher than the year-end-based ROE, because equity grew.</p>
+        <h3>Lab 1 · The DuPont identity and the ratio conventions on a SIMULATED filer</h3>
+        <p class="hypothesis">The lab runs the same SIMULATED filer as Lesson 1's lab, passed through the standardizer, then computes the five DuPont measures with average balances for each year that has a previous year, and the other ratios on year-end balances. Predicted from the rules, before running: the identity holds to relative 1e-12 in every year that has a previous year; the 2020 year end raises <code>ValueError</code> for DuPont, because it has no previous year in the table; multiplying every money item by 1000 leaves every ratio unchanged; and the average-based ROE for 2022 is higher than the year-end-based ROE, because equity grew. The copied standardizer raises on a conflicting tie between the two best observations, as in Lesson 1's lab, and an equal-valued tie does not raise.</p>
         <pre><code class="language-python" data-run>"""AC2 lab L02: ratio analysis and the DuPont identity on a SIMULATED generated filer.
 
-SIMULATED: the filer is generated from a seeded RNG (make_filer, the same mapping as Lab 1). Nothing here is a real
+SIMULATED: the filer is generated from a seeded RNG (make_filer, as in Lesson 1's lab). Nothing here is a real
 company's data. The ratios follow atlas/A15.contract.md (Ratios, Conventions). The lab checks the identity
 roe == net_margin * asset_turnover * leverage to relative 1e-12 in every year that has a previous year, and shows
 how the choice of denominator (year-end or average) moves ROE. Standard library only; no network.
@@ -233,16 +233,29 @@ def _as_of_pick(
     rows = block.get("units", {}).get(unit, [])
     if not isinstance(rows, list):
         raise ValueError(f"{tag} [{unit}]: observations must be a list")
-    best: dict[date, Observation] = {}
+    candidates: dict[date, list[Observation]] = {}
     for raw in rows:
         obs = _observation(raw, tag, unit)
         if not _is_annual(obs, flow):
             continue
         if cutoff is not None and obs.filed &gt; cutoff:
             continue
-        current = best.get(obs.end)
-        if current is None or (obs.filed, obs.accn) &gt; (current.filed, current.accn):
-            best[obs.end] = obs
+        candidates.setdefault(obs.end, []).append(obs)
+    best: dict[date, Observation] = {}
+    for end, group in candidates.items():
+        # Rank by (filed, accn or ""), best first. Contract: if the two best tie on that key and carry different
+        # val, the facts are inconsistent and standardize raises ValueError. Equal values are not a conflict.
+        ranked = sorted(group, key=lambda o: (o.filed, o.accn), reverse=True)
+        top = ranked[0]
+        if len(ranked) &gt; 1:
+            runner = ranked[1]
+            if (top.filed, top.accn) == (runner.filed, runner.accn) and top.val != runner.val:
+                raise ValueError(
+                    f"{tag} at period end {end.isoformat()}: two annual observations tie on "
+                    f"(filed {top.filed.isoformat()}, accn {top.accn!r}) with different values "
+                    f"{top.val!r} and {runner.val!r}"
+                )
+        best[end] = top
     return best
 
 
@@ -467,6 +480,13 @@ def scaled(statements: Statements, factor: float) -&gt; dict[str, dict[str, floa
     }
 
 
+def tie_filer(first: float, second: float) -&gt; dict[str, Any]:
+    """A SIMULATED one-tag mapping with two annual observations filed the same day under the same accession."""
+    row = {"end": "2023-12-31", "filed": "2024-02-15", "form": "10-K", "fp": "FY", "accn": "SIM-2023-K"}
+    rows = [{**row, "val": first}, {**row, "val": second}]
+    return {"facts": {"us-gaap": {"Assets": {"units": {"USD": rows}}}}}
+
+
 def millions(value: float) -&gt; str:
     return f"{value / 1e6:,.1f}"
 
@@ -523,6 +543,16 @@ def main() -&gt; None:
         share = math.log(later[factor] / earlier[factor])
         print(f"  {factor}: log change {share:.4f}, share of the change {100 * share / log_total:.1f}%")
 
+    for label, payload in (
+        ("conflicting tie", tie_filer(1.0, 2.0)),
+        ("equal-valued tie", tie_filer(1.0, 1.0)),
+    ):
+        try:
+            standardize(payload)
+        except ValueError as exc:
+            print(f"ValueError ({label}): {exc}")
+        else:
+            print(f"no error ({label})")
     scaled_stmt = scaled(statements, 1000.0)
     same = all(
         abs(dupont(scaled_stmt, end)[k] - dupont(statements, end)[k]) &lt;= 1e-12 * abs(dupont(statements, end)[k])
@@ -574,6 +604,8 @@ log change in ROE, 2023 to 2024: -0.3401
   net_margin: log change -0.2997, share of the change 88.1%
   asset_turnover: log change -0.0221, share of the change 6.5%
   leverage: log change -0.0184, share of the change 5.4%
+ValueError (conflicting tie): Assets at period end 2023-12-31: two annual observations tie on (filed 2024-02-15, accn 'SIM-2023-K') with different values 1.0 and 2.0
+no error (equal-valued tie)
 ratios unchanged when every money item is multiplied by 1000: True
 ValueError (dupont at the first period end (no previous year)): no previous year for 2020-12-31: no period end 350 to 380 days earlier
 ValueError (debt_to_assets at 2020-12-31 (long_term_debt not published)): long_term_debt is missing for period end 2020-12-31
@@ -602,7 +634,7 @@ ValueError (dupont with zero revenue): net_margin: zero denominator</pre>
 
       <div class="block example">
         <span class="block-title">Example 3.3 <span class="name">(FY2023 of the SIMULATED filer)</span></span>
-        <p>Lab 2 prints, for 2023, net margin 0.1179, asset turnover 0.8701, leverage 1.6936 and ROE 0.1738. The three rounded factors multiply to 0.1737 in the last printed digit, because each factor is rounded before the product is taken. The identity holds on the unrounded values, and the lab's <code>identity_ok</code> column is true for every year.</p>
+        <p>Lab 1 prints, for 2023, net margin 0.1179, asset turnover 0.8701, leverage 1.6936 and ROE 0.1738. The three rounded factors multiply to 0.1737 in the last printed digit, because each factor is rounded before the product is taken. The identity holds on the unrounded values, and the lab's <code>identity_ok</code> column is true for every year.</p>
       </div>
 
       <div class="block remark">
@@ -612,7 +644,7 @@ ValueError (dupont with zero revenue): net_margin: zero denominator</pre>
 
       <p>The allocation is most useful as a decomposition of a change. Taking logarithms turns the product into a sum, and the sum is exact:
       \[ \ln \frac{\mathrm{ROE}_b}{\mathrm{ROE}_a} = \sum_{f} \ln \frac{f_b}{f_a}, \]
-      where \(f\) runs over the three factors. Each term is the share of the change that the factor explains (Problem P3). Lab 2 prints the decomposition for the change from 2023 to 2024: the log change in ROE is \(-0.3401\), and net margin accounts for 88.1% of it, asset turnover for 6.5% and leverage for 5.4%. The shares are exact, and they sum to 100%.</p>
+      where \(f\) runs over the three factors. Each term is the share of the change that the factor explains (Problem P3). Lab 1 prints the decomposition for the change from 2023 to 2024: the log change in ROE is \(-0.3401\), and net margin accounts for 88.1% of it, asset turnover for 6.5% and leverage for 5.4%. The shares are exact, and they sum to 100%.</p>
 
       <h2 id="s4"><span class="section-number">4</span>Other ratios the engine computes</h2>
 
@@ -623,7 +655,7 @@ ValueError (dupont with zero revenue): net_margin: zero denominator</pre>
 
       <div class="block example">
         <span class="block-title">Example 4.2 <span class="name">(the DSO exposes a restatement)</span></span>
-        <p>In Lab 2, days sales outstanding is 43.80 in every year except 2022, where it is 43.28. The receivables figure is the same for every filing, but the 2022 revenue used in the ratio is the restated 1,145.5 USD m rather than the 1,131.9 USD m originally filed. The ratio therefore matches neither filing. The lab shows the same effect on FY2022 net margin: 0.1228 as filed, 0.1214 restated. Section 5 returns to this as a canon break.</p>
+        <p>In Lab 1, days sales outstanding is 43.80 in every year except 2022, where it is 43.28. The receivables figure is the same for every filing, but the 2022 revenue used in the ratio is the restated 1,145.5 USD m rather than the 1,131.9 USD m originally filed. The ratio therefore matches neither filing. The lab shows the same effect on FY2022 net margin: 0.1228 as filed, 0.1214 restated. Section 5 returns to this as a canon break.</p>
       </div>
 
       <h2 id="s5"><span class="section-number">5</span>Where the canon breaks</h2>
@@ -632,9 +664,9 @@ ValueError (dupont with zero revenue): net_margin: zero denominator</pre>
         <p>The standard analysis reads a ratio as a measure of performance or risk. Four features of the definitions in this lesson make that reading unsafe without checks.</p>
         <ul>
           <li><strong>Leverage counts every liability.</strong> Total assets equal total liabilities plus equity, by articulation. So assets over equity equals one plus liabilities over equity, and every liability raises the leverage factor. Payables and deferred revenue raise it as much as borrowings do. A rise in the leverage factor therefore does not mean the firm borrowed more. The A15 engine's leverage factor is total assets over equity by contract, so the lesson draws no financing conclusion from it alone.</li>
-          <li><strong>Denominators must match.</strong> Theorem 3.2 needs one average in every factor. Lab 2 shows the mismatch: with year-end assets in turnover and average assets in leverage, the 2022 product is 0.1838 against an ROE of 0.1925. The mismatch is a bug, not a view.</li>
+          <li><strong>Denominators must match.</strong> Theorem 3.2 needs one average in every factor. Lab 1 shows the mismatch: with year-end assets in turnover and average assets in leverage, the 2022 product is 0.1838 against an ROE of 0.1925. The mismatch is a bug, not a view.</li>
           <li><strong>A restatement can split a ratio across two states of the filing.</strong> Example 4.2 shows the 2022 DSO built from one restated item and one unrestated item. A ratio should be computed from one as-of state of the table, which the standardizer's cut-off makes possible.</li>
-          <li><strong>Scale invariance is within a filer.</strong> Proposition 1.2 says a ratio does not depend on the currency unit of one filer. It says nothing about two filers that report under different accounting policies. <span class="claim" data-grade="C" data-cite="penman2013financial" data-locator="unconfirmed: the accounting-comparability discussion was not read in this build">Penman (2013) treats adjustment for accounting differences as part of the analysis of reported statements.</span></li>
+          <li><strong>Scale invariance is within a filer.</strong> Proposition 1.2 says a ratio does not depend on the currency unit of one filer. It says nothing about two filers that report under different accounting policies. <span class="claim" data-grade="C" data-cite="penman2013financial" data-locator="passage locator not confirmed">Penman (2013) treats adjustment for accounting differences as part of the analysis of reported statements.</span></li>
         </ul>
       </section>
 
@@ -643,19 +675,19 @@ ValueError (dupont with zero revenue): net_margin: zero denominator</pre>
         <ol>
           <li class="misconception">
             <p class="wrong">“A higher ROE means the firm runs its operations better.”</p>
-            <p>By Theorem 3.2, ROE can rise with no change in margin or turnover, if the leverage factor rises. The factor is an accounting ratio of total assets to equity, and Lab 2 shows the three factors moving independently. The operating reading requires the margin and turnover factors, not ROE alone.</p>
+            <p>By Theorem 3.2, ROE can rise with no change in margin or turnover, if the leverage factor rises. The factor is an accounting ratio of total assets to equity, and Lab 1 shows the three factors moving independently. The operating reading requires the margin and turnover factors, not ROE alone.</p>
           </li>
           <li class="misconception">
             <p class="wrong">“Average and year-end balances give the same return up to rounding.”</p>
-            <p>For a balance that moves, they do not. Lab 2's FY2022 ROE is 0.1925 on average equity and 0.1820 on year-end equity, a gap of 5.8%. Remark 2.1 gives the formula, and the gap grows with the growth rate of the balance.</p>
+            <p>For a balance that moves, they do not. Lab 1's FY2022 ROE is 0.1925 on average equity and 0.1820 on year-end equity, a gap of 5.8%. Remark 2.1 gives the formula, and the gap grows with the growth rate of the balance.</p>
           </li>
           <li class="misconception">
             <p class="wrong">“The DuPont identity holds whichever average is used in each factor.”</p>
-            <p>Theorem 3.2 needs the same average in the turnover and the leverage. Lab 2's mismatched product is 0.1838, not the ROE of 0.1925, so the identity fails when the denominators differ.</p>
+            <p>Theorem 3.2 needs the same average in the turnover and the leverage. Lab 1's mismatched product is 0.1838, not the ROE of 0.1925, so the identity fails when the denominators differ.</p>
           </li>
           <li class="misconception">
             <p class="wrong">“Because ratios are unit-free, any two firms' ratios can be compared directly.”</p>
-            <p>Proposition 1.2 makes a ratio unit-free within one filer. Comparing two filers also needs their accounting to be comparable, and the scale of a filing does not guarantee that. This is the C-graded claim of Section 1, whose locator is unconfirmed.</p>
+            <p>Proposition 1.2 makes a ratio unit-free within one filer. Comparing two filers also needs their accounting to be comparable, and the scale of a filing does not guarantee that. This is the C-graded claim of Section 1; its passage locator is not confirmed.</p>
           </li>
         </ol>
       </section>
@@ -718,21 +750,21 @@ ValueError (dupont with zero revenue): net_margin: zero denominator</pre>
           <h3>Empirical</h3>
           <div class="problem" id="E1">
             <span class="problem-title">E1 · Which year had the largest fall in ROE? (SIMULATED)</span>
-            <p>Using Lab 2's ROE column, compute the percentage change in ROE from each year to the next, and say which year-on-year change is largest in size.</p>
+            <p>Using Lab 1's ROE column, compute the percentage change in ROE from each year to the next, and say which year-on-year change is largest in size.</p>
             <details class="solution"><summary>Solution</summary>
               <p>From 2021 to 2022, ROE moves from 0.2100 to 0.1925, a change of \(0.1925/0.2100 - 1 = -8.3\%\). From 2022 to 2023 it moves to 0.1738, a change of \(-9.7\%\). From 2023 to 2024 it moves to 0.1237, a change of \(0.1237/0.1738 - 1 = -28.8\%\). The largest change is the last one. The ratios are computed from the SIMULATED filer, so the lesson reports the generator's shape and not a finding about any firm.</p>
             </details>
           </div>
           <div class="problem" id="E2">
             <span class="problem-title">E2 · Attribute the 2023 to 2024 fall (SIMULATED)</span>
-            <p>Using the 2023 and 2024 rows of Lab 2 and Problem P3, compute each factor's share of the log change in ROE over that year. Which factor dominates?</p>
+            <p>Using the 2023 and 2024 rows of Lab 1 and Problem P3, compute each factor's share of the log change in ROE over that year. Which factor dominates?</p>
             <details class="solution"><summary>Solution</summary>
-              <p>Net margin moves from 0.1179 to 0.0874, a log change of \(\ln(0.0874/0.1179) = -0.2997\). Asset turnover moves from 0.8701 to 0.8511, a log change of \(-0.0221\). Leverage moves from 1.6936 to 1.6628, a log change of \(-0.0184\). The total is \(-0.3401\), which matches \(\ln(0.1237/0.1738) = -0.3401\). Lab 2 prints these logs and the shares, \(88.1\%\), \(6.5\%\) and \(5.4\%\). Net margin dominates. The log changes are computed from unrounded factors, so they can differ from a recomputation on the four-digit values in the last digit.</p>
+              <p>Net margin moves from 0.1179 to 0.0874, a log change of \(\ln(0.0874/0.1179) = -0.2997\). Asset turnover moves from 0.8701 to 0.8511, a log change of \(-0.0221\). Leverage moves from 1.6936 to 1.6628, a log change of \(-0.0184\). The total is \(-0.3401\), which matches \(\ln(0.1237/0.1738) = -0.3401\). Lab 1 prints these logs and the shares, \(88.1\%\), \(6.5\%\) and \(5.4\%\). Net margin dominates. The log changes are computed from unrounded factors, so they can differ from a recomputation on the four-digit values in the last digit.</p>
             </details>
           </div>
           <div class="problem" id="E3">
             <span class="problem-title">E3 · Why is DSO constant? (SIMULATED)</span>
-            <p>Lab 2 prints 43.80 days for DSO in most years. Explain the constant from the generator's rule, and explain why 2022 differs.</p>
+            <p>Lab 1 prints 43.80 days for DSO in most years. Explain the constant from the generator's rule, and explain why 2022 differs.</p>
             <details class="solution"><summary>Solution</summary>
               <p>The generator sets receivables to 12% of the year's revenue, so \(\mathrm{DSO} = 0.12 \times 365 = 43.80\) days in every year whose revenue is the originally filed figure. The constant is a property of the simulation, not a finding about receivables. For 2022 the ratio uses the restated revenue of 1,145.5 against receivables built on the original 1,131.9, so DSO is \(43.80 \times 1{,}131.9 / 1{,}145.5 = 43.28\) days. The difference is the restatement entering one ratio and not the other.</p>
             </details>
@@ -772,11 +804,11 @@ ValueError (dupont with zero revenue): net_margin: zero denominator</pre>
             <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
             <tbody>
               <tr><td>Ratios of money items are unchanged when every money item is scaled by a non-zero constant (Proposition 1.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §1</td></tr>
-              <tr><td>With average balances in every factor, ROE equals net margin times asset turnover times leverage exactly (Theorem 3.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3; Lab 2 checks it on every year</td></tr>
-              <tr><td>The log change in ROE splits exactly into one share per factor (Problem P3)</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P3; Lab 2 table</td></tr>
+              <tr><td>With average balances in every factor, ROE equals net margin times asset turnover times leverage exactly (Theorem 3.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3; Lab 1 checks it on every year</td></tr>
+              <tr><td>The log change in ROE splits exactly into one share per factor (Problem P3)</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P3; Lab 1 table</td></tr>
               <tr><td>For a balance growing at rate \(g\), average-based return is \(2(1+g)/(2+g)\) times year-end-based return (Remark 2.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Remark 2.1; Problem R3</td></tr>
-              <tr><td>For FY2022 the average-equity ROE of 0.1925 exceeds the year-end figure of 0.1820 by 5.8%, a timing effect with no change in performance (Remark 2.1)</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 2 (SIMULATED): a simulated result; the timing mechanism is Remark 2.1</td></tr>
-              <tr><td>The ratio framework with average balances for returns and year-end balances for solvency is the standard one in Penman's textbook</td><td><span class="grade" data-grade="C">C</span></td><td><span class="ref" data-cite="penman2013financial" data-locator="unconfirmed: chapter and page not read in this build"></span></td></tr>
+              <tr><td>For FY2022 the average-equity ROE of 0.1925 exceeds the year-end figure of 0.1820 by 5.8%, a timing effect with no change in performance (Remark 2.1)</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1 (SIMULATED): a simulated result; the timing mechanism is Remark 2.1</td></tr>
+              <tr><td>The ratio framework with average balances for returns and year-end balances for solvency is the standard one in Penman (2013)</td><td><span class="grade" data-grade="C">C</span></td><td><span class="ref" data-cite="penman2013financial" data-locator="passage locator not confirmed"></span></td></tr>
             </tbody>
           </table>
         </div>
@@ -829,10 +861,10 @@ ValueError (dupont with zero revenue): net_margin: zero denominator</pre>
             <div class="explain" hidden><p>\(120/900 \times 360 = 48\) days. The A15 engine uses 365, which gives 48.67.</p></div>
           </li>
           <li class="item" data-kind="mc">
-            <p class="prompt">Why is the A15 ROE of 2022 in Lab 2 built from a mixed state of the filing?</p>
+            <p class="prompt">Why is the A15 ROE of 2022 in Lab 1 built from a mixed state of the filing?</p>
             <fieldset><legend class="visually-hidden">Options</legend>
               <label class="option"><input type="radio" name="L02q7"> The standardizer always mixes states</label>
-              <label class="option" data-correct><input type="radio" name="L02q7"> Lab 2 uses the no-cut-off table, whose restated revenue differs from the filing that set receivables</label>
+              <label class="option" data-correct><input type="radio" name="L02q7"> Lab 1 uses the no-cut-off table, whose restated revenue differs from the filing that set receivables</label>
               <label class="option"><input type="radio" name="L02q7"> Average equity cannot be computed for 2022</label>
             </fieldset>
             <div class="explain" hidden><p>Example 4.2: the DSO for 2022 uses restated revenue and unrestated receivables. The same logic applies to any ratio that mixes restated and original items.</p></div>
@@ -844,12 +876,12 @@ ValueError (dupont with zero revenue): net_margin: zero denominator</pre>
               <label class="option" data-correct><input type="radio" name="L02q8"> No previous year end 350 to 380 days earlier exists, so the average cannot be formed</label>
               <label class="option"><input type="radio" name="L02q8"> The identity fails in the first year</label>
             </fieldset>
-            <div class="explain" hidden><p>The A15 convention: a missing previous year raises <code>ValueError</code>. Lab 2 prints this for 2020-12-31.</p></div>
+            <div class="explain" hidden><p>The A15 convention: a missing previous year raises <code>ValueError</code>. Lab 1 prints this for 2020-12-31.</p></div>
           </li>
           <li class="item" data-kind="numeric" data-answer="0.3706" data-tolerance="0.0002">
-            <p class="prompt">What gross margin does Lab 2 print for the 2024 year end of the SIMULATED filer? (four decimals)</p>
+            <p class="prompt">What gross margin does Lab 1 print for the 2024 year end of the SIMULATED filer? (four decimals)</p>
             <label>Answer <input type="number" step="any"></label>
-            <div class="explain" hidden><p>The 2024 row of the year-end table in Lab 2 gives 0.3706.</p></div>
+            <div class="explain" hidden><p>The 2024 row of the year-end table in Lab 1 gives 0.3706.</p></div>
           </li>
         </ol>
       </section>

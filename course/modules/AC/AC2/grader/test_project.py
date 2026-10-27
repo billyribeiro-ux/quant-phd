@@ -157,7 +157,7 @@ def test_tag_priority_is_the_contract() -> None:
 
 def test_beneish_constants_are_exported() -> None:
     assert sol.BENEISH_INTERCEPT == BENEISH_INTERCEPT, (
-        "BENEISH_INTERCEPT must be the published intercept (page: constants)."
+        "BENEISH_INTERCEPT must be the shared intercept, which is UNCONFIRMED (see instance.BENEISH_STATUS)."
     )
     assert set(sol.BENEISH_COEFFICIENTS) == {"DSRI", "GMI", "AQI", "SGI", "DEPI", "SGAI", "LVGI", "TATA"}, (
         "BENEISH_COEFFICIENTS must hold the eight variable names, DSRI through TATA."
@@ -812,7 +812,8 @@ def test_beneish_variables_and_score_match_the_definitions() -> None:
         assert close(out[name], value, 1e-8), f"Beneish variable {name} must follow its definition."
     m = BENEISH_INTERCEPT + sum(BENEISH_COEFFICIENTS[k] * v for k, v in expected.items())
     assert close(out["m_score"], m, 1e-8), (
-        "M = intercept + sum of coefficient x variable, with the published constants (UNCONFIRMED, page: constants)."
+        "M = intercept + sum of coefficient x variable, with the shared constants "
+        "(UNCONFIRMED, see instance.BENEISH_STATUS)."
     )
 
 
@@ -951,3 +952,187 @@ def test_imports_only_numpy_and_standard_library() -> None:
             assert name.split(".")[0] in allowed, (
                 f"atlas/fundamentals may import only NumPy and the standard library, not {name}."
             )
+
+
+# ---------------------------------------------------------------- edges the contract states
+
+NEW_END = "2100-06-30"  # a period end that no generated filer reports
+
+
+def shift_days(iso: str, days: int) -> str:
+    return (dt.date.fromisoformat(iso) + dt.timedelta(days=days)).isoformat()
+
+
+def same_result(a: Any, b: Any) -> bool:
+    if isinstance(a, dict):
+        return a.keys() == b.keys() and all(same_result(a[k], b[k]) for k in a)
+    if isinstance(a, (tuple, list)):
+        return len(a) == len(b) and all(same_result(x, y) for x, y in zip(a, b, strict=True))
+    if isinstance(a, str):
+        return bool(a == b)
+    return close(float(a), float(b), 1e-9)
+
+
+@pytest.mark.parametrize(("days", "kept"), [(349, False), (350, True), (380, True), (381, False)])
+@pytest.mark.parametrize("name", ["dupont", "roic", "accruals_cash_flow", "accruals_balance_sheet"])
+def test_previous_year_window_edges(name: str, days: int, kept: bool) -> None:
+    # Contract: the previous year is the latest period end 350 to 380 days earlier. Its prior-year values are
+    # copied from FINAL, so only the date of that period end differs between the cases.
+    st = {LATEST: FINAL[LATEST], shift_days(LATEST, -days): FINAL[PRIOR]}
+    if kept:
+        assert same_result(RATIO_CALLS[name](st, LATEST), RATIO_CALLS[name](FINAL, LATEST)), (
+            f"{name}: a period end {days} days earlier is the previous year (350 to 380 days, both included)."
+        )
+    else:
+        must_raise(lambda: RATIO_CALLS[name](st, LATEST), f"{name} with the only earlier period end {days} days back")
+
+
+@pytest.mark.parametrize("name", ["dupont", "roic", "accruals_cash_flow", "accruals_balance_sheet"])
+def test_period_two_years_back_is_not_the_previous_year(name: str) -> None:
+    st = {LATEST: FINAL[LATEST], PRIOR2: FINAL[PRIOR2]}
+    must_raise(lambda: RATIO_CALLS[name](st, LATEST), f"{name} with only a period end two years back")
+
+
+@pytest.mark.parametrize(
+    ("days", "kept"), [(349, False), (350, True), (351, True), (379, True), (380, True), (381, False)]
+)
+def test_annual_flow_duration_window_edges(days: int, kept: bool) -> None:
+    # Contract: an annual flow observation has form 10-K*, fp FY and 350 <= (end - start).days <= 380.
+    obs = {
+        "end": NEW_END,
+        "start": shift_days(NEW_END, -days),
+        "val": 123456.0,
+        "filed": "2100-09-01",
+        "form": "10-K",
+        "fp": "FY",
+        "accn": "edge-0001",
+    }
+    out = sol.standardize(with_obs(FACTS, "NetIncomeLoss", obs))
+    if kept:
+        assert NEW_END in out and close(out[NEW_END]["net_income"], 123456.0), (
+            f"a 10-K flow of {days} days (fiscal year, 350 to 380 days) is annual and supplies net income."
+        )
+    else:
+        assert NEW_END not in out or "net_income" not in out[NEW_END], (
+            f"a 10-K flow of {days} days is outside the 350 to 380 day window: it is not annual."
+        )
+
+
+@pytest.mark.parametrize(
+    ("name", "edit"),
+    [
+        ("current_ratio", {"current_assets": 1e300, "current_liabilities": 1e-300}),
+        ("gross_margin", {"revenue": 1e-300, "cogs": -1e300}),
+        ("debt_to_assets", {"long_term_debt": 1e300, "total_assets": 1e-300}),
+        ("days_sales_outstanding", {"receivables": 1e300, "revenue": 1e-300}),
+        ("dupont", {"revenue": 1e-300, "net_income": 1e300}),
+        ("accruals_cash_flow", {"net_income": 1e300, "cfo": 0.0}),
+    ],
+)
+def test_overflowing_quotient_raises(name: str, edit: dict[str, float]) -> None:
+    # Contract: a non-finite result raises ValueError. The denominators here are finite and not zero.
+    st = copy.deepcopy(FINAL)
+    for item, value in edit.items():
+        st[LATEST][item] = value
+    if name == "accruals_cash_flow":
+        st[LATEST]["total_assets"] = 1e-300
+        st[PRIOR]["total_assets"] = 1e-300
+    must_raise(lambda: RATIO_CALLS[name](st, LATEST), f"{name} whose quotient overflows to a non-finite value")
+
+
+def test_overflowing_roic_raises() -> None:
+    st = copy.deepcopy(FINAL)
+    for end in (LATEST, PRIOR):
+        st[end]["equity"], st[end]["long_term_debt"], st[end]["cash"] = 1e-300, 0.0, 0.0
+    st[LATEST]["operating_income"] = 1e300
+    must_raise(lambda: sol.roic(st, LATEST, 0.25), "roic whose quotient overflows to a non-finite value")
+
+
+@pytest.mark.parametrize("field", ["end", "val", "filed", "form"])
+def test_observation_without_a_named_field_raises(field: str) -> None:
+    obs = {
+        "end": LATEST,
+        "val": 1.0,
+        "filed": str(CUTS["latest_filing"]),
+        "form": "10-K",
+        "fp": "FY",
+        "accn": "edge-0002",
+    }
+    obs.pop(field)
+    must_raise(lambda: sol.standardize(with_obs(FACTS, "Assets", obs)), f"an observation without {field}")
+
+
+PRIOR_ITEM_USE: dict[str, tuple[str, ...]] = {
+    "dupont": ("total_assets", "equity"),
+    "roic": ("equity", "long_term_debt", "cash"),
+    "accruals_cash_flow": ("total_assets",),
+    "accruals_balance_sheet": ("current_assets", "cash", "current_liabilities", "total_assets"),
+    "piotroski_f_score": (
+        "net_income",
+        "total_assets",
+        "long_term_debt",
+        "current_assets",
+        "current_liabilities",
+        "revenue",
+        "cogs",
+        "shares_outstanding",
+    ),
+    "beneish_m_score": (
+        "revenue",
+        "receivables",
+        "cogs",
+        "current_assets",
+        "ppe",
+        "total_assets",
+        "depreciation",
+        "sga",
+        "current_liabilities",
+        "long_term_debt",
+    ),
+}
+
+
+@pytest.mark.parametrize(("name", "item"), [(name, item) for name, items in PRIOR_ITEM_USE.items() for item in items])
+def test_missing_previous_year_item_raises(name: str, item: str) -> None:
+    # Contract: nothing is imputed; a function that needs a missing item raises ValueError.
+    st = copy.deepcopy(FINAL)
+    del st[PRIOR][item]
+    must_raise(lambda: RATIO_CALLS[name](st, LATEST), f"{name} with {item} missing for the previous year")
+
+
+def test_piotroski_missing_assets_two_years_back_raises() -> None:
+    st = copy.deepcopy(FINAL)
+    del st[PRIOR2]["total_assets"]
+    must_raise(lambda: sol.piotroski_f_score(st, LATEST), "piotroski_f_score with total assets missing two years back")
+
+
+def test_piotroski_strict_inequality_on_a_cfo_tie() -> None:
+    # Powers of two: ROA(t) = 64 / 1024 = 0.0625; cfo(t) = 64 gives CFO/assets = 0.0625, a tie. Signal 4 is strict.
+    st = copy.deepcopy(FINAL)
+    st[PRIOR2]["total_assets"] = 2048.0
+    st[PRIOR]["total_assets"] = 1024.0
+    st[PRIOR]["net_income"] = 128.0
+    st[PRIOR]["long_term_debt"] = 384.0
+    st[LATEST]["total_assets"] = 2048.0
+    st[LATEST]["net_income"] = 64.0
+    st[LATEST]["long_term_debt"] = 384.0
+    st[LATEST]["cfo"] = 64.0
+    signals = sol.piotroski_f_score(st, LATEST)["signals"]
+    assert int(signals[3]) == 0, "signal 4 is strict: CFO scaled equal to ROA scores 0."
+
+
+def test_instant_observation_with_a_start_date_is_ignored() -> None:
+    # Contract: an instant item is annual only when the observation has no start date; other observations are ignored.
+    obs = {
+        "end": NEW_END,
+        "start": shift_days(NEW_END, -364),
+        "val": 987654.0,
+        "filed": "2100-09-01",
+        "form": "10-K",
+        "fp": "FY",
+        "accn": "edge-0003",
+    }
+    out = sol.standardize(with_obs(FACTS, "Assets", obs))
+    assert NEW_END not in out or "total_assets" not in out[NEW_END], (
+        "an instant item with a start date is not annual: it must be ignored."
+    )

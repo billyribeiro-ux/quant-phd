@@ -1,6 +1,6 @@
 """AC2 lab L03: NOPAT, invested capital and ROIC on a SIMULATED generated filer.
 
-SIMULATED: the filer is generated from a seeded RNG (make_filer, the same mapping as Labs 1 and 2). Nothing here is
+SIMULATED: the filer is generated from a seeded RNG (make_filer, as in Lesson 1's lab). Nothing here is
 a real company's data. The definitions follow atlas/A15.contract.md (roic): NOPAT = operating_income * (1 - tax_rate)
 with 0 <= tax_rate < 1, and invested capital = equity + long_term_debt - cash at each year end, averaged over the
 two year ends. The lab checks that ROIC scales exactly with (1 - tax_rate), and shows what the cash convention and the
@@ -147,16 +147,29 @@ def _as_of_pick(
     rows = block.get("units", {}).get(unit, [])
     if not isinstance(rows, list):
         raise ValueError(f"{tag} [{unit}]: observations must be a list")
-    best: dict[date, Observation] = {}
+    candidates: dict[date, list[Observation]] = {}
     for raw in rows:
         obs = _observation(raw, tag, unit)
         if not _is_annual(obs, flow):
             continue
         if cutoff is not None and obs.filed > cutoff:
             continue
-        current = best.get(obs.end)
-        if current is None or (obs.filed, obs.accn) > (current.filed, current.accn):
-            best[obs.end] = obs
+        candidates.setdefault(obs.end, []).append(obs)
+    best: dict[date, Observation] = {}
+    for end, group in candidates.items():
+        # Rank by (filed, accn or ""), best first. Contract: if the two best tie on that key and carry different
+        # val, the facts are inconsistent and standardize raises ValueError. Equal values are not a conflict.
+        ranked = sorted(group, key=lambda o: (o.filed, o.accn), reverse=True)
+        top = ranked[0]
+        if len(ranked) > 1:
+            runner = ranked[1]
+            if (top.filed, top.accn) == (runner.filed, runner.accn) and top.val != runner.val:
+                raise ValueError(
+                    f"{tag} at period end {end.isoformat()}: two annual observations tie on "
+                    f"(filed {top.filed.isoformat()}, accn {top.accn!r}) with different values "
+                    f"{top.val!r} and {runner.val!r}"
+                )
+        best[end] = top
     return best
 
 
@@ -342,6 +355,13 @@ def roic(statements: Statements, period_end: str, tax_rate: float) -> float:
     return value
 
 
+def tie_filer(first: float, second: float) -> dict[str, Any]:
+    """A SIMULATED one-tag mapping with two annual observations filed the same day under the same accession."""
+    row = {"end": "2023-12-31", "filed": "2024-02-15", "form": "10-K", "fp": "FY", "accn": "SIM-2023-K"}
+    rows = [{**row, "val": first}, {**row, "val": second}]
+    return {"facts": {"us-gaap": {"Assets": {"units": {"USD": rows}}}}}
+
+
 def millions(value: float) -> str:
     return f"{value / 1e6:,.1f}"
 
@@ -391,6 +411,16 @@ def main() -> None:
         f" ({average_ic / 1e6:,.1f} USD m); on year-end invested capital {year_end_roic:.4f}"
     )
 
+    for label, payload in (
+        ("conflicting tie", tie_filer(1.0, 2.0)),
+        ("equal-valued tie", tie_filer(1.0, 1.0)),
+    ):
+        try:
+            standardize(payload)
+        except ValueError as exc:
+            print(f"ValueError ({label}): {exc}")
+        else:
+            print(f"no error ({label})")
     cases: list[tuple[str, Callable[[], float]]] = [
         ("roic at 2021-12-31 (2020 long-term debt not published)", lambda: roic(statements, "2021-12-31", 0.25)),
         ("roic with tax_rate 1.0", lambda: roic(statements, end, 1.0)),

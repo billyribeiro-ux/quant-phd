@@ -1,6 +1,7 @@
 import numpy as np
 
-# SIMULATED firm-years for the modified Jones model (Dechow, Sloan & Sweeney 1995). Currency units. Not real firms.
+# SIMULATED firm-years for the modified Jones model (registry key dechow1995detecting,
+# 'Detecting Earnings Management'). Currency units. Not real firms.
 SAMPLE = [
     {"total_accruals": -4.0e6, "lag_assets": 1.0e8, "d_revenue": 6.0e6, "d_receivables": 1.0e6, "ppe": 3.0e7},
     {"total_accruals": -2.5e6, "lag_assets": 8.0e7, "d_revenue": 3.0e6, "d_receivables": 0.5e6, "ppe": 2.4e7},

@@ -55,7 +55,8 @@ TAG_PRIORITY: Mapping[str, tuple[str, ...]] = {
     "equity": ("StockholdersEquity",),
     "shares_outstanding": ("CommonStockSharesOutstanding",),
 }
-# The Beneish (1999) constants are UNCONFIRMED: reproduced by one secondary web source without a locator.
+# The Beneish (1999) constants are UNCONFIRMED: ONE secondary source (the Wikipedia page
+# 'Beneish M-score', read 2026-10-27) reproduces them; nothing else could be read.
 BENEISH_INTERCEPT: float = -4.84
 BENEISH_COEFFICIENTS: Mapping[str, float] = {
     "DSRI": 0.920,
@@ -137,7 +138,10 @@ def accruals_balance_sheet(statements: Statements, period_end: str) -> float:
 
 
 def modified_jones(sample: Sequence[Mapping[str, float]]) -> dict[str, Any]:
-    """Modified Jones model (Dechow, Sloan & Sweeney 1995), estimated by OLS without an intercept."""
+    """Modified Jones model (registry key dechow1995detecting, 'Detecting Earnings Management').
+
+    Estimated by OLS without an intercept.
+    """
     raise NotImplementedError("modified_jones")
 
 
