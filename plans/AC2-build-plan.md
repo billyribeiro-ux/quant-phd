@@ -61,8 +61,8 @@ verifiers (VERIFIER_RULES). A builder never verifies and never writes a ledger.
 
 Every lesson follows the lesson template (BUILDER_RULES / `course/templates/`): objectives, definitions, results with
 proofs or derivations where a result is claimed, worked examples, misconceptions, a lab, a quiz, and the evidence
-grades and locators. Lessons are 10-15 h of student work each with the project making up the remainder of 110 h;
-report the hours you estimate per lesson.
+grades and locators. `tools/check_pages.py` requires 6-12 declared study hours per lesson; the hub declares the split (lessons 76 h,
+project 34 h = 110 h) and every page must agree with it. Report the hours you estimate per lesson.
 
 ## Project ladder (Builder D), per BLUEPRINT §5 and the AP1 example
 
