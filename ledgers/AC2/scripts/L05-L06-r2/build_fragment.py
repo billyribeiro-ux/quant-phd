@@ -1,0 +1,186 @@
+"""Writes ledgers/AC2/L05-L06.json (round 2). Verifier-written; the row content is the verifier's own record.
+
+Run: <checkout>/.venv/bin/python -I ledgers/AC2/scripts/L05-L06-r2/build_fragment.py
+"""
+import json
+import pathlib
+
+ROOT = pathlib.Path("/tmp/verify-ac2-l56")
+OUT = ROOT / "ledgers/AC2/L05-L06.json"
+R1 = json.loads(OUT.read_text(encoding="utf-8"))
+SCRIPTS = "ledgers/AC2/scripts/L05-L06-r2/"
+
+# id -> (status, evidence, fix-or-None). Rows keep their round-1 id and check/location.
+OV = {}
+
+
+def P(i, ev):
+    OV[i] = ("PASS", ev, None)
+
+
+def F(i, ev, fix):
+    OV[i] = ("FAIL", ev, fix)
+
+
+# ---- commands (re-run by this verifier, round 2) ----
+P("L05-L06-cmd-pin", "git -C /tmp/verify-ac2-l56 log --oneline -1 -> 'bc3226e AC2: 130 cards; open-items file renamed ...'; git status --short -> '?? .venv' and '?? ledgers/AC2/' only. Pin is bc3226e, the round-2 HEAD named in the task.")
+P("L05-L06-cmd-check-pages", "Round 2: .venv/bin/python tools/check_pages.py --unit AC2 -> 'check_pages AC2: PASS', EXIT=0 (output /tmp/ac2-v/L05-L06-r2/check_pages.txt).")
+P("L05-L06-cmd-check-dag", "Round 2: tools/check_dag.py --unit AC2 -> 'check_dag AC2: PASS', EXIT=0. Concept-use reading is in L05-L06-prose-concept-links and L05-L06-dag.")
+P("L05-L06-cmd-run-labs", "Round 2: tools/run_labs.py --unit AC2 -> 'run_labs AC2: PASS (11/11)', EXIT=0; .venv/bin/python -I -m pytest -q tests/test_labs.py -k AC2 -> 11 dots, no failures.")
+P("L05-L06-cmd-twins-isolated", "Round 2: .venv/bin/python -I -W error tests/labs/AC2/lab-AC2-L05-1.py and lab-AC2-L06-1.py: EXIT=0 each, stderr 0 bytes (/tmp/ac2-v/L05-L06-r2/twin-*.out, .err). Both twins seed their RNGs (default_rng(0..199) for L05; default_rng(606) and seeds 606-610 for L06).")
+P("L05-L06-cmd-page-smoke", "Round 2: tools/page_smoke.py --unit AC2 --pages L05 L06 -> 'page_smoke modules/AC/AC2/L05.html: PASS', 'page_smoke modules/AC/AC2/L06.html: PASS', 'page_smoke AC2: PASS', EXIT=0. Timings: lab-AC2-L05-1 1.7 s (boot with numpy 1.1 s), lab-AC2-L06-1 0.1 s; both under 10 s.")
+P("L05-L06-cmd-verify-refs-unit", "Round 2: tools/verify_refs.py --unit AC2 -> 'live re-verification of AC2: 7 of 560 entries, 0 problems', EXIT=0. The count rose from 5 to 7 because AC2 is now in used_by of mclean2016academic and hou2018replicating (see L05-L06-reg-used-by).")
+P("L05-L06-cmd-verify-refs-offline", "Round 2: tools/verify_refs.py --offline -> 'offline integrity: 560 entries, 0 problems', EXIT=0.")
+P("L05-L06-cmd-lint", "Round 2: ruff check on both twins -> 'All checks passed!'; ruff format --check -> '2 files already formatted'; mypy --no-incremental on both twins -> 'Success: no issues found in 2 source files'. All EXIT=0.")
+
+# ---- citations ----
+P("L05-L06-cit-sloan-registry", "Round 2: registry entry sloan1996stock unchanged since 0c14083 (git diff 0c14083 HEAD -- references/references.json touches only used_by of hou2018replicating and mclean2016academic and generated_at). Crossref re-fetched now (curl https://api.crossref.org/works/10.2308/tar-9608042309, HTTP 200; /tmp/ac2-v/L05-L06-r2/10.2308_tar-9608042309.json): title 'Do Stock Prices Fully Reflect Information in Accruals and Cash Flows About Future Earnings?', author Sloan, Richard G., vol 71 issue 3 pages 289-315. Matches the registry.")
+P("L05-L06-cit-sloan-claim-s1", "Round 2: L05.html §1 claim span (data-cite sloan1996stock, grade C) now reads 'Sloan (1996) investigates whether stock prices reflect information about future earnings contained in the accrual and cash-flow components of current earnings.' Crossref abstract (re-fetched now): 'Investigates whether stock prices reflect information about future corporate earnings contained in accrual and cash flow components of currents earnings.' Same question, no finding; the sentence after it says no sample period, return level or spread is quoted. The old 'U.S. stock returns' and 'investors who do not fully see' attributions are gone from L05 (grep).")
+P("L05-L06-cit-sloan-claim-s3", "Round 2: L05.html §3 now states the question 'in the form given in Section 1' (a price question about accrual and cash-flow components) and no finding; the explanation attribution ('the explanation Sloan gives') and the 'accrual component is less persistent' finding are removed (grep for 'less persistent' in L05/L06: none attributed to Sloan). Key-results last row removed. Abstract supports the question wording only.")
+P("L05-L06-cit-dechow-registry", "Round 2: registry dechow1995detecting unchanged. Crossref re-fetched now (10.2308/tar-9505096112, HTTP 200): title 'Detecting Earnings Management.', authors Dechow, Patricia M. and Sloan, Richard G. (two), vol 70 issue 2 pages 193-225. Matches the registry's doi, title, container, volume, issue and pages; the author list is the open question in L05-L06-cit-dechow-authors.")
+P("L05-L06-cit-dechow-scope", "Round 2: L06.html §1 claim span (grade C, dechow1995detecting): 'The paper evaluates alternative accrual-based models for detecting earnings management and compares the specification and power of commonly used test statistics.' Crossref abstract (re-fetched): 'Evaluates alternative accrual-based models for detecting earnings management. Comparison of the specification and power of commonly used test statistics'. Matches. §5 bullet 1 and key-results row 6 quote no power figure, as the abstract gives none.")
+P("L05-L06-cit-dechow-motivation", "Round 2: no sentence on L06 now attributes a motivation to Dechow et al. (grep 'Dechow' and 'et al' in L05/L06 and cards.json: none in the lessons; the only mention is the registry key and title). §1 says 'The A15 contract fits the model ... Its source is registry key dechow1995detecting'; the contract cites the model to this paper (atlas/A15.contract.md line 123: '# Dechow, Sloan & Sweeney (1995)' above def modified_jones). The Crossref abstract does not name the modified Jones model; the page makes no claim about its content. The receivables rationale sentence without a source is recorded in L05-L06-prose-unmarked-claims.")
+P("L05-L06-cit-dechow-grouping", "Round 2: L06.html §5 bullet 4 now says 'The model can be estimated within groups of firm-years, such as industry-years, so that industry-wide accrual patterns are absorbed.' No 'commonly' and no attribution; a methodological description. The lab cannot show it, and the bullet says so.")
+F("L05-L06-cit-dechow-authors", "OPEN QUESTION (architect ruling), not resolved here. Sources as read this round: Crossref record (two authors: Dechow, Patricia M.; Sloan, Richard G.); registry dechow1995detecting (notes list crossref 'Dechow & Sloan'); curriculum string and atlas A15 contract (line 123 '# Dechow, Sloan & Sweeney (1995)'). The L05 and L06 pages comply: they cite by key and title and name no authors (grep for 'Dechow' in both pages and cards.json: no hit). The discrepancy stays in registry, curriculum and atlas, outside this slice.", "Owner of registry, curriculum and atlas to settle the author list (open question); not a page defect in L05 or L06.")
+P("L05-L06-reg-used-by", "Round 2: git diff 0c14083 HEAD -- references/references.json adds 'AC2' to used_by of hou2018replicating (['AC2','F5','S7']) and mclean2016academic (['AC2','F4','S7']). tools/verify_refs.py --unit AC2 now re-verifies 7 entries (L05-L06-cmd-verify-refs-unit).")
+P("L05-L06-cit-mclean", "Round 2: L05.html §4 bullet 1 (grade C, mclean2016academic): 'McLean and Pontiff, \"Does Academic Research Destroy Stock Return Predictability?\", are in the registry under mclean2016academic.' Title matches the registry and Crossref (10.1111/jofi.12365, HTTP 200): authors MCLEAN, R. DAVID and PONTIFF, JEFFREY, vol 71 issue 1 pages 5-32. The page states no finding ('Their results are not stated here').")
+P("L05-L06-cit-hou", "Round 2: L05.html §4 bullet 2 (grade C, hou2018replicating): 'Hou, Xue and Zhang, \"Replicating Anomalies\", are in the registry under hou2018replicating.' Crossref (10.1093/rfs/hhy131, HTTP 200): title 'Replicating Anomalies', authors Hou, Kewei; Xue, Chen; Zhang, Lu; vol 33 issue 5 pages 2019-2133. Matches. No finding stated.")
+
+# ---- numbers ----
+P("L05-L06-num-L05-lab", "Round 2: independent re-implementation from the written spec (ledgers/AC2/scripts/L05-L06-r2/recompute_l05.py; output /tmp/ac2-v/L05-L06-r2/recompute_l05.out). Reproduced every printed value of L05 Lab 1: mean_z_gap_simulated -2.7937; planted_monthly_spread 0.00223; spread_sd_theory 0.01131; expected_t_at_planted 2.164; recovered 0.00219; null_mean_t -0.042, null_sd_t 1.056; null_false_positive_rate 0.060; effect_rejection_rate_power 0.590; effect_median_t 2.155; seed0 0.00075 / t 0.676.")
+P("L05-L06-num-L05-derived", "Round 2 (recompute_l05.py): Prop 2.3 q = -0.841621, phi(q) = 0.279962, gap -2.799619; M2 compound 1.008^12-1 = 0.10034; M3 t = 2.1909 ('2.191'), se 0.000913; E1 se 0.01541, z 0.649 ('0.65'); E2 spread sd 0.01131, t 2.165 (page 2.164 from unrounded planted 0.0022350); E3 z -1.43 to -1.44 (rounding of 0.00103); R1 T = 201.0. Interpretation sentences ('about 41%', 'about 1.4 SE', 'about 0.0010', 'about 0.015') recomputed: all consistent.")
+P("L05-L06-num-L06-lab", "Round 2 (recompute_l06.py, normal equations, seeds 606 and 606-610; output /tmp/ac2-v/L05-L06-r2/recompute_l06.out): coef all 0.3891 0.1045 -0.0701; non-manipulators 0.1806 0.1031 -0.0805; se 0.2824 0.0015 0.0010; mean DA 0.0459 / -0.0045 (strong); strong top-decile TP 197, FP 3, TPR 0.9850, FPR 0.0017; weak TP 71, FP 129, TPR 0.3550, FPR 0.0717; mean DA weak 0.0094 / -0.0009; se_scaling 0.2781 (2,000) and 0.0489 (64,000) over seeds 606-610 (lab twin run). All match the page's expected block.")
+P("L05-L06-num-L06-derived", "Round 2 (recompute_l06.py): M1 NDA -0.02295, DA -0.00705; M2 c = 0.016449, detection Phi(3.355) = 0.9996; M3 0.2084 unrounded (0.2085 from printed rounded coefficients), 0.738 SE; E1 precision 71/200 = 0.355, 129 false flags (0.0717 x 1800 = 129.1), 0.645 of flags false; E2 precision 0.985, 0.0017 x 1800 = 3.06 (3 printed); R1 0.2781 x sqrt(2000/64000) = 0.0492 (0.0489 printed), n for 0.05 = 61,872. E3 two-sided tail 2(1-Phi(2.067)) = 0.0387 (see L05-L06-num-L06-roughly-4pct). Remark 3.2: b = 1.2, residuals (-0.2, 0.4), sum 0.2.")
+P("L05-L06-num-L06-roughly-4pct", "Round 2: L06.html E3 solution now shows the calculation: z = 0.0031/0.0015 = 2.067, 'two-sided tail probability 2(1 - Phi(2.067)) = 0.039, about 4%'. Recomputed: 2(1-Phi(2.067)) = 0.0387. Sidedness stated; the figure is supported.")
+F("L05-L06-r2-num-L06-se-basis", "L06.html §4 ('the classical standard error of a1 at 2,000 firm-years is 0.2824') and R1 prompt ('the classical standard error of a1 is 0.2824 at 2,000 firm-years') give 0.2824 as the SE at 2,000 firm-years. The lab's classical SE is computed on the non-manipulator rows (classical_se(s, ~s.manipulator), lab twin line 'se_non_manipulators'), that is 1,800 firm-years of the 2,000. Recomputed: 0.2824 is the non-manipulator SE at seed 606 (recompute_l06.py). The 5.6x ratio is correct on that basis.", "Say 'the classical standard error of a1 on the 1,800 non-manipulator firm-years is 0.2824 (seed 606)' in §4 and in R1.")
+
+# ---- proofs and derivations ----
+P("L05-L06-math-L05-def-t", "Round 2: Definition 1.2 t = Sbar/(s_S/sqrt T) with s_S ddof=1 matches the lab's t_stat (x.std(ddof=1)/sqrt(n)) and recompute_l05.py tstat. T is registered in notation/notation.json.")
+P("L05-L06-r2-prop21-sigma0", "Round 2 (ledgers/AC2/scripts/L05-L06-r2/prop21_sigma0.py): with sigma = 0 over 120 months and 500 firms, max |S_t - beta(zbar_L - zbar_H)| = 2.6e-18. Proof step 'E[eps | z] = 0 makes the quintile noise average zero' re-read and valid.")
+P("L05-L06-math-L05-prop21", "Round 2: Proposition 2.1 statement (E[eps | z_.,t] = 0) and proof re-read; the identity is verified numerically (L05-L06-r2-prop21-sigma0). Sign: beta < 0 gives a positive expected spread; planted 0.00223 > 0 in the lab output.")
+P("L05-L06-math-L05-prop23", "Round 2: proof steps re-derived: Phi(q) = 0.2, phi' = -z phi, integral of z phi over (-inf, q] = -phi(q), so the lowest-quintile mean is -phi(q)/0.2 = -1.3998 and the gap -2.7996 (recompute_l05.py: q -0.841621, phi(q) 0.279962). Page '-2 phi(q)/0.2, approximately -2.800' correct.")
+P("L05-L06-math-L05-remark22-P1-P3", "Round 2: Remark 2.2 is labelled an approximation and the page says it is not exact at T=120; the lab's null FPR 0.060 is compared with 5% (z 0.649). P1 (strictly increasing g keeps ranks, so equal-count quintiles are the same sets) re-derived: valid. P3 (E[S_t] = 0 uses only E[eps|z]=0; serial independence needed for the normal approximation) re-derived: valid.")
+P("L05-L06-math-L06-prop31", "Round 2: statement now 'For every response vector y, the residuals sum to zero if and only if the ones vector lies in the column space of X'. Checked numerically (recompute: checks_extra.py): with 1 in col(X), the sum is zero for all 20 random y; with 1 outside col(X), no random y gave a zero sum. Proof re-derived: 1'e = ((I-P)1)'y is zero for every y iff (I-P)1 = 0. The round-1 counterexample is no longer a claim. Remark 3.2 consistent.")
+P("L05-L06-math-L06-prop33-formula", "Round 2: the algebra re-derived; the identity b_all - b* = P(d + SD v) holds exactly on the lab draw (max abs error 2e-14, checks_extra.py) with P = (X'X)^-1 X'. The formula (X'X)^-1 X'd for the coefficient bias is correct when d is X-measurable.")
+P("L05-L06-math-L06-prop33-statement", "Round 2: the statement now assumes 'd is a function of X (or is fixed given X), and E[u | X] = 0', and calls (X'X)^-1 X'd the coefficient bias and X(X'X)^-1 X'd the projection (n-vector). Proof re-read: the first correction passes through E[.|X] because d is X-measurable; the last term has conditional mean zero. Statement and object now correct. The application to the lab's manipulator term is a separate row (L05-L06-r2-lab-contamination-prop33).")
+P("L05-L06-math-L06-P3", "Round 2: P3 now assumes 'd is a function of X and E[u | X] = 0' and states that both are used; the sentence that said the result 'requires only E[u|X] = 0' is gone. Solution re-derived and consistent with Proposition 3.3.")
+P("L05-L06-math-L06-remark32-P1-P2", "Round 2: Remark 3.2 recomputed: b = 1.5/1.25 = 1.2, fitted (1.2, 0.6), residuals (-0.2, 0.4), sum 0.2. P1: the one-column design cannot contain the ones vector (not a multiple of (1, 0.5)). P2: scaling money by k = 2.5 gives a1 ratio 2.5, a2 and a3 unchanged, residual difference 2e-16 (recompute_l06.py consistent). The 'Scale row' wording (atlas/A15.contract.md line 188: a1 scales with k; residuals, a2, a3 invariant) is matched.")
+P("L05-L06-math-notation", "Round 2: macros and symbols on both pages checked against notation/notation.json: \\E, \\widehat, \\top, \\Phi, \\varphi, \\beta, \\varepsilon, \\bar, \\Delta, \\mathbf used as registered; T used with its registered meaning; no registered symbol given another meaning.")
+
+# ---- labs ----
+P("L05-L06-lab-L05-1-run", "Round 2: twin run under -I -W error (exit 0), matches the page's expected block (run_labs PASS). Hypothesis is stated before the run and labelled SIMULATED; seeded (default_rng(seed) for seeds 0-199); no network; 1.7 s in Pyodide. States that it does not reproduce Sloan (1996). Re-derived in recompute_l05.py.")
+P("L05-L06-lab-L05-1-interp", "Round 2: the L05 interpretation restates what the lab shows (planted spread recovered 0.00219 vs 0.00223; null FPR 0.060 consistent with 5%; power 0.590 with about 41% miss; seed-0 t 0.676) and says it gives no estimate of the real effect. Misconceptions 1-3 consistent with the printed numbers.")
+P("L05-L06-lab-L06-1-run", "Round 2: hypothesis stated before the run; labelled SIMULATED in the hypothesis, docstring and interpretation; seeded (default_rng(606); seeds 606-610 for se_scaling); no network; 0.1 s in Pyodide. Twin under -I -W error exit 0. Output reproduced (L05-L06-num-L06-lab).")
+P("L05-L06-lab-L06-1-overreach-sample", "Round 2: §4 now says the a1 estimate is 'too imprecise to recover the planted value' at 2,000 firm-years (qualified by sample size), and 'whatever the intercept or the sample' is gone. The se_scaling output (0.2781 at 2,000; 0.0489 at 64,000) is reported as is. The lab fits no intercept and §4 says so.")
+P("L05-L06-lab-L06-1-single-seed", "Round 2: the L06 interpretation says 'every flag score below is one simulated draw at seed 606'; key-results rows 4-5 name seed 606; cards c082, c085, c086 and the misconception paragraphs name seed 606. The strong and weak rates are no longer presented as scenario rates. Lab 1 docstring: 'The flag scores quoted in the lesson are one simulated draw (seed 606)'.")
+P("L05-L06-lab-L06-1-threshold-claim", "Round 2: 'Only when' and threshold language is gone. Misconception 3 and the interpretation say 'Two shifts at one seed do not establish how the precision depends on the shift' and 'establish no threshold'. The hypothesis states only the comparison (separates well at 0.05, less well at 0.01).")
+P("L05-L06-lab-L06-1-flag-count", "Round 2: interpretation now says 'six firm-years that enter the top decile under the all-firm estimate and six that leave it, so 12 firm-years change flag status'. Reproduced: flags_only_all_firms 6, flags_only_oracle 6, flags_differing_all_vs_oracle 12 (recompute_l06.py). M3 solution consistent. The card wording is a separate row.")
+P("L05-L06-r2-lab-flags-only-lines", "Round 2: the two new printed lines are reproduced by recompute_l06.py: weak scenario flags_only_all_firms 6 and flags_only_oracle 6 (sum of symmetric difference 12); strong scenario 0 and 0. The page's statements 'the all-firm and oracle flag sets are identical' (strong) and 'the printed rates are the same under both' hold (TPR 0.3550 and FPR 0.0717 under both).")
+F("L05-L06-r2-lab-contamination-prop33", "L06.html Lab 1 interpretation says 'the contamination that Proposition 3.3 describes'; Key results row 2 says 'visible in Lab 1 as the 0.2085 shift in a1 at seed 606'; L06 §4 and Misconception 2 use the same link. Evidence (recompute_l06.py and checks_extra.py, seed 606, strong): (i) b_all - b* = P(d) + P(SD*v) exactly, where d = 0.05*manipulator is random and drawn independently of X, so d is not a function of X; Prop 3.3's hypothesis is not met by the lab's term as written. (ii) Realised projection P d for a1 = 0.1425, noise part P(SD v) = 0.1965, so b_all - b* = 0.339. (iii) The printed 0.2085 is b_all - b_nm, and b_nm carries its own sampling deviation P_nm(SD v_nm) = 0.1306 for a1; so 0.2084 = 0.1425 + 0.1965 - 0.1306, not the bias alone. (iv) The conditional-mean form of Prop 3.3 with E[d|X] = 0.005*1 predicts a1 contamination 0.6223, not 0.2085. For a3 the realised projection (0.0105) matches the diff (0.0104); for a1 it does not. The page does not compute or say this.", "State that 0.2085 is an all-minus-non-manipulator difference that mixes the omitted-term projection with sampling noise (the non-manipulator estimate deviates from truth by about 0.13 in a1), or apply Prop 3.3 to E[d|X] explicitly and say so. Remove 'visible in Lab 1 as the 0.2085 shift' from the key-results row.")
+F("L05-L06-r2-math-E2-zgap-cause", "L05.html E2 solution: 'The z-gap is -2.7937 rather than the analytic -2.7996 of Proposition 2.3, because the lab averages the realised quintile gap over 200 seeds of 500 firms.' Averaging over seeds is unbiased and does not cause the gap: recompute_l05.py gives -2.7939 over 2,000 seeds (SE 0.0002) at 500 firms; checks_extra.py gives -2.7915 at N=500 and -2.7975 at N=5000 (400 months each), approaching -2.7996. The cause is the finite 500-firm sort (the realised cut-points), not the averaging.", "Replace the cause with 'because each month sorts 500 firms, so the realised quintile means differ from the population quintile means; the gap approaches -2.800 as the number of firms grows'.")
+F("L05-L06-r2-math-L06-misc3-sentence", "L06.html Misconception 3, first sentence: 'Flagging the top 10% gives a precision equal to the true-positive share among flagged firms, here because the flagged share equals the manipulator share.' The 'because' clause does not explain the precision: precision is TP divided by flagged firms (71/200 in the weak scenario), and the 10% flagged share is unrelated to why precision takes that value. The rest of the misconception (0.355, 0.985) is correct.", "Replace the sentence with 'Precision is the share of flagged firm-years that are manipulators: 71 of 200 (0.355) in the weak scenario and 197 of 200 (0.985) in the strong one.'")
+F("L05-L06-r2-prose-s4-lab-bears", "L06.html §4 opening: 'Three choices in the fit decide what the residuals mean, and the lab bears on each. The first is the intercept ... The lab fits no intercept, so it shows nothing about an intercept's effect.' The paragraph says the lab bears on each choice and then says it bears on none of the intercept. Self-contradictory within the paragraph.", "Change 'the lab bears on each' to 'the lab bears on the last two'.")
+
+# ---- cards ----
+P("L05-L06-card-L05-defs", "Round 2: cards c063, c065, c066, c067, c068 re-read against L05 Definition 1.1, Definition 1.2, Proposition 2.1, Remark 2.2 and Proposition 2.3. c063's 'scaled as in L04, Definition 1.3' matches L04.html line 71 'Definition 1.3 (the two contract measures)'. c067 is graded T and is the CLT approximation of Remark 2.2 (labelled approximate in the page).")
+P("L05-L06-card-L05-lab", "Round 2: cards c069-c075 and c122-c123 re-read against the lab's printed values (recompute_l05.py): 0.00219 vs 0.00223; FPR 0.060 and SE about 0.015; power 0.590 and 41%; seed-0 0.00075 and t 0.676; c075 '201 months, roughly 17 years' = R1 (201/12 = 16.75 years), basis named; c122 -2.7937 vs analytic -2.800; c123 2.164 and median 2.155. Basis 'Lab 1 (SIMULATED)' on each simulation card.")
+P("L05-L06-card-L05-sloan", "Round 2: card c064 now reads 'Whether stock prices reflect information about future earnings in the accrual and cash-flow components ... The lesson states no finding from the paper ... Graded C; passage locator not confirmed.' Checkable against the Crossref abstract (L05-L06-cit-sloan-claim-s1). The round-1 attribution of a regularity and of investor behaviour is removed.")
+P("L05-L06-card-L06-defs", "Round 2: c076 matches L06 Definition 1.1; c077 matches Definition 2.1; c080 matches §3 units paragraph and P2 (a1 carries CU; scales by k); c081 matches P2 (verified numerically); c088 matches §5 bullet 3 (no term for real activity). c087 is handled in L05-L06-card-L06-dechow.")
+P("L05-L06-card-L06-lab", "Round 2: c082, c083, c085, c086 state seed 606 and 'one draw'; the numbers match the twin output (197/200, 0.985, 0.0017; 71/200, 0.355, 0.0717; 129 false; 0.1806 to 0.3891; 0.74 SE). c125 gives 0.2781 to 0.0489 over seeds 606-610 with basis 'se_scaling output'; 'roughly as the square root' is consistent with 0.0492 from the rule. c084 precision wording correct.")
+P("L05-L06-card-L06-iff", "Round 2: c078 now carries 'For every response vector y, the residuals sum to zero if and only if a column of ones lies in the column space of X' (T). Checked numerically in checks_extra.py (L05-L06-math-L06-prop31).")
+P("L05-L06-card-L06-projection", "Round 2: c079 now says '(X'X)^-1 X'd, the coefficient vector of the projection of d on the regressors (the projection is X(X'X)^-1 X'd)' and the requirement 'd a function of X (or fixed given X) and E[u|X] = 0'. Matches the statement of Proposition 3.3 as now written.")
+P("L05-L06-card-L06-only-when", "Round 2: c084 'Two shifts at one seed do not establish how precision depends on the shift.' No 'only when' claim remains.")
+F("L05-L06-card-L06-dechow", "Round 2: c087 'What does the modified Jones adjustment do to the revenue term?' back: 'It subtracts the change in receivables from the change in revenue (the A15 contract's definition). Treating receivables-booked revenue as the part of growth most open to discretion is an assumption of the model, not a tested finding.' The Dechow attribution is gone, but the back carries the same unsourced model-rationale claim as L06 §2 (row L05-L06-prose-unmarked-claims). The card has no grade or source.", "Either cite the rationale to a readable source with a grade, or drop the 'assumption of the model' clause and keep the formula.")
+F("L05-L06-card-L06-12of200", "Round 2: card c124 still reads '12 of 200 (flags_differing_all_vs_oracle 12).' The lab page now says 12 firm-years change status (6 leave, 6 join). The card's '12 of 200' still reads as 12 of the 200 flags changing; the flags that change from the all-firm set are 6, and the answer should say 12 firm-years change status (6 in, 6 out).", "Change the back to: '12 firm-years change flag status: 6 enter the top decile under the all-firm estimate and 6 leave it (flags_only_all_firms 6, flags_only_oracle 6).'")
+P("L05-L06-cards-dup-scan", "Round 2: 130 cards in cards.json; no duplicate ids, fronts or backs (checks_extra.py). Front word-set Jaccard >= 0.5: 7 pairs; those involving L05 and L06 cards (c081/c092/c057; c085/c086; c017/c076) are different claims (different scenarios or different measures or a different question).")
+P("L05-L06-cards-coverage", "Round 2: L05 cards c063-c075 and c122-c123; L06 cards c076-c088 and c124-c125. Every definition, theorem (L05 2.1, 2.3; L06 3.1, 3.3), key formula, key empirical result and misconception has a card. Each simulation card carries 'Lab 1 (SIMULATED)' basis.")
+
+# ---- structure and prose ----
+P("L05-L06-struct-hours", "Round 2: data-hours L05 = 8, L06 = 10 (in range 6-12). index.html data-hours-lessons 76 and data-hours-project 34 (sum 110 = curriculum). Own estimates: L05 about 7.5 h (reading 3, Lab 1 1, 12 problems 3, quiz and cards 0.5); L06 about 9.5 h (reading 3, Lab 1 1.5, 12 problems 3.5, quiz and cards 1). Declared 8 and 10: both within 30% of the own estimates.")
+P("L05-L06-struct-sections", "Round 2: check_pages PASS for L05 and L06. Three misconceptions each; 12 problems each (M1-M3, P1-P3, E1-E3, R1-R3 with details.solution); 9 quiz items each; key-results table; references list; section order per §4.2. No debate brief needed (AC2 carries no debate tag).")
+P("L05-L06-struct-banned", "Round 2: check_pages banned-string scan PASS. Own scan of visible text of both pages for roughly, about, typically, usually, commonly, historically, generally, often, studies show, most, clearly, obviously, well known, it is important, ellipses: every 'about' is a computed figure (L05: 1.4 SD, 0.0010, 0.015, 41%, 17 years; L06: 129 (of 1,800), 0.74, 4%); 'the input most likely' appears only in research-problem solutions as judgement, not as a published fact. No banned phrase.")
+F("L05-L06-prose-unmarked-claims", "Round 2: unlabelled claims about a published model. L06.html §2 (after Definition 2.1): 'Treating receivables-booked revenue as the part of growth most open to discretion is an assumption of the model. The lesson does not test that assumption on data.' No grade, no key, no locator; the abstract of dechow1995detecting does not state this rationale, and no other readable source was reached. Also card c087 (same sentence). The earlier claims (the 'most direct test' superlative; 'measurement error attenuates the spread'; 'commonly estimated') are removed and verified absent.", "Give the sentence a grade and a locator, or delete it and say the adjustment's rationale is not sourced in this lesson. Same change on card c087.")
+P("L05-L06-prose-L04-xref", "Round 2: L05.html §3 now says 'Lesson L04, Proposition 3.1, gives the algebra of accruals under its assumptions A1 to A4 and with no short-term debt in current liabilities'. L04.html Proposition 3.1 reads 'Under A1 to A4 and STD_t = 0'. Matches. The old 'Real accruals are measured with error (Lesson L04, Section 4)' is removed; L04 §4 is 'Scale, outliers and the data you cannot yet use'.")
+P("L05-L06-prose-inversion", "Round 2: L06.html §5 intro now reads 'The residual is a measurement of discretion only if the model is correct about normal accruals. The lab removes that doubt by construction. Real data restore the doubt, and the following limits apply.' Meaning correct.")
+P("L05-L06-prose-jargon", "Round 2: grep of both pages: 'this build' 0 hits; DATA_REQUESTS, REFERENCE_REQUESTS, 'unit report', 'builder', 'REQUESTS' 0 hits. L05 honest-pending cites plans/AC2-open-items.md once (within the once-per-page rule). Note for architect: learner text says 'the A15 contract' and 'the contract's Scale row' (L06 §3) for an internal atlas document; not on the listed banned words, so not failed here.")
+P("L05-L06-prose-concept-links", "Round 2: L05 Uses line now links t-statistic (concepts.html#t-statistic, S1). L06 Uses line links ols-estimator (S2) and least-squares-projection (M3, through S2's closure). Both in AC2's prerequisite closure (AC1, S0, S2; S2 carries S1 and M3). Body uses of 'the t-statistic' and 'least squares' are not individually linked; the convention on both pages is the Uses line, the same as 'accruals' and 'simple returns', which are used unlinked in the body. Reading noted as convention, not as a failure.")
+P("L05-L06-dag", "Round 2: definitions once each (def-accruals-anomaly in L05; def-earnings-management and def-modified-jones-model in L06). L06 links accruals-anomaly to L05 (earlier lesson); L05 links accruals and earnings-quality to L04. check_dag PASS.")
+P("L05-L06-figures", "Round 2: no data-chart, no data-files, no embedded dataset in either page (grep). Both labs are model-generated and labelled SIMULATED.")
+P("L05-L06-honest-data", "Round 2: honest-pending paragraph (L05) states real filer accruals and returns are not used; names the SEC reuse statement as not yet confirmed; cites BLUEPRINT §5.3 for the French library ('recorded as not cleared'). Every Lab 1 number is labelled SIMULATED.")
+P("L05-L06-r2-attribution-sweep", "Round 2: every sentence in L05 and L06 that names Sloan, Dechow, McLean, Hou or the registry keys (grep over both pages and cards.json) was read against its abstract: the only attributed content is the question (Sloan), the scope (Dechow: alternative accrual-based models; specification and power of test statistics), the titles (McLean and Pontiff; Hou, Xue and Zhang), and the contract's citation of the model (atlas line 123). No finding, sample period or mechanism is attributed that the abstracts do not state, except the L06 §2 rationale sentence (L05-L06-prose-unmarked-claims, which is not attributed to a paper but is a claim about the model).")
+
+
+# ---- new rows (round 2) ----
+NEW = [
+    ("L05-L06-r2-prop21-sigma0", "2.4-math", "course/modules/AC/AC2/L05.html Proposition 2.1 and proof", "r2"),
+    ("L05-L06-r2-lab-flags-only-lines", "2.5-labs", "tests/labs/AC2/lab-AC2-L06-1.py report() lines flags_only_all_firms, flags_only_oracle; course/modules/AC/AC2/L06.html Lab 1 expected block and interpretation", "r2"),
+    ("L05-L06-r2-attribution-sweep", "2.1-attribution", "course/modules/AC/AC2/L05.html, L06.html, cards.json (every named source)", "r2"),
+    ("L05-L06-r2-num-L06-se-basis", "2.2-numbers-class-c", "course/modules/AC/AC2/L06.html §4 paragraph and R1 prompt", "r2"),
+    ("L05-L06-r2-lab-contamination-prop33", "2.4-math", "course/modules/AC/AC2/L06.html Lab 1 interpretation; Key results row 2; Misconception 2; §4", "r2"),
+    ("L05-L06-r2-math-E2-zgap-cause", "2.4-math", "course/modules/AC/AC2/L05.html E2 solution (cause of -2.7937 vs -2.7996)", "r2"),
+    ("L05-L06-r2-math-L06-misc3-sentence", "2.4-math", "course/modules/AC/AC2/L06.html Misconception 3, first sentence", "r2"),
+    ("L05-L06-r2-prose-s4-lab-bears", "2.9-structure", "course/modules/AC/AC2/L06.html §4 opening paragraph", "r2"),
+    ("L05-L06-r2-prose-A15-reference", "2.9-structure", "course/modules/AC/AC2/L06.html §3 units paragraph ('the wording of the A15 contract's Scale row'); L05 §1 and L06 §1 ('the A15 contract')", "r2"),
+]
+for rid, chk, loc, _ in NEW:
+    pass
+OV["L05-L06-r2-prose-A15-reference"] = ("PASS", "Round 2: the learner pages refer to 'the A15 contract' and 'the contract's Scale row' (atlas/A15.contract.md, an internal document). This is not one of the listed process words (this build, builder, REQUESTS, unit report), so it is not failed. Raised for the architect to rule on; atlas line 188 is the Scale row cited and matched.", None)
+
+rows = []
+for r in R1["rows"]:
+    st, ev, fix = OV[r["id"]]
+    row = {"id": r["id"], "check": r["check"], "location": r["location"], "status": st, "evidence": ev}
+    if fix:
+        row["fix"] = fix
+    rows.append(row)
+known = {r["id"] for r in R1["rows"]}
+for rid, chk, loc, _ in NEW:
+    st, ev, fix = OV[rid]
+    row = {"id": rid, "check": chk, "location": loc, "status": st, "evidence": ev}
+    if fix:
+        row["fix"] = fix
+    rows.append(row)
+missing = [k for k in OV if k not in known and k not in {n[0] for n in NEW}]
+assert not missing, missing
+assert len({r["id"] for r in rows}) == len(rows)
+fails = [r["id"] for r in rows if r["status"] != "PASS"]
+R1_rows_ids = [r["id"] for r in R1["rows"]]
+out = {
+    "unit": "AC2",
+    "slice": "L05-L06",
+    "round": 2,
+    "verifier": "AC2 independent verifier, round 2, slice L05-L06 (fresh verifier; did not build AC2; shares no context with the builders or the round-1 verifier)",
+    "pin": "bc3226e",
+    "base": "none",
+    "checkout": "/tmp/verify-ac2-l56 (detached worktree at bc3226e)",
+    "scratch": "/tmp/ac2-v/L05-L06-r2",
+    "verified_at": "2026-10-27T21:30:00+00:00",
+    "verdict": "FAIL" if fails else "PASS",
+    "rows": rows,
+    "mutants": [],
+    "registry_flags": [
+        "dechow1995detecting: author list OPEN (architect ruling). Registry and Crossref list two authors (Dechow, Patricia M.; Sloan, Richard G.); curriculum string and atlas A15 contract (line 123) give three (Dechow, Sloan & Sweeney). L05 and L06 comply (no author names). Not resolved here.",
+        "mclean2016academic and hou2018replicating: used_by now includes AC2 (diff of references.json); verify_refs --unit AC2 re-verifies 7 entries. Resolved since round 1.",
+    ],
+    "freshness_flags": [],
+    "notes": [
+        "Round 2 re-verification of L05 and L06 pages, labs, and the L05 and L06 cards, pinned at bc3226e. Both lab twins are byte-identical to the 0c14083 versions except lab-AC2-L06-1.py (5 lines changed: docstring and two new print lines); lab-AC2-L05-1.py unchanged since 0c14083.",
+        "Publisher pages (doi.org -> AAA, Wiley, OUP, JFE) were NOT fetched in round 2 (round 1 recorded HTTP 403 bot challenges). Crossref records and abstracts were fetched with plain curl (api.crossref.org, HTTP 200 for all four DOIs); those abstracts are the only text of the four papers read, and every claim about paper content is judged against them.",
+        "Scripts: ledgers/AC2/scripts/L05-L06-r2/recompute_l05.py, recompute_l06.py (own re-implementation from the written spec, normal equations, no import of the twins except for shared helpers in checks_extra.py), checks_extra.py, prop21_sigma0.py, build_fragment.py. Outputs in /tmp/ac2-v/L05-L06-r2/ (recompute_l05.out, recompute_l06.out, checks_extra.out, twin-*.out, check_pages.txt).",
+        "Mutation testing is a project-slice requirement; this lesson slice has no mutants.",
+        "Hours: declared L05 8 h, L06 10 h; own estimates 7.5 h and 9.5 h (within 30%).",
+        "Convention question for the architect: concept links. BUILDER_RULES 2 says every use of a concept from elsewhere is a link. Both pages link each such concept once, in the Uses line (as 'accruals' and 'simple returns' are). Passed on that convention; the literal every-use reading would fail many lines in both pages and in every lesson of the unit.",
+        "Architect question: learner text names 'the A15 contract' (an internal atlas document). Not a listed banned word; recorded as a PASS row with the reference noted.",
+    ],
+    "summary": {
+        "rows": len(rows),
+        "pass": sum(1 for r in rows if r["status"] == "PASS"),
+        "fail": sum(1 for r in rows if r["status"] == "FAIL"),
+        "unverifiable": sum(1 for r in rows if r["status"] == "UNVERIFIABLE"),
+        "fail_ids": fails,
+        "round1_fail_ids_now_pass": [i for i in R1["summary"]["fail_ids"] if OV[i][0] == "PASS"],
+    },
+}
+OUT.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+print("rows", len(rows), "pass", out["summary"]["pass"], "fail", out["summary"]["fail"])
+print("fail ids:", fails)

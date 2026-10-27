@@ -1,0 +1,13 @@
+import html, re, sys
+page = open(sys.argv[1], encoding="utf-8").read()
+code = re.search(r'<pre><code class="language-python" data-run>(.*?)</code></pre>', page, re.S).group(1)
+expected = re.search(r'<pre class="expected"[^>]*>(.*?)</pre>', page, re.S).group(1)
+code = html.unescape(code)
+expected = html.unescape(expected)
+twin = open(sys.argv[2], encoding="utf-8").read()
+print("page code == twin:", code.rstrip() == twin.rstrip(), len(code), len(twin))
+print("expected lines:", len(expected.splitlines()))
+out = open(sys.argv[3], encoding="utf-8").read()
+print("run output == expected block:", out.rstrip() == expected.rstrip())
+exp_lines = expected.splitlines()
+print("output lines occurring verbatim in expected block:", sum(1 for l in out.splitlines() if l in exp_lines), "of", len(out.splitlines()))
