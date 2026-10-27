@@ -794,6 +794,57 @@ def test_ill_conditioned_full_rank_payoffs_are_accepted() -> None:
     )
 
 
+def test_square_redundant_payoffs_raise() -> None:
+    square = PAYOFFS[: PRICES.size].copy()  # T = N: as many states as assets
+    square[:, -1] = square[:, 0] + square[:, 1]  # the last payoff is the sum of two others
+    must_raise(
+        lambda: sol.x_star_weights(square, PRICES),
+        "a square payoff sample (T = N) with a redundant payoff, whose second-moment matrix is singular",
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        pytest.param(lambda: sol.second_moment_matrix(np.empty((0, PRICES.size))), id="moments"),
+        pytest.param(lambda: sol.x_star_weights(np.empty((0, PRICES.size)), PRICES), id="x-star"),
+        pytest.param(lambda: sol.sdf_values(np.empty((0, PRICES.size)), PRICES), id="sdf-values"),
+        pytest.param(lambda: sol.pricing_errors(np.empty((0, PRICES.size)), PRICES, np.empty(0)), id="pricing-errors"),
+        pytest.param(lambda: sol.population_x_star(np.empty(0), np.empty((0, PRICES.size)), PRICES), id="population"),
+        pytest.param(lambda: sol.min_variance_sdf(np.empty((0, PRICES.size)), PRICES, 0.97), id="min-variance"),
+        pytest.param(lambda: sol.min_sdf_std(np.empty((0, PRICES.size)), PRICES, 0.97), id="min-std"),
+        pytest.param(lambda: sol.recover_sdf(np.empty((0, PRICES.size)), TEST, PRICES), id="recover-train"),
+        pytest.param(lambda: sol.recover_sdf(TRAIN, np.empty((0, PRICES.size)), PRICES), id="recover-test"),
+    ],
+)
+def test_empty_payoff_sample_raises(bad: Callable[[], object]) -> None:
+    must_raise(bad, "a payoff sample with no observations")
+
+
+@pytest.mark.parametrize("scale", [1e-11, 1e11], ids=["tiny-units", "huge-units"])
+def test_min_variance_sdf_is_scale_equivariant(scale: float) -> None:
+    # Under x -> c x, p -> c p the pricing kernel is unchanged: the SDF values and the intercept a are invariant,
+    # the weights become b / c, and the SDF's standard deviation is invariant (L05, Theorem 2.1).
+    unit_a, unit_b = sol.min_variance_sdf(RISKY, RISKY_P, 0.97)
+    a, b = sol.min_variance_sdf(scale * RISKY, scale * RISKY_P, 0.97)
+    m_unit = unit_a + RISKY @ np.asarray(unit_b)
+    m = a + (scale * RISKY) @ np.asarray(b)
+    assert close(m, m_unit, 1e-7), (
+        "Measuring payoffs and prices in other units cannot change the minimum-variance SDF (L05, Theorem 2.1)."
+    )
+    assert math.isclose(a, unit_a, rel_tol=1e-7, abs_tol=1e-9), "the intercept of the SDF is unit-free."
+    assert close(scale * np.asarray(b), np.asarray(unit_b), 1e-7), "the weights scale as b / c."
+
+
+@pytest.mark.parametrize("scale", [1e-11, 1e11], ids=["tiny-units", "huge-units"])
+def test_min_sdf_std_is_scale_invariant(scale: float) -> None:
+    unit = sol.min_sdf_std(RISKY, RISKY_P, 0.97)
+    scaled = sol.min_sdf_std(scale * RISKY, scale * RISKY_P, 0.97)
+    assert math.isclose(scaled, unit, rel_tol=1e-7), (
+        "The smallest standard deviation of an SDF cannot depend on the units of payoffs and prices (L05, Theorem 2.4)."
+    )
+
+
 def test_imports_only_numpy_and_the_standard_library() -> None:
     source = Path(sol.__file__).read_text(encoding="utf-8")
     allowed = set(sys.stdlib_module_names) | {"numpy", "__future__"}
