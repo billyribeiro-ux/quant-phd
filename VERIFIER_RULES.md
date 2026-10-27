@@ -212,6 +212,12 @@
   as a FAIL.
 - `evidence` must name the concrete source, command or test you used.
   "Looks correct" is never evidence.
+- **Scripts that back a row are kept.** A row whose evidence is the output of a
+  script you wrote must cite the script by its repository path. Put it under
+  `ledgers/<UNIT>/scripts/<slice>-r<round>/` in your checkout (the orchestrator
+  commits it with the fragment). A later verifier cannot re-run a script that
+  lived in a scratch directory, and a row it cannot re-run is UNVERIFIABLE.
+  A check worth repeating belongs under `tests/` instead.
 
 ---
 

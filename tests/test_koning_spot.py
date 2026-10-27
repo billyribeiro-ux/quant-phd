@@ -3,7 +3,7 @@
 phi is the fixed-N test (N = 20, one-sided, level 0.05) of a simple null, N(0, 1) iid, and
 phi_n = E_P[phi | F_n]. Claim 3: phi_N = phi. Martingale: E_P[phi_n] = E_P[phi] for every n.
 Claim 1: E_P[phi_tau] <= 0.05 for stopping times tau. The seed is fixed, so the run is deterministic;
-the tolerances are six standard errors of a Bernoulli(0.05) mean over 400,000 paths (0.0003).
+the tolerance is six standard errors of a Bernoulli(0.05) mean over 400,000 paths (6 x 0.000345).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from scipy import stats  # type: ignore[import-untyped]
 N = 20
 REPS = 400_000
 LEVEL = 0.05
-TOLERANCE = 0.002
+TOLERANCE = 6 * (LEVEL * (1 - LEVEL) / REPS) ** 0.5
 
 
 def _paths() -> tuple[NDArray[np.float64], NDArray[np.float64]]:
