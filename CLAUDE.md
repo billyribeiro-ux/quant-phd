@@ -76,7 +76,7 @@
 
 ## Conventions
 
-- Python 3.12+, fully typed (mypy strict), formatted by ruff at line length 120.
+- Python 3.14+, fully typed (mypy strict), formatted by ruff at line length 120.
   Pin every dependency in `requirements*.txt`.
 - The Crossref client sends no personal data. Do not add an email address to
   its User-Agent or parameters.

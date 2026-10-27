@@ -353,8 +353,8 @@ def test_descriptive_helpers_match_python() -> None:
     for x in (-3, -0.5, 0, 1.2, 4):
         for n in (1, 2, 100, 1000):
             # cdf ** (n - 1) multiplies the cdf's relative error by n - 1. stats.normCdf is a rational
-            # approximation good to ~1e-14 relative at x = -3 (Python 3.15's NormalDist.cdf is erfc-based and
-            # exact there), so the tolerance scales with the exponent.
+            # approximation good to ~1e-14 relative at x = -3 (NormalDist.cdf is erfc-based and exact there on
+            # Python 3.14: cdf(-3) = 0.0013498980316300957), so the tolerance scales with the exponent.
             expected_pdf = n * phi.pdf(x) * phi.cdf(x) ** (n - 1)
             assert next(pdfs) == pytest.approx(expected_pdf, rel=max(1e-12, 5e-14 * (n - 1)), abs=1e-300)
     assert out["simpson"][0] == pytest.approx(2.0, abs=1e-8)

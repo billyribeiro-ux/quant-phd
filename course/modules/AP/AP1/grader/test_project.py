@@ -19,6 +19,7 @@ import io
 import math
 import os
 import sys
+import warnings
 from collections.abc import Callable
 from pathlib import Path
 
@@ -61,12 +62,12 @@ RISKY_P_WITH_INF = np.where(np.arange(RISKY_P.size) == 0, np.inf, RISKY_P)
 
 
 def must_raise(call: Callable[[], object], condition: str) -> None:
-    """Fail with a message naming the violated condition unless call() raises ValueError."""
+    """Fail unless call() raises ValueError: the grader checks the exception type."""
     try:
         call()
     except ValueError:
         return
-    pytest.fail(f"{condition}: the specification requires a ValueError naming the violated condition.")
+    pytest.fail(f"{condition}: the specification requires a ValueError.")
 
 
 def close(a: object, b: object, tol: float = 1e-8) -> bool:
@@ -635,6 +636,328 @@ def test_functions_do_not_mutate_or_print() -> None:
     assert np.array_equal(train, TRAIN) and np.array_equal(test, TEST) and np.array_equal(prices, PRICES), (
         "Functions must not modify their arguments."
     )
+
+
+def call_every_public_function(
+    train: np.ndarray,
+    test: np.ndarray,
+    prices: np.ndarray,
+    probs: np.ndarray,
+    payoffs: np.ndarray,
+    sdf: np.ndarray,
+    weights: np.ndarray,
+    risky: np.ndarray,
+    risky_p: np.ndarray,
+) -> None:
+    """Call each of the eight public functions once on valid inputs."""
+    sol.second_moment_matrix(payoffs)
+    sol.x_star_weights(train, prices)
+    sol.sdf_values(test, weights)
+    sol.pricing_errors(test, prices, sdf)
+    sol.population_x_star(probs, payoffs, prices)
+    sol.min_variance_sdf(risky, risky_p, 0.97)
+    sol.min_sdf_std(risky, risky_p, 0.97)
+    sol.recover_sdf(train, test, prices)
+
+
+def test_every_public_function_is_silent_and_pure() -> None:
+    args = (
+        TRAIN.copy(),
+        TEST.copy(),
+        PRICES.copy(),
+        PROBS.copy(),
+        PAYOFFS.copy(),
+        np.ones(TEST.shape[0]),
+        np.full(TEST.shape[1], 0.1),
+        RISKY.copy(),
+        RISKY_P.copy(),
+    )
+    names = ("train", "test", "prices", "probs", "payoffs", "sdf", "weights", "risky", "risky_p")
+    before = [a.copy() for a in args]
+    out, err = io.StringIO(), io.StringIO()
+    with (
+        warnings.catch_warnings(record=True) as caught,
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(err),
+    ):
+        warnings.simplefilter("always")
+        call_every_public_function(*args)
+    assert out.getvalue() == "", "Functions must not print to standard output."
+    assert err.getvalue() == "", "Functions must not write to standard error."
+    assert not caught, "Functions must not warn on valid inputs."
+    for name, a, b in zip(names, args, before, strict=True):
+        assert np.array_equal(a, b), f"Functions must not modify their arguments: {name} changed."
+
+
+def test_ill_conditioned_payoffs_emit_no_warning() -> None:
+    rng = np.random.default_rng(20260501)  # fixed, independent of the seed: the sample is the same on every seed
+    x = rng.normal(0.0, 1.0, (200, 3)) * np.array(
+        [1.0, 1.0, 1e-4]
+    )  # full rank, but the second moments are ill-conditioned
+    assert np.linalg.cond(x.T @ x / x.shape[0]) > 1e6, "internal: the second-moment matrix must be ill-conditioned"
+    p = np.array([1.0, 0.99, 1e-4])
+    probs = np.full(x.shape[0], 1.0 / x.shape[0])
+    sdf, weights = np.ones(x.shape[0]), np.full(x.shape[1], 0.1)
+    out, err = io.StringIO(), io.StringIO()
+    with (
+        warnings.catch_warnings(record=True) as caught,
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(err),
+    ):
+        warnings.simplefilter("always")
+        call_every_public_function(x, x, p, probs, x, sdf, weights, x, p)
+    assert not caught, "A valid but ill-conditioned payoff sample must not trigger a warning from any function."
+    assert out.getvalue() == "" and err.getvalue() == "", "Functions must not print or write to stderr."
+
+
+@pytest.mark.parametrize("delta", [5e-4, 1e-6], ids=["sum-1.0005", "sum-1-plus-1e-6"])
+def test_probabilities_off_one_beyond_rounding_raise(delta: float) -> None:
+    q = PROBS.copy()
+    q[0] += delta
+    must_raise(
+        lambda: sol.population_x_star(q, PAYOFFS, PRICES),
+        "probabilities whose sum differs from one by more than float rounding",
+    )
+
+
+def test_probability_rounding_is_accepted() -> None:
+    x_star = np.asarray(sol.population_x_star(PROBS, PAYOFFS, PRICES))
+    for delta in (1e-12, -1e-12):
+        q = PROBS.copy()
+        q[0] += delta
+        out = np.asarray(sol.population_x_star(q, PAYOFFS, PRICES))
+        assert close(out, x_star, 1e-7), "Probabilities that sum to one up to float rounding must be accepted."
+
+
+def test_negative_sdf_values_are_legal_and_silent() -> None:
+    b = -np.ones(TEST.shape[1])  # the weights are unconstrained, so the SDF values may be negative
+    args = (TEST.copy(), PRICES.copy(), b.copy())
+    out, err = io.StringIO(), io.StringIO()
+    with (
+        warnings.catch_warnings(record=True) as caught,
+        contextlib.redirect_stdout(out),
+        contextlib.redirect_stderr(err),
+    ):
+        warnings.simplefilter("always")
+        values = np.asarray(sol.sdf_values(args[0], args[2]))
+        errors = np.asarray(sol.pricing_errors(args[0], args[1], values))
+    assert np.any(values < 0.0), "internal: the check needs negative SDF values"
+    assert not caught and out.getvalue() == "" and err.getvalue() == "", (
+        "A negative SDF value is legal: functions must neither warn nor print on it."
+    )
+    assert close(values, TEST @ b), "sdf_values must return x' b in every state, negative or not."
+    assert close(errors, TEST.T @ values / TEST.shape[0] - PRICES), (
+        "pricing_errors must be E_T[m x] - p for any finite SDF values, negative or not."
+    )
+
+
+@pytest.mark.parametrize("scale", [1e-11, 1e11], ids=["tiny-units", "huge-units"])
+def test_rank_check_is_scale_invariant(scale: float) -> None:
+    unit = np.asarray(sol.sdf_values(TRAIN, sol.x_star_weights(TRAIN, PRICES)))
+    small = np.asarray(sol.sdf_values(scale * TRAIN, sol.x_star_weights(scale * TRAIN, scale * PRICES)))
+    assert close(small, unit, 1e-7), (
+        "Measuring payoffs and prices in other units cannot change x*, so the redundancy check must not depend on "
+        "the absolute size of the payoffs (L04, Theorem 3.2)."
+    )
+    pop_unit = np.asarray(sol.population_x_star(PROBS, PAYOFFS, PRICES))
+    pop = np.asarray(sol.population_x_star(PROBS, scale * PAYOFFS, scale * PRICES))
+    assert close(pop, pop_unit, 1e-7), "population_x_star must not depend on the absolute size of the payoffs."
+    out = sol.recover_sdf(scale * TRAIN, scale * TEST, scale * PRICES)
+    assert close(scale * np.asarray(out.weights), np.asarray(sol.x_star_weights(TRAIN, PRICES)), 1e-7), (
+        "recover_sdf must not depend on the absolute size of the payoffs."
+    )
+
+
+def test_share_negative_counts_states_just_below_zero() -> None:
+    b = np.asarray(sol.x_star_weights(TRAIN, PRICES))
+    v = -1e-10 * b / (b @ b)  # a legal payoff state whose x* is -1e-10: negative, though tiny
+    probe = np.vstack([TEST, v])
+    m = probe @ b
+    assert -1e-9 < m[-1] < 0.0, "internal: the probe state's x* must be negative and within 1e-9 of zero"
+    out = sol.recover_sdf(TRAIN, probe, PRICES)
+    assert math.isclose(out.test_share_negative, float(np.mean(m < 0.0)), abs_tol=1e-12), (
+        "test_share_negative counts every test observation with x* < 0, however small in size (L04, Example 5.1)."
+    )
+
+
+def test_ill_conditioned_full_rank_payoffs_are_accepted() -> None:
+    rng = np.random.default_rng(20260502)  # fixed: the same sample on every seed
+    x = rng.normal(0.0, 1.0, (50, 3)) * np.array([1.0, 1.0, 1e-7])  # full rank, with a second-moment matrix near 1e14
+    p = np.array([1.0, 0.99, 1e-7])
+    assert np.linalg.cond(x.T @ x / x.shape[0]) > 1e12, "internal: the second-moment matrix must be ill-conditioned"
+    b = np.asarray(sol.x_star_weights(x, p))
+    assert np.all(np.isfinite(b)), "x_star_weights must return finite weights for a full-rank payoff sample."
+    residual = x.T @ (x @ b) / x.shape[0] - p
+    assert np.max(np.abs(residual)) <= 1e-10 * np.max(np.abs(p)), (
+        "x* must still price every payoff in sample: a backward-stable solve leaves a residual of rounding size, "
+        "not one that grows with the condition number (L07, Proposition 2.1)."
+    )
+
+
+def test_square_redundant_payoffs_raise() -> None:
+    square = PAYOFFS[: PRICES.size].copy()  # T = N: as many states as assets
+    square[:, -1] = square[:, 0] + square[:, 1]  # the last payoff is the sum of two others
+    must_raise(
+        lambda: sol.x_star_weights(square, PRICES),
+        "a square payoff sample (T = N) with a redundant payoff, whose second-moment matrix is singular",
+    )
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        pytest.param(lambda: sol.second_moment_matrix(np.empty((0, PRICES.size))), id="moments"),
+        pytest.param(lambda: sol.x_star_weights(np.empty((0, PRICES.size)), PRICES), id="x-star"),
+        pytest.param(lambda: sol.pricing_errors(np.empty((0, PRICES.size)), PRICES, np.empty(0)), id="pricing-errors"),
+        pytest.param(lambda: sol.population_x_star(np.empty(0), np.empty((0, PRICES.size)), PRICES), id="population"),
+        pytest.param(lambda: sol.min_variance_sdf(np.empty((0, PRICES.size)), PRICES, 0.97), id="min-variance"),
+        pytest.param(lambda: sol.min_sdf_std(np.empty((0, PRICES.size)), PRICES, 0.97), id="min-std"),
+        pytest.param(lambda: sol.recover_sdf(np.empty((0, PRICES.size)), TEST, PRICES), id="recover-train"),
+        pytest.param(lambda: sol.recover_sdf(TRAIN, np.empty((0, PRICES.size)), PRICES), id="recover-test"),
+    ],
+)
+def test_empty_payoff_sample_raises(bad: Callable[[], object]) -> None:
+    must_raise(bad, "a payoff sample with no observations")
+
+
+@pytest.mark.parametrize("scale", [1e-11, 1e11], ids=["tiny-units", "huge-units"])
+def test_min_variance_sdf_is_scale_equivariant(scale: float) -> None:
+    # Under x -> c x, p -> c p the pricing kernel is unchanged: the SDF values and the intercept a are invariant,
+    # the weights become b / c, and the SDF's standard deviation is invariant (L05, Theorem 2.1).
+    unit_a, unit_b = sol.min_variance_sdf(RISKY, RISKY_P, 0.97)
+    a, b = sol.min_variance_sdf(scale * RISKY, scale * RISKY_P, 0.97)
+    m_unit = unit_a + RISKY @ np.asarray(unit_b)
+    m = a + (scale * RISKY) @ np.asarray(b)
+    assert close(m, m_unit, 1e-7), (
+        "Measuring payoffs and prices in other units cannot change the minimum-variance SDF (L05, Theorem 2.1)."
+    )
+    assert math.isclose(a, unit_a, rel_tol=1e-7, abs_tol=1e-9), "the intercept of the SDF is unit-free."
+    assert close(scale * np.asarray(b), np.asarray(unit_b), 1e-7), "the weights scale as b / c."
+
+
+@pytest.mark.parametrize("scale", [1e-11, 1e11], ids=["tiny-units", "huge-units"])
+def test_min_sdf_std_is_scale_invariant(scale: float) -> None:
+    unit = sol.min_sdf_std(RISKY, RISKY_P, 0.97)
+    scaled = sol.min_sdf_std(scale * RISKY, scale * RISKY_P, 0.97)
+    assert math.isclose(scaled, unit, rel_tol=1e-7), (
+        "The smallest standard deviation of an SDF cannot depend on the units of payoffs and prices (L05, Theorem 2.4)."
+    )
+
+
+def public_outputs(
+    train: np.ndarray,
+    test: np.ndarray,
+    prices: np.ndarray,
+    probs: np.ndarray,
+    payoffs: np.ndarray,
+    sdf: np.ndarray,
+    weights: np.ndarray,
+    risky: np.ndarray,
+    risky_p: np.ndarray,
+) -> list[object]:
+    """Every public result on one set of arguments, flattened for comparison."""
+    rec = sol.recover_sdf(train, test, prices)
+    a, b = sol.min_variance_sdf(risky, risky_p, 0.97)
+    return [
+        np.asarray(sol.second_moment_matrix(payoffs)),
+        np.asarray(sol.x_star_weights(train, prices)),
+        np.asarray(sol.sdf_values(test, weights)),
+        np.asarray(sol.pricing_errors(test, prices, sdf)),
+        np.asarray(sol.population_x_star(probs, payoffs, prices)),
+        float(a),
+        np.asarray(b),
+        float(sol.min_sdf_std(risky, risky_p, 0.97)),
+        rec.weights,
+        rec.in_sample_errors,
+        rec.out_of_sample_errors,
+        rec.out_of_sample_rms,
+        rec.train_mean,
+        rec.train_std,
+        rec.test_share_negative,
+    ]
+
+
+def assert_same_outputs(actual: list[object], expected: list[object], what: str) -> None:
+    for i, (x, y) in enumerate(zip(actual, expected, strict=True)):
+        assert close(x, y, 1e-9), f"{what}: public output {i} must not depend on the dtype or layout of its inputs."
+
+
+def test_integer_payoffs_give_the_float_results() -> None:
+    ti, te, pa, ri = (np.round(100.0 * a).astype(np.int64) for a in (TRAIN, TEST, PAYOFFS, RISKY))
+    sdf, weights = np.ones(TEST.shape[0]), np.full(TEST.shape[1], 0.1)
+    expected = public_outputs(
+        ti.astype(float), te.astype(float), PRICES, PROBS, pa.astype(float), sdf, weights, ri.astype(float), RISKY_P
+    )
+    actual = public_outputs(ti, te, PRICES, PROBS, pa, sdf, weights, ri, RISKY_P)
+    assert_same_outputs(actual, expected, "Integer payoffs")
+
+
+def test_integer_valued_prices_and_weights_give_the_float_results() -> None:
+    p_int = np.round(100.0 * PRICES).astype(np.int64)
+    risky_p_int = np.round(100.0 * RISKY_P).astype(np.int64)
+    w_int = np.arange(1, TEST.shape[1] + 1)
+    sdf = np.ones(TEST.shape[0])
+    expected = public_outputs(
+        TRAIN, TEST, p_int.astype(float), PROBS, PAYOFFS, sdf, w_int.astype(float), RISKY, risky_p_int.astype(float)
+    )
+    actual = public_outputs(TRAIN, TEST, p_int, PROBS, PAYOFFS, sdf, w_int, RISKY, risky_p_int)
+    assert_same_outputs(actual, expected, "Integer-valued prices and weights")
+
+
+def test_non_contiguous_and_fortran_views_give_the_same_results() -> None:
+    def strided(a: np.ndarray) -> np.ndarray:
+        wide = np.zeros((a.shape[0], 2 * a.shape[1]))
+        wide[:, ::2] = a
+        view = wide[:, ::2]  # every second column: neither contiguous nor a copy
+        assert not view.flags.c_contiguous, "internal: the view must be non-contiguous"
+        return view
+
+    def fortran(a: np.ndarray) -> np.ndarray:
+        out = a.T.copy().T  # transposed twice: the same array, stored column by column
+        assert out.flags.f_contiguous, "internal: the array must be Fortran-ordered"
+        return out
+
+    sdf, weights = np.ones(TEST.shape[0]), np.full(TEST.shape[1], 0.1)
+    expected = public_outputs(
+        TRAIN.copy(), TEST.copy(), PRICES, PROBS, PAYOFFS.copy(), sdf, weights, RISKY.copy(), RISKY_P
+    )
+    actual = public_outputs(
+        strided(TRAIN), fortran(TEST), PRICES, PROBS, strided(PAYOFFS), sdf, weights, fortran(RISKY), RISKY_P
+    )
+    assert_same_outputs(actual, expected, "Non-contiguous and Fortran-ordered payoffs")
+
+
+def test_train_std_is_stable_when_the_mean_is_large() -> None:
+    rng = np.random.default_rng(20260503)  # fixed, independent of the seed
+    x = 1.0 + 1e-7 * rng.normal(0.0, 1.0, (200, 3))  # payoffs that are almost constant
+    p = 1e8 * x.mean(axis=0)  # prices scaled so that x* has a large mean and a tiny spread
+    out = sol.recover_sdf(x, x, p)
+    m = x @ out.weights
+    expected = float(np.sqrt(np.mean((m - m.mean()) ** 2)))  # deviations about the mean, divided by T
+    assert math.isclose(out.train_std, expected, rel_tol=1e-9), (
+        "train_std is the standard deviation of x* on the training sample, dividing by T: it must be computed from "
+        "the deviations about the mean, not from E[m^2] - E[m]^2, which cancels when the mean is large."
+    )
+
+
+@pytest.mark.parametrize("mean", [0.9, -0.97, 1.02, -1.02])
+def test_min_sdf_std_is_the_std_of_the_min_variance_sdf_at_that_mean(mean: float) -> None:
+    # The minimum-variance SDF with mean v is m_v = a + x'beta with beta = C^{-1}(p - v mu) (L05, Theorem 2.1).
+    # Its variance is beta'C beta = (p - v mu)'C^{-1}(p - v mu), which is the square of min_sdf_std. So
+    # sigma_min(v) = std(m_v) for every real v, positive or negative: the sign of v is not discarded.
+    a, b = sol.min_variance_sdf(RISKY, RISKY_P, mean)
+    m = a + RISKY @ np.asarray(b)
+    assert math.isclose(sol.min_sdf_std(RISKY, RISKY_P, mean), float(m.std()), rel_tol=1e-8), (
+        "min_sdf_std(v) must equal the standard deviation of the minimum-variance SDF with mean v, for negative v too."
+    )
+
+
+def test_min_sdf_std_is_not_symmetric_in_its_mean() -> None:
+    # g = p - v E[x] changes with v, so sigma_min(-v) and sigma_min(v) generally differ. On every seed the reference
+    # differs by at least 2.9x the smaller value, so the margin asserted here is half of that.
+    up = sol.min_sdf_std(RISKY, RISKY_P, 0.97)
+    down = sol.min_sdf_std(RISKY, RISKY_P, -0.97)
+    assert abs(down - up) > 0.5 * up, "min_sdf_std must depend on the sign of its mean, not only on its magnitude."
 
 
 def test_imports_only_numpy_and_the_standard_library() -> None:

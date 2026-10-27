@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from coursekit import Lab
 from page_smoke import lab_preload
 
@@ -61,3 +63,8 @@ def test_preload_drops_a_future_import_even_after_another_labs_code() -> None:
 def test_preload_ignores_a_docstring_line_that_starts_with_from() -> None:
     labs = [lab('"""\nfrom the training half of the sample\n"""\nx = 1\n', ())]
     assert lab_preload(labs) == ("", [])
+
+
+def test_preload_names_the_lab_whose_code_is_not_valid_python() -> None:
+    with pytest.raises(SyntaxError, match="lab-AP1-L02-1: not valid Python"):
+        lab_preload([lab("import numpy as np\nx = (1,\n", ("numpy",))])

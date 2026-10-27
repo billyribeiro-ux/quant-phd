@@ -353,7 +353,7 @@ The site works fully offline from `python3 -m http.server`. A local server is
 required because WASM runtimes do not load over `file://`. The site can also be
 hosted as a static site with no backend.
 
-**Build and verification toolchain:** Python 3.12+, pytest, Playwright with the
+**Build and verification toolchain:** Python 3.14+, pytest, Playwright with the
 pre-installed Chromium, and a Crossref/DOI client.
 
 ---

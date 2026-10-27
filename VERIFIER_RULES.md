@@ -149,6 +149,16 @@
 ### 2.8 Data and figures: one row per figure
 - The dataset is in MANIFEST with source, licence, date, SHA-256 and
   transform, and the licence permits redistribution.
+- **What is reproducible.** `sha256` of the snapshot is: rebuild the CSV from
+  the live feed with `tools/fetch_data.py --fetch` in a scratch copy and the
+  bytes match, or the issuer revised history and the row says so. `raw_sha256`
+  is a provenance record of the download made on `retrieved`. An issuer's live
+  file changes, so that hash is not expected to reproduce later, and
+  `--check` does not compare it (BUILDER_RULES §6.6). A raw hash that differs
+  from today's download is not a failure when the snapshot rebuilds
+  byte-for-byte; record both hashes and the rebuild in the row. Never refresh
+  `retrieved` or `raw_sha256` just to make them match, because the pages quote
+  the `retrieved` date.
 - For every dataset that a lab (`data-files`) or figure reads, open its
   `licence_url` yourself and find the quoted licence text on that page. The
   row fails if the quote is not there or does not grant redistribution.
@@ -202,6 +212,12 @@
   as a FAIL.
 - `evidence` must name the concrete source, command or test you used.
   "Looks correct" is never evidence.
+- **Scripts that back a row are kept.** A row whose evidence is the output of a
+  script you wrote must cite the script by its repository path. Put it under
+  `ledgers/<UNIT>/scripts/<slice>-r<round>/` in your checkout (the orchestrator
+  commits it with the fragment). A later verifier cannot re-run a script that
+  lived in a scratch directory, and a row it cannot re-run is UNVERIFIABLE.
+  A check worth repeating belongs under `tests/` instead.
 
 ---
 
