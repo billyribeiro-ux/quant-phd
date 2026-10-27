@@ -1011,6 +1011,19 @@ def test_period_two_years_back_is_not_the_previous_year(name: str) -> None:
     must_raise(lambda: RATIO_CALLS[name](st, LATEST), f"{name} with only a period end two years back")
 
 
+@pytest.mark.parametrize("name", ["dupont", "roic", "accruals_cash_flow", "accruals_balance_sheet"])
+def test_previous_year_is_the_latest_period_end_in_the_window(name: str) -> None:
+    # Contract: the previous year is the LATEST period end 350 to 380 days earlier. Here an earlier period end, 372 days
+    # back, is also inside the window. Its balances are inflated, so picking it instead of the real prior year changes
+    # the answer.
+    earlier = shift_days(LATEST, -372)
+    decoy = {k: (v * 1.5 if k in ("total_assets", "equity") else v) for k, v in FINAL[PRIOR].items()}
+    st = {LATEST: FINAL[LATEST], PRIOR: FINAL[PRIOR], earlier: decoy}
+    assert same_result(RATIO_CALLS[name](st, LATEST), RATIO_CALLS[name](FINAL, LATEST)), (
+        f"{name}: of two period ends inside the 350 to 380 day window, the latest is the previous year."
+    )
+
+
 @pytest.mark.parametrize(
     ("days", "kept"), [(349, False), (350, True), (351, True), (379, True), (380, True), (381, False)]
 )

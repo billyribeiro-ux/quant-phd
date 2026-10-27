@@ -13,7 +13,7 @@ Lessons that refer to "the build report" mean this file.
 ## REFERENCE_REQUESTS (none of these is in `references/references.json`; none is cited as fact)
 | Work | Needed for | Status |
 |---|---|---|
-| Beneish (1999): an open or secondary reproduction of the intercept and eight-variable coefficient table with a table locator (the registry has the paper as `beneish1999detection`; the DOI resolver redirects to the publisher page at tandfonline.com, which returned HTTP 403 to plain curl on 2026-10-27). | L08 section 2, the project's grader constants | OPEN. The constants are labelled UNCONFIRMED everywhere. A person with the paper settles them. |
+| Beneish (1999): an open or secondary reproduction of the intercept and eight-variable coefficient table with a table locator (the registry has the paper as `beneish1999detection`; the DOI link https://doi.org/10.2469/faj.v55.n5.2296 returned HTTP 302 to https://www.tandfonline.com/doi/full/10.2469/faj.v55.n5.2296, which returned HTTP 403 to plain curl on 2026-10-27). | L08 section 2, the project's grader constants | OPEN. The constants are labelled UNCONFIRMED everywhere. A person with the paper settles them. |
 | Mohanram (2005), Review of Accounting Studies (from recall; title, DOI unverified) | L07 section 5 counter-evidence | OPEN, look up before any citation |
 | Dechow, Ge, Larson & Sloan (2011), Contemporary Accounting Research (from recall) | L08 section 5 | OPEN |
 | Beneish, Lee & Nichols (2013), Financial Analysts Journal (from recall) | L08 sections 4-5 | OPEN |
