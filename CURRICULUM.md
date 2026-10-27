@@ -154,12 +154,12 @@ Credential hours include every prerequisite the credential pulls in. Credentials
 |---|---|---|---|---|
 | Quantitative Researcher | F6, QR2, PR4, MS4, S7, CAP1 | 40 | 4,076 | 1.89 |
 | Global Macro Portfolio Manager | GM5, FI3, X2, DV5, PR3, PC2 | 56 | 5,166 | 2.39 |
-| Derivatives & Volatility | DV3, DV4, DV5, DV6, FI6 | 41 | 4,176 | 1.93 |
+| Derivatives & Volatility | DV3, DV4, DV5, DV6, FI6 | 42 | 4,296 | 1.99 |
 | Corporate Finance / Investment Banking / Private Equity | CF5, CF6, CF7, CF9, PM1, PM2, AC3, PC2 | 41 | 3,686 | 1.71 |
 | Equity Research / Asset Management | FC4, CF7, F7, BK2, PR2, PC2 | 36 | 3,261 | 1.51 |
-| Quant Developer | CS6, QR2, MS2, DV4 | 36 | 3,776 | 1.75 |
+| Quant Developer | CS6, QR2, MS2, DV4 | 37 | 3,896 | 1.80 |
 | Risk & Financial Stability | PR4, SR3, SR4, BK3 | 31 | 2,936 | 1.36 |
-| Research doctorate (minimum prerequisite path to thesis) | CAP4 | 46 | 5,976 | 2.77 |
+| Research doctorate (minimum prerequisite path to thesis) | CAP4 | 47 | 6,096 | 2.82 |
 
 ## Atlas — the program-long build
 
@@ -490,7 +490,7 @@ Using SEC EDGAR filings and XBRL data for a real issuer over five or more years,
 For one public company: a full DCF and multiples valuation driven by Atlas A15 and A16, an LBO model with a debt schedule and returns waterfall, a merger model with accretion/dilution and synergy sensitivity, and an investment-committee memo with a recommendation, defended against a hostile Q&A rubric.  
 *Deliverables:* Valuation, LBO model, Merger model, IC memo
 
-- **CF1 · Time Value & Capital Budgeting** · U · 60 h · ← M1
+- **CF1 · Time Value & Capital Budgeting** · U · 60 h · ← M1, AC1
   - *Core:* NPV, IRR and its pitfalls, payback, project cash flows, inflation and real vs. nominal, what CFOs actually do.
   - *Introduces:* Net present value; Internal rate of return; Multiple IRRs and NPV–IRR ranking conflicts; Payback period; Incremental project cash flows; Net working capital investment; Depreciation tax shield; Fisher relation: real vs. nominal rates; Consistent real or nominal discounting; Simulation-based NPV distribution
   - *Sources:* Brealey, Myers & Allen, Principles of Corporate Finance, 14th ed. (2023); Graham & Harvey (2001), JFE 60(2-3)
