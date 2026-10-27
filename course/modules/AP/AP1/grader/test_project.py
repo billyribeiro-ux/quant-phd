@@ -768,6 +768,32 @@ def test_rank_check_is_scale_invariant(scale: float) -> None:
     )
 
 
+def test_share_negative_counts_states_just_below_zero() -> None:
+    b = np.asarray(sol.x_star_weights(TRAIN, PRICES))
+    v = -1e-10 * b / (b @ b)  # a legal payoff state whose x* is -1e-10: negative, though tiny
+    probe = np.vstack([TEST, v])
+    m = probe @ b
+    assert -1e-9 < m[-1] < 0.0, "internal: the probe state's x* must be negative and within 1e-9 of zero"
+    out = sol.recover_sdf(TRAIN, probe, PRICES)
+    assert math.isclose(out.test_share_negative, float(np.mean(m < 0.0)), abs_tol=1e-12), (
+        "test_share_negative counts every test observation with x* < 0, however small in size (L04, Example 5.1)."
+    )
+
+
+def test_ill_conditioned_full_rank_payoffs_are_accepted() -> None:
+    rng = np.random.default_rng(20260502)  # fixed: the same sample on every seed
+    x = rng.normal(0.0, 1.0, (50, 3)) * np.array([1.0, 1.0, 1e-7])  # full rank, with a second-moment matrix near 1e14
+    p = np.array([1.0, 0.99, 1e-7])
+    assert np.linalg.cond(x.T @ x / x.shape[0]) > 1e12, "internal: the second-moment matrix must be ill-conditioned"
+    b = np.asarray(sol.x_star_weights(x, p))
+    assert np.all(np.isfinite(b)), "x_star_weights must return finite weights for a full-rank payoff sample."
+    residual = x.T @ (x @ b) / x.shape[0] - p
+    assert np.max(np.abs(residual)) <= 1e-10 * np.max(np.abs(p)), (
+        "x* must still price every payoff in sample: a backward-stable solve leaves a residual of rounding size, "
+        "not one that grows with the condition number (L07, Proposition 2.1)."
+    )
+
+
 def test_imports_only_numpy_and_the_standard_library() -> None:
     source = Path(sol.__file__).read_text(encoding="utf-8")
     allowed = set(sys.stdlib_module_names) | {"numpy", "__future__"}
