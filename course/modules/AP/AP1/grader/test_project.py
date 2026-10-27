@@ -808,7 +808,6 @@ def test_square_redundant_payoffs_raise() -> None:
     [
         pytest.param(lambda: sol.second_moment_matrix(np.empty((0, PRICES.size))), id="moments"),
         pytest.param(lambda: sol.x_star_weights(np.empty((0, PRICES.size)), PRICES), id="x-star"),
-        pytest.param(lambda: sol.sdf_values(np.empty((0, PRICES.size)), PRICES), id="sdf-values"),
         pytest.param(lambda: sol.pricing_errors(np.empty((0, PRICES.size)), PRICES, np.empty(0)), id="pricing-errors"),
         pytest.param(lambda: sol.population_x_star(np.empty(0), np.empty((0, PRICES.size)), PRICES), id="population"),
         pytest.param(lambda: sol.min_variance_sdf(np.empty((0, PRICES.size)), PRICES, 0.97), id="min-variance"),
@@ -843,6 +842,122 @@ def test_min_sdf_std_is_scale_invariant(scale: float) -> None:
     assert math.isclose(scaled, unit, rel_tol=1e-7), (
         "The smallest standard deviation of an SDF cannot depend on the units of payoffs and prices (L05, Theorem 2.4)."
     )
+
+
+def public_outputs(
+    train: np.ndarray,
+    test: np.ndarray,
+    prices: np.ndarray,
+    probs: np.ndarray,
+    payoffs: np.ndarray,
+    sdf: np.ndarray,
+    weights: np.ndarray,
+    risky: np.ndarray,
+    risky_p: np.ndarray,
+) -> list[object]:
+    """Every public result on one set of arguments, flattened for comparison."""
+    rec = sol.recover_sdf(train, test, prices)
+    a, b = sol.min_variance_sdf(risky, risky_p, 0.97)
+    return [
+        np.asarray(sol.second_moment_matrix(payoffs)),
+        np.asarray(sol.x_star_weights(train, prices)),
+        np.asarray(sol.sdf_values(test, weights)),
+        np.asarray(sol.pricing_errors(test, prices, sdf)),
+        np.asarray(sol.population_x_star(probs, payoffs, prices)),
+        float(a),
+        np.asarray(b),
+        float(sol.min_sdf_std(risky, risky_p, 0.97)),
+        rec.weights,
+        rec.in_sample_errors,
+        rec.out_of_sample_errors,
+        rec.out_of_sample_rms,
+        rec.train_mean,
+        rec.train_std,
+        rec.test_share_negative,
+    ]
+
+
+def assert_same_outputs(actual: list[object], expected: list[object], what: str) -> None:
+    for i, (x, y) in enumerate(zip(actual, expected, strict=True)):
+        assert close(x, y, 1e-9), f"{what}: public output {i} must not depend on the dtype or layout of its inputs."
+
+
+def test_integer_payoffs_give_the_float_results() -> None:
+    ti, te, pa, ri = (np.round(100.0 * a).astype(np.int64) for a in (TRAIN, TEST, PAYOFFS, RISKY))
+    sdf, weights = np.ones(TEST.shape[0]), np.full(TEST.shape[1], 0.1)
+    expected = public_outputs(
+        ti.astype(float), te.astype(float), PRICES, PROBS, pa.astype(float), sdf, weights, ri.astype(float), RISKY_P
+    )
+    actual = public_outputs(ti, te, PRICES, PROBS, pa, sdf, weights, ri, RISKY_P)
+    assert_same_outputs(actual, expected, "Integer payoffs")
+
+
+def test_integer_valued_prices_and_weights_give_the_float_results() -> None:
+    p_int = np.round(100.0 * PRICES).astype(np.int64)
+    risky_p_int = np.round(100.0 * RISKY_P).astype(np.int64)
+    w_int = np.arange(1, TEST.shape[1] + 1)
+    sdf = np.ones(TEST.shape[0])
+    expected = public_outputs(
+        TRAIN, TEST, p_int.astype(float), PROBS, PAYOFFS, sdf, w_int.astype(float), RISKY, risky_p_int.astype(float)
+    )
+    actual = public_outputs(TRAIN, TEST, p_int, PROBS, PAYOFFS, sdf, w_int, RISKY, risky_p_int)
+    assert_same_outputs(actual, expected, "Integer-valued prices and weights")
+
+
+def test_non_contiguous_and_fortran_views_give_the_same_results() -> None:
+    def strided(a: np.ndarray) -> np.ndarray:
+        wide = np.zeros((a.shape[0], 2 * a.shape[1]))
+        wide[:, ::2] = a
+        view = wide[:, ::2]  # every second column: neither contiguous nor a copy
+        assert not view.flags.c_contiguous, "internal: the view must be non-contiguous"
+        return view
+
+    def fortran(a: np.ndarray) -> np.ndarray:
+        out = a.T.copy().T  # transposed twice: the same array, stored column by column
+        assert out.flags.f_contiguous, "internal: the array must be Fortran-ordered"
+        return out
+
+    sdf, weights = np.ones(TEST.shape[0]), np.full(TEST.shape[1], 0.1)
+    expected = public_outputs(
+        TRAIN.copy(), TEST.copy(), PRICES, PROBS, PAYOFFS.copy(), sdf, weights, RISKY.copy(), RISKY_P
+    )
+    actual = public_outputs(
+        strided(TRAIN), fortran(TEST), PRICES, PROBS, strided(PAYOFFS), sdf, weights, fortran(RISKY), RISKY_P
+    )
+    assert_same_outputs(actual, expected, "Non-contiguous and Fortran-ordered payoffs")
+
+
+def test_train_std_is_stable_when_the_mean_is_large() -> None:
+    rng = np.random.default_rng(20260503)  # fixed, independent of the seed
+    x = 1.0 + 1e-7 * rng.normal(0.0, 1.0, (200, 3))  # payoffs that are almost constant
+    p = 1e8 * x.mean(axis=0)  # prices scaled so that x* has a large mean and a tiny spread
+    out = sol.recover_sdf(x, x, p)
+    m = x @ out.weights
+    expected = float(np.sqrt(np.mean((m - m.mean()) ** 2)))  # deviations about the mean, divided by T
+    assert math.isclose(out.train_std, expected, rel_tol=1e-9), (
+        "train_std is the standard deviation of x* on the training sample, dividing by T: it must be computed from "
+        "the deviations about the mean, not from E[m^2] - E[m]^2, which cancels when the mean is large."
+    )
+
+
+@pytest.mark.parametrize("mean", [0.9, -0.97, 1.02, -1.02])
+def test_min_sdf_std_is_the_std_of_the_min_variance_sdf_at_that_mean(mean: float) -> None:
+    # The minimum-variance SDF with mean v is m_v = a + x'beta with beta = C^{-1}(p - v mu) (L05, Theorem 2.1).
+    # Its variance is beta'C beta = (p - v mu)'C^{-1}(p - v mu), which is the square of min_sdf_std. So
+    # sigma_min(v) = std(m_v) for every real v, positive or negative: the sign of v is not discarded.
+    a, b = sol.min_variance_sdf(RISKY, RISKY_P, mean)
+    m = a + RISKY @ np.asarray(b)
+    assert math.isclose(sol.min_sdf_std(RISKY, RISKY_P, mean), float(m.std()), rel_tol=1e-8), (
+        "min_sdf_std(v) must equal the standard deviation of the minimum-variance SDF with mean v, for negative v too."
+    )
+
+
+def test_min_sdf_std_is_not_symmetric_in_its_mean() -> None:
+    # g = p - v E[x] changes with v, so sigma_min(-v) and sigma_min(v) generally differ. On every seed the reference
+    # differs by at least 2.9x the smaller value, so the margin asserted here is half of that.
+    up = sol.min_sdf_std(RISKY, RISKY_P, 0.97)
+    down = sol.min_sdf_std(RISKY, RISKY_P, -0.97)
+    assert abs(down - up) > 0.5 * up, "min_sdf_std must depend on the sign of its mean, not only on its magnitude."
 
 
 def test_imports_only_numpy_and_the_standard_library() -> None:
