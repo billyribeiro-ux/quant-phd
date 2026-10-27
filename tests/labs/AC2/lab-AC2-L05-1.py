@@ -82,5 +82,4 @@ def main() -> None:
     print(f"seed0_spread_mean {float(effect_means[0]):.5f} seed0_t {effect_t[0]:.3f}")
 
 
-if __name__ == "__main__":
-    main()
+main()

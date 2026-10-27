@@ -164,5 +164,4 @@ def main() -> None:
     print(f"signals unchanged under money x1000: {unchanged}/{N_FIRMS}")
 
 
-if __name__ == "__main__":
-    main()
+main()

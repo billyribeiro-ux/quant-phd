@@ -424,5 +424,4 @@ def main() -> None:
         print(f"ValueError (non-positive average invested capital): {exc}")
 
 
-if __name__ == "__main__":
-    main()
+main()

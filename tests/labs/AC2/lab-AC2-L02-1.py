@@ -466,5 +466,4 @@ def main() -> None:
             print(f"no error ({label})")
 
 
-if __name__ == "__main__":
-    main()
+main()

@@ -140,5 +140,4 @@ def main() -> None:
     se_scaling()
 
 
-if __name__ == "__main__":
-    main()
+main()

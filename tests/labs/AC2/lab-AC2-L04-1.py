@@ -168,5 +168,4 @@ def main() -> None:
     print(f"share_of_firms_gap_above_0.01 {float(np.mean(np.abs(cf_m - bs_m) > 0.01)):.4f}")
 
 
-if __name__ == "__main__":
-    main()
+main()

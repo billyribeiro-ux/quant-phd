@@ -266,5 +266,4 @@ def main() -> None:
     print(f"  OR rule  FPR = {or_fpr:.4f}")
 
 
-if __name__ == "__main__":
-    main()
+main()
