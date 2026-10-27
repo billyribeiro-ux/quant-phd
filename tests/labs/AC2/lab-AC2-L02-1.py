@@ -419,7 +419,7 @@ def main() -> None:
             f"  {d['roe']:7.4f}  {d['roa']:7.4f}  {identity_ok}"
         )
 
-    print("other ratios, year-end balances (SIMULATED filer 1)")
+    print("other ratios (SIMULATED): year-end balances, except gross margin, which uses only the year's flows")
     print("period_end  current_ratio  gross_margin  debt_to_assets  dso_days")
     for end in ends:
         ltd = "absent" if "long_term_debt" not in statements[end] else f"{debt_to_assets(statements, end):.4f}"
