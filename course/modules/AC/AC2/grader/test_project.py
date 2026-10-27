@@ -68,8 +68,15 @@ def must_raise(call: Callable[[], object], condition: str) -> None:
     pytest.fail(f"{condition}: the specification requires a ValueError.")
 
 
-def close(a: float, b: float, rel: float = 1e-9) -> bool:
-    return math.isclose(float(a), float(b), rel_tol=rel, abs_tol=1e-12)
+# Float comparisons. The A15 contract states no numerical tolerance except the DuPont identity (relative 1e-12,
+# asserted as such). A correct implementation of the same formula differs from another only by rounding, so the
+# comparisons use this one documented bound, FLOAT_RTOL, with an absolute floor FLOAT_ATOL.
+FLOAT_RTOL = 1e-6
+FLOAT_ATOL = 1e-9
+
+
+def close(a: float, b: float, rel: float = FLOAT_RTOL) -> bool:
+    return math.isclose(float(a), float(b), rel_tol=rel, abs_tol=FLOAT_ATOL)
 
 
 def assert_statements_equal(actual: Mapping[str, Mapping[str, float]], expected: Mapping[str, Any], what: str) -> None:
@@ -77,7 +84,7 @@ def assert_statements_equal(actual: Mapping[str, Mapping[str, float]], expected:
     for end in expected:
         assert set(actual[end]) == set(expected[end]), f"{what}: the items present for one period end differ."
         for item, value in expected[end].items():
-            assert close(actual[end][item], value, 1e-9), f"{what}: a standardized value differs from the reference."
+            assert close(actual[end][item], value), f"{what}: a standardized value differs from the reference."
 
 
 def scaled_statements(st: Mapping[str, Mapping[str, float]], c: float) -> dict[str, dict[str, float]]:
@@ -163,7 +170,9 @@ def test_beneish_constants_are_exported() -> None:
         "BENEISH_COEFFICIENTS must hold the eight variable names, DSRI through TATA."
     )
     for name, value in BENEISH_COEFFICIENTS.items():
-        assert sol.BENEISH_COEFFICIENTS[name] == value, "a Beneish coefficient differs from the published table."
+        assert sol.BENEISH_COEFFICIENTS[name] == value, (
+            "a Beneish coefficient differs from the shared (unconfirmed) table in instance.py."
+        )
 
 
 @pytest.mark.parametrize(
@@ -486,7 +495,7 @@ def test_cash_is_subtracted_in_the_balance_sheet_accruals() -> None:
     st = copy.deepcopy(FINAL)
     base = sol.accruals_balance_sheet(st, LATEST)
     st[LATEST]["cash"] += 1000.0  # more cash is not an accrual, so the measure must fall by 1000 / average assets
-    assert close(sol.accruals_balance_sheet(st, LATEST), base - 1000.0 / avg_ta, rel=1e-9), (
+    assert close(sol.accruals_balance_sheet(st, LATEST), base - 1000.0 / avg_ta, rel=FLOAT_RTOL), (
         "an increase in cash lowers the balance-sheet accruals: cash is excluded from accruals (Sloan 1996)."
     )
 
@@ -496,7 +505,7 @@ def test_cfo_lowers_the_cash_flow_accruals() -> None:
     st = copy.deepcopy(FINAL)
     base = sol.accruals_cash_flow(st, LATEST)
     st[LATEST]["cfo"] += 1000.0
-    assert close(sol.accruals_cash_flow(st, LATEST), base - 1000.0 / avg_ta, rel=1e-9), (
+    assert close(sol.accruals_cash_flow(st, LATEST), base - 1000.0 / avg_ta, rel=FLOAT_RTOL), (
         "more operating cash flow lowers cash-flow accruals, (net income - cfo) / average assets."
     )
 
@@ -595,9 +604,9 @@ def test_ratios_are_invariant_to_money_units(name: str) -> None:
         elif isinstance(a, dict):
             assert a.keys() == b.keys(), f"{name} must keep its keys when money is rescaled."
             for key in a:
-                assert close(float(a[key]), float(b[key]), 1e-8), f"{name}['{key}'] must be invariant to units."
+                assert close(float(a[key]), float(b[key])), f"{name}['{key}'] must be invariant to units."
         else:
-            assert close(float(a), float(b), 1e-8), (
+            assert close(float(a), float(b)), (
                 f"{name} is a ratio of money items, so multiplying every money item by a constant must not change it."
             )
 
@@ -617,7 +626,7 @@ def test_modified_jones_coefficients_are_the_least_squares_fit() -> None:
     expected = np.linalg.lstsq(design, y, rcond=None)[0]
     out = sol.modified_jones(SAMPLE)
     assert len(out["coefficients"]) == 3, "modified_jones must return three coefficients (a1, a2, a3)."
-    assert np.allclose(np.asarray(out["coefficients"]), expected, rtol=1e-7, atol=1e-12), (
+    assert np.allclose(np.asarray(out["coefficients"]), expected, rtol=FLOAT_RTOL, atol=FLOAT_ATOL), (
         "the coefficients are the OLS fit of accruals / lag on [1/lag, (dRev - dRec)/lag, ppe/lag], no intercept."
     )
 
@@ -629,10 +638,10 @@ def test_modified_jones_fitted_and_discretionary_identities() -> None:
     fitted = np.asarray(out["nondiscretionary"])
     disc = np.asarray(out["discretionary"])
     assert fitted.shape == (len(SAMPLE),) and disc.shape == (len(SAMPLE),), "one value per firm-year, in sample order."
-    assert np.allclose(fitted, design @ coef, rtol=1e-7, atol=1e-12), (
+    assert np.allclose(fitted, design @ coef, rtol=FLOAT_RTOL, atol=FLOAT_ATOL), (
         "nondiscretionary_i is the fitted value, in sample order."
     )
-    assert np.allclose(fitted + disc, y, rtol=1e-9, atol=1e-12), (
+    assert np.allclose(fitted + disc, y, rtol=FLOAT_RTOL, atol=FLOAT_ATOL), (
         "discretionary_i = accruals_i / lag_i - fitted_i, so the two parts add back to the scaled accruals."
     )
 
@@ -642,13 +651,13 @@ def test_modified_jones_is_invariant_to_money_units() -> None:
     scaled = [{k: v * c for k, v in row.items()} for row in SAMPLE]  # every field is in currency units
     a = sol.modified_jones(SAMPLE)
     b = sol.modified_jones(scaled)
-    assert np.allclose(b["discretionary"], a["discretionary"], rtol=1e-7, atol=1e-12), (
+    assert np.allclose(b["discretionary"], a["discretionary"], rtol=FLOAT_RTOL, atol=FLOAT_ATOL), (
         "accruals and all balances scale together, so the scaled discretionary accruals are unchanged."
     )
-    assert math.isclose(b["coefficients"][0], c * a["coefficients"][0], rel_tol=1e-6), (
+    assert math.isclose(b["coefficients"][0], c * a["coefficients"][0], rel_tol=FLOAT_RTOL), (
         "the intercept-like coefficient a1 multiplies 1/lag, so it scales by the money unit."
     )
-    assert np.allclose(b["coefficients"][1:], a["coefficients"][1:], rtol=1e-7), (
+    assert np.allclose(b["coefficients"][1:], a["coefficients"][1:], rtol=FLOAT_RTOL), (
         "the scaled-ratio coefficients a2 and a3 do not depend on the money unit."
     )
 
@@ -659,8 +668,10 @@ def test_modified_jones_accepts_tuples_and_numpy_values() -> None:
     as_numpy = [{k: np.float64(v) for k, v in row.items()} for row in SAMPLE]
     b = sol.modified_jones(as_tuple)
     c = sol.modified_jones(as_numpy)
-    assert np.allclose(b["discretionary"], a["discretionary"], rtol=1e-12), "a tuple of firm-years is a valid sequence."
-    assert np.allclose(c["discretionary"], a["discretionary"], rtol=1e-12), "NumPy scalar values are numbers."
+    assert np.allclose(b["discretionary"], a["discretionary"], rtol=FLOAT_RTOL), (
+        "a tuple of firm-years is a valid sequence."
+    )
+    assert np.allclose(c["discretionary"], a["discretionary"], rtol=FLOAT_RTOL), "NumPy scalar values are numbers."
 
 
 def test_modified_jones_accepts_integer_values() -> None:
@@ -668,10 +679,10 @@ def test_modified_jones_accepts_integer_values() -> None:
     floats = [{k: float(round(v)) for k, v in row.items()} for row in SAMPLE]
     a = sol.modified_jones(floats)
     b = sol.modified_jones(ints)
-    assert np.allclose(b["discretionary"], a["discretionary"], rtol=1e-12, atol=1e-12), (
+    assert np.allclose(b["discretionary"], a["discretionary"], rtol=FLOAT_RTOL, atol=FLOAT_ATOL), (
         "integer-valued firm-years must give the same answer as the same values stored as floats."
     )
-    assert np.allclose(b["coefficients"], a["coefficients"], rtol=1e-12), "integer inputs must not change the fit."
+    assert np.allclose(b["coefficients"], a["coefficients"], rtol=FLOAT_RTOL), "integer inputs must not change the fit."
 
 
 @pytest.mark.parametrize(
@@ -809,9 +820,9 @@ def test_beneish_variables_and_score_match_the_definitions() -> None:
     }
     out = sol.beneish_m_score(FINAL, t)
     for name, value in expected.items():
-        assert close(out[name], value, 1e-8), f"Beneish variable {name} must follow its definition."
+        assert close(out[name], value), f"Beneish variable {name} must follow its definition."
     m = BENEISH_INTERCEPT + sum(BENEISH_COEFFICIENTS[k] * v for k, v in expected.items())
-    assert close(out["m_score"], m, 1e-8), (
+    assert close(out["m_score"], m), (
         "M = intercept + sum of coefficient x variable, with the shared constants "
         "(UNCONFIRMED, see instance.BENEISH_STATUS)."
     )
@@ -913,11 +924,11 @@ def test_integer_statements_give_the_float_ratios() -> None:
         a, b = call(floats, LATEST), call(ints, LATEST)
         if isinstance(a, dict):
             for key in a:
-                assert np.allclose(np.asarray(b[key], dtype=float), np.asarray(a[key], dtype=float), rtol=1e-12), (
+                assert np.allclose(np.asarray(b[key], dtype=float), np.asarray(a[key], dtype=float), rtol=FLOAT_RTOL), (
                     f"{name}: integer statements must give the float answer."
                 )
         else:
-            assert close(float(b), float(a), 1e-12), f"{name}: integer statements must give the float answer."
+            assert close(float(b), float(a)), f"{name}: integer statements must give the float answer."
 
 
 def test_numpy_scalar_observations_give_the_same_standardization() -> None:
@@ -970,7 +981,7 @@ def same_result(a: Any, b: Any) -> bool:
         return len(a) == len(b) and all(same_result(x, y) for x, y in zip(a, b, strict=True))
     if isinstance(a, str):
         return bool(a == b)
-    return close(float(a), float(b), 1e-9)
+    return close(float(a), float(b))
 
 
 @pytest.mark.parametrize(("days", "kept"), [(349, False), (350, True), (380, True), (381, False)])
@@ -1135,4 +1146,76 @@ def test_instant_observation_with_a_start_date_is_ignored() -> None:
     out = sol.standardize(with_obs(FACTS, "Assets", obs))
     assert NEW_END not in out or "total_assets" not in out[NEW_END], (
         "an instant item with a start date is not annual: it must be ignored."
+    )
+
+
+def test_modified_jones_rejects_a_collinear_design_without_a_zero_column() -> None:
+    # Contract: a rank-deficient design raises ValueError. Here ppe equals d_revenue - d_receivables, so the second and
+    # third regressors are identical and no regressor is identically zero.
+    collinear = [{**row, "ppe": row["d_revenue"] - row["d_receivables"]} for row in SAMPLE]
+    must_raise(lambda: sol.modified_jones(collinear), "a rank-deficient design of two identical non-zero regressors")
+
+
+PIOTROSKI_TIE_EDITS: list[tuple[str, int, dict[tuple[str, str], float]]] = [
+    # (name, signal index, edits to the tie base). Each signal is strict (contract) and must score 0 at an exact tie.
+    ("signal 1: ROA > 0 at zero profit", 0, {(LATEST, "net_income"): 0.0}),
+    ("signal 2: CFO > 0 at zero cash flow", 1, {(LATEST, "cfo"): 0.0}),
+    (
+        "signal 6: current ratio strictly higher, equal at 2.0",
+        5,
+        {
+            (PRIOR, "current_assets"): 2.0,
+            (PRIOR, "current_liabilities"): 1.0,
+            (LATEST, "current_assets"): 4.0,
+            (LATEST, "current_liabilities"): 2.0,
+        },
+    ),
+    (
+        "signal 8: gross margin strictly higher, equal at 0.5",
+        7,
+        {(PRIOR, "revenue"): 8.0, (PRIOR, "cogs"): 4.0, (LATEST, "revenue"): 8.0, (LATEST, "cogs"): 4.0},
+    ),
+    (
+        "signal 9: asset turnover strictly higher, equal at 1.0",
+        8,
+        {(PRIOR, "revenue"): 2048.0, (LATEST, "revenue"): 1024.0},
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "index", "edits"), PIOTROSKI_TIE_EDITS, ids=[e[0].split(":")[0] for e in PIOTROSKI_TIE_EDITS]
+)
+def test_piotroski_strict_signals_score_zero_at_an_exact_tie(
+    name: str, index: int, edits: dict[tuple[str, str], float]
+) -> None:
+    # Powers of two keep every ratio exact: ROA(t) = 0.0625, ROA(t-1) = 0.0625, leverage 0.25 in both years.
+    st = copy.deepcopy(FINAL)
+    st[PRIOR2]["total_assets"] = 2048.0
+    st[PRIOR]["total_assets"] = 1024.0
+    st[PRIOR]["net_income"] = 128.0
+    st[PRIOR]["long_term_debt"] = 384.0
+    st[LATEST]["total_assets"] = 2048.0
+    st[LATEST]["net_income"] = 64.0
+    st[LATEST]["long_term_debt"] = 384.0
+    st[LATEST]["cfo"] = 64.0
+    for (end, item), value in edits.items():
+        st[end][item] = value
+    signals = sol.piotroski_f_score(st, LATEST)["signals"]
+    assert int(signals[index]) == 0, f"{name}: the contract's inequality is strict, so an exact tie scores 0."
+
+
+def test_as_of_before_any_filing_gives_an_empty_mapping() -> None:
+    # Contract: a period end with no observation at or before as_of does not exist; nothing is raised.
+    assert sol.standardize(FACTS, "1990-01-01") == {}, (
+        "when no annual observation is filed by the cut-off, no period end exists and the mapping is empty."
+    )
+
+
+def test_flow_observation_without_a_start_date_is_ignored() -> None:
+    # Contract: an annual flow observation has a start date with 350 <= (end - start).days <= 380.
+    obs = {"end": NEW_END, "val": 555.0, "filed": "2100-09-01", "form": "10-K", "fp": "FY", "accn": "edge-0004"}
+    out = sol.standardize(with_obs(FACTS, "NetIncomeLoss", obs))
+    assert NEW_END not in out or "net_income" not in out[NEW_END], (
+        "a flow observation without a start date is not annual, so it must be ignored."
     )

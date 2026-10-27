@@ -76,7 +76,7 @@
         estimated by <a class="concept" data-concept="ols-estimator" href="../../../concepts.html#ols-estimator">ordinary least squares</a> without an intercept. Here \(TA_i\) is total accruals, \(\Delta REV_i\) and \(\Delta REC_i\) are the changes in revenue and in receivables, and \(PPE_i\) is net PP&amp;E, all in CU. The fitted values \(\widehat{NDA}_i\) are the nondiscretionary accruals, and \(\widehat{DA}_i = TA_i/A_{i,t-1} - \widehat{NDA}_i\) are the discretionary accruals.</p>
       </div>
 
-      <p>The model adds a receivables adjustment to the revenue term: it uses the change in revenue less the change in receivables, so that revenue booked as receivables is not counted as normal growth. The A15 contract fits these same three regressors, and the lesson uses the contract's definition exactly. The contract fits no intercept. The passage locator for the published specification's intercept is not confirmed, and Section 4 shows why the choice matters. Treating receivables-booked revenue as the part of growth most open to discretion is an assumption of the model. The lesson does not test that assumption on data.</p>
+      <p>The model adds a receivables adjustment to the revenue term: it uses the change in revenue less the change in receivables, so that revenue booked as receivables is not counted as normal growth. The A15 contract fits these same three regressors, and the lesson uses the contract's definition exactly. The contract fits no intercept. The passage locator for the published specification's intercept is not confirmed, and Section 4 shows why the choice matters. The rationale for the receivables term is not sourced in this lesson, and the lesson does not test it on data.</p>
 
       <h2 id="s3"><span class="section-number">3</span>What the no-intercept regression does to its residuals</h2>
 
@@ -111,7 +111,7 @@
 
       <section class="lab" id="lab-AC2-L06-1" data-runtime="python" data-packages="numpy">
         <h3>Lab 1 · Recovering a planted manipulation with the modified Jones regression</h3>
-        <p class="hypothesis">The lab generates 2,000 SIMULATED firm-years. Ten per cent are manipulators, and each manipulator has a planted discretionary accrual of 0.05 times lagged assets in the strong scenario, or 0.01 in the weak one. Non-manipulators have a discretionary accrual with standard deviation 0.01. Stated before running: the regression estimated on the non-manipulators (an oracle, not available in practice) should recover the planted \(a_2\) and \(a_3\) to within about two classical standard errors. The coefficient \(a_1\) on \(1/A\) is weakly identified, so its standard error should be large relative to its planted value. Estimated on all firms, the coefficients should shift, by Proposition 3.3. Flagging the top 10% of discretionary accruals should separate manipulators well when the planted shift is 0.05, and less well when it is 0.01. All flag scores come from one draw at seed 606.</p>
+        <p class="hypothesis">The lab generates 2,000 SIMULATED firm-years. Ten per cent are manipulators, and each manipulator has a planted discretionary accrual of 0.05 times lagged assets in the strong scenario, or 0.01 in the weak one. Non-manipulators have a discretionary accrual with standard deviation 0.01. Stated before running: the regression estimated on the non-manipulators (an oracle, not available in practice) should recover the planted \(a_2\) and \(a_3\) to within about two classical standard errors. The coefficient \(a_1\) on \(1/A\) is weakly identified, so its standard error should be large relative to its planted value. Estimated on all firms, the coefficients should shift by the realised projection of the planted term, which the lab decomposes. Flagging the top 10% of discretionary accruals should separate manipulators well when the planted shift is 0.05, and less well when it is 0.01. All flag scores come from one draw at seed 606.</p>
         <pre><code class="language-python" data-run>"""AC2 L06 lab 1: the modified Jones model on a SIMULATED cross-section with a planted manipulation.
 
 SIMULATED: every firm-year is generated here from the seeded model below. No filing is read.
@@ -159,6 +159,8 @@ class Sample:
     drec: F64
     ppe: F64
     manipulator: NDArray[np.bool_]
+    planted: F64  # SHIFT times the manipulator flag: the omitted term d of the regression, in ratio units
+    noise: F64  # NOISE_SD times the normal draw: the sampling error of the discretionary term
 
 
 def make_sample(seed: int, shift: float, n: int = N_FIRMS) -&gt; Sample:
@@ -174,7 +176,16 @@ def make_sample(seed: int, shift: float, n: int = N_FIRMS) -&gt; Sample:
     da = shift * manipulator + NOISE_SD * noise
     nondiscretionary = C_TRUE[0] / lag + C_TRUE[1] * (drev - drec) / lag + C_TRUE[2] * ppe / lag
     total = lag * (nondiscretionary + da)
-    return Sample(total=total, lag=lag, drev=drev, drec=drec, ppe=ppe, manipulator=manipulator)
+    return Sample(
+        total=total,
+        lag=lag,
+        drev=drev,
+        drec=drec,
+        ppe=ppe,
+        manipulator=manipulator,
+        planted=shift * manipulator.astype(np.float64),
+        noise=NOISE_SD * noise,
+    )
 
 
 def design(s: Sample) -&gt; tuple[F64, F64]:
@@ -212,8 +223,10 @@ def report(label: str, s: Sample) -&gt; None:
     print(f"{label} coefficients_all_firms {a1:.4f} {a2:.4f} {a3:.4f}")
     (o1, o2, o3), _, da_oracle = modified_jones(s, ~s.manipulator)
     print(f"{label} coefficients_non_manipulators {o1:.4f} {o2:.4f} {o3:.4f}")
+    print(f"{label} rows_non_manipulators {int(np.sum(~s.manipulator))} of {s.lag.size}")
     se = classical_se(s, ~s.manipulator)
     print(f"{label} se_non_manipulators {se[0]:.4f} {se[1]:.4f} {se[2]:.4f}")
+    decompose_a1(label, s, a1, o1)
     print(f"{label} planted_coefficients {C_TRUE[0]:.4f} {C_TRUE[1]:.4f} {C_TRUE[2]:.4f}")
 
     m = s.manipulator
@@ -237,17 +250,45 @@ def report(label: str, s: Sample) -&gt; None:
     print(f"{label} flags_differing_all_vs_oracle {int(np.sum(flagged != flagged_o))}")
 
 
+def decompose_a1(label: str, s: Sample, a1_all: float, a1_nm: float) -&gt; None:
+    """Split the all-firm minus non-manipulator difference in a1 into its exact components.
+
+    With y = X C + planted + noise (C the planted coefficients), b_all - C = P_all planted + P_all noise, and
+    b_nm - C = (X_nm'X_nm)^-1 X_nm' noise_nm, because the planted term is zero on non-manipulators. The
+    conditional-mean prediction uses E[planted | X] = SHIFT * MANIP_SHARE, a constant, which is a function of X.
+    """
+    x, _ = design(s)
+    xtx_inv = np.linalg.inv(x.T @ x)
+    nm = ~s.manipulator
+    x_nm = x[nm]
+    dev_nm = np.linalg.inv(x_nm.T @ x_nm) @ (x_nm.T @ s.noise[nm])
+    proj_planted = (xtx_inv @ (x.T @ s.planted))[0]
+    proj_noise = (xtx_inv @ (x.T @ s.noise))[0]
+    diff = a1_all - a1_nm
+    residual = diff - (proj_planted + proj_noise - dev_nm[0])
+    mean_d = float(np.mean(s.planted))
+    pred = (xtx_inv @ (x.T @ np.full(s.lag.size, mean_d)))[0]
+    print(f"{label} a1_all_minus_nm {diff:.4f}")
+    print(f"{label} a1_projection_of_planted {proj_planted:.4f}")
+    print(f"{label} a1_projection_of_noise_all {proj_noise:.4f}")
+    print(f"{label} a1_nm_sampling_deviation {float(dev_nm[0]):.4f}")
+    print(f"{label} a1_decomposition_residual {residual:.6f}")
+    print(f"{label} a1_conditional_mean_prediction {float(pred):.4f}")
+
+
 SCALE_SEEDS = (606, 607, 608, 609, 610)
 
 
 def se_scaling() -&gt; None:
-    """Mean classical standard error of a1 on the non-manipulators, over SCALE_SEEDS, at two sample sizes."""
+    """Mean classical standard error of a1 on the non-manipulator rows, over SCALE_SEEDS, at two sample sizes."""
     for n in (2000, 64000):
         ses: list[float] = []
+        rows = 0
         for seed in SCALE_SEEDS:
             sample = make_sample(seed, 0.05, n)
+            rows = int(np.sum(~sample.manipulator))
             ses.append(classical_se(sample, ~sample.manipulator)[0])
-        print(f"a1_se_mean firms {n} seeds {len(SCALE_SEEDS)} {float(np.mean(ses)):.4f}")
+        print(f"a1_se_mean firms {n} non_manipulator_rows {rows} seeds {len(SCALE_SEEDS)} {float(np.mean(ses)):.4f}")
 
 
 def main() -&gt; None:
@@ -261,7 +302,14 @@ main()</code></pre>
         <pre class="expected" data-tolerance="1e-6">seed 606 firms 2000 manipulator_share 0.1
 strong_shift_0.05 coefficients_all_firms 0.3891 0.1045 -0.0701
 strong_shift_0.05 coefficients_non_manipulators 0.1806 0.1031 -0.0805
+strong_shift_0.05 rows_non_manipulators 1800 of 2000
 strong_shift_0.05 se_non_manipulators 0.2824 0.0015 0.0010
+strong_shift_0.05 a1_all_minus_nm 0.2084
+strong_shift_0.05 a1_projection_of_planted 0.1425
+strong_shift_0.05 a1_projection_of_noise_all 0.1965
+strong_shift_0.05 a1_nm_sampling_deviation 0.1306
+strong_shift_0.05 a1_decomposition_residual -0.000000
+strong_shift_0.05 a1_conditional_mean_prediction 0.6223
 strong_shift_0.05 planted_coefficients 0.0500 0.1000 -0.0800
 strong_shift_0.05 mean_da_manipulators 0.0459 mean_da_others -0.0045
 strong_shift_0.05 all_firms_top10pct true_positive_rate 0.9850 false_positive_rate 0.0017
@@ -271,7 +319,14 @@ strong_shift_0.05 flags_only_oracle 0
 strong_shift_0.05 flags_differing_all_vs_oracle 0
 weak_shift_0.01 coefficients_all_firms 0.2750 0.1031 -0.0785
 weak_shift_0.01 coefficients_non_manipulators 0.1806 0.1031 -0.0805
+weak_shift_0.01 rows_non_manipulators 1800 of 2000
 weak_shift_0.01 se_non_manipulators 0.2824 0.0015 0.0010
+weak_shift_0.01 a1_all_minus_nm 0.0944
+weak_shift_0.01 a1_projection_of_planted 0.0285
+weak_shift_0.01 a1_projection_of_noise_all 0.1965
+weak_shift_0.01 a1_nm_sampling_deviation 0.1306
+weak_shift_0.01 a1_decomposition_residual 0.000000
+weak_shift_0.01 a1_conditional_mean_prediction 0.1245
 weak_shift_0.01 planted_coefficients 0.0500 0.1000 -0.0800
 weak_shift_0.01 mean_da_manipulators 0.0094 mean_da_others -0.0009
 weak_shift_0.01 all_firms_top10pct true_positive_rate 0.3550 false_positive_rate 0.0717
@@ -279,14 +334,14 @@ weak_shift_0.01 oracle_top10pct true_positive_rate 0.3550 false_positive_rate 0.
 weak_shift_0.01 flags_only_all_firms 6
 weak_shift_0.01 flags_only_oracle 6
 weak_shift_0.01 flags_differing_all_vs_oracle 12
-a1_se_mean firms 2000 seeds 5 0.2781
-a1_se_mean firms 64000 seeds 5 0.0489</pre>
-        <p class="interpretation">SIMULATED throughout, and every flag score below is one simulated draw at seed 606, not an average over seeds. In the strong scenario the regression estimated on all firms gives \(a_1 = 0.3891\), against 0.1806 on the non-manipulators. The difference is 0.2085, which is 0.74 of the classical standard error 0.2824 for \(a_1\), and it is the contamination that Proposition 3.3 describes. The coefficients \(a_2\) and \(a_3\) are close to their planted values, 0.1031 against 0.10 and \(-0.0805\) against \(-0.08\). The estimate of \(a_2\) lies 2.07 standard errors from its planted value, so a single draw cannot settle whether the estimator is unbiased. The mean discretionary accrual is 0.0459 for manipulators and \(-0.0045\) for others. Flagging the top 10% identifies 197 of 200 manipulators, a true-positive rate of 0.985, with a false-positive rate of 0.0017. In the weak scenario, with a planted shift of 0.01, the mean for manipulators is 0.0094, and the same rule identifies 71 of 200 manipulators, a true-positive rate of 0.355, with a false-positive rate of 0.0717. In the strong scenario the all-firm and oracle flag sets are identical. In the weak scenario the lab prints six firm-years that enter the top decile under the all-firm estimate and six that leave it, so 12 firm-years change flag status, while the printed rates are the same under both estimates. Two shifts at one seed describe that draw and establish no threshold. The lab says nothing about real firms.</p>
+a1_se_mean firms 2000 non_manipulator_rows 1800 seeds 5 0.2781
+a1_se_mean firms 64000 non_manipulator_rows 57600 seeds 5 0.0489</pre>
+        <p class="interpretation">SIMULATED throughout, and every flag score below is one simulated draw at seed 606, not an average over seeds. Estimated on all 2,000 firm-years, the coefficient on \(1/A\) is \(a_1 = 0.3891\). Estimated on the 1,800 non-manipulator rows it is 0.1806. The difference is 0.2084 unrounded (0.2085 from the printed values). The lab prints its exact decomposition: the realised projection of the planted term onto the regressors, 0.1425; the projection of the all-firm sampling noise, 0.1965; and the non-manipulator estimate's own sampling deviation, 0.1306, which is subtracted. The three components sum to the difference (decomposition residual 0.000000). So the 0.2084 is not the bias alone: it mixes the planted term's projection with two sampling-noise terms. Proposition 3.3 is a statement about the conditional mean given \(X\). The manipulator indicator is not a function of \(X\), so the proposition applies to its conditional mean \(\E[d \mid X] = 0.005\), a constant. That conditional-mean prediction for \(a_1\) is 0.6223, a different quantity from the realised 0.2084, which is one draw. The coefficients \(a_2\) and \(a_3\) are close to their planted values, 0.1031 against 0.10 and \(-0.0805\) against \(-0.08\). The estimate of \(a_2\) lies 2.07 standard errors from its planted value, so a single draw cannot settle whether the estimator is unbiased. The mean discretionary accrual is 0.0459 for manipulators and \(-0.0045\) for others. Flagging the top 10% identifies 197 of 200 manipulators, a true-positive rate of 0.985, with a false-positive rate of 0.0017. In the weak scenario, with a planted shift of 0.01, the mean for manipulators is 0.0094, and the same rule identifies 71 of 200 manipulators, a true-positive rate of 0.355, with a false-positive rate of 0.0717. In the strong scenario the all-firm and oracle flag sets are identical. In the weak scenario six firm-years enter the top decile under the all-firm estimate and six leave it (flags_only_all_firms 6 and flags_only_oracle 6), so 12 firm-years change flag status, while the printed rates are the same under both. Two shifts at one seed describe that draw and establish no threshold. The lab says nothing about real firms.</p>
       </section>
 
       <h2 id="s4"><span class="section-number">4</span>Estimation choices that the lab exposes</h2>
 
-      <p>Three choices in the fit decide what the residuals mean, and the lab bears on each. The first is the intercept. Remark 3.2 shows that without one the discretionary accruals need not average to zero, so a positive mean among manipulators can appear as a shift in the coefficients rather than in the residuals. The lab fits no intercept, so it shows nothing about an intercept's effect. The second is the estimation sample. Proposition 3.3 shows that including manipulators in the estimation carries the planted term into the coefficients. The third is the scale of the regressors. The coefficient on \(1/A\) is measured in CU and its regressor is small, so its standard error is large. In Lab 1 the classical standard error of \(a_1\) at 2,000 firm-years is 0.2824, which is 5.6 times the planted value of 0.05 (\(0.2824/0.05 = 5.6\)). At that sample size the estimate of \(a_1\) is too imprecise to recover the planted value. The seeded scaling check in the lab, <code>se_scaling</code>, gives a mean standard error of 0.0489 at 64,000 firm-years over seeds 606 to 610, so at that size the standard error is close to the planted value.</p>
+      <p>Three choices in the fit decide what the residuals mean. The lab bears on the second and third. It fits no intercept, so it says nothing about the first: Remark 3.2 shows that without an intercept the discretionary accruals need not average to zero. The second is the estimation sample. The all-firm and non-manipulator estimates of \(a_1\) differ by 0.2084 at seed 606, and the interpretation of Lab 1 gives the three printed components of that difference. The third is the scale of the regressors. The coefficient on \(1/A\) is measured in CU and its regressor is small, so its standard error is large. In Lab 1 the classical standard error of \(a_1\) on the 1,800 non-manipulator rows of the seed-606 sample of 2,000 firm-years is 0.2824, which is 5.6 times the planted value of 0.05 (\(0.2824/0.05 = 5.6\)). At that sample size the estimate of \(a_1\) is too imprecise to recover the planted value. The lab's <code>se_scaling</code> output gives a mean standard error of 0.0489 over seeds 606 to 610, on 57,600 non-manipulator rows at 64,000 firm-years, which is close to the planted value.</p>
 
       <section class="canon-breaks" id="canon-breaks">
         <h2 id="s5"><span class="section-number">5</span>Where the canon breaks</h2>
@@ -295,7 +350,7 @@ a1_se_mean firms 64000 seeds 5 0.0489</pre>
 
         <ul>
           <li><strong>The residual is not a test of intent.</strong> A large discretionary accrual can come from a growing firm whose normal model is misspecified, from an estimate that was honest but wrong, or from deliberate choices. The residual measures a component, and the component is not identified as manipulation. <span class="claim" data-grade="C" data-cite="dechow1995detecting" data-locator="Crossref abstract; passage locator not confirmed">The paper compares the specification and power of commonly used test statistics for detecting earnings management, and no power figure from it is quoted here.</span></li>
-          <li><strong>The receivables adjustment assumes the manipulation runs through revenue.</strong> The adjustment subtracts receivables growth from revenue growth, which is a sensible channel only if the manipulation is in revenue. In Lab 1 the planted manipulation enters the discretionary term directly, so the adjustment does nothing to it. A manipulation in another channel, such as reserves or capitalised costs, would not be captured by the adjustment at all.</li>
+          <li><strong>The receivables adjustment assumes the manipulation runs through revenue.</strong> The adjustment subtracts receivables growth from revenue growth, which matters only if the manipulation runs through revenue. In Lab 1 the planted manipulation enters the discretionary term directly, so the adjustment does nothing to it. A manipulation in another channel, such as reserves or capitalised costs, would not be captured by the adjustment at all.</li>
           <li><strong>Accrual tests see only accruals.</strong> The model of Definition 2.1 has no term for management that works through real activity, such as the timing of discretionary spending or of production. An accrual test is therefore blind to such management by construction. No registry source for that practice is cited in this lesson, so the lesson makes no claim about its size.</li>
           <li><strong>Grouping changes the model.</strong> The model can be estimated within groups of firm-years, such as industry-years, so that industry-wide accrual patterns are absorbed. The A15 contract estimates one cross-section, and Lab 1 has one cross-section, so the lab cannot show the effect of grouping.</li>
         </ul>
@@ -310,11 +365,11 @@ a1_se_mean firms 64000 seeds 5 0.0489</pre>
           </li>
           <li class="misconception">
             <p class="wrong">“When manipulation is rare, estimating on all firms is harmless.”</p>
-            <p>Proposition 3.3 gives the coefficient bias as \((X^\top X)^{-1}X^\top d\), the coefficient vector of the projection of the omitted term. Manipulation at a 10% share is not rare enough to make that bias small. In Lab 1 the coefficient on \(1/A\) moves from 0.1806 to 0.3891 when manipulators are included, a shift of 0.2085 that is 0.74 of its classical standard error. The share of manipulators does not bound the bias, because the bias depends on the regressors as well.</p>
+            <p>The all-firm estimate of \(a_1\) differs from the non-manipulator estimate by 0.2084 at seed 606. That difference is the realised projection of the planted term (0.1425), plus the projection of the all-firm sampling noise (0.1965), minus the non-manipulator estimate's own sampling deviation (0.1306). Only the first term is the effect of including manipulators, and the other two are sampling error. The share of manipulators does not bound the projection, because the projection depends on the regressors as well. The difference is 0.74 of the classical standard error 0.2824, which is measured on 1,800 non-manipulator rows.</p>
           </li>
           <li class="misconception">
             <p class="wrong">“A residual test that flags the top decile identifies the manipulators.”</p>
-            <p>Flagging the top 10% gives a precision equal to the true-positive share among flagged firms, here because the flagged share equals the manipulator share. In the weak scenario, at seed 606, that precision is 71 of 200, or 0.355 (E1), so most flagged firms are not manipulators. In the strong scenario, at the same seed, the precision is 0.985 (E2). Two shifts at one seed do not establish how the precision depends on the shift.</p>
+            <p>Precision is the share of flagged firm-years that are manipulators: 71 of 200 (0.355) in the weak scenario and 197 of 200 (0.985) in the strong one, both at seed 606. In the weak scenario, at seed 606, that precision is 71 of 200, or 0.355 (E1), so most flagged firms are not manipulators. In the strong scenario, at the same seed, the precision is 0.985 (E2). Two shifts at one seed do not establish how the precision depends on the shift.</p>
           </li>
         </ol>
       </section>
@@ -343,7 +398,7 @@ a1_se_mean firms 64000 seeds 5 0.0489</pre>
             <span class="problem-title">M3 · The contamination in standard-error units</span>
             <p>From Lab 1, the all-firm and non-manipulator estimates of \(a_1\) are 0.3891 and 0.1806, and the classical standard error of the non-manipulator estimate is 0.2824. Express the contamination in standard-error units and say whether it is large. Then say which flags change in the weak scenario, using the lab's printed counts.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>The difference is \(0.3891 - 0.1806 = 0.2085\). In standard-error units it is \(0.2085/0.2824 = 0.738\). The contamination is about three quarters of one standard error. It is not large by the usual test standard, but it is comparable to the estimate's own sampling error, and it moves the estimate in the direction that Proposition 3.3 predicts. Whether it matters depends on the question. In the weak scenario at seed 606 the lab prints flags_only_all_firms 6 and flags_only_oracle 6: six firm-years enter the top decile under the all-firm estimate and six leave it, so 12 firm-years change flag status. The printed true-positive and false-positive rates are the same under both estimates.</p>
+              <p>The difference of the printed values is \(0.3891 - 0.1806 = 0.2085\), and the unrounded difference is 0.2084. In standard-error units it is \(0.2084/0.2824 = 0.738\), where 0.2824 is the classical standard error on the 1,800 non-manipulator rows. The contamination is about three quarters of one standard error. It is not large by the usual test standard, but it is comparable to the estimate's own sampling error. The difference splits into the realised projection of the planted term (0.1425) and two sampling terms (0.1965 and \(-0.1306\)), so it is not a clean measure of the bias. Whether it matters depends on the question. In the weak scenario at seed 606 the lab prints flags_only_all_firms 6 and flags_only_oracle 6: six firm-years enter the top decile under the all-firm estimate and six leave it, so 12 firm-years change flag status. The printed true-positive and false-positive rates are the same under both estimates.</p>
             </details>
           </div>
         </div>
@@ -393,7 +448,7 @@ a1_se_mean firms 64000 seeds 5 0.0489</pre>
             <span class="problem-title">E3 · How far the planted \(a_2\) is</span>
             <p>In the strong scenario, the non-manipulator estimate of \(a_2\) is 0.1031 against a planted 0.10, and its classical standard error is 0.0015. Express the difference in standard-error units, compute the two-sided tail probability at that distance, and say whether one seed is enough to judge the regression's recovery.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>The difference is \(0.1031 - 0.10 = 0.0031\), which is \(z = 0.0031/0.0015 = 2.067\) standard errors. Under correct specification and iid errors, the two-sided tail probability is \(2(1 - \Phi(2.067)) \approx 0.039\), about 4%. A draw this far out is unusual but not rare. A single seed cannot settle whether the estimator recovers \(a_2\) without bias. The judgement needs many seeds, which is the design of R1 and not a result of this lesson.</p>
+              <p>The difference is \(0.1031 - 0.10 = 0.0031\), which is \(z = 0.0031/0.0015 = 2.067\) standard errors. Under correct specification and iid errors, the two-sided tail probability is \(2(1 - \Phi(2.067)) \approx 0.039\), about 4%. A draw this far out has that two-sided probability. A single seed cannot settle whether the estimator recovers \(a_2\) without bias. The judgement needs many seeds, which is the design of R1 and not a result of this lesson.</p>
             </details>
           </div>
         </div>
@@ -402,23 +457,23 @@ a1_se_mean firms 64000 seeds 5 0.0489</pre>
           <h3>Research</h3>
           <div class="problem" id="R1">
             <span class="problem-title">R1 · How much data the coefficient on 1/A needs</span>
-            <p>In Lab 1 the classical standard error of \(a_1\) is 0.2824 at 2,000 firm-years, for seed 606. Using the same generator over seeds 606 to 610, find the sample size at which the mean classical standard error of \(a_1\) falls to about the planted value 0.05.</p>
+            <p>In Lab 1, at seed 606, the classical standard error of \(a_1\) on the 1,800 non-manipulator rows of a 2,000 firm-year sample is 0.2824. Using the same generator over seeds 606 to 610, find the number of firm-years at which the mean classical standard error of \(a_1\), on the non-manipulator rows, falls to about the planted value 0.05.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>The lab's <code>se_scaling</code> output is the mean classical standard error of \(a_1\) on the non-manipulators over five replications, seeds 606 to 610. It prints 0.2781 at 2,000 firm-years and 0.0489 at 64,000 firm-years. The square-root rule from the 2,000 result gives \(0.2781\sqrt{2000/64000} = 0.0492\), close to the printed 0.0489. Setting that rule equal to 0.05 gives \(n = 2000 \times (0.2781/0.05)^2 \approx 61{,}900\), so the printed 64,000 result is of the order the rule predicts. The answer is a property of this generator, whose 1/A regressor has the scale it has. A result that depends on the coefficient on \(1/A\) needs a sample far larger than the 2,000 firm-years of Lab 1.</p>
+              <p>The lab's <code>se_scaling</code> output is the mean classical standard error of \(a_1\) over the non-manipulator rows, averaged over five replications, seeds 606 to 610. It prints 0.2781 on 1,800 non-manipulator rows (2,000 firm-years) and 0.0489 on 57,600 rows (64,000 firm-years). The square-root rule in the number of rows gives \(0.2781\sqrt{1800/57600} = 0.0492\), close to the printed 0.0489. Setting the rule equal to 0.05 gives \(1800 \times (0.2781/0.05)^2 \approx 55{,}700\) non-manipulator rows, which is about 61,900 firm-years at a 10% manipulator share. The answer is a property of this generator, whose 1/A regressor has the scale it has. A result that depends on the coefficient on \(1/A\) needs a sample far larger than the 2,000 firm-years of Lab 1.</p>
             </details>
           </div>
           <div class="problem" id="R2">
             <span class="problem-title">R2 · A real version of the test</span>
             <p>Specify the design of a real modified Jones test: the grouping, the estimation sample, the treatment of the intercept, the outlier rule, and the way the discretionary accrual would be linked to a later outcome. Name the input most likely to make the flags meaningless.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>Group firm-years by industry and year, so that the normal accrual model is estimated within a set of firms that face similar accounting and economic conditions. Estimate on all firms in the group, but report the estimates with and without a robust outlier rule, because Proposition 3.3 says that a few firms with large planted or real terms can move the coefficients. Settle the intercept choice before estimation, and report the residual sums. Link the residual to an outcome such as a later restatement or an enforcement action, with the outcome defined before the sort. The input most likely to make the flags meaningless is the normal-accrual model itself: if the model misses a real driver of accruals in a group, the residuals measure the miss. The lab cannot test this, because its normal model is exactly right by construction.</p>
+              <p>Group firm-years by industry and year, so that the normal accrual model is estimated within a set of firms that face similar accounting and economic conditions. Estimate on all firms in the group, but report the estimates with and without a robust outlier rule, because the coefficient bias of Proposition 3.3 is the projection of the omitted term, so a few firms with large terms can move the coefficients. Settle the intercept choice before estimation, and report the residual sums. Link the residual to an outcome such as a later restatement or an enforcement action, with the outcome defined before the sort. The input most likely to make the flags meaningless is the normal-accrual model itself: if the model misses a real driver of accruals in a group, the residuals measure the miss. The lab cannot test this, because its normal model is exactly right by construction.</p>
             </details>
           </div>
           <div class="problem" id="R3">
             <span class="problem-title">R3 · What a SIMULATED result can and cannot show</span>
             <p>State what Lab 1 shows about the modified Jones regression, and what a real study would need in addition before its flags could support a claim about a specific firm.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>Lab 1 shows that, when the normal model is correct and the manipulation enters the discretionary term, the regression recovers the planted structure to a degree that depends on the planted shift and the sample size, and that estimating on all firms moves the coefficients by the coefficient bias of Proposition 3.3. It does not show that a real manipulation enters the discretionary term, that the normal model is correct for a real industry, or that a flagged firm manipulated. A claim about a specific firm needs the outcome, the normal model's fit to that firm's industry, the alternative explanations for the residual, and an external check of the accounting, none of which the lab supplies.</p>
+              <p>Lab 1 shows that, when the normal model is correct and the manipulation enters the discretionary term, the regression recovers the planted structure to a degree that depends on the planted shift and the sample size, and that estimating on all firms moves the coefficients by the realised projection of the planted term plus sampling noise, as the decomposition in Lab 1 shows. It does not show that a real manipulation enters the discretionary term, that the normal model is correct for a real industry, or that a flagged firm manipulated. A claim about a specific firm needs the outcome, the normal model's fit to that firm's industry, the alternative explanations for the residual, and an external check of the accounting, none of which the lab supplies.</p>
             </details>
           </div>
         </div>
@@ -431,7 +486,7 @@ a1_se_mean firms 64000 seeds 5 0.0489</pre>
             <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
             <tbody>
               <tr><td>For every response vector \(y\), the least-squares residuals sum to zero if and only if the ones vector lies in the column space of \(X\) (Proposition 3.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3; the counterexample of Remark 3.2 is checked in P1</td></tr>
-              <tr><td>With \(d\) a function of the regressors and \(\E[u \mid X] = 0\), the coefficient bias is \((X^\top X)^{-1}X^\top d\), the coefficient vector of the projection of \(d\) on \(X\) (Proposition 3.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3; visible in Lab 1 as the 0.2085 shift in \(a_1\) at seed 606</td></tr>
+              <tr><td>With \(d\) a function of the regressors and \(\E[u \mid X] = 0\), the coefficient bias is \((X^\top X)^{-1}X^\top d\), the coefficient vector of the projection of \(d\) on \(X\) (Proposition 3.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3, in its conditional-mean form; Lab 1 at seed 606 prints the realised decomposition of the 0.2084 difference in \(a_1\), with residual 0.000000</td></tr>
               <tr><td>Discretionary accruals are invariant to a common positive rescaling of money items, and \(a_2\), \(a_3\) are too; \(a_1\) scales (P2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in P2</td></tr>
               <tr><td>In one simulated draw at seed 606, flagging the top 10% gives a true-positive rate of 0.985 and a false-positive rate of 0.0017 (strong scenario)</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1 (simulation, SIMULATED, seed 606)</td></tr>
               <tr><td>In one simulated draw at seed 606, the same rule gives a true-positive rate of 0.355 and a false-positive rate of 0.0717 (weak scenario)</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1 (simulation, SIMULATED, seed 606)</td></tr>
@@ -457,7 +512,7 @@ a1_se_mean firms 64000 seeds 5 0.0489</pre>
           <li class="item" data-kind="numeric" data-answer="0.2085" data-tolerance="0.0005">
             <p class="prompt">In Lab 1, at seed 606, the coefficient on \(1/A\) is 0.3891 with all firms and 0.1806 with non-manipulators only. What is the difference? (four decimals)</p>
             <label>Answer <input type="number" step="any"></label>
-            <div class="explain" hidden><p>\(0.3891 - 0.1806 = 0.2085\) (M3). It is about 0.74 of the classical standard error.</p></div>
+            <div class="explain" hidden><p>\(0.3891 - 0.1806 = 0.2085\) from the printed values (M3); the unrounded difference is 0.2084, which splits into 0.1425 + 0.1965 − 0.1306 (interpretation of Lab 1).</p></div>
           </li>
           <li class="item" data-kind="mc">
             <p class="prompt">When the omitted discretionary term \(d\) is a function of the regressors and the error has zero conditional mean, what is the estimator's conditional mean error?</p>

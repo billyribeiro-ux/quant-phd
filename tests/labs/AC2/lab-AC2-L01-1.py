@@ -271,7 +271,7 @@ def make_filer(seed: int = SEED) -> dict[str, Any]:
         unit = "shares" if item == "shares_outstanding" else "USD"
         obs: dict[str, Any] = {"end": f"{end_year}-12-31", "val": val, "filed": filed, "form": form, "fp": fp}
         if item in flows:
-            obs["start"] = f"{end_year}-01-01"  # a full fiscal year, 365 days
+            obs["start"] = f"{end_year}-01-01"  # a full fiscal year: 364 or 365 days end minus start
             if fp == "Q1":
                 obs["end"] = f"{end_year}-03-31"
             if fp == "Q4":

@@ -45,6 +45,8 @@ class Sample:
     drec: F64
     ppe: F64
     manipulator: NDArray[np.bool_]
+    planted: F64  # SHIFT times the manipulator flag: the omitted term d of the regression, in ratio units
+    noise: F64  # NOISE_SD times the normal draw: the sampling error of the discretionary term
 
 
 def make_sample(seed: int, shift: float, n: int = N_FIRMS) -> Sample:
@@ -60,7 +62,16 @@ def make_sample(seed: int, shift: float, n: int = N_FIRMS) -> Sample:
     da = shift * manipulator + NOISE_SD * noise
     nondiscretionary = C_TRUE[0] / lag + C_TRUE[1] * (drev - drec) / lag + C_TRUE[2] * ppe / lag
     total = lag * (nondiscretionary + da)
-    return Sample(total=total, lag=lag, drev=drev, drec=drec, ppe=ppe, manipulator=manipulator)
+    return Sample(
+        total=total,
+        lag=lag,
+        drev=drev,
+        drec=drec,
+        ppe=ppe,
+        manipulator=manipulator,
+        planted=shift * manipulator.astype(np.float64),
+        noise=NOISE_SD * noise,
+    )
 
 
 def design(s: Sample) -> tuple[F64, F64]:
@@ -98,8 +109,10 @@ def report(label: str, s: Sample) -> None:
     print(f"{label} coefficients_all_firms {a1:.4f} {a2:.4f} {a3:.4f}")
     (o1, o2, o3), _, da_oracle = modified_jones(s, ~s.manipulator)
     print(f"{label} coefficients_non_manipulators {o1:.4f} {o2:.4f} {o3:.4f}")
+    print(f"{label} rows_non_manipulators {int(np.sum(~s.manipulator))} of {s.lag.size}")
     se = classical_se(s, ~s.manipulator)
     print(f"{label} se_non_manipulators {se[0]:.4f} {se[1]:.4f} {se[2]:.4f}")
+    decompose_a1(label, s, a1, o1)
     print(f"{label} planted_coefficients {C_TRUE[0]:.4f} {C_TRUE[1]:.4f} {C_TRUE[2]:.4f}")
 
     m = s.manipulator
@@ -123,17 +136,45 @@ def report(label: str, s: Sample) -> None:
     print(f"{label} flags_differing_all_vs_oracle {int(np.sum(flagged != flagged_o))}")
 
 
+def decompose_a1(label: str, s: Sample, a1_all: float, a1_nm: float) -> None:
+    """Split the all-firm minus non-manipulator difference in a1 into its exact components.
+
+    With y = X C + planted + noise (C the planted coefficients), b_all - C = P_all planted + P_all noise, and
+    b_nm - C = (X_nm'X_nm)^-1 X_nm' noise_nm, because the planted term is zero on non-manipulators. The
+    conditional-mean prediction uses E[planted | X] = SHIFT * MANIP_SHARE, a constant, which is a function of X.
+    """
+    x, _ = design(s)
+    xtx_inv = np.linalg.inv(x.T @ x)
+    nm = ~s.manipulator
+    x_nm = x[nm]
+    dev_nm = np.linalg.inv(x_nm.T @ x_nm) @ (x_nm.T @ s.noise[nm])
+    proj_planted = (xtx_inv @ (x.T @ s.planted))[0]
+    proj_noise = (xtx_inv @ (x.T @ s.noise))[0]
+    diff = a1_all - a1_nm
+    residual = diff - (proj_planted + proj_noise - dev_nm[0])
+    mean_d = float(np.mean(s.planted))
+    pred = (xtx_inv @ (x.T @ np.full(s.lag.size, mean_d)))[0]
+    print(f"{label} a1_all_minus_nm {diff:.4f}")
+    print(f"{label} a1_projection_of_planted {proj_planted:.4f}")
+    print(f"{label} a1_projection_of_noise_all {proj_noise:.4f}")
+    print(f"{label} a1_nm_sampling_deviation {float(dev_nm[0]):.4f}")
+    print(f"{label} a1_decomposition_residual {residual:.6f}")
+    print(f"{label} a1_conditional_mean_prediction {float(pred):.4f}")
+
+
 SCALE_SEEDS = (606, 607, 608, 609, 610)
 
 
 def se_scaling() -> None:
-    """Mean classical standard error of a1 on the non-manipulators, over SCALE_SEEDS, at two sample sizes."""
+    """Mean classical standard error of a1 on the non-manipulator rows, over SCALE_SEEDS, at two sample sizes."""
     for n in (2000, 64000):
         ses: list[float] = []
+        rows = 0
         for seed in SCALE_SEEDS:
             sample = make_sample(seed, 0.05, n)
+            rows = int(np.sum(~sample.manipulator))
             ses.append(classical_se(sample, ~sample.manipulator)[0])
-        print(f"a1_se_mean firms {n} seeds {len(SCALE_SEEDS)} {float(np.mean(ses)):.4f}")
+        print(f"a1_se_mean firms {n} non_manipulator_rows {rows} seeds {len(SCALE_SEEDS)} {float(np.mean(ses)):.4f}")
 
 
 def main() -> None:

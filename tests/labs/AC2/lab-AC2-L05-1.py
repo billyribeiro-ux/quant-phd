@@ -30,15 +30,19 @@ QUINTILE = N_FIRMS // 5
 CRITICAL = 1.96  # normal approximation to the 5% two-sided critical value for |t|
 
 
-def simulate(seed: int, beta: float) -> tuple[F64, F64]:
-    """Monthly spreads (long low-accrual, short high-accrual) and the planted z-gap for one seeded universe."""
+def simulate(seed: int, beta: float, n_firms: int = N_FIRMS) -> tuple[F64, F64]:
+    """Monthly spreads (long low-accrual, short high-accrual) and the realised z-gap for one seeded universe.
+
+    Each month sorts n_firms firms into quintiles of n_firms // 5 firms, so the z-gap is the realised gap of that sort.
+    """
+    quintile = n_firms // 5
     rng = np.random.default_rng(seed)
-    z = rng.standard_normal((N_MONTHS, N_FIRMS))
-    eps = rng.standard_normal((N_MONTHS, N_FIRMS))
+    z = rng.standard_normal((N_MONTHS, n_firms))
+    eps = rng.standard_normal((N_MONTHS, n_firms))
     r = BASE + beta * z + SIGMA * eps
     order = np.argsort(z, axis=1, kind="stable")
-    low = order[:, :QUINTILE]
-    high = order[:, -QUINTILE:]
+    low = order[:, :quintile]
+    high = order[:, -quintile:]
     r_low = np.take_along_axis(r, low, axis=1).mean(axis=1)
     r_high = np.take_along_axis(r, high, axis=1).mean(axis=1)
     z_low = np.take_along_axis(z, low, axis=1).mean(axis=1)
@@ -80,6 +84,10 @@ def main() -> None:
     print(f"effect_rejection_rate_power {float(np.mean(np.abs(effect) > CRITICAL)):.3f}")
     print(f"effect_median_t {float(np.median(effect)):.3f}")
     print(f"seed0_spread_mean {float(effect_means[0]):.5f} seed0_t {effect_t[0]:.3f}")
+    # The realised gap of the sort depends on how many firms are sorted each month (20 seeds at each size).
+    for n_firms in (500, 5000):
+        gap_n = [simulate(seed, 0.0, n_firms)[1].mean() for seed in range(20)]
+        print(f"mean_z_gap_firms_{n_firms}_seeds_20 {float(np.mean(gap_n)):.4f}")
 
 
 main()

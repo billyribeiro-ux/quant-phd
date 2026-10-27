@@ -147,7 +147,7 @@ def _clean_pair(rng: random.Random) -> tuple[FirmYear, FirmYear]:
 
 
 def _planted_pair(rng: random.Random) -> tuple[FirmYear, FirmYear]:
-    """A SIMULATED firm whose year t carries the usual manipulation footprints:
+    """A SIMULATED firm whose year t carries the manipulation footprints the generator plants:
     receivables outrun revenue, margins fall, depreciation is slowed, and accruals are high."""
     p, t = _clean_pair(rng)
     t_rec = t.receivables * rng.uniform(1.35, 1.6)
@@ -258,6 +258,11 @@ def main() -> None:
             unchanged += 1
     print(f"indices unchanged under money x1000 (all clean and planted firm-years): {unchanged}/{len(all_pairs)}")
 
+    s4_ppv = next(row[3] for row in base_rate_table() if row[0] == 0.01 and row[1] == 0.95)
+    print(
+        f"section 4 check: PPV at prevalence 0.01, specificity 0.95 = {s4_ppv:.4f}; "
+        f"matches the section 4 value 0.0917: {abs(s4_ppv - 0.0917) < 5e-5}"
+    )
     print("base-rate table (illustrative sensitivity 0.5):")
     print("  prevalence  specificity   FPR    PPV     false flags per 1000")
     for prevalence, spec, fpr, ppv, flags in base_rate_table():
