@@ -465,7 +465,7 @@ Using SEC EDGAR filings and XBRL data for a real issuer over five or more years,
   - *Sources:* FASB Accounting Standards Codification (primary); IFRS Foundation, IFRS Standards (primary)
   - *Lab:* Build linked three statements from a transaction ledger.
   - *Project — Three-statement model from raw transactions* (`autograder`): Post 200 generated transactions, produce balance sheet, income statement and cash-flow statement, and prove the statements articulate. *Deliverable:* Tested model.
-- **AC2 · Financial Statement Analysis & Earnings Quality** · U · 110 h · ← AC1, S0 · ⚑ A15
+- **AC2 · Financial Statement Analysis & Earnings Quality** · U · 110 h · ← AC1, S0, S2 · ⚑ A15
   - *Core:* Ratio analysis, DuPont decomposition, cash-flow quality, the accruals anomaly, earnings management, the F-score and M-score.
   - *Introduces:* Financial ratio analysis; DuPont decomposition; Return on invested capital (ROIC); XBRL data and statement standardization; Earnings and cash-flow quality; Operating accruals; Accruals anomaly; Earnings management; Discretionary accruals (modified Jones model); Piotroski F-score; Beneish M-score
   - *Sources:* Penman, Financial Statement Analysis and Security Valuation, 5th ed. (2013); Sloan (1996), The Accounting Review 71(3); Dechow, Sloan & Sweeney (1995), The Accounting Review 70(2); Piotroski (2000), Journal of Accounting Research 38 (Supplement); Beneish (1999), FAJ 55(5)
