@@ -80,6 +80,9 @@ def main() -> None:
     sd_theory = SIGMA * np.sqrt(2.0 / QUINTILE)  # sd of a two-leg spread: each leg averages QUINTILE firms
     print(f"spread_sd_theory {sd_theory:.5f}")
     print(f"expected_t_at_planted {planted / (sd_theory / np.sqrt(N_MONTHS)):.3f}")
+    print(f"planted_spread_8dp {planted_exact:.8f}")
+    print(f"spread_sd_theory_7dp {sd_theory:.7f}")
+    print(f"se_mean_120_7dp {sd_theory / np.sqrt(N_MONTHS):.7f}")
     print(f"recovered_mean_monthly_spread {float(np.mean(effect_means)):.5f}")
     print(f"null_mean_t {float(null.mean()):.3f} null_sd_t {float(null.std(ddof=1)):.3f}")
     print(f"null_false_positive_rate {float(np.mean(np.abs(null) > CRITICAL)):.3f}")

@@ -166,6 +166,10 @@ def main() -> None:
     print(describe("cash_flow_accruals_moving", cf_m))
     print(describe("balance_sheet_accruals_moving", bs_m))
     print(f"correlation_moving {float(np.corrcoef(cf_m, bs_m)[0, 1]):.4f}")
+    r2_full = float(np.corrcoef(cf_m, bs_m)[0, 1]) ** 2
+    print(f"r_squared_full_precision {r2_full:.4f}")
+    print(f"one_minus_r_squared {1.0 - r2_full:.4f}")
+    print(f"var_gap_over_var_cf {float(np.var(cf_m - bs_m, ddof=1) / np.var(cf_m, ddof=1)):.4f}")
     print(f"share_of_firms_gap_above_0.01 {float(np.mean(np.abs(cf_m - bs_m) > 0.01)):.4f}")
     # The share also depends on the seed: the same moving scenario, drawn with three seeds.
     for seed_b in (2604, 2605, 2606):

@@ -116,7 +116,7 @@ def report(label: str, s: Sample) -> None:
     decompose_a1(label, s, a1, o1)
     z2 = (o2 - C_TRUE[1]) / se[1]
     tail2 = 2.0 * (1.0 - 0.5 * (1.0 + math.erf(abs(z2) / math.sqrt(2.0))))
-    print(f"{label} a2_nm_unrounded {o2:.6f} se2_unrounded {se[1]:.6f} z_a2 {z2:.3f} two_sided_tail_a2 {tail2:.3f}")
+    print(f"{label} a2_nm_6dp {o2:.6f} se2_6dp {se[1]:.6f} z_a2_fp {z2:.3f} two_sided_tail_a2_fp {tail2:.3f}")
     print(f"{label} planted_coefficients {C_TRUE[0]:.4f} {C_TRUE[1]:.4f} {C_TRUE[2]:.4f}")
 
     m = s.manipulator
