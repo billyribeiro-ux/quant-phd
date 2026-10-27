@@ -1,4 +1,4 @@
-# AC2 builder requests and open questions (collated by the architect, 2026-10-27)
+# AC2 open items and questions (collated by the architect, 2026-10-27)
 
 Requests the AC2 builders raised under the BUILDER_RULES output contract, with the architect's status. Nothing here is a
 claim the lessons rely on; each item is either a gap the lessons state honestly or work for a person or a later round.
@@ -20,7 +20,7 @@ Lessons that refer to "the build report" mean this file.
 | Jones (1991), the original Jones model (from recall) | L06 section 2 | OPEN |
 | Roychowdhury (2006), real-activities earnings management (from recall) | L06 section 5 | OPEN |
 | SEC documentation of the company-facts API | L01 section 1 states the input shape as the A15 specification, not as a sourced claim | OPEN |
-| Passage-level locators in Penman (2013) chapters and Sloan (1996) | C-graded claims in L02-L05 | OPEN, claims stay at grade C with "passage not located in this build" |
+| Passage-level locators in Penman (2013) chapters and Sloan (1996) | C-graded claims in L02-L05 | OPEN, claims stay at grade C with "passage locator not confirmed" |
 | `dechow1995detecting`: the registry (Crossref, OpenAlex) lists two authors (Dechow, Sloan) for this DOI while the curriculum string says "Dechow, Sloan & Sweeney (1995)"; the publisher page is behind a bot check | registry/curriculum consistency | OPEN, needs a person with the paper; neither record was changed from memory |
 | Out-of-sample tests of the Piotroski F-score outside the 1976-1996 sample (Mohanram 2005 above is a candidate, from recall, unverified) | L07 section 5 | OPEN |
 | Joint use of the F-score and the M-score: any study that measures the false-positive rate or sensitivity of combined screening rules on a labelled sample | L08 sections 4-5 | OPEN |

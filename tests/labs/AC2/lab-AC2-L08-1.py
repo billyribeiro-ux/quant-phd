@@ -2,7 +2,8 @@
 and the false-positive base-rate arithmetic for a screen.
 
 Every firm is SIMULATED (seeded generator, no filer represented). Index definitions are the
-contract's (atlas/A15.contract.md, beneish_m_score), which follow Beneish (1999).
+contract's definitions (atlas/A15.contract.md, beneish_m_score); the paper's own definitions were
+not read.
 
 UNCONFIRMED CONSTANTS. The intercept and the eight weights below are candidate values taken from
 the Wikipedia page "Beneish M-score" (https://en.wikipedia.org/wiki/Beneish_M-score, read by plain

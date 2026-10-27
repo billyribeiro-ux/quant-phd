@@ -21,6 +21,7 @@ Its fitted values are the nondiscretionary accruals and its residuals the discre
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -113,6 +114,9 @@ def report(label: str, s: Sample) -> None:
     se = classical_se(s, ~s.manipulator)
     print(f"{label} se_non_manipulators {se[0]:.4f} {se[1]:.4f} {se[2]:.4f}")
     decompose_a1(label, s, a1, o1)
+    z2 = (o2 - C_TRUE[1]) / se[1]
+    tail2 = 2.0 * (1.0 - 0.5 * (1.0 + math.erf(abs(z2) / math.sqrt(2.0))))
+    print(f"{label} a2_nm_unrounded {o2:.6f} se2_unrounded {se[1]:.6f} z_a2 {z2:.3f} two_sided_tail_a2 {tail2:.3f}")
     print(f"{label} planted_coefficients {C_TRUE[0]:.4f} {C_TRUE[1]:.4f} {C_TRUE[2]:.4f}")
 
     m = s.manipulator

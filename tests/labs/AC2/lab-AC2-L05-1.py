@@ -26,6 +26,7 @@ SIGMA = 0.08  # idiosyncratic monthly volatility of each simulated stock
 BASE = 0.005  # simulated mean monthly return of the universe
 BETA = -0.0008  # the planted effect: a one-SD higher accrual lowers the monthly return by 8 basis points
 N_SEEDS = 200
+SWEEP_SEEDS = 20  # seeds per firm count in the sweep of realised gaps
 QUINTILE = N_FIRMS // 5
 CRITICAL = 1.96  # normal approximation to the 5% two-sided critical value for |t|
 
@@ -70,7 +71,8 @@ def main() -> None:
 
     null = np.array(null_t)
     effect = np.array(effect_t)
-    planted = BETA * float(np.mean(gaps))  # expected monthly spread: BETA times the mean z-gap of the quintiles
+    planted_exact = BETA * float(np.mean(gaps))
+    planted = planted_exact  # expected monthly spread: BETA times the mean z-gap of the quintiles
 
     print(f"seeds {N_SEEDS} months {N_MONTHS} firms {N_FIRMS} sigma {SIGMA} beta {BETA}")
     print(f"mean_z_gap_simulated {float(np.mean(gaps)):.4f}")
@@ -84,10 +86,11 @@ def main() -> None:
     print(f"effect_rejection_rate_power {float(np.mean(np.abs(effect) > CRITICAL)):.3f}")
     print(f"effect_median_t {float(np.median(effect)):.3f}")
     print(f"seed0_spread_mean {float(effect_means[0]):.5f} seed0_t {effect_t[0]:.3f}")
-    # The realised gap of the sort depends on how many firms are sorted each month (20 seeds at each size).
-    for n_firms in (500, 5000):
-        gap_n = [simulate(seed, 0.0, n_firms)[1].mean() for seed in range(20)]
-        print(f"mean_z_gap_firms_{n_firms}_seeds_20 {float(np.mean(gap_n)):.4f}")
+    # The realised gap of the sort depends on how many firms are sorted each month: a sweep over firm counts.
+    for n_firms in (50, 100, 500, 5000):
+        gap_n = [simulate(seed, 0.0, n_firms)[1].mean() for seed in range(SWEEP_SEEDS)]
+        print(f"mean_z_gap_firms_{n_firms}_seeds_{SWEEP_SEEDS} {float(np.mean(gap_n)):.4f}")
+    print(f"seed0_distance_in_se {(effect_means[0] - planted_exact) / (sd_theory / np.sqrt(N_MONTHS)):.3f}")
 
 
 main()

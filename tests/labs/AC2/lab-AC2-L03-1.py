@@ -3,8 +3,8 @@
 SIMULATED: the filer is generated from a seeded RNG (make_filer, as in Lesson 1's lab). Nothing here is
 a real company's data. The definitions follow atlas/A15.contract.md (roic): NOPAT = operating_income * (1 - tax_rate)
 with 0 <= tax_rate < 1, and invested capital = equity + long_term_debt - cash at each year end, averaged over the
-two year ends. The lab checks that ROIC scales exactly with (1 - tax_rate), and shows what the cash convention and the
-denominator convention do to the answer. Standard library only; no network.
+two year ends. The lab prints the largest deviation of ROIC from its zero-tax value times (1 - tax_rate),
+and shows what the cash convention and the denominator convention do to the answer. Standard library only; no network.
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 Every firm here is SIMULATED: the statements are drawn from a seeded generator,
 no filer is represented, and no figure is an estimate of any real company.
 The signal definitions are the contract's (atlas/A15.contract.md, piotroski_f_score),
-which follow Piotroski (2000), pp. 8-10 (printed pages) of the Journal of
+which follow Piotroski (2000), pp. 7-10 (printed pages) of the Journal of
 Accounting Research 38 supplement. Money is in SIMULATED currency units (SCU).
 """
 

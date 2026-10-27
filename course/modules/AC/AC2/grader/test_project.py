@@ -113,10 +113,10 @@ def annual_obs(end: str, filed: str, val: float, accn: str) -> dict[str, Any]:
     }
 
 
-def with_obs(facts: Mapping[str, Any], tag: str, obs: dict[str, Any]) -> dict[str, Any]:
+def with_obs(facts: Mapping[str, Any], tag: str, obs: dict[str, Any], unit: str = "USD") -> dict[str, Any]:
     out = copy.deepcopy(dict(facts))
     gaap = out["facts"]["us-gaap"]
-    gaap.setdefault(tag, {"label": tag, "units": {}})["units"].setdefault("USD", []).append(obs)
+    gaap.setdefault(tag, {"label": tag, "units": {}})["units"].setdefault(unit, []).append(obs)
     return out
 
 
@@ -830,7 +830,14 @@ def test_beneish_variables_and_score_match_the_definitions() -> None:
 
 @pytest.mark.parametrize(
     ("item", "period"),
-    [("depreciation", PRIOR), ("ppe", PRIOR), ("sga", LATEST), ("receivables", PRIOR), ("cfo", LATEST)],
+    [
+        ("depreciation", PRIOR),
+        ("ppe", PRIOR),
+        ("sga", LATEST),
+        ("receivables", PRIOR),
+        ("cfo", LATEST),
+        ("current_liabilities", LATEST),
+    ],
 )
 def test_beneish_raises_on_a_missing_item(item: str, period: str) -> None:
     st = copy.deepcopy(FINAL)
@@ -1218,4 +1225,122 @@ def test_flow_observation_without_a_start_date_is_ignored() -> None:
     out = sol.standardize(with_obs(FACTS, "NetIncomeLoss", obs))
     assert NEW_END not in out or "net_income" not in out[NEW_END], (
         "a flow observation without a start date is not annual, so it must be ignored."
+    )
+
+
+# ---------------------------------------------------------------- more of what the contract states
+
+
+@pytest.mark.parametrize("unit", ["shares", "EUR"])
+def test_money_tag_in_another_unit_is_not_read(unit: str) -> None:
+    # Contract: money is in unit USD (share counts in shares). An observation of a money tag in another unit is ignored.
+    obs = {"end": NEW_END, "val": 123.0, "filed": "2100-09-01", "form": "10-K", "fp": "FY", "accn": "edge-0005"}
+    out = sol.standardize(with_obs(FACTS, "Assets", obs, unit=unit))
+    assert NEW_END not in out or "total_assets" not in out[NEW_END], (
+        f"an annual observation of Assets in unit {unit} is not a money observation: it must be ignored."
+    )
+
+
+def test_observation_without_an_accession_number_is_valid() -> None:
+    # Contract: accn is optional and is used only as a tie-break (an absent accn counts as "").
+    obs = {"end": NEW_END, "val": 123.0, "filed": "2100-09-01", "form": "10-K", "fp": "FY"}
+    out = sol.standardize(with_obs(FACTS, "Assets", obs))
+    assert NEW_END in out and close(out[NEW_END]["total_assets"], 123.0), (
+        "an annual observation without accn is valid: accn is optional."
+    )
+
+
+@pytest.mark.parametrize(
+    ("accn_10k", "val_10k", "accn_10ka", "val_10ka", "expected"),
+    [
+        pytest.param("edge-0010", 100.0, "edge-0009", 90.0, 100.0, id="10-K-has-larger-accn"),
+        pytest.param("edge-0009", 100.0, "edge-0010", 90.0, 90.0, id="10-K-A-has-larger-accn"),
+    ],
+)
+def test_same_day_amendment_is_decided_by_accn_not_form(
+    accn_10k: str, val_10k: float, accn_10ka: str, val_10ka: float, expected: float
+) -> None:
+    # Contract: on one filing date the greatest (filed, accn or "") wins. The form string plays no part in the choice.
+    # This is a fixed same-day case, so it is checked on every seed, not only on the seeds whose filer draws one.
+    original = {"end": NEW_END, "val": val_10k, "filed": "2100-09-01", "form": "10-K", "fp": "FY", "accn": accn_10k}
+    amended = {"end": NEW_END, "val": val_10ka, "filed": "2100-09-01", "form": "10-K/A", "fp": "FY", "accn": accn_10ka}
+    f = with_obs(with_obs(FACTS, "Assets", original), "Assets", amended)
+    assert close(sol.standardize(f)[NEW_END]["total_assets"], expected), (
+        "two annual observations filed on one date: the greater accn is known; the form does not decide."
+    )
+
+
+def test_same_filing_date_without_accn_and_different_values_raise() -> None:
+    # Contract: a tie on (filed, accn or "") with different values is inconsistent facts, and standardize raises.
+    first = {"end": NEW_END, "val": 100.0, "filed": "2100-09-01", "form": "10-K", "fp": "FY"}
+    second = {**first, "val": 90.0}
+    f = with_obs(with_obs(FACTS, "Assets", first), "Assets", second)
+    must_raise(lambda: sol.standardize(f), "two annual observations that tie on (filed, '') with different values")
+
+
+def test_modified_jones_accepts_exactly_four_firm_years() -> None:
+    # Contract: fewer than four firm-years raises; four is legal.
+    rows = SAMPLE[:4]
+    design, y = mj_design(rows)
+    expected = np.linalg.lstsq(design, y, rcond=None)[0]
+    out = sol.modified_jones(rows)
+    assert np.allclose(np.asarray(out["coefficients"]), expected, rtol=FLOAT_RTOL, atol=FLOAT_ATOL), (
+        "four firm-years is the least sample the contract allows: the coefficients are the OLS fit of those four rows."
+    )
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")], ids=["nan", "inf"])
+@pytest.mark.parametrize("field", ["d_revenue", "d_receivables"])
+def test_modified_jones_rejects_a_non_finite_regressor(field: str, value: float) -> None:
+    # Contract: a non-finite value raises ValueError. The change in revenue and in receivables are regressor inputs too.
+    bad = [dict(row) for row in SAMPLE]
+    bad[1][field] = value
+    must_raise(lambda: sol.modified_jones(bad), f"a non-finite {field} in one firm-year")
+
+
+def test_piotroski_zero_assets_one_year_back_raise() -> None:
+    # Contract: a zero denominator raises ValueError. ROA and the asset turnover divide by last year's total assets.
+    st = copy.deepcopy(FINAL)
+    st[PRIOR]["total_assets"] = 0.0
+    must_raise(lambda: sol.piotroski_f_score(st, LATEST), "the F-score with zero total assets one year back")
+
+
+PIOTROSKI_LATEST_ITEMS: tuple[str, ...] = (
+    "net_income",
+    "cfo",
+    "long_term_debt",
+    "total_assets",
+    "current_assets",
+    "current_liabilities",
+    "revenue",
+    "cogs",
+    "shares_outstanding",
+)
+
+
+@pytest.mark.parametrize("item", PIOTROSKI_LATEST_ITEMS)
+def test_piotroski_missing_latest_item_raises(item: str) -> None:
+    # Contract: nothing is imputed; a function that needs a missing item raises ValueError.
+    st = copy.deepcopy(FINAL)
+    del st[LATEST][item]
+    must_raise(lambda: sol.piotroski_f_score(st, LATEST), f"piotroski_f_score with {item} missing for the period end")
+
+
+@pytest.mark.parametrize("name", ["dupont", "accruals_cash_flow", "accruals_balance_sheet"])
+def test_zero_average_assets_raise_in_each_asset_ratio(name: str) -> None:
+    # Contract: a zero denominator raises ValueError, whatever the numerator is.
+    st = copy.deepcopy(FINAL)
+    st[LATEST]["total_assets"] = -st[PRIOR]["total_assets"]  # the two-year average total assets is zero
+    must_raise(lambda: RATIO_CALLS[name](st, LATEST), f"{name} with average total assets of zero")
+
+
+def test_return_containers_are_the_contract_types() -> None:
+    # Contract: coefficients and signals are tuples; the residual lists are lists, in sample order.
+    fit = sol.modified_jones(SAMPLE)
+    assert isinstance(fit["coefficients"], tuple), "modified_jones returns coefficients as the tuple (a1, a2, a3)."
+    assert isinstance(fit["nondiscretionary"], list) and isinstance(fit["discretionary"], list), (
+        "modified_jones returns nondiscretionary and discretionary as lists."
+    )
+    assert isinstance(sol.piotroski_f_score(FINAL, LATEST)["signals"], tuple), (
+        "piotroski_f_score returns signals as the tuple (s1, ..., s9)."
     )

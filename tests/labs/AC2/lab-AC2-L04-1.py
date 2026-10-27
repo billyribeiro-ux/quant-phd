@@ -167,6 +167,11 @@ def main() -> None:
     print(describe("balance_sheet_accruals_moving", bs_m))
     print(f"correlation_moving {float(np.corrcoef(cf_m, bs_m)[0, 1]):.4f}")
     print(f"share_of_firms_gap_above_0.01 {float(np.mean(np.abs(cf_m - bs_m) > 0.01)):.4f}")
+    # The share also depends on the seed: the same moving scenario, drawn with three seeds.
+    for seed_b in (2604, 2605, 2606):
+        panel_b = build_panel(np.random.default_rng(seed_b), n, moving=True)
+        gap_b = accruals_cash_flow(panel_b) - accruals_balance_sheet(panel_b)
+        print(f"share_of_firms_gap_above_0.01_seed_{seed_b} {float(np.mean(np.abs(gap_b) > 0.01)):.4f}")
 
 
 main()
