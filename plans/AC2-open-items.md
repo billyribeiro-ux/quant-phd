@@ -22,6 +22,8 @@ Lessons that refer to "the build report" mean this file.
 | SEC documentation of the company-facts API | L01 section 1 states the input shape as the A15 specification, not as a sourced claim | OPEN |
 | Passage-level locators in Penman (2013) chapters and Sloan (1996) | C-graded claims in L02-L05 | OPEN, claims stay at grade C with "passage not located in this build" |
 | `dechow1995detecting`: the registry (Crossref, OpenAlex) lists two authors (Dechow, Sloan) for this DOI while the curriculum string says "Dechow, Sloan & Sweeney (1995)"; the publisher page is behind a bot check | registry/curriculum consistency | OPEN, needs a person with the paper; neither record was changed from memory |
+| Out-of-sample tests of the Piotroski F-score outside the 1976-1996 sample (Mohanram 2005 above is a candidate, from recall, unverified) | L07 section 5 | OPEN |
+| Joint use of the F-score and the M-score: any study that measures the false-positive rate or sensitivity of combined screening rules on a labelled sample | L08 sections 4-5 | OPEN |
 | `mclean2016academic`, `hou2018replicating` (already in the registry) are cited in L05 at grade C, findings not stated | L05 section 4 | Reading them would allow stronger grades |
 
 ## GLOSSARY_REQUESTS (terms the lessons define inline; the glossary is generated from the curriculum, so these need a curriculum decision)
