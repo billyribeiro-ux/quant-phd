@@ -107,7 +107,7 @@
 
       <p>Proposition 3.3 is the reason the estimation sample matters. If the discretionary term \(d\) is not orthogonal to the regressors, the estimate of \(b\) absorbs part of it, and the residuals then understate it. The size of the projection depends on how the planted term co-moves with the regressors. The regressor \(1/A\) is largest for the smallest firms, so a planted term concentrated among small firms projects onto it most strongly. Lesson L06 does not claim that every real sample has this problem. It identifies the condition under which the problem arises.</p>
 
-      <p>The units of the coefficients follow from Definition 2.1. Because \(TA/A\) is a ratio and \(1/A\) carries units of \(1/\text{CU}\), the coefficient \(a_1\) is measured in CU. A coefficient such as 0.05 is 0.05 CU, and its size depends on the currency unit of the filer. The other two coefficients are unitless, since \((\Delta REV - \Delta REC)/A\) and \(PPE/A\) are ratios of CU to CU.</p>
+      <p>The units of the coefficients follow from Definition 2.1. Because \(TA/A\) is a ratio and \(1/A\) carries units of \(1/\text{CU}\), the coefficient \(a_1\) is measured in CU. A coefficient such as 0.05 is 0.05 CU, and its size depends on the currency unit of the filer. The other two coefficients are unitless, since \((\Delta REV - \Delta REC)/A\) and \(PPE/A\) are ratios of CU to CU. Under a common scaling by \(k\), \(a_1\) is multiplied by \(k\), while \(a_2\), \(a_3\) and the residuals are unchanged. This is the wording of the A15 contract's Scale row.</p>
 
       <section class="lab" id="lab-AC2-L06-1" data-runtime="python" data-packages="numpy">
         <h3>Lab 1 · Recovering a planted manipulation with the modified Jones regression</h3>
@@ -160,16 +160,16 @@ class Sample:
     manipulator: NDArray[np.bool_]
 
 
-def make_sample(seed: int, shift: float) -&gt; Sample:
-    """Generate N_FIRMS firm-years; shift is the planted discretionary accrual of a manipulator, in ratio units."""
+def make_sample(seed: int, shift: float, n: int = N_FIRMS) -&gt; Sample:
+    """Generate n firm-years; shift is the planted discretionary accrual of a manipulator, in ratio units."""
     rng = np.random.default_rng(seed)
-    lag = np.exp(rng.normal(np.log(1000.0), 0.6, N_FIRMS))
-    drev = lag * rng.normal(0.10, 0.20, N_FIRMS)
-    drec = drev * rng.uniform(0.10, 0.30, N_FIRMS) + lag * rng.normal(0.0, 0.02, N_FIRMS)
-    ppe = lag * rng.uniform(0.20, 0.60, N_FIRMS)
-    manipulator = np.zeros(N_FIRMS, dtype=np.bool_)
-    manipulator[rng.permutation(N_FIRMS)[: round(MANIP_SHARE * N_FIRMS)]] = True
-    noise = rng.standard_normal(N_FIRMS)
+    lag = np.exp(rng.normal(np.log(1000.0), 0.6, n))
+    drev = lag * rng.normal(0.10, 0.20, n)
+    drec = drev * rng.uniform(0.10, 0.30, n) + lag * rng.normal(0.0, 0.02, n)
+    ppe = lag * rng.uniform(0.20, 0.60, n)
+    manipulator = np.zeros(n, dtype=np.bool_)
+    manipulator[rng.permutation(n)[: round(MANIP_SHARE * n)]] = True
+    noise = rng.standard_normal(n)
     da = shift * manipulator + NOISE_SD * noise
     nondiscretionary = C_TRUE[0] / lag + C_TRUE[1] * (drev - drec) / lag + C_TRUE[2] * ppe / lag
     total = lag * (nondiscretionary + da)
@@ -231,12 +231,27 @@ def report(label: str, s: Sample) -&gt; None:
         f"{label} oracle_top10pct true_positive_rate {float(np.mean(flagged_o[m])):.4f} "
         f"false_positive_rate {float(np.mean(flagged_o[~m])):.4f}"
     )
+    print(f"{label} flags_differing_all_vs_oracle {int(np.sum(flagged != flagged_o))}")
+
+
+SCALE_SEEDS = (606, 607, 608, 609, 610)
+
+
+def se_scaling() -&gt; None:
+    """Mean classical standard error of a1 on the non-manipulators, over SCALE_SEEDS, at two sample sizes."""
+    for n in (2000, 64000):
+        ses: list[float] = []
+        for seed in SCALE_SEEDS:
+            sample = make_sample(seed, 0.05, n)
+            ses.append(classical_se(sample, ~sample.manipulator)[0])
+        print(f"a1_se_mean firms {n} seeds {len(SCALE_SEEDS)} {float(np.mean(ses)):.4f}")
 
 
 def main() -&gt; None:
     print(f"seed {SEED} firms {N_FIRMS} manipulator_share {MANIP_SHARE}")
     report("strong_shift_0.05", make_sample(SEED, 0.05))
     report("weak_shift_0.01", make_sample(SEED, 0.01))
+    se_scaling()
 
 
 if __name__ == "__main__":
@@ -249,19 +264,23 @@ strong_shift_0.05 planted_coefficients 0.0500 0.1000 -0.0800
 strong_shift_0.05 mean_da_manipulators 0.0459 mean_da_others -0.0045
 strong_shift_0.05 all_firms_top10pct true_positive_rate 0.9850 false_positive_rate 0.0017
 strong_shift_0.05 oracle_top10pct true_positive_rate 0.9850 false_positive_rate 0.0017
+strong_shift_0.05 flags_differing_all_vs_oracle 0
 weak_shift_0.01 coefficients_all_firms 0.2750 0.1031 -0.0785
 weak_shift_0.01 coefficients_non_manipulators 0.1806 0.1031 -0.0805
 weak_shift_0.01 se_non_manipulators 0.2824 0.0015 0.0010
 weak_shift_0.01 planted_coefficients 0.0500 0.1000 -0.0800
 weak_shift_0.01 mean_da_manipulators 0.0094 mean_da_others -0.0009
 weak_shift_0.01 all_firms_top10pct true_positive_rate 0.3550 false_positive_rate 0.0717
-weak_shift_0.01 oracle_top10pct true_positive_rate 0.3550 false_positive_rate 0.0717</pre>
-        <p class="interpretation">SIMULATED throughout. In the strong scenario the regression estimated on all firms gives \(a_1 = 0.3891\), against 0.1806 on the non-manipulators. The difference is 0.2085, which is 0.74 of the classical standard error 0.2824 for \(a_1\). That is the contamination of Proposition 3.3 in the sample. The coefficients \(a_2\) and \(a_3\) are close to their planted values, 0.1031 against 0.10 and \(-0.0805\) against \(-0.08\), but \(a_2\) lies about two standard errors from its planted value, which a single seed cannot settle. The mean discretionary accrual is 0.0459 for manipulators and \(-0.0045\) for others, and flagging the top 10% identifies 197 of 200 manipulators, a true-positive rate of 0.985, with a false-positive rate of 0.0017. In the weak scenario, with a planted shift of 0.01, the mean for manipulators is 0.0094, and the same flag rule identifies 71 of 200 manipulators, a true-positive rate of 0.355, with a false-positive rate of 0.0717. In the strong scenario the all-firm and oracle flags are the same 200 firm-years. In the weak scenario their rates agree to four decimals, but 12 of the 200 flags differ between the two estimates. The lab recovers the manipulation when the planted shift is large relative to the noise, and it does not when the shift is small. It does not show that the same holds for real firms.</p>
+weak_shift_0.01 oracle_top10pct true_positive_rate 0.3550 false_positive_rate 0.0717
+weak_shift_0.01 flags_differing_all_vs_oracle 12
+a1_se_mean firms 2000 seeds 5 0.2781
+a1_se_mean firms 64000 seeds 5 0.0489</pre>
+        <p class="interpretation">SIMULATED throughout. In the strong scenario the regression estimated on all firms gives \(a_1 = 0.3891\), against 0.1806 on the non-manipulators. The difference is 0.2085, which is 0.74 of the classical standard error 0.2824 for \(a_1\). That is the contamination of Proposition 3.3 in the sample. The coefficients \(a_2\) and \(a_3\) are close to their planted values, 0.1031 against 0.10 and \(-0.0805\) against \(-0.08\), but \(a_2\) lies about two standard errors from its planted value, which a single seed cannot settle. The mean discretionary accrual is 0.0459 for manipulators and \(-0.0045\) for others, and flagging the top 10% identifies 197 of 200 manipulators, a true-positive rate of 0.985, with a false-positive rate of 0.0017. In the weak scenario, with a planted shift of 0.01, the mean for manipulators is 0.0094, and the same flag rule identifies 71 of 200 manipulators, a true-positive rate of 0.355, with a false-positive rate of 0.0717. In the strong scenario the all-firm and oracle flags are the same 200 firm-years. In the weak scenario their rates agree to four decimals, but the lab prints flags_differing_all_vs_oracle 12, so 12 of the 200 flags differ between the two estimates. The lab recovers the manipulation when the planted shift is large relative to the noise, and it does not when the shift is small. It does not show that the same holds for real firms.</p>
       </section>
 
       <h2 id="s4"><span class="section-number">4</span>Estimation choices that the lab exposes</h2>
 
-      <p>Three choices in the fit decide what the residuals mean, and each is visible in Lab 1. The first is the intercept. Remark 3.2 shows that without one the discretionary accruals need not average to zero, so a positive mean among manipulators can appear as a shift in the coefficients rather than in the residuals. The second is the estimation sample. Proposition 3.3 shows that including manipulators in the estimation carries the planted term into \(\hat b\). The third is the scale of the regressors. The coefficient on \(1/A\) is measured in CU and its regressor is small, so its standard error is large. In Lab 1 the classical standard error of \(a_1\) is 0.2824, about five times the planted value of 0.05. The estimate of \(a_1\) is therefore too imprecise to recover the planted value, whatever the intercept or the sample.</p>
+      <p>Three choices in the fit decide what the residuals mean, and each is visible in Lab 1. The first is the intercept. Remark 3.2 shows that without one the discretionary accruals need not average to zero, so a positive mean among manipulators can appear as a shift in the coefficients rather than in the residuals. The second is the estimation sample. Proposition 3.3 shows that including manipulators in the estimation carries the planted term into \(\hat b\). The third is the scale of the regressors. The coefficient on \(1/A\) is measured in CU and its regressor is small, so its standard error is large. In Lab 1 the classical standard error of \(a_1\) is 0.2824, which is 5.6 times the planted value of 0.05 (\(0.2824/0.05 = 5.6\)). The estimate of \(a_1\) is therefore too imprecise to recover the planted value, whatever the intercept or the sample.</p>
 
       <section class="canon-breaks" id="canon-breaks">
       <h2 id="s5"><span class="section-number">5</span>Where the canon breaks</h2>
@@ -319,7 +338,7 @@ weak_shift_0.01 oracle_top10pct true_positive_rate 0.3550 false_positive_rate 0.
             <span class="problem-title">M3 · The contamination in standard-error units</span>
             <p>From Lab 1, the all-firm and non-manipulator estimates of \(a_1\) are 0.3891 and 0.1806, and the classical standard error of the non-manipulator estimate is 0.2824. Express the contamination in standard-error units and say whether it is large.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>The difference is \(0.3891 - 0.1806 = 0.2085\). In standard-error units it is \(0.2085/0.2824 = 0.738\). The contamination is about three quarters of one standard error. It is not large by the usual test standard, but it is comparable to the estimate's own sampling error, and it moves the estimate in the direction that Proposition 3.3 predicts. Whether it matters depends on the question. In Lab 1's strong scenario the top-decile flags are the same under both estimates. In the weak scenario 12 of the 200 flags change, while the true-positive and false-positive counts are unchanged.</p>
+              <p>The difference is \(0.3891 - 0.1806 = 0.2085\). In standard-error units it is \(0.2085/0.2824 = 0.738\). The contamination is about three quarters of one standard error. It is not large by the usual test standard, but it is comparable to the estimate's own sampling error, and it moves the estimate in the direction that Proposition 3.3 predicts. Whether it matters depends on the question. In Lab 1's strong scenario the top-decile flags are the same under both estimates. The lab prints flags_differing_all_vs_oracle 12 for the weak scenario, so 12 of the 200 flags change between the two estimates, while the printed true-positive and false-positive rates are the same under both.</p>
             </details>
           </div>
         </div>
@@ -337,7 +356,7 @@ weak_shift_0.01 oracle_top10pct true_positive_rate 0.3550 false_positive_rate 0.
             <span class="problem-title">P2 · Discretionary accruals are scale invariant</span>
             <p>Show that replacing each money item of every firm by \(k\) times its value, for a constant \(k \gt 0\), leaves \(\widehat{DA}_i\) unchanged, though \(a_1\) is multiplied by \(k\).</p>
             <details class="solution"><summary>Solution</summary>
-              <p>Under scaling, \(TA/A\) is unchanged, \((\Delta REV - \Delta REC)/A\) is unchanged, and \(PPE/A\) is unchanged, because each is a ratio of money items. The regressor \(1/A\) becomes \(1/(kA) = (1/k)(1/A)\). A least-squares fit with a regressor rescaled by \(1/k\) has its coefficient rescaled by \(k\), so \(\hat a_1\) becomes \(k\hat a_1\), and the fitted values \(X\hat b\) are unchanged. Hence \(\widehat{NDA}_i\) and \(\widehat{DA}_i = TA_i/A_i - \widehat{NDA}_i\) are unchanged. The coefficient \(a_1\) carries CU, as Section 3 states, which is why it scales and the residual does not.</p>
+              <p>Under scaling, \(TA/A\) is unchanged, \((\Delta REV - \Delta REC)/A\) is unchanged, and \(PPE/A\) is unchanged, because each is a ratio of money items. The regressor \(1/A\) becomes \(1/(kA) = (1/k)(1/A)\). A least-squares fit with a regressor rescaled by \(1/k\) has its coefficient rescaled by \(k\), so \(\hat a_1\) becomes \(k\hat a_1\), and the fitted values \(X\hat b\) are unchanged. Hence \(\widehat{NDA}_i\) and \(\widehat{DA}_i = TA_i/A_i - \widehat{NDA}_i\) are unchanged. The coefficients \(a_2\) and \(a_3\) are also invariant, because their regressors are ratios of money items and \(y\) is unchanged. Only \(a_1\) scales with \(k\), because it multiplies \(1/A\) and carries CU, as Section 3 states. This is the wording of the A15 contract's Scale row: residuals, \(a_2\) and \(a_3\) are invariant, and \(a_1\) scales.</p>
             </details>
           </div>
           <div class="problem" id="P3">
@@ -380,7 +399,7 @@ weak_shift_0.01 oracle_top10pct true_positive_rate 0.3550 false_positive_rate 0.
             <span class="problem-title">R1 · How much data the coefficient on 1/A needs</span>
             <p>In Lab 1 the classical standard error of \(a_1\) is about 0.28 at 2,000 firm-years. Using the same generator with more firm-years, find the sample size at which the mean standard error over five seeds falls to about the planted value 0.05.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>Re-running the generator with the sample size set to 64,000 firm-years gives a mean classical standard error of 0.0488 over five seeds, against 0.2673 at 2,000 over the same seeds. The standard error falls roughly as the square root of the sample size, so about 64,000 firm-years make the standard error comparable to the planted value. The answer is a property of this generator, whose 1/A regressor has the scale it has. A filer sample with a different size distribution needs a different number. The point of the exercise is that the coefficient on \(1/A\) is data-hungry, and a result that depends on it needs a sample far larger than a single industry-year usually holds.</p>
+              <p>The twin's <code>se_scaling</code> function, whose output the lab prints, computes the classical standard error of \(a_1\) on the non-manipulators over the five seeds 606 to 610. Its printed means are 0.2781 at 2,000 firm-years and 0.0489 at 64,000 firm-years, each a mean of five replications. The square-root rule from the 2,000 result gives \(0.2781\sqrt{2000/64000} = 0.0492\), close to the printed 0.0489. Setting that rule equal to 0.05 gives \(n = 2000 \times (0.2781/0.05)^2 \approx 61{,}900\), so the printed 64,000 result is of the order the rule predicts. The answer is a property of this generator, whose 1/A regressor has the scale it has. A filer sample with a different size distribution needs a different number. The point of the exercise is that the coefficient on \(1/A\) is data-hungry, and a result that depends on it needs a sample far larger than a single industry-year usually holds.</p>
             </details>
           </div>
           <div class="problem" id="R2">

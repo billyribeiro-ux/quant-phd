@@ -46,16 +46,16 @@ class Sample:
     manipulator: NDArray[np.bool_]
 
 
-def make_sample(seed: int, shift: float) -> Sample:
-    """Generate N_FIRMS firm-years; shift is the planted discretionary accrual of a manipulator, in ratio units."""
+def make_sample(seed: int, shift: float, n: int = N_FIRMS) -> Sample:
+    """Generate n firm-years; shift is the planted discretionary accrual of a manipulator, in ratio units."""
     rng = np.random.default_rng(seed)
-    lag = np.exp(rng.normal(np.log(1000.0), 0.6, N_FIRMS))
-    drev = lag * rng.normal(0.10, 0.20, N_FIRMS)
-    drec = drev * rng.uniform(0.10, 0.30, N_FIRMS) + lag * rng.normal(0.0, 0.02, N_FIRMS)
-    ppe = lag * rng.uniform(0.20, 0.60, N_FIRMS)
-    manipulator = np.zeros(N_FIRMS, dtype=np.bool_)
-    manipulator[rng.permutation(N_FIRMS)[: round(MANIP_SHARE * N_FIRMS)]] = True
-    noise = rng.standard_normal(N_FIRMS)
+    lag = np.exp(rng.normal(np.log(1000.0), 0.6, n))
+    drev = lag * rng.normal(0.10, 0.20, n)
+    drec = drev * rng.uniform(0.10, 0.30, n) + lag * rng.normal(0.0, 0.02, n)
+    ppe = lag * rng.uniform(0.20, 0.60, n)
+    manipulator = np.zeros(n, dtype=np.bool_)
+    manipulator[rng.permutation(n)[: round(MANIP_SHARE * n)]] = True
+    noise = rng.standard_normal(n)
     da = shift * manipulator + NOISE_SD * noise
     nondiscretionary = C_TRUE[0] / lag + C_TRUE[1] * (drev - drec) / lag + C_TRUE[2] * ppe / lag
     total = lag * (nondiscretionary + da)
@@ -117,12 +117,27 @@ def report(label: str, s: Sample) -> None:
         f"{label} oracle_top10pct true_positive_rate {float(np.mean(flagged_o[m])):.4f} "
         f"false_positive_rate {float(np.mean(flagged_o[~m])):.4f}"
     )
+    print(f"{label} flags_differing_all_vs_oracle {int(np.sum(flagged != flagged_o))}")
+
+
+SCALE_SEEDS = (606, 607, 608, 609, 610)
+
+
+def se_scaling() -> None:
+    """Mean classical standard error of a1 on the non-manipulators, over SCALE_SEEDS, at two sample sizes."""
+    for n in (2000, 64000):
+        ses: list[float] = []
+        for seed in SCALE_SEEDS:
+            sample = make_sample(seed, 0.05, n)
+            ses.append(classical_se(sample, ~sample.manipulator)[0])
+        print(f"a1_se_mean firms {n} seeds {len(SCALE_SEEDS)} {float(np.mean(ses)):.4f}")
 
 
 def main() -> None:
     print(f"seed {SEED} firms {N_FIRMS} manipulator_share {MANIP_SHARE}")
     report("strong_shift_0.05", make_sample(SEED, 0.05))
     report("weak_shift_0.01", make_sample(SEED, 0.01))
+    se_scaling()
 
 
 if __name__ == "__main__":

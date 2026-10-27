@@ -396,6 +396,17 @@ def main() -> None:
         ("roic with tax_rate 1.0", lambda: roic(statements, end, 1.0)),
         ("roic with tax_rate -0.1", lambda: roic(statements, end, -0.1)),
     ]
+    # The A15 item list has no short-term debt. A SIMULATED hypothetical adds 50 USD m of short-term borrowing to
+    # the debt line in every year (the same effect on invested capital); the generator itself has none.
+    with_std = {
+        e: {**row, "long_term_debt": row["long_term_debt"] + 50_000_000.0}
+        for e, row in statements.items()
+        if "long_term_debt" in row
+    }
+    print(
+        f"hypothetical 50 USD m short-term debt omitted by A15 (SIMULATED): FY2023 ROIC at 25% falls from"
+        f" {roic(statements, end, 0.25):.4f} to {roic(with_std, end, 0.25):.4f}"
+    )
     for label, call in cases:
         try:
             call()

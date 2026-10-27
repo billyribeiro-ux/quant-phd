@@ -69,7 +69,11 @@ def main() -> None:
     planted = BETA * float(np.mean(gaps))  # expected monthly spread: BETA times the mean z-gap of the quintiles
 
     print(f"seeds {N_SEEDS} months {N_MONTHS} firms {N_FIRMS} sigma {SIGMA} beta {BETA}")
+    print(f"mean_z_gap_simulated {float(np.mean(gaps)):.4f}")
     print(f"planted_monthly_spread {planted:.5f}")
+    sd_theory = SIGMA * np.sqrt(2.0 / QUINTILE)  # sd of a two-leg spread: each leg averages QUINTILE firms
+    print(f"spread_sd_theory {sd_theory:.5f}")
+    print(f"expected_t_at_planted {planted / (sd_theory / np.sqrt(N_MONTHS)):.3f}")
     print(f"recovered_mean_monthly_spread {float(np.mean(effect_means)):.5f}")
     print(f"null_mean_t {float(null.mean()):.3f} null_sd_t {float(null.std(ddof=1)):.3f}")
     print(f"null_false_positive_rate {float(np.mean(np.abs(null) > CRITICAL)):.3f}")
