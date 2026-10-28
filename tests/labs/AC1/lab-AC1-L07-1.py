@@ -4,7 +4,7 @@ Every grant and every operating income figure here is SIMULATED: a seeded genera
 draws them, no company is represented, and no output estimates any real firm. Money
 is in integer cents of simulated currency units (SCU). The model has no income tax,
 no forfeitures, no performance conditions and no share issuance at vesting, so the
-only statements it produces are the ones the lesson's identities cover.
+lab's checks are the schedule sums and the Section 2 identities.
 """
 
 from __future__ import annotations

@@ -154,6 +154,14 @@ def test_annuity_factor_zero_periods_is_zero() -> None:
     assert sol.annuity_factor(ANN_RATE, 0) == 0
 
 
+def test_closed_forms_return_floats() -> None:
+    """The closed forms return floats, including at a zero rate, where the factor is the number of periods."""
+    assert isinstance(sol.annuity_factor(0, 5), float), "annuity_factor must return a float, also at a zero rate"
+    assert isinstance(sol.annuity_due_factor(0, 5), float), "annuity_due_factor must return a float at a zero rate"
+    assert isinstance(sol.perpetuity_factor(0.05), float), "perpetuity_factor must return a float"
+    assert isinstance(sol.growing_perpetuity_factor(0.05, 0.02), float), "growing_perpetuity_factor must return a float"
+
+
 @pytest.mark.parametrize(("rate", "periods"), [(-0.01, 12), (-0.5, 3)])
 def test_annuity_factor_accepts_a_negative_rate_above_minus_one(rate: float, periods: int) -> None:
     """A rate in (-1, 0) is valid, since the specification requires only r > -1. The factor is computed at that
@@ -305,6 +313,7 @@ def test_level_payment_tie_at_a_non_zero_rate_goes_up() -> None:
         # 499999999999.4999999999999 cents, so it rounds down. Exact arithmetic is needed to see the last digits.
         (499_999_999_999, 1.2e-11, 499_999_999_999),
     ],
+    ids=["tie-at-six-percent", "half-cent-at-tiny-rate"],
 )
 def test_level_payment_is_exact_in_the_rate_as_written(principal: int, annual_rate: float, expected: int) -> None:
     assert sol.level_payment_cents(principal, annual_rate, 1) == expected, (

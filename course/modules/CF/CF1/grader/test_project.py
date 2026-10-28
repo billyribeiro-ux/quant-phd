@@ -8,8 +8,9 @@ with capbudget.py importable from the same directory. Warnings are failures, as 
 
 Each test checks a property or a number against the specification on the project page and the CF1 lessons. A failure
 names the property it checks and the idea to revisit; it never prints the expected value. Tolerances are stated in the
-specification and used here: relative 1e-9 for flows and NPVs, 1e-7 for an IRR rate, 1e-12 for the Fisher identity,
-and three sample standard errors for the Monte Carlo mean.
+specification and used here: relative 1e-9 for flows and NPVs, with an absolute floor of 1e-9 cents (1e-6 cents in six
+checks that sum several products), 1e-7 for an IRR rate, 1e-12 for the Fisher identity, and three sample standard
+errors for the Monte Carlo mean.
 """
 
 from __future__ import annotations
@@ -177,6 +178,19 @@ def test_irr_finds_a_root_at_the_low_end_of_the_discount_factor_window() -> None
     assert len(roots) == 1 and abs(roots[0] - (1.0 / 1.5e-4 - 1.0)) <= 1e-7, (
         "the search covers discount factors from 0.0001 upward: a root at discount factor 0.00015 (rate 6665.67) is "
         "inside it and must be found."
+    )
+
+
+def test_irr_does_not_report_a_root_outside_the_search_window() -> None:
+    # Flows -1 and +1e5: NPV = -1 + 1e5 * x with x = 1 / (1 + r), so the root has x = 1e-5 (rate 99999), below 1e-4.
+    # Flows -2e4 and +1: NPV = -2e4 + x, so the root has x = 2e4 (rate -0.99995), above 1e4.
+    assert irr_roots([-1.0, 1e5]) == [], (
+        "a root whose discount factor is below 0.0001 (rate above 9999) lies outside the search window: report only "
+        "sign changes between two samples inside the window."
+    )
+    assert irr_roots([-2e4, 1.0]) == [], (
+        "a root whose discount factor is above 10000 (rate below -0.9999) lies outside the search window: report only "
+        "sign changes between two samples inside the window."
     )
 
 

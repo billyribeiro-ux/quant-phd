@@ -3,9 +3,7 @@
 SIMULATED: the same three-year machine project as the worked example, not any company's project. Money is in integer
 cents; flows are floats in cents, printed in dollars. Standard library only, no randomness, no network.
 
-This file is the completed version. On the page, the three lines that assign tax, operating and working_capital are
-blanked with ___; every other line of the page is the same as this file. The expected output below is this file's
-output, so a completed page run matches it only when every blank is right.
+Fill in each blank line so that the output matches the expected output below. The other lines are given.
 """
 
 from __future__ import annotations

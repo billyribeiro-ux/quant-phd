@@ -40,8 +40,8 @@ INPUT_PRICE: int = CASE["input_price_cents"]
 ACTUAL_INPUTS: int = CASE["actual_inputs_used"]
 FUNCTIONS: tuple[str, ...] = ("master_budget", "flexible_budget", "variance_decomposition")
 VARIANCES: tuple[str, ...] = ("sales_price", "sales_volume", "sales_mix", "efficiency")
-# The case as generated, before any test runs. A learner's function that changes CASE in place would otherwise be
-# hidden from the purity test, which builds its own case from CASE; the snapshot is what every check compares with.
+# The case as generated, before any test runs. The purity test builds its own case from PRISTINE through fresh(), and
+# test_shared_case_is_unchanged_by_the_suite compares CASE with PRISTINE at the end of the run.
 PRISTINE: dict[str, Any] = copy.deepcopy(CASE)
 
 
@@ -638,6 +638,36 @@ def test_float_actual_units_argument_raises_value_error() -> None:
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize("field", ("input_price_cents", "fixed_overhead_cents", "actual_inputs_used"))
+@pytest.mark.parametrize("offset", (0.5, 0.0))
+def test_case_field_not_a_whole_number_raises_value_error(name: str, field: str, offset: float) -> None:
+    # offset 0.5 is a fraction; offset 0.0 is an integral float. Both are not whole numbers as the page states.
+    case = fresh(**{field: CASE[field] + offset})
+    must_raise(_call_for(name, case), f"{name}: {field} given as the non-whole number {CASE[field] + offset!r}")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize(
+    "field",
+    ("budget_units", "budget_price_cents", "standard_inputs_per_unit", "actual_units", "actual_price_cents"),
+)
+@pytest.mark.parametrize("offset", (0.5, 0.0))
+def test_product_field_not_a_whole_number_raises_value_error(name: str, field: str, offset: float) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0][field] = rows[0][field] + offset
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a product's {field} given as a non-whole number")
+
+
+@pytest.mark.parametrize("offset", (0.5, 0.0))
+def test_non_whole_actual_units_argument_raises_value_error(offset: float) -> None:
+    total = sum(r["actual_units"] for r in PRODUCTS)
+    must_raise(
+        lambda: sol.flexible_budget(CASE, total + offset),
+        "flexible_budget: an actual unit count that is not a whole number",
+    )
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
 def test_negative_input_price_raises_value_error(name: str) -> None:
     must_raise(_call_for(name, fresh(input_price_cents=-1)), f"{name}: a negative input_price_cents")
 
@@ -721,6 +751,19 @@ def test_functions_are_silent(name: str) -> None:
     assert buffer.getvalue() == "", "a function must not print."
 
 
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_functions_do_not_reorder_their_products(name: str) -> None:
+    # The generated products are already in name order, so a function that sorts its argument in place would pass
+    # test_functions_do_not_change_their_arguments. The reversed list exposes it.
+    case = with_products(copy.deepcopy(PRODUCTS[::-1]))
+    before = copy.deepcopy(case)
+    if name == "flexible_budget":
+        sol.flexible_budget(case, 900)
+    else:
+        getattr(sol, name)(case)
+    assert case == before, "a function must never change its argument, including the order of the products."
+
+
 def test_results_do_not_depend_on_call_order() -> None:
     first = sol.variance_decomposition(CASE)
     sol.flexible_budget(CASE, 1)
@@ -731,7 +774,7 @@ def test_results_do_not_depend_on_call_order() -> None:
 
 
 def test_shared_case_is_unchanged_by_the_suite() -> None:
-    # Runs last in the file: every test before it has passed the shared CASE to the learner's functions.
+    # Runs last in the file: many tests before it have passed the shared CASE to the learner's functions.
     assert CASE == PRISTINE, (
         "the suite's shared case was changed by a function call; a function must never change its argument."
     )
