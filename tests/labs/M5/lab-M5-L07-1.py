@@ -4,8 +4,10 @@ Part A iterates x_{n+1} = cos(x_n) from x_0 = 0 and checks the error |x_n - x*| 
 Theorem 2.1, beta**n * d(x_0, x_1) / (1 - beta), with beta = sin(1) and d(x_0, x_1) = 1. Part B samples the
 difference quotient |cos x - cos y| / |x - y| over all pairs of a grid on [0, 1] and checks that no pair exceeds
 sin(1), the modulus that Proposition 3.1 gives. Part C applies the same sampling to f(x) = sqrt(x*x + 1) on
-[-L, L] for two windows, and checks that f(x) - x is positive at every grid point, so f has no fixed point.
-Standard library only; no randomness and no network access. The float tolerance is TOL = 1e-12 in every check.
+[-L, L] for two windows, and checks that f(x) - x is positive at every grid point. A grid check does not prove that
+f has no fixed point; the page proves that analytically.
+Standard library only; no randomness and no network access. The float tolerance is TOL = 1e-12 in Parts A and B;
+Part C tests the sign of f(x) - x exactly.
 """
 
 from __future__ import annotations
@@ -81,7 +83,7 @@ def part_c() -> None:
         if gap <= 0.0:
             raise AssertionError("f(x) - x vanishes on the grid")
         print(f"part C: window [-{half:g}, {half:g}]: largest sampled ratio = {best:.6f}; min of f(x) - x = {gap:.6f}")
-    print("part C: f(x) - x is positive at every grid point, so f has no fixed point on either window")
+    print("part C: f(x) - x is positive at every grid point on either window")
 
 
 def main() -> None:

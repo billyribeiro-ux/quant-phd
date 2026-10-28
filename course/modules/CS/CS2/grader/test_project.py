@@ -16,6 +16,7 @@ other invalid input the test accepts either an exception of any type or a correc
 from __future__ import annotations
 
 import ast
+import contextlib
 import itertools
 import json
 import math
@@ -204,6 +205,59 @@ def test_welford_nan_update_raises() -> None:
     must_raise(lambda: acc.update(float("nan")), "a NaN update")
 
 
+def test_welford_nan_first_value_raises() -> None:
+    must_raise(lambda: WelfordAccumulator().update(float("nan")), "a NaN as the first value")
+
+
+def test_welford_constant_stream_has_zero_variance() -> None:
+    acc = WelfordAccumulator()
+    for _ in range(10):
+        acc.update(5.0)
+    if not close(acc.mean(), 5.0) or acc.variance(1) != 0.0:
+        pytest.fail("on a stream of one repeated value, the mean is that value and the sample variance is zero.")
+
+
+def test_welford_count_is_read_only_int() -> None:
+    acc = WelfordAccumulator()
+    acc.update(VALUES[0])
+    if type(acc.count) is not int:
+        pytest.fail("count must be an int.")
+    with contextlib.suppress(Exception):  # refusing the assignment is allowed; so is ignoring it
+        acc.count = 99  # a learner may refuse this assignment or ignore it
+    if acc.count != 1:
+        pytest.fail("count is a read-only property: assigning to it must not change the number of values.")
+
+
+def test_classes_never_print(capsys: pytest.CaptureFixture[str]) -> None:
+    acc = WelfordAccumulator()
+    for x in VALUES[:5]:
+        acc.update(x)
+    acc.mean()
+    acc.variance(1)
+    rolling = RollingMinMax(WINDOW)
+    for x in VALUES[:5]:
+        rolling.push(x)
+    rolling.minimum()
+    rolling.maximum()
+    sketch = sketch_of(VALUES[:5], EPS)
+    sketch.quantile(0.5)
+    captured = capsys.readouterr()
+    if captured.out or captured.err:
+        pytest.fail("the three classes must never print: the output of a call to them is not empty.")
+
+
+def test_welford_bool_input_is_refused_or_denotes_one() -> None:
+    acc = WelfordAccumulator()
+    acc.update(1.0)
+    refuse_or_correct(lambda: (acc.update(True), acc.mean())[1], 1.0, "True passed as a value")
+
+
+def test_welford_padded_string_is_refused_or_correct() -> None:
+    acc = WelfordAccumulator()
+    acc.update(1.0)
+    refuse_or_correct(lambda: (acc.update(" 2.5 "), acc.mean())[1], 1.75, "a padded string passed as a value")
+
+
 # ------------------------------------------------------------------ Welford: values against the exact reference
 
 
@@ -292,17 +346,18 @@ def test_welford_none_input_is_refused() -> None:
     refuse_or_correct(lambda: (acc.update(None), acc.mean())[1], float("nan"), "None passed as a value")
 
 
-def test_welford_other_ddof_is_refused() -> None:
+@pytest.mark.parametrize("ddof", [2, -1])
+def test_welford_other_ddof_is_refused(ddof: int) -> None:
     acc = WelfordAccumulator()
     for x in VALUES[:5]:
         acc.update(x)
     try:
-        answer = acc.variance(2)
+        answer = acc.variance(ddof)
     except NotImplementedError:
         raise
     except Exception:
         return
-    pytest.fail(f"variance(ddof) is defined for ddof 0 and 1 only; ddof 2 returned a {type(answer).__name__}.")
+    pytest.fail(f"variance(ddof) is defined for ddof 0 and 1 only; ddof {ddof} returned a {type(answer).__name__}.")
 
 
 def test_welford_infinite_input_gives_no_finite_answer() -> None:
@@ -352,6 +407,21 @@ def test_rolling_nan_push_raises() -> None:
     must_raise(lambda: r.push(float("nan")), "a NaN push")
 
 
+def test_rolling_nan_first_push_raises() -> None:
+    must_raise(lambda: RollingMinMax(WINDOW).push(float("nan")), "a NaN as the first push")
+
+
+@pytest.mark.parametrize("width", [2, 3])
+def test_rolling_ties_expire_with_their_index(width: int) -> None:
+    stream = [2.0, 2.0, 1.0, 1.0, 2.0, 2.0, 1.0, 3.0, 3.0]
+    r = RollingMinMax(width)
+    for i, x in enumerate(stream):
+        r.push(x)
+        window = stream[max(0, i - width + 1) : i + 1]
+        if r.minimum() != min(window) or r.maximum() != max(window):
+            pytest.fail("with repeated values, the minimum or maximum of the window differs from brute force.")
+
+
 def test_rolling_every_window_matches_brute_force() -> None:
     r = RollingMinMax(WINDOW)
     for i, x in enumerate(VALUES):
@@ -399,10 +469,22 @@ def test_rolling_wrong_type_window_is_refused_or_correct() -> None:
     refuse_or_correct(action, min(VALUES[3:6]), "a string window")
 
 
+def test_rolling_float_window_that_denotes_three_is_refused_or_correct() -> None:
+    def action() -> float:
+        wrong_type: Any = 3.0  # not an integer type, but it denotes the window 3
+        r = RollingMinMax(wrong_type)
+        for x in VALUES[:6]:
+            r.push(x)
+        smallest: float = r.minimum()
+        return smallest
+
+    refuse_or_correct(action, min(VALUES[3:6]), "a float window that denotes three")
+
+
 # ------------------------------------------------------------------ quantile sketch: named conditions
 
 
-@pytest.mark.parametrize("bad", [0.0, 1.0, 1.5, -0.1, float("nan")])
+@pytest.mark.parametrize("bad", [0.0, 1.0, 1.5, -0.1, -1e-6, float("nan"), float("inf"), float("-inf")])
 def test_sketch_epsilon_outside_open_interval_raises(bad: float) -> None:
     must_raise(lambda: QuantileSketch(bad), f"epsilon outside (0, 1) ({bad!r})")
 
@@ -413,6 +495,7 @@ def test_sketch_small_epsilon_is_valid() -> None:
 
 def test_sketch_epsilon_just_below_one_is_valid() -> None:
     must_accept(lambda: QuantileSketch(0.999999), "epsilon 0.999999")
+    must_accept(lambda: QuantileSketch(math.nextafter(1.0, 0.0)), "the float just below one")
 
 
 def test_sketch_quantile_below_zero_raises() -> None:
@@ -430,6 +513,12 @@ def test_sketch_quantile_nan_raises() -> None:
     must_raise(lambda: sketch.quantile(float("nan")), "a NaN quantile")
 
 
+@pytest.mark.parametrize("bad", [float("inf"), float("-inf"), math.nextafter(1.0, 2.0), math.nextafter(0.0, -1.0)])
+def test_sketch_quantile_outside_closed_interval_raises(bad: float) -> None:
+    sketch = sketch_of(VALUES[:5], EPS)
+    must_raise(lambda: sketch.quantile(bad), f"quantile outside the closed interval [0, 1] ({bad!r})")
+
+
 def test_sketch_quantile_at_both_ends_is_valid() -> None:
     sketch = sketch_of(VALUES[:5], EPS)
     lo = must_accept(lambda: sketch.quantile(0.0), "quantile(0)")
@@ -438,13 +527,28 @@ def test_sketch_quantile_at_both_ends_is_valid() -> None:
         pytest.fail("quantile() must return a float.")
 
 
+def test_sketch_quantile_just_inside_both_ends_is_valid() -> None:
+    sketch = sketch_of(VALUES[:5], EPS)
+    must_accept(lambda: sketch.quantile(math.nextafter(0.0, 1.0)), "the float just above zero")
+    must_accept(lambda: sketch.quantile(math.nextafter(1.0, 0.0)), "the float just below one")
+
+
 def test_sketch_quantile_on_empty_sketch_raises() -> None:
     must_raise(lambda: QuantileSketch(EPS).quantile(0.5), "quantile() on an empty sketch")
+
+
+@pytest.mark.parametrize("q", [0.0, 1.0])
+def test_sketch_quantile_on_empty_sketch_raises_at_both_ends(q: float) -> None:
+    must_raise(lambda: QuantileSketch(EPS).quantile(q), f"quantile({q}) on an empty sketch")
 
 
 def test_sketch_nan_add_raises() -> None:
     sketch = sketch_of(VALUES[:3], EPS)
     must_raise(lambda: sketch.add(float("nan")), "a NaN added to the sketch")
+
+
+def test_sketch_nan_first_add_raises() -> None:
+    must_raise(lambda: QuantileSketch(EPS).add(float("nan")), "a NaN as the first value added to the sketch")
 
 
 # ------------------------------------------------------------------ quantile sketch: the rank guarantee
@@ -466,7 +570,8 @@ def test_sketch_rank_guarantee_at_each_probe(index: int) -> None:
 
 def test_sketch_quantile_is_nondecreasing_in_q() -> None:
     sketch = sketch_of(VALUES, EPS)
-    answers = [sketch.quantile(q) for q in sorted(PROBES)]
+    grid = sorted({*PROBES, *(k / 100 for k in range(101))})
+    answers = [sketch.quantile(q) for q in grid]
     if any(a > b for a, b in itertools.pairwise(answers)):
         pytest.fail("quantile(q) must not decrease as q increases.")
 
@@ -512,3 +617,34 @@ def test_sketch_rank_guarantee_on_short_streams(length: int, eps: float) -> None
         slack = Fraction(eps) * length
         if not (below <= qn + slack and at_or_below >= qn - slack):
             pytest.fail("the rank guarantee fails on a short stream, where the slack is less than one rank.")
+
+
+@pytest.mark.parametrize("eps", [0.05, 0.1, 0.2])
+def test_sketch_rank_guarantee_with_ties(eps: float) -> None:
+    """Repeated values: the guarantee counts every copy, so a tie cannot be split by the answer."""
+    stream = [1.0] * 7 + [2.0] * 5 + [3.0] * 9 + [4.0] * 2
+    sketch = sketch_of(stream, eps)
+    n = len(stream)
+    for q in PROBES:
+        v = sketch.quantile(q)
+        below = sum(1 for x in stream if x < v)
+        at_or_below = sum(1 for x in stream if x <= v)
+        if not (below <= Fraction(q) * n + Fraction(eps) * n and at_or_below >= Fraction(q) * n - Fraction(eps) * n):
+            pytest.fail("the rank guarantee fails on a stream with repeated values.")
+
+
+def test_instances_hold_their_own_state() -> None:
+    first = WelfordAccumulator()
+    second = WelfordAccumulator()
+    first.update(1.0)
+    first.update(3.0)
+    if second.count != 0:
+        pytest.fail("each accumulator holds its own values: a new one must not see another's.")
+    rolling_a = RollingMinMax(2)
+    rolling_b = RollingMinMax(2)
+    rolling_a.push(-5.0)
+    must_raise(lambda: rolling_b.minimum(), "minimum() on a fresh object after another object was pushed")
+    sketch_a = QuantileSketch(0.1)
+    sketch_b = QuantileSketch(0.1)
+    sketch_a.add(7.0)
+    must_raise(lambda: sketch_b.quantile(0.5), "quantile() on a fresh sketch after another sketch was filled")

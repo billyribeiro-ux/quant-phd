@@ -3,9 +3,10 @@
 Claim checked: after N = 5000 values, for each probe quantile q and each epsilon in {1/20, 1/10}, the value v
 returned by the sketch satisfies #{x < v} <= qN + epsilon*N and #{x <= v} >= qN - epsilon*N, using exact
 counts on the stream. The sketch keeps levels h = 0, 1, 2, ...; level h holds items of weight 2**h and has
-capacity k_h = 2 * ceil((h+1)(h+2) / (2 epsilon)). A full level is sorted, its odd-position items (the 2nd,
-4th, ...) are kept and promoted to level h+1, and the others are dropped. All arithmetic on epsilon and q is
-exact (Fraction). SIMULATED stream: uniform on [0, 1) from random.Random(SEED). Standard library only.
+capacity k_h = 2 * ceil((h+1)(h+2) / (2 epsilon)). A full level is sorted, its even-numbered items (the 2nd,
+4th, ...; buffer[1::2] in 0-based indexing) are kept and promoted to level h+1, and the others are dropped.
+All arithmetic on epsilon and q is exact (Fraction). SIMULATED stream: uniform on [0, 1) from
+random.Random(SEED). Standard library only.
 """
 
 from __future__ import annotations

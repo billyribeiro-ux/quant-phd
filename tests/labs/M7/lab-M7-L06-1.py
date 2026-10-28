@@ -3,8 +3,8 @@
 SIMULATED: every input is generated from the fixed seed SEED below by an integer recurrence. Nothing here is
 market data, and the four assets are labelled A1 to A4 only.
 
-For one period, the inputs are a return vector mu (exact fractions) and a covariance-type matrix Sigma that is
-given, not estimated (estimation is outside this unit). Sigma = M'M/16 + I/10 with M a 4 by 4 integer matrix, so
+For one period, the inputs are a return vector mu (exact fractions) and a given symmetric positive definite
+matrix Sigma, not estimated (estimation is outside this unit). Sigma = M'M/16 + I/10 with M a 4 by 4 integer matrix, so
 Sigma is symmetric positive definite. For a risk-aversion parameter gamma > 0 the portfolio solves
 
     minimise (gamma/2) w'Sigma w - mu'w   subject to  1'w = 1,
@@ -15,10 +15,11 @@ Part A: no sign constraint. The KKT system [[gamma Sigma, 1], [1', 0]] [w; lambd
 result is compared with the closed form w = (a - lambda b)/gamma, where a = Sigma^{-1} mu, b = Sigma^{-1} 1 and
 lambda = (1'a - gamma)/(1'b).
 
-Part B: with w >= 0. Each set S of assets fixed at zero (16 sets) gives a reduced equality problem on the other
-assets. A candidate is kept only if its free weights are nonnegative and the multiplier nu_i = gamma (Sigma w)_i -
-mu_i + lambda is nonnegative for each i in S. The number of kept candidates and the number of distinct weight
-vectors among them are printed.
+Part B: with w >= 0. Each set S of assets fixed at zero gives a reduced equality problem on the other
+assets. The 15 sets that leave at least one asset free are enumerated; the set that fixes all four at zero
+cannot meet the budget and is skipped. A candidate is kept only if its free weights are nonnegative and the
+multiplier nu_i = gamma (Sigma w)_i - mu_i + lambda is nonnegative for each i in S. The number of kept
+candidates and the number of distinct weight vectors among them are printed.
 
 Part C: the variance w'Sigma w of the solution is checked to be nonincreasing in gamma for both cases, and the
 constrained objective is checked to be at least the unconstrained objective at each gamma (the feasible set is

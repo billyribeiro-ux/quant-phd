@@ -1,8 +1,9 @@
 """M4 L06 lab 1: a Student-t draw built from a standard normal over an independent chi-square, and its variance.
 
 Inputs are simulated, not data. Every draw uses one standard normal Z and an independent chi-square W with nu
-degrees of freedom, where W is the sum of nu squared standard normals. The draw is T = Z / sqrt(W / nu). The
-generator is random.Random(20260602), and each draw takes Z first, then the nu normals of W, in that order.
+degrees of freedom, where W is the sum of nu squared standard normals. The draw is T = Z / sqrt(W / nu). Part A seeds
+random.Random(20260602 + nu) for nu = 5 and nu = 10, and Part B seeds random.Random(20261102). Each draw takes Z
+first, then the nu normals of W, in that order.
 
 Part A: for nu = 5 and nu = 10, the sample mean and the sample variance (divisor n - 1) of T over n = 100000
 draws, beside nu / (nu - 2) from the formula for the variance of T.

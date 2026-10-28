@@ -1,9 +1,10 @@
 """Rung 3 reference numbers: the repairs, their distances from the input, and the weights the report quotes.
 
 SIMULATED: the four-by-four matrix and the volatilities are set by hand for this run. They are not estimated from data.
-Standard library only. Copy this file into report/run_report.py, delete the functions jacobi_eigen, psd_projection,
-min_eigenvalue, clip_repair, projection_repair and comparison_weights, and import those six names from your
-covariance_doctor module. frobenius stays. Your module must print the same lines.
+Standard library only. Copy this file into report/run_report.py, delete the six functions jacobi_eigen, psd_projection,
+min_eigenvalue, clip_repair, projection_repair and comparison_weights, and import the four names min_eigenvalue,
+clip_repair, projection_repair and comparison_weights from your covariance_doctor module. frobenius stays. Your module
+must print the same lines.
 """
 
 import math

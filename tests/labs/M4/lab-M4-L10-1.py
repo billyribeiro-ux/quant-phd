@@ -2,7 +2,7 @@
 
 SIMULATED: every draw comes from a seeded generator; no data is used. Standard library only (math, random,
 statistics). Three laws are drawn. The standard normal is drawn with random.gauss(0, 1). The Student-t law with
-3 degrees of freedom is T = Z / sqrt(W / 3), with Z a standard normal and W the sum of three squared independent
+3 degrees of freedom is V = Z / sqrt(W / 3), with Z a standard normal and W the sum of three squared independent
 standard normals. The standard Cauchy law is drawn by its distribution function's inverse, tan(pi (U - 1/2)), for a
 uniform U from random.random().
 Part A checks the closed-form distribution function of the t(3) law against a midpoint integral of its density (2 /
@@ -11,7 +11,7 @@ prints the running sample mean of one seeded path of each law at n = 10, 100, 10
 seeded replications at n = 10 and n = 100, and prints the interquartile range of the sample mean (the 75th minus
 the 25th percentile, with statistics.quantiles, method "inclusive") for each law, and the sample variance of
 sqrt(n) Xbar_n / sigma for the normal and t(3) laws, where sigma is 1 for the normal and sqrt(3) for the t(3). Part
-D prints the products x P(|X| > x) for the Cauchy law and x^3 P(|T| > x) for the t(3) law at x = 10, 100 and 1000.
+D prints the products x P(|X| > x) for the Cauchy law and x^3 P(|V| > x) for the t(3) law at x = 10, 100 and 1000.
 A sample is one random run.
 """
 
@@ -87,7 +87,7 @@ def part_a() -> None:
     t_tail = 2.0 * t3_tail_one_sided(x)
     print(f"part A: P(|Z| > 10) = {normal_tail:.4e}")
     print(f"part A: P(|X| > 10) for the Cauchy law = {cauchy_tail:.6f}")
-    print(f"part A: P(|T| > 10) for the t(3) law = {t_tail:.6f}")
+    print(f"part A: P(|V| > 10) for the t(3) law = {t_tail:.6f}")
     print(f"part A: the Cauchy tail is {cauchy_tail / normal_tail:.3e} times the normal tail at x = 10")
 
 
@@ -141,7 +141,7 @@ def part_d() -> None:
         t_product = x**3 * 2.0 * t3_tail_one_sided(x)
         print(
             f"part D: x = {x:6.0f}, x P(|X| > x) for Cauchy = {cauchy_product:.6f}, "
-            f"x^3 P(|T| > x) for t(3) = {t_product:.6f}"
+            f"x^3 P(|V| > x) for t(3) = {t_product:.6f}"
         )
 
 

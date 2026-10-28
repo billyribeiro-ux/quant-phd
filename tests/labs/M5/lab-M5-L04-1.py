@@ -6,7 +6,7 @@ whole space.
 
 Part A: the Euclidean distance on the 25 points (i/2, j/2) with i, j in {-2, -1, 0, 1, 2}, in R^2. Floats are used,
 and the triangle inequality is tested with a slack of 1e-12 for floating-point
-error. Each axiom is tested on all triples.
+error. Nonnegativity, identity and symmetry are tested on all pairs; the triangle inequality is tested on all triples.
 Part B: the sup distance max_k |f_k - g_k| on the 27 vectors of length 3 with entries in {0, 1, 2}. Entries are exact
 Fractions, so the slack is zero.
 Part C: the squared Euclidean distance on the three points 0, 1, 2 of R. It is symmetric and zero only at equal points,

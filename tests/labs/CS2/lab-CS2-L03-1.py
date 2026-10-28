@@ -1,4 +1,4 @@
-"""CS2 lab L03 (the curriculum lab): a binary-heap event queue against a sorted list, on one seeded event stream.
+"""CS2 lab L03: a binary-heap event queue against a sorted list, on one seeded event stream.
 
 Standard library only. No wall-clock time is measured. Both structures are counted in the same model:
 a comparison is one test of two event keys, and a move is one assignment of an event key into a slot of

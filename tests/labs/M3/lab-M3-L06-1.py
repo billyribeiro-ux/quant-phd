@@ -4,7 +4,7 @@ SIMULATED: every matrix is generated here from a seeded generator (numpy default
 Units: none (dimensionless matrix entries). Tolerances are absolute and stated in each printed line.
 
 For each of five seeds, two matrices are checked: a 4x3 matrix and a 3x4 matrix. For each one the lab
-computes the full SVD with numpy.linalg.svd and checks the statements of Theorems 2.1 and 2.2 and
+computes the full SVD with numpy.linalg.svd and checks the statements of Theorems 2.2 and 2.3 and
 Proposition 2.4 numerically: U and V are orthogonal, A = U S V^T, the squared singular values equal the
 eigenvalues of A^T A, and the sum of the squared singular values equals the squared Frobenius norm of A.
 NumPy's SVD and eigenvalue routines are used only to produce the numbers that these identities are checked

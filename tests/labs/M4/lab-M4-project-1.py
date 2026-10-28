@@ -35,8 +35,8 @@ def simulate(family: str) -> list[int]:
         scale = 1.0
         if family == "student_t":
             # Step 2. A chi-square with NU degrees of freedom is a gamma with shape NU / 2 and scale 2. The t draw
-            # divides the normal by sqrt(W / NU), so its returns carry the factor sqrt(NU / W), times the matched
-            # factor (NU - 2) / NU, which equals sqrt((NU - 2) / W).
+            # divides the normal by sqrt(W / NU), so its returns carry the factor sqrt(NU / W), times the square
+            # root of the matched factor, sqrt((NU - 2) / NU), which equals sqrt((NU - 2) / W).
             chi_square = rng.gammavariate(NU / 2, 2.0)
             scale = math.sqrt((NU - 2) / chi_square)
         # Step 3. Correlate the normals with the factor L, then scale them to the returns.

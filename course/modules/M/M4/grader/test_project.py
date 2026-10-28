@@ -28,13 +28,15 @@ COV: list[list[float]] = INST["cov"]
 NU: int = INST["nu"]
 N_DRAWS: int = INST["n_draws"]
 
-# Relative tolerances on the loss variance. The Gaussian is held tight. The Student-t is held loosely on purpose: at
-# nu = 3 the fourth moment is infinite, so its sample variance settles slowly. Measured on seeds 0 to 49 with five
-# correct streams, the largest relative error was 0.52 at nu = 3 and 0.31 at nu = 4. The tolerance is 0.60, so the
-# test catches a missing matched factor (an inflation of nu / (nu - 2)) only where that inflation exceeds 1.6,
-# that is for nu of 5 or less. The page states this limit.
+# Relative tolerances on the loss variance. The Gaussian is held tight. The Student-t variance is checked only for
+# nu of 5 or more: the fourth moment of the Student-t is infinite at nu = 3 and 4, so a sample variance there can miss
+# its target by more than any fixed tolerance (the reference fails at seed 1093 with nu = 3). Over seeds 0 to 1999 the
+# reference's largest relative error was 0.126 at nu = 5, 0.097 at nu = 6, 0.073 at nu = 7 and 0.062 at nu = 8. The
+# tolerance 0.30 is about 2.4 times the largest of these, and it catches a missing matched factor (an inflation of
+# nu / (nu - 2), which is 1.67, 1.50, 1.40 and 1.33 at nu = 5 to 8) at every nu the check runs for.
 TOL_GAUSSIAN_VARIANCE = 0.10
-TOL_T_VARIANCE = 0.60
+TOL_T_VARIANCE = 0.30
+MIN_NU_FOR_T_VARIANCE_CHECK = 5
 
 
 def check(condition: bool, message: str) -> None:
@@ -138,6 +140,8 @@ def test_gaussian_loss_variance_matches_portfolio_covariance() -> None:
 
 
 def test_student_t_loss_variance_matches_matched_covariance() -> None:
+    if NU < MIN_NU_FOR_T_VARIANCE_CHECK:
+        pytest.skip("the Student-t variance is checked only for nu of 5 or more (the page states this)")
     losses = sol.simulate_losses(POSITIONS, COV, N_DRAWS, SEED, "student_t", NU)
     target = portfolio_variance()
     check(
@@ -175,9 +179,10 @@ def test_gaussian_accepts_no_degrees_of_freedom() -> None:
     check(len(losses) == 10, "the gaussian family must accept nu = None")
 
 
-def test_gaussian_rejects_a_degrees_of_freedom() -> None:
+@pytest.mark.parametrize("nu", [5, 3.0, False])
+def test_gaussian_rejects_a_degrees_of_freedom(nu: Any) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, "gaussian", 5),
+        lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, "gaussian", nu),
         "the gaussian family must reject a non-None nu",
     )
 
@@ -189,10 +194,11 @@ def test_student_t_requires_degrees_of_freedom() -> None:
     )
 
 
-def test_student_t_rejects_nu_equal_to_two() -> None:
+@pytest.mark.parametrize("nu", [2, 1, 0, -3])
+def test_student_t_rejects_nu_at_or_below_two(nu: int) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, "student_t", 2),
-        "the student_t family must reject nu = 2",
+        lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, "student_t", nu),
+        "the student_t family must reject nu of 2 or less",
     )
 
 
@@ -201,10 +207,22 @@ def test_student_t_accepts_nu_just_above_two() -> None:
     check(len(losses) == 10, "the student_t family must accept nu = 3")
 
 
-def test_zero_draws_are_rejected() -> None:
+@pytest.mark.parametrize("n_draws", [0, -1, -5])
+def test_draw_count_of_zero_or_less_is_rejected(n_draws: int) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses(POSITIONS, COV, 0, SEED, "gaussian", None),
-        "n_draws must be 1 or more: zero draws must raise ValueError",
+        lambda: sol.simulate_losses(POSITIONS, COV, n_draws, SEED, "gaussian", None),
+        "n_draws must be 1 or more: zero or a negative draw count must raise ValueError",
+    )
+
+
+def test_gaussian_losses_are_rounded_once_not_truncated() -> None:
+    # One position of 100 cents on a return with sd 2 %, so the loss has variance 4 cents squared. Rounding to the
+    # nearest cent adds about 1/12 to the variance. Truncating toward zero lowers it by about the mean absolute loss,
+    # 1.6 cents, to about 2.5, which is far from 4 + 1/12.
+    losses = sol.simulate_losses([100], [[4e-4]], 20_000, SEED, "gaussian", None)
+    check(
+        abs(sample_variance(losses) - (4.0 + 1.0 / 12.0)) <= 0.3,
+        "losses must be rounded once to the nearest cent with round(), not truncated",
     )
 
 
@@ -221,7 +239,7 @@ def test_draw_count_must_be_a_whole_number(n_draws: Any) -> None:
     )
 
 
-@pytest.mark.parametrize("positions", [[1.0, 2], [True, 2]])
+@pytest.mark.parametrize("positions", [[1.0, 2], [True, 2], [1000, "1000"]])
 def test_positions_must_be_whole_cents(positions: Any) -> None:
     expect_value_error(
         lambda: sol.simulate_losses(positions, [[1e-4, 0.0], [0.0, 1e-4]], 10, SEED, "gaussian", None),
@@ -244,11 +262,19 @@ def test_covariance_must_match_the_number_of_positions() -> None:
     )
 
 
-def test_covariance_must_be_symmetric() -> None:
-    skew = [[4e-4, 1e-4], [2e-4, 9e-4]]
+@pytest.mark.parametrize("skew", [[[4e-4, 1e-4], [2e-4, 9e-4]], [[4e-4, 2e-4], [1e-4, 9e-4]]])
+def test_covariance_must_be_symmetric(skew: list[list[float]]) -> None:
     expect_value_error(
         lambda: sol.simulate_losses([1_000, 1_000], skew, 10, SEED, "gaussian", None),
         "cov must be symmetric",
+    )
+
+
+@pytest.mark.parametrize("ragged", [[[4e-4]], [[4e-4, 0.0], [0.0]], [[4e-4, 0.0, 0.0], [0.0, 4e-4]]])
+def test_covariance_must_be_square_with_one_row_per_position(ragged: list[list[float]]) -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000, 1_000], ragged, 10, SEED, "gaussian", None),
+        "cov must be a square matrix with one row and one column per position",
     )
 
 
@@ -264,6 +290,20 @@ def test_singular_covariance_is_rejected() -> None:
     expect_value_error(
         lambda: sol.simulate_losses([1_000], [[0.0]], 10, SEED, "gaussian", None),
         "cov must be positive definite: a zero pivot is not above zero",
+    )
+
+
+def test_singular_covariance_with_a_zero_second_pivot_is_rejected() -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000, 1_000], [[1.0, 1.0], [1.0, 1.0]], 10, SEED, "gaussian", None),
+        "cov must be positive definite: the second pivot is zero",
+    )
+
+
+def test_negative_variance_is_rejected() -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000], [[-4e-4]], 10, SEED, "gaussian", None),
+        "cov must be positive definite: a negative variance is not positive",
     )
 
 
@@ -285,9 +325,14 @@ def test_quantile_99_is_the_exact_order_statistic() -> None:
 
 
 def test_quantile_99_convention_on_small_lists() -> None:
+    check(sol.quantile_99(list(range(1, 100))) == 99, "for n = 99 the index is ceil(98.01) = 99, the largest value")
     check(sol.quantile_99(list(range(1, 101))) == 99, "for n = 100 the index is ceil(99) = 99, the 99th smallest")
     check(sol.quantile_99(list(range(1, 102))) == 100, "for n = 101 the index is ceil(99.99) = 100, not 99")
     check(sol.quantile_99(list(range(1, 3))) == 2, "for n = 2 the index is ceil(1.98) = 2, the largest value")
+
+
+def test_quantile_99_returns_a_tied_value_when_losses_tie() -> None:
+    check(sol.quantile_99([3, 3, 1, 3, 2]) == 3, "with ties the 99% loss is the tied value at the ceiling index")
 
 
 def test_quantile_99_ignores_the_input_order() -> None:
@@ -312,7 +357,7 @@ def test_quantile_99_rejects_an_empty_list() -> None:
     expect_value_error(lambda: sol.quantile_99([]), "quantile_99 must reject an empty list")
 
 
-@pytest.mark.parametrize("losses", [[1.0, 2], [True, 2]])
+@pytest.mark.parametrize("losses", [[1.0, 2], [True, 2], ["7"]])
 def test_quantile_99_rejects_non_whole_losses(losses: Any) -> None:
     expect_value_error(lambda: sol.quantile_99(losses), "quantile_99 must reject a float or a boolean loss")
 

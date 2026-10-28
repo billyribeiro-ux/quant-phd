@@ -318,6 +318,84 @@ def test_budget_of_one_sweep_is_reported_as_not_converged() -> None:
     expect(out["converged"] is False, "one sweep cannot meet a tolerance of 1e-12 here, so converged must be False")
 
 
+def test_successor_exactly_at_the_resources_is_feasible() -> None:
+    """A saving k' equal to k**alpha leaves zero consumption, which is allowed: k' <= k**alpha includes equality."""
+    p = {"beta": 0.5, "alpha": 0.5}
+    grid = [1.0, 2.0]
+    got = sol.bellman_operator(p, grid, [2.0, 0.0])
+    expect(
+        isinstance(got, (list, tuple)) and len(got) == 2 and all(is_real(x) for x in got),
+        "bellman_operator must return finite values for a grid whose first point equals the resources",
+    )
+    # From k = 1 the resources are 1, so only k' = 1 is feasible: sqrt(1 - 1) + beta * V(1) = 0.5 * 2.
+    expect(
+        close(float(got[0]), 1.0, 1e-12),
+        "a successor equal to k**alpha is feasible (k' <= k**alpha): the state 1 can save all of its output",
+    )
+    out = sol.solve(p, grid, 1e-6, 3)
+    value = as_value_list(out, len(grid))
+    expect(
+        all(math.isfinite(x) for x in value),
+        "solve must return finite values when the first grid point equals 1",
+    )
+
+
+@pytest.mark.parametrize("which", [0, 1])
+def test_the_first_sweep_starts_from_zero_and_is_synchronous(which: int) -> None:
+    """solve starts from V0 = 0; one sweep of max_iter = 1 returns B(0), computed from the whole zero vector."""
+    inst = INSTANCES[which]
+    grid = inst["grid"]
+    out = sol.solve(params_of(inst), grid, 1e-12, 1)
+    expect(out["iterations"] == 1, "with a budget of one sweep, iterations must report exactly one sweep")
+    value = as_value_list(out, len(grid))
+    want = ref_sweep(inst["beta"], inst["alpha"], grid, [0.0] * len(grid))
+    expect(
+        all(close(a, b, 1e-9) for a, b in zip(value, want, strict=False)),
+        "after one sweep from zero the value must be the operator applied to the zero vector: the iteration starts "
+        "from V0 = 0 and each sweep uses the previous vector as a whole",
+    )
+
+
+def test_certified_error_exactly_at_tol_stops_the_first_sweep() -> None:
+    """The stop is at the first sweep whose certified error is at most tol, so a tie stops it.
+
+    With beta = 0.5 the factor beta / (1 - beta) is exactly 1, so the certified error after sweep 1 is the change
+    max(V1) = sqrt(1 - 0.75) = 0.5 exactly, on the grid [0.75, 1.0] (V1(0.75) = sqrt(0.75**0.5 - 0.75) < 0.5)."""
+    p = {"beta": 0.5, "alpha": 0.5}
+    grid = [0.75, 1.0]
+    out = sol.solve(p, grid, 0.5, 1000)
+    expect(
+        out["iterations"] == 1,
+        "a certified error equal to tol must stop the iteration at that sweep, not at a later one",
+    )
+    expect(out["converged"] is True, "a certified error equal to tol means converged is True")
+
+
+def test_tolerance_just_below_the_first_certified_error_does_not_stop() -> None:
+    """The stop is not looser than the definition: a tolerance just below the first certified error does not stop."""
+    p = {"beta": 0.5, "alpha": 0.5}
+    grid = [0.75, 1.0]
+    out = sol.solve(p, grid, math.nextafter(0.5, 0.0), 1000)
+    expect(
+        out["iterations"] >= 2,
+        "a tolerance just below the first certified error must not stop the iteration after one sweep",
+    )
+
+
+def test_one_point_grid_is_accepted() -> None:
+    """A grid with one point is non-empty and strictly increasing, so the page does not name it as invalid."""
+    out = sol.solve({"beta": 0.9, "alpha": 0.5}, [0.5], 1e-6, 5)
+    expect(isinstance(out, Mapping), "solve must return a mapping for a grid of one point")
+
+
+def test_tiny_positive_grid_point_is_accepted() -> None:
+    """A grid point just above zero is a positive real number, so it is valid."""
+    out = sol.solve({"beta": 0.9, "alpha": 0.5}, [1e-9, 0.5], 1e-6, 5)
+    expect(
+        isinstance(out, Mapping), "solve must return a mapping for a grid whose first point is a tiny positive number"
+    )
+
+
 def test_solver_does_not_change_its_inputs_or_print(capsys: pytest.CaptureFixture[str]) -> None:
     """The solver neither changes its grid nor prints anything."""
     inst = INSTANCES[1]
@@ -332,7 +410,7 @@ def test_solver_does_not_change_its_inputs_or_print(capsys: pytest.CaptureFixtur
 # --- named invalid inputs (the only conditions that expect ValueError)
 
 
-@pytest.mark.parametrize("beta", [0.0, 1.0, -0.1, 1.2, math.nan, math.inf, True])
+@pytest.mark.parametrize("beta", [0.0, 1.0, -0.1, 1.2, math.nan, math.inf, -math.inf, True, "0.9"])
 def test_beta_outside_the_open_interval_is_refused(beta: Any) -> None:
     """beta must lie in the open interval (0, 1); a boolean or a non-finite number is refused."""
     params = {"beta": beta, "alpha": 0.5}
@@ -340,7 +418,7 @@ def test_beta_outside_the_open_interval_is_refused(beta: Any) -> None:
     must_raise(lambda: sol.solve(params, SMALL_GRID, 1e-6, 5), "beta must lie in (0, 1)")
 
 
-@pytest.mark.parametrize("alpha", [0.0, 1.0, -0.5, 1.5, math.nan, math.inf, True])
+@pytest.mark.parametrize("alpha", [0.0, 1.0, -0.5, 1.5, math.nan, math.inf, -math.inf, True, "0.5"])
 def test_alpha_outside_the_open_interval_is_refused(alpha: Any) -> None:
     """alpha must lie in the open interval (0, 1); a boolean or a non-finite number is refused."""
     params = {"beta": 0.9, "alpha": alpha}
@@ -355,7 +433,7 @@ def test_beta_and_alpha_just_inside_the_interval_are_accepted() -> None:
         expect(isinstance(out, Mapping), "solve must return a mapping for beta and alpha inside (0, 1)")
 
 
-@pytest.mark.parametrize("tol", [0.0, -1e-9, math.nan, math.inf, True])
+@pytest.mark.parametrize("tol", [0.0, -1e-9, math.nan, math.inf, -math.inf, True, "1e-6"])
 def test_tolerance_must_be_positive_and_finite(tol: Any) -> None:
     """tol must be a finite real number above zero; zero, negative, non-finite and boolean values are refused."""
     must_raise(
@@ -369,7 +447,7 @@ def test_tolerance_just_above_zero_is_accepted() -> None:
     expect(isinstance(out, Mapping), "solve must return a mapping for a tolerance above zero")
 
 
-@pytest.mark.parametrize("max_iter", [0, -3, 2.0, True])
+@pytest.mark.parametrize("max_iter", [0, -3, 2.0, 1.0, True, "5"])
 def test_budget_must_be_a_whole_number_of_sweeps_one_or_more(max_iter: Any) -> None:
     """max_iter must be a whole number of sweeps, one or more; zero, a negative, a float or a boolean is refused."""
     must_raise(
@@ -386,7 +464,18 @@ def test_budget_of_one_sweep_is_accepted() -> None:
 
 @pytest.mark.parametrize(
     "grid",
-    [[], [0.5, 0.5], [0.7, 0.6], [0.0, 0.5], [-0.2, 0.5], [1.01, 2.0], [0.5, math.nan], [0.5, True]],
+    [
+        [],
+        [0.5, 0.5],
+        [0.7, 0.6],
+        [0.0, 0.5],
+        [-0.2, 0.5],
+        [1.01, 2.0],
+        [0.5, math.nan],
+        [0.5, True],
+        [0.5, math.inf],
+        ["0.5", 0.9],
+    ],
     ids=[
         "empty",
         "equal-points",
@@ -396,6 +485,8 @@ def test_budget_of_one_sweep_is_accepted() -> None:
         "first-above-one",
         "nan-point",
         "boolean-point",
+        "infinite-point",
+        "string-point",
     ],
 )
 def test_grid_must_be_nonempty_positive_strictly_increasing_and_start_at_most_one(grid: list[Any]) -> None:

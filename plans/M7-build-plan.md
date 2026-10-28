@@ -373,7 +373,7 @@ coefficient from memory.
 .venv/bin/python tools/embed_labs.py course/modules/M/M7/L01.html            # per page, after twins exist
 .venv/bin/python tools/embed_labs.py course/modules/M/M7/L06.html --refresh lab-M7-L06-1
 .venv/bin/ruff check tests/labs/M7 course/modules/M/M7/grader && .venv/bin/ruff format --check tests/labs/M7
-.venv/bin/mypy tests/labs/M7 course/modules/M/M7/grader                    # strict; confirm the paths first
+MYPYPATH=course/modules/M/M7/grader .venv/bin/mypy --no-incremental --strict course/modules/M/M7/grader/reference.py course/modules/M/M7/grader/instance.py course/modules/M/M7/grader/starter.py tests/labs/M7/*.py   # strict; test_project.py imports the learner's constrained_allocator, which is absent here, so it is not in this command
 .venv/bin/python tools/mutate_graders.py --unit M7 --seeds 0-9             # verifier only
 ```
 

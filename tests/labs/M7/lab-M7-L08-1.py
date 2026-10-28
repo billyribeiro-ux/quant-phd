@@ -7,7 +7,7 @@ condition is 0 in the next period. The discount factor is 9/10, the horizon is H
 is 0. All arithmetic is exact in fractions.Fraction, so the printed decimals are display only.
 
 Part A: the backward Bellman recursion from the terminal reward 0. It prints V_t(s) for t = 0 to 6, and the optimal
-action at each (t, s) for t = 0 to 5. It also counts the states with a tie between the two actions.
+action at each (t, s) for t = 0 to 5. It also counts the (t, s) pairs with a tie between the two actions, t = 0 to 5.
 Part B: brute force. For each t and s it takes the best discounted total over every action sequence of length H - t, and
 compares it exactly with the recursion.
 Part C: value iteration. Start from U^0 = 0 and apply the Bellman operator n times. It prints the largest change
@@ -71,10 +71,12 @@ def backward_recursion(horizon: int, terminal: dict[int, Fraction]) -> list[dict
     return values
 
 
-def brute_force(t: int, s: int, horizon: int) -> Fraction:
-    """Best discounted total from (t, s) over every action sequence of length horizon - t, by enumeration."""
+def brute_force(t: int, s: int, horizon: int) -> tuple[Fraction, int]:
+    """Best discounted total from (t, s) over every action sequence of length horizon - t, and the count enumerated."""
     best: Fraction | None = None
+    checked = 0
     for plan in product(ACTIONS, repeat=horizon - t):
+        checked += 1
         state = s
         total = Fraction(0)
         weight = Fraction(1)
@@ -87,7 +89,7 @@ def brute_force(t: int, s: int, horizon: int) -> Fraction:
             best = total
     if best is None:
         raise RuntimeError("no action sequence")
-    return best
+    return best, checked
 
 
 def main() -> None:
@@ -105,15 +107,16 @@ def main() -> None:
         total_ties += ties
         actions = " ".join(f"s{s}={best[s]}" for s in STATES)
         print(f"policy t {t} {actions}")
-    print(f"states_with_tied_actions {total_ties}")
+    print(f"tied_pairs_t0_to_5 {total_ties}")
 
     print("Part B: brute force over every action sequence")
     all_match = True
     plans = 0
     for t in range(HORIZON):
         for s in STATES:
-            all_match = all_match and brute_force(t, s, HORIZON) == values[t][s]
-            plans += 2 ** (HORIZON - t)
+            brute_best, checked = brute_force(t, s, HORIZON)
+            all_match = all_match and brute_best == values[t][s]
+            plans += checked
     print(f"plans_enumerated {plans}")
     print(f"recursion_matches_brute_force {all_match}")
 

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 import os
+import warnings
 from collections.abc import Callable
 from fractions import Fraction
 from typing import Any
@@ -154,10 +155,29 @@ def test_bertrand_profit_is_zero() -> None:
     check(sol.outcome("bertrand", A, B, C)["profit_cents"] == 0, "two Bertrand exchanges must earn zero profit")
 
 
-def test_monopoly_profit_at_least_cournot_total() -> None:
+def test_cournot_fee_above_bertrand_fee() -> None:
+    cournot = sol.outcome("cournot", A, B, C)["fee_cents"]
+    check(cournot > C, "the Cournot fee must exceed the cost of one trade, because the Bertrand fee is that cost")
+
+
+def test_welfare_ordering() -> None:
+    mono = sol.outcome("monopoly", A, B, C)["welfare_cents"]
+    cournot = sol.outcome("cournot", A, B, C)["welfare_cents"]
+    bertrand = sol.outcome("bertrand", A, B, C)["welfare_cents"]
+    check(mono < cournot < bertrand, "welfare must rise from monopoly to Cournot to Bertrand")
+
+
+def test_deadweight_loss_ordering() -> None:
+    mono = sol.outcome("monopoly", A, B, C)["deadweight_loss_cents"]
+    cournot = sol.outcome("cournot", A, B, C)["deadweight_loss_cents"]
+    bertrand = sol.outcome("bertrand", A, B, C)["deadweight_loss_cents"]
+    check(mono > cournot > bertrand, "deadweight loss must fall from monopoly to Cournot to the zero of Bertrand")
+
+
+def test_monopoly_profit_exceeds_cournot_total() -> None:
     mono = sol.outcome("monopoly", A, B, C)["profit_cents"]
     cournot = sol.outcome("cournot", A, B, C)["profit_cents"]
-    check(mono >= cournot, "the monopoly profit must be at least the total profit of the two Cournot exchanges")
+    check(mono > cournot, "the monopoly profit must exceed the total profit of the two Cournot exchanges")
 
 
 @pytest.mark.parametrize("structure", STRUCTURES)
@@ -171,6 +191,51 @@ def test_welfare_is_consumer_surplus_plus_profit(structure: str) -> None:
     )
 
 
+TIE_CASES: tuple[tuple[str, str, int, int, int], ...] = (
+    ("monopoly", "volume_trades", 8, 1, 1),
+    ("monopoly", "fee_cents", 8, 1, 1),
+    ("monopoly", "profit_cents", 16, 2, 1),
+    ("monopoly", "consumer_surplus_cents", 11, 1, 1),
+    ("monopoly", "welfare_cents", 11, 1, 1),
+    ("monopoly", "deadweight_loss_cents", 11, 1, 1),
+    ("cournot", "fee_cents", 17, 2, 1),
+    ("cournot", "profit_cents", 31, 4, 1),
+    ("cournot", "consumer_surplus_cents", 31, 4, 1),
+    ("cournot", "deadweight_loss_cents", 10, 1, 1),
+    ("bertrand", "consumer_surplus_cents", 8, 1, 1),
+    ("bertrand", "welfare_cents", 8, 1, 1),
+)
+
+
+@pytest.mark.parametrize("structure, key, a, b, c", TIE_CASES)
+def test_tie_rounds_up_for_each_output(structure: str, key: str, a: int, b: int, c: int) -> None:
+    exact_value = exact(structure, a, b, c)[key]
+    assert exact_value.denominator == 2, "the case must make this output an exact half cent or trade"
+    result = sol.outcome(structure, a, b, c)
+    check(
+        result[key] == expected(structure, a, b, c)[key],
+        f"{key} for {structure} is an exact half, which must round up; the rounding rule is the one of the page",
+    )
+
+
+@pytest.mark.parametrize("structure", STRUCTURES)
+@pytest.mark.parametrize("key", KEYS)
+def test_reference_case_matches_closed_forms(structure: str, key: str) -> None:
+    result = sol.outcome(structure, 120, 1, 20)
+    check(
+        result[key] == expected(structure, 120, 1, 20)[key],
+        f"{key} for {structure} in the reference case differs from the closed form after the stated rounding",
+    )
+
+
+def test_outcome_warns_nothing() -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for structure in STRUCTURES:
+            sol.outcome(structure, A, B, C)
+    check(not caught, "outcome must not warn")
+
+
 def test_tie_rounds_up_for_fee_and_volume() -> None:
     # a = 121, b = 1, c = 20: the monopoly fee is 141/2 and the volume is 101/2 (exact halves).
     result = sol.outcome("monopoly", 121, 1, 20)
@@ -179,11 +244,11 @@ def test_tie_rounds_up_for_fee_and_volume() -> None:
     check(result["volume_trades"] == want["volume_trades"], "a volume that is an exact half trade must round up")
 
 
-UNKNOWN_STRUCTURES: tuple[str, ...] = ("duopoly", "", "Monopoly", "perfect")
+UNKNOWN_STRUCTURES: tuple[Any, ...] = ("duopoly", "", "Monopoly", "perfect", " monopoly", "cournot ", None, 1)
 
 
 @pytest.mark.parametrize("name", UNKNOWN_STRUCTURES)
-def test_unknown_structure_raises_value_error(name: str) -> None:
+def test_unknown_structure_raises_value_error(name: Any) -> None:
     must_raise(
         lambda: sol.outcome(name, A, B, C),
         "a structure that is not one of the three names",
@@ -191,7 +256,7 @@ def test_unknown_structure_raises_value_error(name: str) -> None:
     )
 
 
-@pytest.mark.parametrize("a, b, c", [(20, 2, 10), (19, 2, 10)])
+@pytest.mark.parametrize("a, b, c", [(20, 2, 10), (19, 2, 10), (-3, 1, 1)])
 def test_a_not_above_b_times_c_raises_value_error(a: int, b: int, c: int) -> None:
     must_raise(lambda: sol.outcome("cournot", a, b, c), "a <= b*c", ("a must exceed b*c",))
 

@@ -1,7 +1,7 @@
 """M4 L05 lab 1: the sample covariance matrix of a seeded two-asset Gaussian draw, against the generating matrix.
 
-Inputs are simulated, not data. Two standard normal streams come from random.Random(20260501).gauss, with the
-pair (Z1, Z2) drawn in that order for each observation. Asset 1 has standard deviation S1 = 0.02 and asset 2 has
+Inputs are simulated, not data. One seeded stream, random.Random(20260501).gauss, supplies Z1 and Z2 in turn for
+each observation. Asset 1 has standard deviation S1 = 0.02 and asset 2 has
 S2 = 0.03 (returns as decimals), and the correlation is RHO = 0.6. The construction is
 X1 = S1 Z1 and X2 = S2 (RHO Z1 + sqrt(1 - RHO^2) Z2), which gives the generating covariance matrix
 Sigma = [[S1^2, RHO S1 S2], [RHO S1 S2, S2^2]]. The first 100 observations are a prefix of the 20000-observation run.

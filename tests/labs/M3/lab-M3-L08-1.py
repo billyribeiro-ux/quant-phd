@@ -111,6 +111,13 @@ def main() -> None:
     print(
         f"first share before rescaling the 0.25-year column by 10: {shares[0]:.4f}; after: {lam3[0] / np.sum(lam3):.4f}"
     )
+    m11 = float(m[0, 0])
+    old_trace = float(np.trace(m))
+    bound = 100.0 * m11 / (old_trace + 99.0 * m11)
+    print(
+        f"Problem E1 lower bound on the rescaled first share, 100 M11 / (trace + 99 M11): {bound:.4f}; "
+        f"M11 {m11:.4f}, trace {old_trace:.4f}"
+    )
 
 
 main()

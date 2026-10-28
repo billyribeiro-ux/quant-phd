@@ -214,6 +214,18 @@ def test_min_eigenvalue_one_by_one() -> None:
     assert abs(value + 0.25) <= 1e-12, "min_eigenvalue of a one-by-one matrix is its only entry"
 
 
+def test_min_eigenvalue_repeated_eigenvalue() -> None:
+    """diag(-1, -1, 3) has the repeated eigenvalue -1 and the eigenvalue 3: the smallest is -1."""
+    value = as_number(sol.min_eigenvalue([[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 3.0]]))
+    assert abs(value + 1.0) <= 1e-12, "min_eigenvalue must return the smallest eigenvalue when it is repeated"
+
+
+def test_min_eigenvalue_all_negative_spectrum() -> None:
+    """-2 times the identity has every eigenvalue equal to -2: the smallest is -2, not 0 and not a positive value."""
+    value = as_number(sol.min_eigenvalue([[-2.0, 0.0, 0.0], [0.0, -2.0, 0.0], [0.0, 0.0, -2.0]]))
+    assert abs(value + 2.0) <= 1e-12, "min_eigenvalue of -2 times the identity must be -2"
+
+
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["seed", "second_seed"])
 def test_min_eigenvalue_agrees_with_independent_bisection(inst: dict[str, Any]) -> None:
     """On the seeded pairwise matrix, the routine agrees with the Cholesky bisection to 1e-9."""
@@ -250,6 +262,13 @@ def test_is_psd_tolerance_boundary_on_both_sides() -> None:
     a = from_spectrum([*INST["psd_spectrum"][1:], -1e-6], INST["eigenvectors"])
     assert sol.is_psd(a, tol=1e-5) is True, "is_psd must accept an eigenvalue above -tol"
     assert sol.is_psd(a, tol=1e-8) is False, "is_psd must reject an eigenvalue below -tol"
+
+
+def test_is_psd_threshold_is_minus_tol_on_a_diagonal_matrix() -> None:
+    """diag(-0.5, 1, 1) has smallest eigenvalue -0.5: accepted at tol 0.5 + 1e-6, refused at tol 0.5 - 1e-6."""
+    a = [[-0.5, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    assert sol.is_psd(a, tol=0.5 + 1e-6) is True, "is_psd must accept a smallest eigenvalue above -tol"
+    assert sol.is_psd(a, tol=0.5 - 1e-6) is False, "is_psd must reject a smallest eigenvalue below -tol"
 
 
 def test_is_psd_one_by_one() -> None:
@@ -305,6 +324,15 @@ def test_clip_repair_with_positive_floor_is_positive_semidefinite() -> None:
     assert min_eig(y) >= -1e-9, "clip_repair with floor 0.01 must still return a positive semidefinite matrix"
 
 
+def test_clip_repair_floor_below_every_eigenvalue_changes_nothing() -> None:
+    """Eigenvalues are set to the floor only when they are below it: with floor -0.5, which lies below every
+    eigenvalue of a positive definite unit-diagonal matrix, the matrix comes back unchanged."""
+    for inst in (INST, INST2):
+        y = as_matrix(sol.clip_repair(inst["psd_corr"], floor=-0.5), inst["k"])
+        worst = max(abs(y[i][j] - inst["psd_corr"][i][j]) for i in range(inst["k"]) for j in range(inst["k"]))
+        assert worst <= 1e-9, "clip_repair must set only the eigenvalues that lie below the floor"
+
+
 # --- projection_repair
 
 
@@ -342,16 +370,49 @@ def test_projection_repair_is_no_farther_than_shrunk_clipping(inst: dict[str, An
     )
 
 
-@pytest.mark.parametrize("inst", [INST, INST2], ids=["seed", "second_seed"])
-def test_projection_repair_differs_from_clipping_on_this_instance(inst: dict[str, Any]) -> None:
-    """On these instances clipping is not the Frobenius-nearest repair: the projection output differs from it by
-    more than 1e-3 in some entry. A projection that returns the clipping output fails here."""
-    y = as_matrix(sol.projection_repair(inst["corr"]), inst["k"])
-    clip = as_matrix(sol.clip_repair(inst["corr"]), inst["k"])
-    gap = max(abs(y[i][j] - clip[i][j]) for i in range(inst["k"]) for j in range(inst["k"]))
-    assert gap > 1e-3, (
-        "projection_repair returns the clipping output: on this instance the nearest repair is a different matrix"
-    )
+# The illustrative matrix and volatilities of Lab 3 (project.html), and the numbers Lab 3 prints for them.
+LAB3_CORR: Matrix = [
+    [1.0, 0.7, 0.3, -0.6],
+    [0.7, 1.0, 0.5, 0.4],
+    [0.3, 0.5, 1.0, 0.2],
+    [-0.6, 0.4, 0.2, 1.0],
+]
+LAB3_VOLS: list[float] = [0.10, 0.20, 0.15, 0.30]
+
+
+def as_number_list(values: object, n: int) -> list[float]:
+    __tracebackhide__ = True
+    if not isinstance(values, (list, tuple)) or len(values) != n:
+        pytest.fail("comparison_weights must return one weight per asset")
+    return [as_number(x) for x in values]
+
+
+def test_lab3_reference_numbers_are_matched() -> None:
+    """The specification requires the module to match the printed numbers of Lab 3's matrix. Clipping is exact, so
+    its printed numbers are checked to 1e-6; the projection is an iteration, so its numbers are checked to 1e-5, which
+    is far below the printed gap between the two repairs (0.001570 in distance, 0.011516 in entries)."""
+    n = 4
+    clip = as_matrix(sol.clip_repair(LAB3_CORR), n)
+    proj = as_matrix(sol.projection_repair(LAB3_CORR), n)
+    checks: list[tuple[str, float, float, float]] = [
+        ("smallest eigenvalue of the input", as_number(sol.min_eigenvalue(LAB3_CORR)), -0.142113, 1e-6),
+        ("distance of clipping from the input", frob(clip, LAB3_CORR), 0.176573, 1e-6),
+        ("distance of the projection from the input", frob(proj, LAB3_CORR), 0.175003, 1e-5),
+        (
+            "largest entry difference, projection minus clipping",
+            max(abs(proj[i][j] - clip[i][j]) for i in range(n) for j in range(n)),
+            0.011516,
+            1e-5,
+        ),
+    ]
+    w_clip = as_number_list(sol.comparison_weights(clip, LAB3_VOLS), n)
+    w_proj = as_number_list(sol.comparison_weights(proj, LAB3_VOLS), n)
+    for got, want in zip(w_clip, [1.218951, -0.546718, -0.012462, 0.340229], strict=True):
+        checks.append(("a clipping weight", got, want, 1e-6))
+    for got, want in zip(w_proj, [1.220113, -0.545144, -0.013004, 0.338035], strict=True):
+        checks.append(("a projection weight", got, want, 1e-5))
+    for name, got, want, tol in checks:
+        assert abs(got - want) <= tol, f"Lab 3 reference number not matched: {name}"
 
 
 def test_projection_repair_leaves_positive_definite_unit_matrix_unchanged() -> None:
@@ -445,29 +506,43 @@ def test_weights_one_asset() -> None:
     assert abs(w[0] - 1.0) <= 1e-12, "a single asset has weight 1"
 
 
-def test_weights_refuse_non_square_correlation() -> None:
+@pytest.mark.parametrize("shape", list(NON_SQUARE))
+def test_weights_refuse_non_square_correlation(shape: str) -> None:
+    """One volatility per row is supplied, so the only condition the input breaks is squareness."""
+    corr = NON_SQUARE[shape]
     must_raise(
-        lambda: sol.comparison_weights(NON_SQUARE["two_rows_three_columns"], [0.1, 0.2]),
-        "a non-square correlation matrix",
+        lambda: sol.comparison_weights(corr, [0.1] * len(corr)),
+        f"a non-square correlation matrix ({shape})",
     )
 
 
-def test_weights_refuse_asymmetric_correlation_beyond_tolerance() -> None:
-    bad = [[1.0, 0.3], [0.3 + 1e-8, 1.0]]
+@pytest.mark.parametrize(("i", "j"), [(0, 1), (1, 0)], ids=["upper", "lower"])
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_weights_refuse_asymmetric_correlation_beyond_tolerance(i: int, j: int, sign: float) -> None:
+    """An asymmetry of 1e-8 is beyond the 1e-9 tolerance, in each direction and on each side of the diagonal."""
+    base = [[1.0, 0.3], [0.3, 1.0]]
+    bad = symmetric_pair(base, i, j, sign * 1e-8)
     must_raise(lambda: sol.comparison_weights(bad, [0.1, 0.2]), "an asymmetric correlation matrix (1e-8 apart)")
 
 
-def test_weights_accept_asymmetry_within_tolerance() -> None:
-    near = [[1.0, 0.3], [0.3 - 1e-10, 1.0]]
+@pytest.mark.parametrize(("i", "j"), [(0, 1), (1, 0)], ids=["upper", "lower"])
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_weights_accept_asymmetry_within_tolerance(i: int, j: int, sign: float) -> None:
+    """An asymmetry of 1e-10 is within the 1e-9 tolerance, in each direction and on each side of the diagonal."""
+    base = [[1.0, 0.3], [0.3, 1.0]]
+    near = symmetric_pair(base, i, j, sign * 1e-10)
     weights_sum_check(sol.comparison_weights(near, [0.1, 0.2]), 2)
 
 
+@pytest.mark.parametrize("position", [0, 1, 2], ids=["first", "middle", "last"])
 @pytest.mark.parametrize("bad", [0.0, -0.05], ids=["zero", "negative"])
-def test_weights_refuse_volatility_at_or_below_zero(bad: float) -> None:
-    """A volatility of exactly zero, or a negative one, is refused: the rule is a volatility strictly greater
-    than zero."""
+def test_weights_refuse_volatility_at_or_below_zero(bad: float, position: int) -> None:
+    """A volatility of exactly zero, or a negative one, is refused in any position: the rule is a volatility
+    strictly greater than zero. The other volatilities are valid and the lengths agree."""
     corr = [[1.0, 0.2, 0.1], [0.2, 1.0, 0.0], [0.1, 0.0, 1.0]]
-    must_raise(lambda: sol.comparison_weights(corr, [0.1, bad, 0.3]), "a volatility that is not positive")
+    vols = [0.1, 0.2, 0.3]
+    vols[position] = bad
+    must_raise(lambda: sol.comparison_weights(corr, vols), f"a volatility that is not positive (position {position})")
 
 
 def test_weights_accept_a_tiny_positive_volatility() -> None:
@@ -479,10 +554,10 @@ def test_weights_accept_a_tiny_positive_volatility() -> None:
     )
 
 
-@pytest.mark.parametrize("mode", ["shorter", "longer"])
+@pytest.mark.parametrize("mode", ["empty", "shorter", "longer"])
 def test_weights_refuse_length_mismatch(mode: str) -> None:
-    """The volatility list must have one entry per row: one entry short and one entry long are both refused."""
-    vols = INST["vols"][:-1] if mode == "shorter" else [*INST["vols"], 0.2]
+    """One volatility per row is required: an empty list, one entry short and one entry long are all refused."""
+    vols = {"empty": [], "shorter": INST["vols"][:-1], "longer": [*INST["vols"], 0.2]}[mode]
     must_raise(
         lambda: sol.comparison_weights(INST["psd_corr"], vols), f"a volatility list that is {mode} than the matrix"
     )

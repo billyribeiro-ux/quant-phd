@@ -6,11 +6,11 @@ different streams. Every instance is valid: a stream of 20 to 400 finite floats,
 seed and is not market data or any real measurement. The docstring, the page and the suite say so.
 
 The stream has a common offset of 0, 10,000 or 1,000,000 (dimensionless, SIMULATED). At the offsets 10,000 and
-1,000,000 the naive formula sum(x*x) - n*mean*mean loses digits that a relative tolerance of 1e-9 would need, so it
-fails on those seeds, while Welford's update stays within the tolerance on every offset tested by the reference
-(see the page's measurement). Some streams are rounded to one decimal, so ties occur. The `invalid` key names one
-case that the specification refuses. It is returned as a JSON string, like the payload, so every field of the
-instance is a string, an int or a float.
+1,000,000 the naive formula sum(x*x) - n*mean*mean loses digits that a relative tolerance of 1e-9 needs. Measured on
+seeds 0 to 49 with an exact Fraction reference: it fails 22 of the 23 seeds at offset 10,000 (seed 41 passes) and
+all 11 seeds at offset 1,000,000. The reference's Welford update passes all 50 seeds. Some streams are rounded to
+one decimal, so ties occur. The `invalid` key names one case that the specification refuses. It is returned as a
+JSON string, like the payload, so every field of the instance is a string, an int or a float.
 
 Standard library only.
 """

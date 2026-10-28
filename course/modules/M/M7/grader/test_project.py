@@ -398,7 +398,7 @@ def test_hand_case_matches_its_worked_answer(name: str) -> None:
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Named ValueError conditions: each has an invalid case and a valid boundary case
+# Named ValueError conditions: each has an invalid case, and a valid case on or just inside its limit
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -413,55 +413,92 @@ def _set(path: tuple[Any, ...], value: Any) -> Callable[[dict[str, Any]], None]:
 
 
 def _sigma_rank_one(case: dict[str, Any]) -> None:
+    """Every entry 0.01: the second LDL pivot is exactly zero, so Sigma is singular."""
     case["sigma"] = [[0.01] * N for _ in range(N)]
+
+
+def _sigma_small_eigenvalue(case: dict[str, Any]) -> None:
+    """0.01 everywhere plus 0.0001 on the diagonal: the smallest eigenvalue is 0.0001, just above zero."""
+    case["sigma"] = [[0.01 + (0.0001 if i == j else 0.0) for j in range(N)] for i in range(N)]
+
+
+def _sigma_negative_definite(case: dict[str, Any]) -> None:
+    case["sigma"] = [[-0.01 if i == j else 0.0 for j in range(N)] for i in range(N)]
 
 
 def _sigma_asymmetric(case: dict[str, Any]) -> None:
     case["sigma"][0][1] = case["sigma"][1][0] + 0.0001
 
 
+def _sigma_asymmetric_other_sign(case: dict[str, Any]) -> None:
+    case["sigma"][0][1] = case["sigma"][1][0] - 0.0001
+
+
+def _sigma_symmetric_exact(case: dict[str, Any]) -> None:
+    """The boundary of symmetry: the two entries are equal."""
+    case["sigma"][0][1] = case["sigma"][1][0]
+
+
 def _start_sum_off(case: dict[str, Any]) -> None:
-    case["w0"][0] = case["w0"][0] + 0.000001
+    """Sum one-and-1e-8: outside the 1e-9 tolerance the page states for the starting portfolio."""
+    case["w0"][0] = case["w0"][0] + 0.00000001
+
+
+def _start_sum_low(case: dict[str, Any]) -> None:
+    case["w0"][0] = case["w0"][0] - 0.00000001
+
+
+def _start_sum_within_tolerance(case: dict[str, Any]) -> None:
+    """Sum one-and-1e-10: inside the 1e-9 tolerance, so accepted."""
+    case["w0"][0] = case["w0"][0] + 0.0000000001
 
 
 def _upper_below_start(case: dict[str, Any]) -> None:
-    case["upper"][0] = case["w0"][0] - 0.000001
+    case["upper"][0] = case["w0"][0] - 0.00000001
+
+
+def _upper_within_tolerance(case: dict[str, Any]) -> None:
+    case["upper"][0] = case["w0"][0] - 0.0000000001
 
 
 def _lower_above_start(case: dict[str, Any]) -> None:
-    case["lower"][0] = case["w0"][0] + 0.000001
+    case["lower"][0] = case["w0"][0] + 0.00000001
+    case["upper"][0] = max(case["upper"][0], case["w0"][0] + 0.000001)
+
+
+def _lower_within_tolerance(case: dict[str, Any]) -> None:
+    case["lower"][0] = case["w0"][0] + 0.0000000001
+    case["upper"][0] = max(case["upper"][0], case["w0"][0] + 0.000000001)
 
 
 def _cap_below_start(case: dict[str, Any]) -> None:
     k = case["sector"][0]
     in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
-    case["sector_caps"][k] = in_sector - 0.000001
+    case["sector_caps"][k] = in_sector - 0.00000001
 
 
-def _cap_at_start(case: dict[str, Any]) -> None:
+def _cap_within_tolerance(case: dict[str, Any]) -> None:
     k = case["sector"][0]
-    case["sector_caps"][k] = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
-
-
-def _upper_at_start(case: dict[str, Any]) -> None:
-    case["upper"][0] = case["w0"][0]
-
-
-def _lower_at_start(case: dict[str, Any]) -> None:
-    case["lower"][0] = case["w0"][0]
-
-
-def _lower_equal_upper(case: dict[str, Any]) -> None:
-    case["lower"][0] = case["w0"][0]
-    case["upper"][0] = case["w0"][0]
+    in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
+    case["sector_caps"][k] = in_sector - 0.0000000001
 
 
 def _lower_over_upper(case: dict[str, Any]) -> None:
     case["lower"][0] = case["upper"][0] + 0.000001
 
 
+def _lower_equal_upper(case: dict[str, Any]) -> None:
+    """The boundary of the bound order: lower equal to upper, both at the starting weight."""
+    case["lower"][0] = case["w0"][0]
+    case["upper"][0] = case["w0"][0]
+
+
 def _sector_label_out_of_range(case: dict[str, Any]) -> None:
     case["sector"][0] = K
+
+
+def _sector_label_below_range(case: dict[str, Any]) -> None:
+    case["sector"][0] = -1
 
 
 def _sector_without_assets(case: dict[str, Any]) -> None:
@@ -472,18 +509,39 @@ def _one_entry_short(case: dict[str, Any]) -> None:
     case["mu"] = case["mu"][:-1]
 
 
-# (identifier, invalid mutation, valid mutation); the valid mutation must be accepted.
+def _one_entry_too_many(field: str) -> Callable[[dict[str, Any]], None]:
+    def apply(case: dict[str, Any]) -> None:
+        case[field] = [*case[field], case[field][-1]]
+
+    return apply
+
+
+def _sigma_row_too_long(case: dict[str, Any]) -> None:
+    case["sigma"][0] = [*case["sigma"][0], 0.0]
+
+
+def _sigma_row_too_short(case: dict[str, Any]) -> None:
+    case["sigma"][0] = case["sigma"][0][:-1]
+
+
+def _sigma_extra_row(case: dict[str, Any]) -> None:
+    case["sigma"] = [*case["sigma"], case["sigma"][-1]]
+
+
+# (identifier, invalid mutation, valid mutation); the invalid mutation must be refused with ValueError and the valid
+# mutation must be accepted. Where the limit is a tolerance, the valid form sits just inside it; where it is an
+# equality, the valid form is the boundary itself; otherwise the valid form is the seed case.
 NAMED_CONDITIONS: list[tuple[str, Callable[[dict[str, Any]], None], Callable[[dict[str, Any]], None]]] = [
-    ("sigma-symmetric", _sigma_asymmetric, lambda case: None),
-    ("sigma-positive-definite", _sigma_rank_one, lambda case: None),
+    ("sigma-symmetric", _sigma_asymmetric, _sigma_symmetric_exact),
+    ("sigma-positive-definite", _sigma_rank_one, _sigma_small_eigenvalue),
     ("gamma-positive-zero", _set(("gamma",), 0.0), _set(("gamma",), 0.000001)),
-    ("gamma-positive-negative", _set(("gamma",), -1.0), lambda case: None),
+    ("gamma-positive-negative", _set(("gamma",), -1.0), _set(("gamma",), 0.000001)),
     ("turnover-limit-not-negative", _set(("turnover_limit",), -0.000001), _set(("turnover_limit",), 0.0)),
     ("lower-not-above-upper", _lower_over_upper, _lower_equal_upper),
-    ("start-sums-to-one", _start_sum_off, lambda case: None),
-    ("start-within-upper", _upper_below_start, _upper_at_start),
-    ("start-within-lower", _lower_above_start, _lower_at_start),
-    ("start-within-sector-cap", _cap_below_start, _cap_at_start),
+    ("start-sums-to-one", _start_sum_off, _start_sum_within_tolerance),
+    ("start-within-upper", _upper_below_start, _upper_within_tolerance),
+    ("start-within-lower", _lower_above_start, _lower_within_tolerance),
+    ("start-within-sector-cap", _cap_below_start, _cap_within_tolerance),
     ("sector-label-in-range", _sector_label_out_of_range, lambda case: None),
     ("every-sector-has-an-asset", _sector_without_assets, lambda case: None),
     ("one-entry-per-asset", _one_entry_short, lambda case: None),
@@ -514,6 +572,53 @@ def test_named_condition_boundary_is_accepted(
     assert_kkt(case, out)
 
 
+# The other side of each named condition: the same condition, violated in the opposite direction or by a different
+# count, is also refused with ValueError.
+OTHER_SIDE_REFUSED: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+    ("sigma-symmetric-other-sign", _sigma_asymmetric_other_sign),
+    ("sigma-positive-definite-negative", _sigma_negative_definite),
+    ("start-sums-to-one-low", _start_sum_low),
+    ("sector-label-below-range", _sector_label_below_range),
+    ("w0-one-entry-too-many", _one_entry_too_many("w0")),
+    ("lower-one-entry-too-many", _one_entry_too_many("lower")),
+    ("upper-one-entry-too-many", _one_entry_too_many("upper")),
+    ("sector-one-entry-too-many", _one_entry_too_many("sector")),
+    ("sigma-row-one-entry-too-many", _sigma_row_too_long),
+    ("sigma-row-one-entry-too-few", _sigma_row_too_short),
+    ("sigma-one-row-too-many", _sigma_extra_row),
+]
+
+
+@pytest.mark.parametrize("mutate", [m for _, m in OTHER_SIDE_REFUSED], ids=[i for i, _ in OTHER_SIDE_REFUSED])
+def test_named_condition_other_side_is_refused_with_value_error(mutate: Callable[[dict[str, Any]], None]) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(changed(mutate))
+
+
+def _poison(field: str, value: float) -> Callable[[dict[str, Any]], None]:
+    def apply(case: dict[str, Any]) -> None:
+        if field in ("gamma", "turnover_limit"):
+            case[field] = value
+        elif field == "sigma":
+            case["sigma"][0][0] = value
+        else:
+            case[field][0] = value
+
+    return apply
+
+
+NON_FINITE_FIELDS = ("gamma", "turnover_limit", "mu", "w0", "lower", "upper", "sector_caps", "sigma")
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf], ids=["nan", "plus-infinity", "minus-infinity"])
+@pytest.mark.parametrize("field", NON_FINITE_FIELDS)
+def test_non_finite_value_is_refused_with_value_error(field: str, value: float) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(changed(_poison(field, value)))
+
+
 @pytest.mark.parametrize("field", FIELDS)
 def test_missing_field_is_refused_with_value_error(field: str) -> None:
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
@@ -530,29 +635,17 @@ def test_a_non_mapping_is_refused_with_value_error() -> None:
         sol.allocate(not_a_mapping)
 
 
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [("gamma", math.nan), ("gamma", math.inf), ("sigma", math.nan), ("sigma", math.inf)],
-    ids=["gamma-nan", "gamma-infinity", "sigma-nan", "sigma-infinity"],
-)
-def test_non_finite_number_is_refused_with_value_error(field: str, value: float) -> None:
-    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
-
-    def poison(case: dict[str, Any]) -> None:
-        if field == "gamma":
-            case["gamma"] = value
-        else:
-            case["sigma"][0][0] = value
-
-    with pytest.raises(ValueError, match=r"\S"):
-        sol.allocate(changed(poison))
-
-
 def test_no_assets_is_refused_with_value_error() -> None:
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
     empty = case_copy(mu=[], w0=[], lower=[], upper=[], sector=[], sigma=[])
     with pytest.raises(ValueError, match=r"\S"):
         sol.allocate(empty)
+
+
+def test_an_empty_mu_alone_is_refused_as_no_assets() -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(case_copy(mu=[]))
 
 
 def _drop_last_entry(field: str) -> Callable[[dict[str, Any]], None]:
@@ -572,7 +665,8 @@ def test_list_with_one_entry_too_few_is_refused_with_value_error(field: str) -> 
         sol.allocate(changed(_drop_last_entry(field)))
 
 
-# Wrong types: any exception that carries a message is acceptable; a returned answer is not.
+# Other invalid inputs: the page names no exception type for these, so any exception that carries a message is
+# accepted; a returned answer is not.
 WRONG_TYPES: list[tuple[str, Callable[[dict[str, Any], Any], None]]] = [
     ("gamma", lambda c, v: c.__setitem__("gamma", v)),
     ("turnover_limit", lambda c, v: c.__setitem__("turnover_limit", v)),
@@ -597,6 +691,30 @@ def test_wrong_type_is_refused_with_an_exception(
     with pytest.raises(Exception, match=r"\S") as info:
         sol.allocate(case)
     assert str(info.value), f"{field}: the refusal must carry a message that names the field."
+
+
+@pytest.mark.parametrize("field", ("mu", "w0", "lower", "upper", "sector", "sector_caps", "sigma"))
+def test_a_number_where_a_list_belongs_is_refused_with_an_exception(field: str) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    with pytest.raises(Exception, match=r"\S") as info:
+        sol.allocate(case_copy(**{field: 0.5}))
+    assert str(info.value), f"{field}: the refusal must carry a message that names the field."
+
+
+def test_a_float_sector_label_is_refused_with_an_exception() -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    case = case_copy()
+    case["sector"][0] = float(case["sector"][0])
+    with pytest.raises(Exception, match=r"\S") as info:
+        sol.allocate(case)
+    assert str(info.value), "sector: the refusal must carry a message that names the field."
+
+
+def test_empty_sector_caps_is_refused_with_an_exception() -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    with pytest.raises(Exception, match=r"\S") as info:
+        sol.allocate(case_copy(sector_caps=[]))
+    assert str(info.value), "sector_caps: the refusal must carry a message that names the field."
 
 
 # ---------------------------------------------------------------------------------------------------------------------

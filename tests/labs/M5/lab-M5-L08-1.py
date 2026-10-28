@@ -5,9 +5,11 @@ chooses next-period capital k' in GRID with k' <= k ** ALPHA, so consumption c =
 and utility is u(c) = sqrt(c). The operator is (B V)(k) = max over feasible k' of [u(c) + BETA * V(k')], with ties
 broken by the smallest feasible index. Part A iterates B from V_0 = 0 to a fixed point and prints the residual of
 the fixed point. Part B draws seeded pairs (V, W) with the standard random module and checks that the sup-norm
-ratio ||BV - BW|| / ||V - W|| never exceeds BETA. Part C applies B to a one-point grid, where the fixed point is
-u / (1 - BETA) = 5 at BETA = 0.9, and then iterates it at BETA = 1, where the iterates grow without bound.
-Standard library only; no network access. The float tolerance is TOL = 1e-12 in every check.
+ratio ||BV - BW|| / ||V - W|| does not exceed BETA by more than TOL. Part C applies B to a one-point grid, where
+the fixed point is u / (1 - BETA) = 5 at BETA = 0.9, and then iterates it at BETA = 1, where the iterates grow
+without bound.
+Standard library only; no network access. TOL = 1e-12 bounds the stopping gap, the ratio check of Part B and the
+iterate checks of Part C. The residual check of Part A and the one-point fixed-point check of Part C use 1e-9.
 """
 
 from __future__ import annotations
@@ -90,7 +92,7 @@ def part_b() -> None:
     if worst > BETA + TOL:
         raise AssertionError("a sampled contraction ratio exceeds beta")
     print(f"part B: seed = {SEED}, pairs = {PAIRS}, largest sampled ratio = {worst:.6f}, beta = {BETA}")
-    print("part B: no sampled pair has ratio above beta")
+    print("part B: no sampled pair has ratio above beta by more than 1e-12")
 
 
 def part_c() -> None:

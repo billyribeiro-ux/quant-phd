@@ -9,7 +9,7 @@ Part A: insert 500 seeded keys into an AVL tree. After every insert the code che
 (every balance factor is -1, 0 or 1, and every stored height is correct), the in-order sequence, and the
 height bound h <= log_phi(n + 1) with phi = (1 + sqrt 5) / 2. It counts single and double rotations.
 Part B: the same kind of tree on the sorted keys 1..64, with a plain binary search tree beside it.
-Part C: the fewest nodes N(h) of an AVL tree of height h, for h = 1 to 12, beside phi^h.
+Part C: the recurrence values N(h) = 1 + N(h-1) + N(h-2) for h = 1 to 12, beside phi^h.
 """
 
 from __future__ import annotations
@@ -172,7 +172,7 @@ def height_bound(size: int) -> float:
 
 
 def min_nodes(max_height: int) -> list[int]:
-    """N(h), the fewest nodes of an AVL tree of height h, for h = 0 to max_height, from N(h) = 1 + N(h-1) + N(h-2)."""
+    """N(h), the recurrence values N(h) = 1 + N(h-1) + N(h-2) for h = 0 to max_height."""
     values = [0, 1]
     for h in range(2, max_height + 1):
         values.append(1 + values[h - 1] + values[h - 2])
@@ -234,7 +234,7 @@ def part_b() -> None:
 
 
 def part_c() -> None:
-    print("Part C: fewest nodes N(h) of an AVL tree of height h, beside phi^h")
+    print("Part C: recurrence values N(h) = 1 + N(h-1) + N(h-2), beside phi^h")
     values = min_nodes(12)
     all_hold = True
     for h in range(1, 13):

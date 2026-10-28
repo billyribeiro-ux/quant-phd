@@ -1,14 +1,14 @@
-"""M7 lab L04: the dual function, weak duality and the duality gap for the two-asset problem of Lab 1.
+"""M7 lab L04: the dual function, weak duality and the duality gap for the two-asset problem of Lesson 3's lab.
 
 The primal problem is minimize f(w) = (1/2) w'Sigma w - mu'w over w in R^2, subject to 1'w = 1 and
-w >= 0, with the active instance mu = (3/2, 1/5) and Sigma = [[2, 1], [1, 2]] from Lab 1. These are
+w >= 0, with the active instance mu = (3/2, 1/5) and Sigma = [[2, 1], [1, 2]] from Lesson 3's lab. These are
 illustrative inputs, SIMULATED and not market data, in one period with no annualization.
 
 For lambda >= 0 and any nu, the Lagrangian is L(w, lambda, nu) = (1/2) w'Sigma w - r'w - nu with
 r = mu + lambda - nu 1. Minimizing over w gives the dual function
 g(lambda, nu) = -(1/2) r'Sigma^{-1} r - nu, which this lab evaluates in closed form.
 
-Everything is an exact fractions.Fraction. The lab checks weak duality, g <= f, on a finite grid of
+Every value is an exact fractions.Fraction. The lab checks weak duality, g <= f, on a finite grid of
 dual points and feasible primal points, and it reports the grid's duality gap. Because the arithmetic is
 exact, the grid results are exact statements about the grid. The grid gap bounds the true gap from above
 (Proposition 1.4 on the page), and weak duality bounds it from below by zero, so the printed zero grid gap

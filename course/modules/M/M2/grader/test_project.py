@@ -21,6 +21,7 @@ import contextlib
 import io
 import math
 import os
+import warnings
 from collections.abc import Callable
 from fractions import Fraction
 from functools import partial
@@ -169,18 +170,34 @@ def test_forward_error_is_of_order_h(inst: dict[str, Any]) -> None:
 
 
 @pytest.mark.parametrize("inst", INSTANCES)
-def test_central_error_is_of_order_h_squared(inst: dict[str, Any]) -> None:
+def test_forward_estimate_is_the_forward_quotient(inst: dict[str, Any]) -> None:
+    # For a cubic the forward quotient is exact: (f(x+h) - f(x)) / h = f'(x) + h f''(x) / 2 + h^2 p3, p3 the x^3 term.
     coeffs, x0 = inst["cubic"], inst["x0"]
-    exact = cubic_prime(coeffs, x0)
+    h = 1e-3
+    expected = cubic_prime(coeffs, x0) + h * cubic_second(coeffs, x0) / 2 + h * h * coeffs[3]
+    value = sol.fd_derivative(lambda x: float(cubic(coeffs, x)), x0, h, "forward")
+    require(
+        close(value, expected, 1e-6),
+        "the forward estimate must be the forward quotient (f(x+h) - f(x)) / h "
+        "(hint: Lesson 13, the forward quotient and its first correction term)",
+    )
+
+
+@pytest.mark.parametrize("inst", INSTANCES)
+def test_central_error_is_at_least_of_order_h_squared(inst: dict[str, Any]) -> None:
+    # sin is not a polynomial, so its central error is h squared f'''/6 and not zero: the ratio is about 4 for the plain
+    # quotient. A Richardson extrapolation of the central quotient is more accurate still, and its ratio is larger.
+    x0 = inst["x0"]
+    exact = math.cos(x0)
 
     def error(h: float) -> float:
-        return float(abs(sol.fd_derivative(lambda x: float(cubic(coeffs, x)), x0, h, "central") - exact))
+        return float(abs(sol.fd_derivative(math.sin, x0, h, "central") - exact))
 
     ratio = error(1e-2) / error(5e-3)
     require(
-        3.8 <= ratio <= 4.2,
-        "the central error must fall four-fold when its step halves: order "
-        "h squared (hint: Lesson 13, the central error is of order h squared)",
+        ratio >= 3.8,
+        "the central error must fall at least four-fold when its step halves: order "
+        "at least h squared (hint: Lesson 13, the central error is of order h squared)",
     )
 
 
@@ -214,6 +231,17 @@ def test_positive_step_is_accepted() -> None:
         require(isinstance(value, float) and math.isfinite(value), "a positive step must return a finite float")
 
 
+def test_very_small_positive_step_is_accepted() -> None:
+    # Any step above zero is inside the specification, however small: only a step that is not above zero is refused.
+    coeffs, x0 = INST["cubic"], INST["x0"]
+    for scheme in ("forward", "central"):
+        value = must_accept(
+            partial(sol.fd_derivative, lambda x: float(cubic(coeffs, x)), x0, 1e-300, scheme),
+            "a positive step, however small, is inside the specification",
+        )
+        require(isinstance(value, float) and math.isfinite(value), "a positive step must return a finite float")
+
+
 def test_forward_and_central_schemes_are_accepted() -> None:
     coeffs, x0 = INST["cubic"], INST["x0"]
     for scheme in ("forward", "central"):
@@ -223,7 +251,7 @@ def test_forward_and_central_schemes_are_accepted() -> None:
         )
 
 
-@pytest.mark.parametrize("scheme", ["backward", "Central", ""])
+@pytest.mark.parametrize("scheme", ["backward", "Central", "", " central", "central ", "forward "])
 def test_unknown_scheme_raises_value_error(scheme: str) -> None:
     coeffs, x0 = INST["cubic"], INST["x0"]
     must_raise(
@@ -256,7 +284,30 @@ def test_product_rule_holds_for_three_factors(inst: dict[str, Any]) -> None:
     )
 
 
+@pytest.mark.parametrize("inst", INSTANCES)
+def test_reflected_operators_are_defined(inst: dict[str, Any]) -> None:
+    # A number on the left of - and * (2.0 - 3.0 * x) uses the reflected operators of the dual number.
+    x0 = inst["x0"]
+    value = sol.ad_derivative(lambda x: 2.0 - 3.0 * x + x * x, x0)
+    require(
+        close(value, -3.0 + 2 * x0, 1e-9),
+        "a number on the left of - or * must work with a dual number (hint: Lesson 14, the reflected operators)",
+    )
+
+
 # ---- Hessians: hessian_fd ----
+
+
+@pytest.mark.parametrize("inst", INSTANCES)
+def test_hessian_is_a_square_list_of_lists_of_floats(inst: dict[str, Any]) -> None:
+    c, point = inst["surface"], inst["point"]
+    got = sol.hessian_fd(lambda p: surface(c, p), point, 1e-4)
+    require(isinstance(got, list) and len(got) == 2, "the Hessian must be a list with one row per variable")
+    for row in got:
+        require(
+            isinstance(row, list) and len(row) == 2 and all(isinstance(v, float) for v in row),
+            "the Hessian must be a square list of lists of floats",
+        )
 
 
 @pytest.mark.parametrize("inst", INSTANCES)
@@ -469,11 +520,14 @@ def test_yield_just_above_minus_one_is_accepted() -> None:
 # ---- the module is pure: no output ----
 
 
-def test_module_prints_nothing() -> None:
+def test_module_prints_nothing_and_warns_nothing() -> None:
     buffer = io.StringIO()
-    with contextlib.redirect_stdout(buffer):
-        sol.bond_price_cents(INST)
-        sol.sensitivities(INST)
-        sol.fd_derivative(lambda x: cubic(INST["cubic"], x), INST["x0"], 1e-3, "central")
-        sol.hessian_fd(lambda p: surface(INST["surface"], p), INST["point"], 1e-4)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with contextlib.redirect_stdout(buffer):
+            sol.bond_price_cents(INST)
+            sol.sensitivities(INST)
+            sol.fd_derivative(lambda x: cubic(INST["cubic"], x), INST["x0"], 1e-3, "central")
+            sol.hessian_fd(lambda p: surface(INST["surface"], p), INST["point"], 1e-4)
     require(buffer.getvalue() == "", "the module must not print")
+    require(len(caught) == 0, "the module must not warn")

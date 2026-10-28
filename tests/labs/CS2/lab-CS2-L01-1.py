@@ -1,9 +1,9 @@
 """CS2 lab L01: operation counts of a single loop and a nested loop, at n = 2**k.
 
-Standard library only. No randomness and no network. Every number printed is an exact integer count in a
-counting model: one comparison for each element after the first in a maximum scan, and one inner step for
-each ordered pair of positions in a nested loop. No wall-clock time is measured, so the output does not depend
-on the machine.
+Standard library only. No randomness and no network. Every count printed is an exact integer in a counting
+model: one comparison for each element after the first in a maximum scan, and one inner step for each ordered
+pair of positions in a nested loop. The ratio lines print four-decimal quotients of two such counts. No
+wall-clock time is measured, so the output does not depend on the machine.
 """
 
 from __future__ import annotations
