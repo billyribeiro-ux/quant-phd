@@ -4,8 +4,9 @@ Part A checks the closed form f^(k)(x) = k! / (1 - x)^(k+1) against the recursio
 that the quotient rule gives, at three rational points and for k = 0 to 8. Part B takes x = 3/10 and degrees
 n = 0 to 10, and checks that the error f(x) - P_n(x) equals x^(n+1) / (1 - x) exactly, where P_n(x) is the Taylor
 polynomial of degree n at 0 (the sum of x^k for k = 0 to n, because f^(k)(0) = k!). Part C takes x = 2, outside
-the interval |x| < 1, and prints the same errors. Part D takes g(x) = x |x|. Its first derivative at 0 is computed
-from the definition; for x != 0 the page derives g'(x) = 2|x|, and the second derivative at 0 is tested through
+the interval |x| < 1, and prints the errors for the same identity. Part D takes g(x) = x |x|. Its first derivative
+at 0 is computed from the definition; for x != 0 the page derives g'(x) = 2|x|, and the second derivative at 0 is
+tested through
 that formula.
 
 Exact arithmetic uses fractions.Fraction throughout. Standard library only; no randomness and no network access.

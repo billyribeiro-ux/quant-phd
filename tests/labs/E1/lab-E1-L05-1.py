@@ -10,7 +10,8 @@ the choke price a/b, in exact Fractions. The grid argmax is compared with the cl
 Part B: at p_m, the Lerner index (p - c) / p is compared with 1/|e|, where e = -b p / (a - b p) is the price
 elasticity of demand. The two are exact Fractions, and the lab checks that they are equal.
 Part C: the monopoly quantity, the profit, the slope of the profit at p_m, the second difference of the profit, and
-the revenue-maximising price a / (2 b) are printed, and the profit is compared with (a - b c)^2 / (4 b).
+the gap between the monopoly price and the revenue-maximising price a / (2 b) are printed, and the profit is compared
+with (a - b c)^2 / (4 b).
 The second difference is exact for a quadratic profit.
 
 Fractions are printed as decimals with ten places. The comparisons are made on the exact values.

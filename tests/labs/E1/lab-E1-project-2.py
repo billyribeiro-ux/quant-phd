@@ -14,7 +14,7 @@ import math
 from fractions import Fraction
 
 A = 120  # trades at a fee of zero
-B = 1  # trades per cent
+B = 1  # trades per (cent per trade)
 C = 20  # cents per trade
 
 

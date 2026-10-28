@@ -1,0 +1,15 @@
+import math
+e=math.e
+print("fwd lo/hi", 0.005*math.exp(1.0), 0.005*math.exp(1.01))
+print("cen lo/hi", (1e-4/6)*math.exp(0.99), (1e-4/6)*math.exp(1.01))
+print("ratio fwd", 10*math.exp(1-1.001), 10*math.exp(0.01))
+print("ratio cen", 100*math.exp(0.99-1.001), 100*math.exp(1.01-0.999))
+print("h* forward", 2*math.sqrt(2**-52/e))
+print("2sqrt(M delta)", 2*math.sqrt(e*2**-52))
+print("h* sqrt(1e-3/e)*2", 2*math.sqrt(1e-3/e))
+print("ratio printed 1.364e-2/1.360e-3", 1.364e-2/1.360e-3, "4.530e-5/4.530e-7", 4.530e-5/4.530e-7)
+print("L13 bullet 2^-53/1e-8", 2**-53/1e-8, "e*that", e*2**-53/1e-8)
+print("2.154e-7/6.603e-9", 2.154e-7/6.603e-9, "1.364e-2/4.530e-5", 1.364e-2/4.530e-5)
+print("M2 L13 P2 rounding 2d/h at 1e-9", 2*2**-52/1e-9, "trunc", 0.5e-9*e, "ratio", 2*2**-52/1e-9/(0.5e-9*math.exp(1)))
+print("E3 cube root", (3*2**-52/e)**(1/3))
+print("forward error exp at 1, h=1e-2 printed interval check", 0.005*e, "e*h/2", e*0.01/2)

@@ -567,6 +567,11 @@ NAMED_CONDITIONS: list[tuple[str, Callable[[dict[str, Any]], None], Callable[[di
 ]
 
 
+def _gamma_just_inside_zero(case: dict[str, Any]) -> None:
+    """Gamma one-billionth: positive, so accepted (the lower end of the valid range is zero, excluded)."""
+    case["gamma"] = 0.000000001
+
+
 # The exact boundary values the page names as valid: a bound equal to the starting weight, a cap equal to the starting
 # sector weight, and the starting sum just inside the 1e-9 tolerance on the low side.
 def _lower_equal_start(case: dict[str, Any]) -> None:
@@ -587,6 +592,7 @@ EXACT_BOUNDARIES: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
     ("upper-equals-start", _upper_equal_start),
     ("cap-equals-start", _cap_equal_start),
     ("start-sum-inside-low-side", _start_sum_within_tolerance_low),
+    ("gamma-just-inside-zero", _gamma_just_inside_zero),
 ]
 
 
@@ -614,6 +620,51 @@ def test_named_condition_boundary_is_accepted(
     assert_kkt(case, out)
 
 
+def _gamma_just_below_zero(case: dict[str, Any]) -> None:
+    """Gamma one-millionth below zero: not positive, so refused (the boundary of the sign, from the other side)."""
+    case["gamma"] = -0.000000000001
+
+
+def _turnover_just_below_zero(case: dict[str, Any]) -> None:
+    """A turnover limit one-trillionth below zero: negative, so refused."""
+    case["turnover_limit"] = -0.000000000001
+
+
+def _lower_just_above_upper(case: dict[str, Any]) -> None:
+    """Asset 0: upper bound equal to the start, lower bound one-trillionth above it. The start stays inside the box
+    within its tolerance, so the order of the two bounds is the only condition broken."""
+    case["upper"][0] = case["w0"][0]
+    case["lower"][0] = case["w0"][0] + 0.000000000001
+
+
+def _lower_above_upper_last_asset(case: dict[str, Any]) -> None:
+    """The order check applies to every asset, not only the first: asset n-1 has its lower bound one-trillionth above
+    its upper bound, with the upper bound equal to the start so that no other condition is broken."""
+    case["upper"][N - 1] = case["w0"][N - 1]
+    case["lower"][N - 1] = case["w0"][N - 1] + 0.000000000001
+
+
+def _cap_below_start_last_sector(case: dict[str, Any]) -> None:
+    """Every sector cap is checked, not only the one of asset 0: the cap of sector K-1 lies 2e-9 below its start."""
+    k = K - 1
+    in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
+    case["sector_caps"][k] = in_sector - 0.000000002
+
+
+def _sigma_asymmetric_last_pair(case: dict[str, Any]) -> None:
+    """Symmetry is checked for every pair: the pair (n-2, n-1) is asymmetric by 1e-4."""
+    case["sigma"][N - 1][N - 2] = case["sigma"][N - 2][N - 1] + 0.0001
+
+
+def _sector_label_out_of_range_last_asset(case: dict[str, Any]) -> None:
+    case["sector"][N - 1] = K
+
+
+def _start_above_upper_last_asset(case: dict[str, Any]) -> None:
+    """The starting weight of asset n-1 lies 2e-9 above its upper bound, outside the 1e-9 tolerance."""
+    case["upper"][N - 1] = case["w0"][N - 1] - 0.000000002
+
+
 # The other side of each named condition: the same condition, violated in the opposite direction or by a different
 # count, is also refused with ValueError.
 OTHER_SIDE_REFUSED: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
@@ -631,6 +682,14 @@ OTHER_SIDE_REFUSED: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
     ("sigma-row-one-entry-too-few", _sigma_row_too_short),
     ("sigma-one-row-too-many", _sigma_extra_row),
     ("mu-one-entry-too-many", _one_entry_too_many("mu")),
+    ("gamma-positive-just-below-zero", _gamma_just_below_zero),
+    ("turnover-limit-just-below-zero", _turnover_just_below_zero),
+    ("lower-over-upper-by-1e-12", _lower_just_above_upper),
+    ("lower-over-upper-last-asset", _lower_above_upper_last_asset),
+    ("sigma-symmetric-last-pair", _sigma_asymmetric_last_pair),
+    ("sector-label-out-of-range-last-asset", _sector_label_out_of_range_last_asset),
+    ("start-within-upper-last-asset", _start_above_upper_last_asset),
+    ("start-within-sector-cap-last-sector", _cap_below_start_last_sector),
 ]
 
 
@@ -743,7 +802,7 @@ def test_wrong_type_is_refused_with_an_exception(
     poke(case, bad)
     with pytest.raises(Exception, match=r"\S") as info:
         sol.allocate(case)
-    assert str(info.value), f"{field}: the refusal must carry a message that names the field."
+    assert str(info.value), f"{field}: the refusal must carry a message."
 
 
 @pytest.mark.parametrize("field", ("mu", "w0", "lower", "upper", "sector", "sector_caps", "sigma"))
@@ -751,7 +810,7 @@ def test_a_number_where_a_list_belongs_is_refused_with_an_exception(field: str) 
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
     with pytest.raises(Exception, match=r"\S") as info:
         sol.allocate(case_copy(**{field: 0.5}))
-    assert str(info.value), f"{field}: the refusal must carry a message that names the field."
+    assert str(info.value), f"{field}: the refusal must carry a message."
 
 
 def test_a_float_sector_label_is_refused_with_an_exception() -> None:
@@ -760,14 +819,14 @@ def test_a_float_sector_label_is_refused_with_an_exception() -> None:
     case["sector"][0] = float(case["sector"][0])
     with pytest.raises(Exception, match=r"\S") as info:
         sol.allocate(case)
-    assert str(info.value), "sector: the refusal must carry a message that names the field."
+    assert str(info.value), "sector: the refusal must carry a message."
 
 
 def test_empty_sector_caps_is_refused_with_an_exception() -> None:
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
     with pytest.raises(Exception, match=r"\S") as info:
         sol.allocate(case_copy(sector_caps=[]))
-    assert str(info.value), "sector_caps: the refusal must carry a message that names the field."
+    assert str(info.value), "sector_caps: the refusal must carry a message."
 
 
 # ---------------------------------------------------------------------------------------------------------------------

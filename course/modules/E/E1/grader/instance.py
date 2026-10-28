@@ -4,7 +4,7 @@ make_instance(seed) is deterministic. It returns a SIMULATED case: generated int
 not data from any exchange. The three integers are the inputs of the project specification:
 
 * ``a``, trades at a fee of zero, a whole number of trades;
-* ``b``, trades per cent that the fee removes, a whole number of trades per cent, from 1 to 3;
+* ``b``, trades per (cent per trade) that the fee removes, a whole number of trades per (cent per trade), from 1 to 3;
 * ``c``, the constant cost of one trade to the exchange, in cents per trade, from 5 to 60.
 
 The generator draws b and c, then a gap d = a - b*c in trades, from 60 to 400. The gap is above 6*b, so every fee and

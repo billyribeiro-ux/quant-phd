@@ -3,12 +3,12 @@
 ``make_instance(seed)`` is deterministic and uses only the standard library. From the seed alone it draws:
 
 * two or three positions, each a whole number of cents from $1,000.00 to $50,000.00, all long;
-* a return covariance matrix built as F F^T from a lower-triangular factor F with a diagonal from 0.01 to 0.04 and
+* a return covariance matrix built as F F^\top from a lower-triangular factor F with a diagonal from 0.01 to 0.04 and
   off-diagonal entries from -0.02 to 0.02, rounded to 12 decimal places, so the matrix is symmetric and positive
   definite by construction;
 * a Student-t degrees-of-freedom nu in {3, 4, 5, 6, 7, 8}, so nu > 2 always;
 * a number of draws from a fixed set, none of them a multiple of 100 (so the 99% order statistic is not an
-  integer position), and none above 19,987, which keeps each test under the Pyodide time limit.
+  integer position), and none above 19,987.
 
 Nothing here is a real portfolio, a real return or market data.
 """

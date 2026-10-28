@@ -1,8 +1,4 @@
-"""Reference solution for the M3 project, covariance_doctor.py. Not shipped to learners.
-
-Pure Python, standard library only. Eigenvalues come from cyclic Jacobi rotations; the Frobenius-nearest repair is
-Dykstra's alternating projections between the positive semidefinite matrices and the unit-diagonal matrices.
-"""
+"""projection_repair drops the Dykstra correction terms, so it is alternating projection, not the nearest matrix."""
 
 from __future__ import annotations
 

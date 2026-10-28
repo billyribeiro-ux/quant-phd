@@ -38,6 +38,11 @@ INST2: dict[str, Any] = make_instance(
 K: int = INST["k"]
 K2: int = INST2["k"]
 Matrix = list[list[float]]
+# Snapshots taken at import, before any test runs. Earlier tests pass INST's own lists to the functions, so a
+# purity check compares against these copies, not against INST, which a mutating routine may already have changed.
+VOLS_AT_IMPORT: list[float] = copy.deepcopy(INST["vols"])
+CORR_AT_IMPORT: Matrix = copy.deepcopy(INST["corr"])
+PSD_CORR_AT_IMPORT: Matrix = copy.deepcopy(INST["psd_corr"])
 
 
 # --- helpers: independent checks, no use of the routine under test
@@ -299,6 +304,16 @@ def test_is_psd_threshold_is_minus_tol_on_a_diagonal_matrix() -> None:
     a = [[-0.5, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     assert sol.is_psd(a, tol=0.5 + 1e-6) is True, "is_psd must accept a smallest eigenvalue above -tol"
     assert sol.is_psd(a, tol=0.5 - 1e-6) is False, "is_psd must reject a smallest eigenvalue below -tol"
+
+
+def test_is_psd_default_tolerance_is_1e_minus_10() -> None:
+    """The page signature is is_psd(matrix, tol=1e-10). Without tol, -1e-11 is accepted and -5e-9 is refused."""
+    assert sol.is_psd([[-1e-11, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]) is True, (
+        "is_psd with the default tolerance must accept a smallest eigenvalue of -1e-11"
+    )
+    assert sol.is_psd([[-5e-9, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]) is False, (
+        "is_psd with the default tolerance must reject a smallest eigenvalue of -5e-9"
+    )
 
 
 def test_is_psd_one_by_one() -> None:
@@ -668,14 +683,23 @@ def test_functions_print_nothing() -> None:
 
 
 def test_inputs_are_not_mutated() -> None:
-    corr = copy.deepcopy(INST["corr"])
-    vols = copy.deepcopy(INST["vols"])
+    corr = copy.deepcopy(CORR_AT_IMPORT)
+    vols = copy.deepcopy(VOLS_AT_IMPORT)
+    psd = copy.deepcopy(PSD_CORR_AT_IMPORT)
+    # Asymmetric by 1e-10, which the page accepts, so a routine that symmetrises its argument in place is caught.
+    near = symmetric_pair(corr, 0, 1, 1e-10)
+    near_before = copy.deepcopy(near)
     sol.clip_repair(corr)
     sol.projection_repair(corr)
     sol.min_eigenvalue(corr)
-    sol.comparison_weights(INST["psd_corr"], vols)
-    assert corr == INST["corr"], "a repair must not change the matrix it is given"
-    assert vols == INST["vols"], "comparison_weights must not change the volatilities it is given"
+    sol.is_psd(corr)
+    sol.clip_repair(near)
+    sol.projection_repair(near)
+    sol.comparison_weights(psd, vols)
+    assert corr == CORR_AT_IMPORT, "a repair must not change the matrix it is given"
+    assert near == near_before, "a function must not change an asymmetric-within-tolerance matrix it is given"
+    assert vols == VOLS_AT_IMPORT, "comparison_weights must not change the volatilities it is given"
+    assert psd == PSD_CORR_AT_IMPORT, "comparison_weights must not change the correlation matrix it is given"
 
 
 def test_repeated_calls_agree() -> None:

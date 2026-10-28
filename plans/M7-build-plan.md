@@ -189,8 +189,10 @@ The spec (`dl.spec`, with `dt` terms "Context", "Inputs", "Required outputs", "C
   + \nu \mathbf{1}\| \), dual feasibility (multipliers of inequality constraints \(\ge 0\)), and complementary slackness
   \(|\lambda_i g_i(w)|\). The tolerance is stated in the spec (proposed \(10^{-8}\) after scaling; Q6).
 - **Failure behaviour.** Infeasible constraints, a non-positive-definite \(\Sigma\), or a wrong-shaped input raise
-  `ValueError` naming the violated condition. The spec names `ValueError` only for these cases (see §7.4 on exception
-  types).
+  `ValueError` carrying a message (round-4 fixer decision: the page does not require the message to name the violated
+  condition, so the suite does not test the wording; the naming requirement is withdrawn for the page, and the mutant
+  that replaced every message with "invalid input" was removed from `ledgers/M7/mutants/` for that reason). The spec
+  names `ValueError` only for these cases (see §7.4 on exception types).
 - **Reading list:** `ol.reading-list` with `li data-cite="boyd2004convex"` and `li data-cite="stokey1989recursive"` (see §9
   for what each may support).
 - **Inputs.** Generated only (SIMULATED, §9). No dataset, no MANIFEST entry.

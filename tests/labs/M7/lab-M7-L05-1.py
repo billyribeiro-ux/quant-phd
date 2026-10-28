@@ -70,7 +70,10 @@ def gradient(q: list[list[Fraction]], c: list[Fraction], x: list[Fraction]) -> l
 
 
 def leading_minors_positive(q: list[list[Fraction]]) -> bool:
-    """Leading principal minors test: every leading principal minor is positive (the page proves Q directly)."""
+    """Leading principal minors test: every leading principal minor is positive.
+
+    An exact test for this Q. Remark 2.4 proves positive definiteness by completing the square.
+    """
     for k in range(1, len(q) + 1):
         sub = [row[:k] for row in q[:k]]
         if det(sub) <= 0:
@@ -155,11 +158,11 @@ def part_b() -> None:
         if primal_ok and dual_ok:
             candidates.append((fixed, x))
     print(f"passing_candidates {len(candidates)}")
-    fixed, x_star = candidates[0]
-    value = quad(Q_B, C_B, x_star)
-    print("x_star " + " ".join(str(v) for v in x_star))
-    print(f"objective_star {value}")
-    print("mu_star " + " ".join(str(v) for v in gradient(Q_B, C_B, x_star)))
+    fixed, x_hat = candidates[0]
+    value = quad(Q_B, C_B, x_hat)
+    print("x_hat " + " ".join(str(v) for v in x_hat))
+    print(f"objective_hat {value}")
+    print("mu_hat " + " ".join(str(v) for v in gradient(Q_B, C_B, x_hat)))
     grid = [Fraction(k, GRID_STEPS) for k in range(GRID_STEPS * GRID_MAX + 1)]
     below = 0
     least = None

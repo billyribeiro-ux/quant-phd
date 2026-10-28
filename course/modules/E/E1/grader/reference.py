@@ -5,8 +5,8 @@ whole unit, with a tie going up: half_up(x) = floor(x + 1/2). The money outputs 
 whole trades.
 No money output uses a rounded volume: the deadweight loss and the consumer surplus are taken from the exact volume.
 
-Inputs: a, b, c, integers with a > b*c > 0. a is in trades, b in trades per cent, c in cents per trade. The gap is
-d = a - b*c. The structures are the monopoly, two exchanges competing on quantity (Cournot), and two exchanges
+Inputs: a, b, c, integers with a > b*c > 0. a is in trades, b in trades per (cent per trade), c in cents per trade. The
+gap is d = a - b*c. The structures are the monopoly, two exchanges competing on quantity (Cournot), and two exchanges
 competing on fee (Bertrand).
 """
 

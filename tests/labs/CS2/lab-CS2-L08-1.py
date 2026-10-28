@@ -2,8 +2,9 @@
 
 SIMULATED: prices, quantities and the message stream come from a fixed seed; no real order flow is used.
 Prices are integer cents (10000 is 100.00 in currency units) and quantities are integer shares; the code
-raises an error for any other type and never uses floating point. Each side of the book keeps a sorted list
-of the prices that have resting orders, and each price keeps a first-in first-out queue of its orders. An
+raises an error for any other type. The book's prices and quantities are never floats; Part A passes one
+float to show that it is refused. Each side of the book keeps a sorted list of the prices that have resting
+orders, and each price keeps a first-in first-out queue of its orders. An
 incoming limit order first trades against resting orders on the other side that it crosses, at the resting
 order's price, taking the best price first and then the earliest arrival; any remainder rests in the book.
 A cancel removes a resting order by its id.

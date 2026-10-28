@@ -1,8 +1,4 @@
-"""Reference solution for the M3 project, covariance_doctor.py. Not shipped to learners.
-
-Pure Python, standard library only. Eigenvalues come from cyclic Jacobi rotations; the Frobenius-nearest repair is
-Dykstra's alternating projections between the positive semidefinite matrices and the unit-diagonal matrices.
-"""
+"""is_psd is strict: it accepts only a smallest eigenvalue above -tol, so an eigenvalue exactly at -tol is refused."""
 
 from __future__ import annotations
 

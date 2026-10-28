@@ -1,9 +1,9 @@
 """M2 lab L22: the envelope theorem, checked on two maximization problems with closed-form answers.
 
 SIMULATED: both objectives are test functions chosen for this lab. They are not market data.
-Part A: maximize f(x, a) = a * ln(1 + x) - x over x in [0, 10], for a in {1.5, 2, 3, 4}. The maximizer is x* = a - 1
-and the value function is V(a) = a ln a - (a - 1), so V'(a) = ln a. The lab finds x* by golden-section search, then
-compares a central difference of V (step 1e-4) with ln a and with the partial derivative f_a(x*, a) = ln(1 + x*).
+Part A: maximize f(x, a) = a * ln(1 + x) - x over x in [0, 10], for a in {1.5, 2, 3, 4}. The maximizer is x_hat = a - 1
+and the value function is V(a) = a ln a - (a - 1), so V'(a) = ln a. The lab finds x_hat by golden-section search, then
+compares a central difference of V (step 1e-4) with ln a and with the partial derivative f_a(x_hat, a) = ln(1 + x_hat).
 Part B: maximize x * y subject to x + y = a. The constraint is absorbed by substituting y = a - x, which leaves the
 unconstrained problem F(x, a) = x * (a - x). The value is V(a) = a**2 / 4, so V'(a) = a / 2. The lab compares the
 central difference of V with a / 2, and it prints the naive partial derivative of x * y with respect to a at fixed x
@@ -53,12 +53,12 @@ def objective_a(x: float, a: float) -> float:
 
 
 def maximizer_a(a: float) -> float:
-    """The maximizer x* of f(x, a) over [0, 10], by golden-section search."""
+    """The maximizer x_hat of f(x, a) over [0, 10], by golden-section search."""
     return golden_max(lambda x: objective_a(x, a), 0.0, 10.0)
 
 
 def maximizer_b(a: float) -> float:
-    """The maximizer x* of x * (a - x) over [0, a], by golden-section search."""
+    """The maximizer x_hat of x * (a - x) over [0, a], by golden-section search."""
     return golden_max(lambda x: x * (a - x), 0.0, a)
 
 
@@ -89,8 +89,8 @@ def main() -> None:
         partial = math.log(1.0 + x_star)
         error = max(abs(fd - math.log(a)), abs(partial - math.log(a)))
         print(
-            f"a = {a:<4} x* = {x_star:.8f} (a - 1 = {a - 1.0:.1f}) V' central difference {fd:.8f} "
-            f"ln(a) {math.log(a):.8f} f_a(x*, a) {partial:.8f} max error {error:.1e}"
+            f"a = {a:<4} x_hat = {x_star:.8f} (a - 1 = {a - 1.0:.1f}) V' central difference {fd:.8f} "
+            f"ln(a) {math.log(a):.8f} f_a(x_hat, a) {partial:.8f} max error {error:.1e}"
         )
     print("Part B: maximize x*y subject to x + y = a; V'(a) should equal a/2")
     for a in PARAMETERS_B:
@@ -99,8 +99,8 @@ def main() -> None:
         reduced_partial = x_star
         naive_partial = 0.0  # x * y has no a in it, so at fixed x and y its partial in a is zero
         print(
-            f"a = {a:<4} x* = {x_star:.8f} V' central difference {fd:.8f} a/2 {a / 2.0:.8f} "
-            f"reduced F_a(x*, a) {reduced_partial:.8f} naive partial of x*y in a {naive_partial:.8f} "
+            f"a = {a:<4} x_hat = {x_star:.8f} V' central difference {fd:.8f} a/2 {a / 2.0:.8f} "
+            f"reduced F_a(x_hat, a) {reduced_partial:.8f} naive partial of x*y in a {naive_partial:.8f} "
             f"error {abs(fd - a / 2.0):.1e}"
         )
 

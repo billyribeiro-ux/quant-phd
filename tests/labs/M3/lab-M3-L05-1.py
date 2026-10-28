@@ -55,7 +55,7 @@ def part_a() -> None:
 def part_b() -> None:
     """Quadratic form of [[1, 2], [2, 1]] at the unit vector (cos t, sin t), over 360 equally spaced angles t.
 
-    The form equals 1 + 2 sin(2t). Its exact minimum on the circle is -1, at t = 135 degrees, and it is
+    The form equals 1 + 2 sin(2t). Its exact minimum on the circle is -1, at t = 135 and t = 315 degrees, and it is
     zero at t = 105, 165, 285 and 345 degrees.
     """
     values = []

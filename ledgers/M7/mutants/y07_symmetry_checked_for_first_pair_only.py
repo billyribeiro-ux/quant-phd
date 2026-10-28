@@ -1,11 +1,6 @@
-"""Generic refusals: every ValueError carries the same message, invalid input, and names no condition.
+"""Student error y07: symmetry of sigma is checked for the pair (0, 1) only, so an asymmetric later pair passes.
 
-The problem is the one the project page states: minimize (gamma / 2) w' Sigma w - mu' w over the budget, the box, the
-sector caps and the turnover limit. Turnover is written in the linearized form of the page, with auxiliary variables
-t_i = |w_i - w0_i|. The solver works in exact rational arithmetic (fractions.Fraction read from the decimal text of each
-input), so every active-set decision is exact. The turnover limit enters the search as the 2**n sign constraints
-sum_i s_i (w_i - w0_i) <= tau, whose intersection is the same set; the multipliers of those constraints are then mapped
-back to the linearized form. Nothing here is a real portfolio: every input is SIMULATED.
+One change to grader/reference.py, written by the M7 fixer (round 5).
 """
 
 from __future__ import annotations
@@ -40,7 +35,7 @@ def _scalar(value: object, name: str) -> Fraction:
         raise TypeError(f"{name} must be a real number, not {type(value).__name__}")
     if isinstance(value, float):
         if not math.isfinite(value):
-            raise ValueError("invalid input")
+            raise ValueError(f"{name} must be finite")
         return Fraction(repr(value))  # the decimal text the case carries, read exactly
     return Fraction(value)
 
@@ -53,59 +48,59 @@ def _vector(value: object, name: str) -> list[Fraction]:
 
 def _parse(instance: object) -> Problem:
     if not isinstance(instance, Mapping):
-        raise ValueError("invalid input")
+        raise ValueError("the instance must be a mapping with the case fields")
     for key in REQUIRED:
         if key not in instance:
-            raise ValueError("invalid input")
+            raise ValueError(f"the instance has no {key!r} field")
     mu = _vector(instance["mu"], "mu")
     n = len(mu)
     if n == 0:
-        raise ValueError("invalid input")
+        raise ValueError("the instance has no assets")
     gamma = _scalar(instance["gamma"], "gamma")
     if gamma <= 0:
-        raise ValueError("invalid input")
+        raise ValueError("gamma must be positive")
     tau = _scalar(instance["turnover_limit"], "turnover_limit")
     if tau < 0:
-        raise ValueError("invalid input")
+        raise ValueError("the turnover limit must not be negative")
     raw_sigma = instance["sigma"]
     if not isinstance(raw_sigma, (list, tuple)) or len(raw_sigma) != n:
-        raise ValueError("invalid input")
+        raise ValueError("sigma must have one row per asset")
     sigma = [_vector(row, f"sigma[{i}]") for i, row in enumerate(raw_sigma)]
     if any(len(row) != n for row in sigma):
-        raise ValueError("invalid input")
-    if any(sigma[i][j] != sigma[j][i] for i in range(n) for j in range(n)):
-        raise ValueError("invalid input")
+        raise ValueError("sigma must be square, one column per asset")
+    if sigma[0][1] != sigma[1][0]:
+        raise ValueError("sigma must be symmetric")
     if not _positive_definite(sigma):
-        raise ValueError("invalid input")
+        raise ValueError("sigma must be positive definite")
     w0 = _vector(instance["w0"], "w0")
     lower = _vector(instance["lower"], "lower")
     upper = _vector(instance["upper"], "upper")
     if len(w0) != n or len(lower) != n or len(upper) != n:
-        raise ValueError("invalid input")
+        raise ValueError("w0, lower and upper must have one entry per asset")
     if any(lower[i] > upper[i] for i in range(n)):
-        raise ValueError("invalid input")
+        raise ValueError("a lower bound lies above its upper bound")
     caps = _vector(instance["sector_caps"], "sector_caps")
     if not caps:
-        raise ValueError("invalid input")
+        raise ValueError("the instance has no sector caps")
     raw_sector = instance["sector"]
     if not isinstance(raw_sector, (list, tuple)) or len(raw_sector) != n:
-        raise ValueError("invalid input")
+        raise ValueError("sector must give one label per asset")
     sector: list[int] = []
     for label in raw_sector:
         if isinstance(label, bool) or not isinstance(label, int):
             raise TypeError("a sector label must be an integer")
         if not 0 <= label < len(caps):
-            raise ValueError("invalid input")
+            raise ValueError("a sector label lies outside 0 to the number of caps minus one")
         sector.append(label)
     if any(label not in sector for label in range(len(caps))):
-        raise ValueError("invalid input")
+        raise ValueError("every sector cap must belong to at least one asset")
     if abs(sum(w0, Fraction(0)) - 1) > TOL:
-        raise ValueError("invalid input")
+        raise ValueError("the starting portfolio must sum to one")
     if any(w0[i] < lower[i] - TOL or w0[i] > upper[i] + TOL for i in range(n)):
-        raise ValueError("invalid input")
+        raise ValueError("the starting portfolio lies outside a box bound")
     for k, cap in enumerate(caps):
         if sum(w0[i] for i in range(n) if sector[i] == k) > cap + TOL:
-            raise ValueError("invalid input")
+            raise ValueError("the starting portfolio breaks a sector cap")
     return Problem(n, gamma, mu, sigma, w0, lower, upper, sector, caps, tau)
 
 

@@ -16,7 +16,7 @@ NU = 5  # Student-t degrees of freedom
 
 
 def cholesky_2x2(cov: list[list[float]]) -> list[list[float]]:
-    """The lower-triangular L with L L^T = cov, for a 2 x 2 positive definite matrix."""
+    """The lower-triangular L with L L^\top = cov, for a 2 x 2 positive definite matrix."""
     l11 = math.sqrt(cov[0][0])
     l21 = cov[1][0] / l11
     l22 = math.sqrt(cov[1][1] - l21 * l21)

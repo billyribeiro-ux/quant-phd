@@ -9,7 +9,7 @@ all simple paths, found by exhaustive search. Mismatches are counted.
 Part B: DFS discovery and finish times on 40 further graphs, drawn the same way. For every pair of vertices the two
 intervals [discovery, finish] are nested or disjoint (the parenthesis property). Violations are counted.
 Part C: a 4-vertex graph with edge weights. The BFS path is the fewest hops; the lightest path is found by
-exhaustive search. The two paths differ.
+exhaustive search. The two paths differ for a and c; for b they coincide.
 Part D: BFS operation counts on a seeded graph with 200 vertices: vertices enqueued, adjacency entries inspected,
 and the cost of the same search on an adjacency matrix, which reads one full row per dequeued vertex.
 """

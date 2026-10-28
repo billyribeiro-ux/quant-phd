@@ -360,6 +360,23 @@ def test_successor_exactly_at_the_resources_is_feasible() -> None:
     )
 
 
+def test_successor_just_above_the_resources_is_infeasible() -> None:
+    """Feasibility is exact: k' <= k**alpha. From k = 0.25 with alpha = 0.5 the resources are exactly 0.5, and a
+    successor 1e-10 above them is infeasible, so only the successor 0.25 is available and the value is sqrt(0.25)."""
+    p = {"beta": 0.5, "alpha": 0.5}
+    grid = [0.25, 0.5 + 1e-10]
+    got = sol.bellman_operator(p, grid, [0.0, 1.0e6])
+    expect(
+        isinstance(got, (list, tuple)) and len(got) == 2,
+        "bellman_operator must return one value per grid point",
+    )
+    expect(
+        close(float(got[0]), 0.5, 1e-12),
+        "a successor above k**alpha by 1e-10 is infeasible: feasibility is the exact test k' <= k**alpha, with no "
+        "tolerance",
+    )
+
+
 @pytest.mark.parametrize("which", [0, 1])
 def test_the_first_sweep_starts_from_zero_and_is_synchronous(which: int) -> None:
     """solve starts from V0 = 0; one sweep of max_iter = 1 returns B(0), computed from the whole zero vector."""
@@ -444,7 +461,7 @@ def test_solver_does_not_change_its_inputs_or_print(capsys: pytest.CaptureFixtur
 # --- named invalid inputs (the only conditions that expect ValueError)
 
 
-@pytest.mark.parametrize("beta", [0.0, 1.0, -0.1, 1.2, math.nan, math.inf, -math.inf, True, "0.9"])
+@pytest.mark.parametrize("beta", [0.0, 1.0, -0.1, 1.2, math.nan, math.inf, -math.inf, True, False, "0.9"])
 def test_beta_outside_the_open_interval_is_refused(beta: Any) -> None:
     """beta must lie in the open interval (0, 1); a boolean or a non-finite number is refused."""
     params = {"beta": beta, "alpha": 0.5}
@@ -452,7 +469,7 @@ def test_beta_outside_the_open_interval_is_refused(beta: Any) -> None:
     must_raise(lambda: sol.solve(params, SMALL_GRID, 1e-6, 5), "beta must lie in (0, 1)")
 
 
-@pytest.mark.parametrize("alpha", [0.0, 1.0, -0.5, 1.5, math.nan, math.inf, -math.inf, True, "0.5"])
+@pytest.mark.parametrize("alpha", [0.0, 1.0, -0.5, 1.5, math.nan, math.inf, -math.inf, True, False, "0.5"])
 def test_alpha_outside_the_open_interval_is_refused(alpha: Any) -> None:
     """alpha must lie in the open interval (0, 1); a boolean or a non-finite number is refused."""
     params = {"beta": 0.9, "alpha": alpha}
@@ -467,12 +484,19 @@ def test_beta_and_alpha_just_inside_the_interval_are_accepted() -> None:
         expect(isinstance(out, Mapping), "solve must return a mapping for beta and alpha inside (0, 1)")
 
 
-@pytest.mark.parametrize("tol", [0.0, -1e-9, math.nan, math.inf, -math.inf, True, "1e-6"])
+@pytest.mark.parametrize("tol", [0.0, -1e-9, math.nan, math.inf, -math.inf, True, False, "1e-6"])
 def test_tolerance_must_be_positive_and_finite(tol: Any) -> None:
     """tol must be a finite real number above zero; zero, negative, non-finite and boolean values are refused."""
     must_raise(
         lambda: sol.solve({"beta": 0.9, "alpha": 0.5}, SMALL_GRID, tol, 5), "tol must be finite and greater than zero"
     )
+
+
+def test_tolerance_above_one_is_accepted() -> None:
+    """A tolerance above one is a finite real number greater than zero, so the page does not name it as invalid."""
+    out = sol.solve({"beta": 0.9, "alpha": 0.5}, SMALL_GRID, 10.0, 5)
+    expect(isinstance(out, Mapping), "solve must return a mapping for a tolerance above one")
+    expect(out["converged"] is True, "a tolerance of 10 is above the certified error of the first sweep here")
 
 
 def test_tolerance_just_above_zero_is_accepted() -> None:
@@ -481,7 +505,7 @@ def test_tolerance_just_above_zero_is_accepted() -> None:
     expect(isinstance(out, Mapping), "solve must return a mapping for a tolerance above zero")
 
 
-@pytest.mark.parametrize("max_iter", [0, -3, 2.0, 1.0, True, "5"])
+@pytest.mark.parametrize("max_iter", [0, -3, 2.0, 1.0, True, False, "5"])
 def test_budget_must_be_a_whole_number_of_sweeps_one_or_more(max_iter: Any) -> None:
     """max_iter must be a whole number of sweeps, one or more; zero, a negative, a float or a boolean is refused."""
     must_raise(
@@ -532,6 +556,15 @@ def test_grid_must_be_nonempty_positive_strictly_increasing_and_start_at_most_on
     p = {"beta": 0.9, "alpha": 0.5}
     must_raise(lambda: sol.bellman_operator(p, grid, [0.0] * len(grid)), "invalid grid")
     must_raise(lambda: sol.solve(p, grid, 1e-6, 5), "invalid grid")
+
+
+def test_grid_with_every_point_at_most_one_is_accepted() -> None:
+    """Every grid point may lie at or below one: the page requires only a first point at most one, and no last point
+    above one. A grid that lies wholly in (0, 1] is therefore valid."""
+    out = sol.solve({"beta": 0.9, "alpha": 0.5}, [0.2, 0.5, 0.9], 1e-6, 5)
+    expect(isinstance(out, Mapping), "solve must return a mapping for a grid whose points all lie in (0, 1]")
+    value = as_value_list(out, 3)
+    expect(all(math.isfinite(x) for x in value), "solve must return finite values for a grid inside (0, 1]")
 
 
 def test_grid_starting_at_exactly_one_is_accepted() -> None:

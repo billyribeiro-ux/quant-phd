@@ -1,10 +1,10 @@
 """Rung 1 worked example: the monopoly, Cournot and Bertrand outcomes of the reference case a = 120, b = 1, c = 20.
 
 Standard library only (fractions, math). No randomness and no network. The three inputs are the reference case of the
-project specification: a = 120 trades at a fee of zero, b = 1 trade per cent, c = 20 cents per trade. They are inputs
-of the specification, not market data. The gap is d = a - b*c = 100. The lab computes each structure's exact volume
-and fee, then profit, consumer surplus, welfare and deadweight loss as Fractions, and rounds each output once, a tie
-going up. It prints the exact value and the rounded value. Expected: monopoly volume 50 trades and fee 70 cents;
+project specification: a = 120 trades at a fee of zero, b = 1 trade per (cent per trade), c = 20 cents per trade. They
+are inputs of the specification, not market data. The gap is d = a - b*c = 100. The lab computes each structure's exact
+volume and fee, then profit, consumer surplus, welfare and deadweight loss as Fractions, and rounds each output once, a
+tie going up. It prints the exact value and the rounded value. Expected: monopoly volume 50 trades and fee 70 cents;
 Cournot volume 200/3 trades (67 after rounding) and fee 160/3 cents (53 after rounding); Bertrand volume 100 trades and
 fee 20 cents. Profit is (fee - c) times volume. Consumer surplus is Q^2/(2b). Welfare is consumer surplus plus profit.
 The deadweight loss is (d - Q)^2/(2b), which is zero for Bertrand. The lab checks the reference case only.
@@ -16,7 +16,7 @@ import math
 from fractions import Fraction
 
 A = 120  # trades at a fee of zero
-B = 1  # trades per cent that the fee removes
+B = 1  # trades per (cent per trade) that the fee removes
 C = 20  # cents per trade, the cost to the exchange
 
 

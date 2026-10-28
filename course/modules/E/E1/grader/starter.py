@@ -5,9 +5,9 @@ autograder there, or locally with the browser's flags:
 
     QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
 
-Conventions: a, b and c are whole numbers with a > b*c > 0; b is in trades per cent and c in cents per trade. Every
-money key is an int in cents and each is rounded once, a tie going up, from its exact value. Raise ValueError for the
-named conditions. Print nothing and warn nothing. Use the standard library only.
+Conventions: a, b and c are whole numbers with a > b*c > 0; b is in trades per (cent per trade) and c in cents per
+trade. Every money key is an int in cents and each is rounded once, a tie going up, from its exact value. Raise
+ValueError for the named conditions. Print nothing and warn nothing. Use the standard library only.
 """
 
 from __future__ import annotations

@@ -5,9 +5,9 @@ antiderivative F(x) = -1/x, so its error against the improper value 1 is exactly
 1 for every b in the table. Part B uses f(x) = 1/x^3, whose truncated integral is (1 - 1/b^2)/2, with error
 1/(2 b^2), so b^2 times the error is 1/2. Part C takes f(x) = 1/x on [1, N] with the uniform partition into
 unit steps. Since f is decreasing, the infimum on [k, k+1] is 1/(k+1), so the lower sum is H_N - 1, where H_N is
-the N-th harmonic number. For N = 2^m the program checks H_N - 1 >= m/2, which shows the lower sums are unbounded.
-Parts A and B use exact fractions; Part C uses floating point for the harmonic sums. Standard library only; no
-randomness and no network access.
+the N-th harmonic number. For N = 2^m the program checks H_N - 1 >= m/2, which is consistent with unbounded
+lower sums; Theorem 3.3 proves it. Parts A and B use exact fractions; Part C uses floating point for the harmonic
+sums. Standard library only; no randomness and no network access.
 """
 
 from __future__ import annotations

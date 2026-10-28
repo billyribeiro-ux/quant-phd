@@ -21,7 +21,7 @@ cannot meet the budget and is skipped. A candidate is kept only if its free weig
 multiplier nu_i = gamma (Sigma w)_i - mu_i + lambda is nonnegative for each i in S. The number of kept
 candidates and the number of distinct weight vectors among them are printed.
 
-Part C: the variance w'Sigma w of the solution is checked to be nonincreasing in gamma for both cases, and the
+Part C: the risk term w'Sigma w of the solution is checked to be nonincreasing in gamma for both cases, and the
 constrained objective is checked to be at least the unconstrained objective at each gamma (the feasible set is
 smaller).
 
@@ -122,14 +122,14 @@ def closed_form(sigma: list[list[Fraction]], mu: list[Fraction], gamma: Fraction
     return [(a[i] - lam * b[i]) / gamma for i in range(N_ASSETS)]
 
 
-def variance(sigma: list[list[Fraction]], w: list[Fraction]) -> Fraction:
+def risk(sigma: list[list[Fraction]], w: list[Fraction]) -> Fraction:
     """w'Sigma w, exact."""
     return dot(w, matvec(sigma, w))
 
 
 def objective(sigma: list[list[Fraction]], mu: list[Fraction], gamma: Fraction, w: list[Fraction]) -> Fraction:
     """(gamma/2) w'Sigma w - mu'w, exact."""
-    return gamma / 2 * variance(sigma, w) - dot(mu, w)
+    return gamma / 2 * risk(sigma, w) - dot(mu, w)
 
 
 def nonnegative_candidates(
@@ -160,7 +160,7 @@ def main() -> None:
     print("mu " + " ".join(str(v) for v in mu))
     print("sigma_diagonal " + " ".join(str(sigma[i][i]) for i in range(N_ASSETS)))
     print(f"sigma_symmetric {all(sigma[i][j] == sigma[j][i] for i in range(N_ASSETS) for j in range(N_ASSETS))}")
-    print("part_a equality_only gamma return variance objective budget_exact kkt_matches_closed_form")
+    print("part_a equality_only gamma return risk objective budget_exact kkt_matches_closed_form")
     eq_vars: list[Fraction] = []
     eq_objs: list[Fraction] = []
     for gamma in GAMMAS:
@@ -168,13 +168,13 @@ def main() -> None:
         closed = closed_form(sigma, mu, gamma)
         budget = sum(w, Fraction(0)) == 1
         same = w == closed
-        ret, var, obj = dot(mu, w), variance(sigma, w), objective(sigma, mu, gamma, w)
+        ret, var, obj = dot(mu, w), risk(sigma, w), objective(sigma, mu, gamma, w)
         eq_vars.append(var)
         eq_objs.append(obj)
         print(f"equality {float(gamma):g} {float(ret):.6f} {float(var):.6f} {float(obj):.6f} {budget} {same}")
         print("equality_weights " + " ".join(f"{float(v):.6f}" for v in w))
 
-    print("part_b nonneg gamma zero_set candidates_passing distinct_points return variance objective")
+    print("part_b nonneg gamma zero_set candidates_passing distinct_points return risk objective")
     nn_vars: list[Fraction] = []
     nn_objs: list[Fraction] = []
     for gamma, eq_obj in zip(GAMMAS, eq_objs, strict=True):
@@ -182,7 +182,7 @@ def main() -> None:
         distinct = {tuple(w) for _, w in kept}
         best = min(kept, key=lambda item: objective(sigma, mu, gamma, item[1]))
         zeros, w = best
-        ret, var, obj = dot(mu, w), variance(sigma, w), objective(sigma, mu, gamma, w)
+        ret, var, obj = dot(mu, w), risk(sigma, w), objective(sigma, mu, gamma, w)
         nn_vars.append(var)
         nn_objs.append(obj)
         label = "{" + ",".join(f"A{i + 1}" for i in zeros) + "}"
@@ -196,7 +196,7 @@ def main() -> None:
     def nonincreasing(values: list[Fraction]) -> bool:
         return all(later <= earlier for earlier, later in pairwise(values))
 
-    print(f"variance_nonincreasing_in_gamma equality {nonincreasing(eq_vars)} nonneg {nonincreasing(nn_vars)}")
+    print(f"risk_nonincreasing_in_gamma equality {nonincreasing(eq_vars)} nonneg {nonincreasing(nn_vars)}")
 
     w0 = [Fraction(1, N_ASSETS)] * N_ASSETS
     _, w = min(nonnegative_candidates(sigma, mu, GAMMAS[2]), key=lambda item: objective(sigma, mu, GAMMAS[2], item[1]))

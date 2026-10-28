@@ -78,6 +78,11 @@ def relative_error(measured: float, target: float) -> float:
     return abs(measured / target - 1.0)
 
 
+# The input conditions of simulate_losses apply to both families, so each of them is tested for both. The Student-t
+# case uses nu = 5, a valid degrees of freedom, so that only the condition under test is violated.
+FAMILY_CASES = [("gaussian", None), ("student_t", 5)]
+
+
 # --- the instance -----------------------------------------------------------------------------------------------
 
 
@@ -169,7 +174,9 @@ def test_different_seed_gives_different_losses() -> None:
 # --- simulate_losses: named conditions -----------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("family", ["Gaussian", "t", "student-t", " gaussian", "", None])
+@pytest.mark.parametrize(
+    "family", ["Gaussian", "t", "student-t", " gaussian", "gaussian ", "student_t ", "student_tx", "", None]
+)
 def test_unknown_family_is_rejected(family: Any) -> None:
     expect_value_error(
         lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, family, NU),
@@ -211,9 +218,10 @@ def test_student_t_accepts_nu_just_above_two() -> None:
 
 
 @pytest.mark.parametrize("n_draws", [0, -1, -5])
-def test_draw_count_of_zero_or_less_is_rejected(n_draws: int) -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_draw_count_of_zero_or_less_is_rejected(n_draws: int, family: str, nu: int | None) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses(POSITIONS, COV, n_draws, SEED, "gaussian", None),
+        lambda: sol.simulate_losses(POSITIONS, COV, n_draws, SEED, family, nu),
         "n_draws must be 1 or more: zero or a negative draw count must raise ValueError",
     )
 
@@ -229,47 +237,93 @@ def test_gaussian_losses_are_rounded_once_not_truncated() -> None:
     )
 
 
+def test_loss_is_rounded_once_for_the_portfolio_not_per_position() -> None:
+    # Two positions of 1000 cents, the same seed and draw count in every call. The loss of the pair is round(-(w . R)),
+    # rounded once. Rounding each position's loss first and then adding is a different rule, and the two rules give
+    # different values on some draws. The test needs only that the pair's loss differs from the sum of the single-
+    # position losses on at least one draw; it does not depend on the random stream order.
+    cov = [[4e-4, 1e-4], [1e-4, 9e-4]]
+    both = sol.simulate_losses([1_000, 1_000], cov, 2_000, SEED, "gaussian", None)
+    first = sol.simulate_losses([1_000, 0], cov, 2_000, SEED, "gaussian", None)
+    second = sol.simulate_losses([0, 1_000], cov, 2_000, SEED, "gaussian", None)
+    check(
+        any(b != f + s for b, f, s in zip(both, first, second, strict=True)),
+        "the portfolio loss must be rounded once: rounding each position's loss and then adding is not the rule",
+    )
+
+
+def test_no_function_prints(capsys: pytest.CaptureFixture[str]) -> None:
+    sol.matched_scale(5)
+    sol.simulate_losses(POSITIONS, COV, 50, SEED, "gaussian", None)
+    sol.simulate_losses(POSITIONS, COV, 50, SEED, "student_t", 5)
+    sol.quantile_99([3, 1, 2])
+    captured = capsys.readouterr()
+    check(captured.out == "" and captured.err == "", "no function may print: the functions return their values only")
+
+
 def test_one_draw_is_accepted() -> None:
     losses = sol.simulate_losses(POSITIONS, COV, 1, SEED, "gaussian", None)
     check(len(losses) == 1, "n_draws = 1 must return one loss, the boundary above zero")
 
 
 @pytest.mark.parametrize("n_draws", [10.0, True, False, "10", None])
-def test_draw_count_must_be_a_whole_number(n_draws: Any) -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_draw_count_must_be_a_whole_number(n_draws: Any, family: str, nu: int | None) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses(POSITIONS, COV, n_draws, SEED, "gaussian", None),
+        lambda: sol.simulate_losses(POSITIONS, COV, n_draws, SEED, family, nu),
         "n_draws must be a whole number, and a float or a boolean is not",
     )
 
 
 @pytest.mark.parametrize("positions", [[1.0, 2], [True, 2], [1000, "1000"], [1000, 1.0], [1000, True], [None, 1000]])
-def test_positions_must_be_whole_cents(positions: Any) -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_positions_must_be_whole_cents(positions: Any, family: str, nu: int | None) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses(positions, [[1e-4, 0.0], [0.0, 1e-4]], 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses(positions, [[1e-4, 0.0], [0.0, 1e-4]], 10, SEED, family, nu),
         "position_cents must hold whole numbers of cents: a float or a boolean is rejected",
     )
 
 
-def test_positions_must_not_be_empty() -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_positions_must_not_be_empty(family: str, nu: int | None) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses([], [], 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses([], [], 10, SEED, family, nu),
         "position_cents must not be empty",
     )
 
 
-def test_covariance_must_match_the_number_of_positions() -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_covariance_must_match_the_number_of_positions(family: str, nu: int | None) -> None:
     three_by_three = [[4e-4, 0.0, 0.0], [0.0, 4e-4, 0.0], [0.0, 0.0, 4e-4]]
     expect_value_error(
-        lambda: sol.simulate_losses(POSITIONS[:2], three_by_three, 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses(POSITIONS[:2], three_by_three, 10, SEED, family, nu),
         "cov must have one row and one column per position",
     )
 
 
 @pytest.mark.parametrize("skew", [[[4e-4, 1e-4], [2e-4, 9e-4]], [[4e-4, 2e-4], [1e-4, 9e-4]]])
-def test_covariance_must_be_symmetric(skew: list[list[float]]) -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_covariance_must_be_symmetric(skew: list[list[float]], family: str, nu: int | None) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses([1_000, 1_000], skew, 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses([1_000, 1_000], skew, 10, SEED, family, nu),
         "cov must be symmetric",
+    )
+
+
+@pytest.mark.parametrize("pair", [(0, 1), (0, 2), (1, 2)])
+@pytest.mark.parametrize("upper", [True, False])
+def test_covariance_symmetry_is_checked_for_every_pair(pair: tuple[int, int], upper: bool) -> None:
+    # Three positions. Only one entry of one off-diagonal pair is set, so the matrix is asymmetric in that pair alone.
+    # The pair (1, 2) is the one a check of the first row alone would miss.
+    cov = [[4e-4, 0.0, 0.0], [0.0, 4e-4, 0.0], [0.0, 0.0, 4e-4]]
+    i, j = pair
+    if upper:
+        cov[i][j] = 1e-5
+    else:
+        cov[j][i] = 1e-5
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000, 1_000, 1_000], cov, 10, SEED, "gaussian", None),
+        "cov must be symmetric in every pair of entries, not only the first row",
     )
 
 
@@ -277,25 +331,30 @@ def test_covariance_must_be_symmetric(skew: list[list[float]]) -> None:
     "ragged",
     [[[4e-4]], [[4e-4, 0.0], [0.0]], [[4e-4, 0.0, 0.0], [0.0, 4e-4]], [[4e-4, 0.0], [0.0, 4e-4], [0.0, 0.0]]],
 )
-def test_covariance_must_be_square_with_one_row_per_position(ragged: list[list[float]]) -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_covariance_must_be_square_with_one_row_per_position(
+    ragged: list[list[float]], family: str, nu: int | None
+) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses([1_000, 1_000], ragged, 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses([1_000, 1_000], ragged, 10, SEED, family, nu),
         "cov must be a square matrix with one row and one column per position",
     )
 
 
-def test_indefinite_covariance_is_rejected() -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_indefinite_covariance_is_rejected(family: str, nu: int | None) -> None:
     indefinite = [[1.0, 2.0], [2.0, 1.0]]
     expect_value_error(
-        lambda: sol.simulate_losses([1_000, 1_000], indefinite, 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses([1_000, 1_000], indefinite, 10, SEED, family, nu),
         "cov must be positive definite: a pivot is not above zero",
     )
 
 
-def test_negative_second_pivot_is_rejected() -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_negative_second_pivot_is_rejected(family: str, nu: int | None) -> None:
     # The first pivot is 4e-4 (above zero) and the second is -9e-4 (below zero): the check must read every pivot.
     expect_value_error(
-        lambda: sol.simulate_losses([1_000, 1_000], [[4e-4, 0.0], [0.0, -9e-4]], 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses([1_000, 1_000], [[4e-4, 0.0], [0.0, -9e-4]], 10, SEED, family, nu),
         "cov must be positive definite: a negative second pivot is not above zero",
     )
 
@@ -306,31 +365,35 @@ def test_two_position_positive_definite_covariance_is_accepted() -> None:
     check(len(losses) == 100 and all(type(x) is int for x in losses), "a 2 x 2 positive definite cov must be accepted")
 
 
-def test_singular_covariance_is_rejected() -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_singular_covariance_is_rejected(family: str, nu: int | None) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses([1_000], [[0.0]], 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses([1_000], [[0.0]], 10, SEED, family, nu),
         "cov must be positive definite: a zero pivot is not above zero",
     )
 
 
-def test_singular_covariance_with_a_zero_second_pivot_is_rejected() -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_singular_covariance_with_a_zero_second_pivot_is_rejected(family: str, nu: int | None) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses([1_000, 1_000], [[1.0, 1.0], [1.0, 1.0]], 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses([1_000, 1_000], [[1.0, 1.0], [1.0, 1.0]], 10, SEED, family, nu),
         "cov must be positive definite: the second pivot is zero",
     )
 
 
 @pytest.mark.parametrize("cov", [[[0.0, 0.0], [0.0, 4e-4]], [[-4e-4, 0.0], [0.0, 4e-4]]])
-def test_first_pivot_must_be_positive(cov: list[list[float]]) -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_first_pivot_must_be_positive(cov: list[list[float]], family: str, nu: int | None) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses([1_000, 1_000], cov, 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses([1_000, 1_000], cov, 10, SEED, family, nu),
         "cov must be positive definite: the first pivot must be above zero",
     )
 
 
-def test_negative_variance_is_rejected() -> None:
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_negative_variance_is_rejected(family: str, nu: int | None) -> None:
     expect_value_error(
-        lambda: sol.simulate_losses([1_000], [[-4e-4]], 10, SEED, "gaussian", None),
+        lambda: sol.simulate_losses([1_000], [[-4e-4]], 10, SEED, family, nu),
         "cov must be positive definite: a negative variance is not positive",
     )
 

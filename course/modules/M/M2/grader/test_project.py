@@ -280,9 +280,9 @@ def test_negative_infinite_step_raises_value_error() -> None:
 
 
 def test_large_positive_step_is_accepted() -> None:
-    # Only a step that is not above zero is refused. A step above zero is accepted at any size, including 1 and 5.
+    # Only a step that is not above zero is refused. A large step above zero is accepted: the suite draws 1, 5 and 1e6.
     coeffs, x0 = INST["cubic"], INST["x0"]
-    for h in (1.0, 5.0):
+    for h in (1.0, 5.0, 1e6):
         for scheme in ("forward", "central"):
             value = must_accept(
                 partial(sol.fd_derivative, lambda x: float(cubic(coeffs, x)), x0, h, scheme),
@@ -321,7 +321,7 @@ def test_forward_and_central_schemes_are_accepted() -> None:
         )
 
 
-@pytest.mark.parametrize("scheme", ["backward", "Central", "", " central", "central ", "forward "])
+@pytest.mark.parametrize("scheme", ["backward", "Central", "Forward", "", " central", "central ", "forward "])
 def test_unknown_scheme_raises_value_error(scheme: str) -> None:
     coeffs, x0 = INST["cubic"], INST["x0"]
     must_raise(
@@ -519,9 +519,9 @@ def test_hessian_negative_infinite_step_raises_value_error() -> None:
 
 
 def test_hessian_positive_step_is_accepted() -> None:
-    # Steps from 1e-3 to 1 are accepted; the step is above zero in each, and the entries are finite floats.
+    # Steps from 1e-4 to 1 are accepted; the step is above zero in each, and the entries are finite floats.
     c, point = INST["surface"], INST["point"]
-    for step in (1e-3, 1e-4, 1.0):
+    for step in (1e-4, 1e-3, 1.0):
         got = must_accept(
             partial(sol.hessian_fd, lambda p: surface(c, p), point, step),
             f"a Hessian step of {step} is above zero, so the specification accepts it",
@@ -727,8 +727,8 @@ def test_yield_just_above_minus_one_is_accepted() -> None:
 
 
 def test_module_prints_nothing_and_warns_nothing() -> None:
-    # Every function, on every branch: both schemes, the constant and the non-constant case of ad_derivative, the price
-    # and the sensitivities, and each named refusal. Output to stdout and to stderr is captured in one buffer.
+    # Every function, on each branch the other tests reach: both schemes, the constant and the non-constant case of
+    # ad_derivative, the price and the sensitivities, and each named refusal. Output to stdout and stderr is captured.
     buffer = io.StringIO()
     coeffs, x0 = INST["cubic"], INST["x0"]
     poly = partial(cubic, coeffs)

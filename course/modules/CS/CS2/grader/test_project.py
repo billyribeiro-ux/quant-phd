@@ -347,8 +347,8 @@ def test_welford_none_input_is_refused() -> None:
     refuse_or_correct(lambda: (acc.update(None), acc.mean())[1], float("nan"), "None passed as a value")
 
 
-@pytest.mark.parametrize("ddof", [2, -1])
-def test_welford_other_ddof_is_refused(ddof: int) -> None:
+@pytest.mark.parametrize("ddof", [2, -1, 3, 2.0, "1"])
+def test_welford_other_ddof_is_refused(ddof: Any) -> None:
     acc = WelfordAccumulator()
     for x in VALUES[:5]:
         acc.update(x)
@@ -361,11 +361,13 @@ def test_welford_other_ddof_is_refused(ddof: int) -> None:
     pytest.fail(f"variance(ddof) is defined for ddof 0 and 1 only; ddof {ddof} returned a {type(answer).__name__}.")
 
 
-def test_welford_infinite_input_gives_no_finite_answer() -> None:
+@pytest.mark.parametrize("infinite", [float("inf"), float("-inf")])
+def test_welford_infinite_input_gives_no_finite_answer(infinite: float) -> None:
     acc = WelfordAccumulator()
     acc.update(VALUES[0])
+    acc.update(VALUES[1])  # two finite values, so variance(1) is defined before the infinite one
     try:
-        acc.update(float("inf"))
+        acc.update(infinite)
         mean, var = acc.mean(), acc.variance(1)
     except NotImplementedError:
         raise
@@ -384,6 +386,10 @@ def test_rolling_window_zero_raises() -> None:
 
 def test_rolling_window_negative_raises() -> None:
     must_raise(lambda: RollingMinMax(-3), "a negative window")
+
+
+def test_rolling_boolean_false_window_raises() -> None:
+    must_raise(lambda: RollingMinMax(False), "a window of False, which is the window 0 (below one)")
 
 
 def test_rolling_window_one_is_valid() -> None:
@@ -494,6 +500,36 @@ def test_rolling_bool_window_is_refused_or_correct() -> None:
     refuse_or_correct(action, VALUES[5], "a boolean window")
 
 
+def test_rolling_string_value_is_refused_or_correct() -> None:
+    def action() -> float:
+        wrong_type: Any = "2.5"  # a string pushed as a value: it denotes 2.5
+        r = RollingMinMax(WINDOW)
+        for x in VALUES[:5]:
+            r.push(x)
+        r.push(wrong_type)
+        return float(r.minimum())
+
+    refuse_or_correct(action, min([*VALUES[:5], 2.5][-WINDOW:]), "a string pushed as a value")
+
+
+def test_rolling_none_push_is_refused() -> None:
+    def action() -> float:
+        wrong_type: Any = None  # None denotes no number, so the call must refuse it
+        r = RollingMinMax(WINDOW)
+        r.push(VALUES[0])
+        r.push(wrong_type)
+        smallest: float = r.minimum()
+        return smallest
+
+    try:
+        action()
+    except NotImplementedError:
+        raise
+    except Exception:
+        return
+    pytest.fail("None is not a number: the rolling minimum must refuse a None pushed as a value.")
+
+
 def test_rolling_padded_string_window_is_refused_or_correct() -> None:
     def action() -> float:
         wrong_type: Any = " 3 "  # a padded string: it denotes the window 3 only if it is parsed
@@ -512,6 +548,11 @@ def test_rolling_padded_string_window_is_refused_or_correct() -> None:
 @pytest.mark.parametrize("bad", [0.0, 1.0, 1.5, -0.1, -1e-6, float("nan"), float("inf"), float("-inf")])
 def test_sketch_epsilon_outside_open_interval_raises(bad: float) -> None:
     must_raise(lambda: QuantileSketch(bad), f"epsilon outside (0, 1) ({bad!r})")
+
+
+@pytest.mark.parametrize("bad", [False, True])
+def test_sketch_boolean_epsilon_raises(bad: bool) -> None:
+    must_raise(lambda: QuantileSketch(bad), f"epsilon {bad!r} (a boolean equal to 0 or 1, outside (0, 1))")
 
 
 def test_sketch_small_epsilon_is_valid() -> None:
@@ -565,6 +606,42 @@ def test_sketch_quantile_on_empty_sketch_raises() -> None:
 @pytest.mark.parametrize("q", [0.0, 1.0])
 def test_sketch_quantile_on_empty_sketch_raises_at_both_ends(q: float) -> None:
     must_raise(lambda: QuantileSketch(EPS).quantile(q), f"quantile({q}) on an empty sketch")
+
+
+def guarantee_holds(stream: list[float], v: float, q: float, eps: float) -> bool:
+    """The two rank inequalities of the specification, with exact counts, for one answer v on one stream."""
+    qn = Fraction(q) * len(stream)
+    slack = Fraction(eps) * len(stream)
+    below = sum(1 for x in stream if x < v)
+    at_or_below = sum(1 for x in stream if x <= v)
+    return below <= qn + slack and at_or_below >= qn - slack
+
+
+@pytest.mark.parametrize(("bad", "denotes"), [("2.5", 2.5), (True, 1.0)])
+def test_sketch_value_that_denotes_a_number_is_refused_or_correct(bad: Any, denotes: float) -> None:
+    sketch = sketch_of(VALUES[:5], EPS)
+    try:
+        sketch.add(bad)
+        answer = float(sketch.quantile(0.5))
+    except NotImplementedError:
+        raise
+    except Exception:
+        return
+    if not guarantee_holds([*VALUES[:5], denotes], answer, 0.5, EPS):
+        pytest.fail("a value that denotes a number must be refused, or added as the number it denotes.")
+
+
+def test_sketch_none_value_is_refused() -> None:
+    sketch = sketch_of(VALUES[:5], EPS)
+    try:
+        wrong_type: Any = None  # None is not a number, on purpose
+        sketch.add(wrong_type)
+        sketch.quantile(0.5)
+    except NotImplementedError:
+        raise
+    except Exception:
+        return
+    pytest.fail("None is not a number: the sketch must refuse it, since it denotes no value.")
 
 
 def test_sketch_nan_add_raises() -> None:
