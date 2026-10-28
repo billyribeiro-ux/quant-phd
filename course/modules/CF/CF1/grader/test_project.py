@@ -246,7 +246,7 @@ def test_irr_roots_are_ascending_and_distinct() -> None:
 def test_irr_roots_have_zero_npv_on_the_instance() -> None:
     flows = after_tax_cash_flows(PROJECT)
     roots = irr_roots(flows)
-    assert len(roots) == 1, "the instance's flow has one sign change, so exactly one IRR above -1 (Descartes' rule)."
+    assert len(roots) == 1, "the instance's flow has one sign change, so it should have exactly one IRR above -1."
     scale = sum(abs(cf) for cf in flows)
     assert abs(npv(roots[0], flows)) <= 1e-9 * scale, "the NPV at each returned root must be zero to 1e-9 of the flows."
     assert npv(roots[0] - 1e-6, flows) * npv(roots[0] + 1e-6, flows) < 0, (
@@ -366,6 +366,14 @@ def test_payback_rejects_fewer_than_two_flows(bad: list[float]) -> None:
 @pytest.mark.parametrize("bad", [[0.0, 10.0], [5.0, -10.0]], ids=["zero-outlay", "positive-first"])
 def test_payback_rejects_a_first_flow_that_is_not_an_outlay(bad: list[float]) -> None:
     must_raise(lambda: payback_period(bad), "a first flow that is not negative")
+
+
+@pytest.mark.parametrize("bad_rate", [-1.0, -2.0], ids=["minus-one", "below-minus-one"])
+def test_payback_rejects_a_discount_rate_at_or_below_minus_one(bad_rate: float) -> None:
+    must_raise(
+        lambda: payback_period([-100.0, 60.0, 60.0], bad_rate),
+        "a discount rate at or below -1 in a discounted payback request",
+    )
 
 
 # ---------------------------------------------------------------- Fisher relation
@@ -500,6 +508,21 @@ def test_real_flows_at_the_real_rate_equal_nominal_flows_at_the_nominal_rate() -
             {"revenue": PROJECT["revenue"][:-1]}, "revenue with the wrong number of years", id="revenue-length"
         ),
         pytest.param({"cash_costs": [-1.0, *PROJECT["cash_costs"][1:]]}, "a negative cash cost", id="cost-negative"),
+        pytest.param(
+            {"cash_costs": [-1e-9, *PROJECT["cash_costs"][1:]]},
+            "a cash cost just below zero (-1e-9 cents)",
+            id="cost-just-below-zero",
+        ),
+        pytest.param(
+            {"revenue": [float("-inf"), *PROJECT["revenue"][1:]]},
+            "a revenue that is minus infinity",
+            id="revenue-minus-inf",
+        ),
+        pytest.param(
+            {"cash_costs": [float("-inf"), *PROJECT["cash_costs"][1:]]},
+            "a cash cost that is minus infinity",
+            id="cost-minus-inf",
+        ),
         pytest.param({"tax_rate": 1.0}, "a tax rate of 100 percent", id="tax-one"),
         pytest.param({"tax_rate": -0.5}, "a negative tax rate", id="tax-negative"),
         pytest.param({"nwc_share": 1.0}, "a working-capital share of 100 percent", id="share-one"),
@@ -737,6 +760,13 @@ def test_monte_carlo_rejects_invalid_arguments(args: tuple[int, int, float], con
 
 def test_monte_carlo_refuses_zero_draws() -> None:
     must_raise(lambda: npv_monte_carlo(PROJECT, RATE, 0, SEED, 0.1), "zero draws: a request needs at least two")
+
+
+def test_monte_carlo_refuses_negative_draws() -> None:
+    must_raise(
+        lambda: npv_monte_carlo(PROJECT, RATE, -5, SEED, 0.1),
+        "a negative number of draws: a request needs at least two",
+    )
 
 
 def test_monte_carlo_refuses_a_rate_at_or_below_minus_one() -> None:

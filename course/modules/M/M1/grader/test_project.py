@@ -37,7 +37,7 @@ pytestmark = pytest.mark.filterwarnings("error")
 
 SEED = int(os.environ.get("QF_SEED", "0"))
 INST = make_instance(SEED)
-INST2 = make_instance(SEED + 7_919)  # a second instance, so a fixed answer for one seed cannot pass
+INST2 = make_instance(SEED + 7_919)  # a second instance, so a fixed answer for one seed must also match a second loan
 PRINCIPAL: int = INST["principal_cents"]
 BPS: int = INST["annual_bps"]
 MONTHS: int = INST["months"]
@@ -230,6 +230,19 @@ def test_annuity_factor_at_a_tiny_rate_is_not_taken_as_zero() -> None:
     got = sol.annuity_factor(rate, periods)
     assert close(got, exact, 1e-6), (
         "a rate of 5e-10 is not zero: the factor must be the closed form at that rate, not the number of periods"
+    )
+
+
+def test_annuity_factor_at_a_rate_of_5e_11_is_not_taken_as_zero() -> None:
+    """A rate of 5e-11 is not zero either: with 100,000 periods the exact factor is 99,999.7499979 and a rate taken as
+    zero returns 100,000, a relative error of 2.5e-6, above the tolerance of 1e-6. The float closed form is 8.3e-8
+    relative from the exact value, inside the tolerance, so the closed form is the expected behaviour at this rate."""
+    rate, periods = 5e-11, 100_000
+    with localcontext() as ctx:
+        ctx.prec = 80
+        exact = float((1 - (1 + Decimal(repr(rate))) ** (-periods)) / Decimal(repr(rate)))
+    assert close(sol.annuity_factor(rate, periods), exact, 1e-6), (
+        "a rate of 5e-11 is not zero: the factor must be the closed form at that rate, not the number of periods"
     )
 
 
@@ -500,6 +513,28 @@ def test_schedule_interest_tie_goes_up() -> None:
     assert rows[0][2] == 1, "interest of exactly half a cent must go up to one whole cent"
 
 
+@pytest.mark.parametrize(
+    ("principal", "annual_rate", "first_interest"),
+    [
+        # 462554000 x 0.027 / 12 = 1040746.5 exactly, a tie that goes up to 1040747. In floating point the product
+        # is 1040746.4999999999, which rounds down, so the exact rule is needed to see the tie.
+        (462_554_000, 0.027, 1_040_747),
+        # 804509400 x 0.23 / 12 = 15419763.5 exactly, a tie that goes up to 15419764; the float product is 15419763.49.
+        (804_509_400, 0.23, 15_419_764),
+    ],
+    ids=["tie-at-2.7-percent", "tie-at-23-percent"],
+)
+def test_schedule_interest_tie_is_exact_not_floating_point(
+    principal: int, annual_rate: float, first_interest: int
+) -> None:
+    """The first month's interest is the opening balance times the monthly rate, computed exactly: an exact half cent
+    goes up. Floating point multiplication lands just below the tie and would round down."""
+    rows = schedule(principal, annual_rate, 360)
+    assert rows[0][2] == first_interest, (
+        "monthly interest must be the exact product of the opening balance and the monthly rate, rounded once"
+    )
+
+
 def test_schedule_interest_just_below_a_half_cent_goes_down() -> None:
     """The other side of the tie: 499 cents at 0.012 a year accrue exactly 0.499 cents in month 1, which rounds down
     to 0. A rule that rounds every fraction of a cent up returns 1 here."""
@@ -603,8 +638,8 @@ def test_schedule_pays_the_level_payment_until_the_last_month() -> None:
 
 def test_final_payment_is_within_the_stated_bound() -> None:
     """Each month's interest is taken to the nearest cent, an error of at most half a cent. The final payment
-    therefore differs from the level payment by at most n * (1 + i)^n + 1 cents. The bound is loose; the test
-    checks the stated rule, not a tighter one."""
+    therefore differs from the level payment by at most n * (1 + i)^n + 1 cents. The test checks the stated bound,
+    not a tighter one."""
     i = RATE / 12
     level = sol.level_payment_cents(PRINCIPAL, RATE, MONTHS)
     last = schedule(PRINCIPAL, RATE, MONTHS)[-1][4]
@@ -845,6 +880,7 @@ def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: 
         (True, 0.05, 12),
         (1000, -0.01, 12),
         (1000, math.inf, 12),
+        (1000, math.nan, 12),
         (1000, 0.05, 0),
         (1000, 0.05, -3),
         (1000, 0.05, 2.0),

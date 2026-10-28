@@ -620,6 +620,18 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
             ],
         ),
         (
+            "an amount that is a float with a fraction of a cent",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5.5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
             "an amount that is the boolean True on the debit side",
             [
                 {
@@ -706,6 +718,33 @@ def test_small_ledger_january_income_statement() -> None:
         "net_income": 130,
     }
     _check_values(got, expected, "income statement", "2024-01-31")
+
+
+# Entries dated 1 January and 31 December 2024: real dates that the posting rules accept, so they must post and count.
+YEAR_EDGE_LEDGER: list[dict[str, Any]] = [
+    _entry("2024-01-01", [("cash", 300, 0), ("common_stock", 0, 300)]),
+    _entry("2024-12-31", [("cash", 50, 0), ("sales", 0, 50)]),
+]
+
+
+def test_entries_on_the_first_and_last_days_of_the_year_post_and_count() -> None:
+    ledger = sol.post(YEAR_EDGE_LEDGER)
+    jan = {"cash": 300, "common_stock": 300, "total_assets": 300, "total_liabilities_and_equity": 300}
+    _check_values(sol.balance_sheet(ledger, "2024-01-31"), jan, "balance sheet", "2024-01-31")
+    dec = {"cash": 350, "common_stock": 300, "retained_earnings": 50, "total_assets": 350, "total_equity": 350}
+    _check_values(sol.balance_sheet(ledger, "2024-12-31"), dec, "balance sheet", "2024-12-31")
+    _check_values(
+        sol.income_statement(ledger, "2024-12-31"), {"sales": 50, "net_income": 50}, "income statement", "2024-12-31"
+    )
+    flow = {"beginning_cash": 300, "cash_from_operations": 50, "net_change_in_cash": 50, "ending_cash": 350}
+    _check_values(sol.cash_flow_statement(ledger, "2024-12-31"), flow, "cash flow statement", "2024-12-31")
+
+
+def test_an_entry_dated_on_the_leap_day_posts_and_counts() -> None:
+    # 2024-02-29 is a real calendar date, so the posting rule accepts it and the February balance includes it.
+    ledger = sol.post([_entry("2024-02-29", [("cash", 4, 0), ("common_stock", 0, 4)])])
+    expected = {"cash": 4, "common_stock": 4, "total_assets": 4}
+    _check_values(sol.balance_sheet(ledger, "2024-02-29"), expected, "balance sheet", "2024-02-29")
 
 
 def test_a_one_cent_entry_posts_at_one_cent() -> None:

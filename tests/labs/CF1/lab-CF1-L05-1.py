@@ -31,10 +31,11 @@ def payback(flows: Sequence[float]) -> float | None:
     """Payback in years: the first year whose end cumulative flow is zero or more, interpolated inside that year.
 
     flows[t] is the cash flow at the end of year t, in cents, with flows[0] at time zero. The result is None when the
-    cumulative flow never reaches zero. Units: years.
+    cumulative flow never reaches zero. Units: years. Raises ValueError when flows[0] is not negative, because the
+    definition needs an investment at time zero.
     """
     if flows[0] >= 0:
-        return 0.0
+        raise ValueError("payback needs an investment at time zero: flows[0] must be negative")
     total = float(flows[0])
     for t in range(1, len(flows)):
         previous = total

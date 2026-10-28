@@ -346,6 +346,62 @@ def test_exact_half_cent_rounds_up() -> None:
     decomposition_matches(case)
 
 
+def test_exact_half_cent_in_variable_cost_rounds_up() -> None:
+    # Budgeted variable cost 2 cents over 4 budgeted units: at one unit in total it flexes to 1/2 cent, which rounds up.
+    rows = [
+        {
+            "name": "Cord",
+            "budget_units": 2,
+            "budget_price_cents": 10,
+            "standard_inputs_per_unit": 1,
+            "actual_units": 1,
+            "actual_price_cents": 10,
+        },
+        {
+            "name": "Free",
+            "budget_units": 2,
+            "budget_price_cents": 0,
+            "standard_inputs_per_unit": 0,
+            "actual_units": 0,
+            "actual_price_cents": 0,
+        },
+    ]
+    case = with_products(rows, input_price_cents=1, actual_inputs_used=1)
+    assert sol.flexible_budget(case, 1)["variable_cost_cents"] == 1, (
+        "a half cent of variable cost must round up, not down."
+    )
+    assert oracle(case)["flex_variable"] == 1, "the test oracle must round a half cent of variable cost up."
+    decomposition_matches(case)
+
+
+def test_flexed_variable_cost_below_half_a_cent_rounds_down() -> None:
+    # Budgeted variable cost 1 cent over 3 budgeted units: one unit flexes to 1/3 of a cent, which rounds down to 0.
+    rows = [
+        {
+            "name": "Pen",
+            "budget_units": 1,
+            "budget_price_cents": 0,
+            "standard_inputs_per_unit": 1,
+            "actual_units": 1,
+            "actual_price_cents": 0,
+        },
+        {
+            "name": "Ink",
+            "budget_units": 2,
+            "budget_price_cents": 0,
+            "standard_inputs_per_unit": 0,
+            "actual_units": 0,
+            "actual_price_cents": 0,
+        },
+    ]
+    case = with_products(rows, input_price_cents=1, actual_inputs_used=1)
+    assert sol.flexible_budget(case, 1)["variable_cost_cents"] == 0, (
+        "a third of a cent of variable cost must round down, not up."
+    )
+    assert oracle(case)["flex_variable"] == 0, "the test oracle must round a third of a cent of variable cost down."
+    decomposition_matches(case)
+
+
 # ---------------------------------------------------------------- the four variances and the total
 
 
@@ -384,10 +440,13 @@ def test_master_budget_values_are_integers() -> None:
         )
 
 
-def test_mix_is_within_one_cent_of_the_exact_fraction() -> None:
-    got = sol.variance_decomposition(CASE)
-    assert abs(Fraction(got["sales_mix"]) - oracle(CASE)["exact_mix"]) <= 1, (
-        "the flexed profit is taken to whole cents, so the mix can differ from the exact fraction by at most one cent."
+@pytest.mark.parametrize("seed", range(50))
+def test_mix_is_within_one_cent_of_the_exact_fraction(seed: int) -> None:
+    # Each rounding moves a flexed amount by less than half a cent, so their difference is less than one cent.
+    case = json.loads(make_instance(seed)["payload"])
+    got = sol.variance_decomposition(case)
+    assert abs(Fraction(got["sales_mix"]) - oracle(case)["exact_mix"]) < 1, (
+        "the flexed profit is taken to whole cents, so the mix differs from the exact fraction by less than one cent."
     )
 
 
@@ -765,14 +824,11 @@ def test_duplicate_product_names_raise_value_error(name: str) -> None:
     must_raise(call, f"{name}: two products with the same name")
 
 
-def test_empty_product_name_raises_value_error() -> None:
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_empty_product_name_raises_value_error(name: str) -> None:
     rows = copy.deepcopy(PRODUCTS)
     rows[0]["name"] = ""
-    must_raise(lambda: sol.master_budget(with_products(rows)), "master_budget: a product with an empty name")
-    must_raise(lambda: sol.flexible_budget(with_products(rows), 10), "flexible_budget: a product with an empty name")
-    must_raise(
-        lambda: sol.variance_decomposition(with_products(rows)), "variance_decomposition: a product with an empty name"
-    )
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a product with an empty name")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
@@ -923,7 +979,9 @@ def test_case_that_is_a_read_only_mapping_is_accepted(name: str) -> None:
 
 @pytest.mark.parametrize("name", FUNCTIONS)
 @pytest.mark.parametrize(
-    "bad", ({r["name"]: r for r in PRODUCTS}, "Alpha", tuple(copy.deepcopy(PRODUCTS))), ids=["mapping", "text", "tuple"]
+    "bad",
+    ({r["name"]: r for r in PRODUCTS}, "Alpha", tuple(copy.deepcopy(PRODUCTS)), None, 5),
+    ids=["mapping", "text", "tuple", "none", "number"],
 )
 def test_products_that_are_not_a_list_raise_value_error(name: str, bad: Any) -> None:
     must_raise(_call_for(name, fresh(products=bad)), f"{name}: products given as a {type(bad).__name__}, not a list")
