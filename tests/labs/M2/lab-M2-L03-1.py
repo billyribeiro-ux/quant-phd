@@ -3,9 +3,9 @@
 Standard library only. No randomness and no network. The piecewise function is f(x) = x^2 for x < 1 and
 f(x) = 2x for x >= 1. Its left-hand values tend to 1 and its right-hand values tend to 2 as x tends to 1, so the
 two-sided limit at 1 does not exist. Each value is an exact rational number (fractions.Fraction). The second part
-checks, on a finite grid of points x with 0 < |x - 2| < delta, that delta = epsilon/3 gives |f(x) - 7| < epsilon
-for lim (3x + 1) = 7 at x = 2, for three values of epsilon. The grid is a finite check of one choice of delta. The
-epsilon-delta proof on the page covers every x.
+checks, on a finite grid of points x with 0 < |x - 2| < delta, that delta = epsilon/3 gives |g(x) - 7| < epsilon
+for g(x) = 3x + 1 (limit 7 at x = 2), for three values of epsilon. The grid is a finite check of one choice
+of delta. The epsilon-delta proof on the page covers every x.
 """
 
 from __future__ import annotations

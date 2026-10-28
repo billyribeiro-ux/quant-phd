@@ -7,7 +7,7 @@ search stops at the matching key, and an unsuccessful search compares the key wi
 
 The model values printed next to the measured ones are exact expectations under simple uniform hashing,
 which assumes that each key lands in a bucket chosen uniformly and independently of the other keys. This hash
-is not that random model, so the measured and model values differ by a computed amount that the output shows.
+is not that random model, so the measured and model values can differ. The output prints both values.
 """
 
 from __future__ import annotations

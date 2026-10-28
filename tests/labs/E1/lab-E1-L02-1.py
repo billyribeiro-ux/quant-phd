@@ -5,8 +5,8 @@ C(q) = F + c q + k q^2, with fixed cost F >= 0, unit cost c >= 0 and k > 0, in t
 example. For price p the profit is pi(q) = p q - C(q). The lab evaluates pi exactly on the grid
 q = j / 12 for j = 0 to 72 (outputs 0 to 6) and reports the grid maximiser. It compares that maximiser with the
 closed form q* = (p - c) / (2 k), the output at which price equals marginal cost MC(q) = c + 2 k q. Every case
-has q* on the grid. The lab also computes the profit at q = 0 (shutdown, profit -F), and it checks that cases
-1 and 4 differ only in F and so have the same grid output. Last, for case 1 it computes the profit at sqrt(F/k),
+has q* on the grid. The lab also computes the profit at q = 0 (shutdown, profit -F), and it prints whether cases
+1 and 4 share p, c and k, with the grid output of each. Last, for case 1 it computes the profit at sqrt(F/k),
 the output that minimises average cost C(q) / q, in floating point to four decimals, and compares it with the
 profit at q*. The check is finite: it tests these cases only, and the proof for every input is on the page.
 """
@@ -74,11 +74,13 @@ def main() -> None:
             f"  shutdown profit -F = {profit(Fraction(0), p, fixed, c, k)}; producing q* is better: "
             f"{pi_star > profit(Fraction(0), p, fixed, c, k)}"
         )
-    fixed_cost_changed = grid_optimum(CASES[3][0], CASES[3][3], CASES[3][1], CASES[3][2])[1]
-    base = grid_optimum(CASES[0][0], CASES[0][3], CASES[0][1], CASES[0][2])[1]
+    base_case, changed_case = CASES[0], CASES[3]
+    base = grid_optimum(base_case[0], base_case[3], base_case[1], base_case[2])[1]
+    fixed_cost_changed = grid_optimum(changed_case[0], changed_case[3], changed_case[1], changed_case[2])[1]
+    same_inputs = base_case[:3] == changed_case[:3]
     print(
-        f"cases 1 and 4 differ only in F (12 and 100): grid output {base} and {fixed_cost_changed}, "
-        f"equal: {base == fixed_cost_changed}"
+        f"cases 1 and 4 share p, c and k: {same_inputs}; fixed costs {base_case[3]} and {changed_case[3]}; "
+        f"grid output {base} and {fixed_cost_changed}, equal: {base == fixed_cost_changed}"
     )
     p, c, k, fixed = CASES[0]
     q_avg = math.sqrt(float(fixed / k))

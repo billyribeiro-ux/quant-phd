@@ -1,10 +1,10 @@
-"""Rung 3 reference numbers: the repairs, their distances from the input, and the weights the report quotes.
+"""Rung 3 reference numbers: the repairs, their distances from the input, and the determinant and weights of the input.
 
 SIMULATED: the four-by-four matrix and the volatilities are set by hand for this run. They are not estimated from data.
 Standard library only. Copy this file into report/run_report.py, delete the six functions jacobi_eigen, psd_projection,
 min_eigenvalue, clip_repair, projection_repair and comparison_weights, and import the four names min_eigenvalue,
-clip_repair, projection_repair and comparison_weights from your covariance_doctor module. frobenius stays. Your module
-must print the same lines.
+clip_repair, projection_repair and comparison_weights from your covariance_doctor module. frobenius and determinant
+stay. Your module must print the same lines.
 """
 
 import math
@@ -107,6 +107,25 @@ def comparison_weights(corr: Matrix, vols: list[float]) -> list[float]:
     return [x / total for x in solution]
 
 
+def determinant(a: Matrix) -> float:
+    """The determinant by Gaussian elimination with partial pivoting: the pivots' product, sign-flipped per swap."""
+    n = len(a)
+    m = [row[:] for row in a]
+    det = 1.0
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(m[r][col]))
+        if m[pivot][col] == 0.0:
+            return 0.0
+        if pivot != col:
+            m[col], m[pivot] = m[pivot], m[col]
+            det = -det
+        det *= m[col][col]
+        for r in range(col + 1, n):
+            factor = m[r][col] / m[col][col]
+            m[r] = [p - factor * q for p, q in zip(m[r], m[col], strict=True)]
+    return det
+
+
 def frobenius(a: Matrix, b: Matrix) -> float:
     """The Frobenius distance: the square root of the sum of squared entry differences."""
     n = len(a)
@@ -143,14 +162,9 @@ def main() -> None:
         f"{max(abs(proj[i][i] - 1.0) for i in range(n)):.6f}",
     )
     print("projection positive semidefinite at tol 1e-8:", min_eigenvalue(proj) >= -1e-8)
-    w_clip = comparison_weights(clip, vols)
-    w_proj = comparison_weights(proj, vols)
-    print("weights, clipping:", " ".join(f"{x:.6f}" for x in w_clip), "| sum", f"{sum(w_clip):.6f}")
-    print("weights, projection:", " ".join(f"{x:.6f}" for x in w_proj), "| sum", f"{sum(w_proj):.6f}")
-    print(
-        "largest weight difference, projection minus clipping:",
-        f"{max(abs(w_proj[i] - w_clip[i]) for i in range(n)):.6f}",
-    )
+    print("determinant of the input:", f"{determinant(corr):.6f}")
+    w_input = comparison_weights(corr, vols)
+    print("weights, input:", " ".join(f"{x:.6f}" for x in w_input), "| sum", f"{sum(w_input):.6f}")
 
 
 main()

@@ -91,10 +91,10 @@ def main() -> None:
     print(f"smallest primal objective on the grid: {best_f} at w = ({best_w[0]}, {best_w[1]})")
     print(f"grid duality gap (smallest primal minus largest dual): {best_f - best_g}")
 
-    slater = (Fraction(1, 2), Fraction(1, 2))
+    test_point = (Fraction(1, 2), Fraction(1, 2))
     print(
-        "Slater point (1/2, 1/2): both inequality constraints strictly satisfied: "
-        f"{slater[0] > 0 and slater[1] > 0 and slater[0] + slater[1] == 1}"
+        "point (1/2, 1/2), with both inequality constraints strict and the budget exact: "
+        f"{test_point[0] > 0 and test_point[1] > 0 and test_point[0] + test_point[1] == 1}"
     )
     print(f"dual value at lambda = (0, 0), nu = 0 (no multipliers): {dual((Fraction(0), Fraction(0)), Fraction(0))}")
 

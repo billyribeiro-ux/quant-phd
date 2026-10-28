@@ -13,7 +13,8 @@ The lab checks four things on the grid {-2, -1, 0, 1, 2} in each coordinate (25 
 4. the explicit example x = (1, 0), y = (0, 1), l = 1/2 for Q2.
 
 A check over a finite grid is evidence about the grid only. It does not prove convexity on the plane. The
-plane-wide claim rests on the eigenvalue test, which is a theorem on the page (Proposition 3.2 of the lesson).
+plane-wide claim rests on the eigenvalue test, which is Proposition 3.2 of the lesson, proved on the page
+under Assumption 1 (the spectral theorem, from M3).
 """
 
 from __future__ import annotations

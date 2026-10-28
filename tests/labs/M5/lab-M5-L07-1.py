@@ -7,7 +7,7 @@ sin(1), the modulus that Proposition 3.1 gives. Part C applies the same sampling
 [-L, L] for two windows, and checks that f(x) - x is positive at every grid point. A grid check does not prove that
 f has no fixed point; the page proves that analytically.
 Standard library only; no randomness and no network access. The float tolerance is TOL = 1e-12 in Parts A and B;
-Part C tests the sign of f(x) - x exactly.
+Part C tests the sign of f(x) - x in floating point with no tolerance.
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ def window_ratio(half: float) -> tuple[float, float]:
 
 
 def part_c() -> None:
-    """Show that the sampled ratio of f rises toward 1 as the window widens, and that f has no fixed point."""
+    """Print the sampled ratio of f on each window, and check that f(x) - x is positive at every grid point."""
     for half in WINDOWS:
         best, gap = window_ratio(half)
         if gap <= 0.0:

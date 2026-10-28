@@ -182,12 +182,42 @@ def test_asymmetry_beyond_tolerance_is_refused(name: str, i: int, j: int, sign: 
 
 @pytest.mark.parametrize("name", list(MATRIX_FUNCS))
 @pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_asymmetry_exactly_the_tolerance_is_accepted(name: str, sign: float) -> None:
+    """The page refuses a pair that differs by MORE than 1e-9, so a pair that differs by exactly 1e-9 is accepted.
+    The entries 0.0 and 1e-9 make the difference exactly the tolerance in floating point."""
+    call = MATRIX_FUNCS[name]
+    tie = [[1.0, 0.0], [sign * 1e-9, 1.0]]
+    must_not_raise(lambda: call(tie), f"{name} on an entry pair that differs by exactly 1e-9")
+
+
+@pytest.mark.parametrize("name", list(MATRIX_FUNCS))
+@pytest.mark.parametrize("sign", [1.0, -1.0])
 def test_asymmetry_within_tolerance_is_accepted(name: str, sign: float) -> None:
     """An asymmetry of 1e-10 is within the 1e-9 tolerance: the function returns a value, in each direction."""
     call = MATRIX_FUNCS[name]
     base = [[1.0, 0.3, 0.1], [0.3, 1.0, -0.2], [0.1, -0.2, 1.0]]
     near = symmetric_pair(base, 0, 1, sign * 1e-10)
     must_not_raise(lambda: call(near), f"{name} on an entry pair that differs by 1e-10")
+
+
+@pytest.mark.parametrize("name", list(MATRIX_FUNCS))
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_asymmetry_of_half_the_tolerance_is_accepted_at_large_entries(name: str, sign: float) -> None:
+    """The 1e-9 tolerance is absolute: a pair that differs by 5e-10, with entries about 0.3, is accepted."""
+    call = MATRIX_FUNCS[name]
+    base = [[1.0, 0.3, 0.1], [0.3, 1.0, -0.2], [0.1, -0.2, 1.0]]
+    near = symmetric_pair(base, 0, 1, sign * 5e-10)
+    must_not_raise(lambda: call(near), f"{name} on an entry pair that differs by 5e-10 at entries about 0.3")
+
+
+@pytest.mark.parametrize("name", list(MATRIX_FUNCS))
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_asymmetry_of_twice_the_tolerance_is_refused_at_large_entries(name: str, sign: float) -> None:
+    """A pair that differs by 2e-9, with entries about 0.3, is beyond the 1e-9 tolerance and is refused."""
+    call = MATRIX_FUNCS[name]
+    base = [[1.0, 0.3, 0.1], [0.3, 1.0, -0.2], [0.1, -0.2, 1.0]]
+    bad = symmetric_pair(base, 0, 1, sign * 2e-9)
+    must_raise(lambda: call(bad), f"{name} on an entry pair that differs by 2e-9 at entries about 0.3")
 
 
 # --- min_eigenvalue
@@ -324,6 +354,18 @@ def test_clip_repair_with_positive_floor_is_positive_semidefinite() -> None:
     assert min_eig(y) >= -1e-9, "clip_repair with floor 0.01 must still return a positive semidefinite matrix"
 
 
+def test_clip_repair_floor_raises_eigenvalues_below_it() -> None:
+    """Planted eigenvalues -0.3 and 0.004 lie below the floor 0.01 and the others above it: clip_repair must equal
+    the rescaled matrix whose eigenvalues are max(s, 0.01). A routine that clips at zero fails this."""
+    spectrum = [-0.3, 0.004] + [1.0] * (K - 2)
+    raised = from_spectrum([max(s, 0.01) for s in spectrum], INST["eigenvectors"])
+    d = [raised[i][i] for i in range(K)]
+    expected = [[raised[i][j] / math.sqrt(d[i] * d[j]) for j in range(K)] for i in range(K)]
+    y = as_matrix(sol.clip_repair(from_spectrum(spectrum, INST["eigenvectors"]), floor=0.01), K)
+    worst = max(abs(y[i][j] - expected[i][j]) for i in range(K) for j in range(K))
+    assert worst <= 1e-9, "clip_repair must set every eigenvalue below the floor to the floor, then rescale"
+
+
 def test_clip_repair_floor_below_every_eigenvalue_changes_nothing() -> None:
     """Eigenvalues are set to the floor only when they are below it: with floor -0.5, which lies below every
     eigenvalue of a positive definite unit-diagonal matrix, the matrix comes back unchanged."""
@@ -390,7 +432,8 @@ def as_number_list(values: object, n: int) -> list[float]:
 def test_lab3_reference_numbers_are_matched() -> None:
     """The specification requires the module to match the printed numbers of Lab 3's matrix. Clipping is exact, so
     its printed numbers are checked to 1e-6; the projection is an iteration, so its numbers are checked to 1e-5, which
-    is far below the printed gap between the two repairs (0.001570 in distance, 0.011516 in entries)."""
+    is far below the printed gap between the two repairs (0.001570 in distance, 0.011516 in entries). The weights are
+    those of the input, whose Sigma is invertible. No weights are checked for the repairs."""
     n = 4
     clip = as_matrix(sol.clip_repair(LAB3_CORR), n)
     proj = as_matrix(sol.projection_repair(LAB3_CORR), n)
@@ -405,12 +448,9 @@ def test_lab3_reference_numbers_are_matched() -> None:
             1e-5,
         ),
     ]
-    w_clip = as_number_list(sol.comparison_weights(clip, LAB3_VOLS), n)
-    w_proj = as_number_list(sol.comparison_weights(proj, LAB3_VOLS), n)
-    for got, want in zip(w_clip, [1.218951, -0.546718, -0.012462, 0.340229], strict=True):
-        checks.append(("a clipping weight", got, want, 1e-6))
-    for got, want in zip(w_proj, [1.220113, -0.545144, -0.013004, 0.338035], strict=True):
-        checks.append(("a projection weight", got, want, 1e-5))
+    w_input = as_number_list(sol.comparison_weights(LAB3_CORR, LAB3_VOLS), n)
+    for got, want in zip(w_input, [1.778929, -1.096718, -0.255613, 0.573402], strict=True):
+        checks.append(("a weight of the input", got, want, 1e-6))
     for name, got, want, tol in checks:
         assert abs(got - want) <= tol, f"Lab 3 reference number not matched: {name}"
 
@@ -532,6 +572,22 @@ def test_weights_accept_asymmetry_within_tolerance(i: int, j: int, sign: float) 
     base = [[1.0, 0.3], [0.3, 1.0]]
     near = symmetric_pair(base, i, j, sign * 1e-10)
     weights_sum_check(sol.comparison_weights(near, [0.1, 0.2]), 2)
+
+
+@pytest.mark.parametrize(("i", "j"), [(0, 1), (1, 0)], ids=["upper", "lower"])
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_weights_accept_half_tolerance_asymmetry_at_large_entries(i: int, j: int, sign: float) -> None:
+    """The tolerance is absolute: a pair that differs by 5e-10, with entries about 0.3, is accepted."""
+    near = symmetric_pair([[1.0, 0.3], [0.3, 1.0]], i, j, sign * 5e-10)
+    weights_sum_check(sol.comparison_weights(near, [0.1, 0.2]), 2)
+
+
+@pytest.mark.parametrize(("i", "j"), [(0, 1), (1, 0)], ids=["upper", "lower"])
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_weights_refuse_twice_tolerance_asymmetry_at_large_entries(i: int, j: int, sign: float) -> None:
+    """A pair that differs by 2e-9, with entries about 0.3, is beyond the 1e-9 tolerance and is refused."""
+    bad = symmetric_pair([[1.0, 0.3], [0.3, 1.0]], i, j, sign * 2e-9)
+    must_raise(lambda: sol.comparison_weights(bad, [0.1, 0.2]), "an asymmetric correlation matrix (2e-9 apart)")
 
 
 @pytest.mark.parametrize("position", [0, 1, 2], ids=["first", "middle", "last"])

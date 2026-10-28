@@ -4,7 +4,8 @@ Claim checked: for the same stream of n = 2000 values, the sample variance from 
 two-pass formula and from the naive sum-of-squares formula is compared with an exact Fraction reference.
 The stream is offset + u, where u is uniform on [0, 1) from random.Random(SEED). The offset is the
 variable under test: 0, 1e6 and 1e9. SIMULATED data, not market data.
-Relative error is |estimate - exact| / exact, printed to 3 significant digits. Standard library only.
+Relative error is |estimate - exact| / exact, printed in scientific notation with three digits after the
+decimal point. Standard library only.
 No randomness outside the seeded generator and no network access.
 """
 

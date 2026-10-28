@@ -26,10 +26,17 @@ def midpoint(f: Callable[[float], float], a: float, b: float, n: int = N) -> flo
 
 def part_a() -> None:
     lhs = midpoint(lambda x: x * x * (1 - x) ** 3, 0.0, 1.0)
-    # u v at the endpoints: u(1) v(1) - u(0) v(0), with v(1) = 0 and u(0) = 0.
-    boundary = 0.0
-    # -int u' v = int 2x (1 - x)^4 / 4 = (1/2) int x (1 - x)^4.
-    rhs = boundary + 0.5 * midpoint(lambda x: x * (1 - x) ** 4, 0.0, 1.0)
+
+    def u(x: float) -> float:
+        return x * x
+
+    def v(x: float) -> float:
+        return -((1 - x) ** 4) / 4
+
+    # The boundary term [uv]_0^1 = u(1) v(1) - u(0) v(0), computed from u and v.
+    boundary = u(1.0) * v(1.0) - u(0.0) * v(0.0)
+    # -int u' v with u'(x) = 2x, computed from the integrand.
+    rhs = boundary + midpoint(lambda x: -2.0 * x * v(x), 0.0, 1.0)
     exact = 1 / 60
     print(f"part A: midpoint int_0^1 x^2 (1 - x)^3 dx = {lhs:.10f}, exact 1/60 = {exact:.10f}")
     print(f"part A: right side [uv] - int u'v = {rhs:.10f}")

@@ -153,19 +153,34 @@ def test_central_difference_matches_the_analytic_derivative(inst: dict[str, Any]
     )
 
 
-@pytest.mark.parametrize("inst", INSTANCES)
-def test_forward_error_is_of_order_h(inst: dict[str, Any]) -> None:
+def forward_error_ratio(inst: dict[str, Any]) -> float:
+    """The ratio of the forward-estimate errors at steps 1e-2 and 5e-3 for the instance's cubic."""
     coeffs, x0 = inst["cubic"], inst["x0"]
     exact = cubic_prime(coeffs, x0)
 
     def error(h: float) -> float:
         return float(abs(sol.fd_derivative(lambda x: float(cubic(coeffs, x)), x0, h, "forward") - exact))
 
-    ratio = error(1e-2) / error(5e-3)
+    return error(1e-2) / error(5e-3)
+
+
+@pytest.mark.parametrize("inst", INSTANCES)
+def test_forward_error_is_not_of_order_h_squared(inst: dict[str, Any]) -> None:
+    # The upper bound: a forward estimate that is central in disguise has a ratio near 4.
     require(
-        1.9 <= ratio <= 2.1,
-        "the forward difference's error must halve with its step: order "
+        forward_error_ratio(inst) <= 2.1,
+        "the forward difference's error must not fall faster than its step: order "
         "h, not h squared (hint: Lesson 13, the forward error is of order h)",
+    )
+
+
+@pytest.mark.parametrize("inst", INSTANCES)
+def test_forward_error_is_at_least_of_order_h(inst: dict[str, Any]) -> None:
+    # The lower bound: an error that falls more slowly than h has a ratio below 2.
+    require(
+        forward_error_ratio(inst) >= 1.9,
+        "the forward difference's error must halve with its step: order "
+        "h (hint: Lesson 13, the forward error is of order h)",
     )
 
 
@@ -219,6 +234,50 @@ def test_negative_step_raises_value_error() -> None:
             "a negative step must be refused with ValueError "
             "(hint: Lesson 13, a finite difference needs a positive step)",
         )
+
+
+def test_negative_zero_step_raises_value_error() -> None:
+    # -0.0 equals zero, so it is not above zero and is refused like 0.0.
+    coeffs, x0 = INST["cubic"], INST["x0"]
+    for scheme in ("forward", "central"):
+        must_raise(
+            partial(sol.fd_derivative, lambda x: float(cubic(coeffs, x)), x0, -0.0, scheme),
+            "a step of negative zero is not above zero and must be refused with ValueError",
+        )
+
+
+def test_tiny_negative_step_raises_value_error() -> None:
+    # The refusal covers every step below zero, however small in size: -1e-300 is refused as -1e-3 is.
+    coeffs, x0 = INST["cubic"], INST["x0"]
+    for scheme in ("forward", "central"):
+        must_raise(
+            partial(sol.fd_derivative, lambda x: float(cubic(coeffs, x)), x0, -1e-300, scheme),
+            "a tiny negative step must be refused with ValueError, as any negative step is "
+            "(hint: Lesson 13, a finite difference needs a positive step)",
+        )
+
+
+def test_nan_step_raises_value_error() -> None:
+    # NaN is not above zero, so the specification refuses it with ValueError.
+    coeffs, x0 = INST["cubic"], INST["x0"]
+    for scheme in ("forward", "central"):
+        must_raise(
+            partial(sol.fd_derivative, lambda x: float(cubic(coeffs, x)), x0, float("nan"), scheme),
+            "a NaN step is not above zero and must be refused with ValueError "
+            "(hint: Lesson 13, a finite difference needs a positive step)",
+        )
+
+
+def test_large_positive_step_is_accepted() -> None:
+    # Only a step that is not above zero is refused. A step above zero is accepted at any size, including 1 and 5.
+    coeffs, x0 = INST["cubic"], INST["x0"]
+    for h in (1.0, 5.0):
+        for scheme in ("forward", "central"):
+            value = must_accept(
+                partial(sol.fd_derivative, lambda x: float(cubic(coeffs, x)), x0, h, scheme),
+                f"a step of {h} is above zero, so the specification accepts it",
+            )
+            require(isinstance(value, float) and math.isfinite(value), "a positive step must return a finite float")
 
 
 def test_positive_step_is_accepted() -> None:
@@ -295,6 +354,51 @@ def test_reflected_operators_are_defined(inst: dict[str, Any]) -> None:
     )
 
 
+@pytest.mark.parametrize("inst", INSTANCES)
+def test_sum_of_two_quantities_that_depend_on_x(inst: dict[str, Any]) -> None:
+    # x * x and x are both dual numbers, so their sum must carry both derivatives: d/dx (x*x + x) = 2x + 1.
+    x0 = inst["x0"]
+    value = sol.ad_derivative(lambda x: x * x + x, x0)
+    require(
+        close(value, 2 * x0 + 1, 1e-9),
+        "the sum of two quantities that both depend on x must add both derivatives "
+        "(hint: Lesson 14, the sum rule on dual numbers)",
+    )
+
+
+@pytest.mark.parametrize("inst", INSTANCES)
+def test_difference_of_two_quantities_that_depend_on_x(inst: dict[str, Any]) -> None:
+    # d/dx (x - x*x) = 1 - 2x: the derivative of the subtracted quantity must be subtracted, not dropped.
+    x0 = inst["x0"]
+    value = sol.ad_derivative(lambda x: x - x * x, x0)
+    require(
+        close(value, 1 - 2 * x0, 1e-9),
+        "the difference of two quantities that both depend on x must subtract both derivatives "
+        "(hint: Lesson 14, the difference rule on dual numbers)",
+    )
+
+
+@pytest.mark.parametrize("inst", INSTANCES)
+def test_plain_numbers_on_either_side_of_plus_and_minus(inst: dict[str, Any]) -> None:
+    # d/dx (2 + x*x - 0.5) = 2x: a number on the left of + and on the right of - leaves the derivative alone.
+    x0 = inst["x0"]
+    value = sol.ad_derivative(lambda x: 2.0 + x * x - 0.5, x0)
+    require(
+        close(value, 2 * x0, 1e-9),
+        "a plain number on either side of + or - must not change the derivative "
+        "(hint: Lesson 14, constants have zero derivative)",
+    )
+
+
+def test_constant_function_has_zero_derivative() -> None:
+    # A function written with numbers only does not depend on x, so its derivative is 0 at every point.
+    value = sol.ad_derivative(lambda x: 5.0, 0.7)
+    require(
+        value == 0.0,
+        "the derivative of a constant function must be 0 (hint: Lesson 14, constants have zero derivative)",
+    )
+
+
 # ---- Hessians: hessian_fd ----
 
 
@@ -366,6 +470,24 @@ def test_hessian_zero_or_negative_step_raises_value_error() -> None:
     )
 
 
+def test_hessian_tiny_negative_or_negative_zero_step_raises_value_error() -> None:
+    c, point = INST["surface"], INST["point"]
+    for step in (-1e-300, -0.0):
+        must_raise(
+            partial(sol.hessian_fd, lambda p: surface(c, p), point, step),
+            "a Hessian step that is not above zero must raise, however small "
+            "(hint: Lesson 19, the Hessian needs a positive step)",
+        )
+
+
+def test_hessian_nan_step_raises_value_error() -> None:
+    c, point = INST["surface"], INST["point"]
+    must_raise(
+        lambda: sol.hessian_fd(lambda p: surface(c, p), point, float("nan")),
+        "a NaN Hessian step is not above zero and must raise (hint: Lesson 19, the Hessian needs a positive step)",
+    )
+
+
 def test_hessian_positive_step_is_accepted() -> None:
     c, point = INST["surface"], INST["point"]
     must_accept(lambda: sol.hessian_fd(lambda p: surface(c, p), point, 1e-4), "a positive step is in the specification")
@@ -398,6 +520,15 @@ def test_exact_halves_round_to_the_even_cent() -> None:
             got == want,
             "an exact half cent must round to the even neighbour (hint: the half-to-even rule in the price convention)",
         )
+
+
+def test_prices_just_off_a_half_cent_round_to_the_nearer_cent() -> None:
+    # A one-year bond at a 0 % yield has price face * (1 + coupon). With face 1 cent: 1.4999 cents rounds down to 1, and
+    # 1.5001 cents rounds up to 2. A rule that rounds twice, first to a tenth of a cent, rounds 1.4999 up to 2.
+    got_below = sol.bond_price_cents(bond(1, 4999, 1, 0))
+    got_above = sol.bond_price_cents(bond(1, 5001, 1, 0))
+    require(got_below == 1, "a price just below a half cent must round down to the nearer cent")
+    require(got_above == 2, "a price just above a half cent must round up to the nearer cent")
 
 
 def test_price_at_par_equals_face() -> None:
@@ -509,6 +640,42 @@ def test_yield_below_minus_one_raises_for_price_and_sensitivities() -> None:
     )
 
 
+def test_yield_one_basis_point_below_minus_one_raises() -> None:
+    # -10001 basis points is a yield of -1.0001, below -1: the boundary is at -10000, so the refusal starts there.
+    inst = dict(INST, yield_bps=-10_001)
+    must_raise(
+        lambda: sol.bond_price_cents(inst),
+        "a yield one basis point below -1 must be refused by bond_price_cents "
+        "(hint: the yield condition in the conventions)",
+    )
+    must_raise(
+        lambda: sol.sensitivities(inst),
+        "a yield one basis point below -1 must be refused by sensitivities "
+        "(hint: the yield condition in the conventions)",
+    )
+
+
+@pytest.mark.parametrize("inst", INSTANCES)
+def test_sensitivities_at_a_negative_yield_match_the_central_difference(inst: dict[str, Any]) -> None:
+    # A yield of -0.5 is above -1, so it is inside the specification. Its sensitivities differ from those at +0.5.
+    neg = dict(inst, yield_bps=-5_000)
+    y, h = -0.5, 1e-5
+    p0 = unrounded_price(neg, y)
+    first_numeric = (unrounded_price(neg, y + h) - unrounded_price(neg, y - h)) / (2 * h)
+    second_numeric = (unrounded_price(neg, y + h) - 2 * p0 + unrounded_price(neg, y - h)) / (h * h)
+    result = sol.sensitivities(neg)
+    require(
+        close(result["dprice_dy"], first_numeric, 1e-6),
+        "at a negative yield above -1, dprice_dy must match the central difference of the unrounded price "
+        "(hint: the yield enters each discount factor as 1 + y, with its sign)",
+    )
+    require(
+        close(result["d2price_dy2"], second_numeric, 1e-4),
+        "at a negative yield above -1, d2price_dy2 must match the second central difference of the unrounded price "
+        "(hint: the yield enters each discount factor as 1 + y, with its sign)",
+    )
+
+
 def test_yield_just_above_minus_one_is_accepted() -> None:
     inst = dict(INST, yield_bps=-9_999)
     price = must_accept(lambda: sol.bond_price_cents(inst), "a yield above -1 is inside the specification")
@@ -529,5 +696,6 @@ def test_module_prints_nothing_and_warns_nothing() -> None:
             sol.sensitivities(INST)
             sol.fd_derivative(lambda x: cubic(INST["cubic"], x), INST["x0"], 1e-3, "central")
             sol.hessian_fd(lambda p: surface(INST["surface"], p), INST["point"], 1e-4)
+            sol.ad_derivative(lambda x: cubic(INST["cubic"], x), INST["x0"])
     require(buffer.getvalue() == "", "the module must not print")
     require(len(caught) == 0, "the module must not warn")

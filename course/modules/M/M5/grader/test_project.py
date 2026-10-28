@@ -318,6 +318,26 @@ def test_budget_of_one_sweep_is_reported_as_not_converged() -> None:
     expect(out["converged"] is False, "one sweep cannot meet a tolerance of 1e-12 here, so converged must be False")
 
 
+def test_converged_is_false_when_the_budget_ends_with_the_certificate_above_tol() -> None:
+    """converged tests the certified error, not the last change: when the budget ends first, a last change at most
+    tol does not make converged True while the certified error is above tol.
+
+    The tolerance is a fifth of the solver's own certified error after three sweeps, so the certified error is above
+    tol at the budget. With beta = 0.9 the last change is one ninth of the certified error, so it is below tol."""
+    p = {"beta": 0.9, "alpha": 0.5}
+    first = sol.solve(p, SMALL_GRID, 1e-12, 3)
+    expect(
+        is_real(first["certified_error"]) and float(first["certified_error"]) > 0,
+        "after three sweeps the certified error must be a positive real number",
+    )
+    tol = float(first["certified_error"]) / 5
+    out = sol.solve(p, SMALL_GRID, tol, 3)
+    expect(
+        out["converged"] is False,
+        "the budget ended with the certified error above tol, so converged must be False, whatever the last change is",
+    )
+
+
 def test_successor_exactly_at_the_resources_is_feasible() -> None:
     """A saving k' equal to k**alpha leaves zero consumption, which is allowed: k' <= k**alpha includes equality."""
     p = {"beta": 0.5, "alpha": 0.5}
@@ -359,11 +379,18 @@ def test_the_first_sweep_starts_from_zero_and_is_synchronous(which: int) -> None
 def test_certified_error_exactly_at_tol_stops_the_first_sweep() -> None:
     """The stop is at the first sweep whose certified error is at most tol, so a tie stops it.
 
-    With beta = 0.5 the factor beta / (1 - beta) is exactly 1, so the certified error after sweep 1 is the change
-    max(V1) = sqrt(1 - 0.75) = 0.5 exactly, on the grid [0.75, 1.0] (V1(0.75) = sqrt(0.75**0.5 - 0.75) < 0.5)."""
+    The tolerance is the solver's own certified error after one sweep, read from a run with a budget of one sweep.
+    Any valid certified error is accepted this way, because the tie is then exact for the solver's own bound: a
+    correct solver must stop at sweep 1 with converged True."""
     p = {"beta": 0.5, "alpha": 0.5}
     grid = [0.75, 1.0]
-    out = sol.solve(p, grid, 0.5, 1000)
+    first = sol.solve(p, grid, 1e-12, 1)
+    expect(
+        is_real(first["certified_error"]) and float(first["certified_error"]) > 0,
+        "after one sweep on this grid the certified error must be a positive real number",
+    )
+    tie = float(first["certified_error"])
+    out = sol.solve(p, grid, tie, 1000)
     expect(
         out["iterations"] == 1,
         "a certified error equal to tol must stop the iteration at that sweep, not at a later one",
@@ -468,6 +495,8 @@ def test_budget_of_one_sweep_is_accepted() -> None:
         [],
         [0.5, 0.5],
         [0.7, 0.6],
+        [0.5, 0.9, 0.7],
+        [0.5, 0.9, 0.9],
         [0.0, 0.5],
         [-0.2, 0.5],
         [1.01, 2.0],
@@ -480,6 +509,8 @@ def test_budget_of_one_sweep_is_accepted() -> None:
         "empty",
         "equal-points",
         "decreasing",
+        "decrease-in-the-middle",
+        "equal-last-pair",
         "zero-point",
         "negative-point",
         "first-above-one",

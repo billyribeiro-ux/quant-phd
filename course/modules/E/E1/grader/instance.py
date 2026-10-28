@@ -9,8 +9,8 @@ not data from any exchange. The three integers are the inputs of the project spe
 
 The generator draws b and c, then a gap d = a - b*c in trades, from 60 to 400. The gap is above 6*b, so every fee and
 volume that the specification compares differs by more than one unit, and the rounded orderings of the outputs are
-strict on every seed. Every case is valid: a > b*c > 0. The seed changes all three integers, so the volumes, fees and
-surpluses differ across seeds, not only the labels.
+strict on every seed. Every case is valid: a > b*c > 0. The seed draws b, c and the gap, so the volumes, fees and
+surpluses differ across seeds.
 """
 
 from __future__ import annotations

@@ -633,6 +633,24 @@ def test_sketch_rank_guarantee_with_ties(eps: float) -> None:
             pytest.fail("the rank guarantee fails on a stream with repeated values.")
 
 
+def test_sketch_rank_target_is_exact_where_a_float_target_is_one_short() -> None:
+    """Fixed witness, the same for every seed: q = 0.1, n = 20, epsilon = 0.05 on the stream 1 to 20.
+
+    The exact rank target is ceil(Fraction(0.1) * 20 - Fraction(0.05) * 20), which is 2 because the difference is
+    slightly above 1. A target computed in 64-bit floats is 1. Both inequalities are checked with Fraction.
+    """
+    stream = [float(k) for k in range(1, 21)]
+    v = sketch_of(stream, 0.05).quantile(0.1)
+    below = sum(1 for x in stream if x < v)
+    at_or_below = sum(1 for x in stream if x <= v)
+    qn = Fraction(0.1) * len(stream)
+    slack = Fraction(0.05) * len(stream)
+    if not (below <= qn + slack):
+        pytest.fail("the guarantee's first inequality fails at q = 0.1 on the stream 1 to 20 with epsilon 0.05.")
+    if not (at_or_below >= qn - slack):
+        pytest.fail("the guarantee's second inequality fails at q = 0.1 on the stream 1 to 20 with epsilon 0.05.")
+
+
 def test_instances_hold_their_own_state() -> None:
     first = WelfordAccumulator()
     second = WelfordAccumulator()

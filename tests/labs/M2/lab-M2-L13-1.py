@@ -13,7 +13,7 @@ import math
 from collections.abc import Callable
 
 X0 = 1.0
-EXACT = math.exp(X0)  # the derivative of exp is exp, so f'(1) = e
+EXACT = math.e  # f'(1) = e, under Assumption 1 of lesson L13 (the derivative of exp is exp)
 
 
 def forward(f: Callable[[float], float], x: float, h: float) -> float:

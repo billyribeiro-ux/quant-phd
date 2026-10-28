@@ -391,7 +391,7 @@ def test_hand_case_matches_its_worked_answer(name: str) -> None:
     output_shape(case, out)
     got = weights_of(out)
     for i, value in enumerate(expected):
-        assert abs(got[i] - value) <= 1e-9, (
+        assert abs(got[i] - value) <= TOL, (
             f"{name}: weight {i} differs from the worked answer; re-derive the stationarity equation for this case."
         )
     assert_kkt(case, out)
@@ -440,47 +440,53 @@ def _sigma_symmetric_exact(case: dict[str, Any]) -> None:
 
 
 def _start_sum_off(case: dict[str, Any]) -> None:
-    """Sum one-and-1e-8: outside the 1e-9 tolerance the page states for the starting portfolio."""
-    case["w0"][0] = case["w0"][0] + 0.00000001
+    """Sum one-and-2e-9: outside the 1e-9 tolerance the page states for the starting portfolio, so refused."""
+    case["w0"][0] = case["w0"][0] + 0.000000002
 
 
 def _start_sum_low(case: dict[str, Any]) -> None:
-    case["w0"][0] = case["w0"][0] - 0.00000001
+    """Sum one-less-2e-9: outside the tolerance on the low side, so refused."""
+    case["w0"][0] = case["w0"][0] - 0.000000002
 
 
 def _start_sum_within_tolerance(case: dict[str, Any]) -> None:
-    """Sum one-and-1e-10: inside the 1e-9 tolerance, so accepted."""
-    case["w0"][0] = case["w0"][0] + 0.0000000001
+    """Sum one-and-5e-10: inside the 1e-9 tolerance, so accepted."""
+    case["w0"][0] = case["w0"][0] + 0.0000000005
+
+
+def _start_sum_within_tolerance_low(case: dict[str, Any]) -> None:
+    """Sum one-less-5e-10: inside the 1e-9 tolerance on the low side, so accepted."""
+    case["w0"][0] = case["w0"][0] - 0.0000000005
 
 
 def _upper_below_start(case: dict[str, Any]) -> None:
-    case["upper"][0] = case["w0"][0] - 0.00000001
+    case["upper"][0] = case["w0"][0] - 0.000000002
 
 
 def _upper_within_tolerance(case: dict[str, Any]) -> None:
-    case["upper"][0] = case["w0"][0] - 0.0000000001
+    case["upper"][0] = case["w0"][0] - 0.0000000005
 
 
 def _lower_above_start(case: dict[str, Any]) -> None:
-    case["lower"][0] = case["w0"][0] + 0.00000001
+    case["lower"][0] = case["w0"][0] + 0.000000002
     case["upper"][0] = max(case["upper"][0], case["w0"][0] + 0.000001)
 
 
 def _lower_within_tolerance(case: dict[str, Any]) -> None:
-    case["lower"][0] = case["w0"][0] + 0.0000000001
+    case["lower"][0] = case["w0"][0] + 0.0000000005
     case["upper"][0] = max(case["upper"][0], case["w0"][0] + 0.000000001)
 
 
 def _cap_below_start(case: dict[str, Any]) -> None:
     k = case["sector"][0]
     in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
-    case["sector_caps"][k] = in_sector - 0.00000001
+    case["sector_caps"][k] = in_sector - 0.000000002
 
 
 def _cap_within_tolerance(case: dict[str, Any]) -> None:
     k = case["sector"][0]
     in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
-    case["sector_caps"][k] = in_sector - 0.0000000001
+    case["sector_caps"][k] = in_sector - 0.0000000005
 
 
 def _lower_over_upper(case: dict[str, Any]) -> None:
@@ -548,6 +554,29 @@ NAMED_CONDITIONS: list[tuple[str, Callable[[dict[str, Any]], None], Callable[[di
 ]
 
 
+# The exact boundary values the page names as valid: a bound equal to the starting weight, a cap equal to the starting
+# sector weight, and the starting sum just inside the 1e-9 tolerance on the low side.
+def _lower_equal_start(case: dict[str, Any]) -> None:
+    case["lower"][0] = case["w0"][0]
+
+
+def _upper_equal_start(case: dict[str, Any]) -> None:
+    case["upper"][0] = case["w0"][0]
+
+
+def _cap_equal_start(case: dict[str, Any]) -> None:
+    k = case["sector"][0]
+    case["sector_caps"][k] = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
+
+
+EXACT_BOUNDARIES: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+    ("lower-equals-start", _lower_equal_start),
+    ("upper-equals-start", _upper_equal_start),
+    ("cap-equals-start", _cap_equal_start),
+    ("start-sum-inside-low-side", _start_sum_within_tolerance_low),
+]
+
+
 @pytest.mark.parametrize(
     ("mutate", "_valid"), [(m, v) for _, m, v in NAMED_CONDITIONS], ids=[c[0] + "-invalid" for c in NAMED_CONDITIONS]
 )
@@ -586,6 +615,7 @@ OTHER_SIDE_REFUSED: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
     ("sigma-row-one-entry-too-many", _sigma_row_too_long),
     ("sigma-row-one-entry-too-few", _sigma_row_too_short),
     ("sigma-one-row-too-many", _sigma_extra_row),
+    ("mu-one-entry-too-many", _one_entry_too_many("mu")),
 ]
 
 
@@ -594,6 +624,14 @@ def test_named_condition_other_side_is_refused_with_value_error(mutate: Callable
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
     with pytest.raises(ValueError, match=r"\S"):
         sol.allocate(changed(mutate))
+
+
+@pytest.mark.parametrize("mutate", [m for _, m in EXACT_BOUNDARIES], ids=[i for i, _ in EXACT_BOUNDARIES])
+def test_named_exact_boundary_is_accepted(mutate: Callable[[dict[str, Any]], None]) -> None:
+    case = changed(mutate)
+    out = sol.allocate(case)
+    output_shape(case, out)
+    assert_kkt(case, out)
 
 
 def _poison(field: str, value: float) -> Callable[[dict[str, Any]], None]:

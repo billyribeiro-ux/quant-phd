@@ -6,9 +6,12 @@ different streams. Every instance is valid: a stream of 20 to 400 finite floats,
 seed and is not market data or any real measurement. The docstring, the page and the suite say so.
 
 The stream has a common offset of 0, 10,000 or 1,000,000 (dimensionless, SIMULATED). At the offsets 10,000 and
-1,000,000 the naive formula sum(x*x) - n*mean*mean loses digits that a relative tolerance of 1e-9 needs. Measured on
-seeds 0 to 49 with an exact Fraction reference: it fails 22 of the 23 seeds at offset 10,000 (seed 41 passes) and
-all 11 seeds at offset 1,000,000. The reference's Welford update passes all 50 seeds. Some streams are rounded to
+1,000,000 the naive formula loses digits that a relative tolerance of 1e-9 needs. The naive formula measured here is
+the sample variance (ss - n*mean*mean) / (n - 1) with running float sums, in this order: s += x, ss += x*x, then
+mean = s / n. Measured on seeds 0 to 49 against an exact Fraction reference, grouped by the offset that make_instance
+draws: it fails 0 of the 16 seeds at offset 0, 22 of the 23 seeds at offset 10,000 (seed 41 passes) and all 11 seeds
+at offset 1,000,000. The counts above are for that order only. The reference's
+Welford update passes all 50 seeds. Some streams are rounded to
 one decimal, so ties occur. The `invalid` key names one case that the specification refuses. It is returned as a
 JSON string, like the payload, so every field of the instance is a string, an int or a float.
 

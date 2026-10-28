@@ -32,8 +32,9 @@ N_DRAWS: int = INST["n_draws"]
 # nu of 5 or more: the fourth moment of the Student-t is infinite at nu = 3 and 4, so a sample variance there can miss
 # its target by more than any fixed tolerance (the reference fails at seed 1093 with nu = 3). Over seeds 0 to 1999 the
 # reference's largest relative error was 0.126 at nu = 5, 0.097 at nu = 6, 0.073 at nu = 7 and 0.062 at nu = 8. The
-# tolerance 0.30 is about 2.4 times the largest of these, and it catches a missing matched factor (an inflation of
-# nu / (nu - 2), which is 1.67, 1.50, 1.40 and 1.33 at nu = 5 to 8) at every nu the check runs for.
+# tolerance 0.30 is about 2.4 times the largest of these. Against a missing matched factor (an inflation of
+# nu / (nu - 2), which is 1.67, 1.50, 1.40 and 1.33 at nu = 5 to 8), the check fails on every seed tested at nu = 5
+# and 6 (seeds 0 to 1999), and on most seeds at nu = 7 and 8.
 TOL_GAUSSIAN_VARIANCE = 0.10
 TOL_T_VARIANCE = 0.30
 MIN_NU_FOR_T_VARIANCE_CHECK = 5
@@ -110,7 +111,7 @@ def test_matched_scale_rejects_nu_below_two(nu: int) -> None:
     expect_value_error(lambda: sol.matched_scale(nu), "matched_scale must raise ValueError for nu below 2")
 
 
-@pytest.mark.parametrize("nu", [3.0, True, "3"])
+@pytest.mark.parametrize("nu", [3.0, True, "3", None])
 def test_matched_scale_rejects_a_value_that_is_not_a_whole_number(nu: Any) -> None:
     expect_value_error(lambda: sol.matched_scale(nu), "matched_scale must reject a value that is not a whole number")
 
@@ -166,7 +167,7 @@ def test_different_seed_gives_different_losses() -> None:
 # --- simulate_losses: named conditions -----------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("family", ["Gaussian", "t", None])
+@pytest.mark.parametrize("family", ["Gaussian", "t", "student-t", " gaussian", None])
 def test_unknown_family_is_rejected(family: Any) -> None:
     expect_value_error(
         lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, family, NU),
@@ -179,7 +180,7 @@ def test_gaussian_accepts_no_degrees_of_freedom() -> None:
     check(len(losses) == 10, "the gaussian family must accept nu = None")
 
 
-@pytest.mark.parametrize("nu", [5, 3.0, False])
+@pytest.mark.parametrize("nu", [5, 3.0, False, 0, 2])
 def test_gaussian_rejects_a_degrees_of_freedom(nu: Any) -> None:
     expect_value_error(
         lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, "gaussian", nu),
@@ -216,9 +217,9 @@ def test_draw_count_of_zero_or_less_is_rejected(n_draws: int) -> None:
 
 
 def test_gaussian_losses_are_rounded_once_not_truncated() -> None:
-    # One position of 100 cents on a return with sd 2 %, so the loss has variance 4 cents squared. Rounding to the
-    # nearest cent adds about 1/12 to the variance. Truncating toward zero lowers it by about the mean absolute loss,
-    # 1.6 cents, to about 2.5, which is far from 4 + 1/12.
+    # One position of 100 cents on a return with sd 2 %, so the loss is normal with variance 4 cents squared. Rounding
+    # to the nearest cent adds about 1/12 to the variance, to 4 + 1/12 (about 4.08). Truncating toward zero instead
+    # gives a variance of about 2.7, which is far from 4 + 1/12.
     losses = sol.simulate_losses([100], [[4e-4]], 20_000, SEED, "gaussian", None)
     check(
         abs(sample_variance(losses) - (4.0 + 1.0 / 12.0)) <= 0.3,
@@ -231,7 +232,7 @@ def test_one_draw_is_accepted() -> None:
     check(len(losses) == 1, "n_draws = 1 must return one loss, the boundary above zero")
 
 
-@pytest.mark.parametrize("n_draws", [10.0, True])
+@pytest.mark.parametrize("n_draws", [10.0, True, False, "10", None])
 def test_draw_count_must_be_a_whole_number(n_draws: Any) -> None:
     expect_value_error(
         lambda: sol.simulate_losses(POSITIONS, COV, n_draws, SEED, "gaussian", None),
@@ -239,7 +240,7 @@ def test_draw_count_must_be_a_whole_number(n_draws: Any) -> None:
     )
 
 
-@pytest.mark.parametrize("positions", [[1.0, 2], [True, 2], [1000, "1000"]])
+@pytest.mark.parametrize("positions", [[1.0, 2], [True, 2], [1000, "1000"], [1000, 1.0], [1000, True], [None, 1000]])
 def test_positions_must_be_whole_cents(positions: Any) -> None:
     expect_value_error(
         lambda: sol.simulate_losses(positions, [[1e-4, 0.0], [0.0, 1e-4]], 10, SEED, "gaussian", None),
@@ -270,7 +271,10 @@ def test_covariance_must_be_symmetric(skew: list[list[float]]) -> None:
     )
 
 
-@pytest.mark.parametrize("ragged", [[[4e-4]], [[4e-4, 0.0], [0.0]], [[4e-4, 0.0, 0.0], [0.0, 4e-4]]])
+@pytest.mark.parametrize(
+    "ragged",
+    [[[4e-4]], [[4e-4, 0.0], [0.0]], [[4e-4, 0.0, 0.0], [0.0, 4e-4]], [[4e-4, 0.0], [0.0, 4e-4], [0.0, 0.0]]],
+)
 def test_covariance_must_be_square_with_one_row_per_position(ragged: list[list[float]]) -> None:
     expect_value_error(
         lambda: sol.simulate_losses([1_000, 1_000], ragged, 10, SEED, "gaussian", None),
@@ -297,6 +301,14 @@ def test_singular_covariance_with_a_zero_second_pivot_is_rejected() -> None:
     expect_value_error(
         lambda: sol.simulate_losses([1_000, 1_000], [[1.0, 1.0], [1.0, 1.0]], 10, SEED, "gaussian", None),
         "cov must be positive definite: the second pivot is zero",
+    )
+
+
+@pytest.mark.parametrize("cov", [[[0.0, 0.0], [0.0, 4e-4]], [[-4e-4, 0.0], [0.0, 4e-4]]])
+def test_first_pivot_must_be_positive(cov: list[list[float]]) -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000, 1_000], cov, 10, SEED, "gaussian", None),
+        "cov must be positive definite: the first pivot must be above zero",
     )
 
 
@@ -357,7 +369,7 @@ def test_quantile_99_rejects_an_empty_list() -> None:
     expect_value_error(lambda: sol.quantile_99([]), "quantile_99 must reject an empty list")
 
 
-@pytest.mark.parametrize("losses", [[1.0, 2], [True, 2], ["7"]])
+@pytest.mark.parametrize("losses", [[1.0, 2], [True, 2], ["7"], [None], [5, 2.0], [5, None]])
 def test_quantile_99_rejects_non_whole_losses(losses: Any) -> None:
     expect_value_error(lambda: sol.quantile_99(losses), "quantile_99 must reject a float or a boolean loss")
 

@@ -256,19 +256,22 @@ def test_unknown_structure_raises_value_error(name: Any) -> None:
     )
 
 
+@pytest.mark.parametrize("structure", STRUCTURES)
 @pytest.mark.parametrize("a, b, c", [(20, 2, 10), (19, 2, 10), (-3, 1, 1)])
-def test_a_not_above_b_times_c_raises_value_error(a: int, b: int, c: int) -> None:
-    must_raise(lambda: sol.outcome("cournot", a, b, c), "a <= b*c", ("a must exceed b*c",))
+def test_a_not_above_b_times_c_raises_value_error(structure: str, a: int, b: int, c: int) -> None:
+    must_raise(lambda: sol.outcome(structure, a, b, c), "a <= b*c", ("a must exceed b*c",))
 
 
+@pytest.mark.parametrize("structure", STRUCTURES)
 @pytest.mark.parametrize("a, b, c", [(10, 0, 5), (10, -1, 5)])
-def test_b_not_positive_raises_value_error(a: int, b: int, c: int) -> None:
-    must_raise(lambda: sol.outcome("monopoly", a, b, c), "b <= 0", ("b must be positive",))
+def test_b_not_positive_raises_value_error(structure: str, a: int, b: int, c: int) -> None:
+    must_raise(lambda: sol.outcome(structure, a, b, c), "b <= 0", ("b must be positive",))
 
 
+@pytest.mark.parametrize("structure", STRUCTURES)
 @pytest.mark.parametrize("a, b, c", [(10, 2, 0), (10, 2, -1)])
-def test_c_not_positive_raises_value_error(a: int, b: int, c: int) -> None:
-    must_raise(lambda: sol.outcome("bertrand", a, b, c), "c <= 0", ("c must be positive",))
+def test_c_not_positive_raises_value_error(structure: str, a: int, b: int, c: int) -> None:
+    must_raise(lambda: sol.outcome(structure, a, b, c), "c <= 0", ("c must be positive",))
 
 
 @pytest.mark.parametrize("structure", STRUCTURES)

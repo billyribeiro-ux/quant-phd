@@ -10,7 +10,7 @@ pointwise limit 0 on [0, 1] is printed for n in (1, 2, 5, 10, 50), with the valu
 Part B: the same functions on [0, 1/2], on the grid k/200 for k = 0, ..., 100 (which contains 1/2). The sup distance
 is printed for the same n, with a check that it equals (1/2)^n, and the least n with (1/2)^n below 1/1000.
 Part C: the values of f_n at x = 0.99 are printed for n = 10, 100, 1000 as floats, and a check prints True
-when f_n(1) = 1 for each of the printed orders. The pointwise limit is not computed by the program; the page states it.
+when f_n(1) = 1 for n = 1, 10, 100 and 1000. The pointwise limit is not computed by the program; the page states it.
 """
 
 from __future__ import annotations
