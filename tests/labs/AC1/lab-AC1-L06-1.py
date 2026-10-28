@@ -36,7 +36,7 @@ class Lease:
 
 
 def generate(seed: int) -> Lease:
-    """Seeded term (4 to 7 years), annual payment (1,200.00 to 3,000.00 CU), and rate (4.00 to 8.00 percent)."""
+    """Seeded term (4 to 7 years), annual payment (120,000.00 to 300,000.00 CU), and rate (4.00 to 8.00 percent)."""
     rng = random.Random(seed)
     term = rng.randint(4, 7)
     payment = rng.randint(120_000_00, 300_000_00)

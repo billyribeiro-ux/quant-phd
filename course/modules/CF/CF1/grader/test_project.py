@@ -23,7 +23,14 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from capbudget import after_tax_cash_flows, fisher_nominal, irr_roots, npv, npv_monte_carlo, payback_period
+from capbudget import (  # type: ignore[import-not-found]  # the learner's engine, not part of the grader
+    after_tax_cash_flows,
+    fisher_nominal,
+    irr_roots,
+    npv,
+    npv_monte_carlo,
+    payback_period,
+)
 from instance import make_instance
 
 pytestmark = pytest.mark.filterwarnings("error")  # the specification: no function warns
@@ -123,6 +130,13 @@ def test_irr_can_return_a_negative_root() -> None:
 
 def test_irr_no_root_when_every_inflow_is_positive() -> None:
     assert irr_roots([10.0, 10.0]) == [], "with only inflows the NPV never reaches zero: return an empty list."
+
+
+def test_irr_does_not_report_a_tangent_root() -> None:
+    # NPV(r) = -1 + 2/(1+r) - 1/(1+r)**2 = -(1/(1+r) - 1)**2 touches zero at r = 0 and never changes sign.
+    assert irr_roots([-1.0, 2.0, -1.0]) == [], (
+        "a rate where the NPV touches zero without changing sign is not an IRR root: report only sign changes."
+    )
 
 
 def test_irr_roots_are_ascending_and_distinct() -> None:
@@ -301,14 +315,29 @@ def test_real_flows_at_the_real_rate_equal_nominal_flows_at_the_nominal_rate() -
     ("change", "condition"),
     [
         pytest.param({"capex": 0}, "a zero capex", id="capex-zero"),
-        pytest.param({"capex": 1000.0}, "a capex that is not a whole number of cents", id="capex-float"),
+        pytest.param(
+            {"capex": 1000.0}, "a capex given as a float rather than an integer number of cents", id="capex-float"
+        ),
         pytest.param({"life": 0, "revenue": [], "cash_costs": []}, "a life of zero years", id="life-zero"),
         pytest.param(
             {"revenue": PROJECT["revenue"][:-1]}, "revenue with the wrong number of years", id="revenue-length"
         ),
         pytest.param({"cash_costs": [-1.0, *PROJECT["cash_costs"][1:]]}, "a negative cash cost", id="cost-negative"),
         pytest.param({"tax_rate": 1.0}, "a tax rate of 100 percent", id="tax-one"),
+        pytest.param({"tax_rate": -0.5}, "a negative tax rate", id="tax-negative"),
         pytest.param({"nwc_share": 1.0}, "a working-capital share of 100 percent", id="share-one"),
+        pytest.param({"nwc_share": -0.1}, "a negative working-capital share", id="share-negative"),
+        pytest.param({"life": 2.5}, "a life that is not a whole number of years", id="life-fractional"),
+        pytest.param(
+            {"cash_costs": PROJECT["cash_costs"][:-1]}, "cash costs with the wrong number of years", id="cost-length"
+        ),
+        pytest.param({"revenue": [-5.0, *PROJECT["revenue"][1:]]}, "a negative revenue", id="revenue-negative"),
+        pytest.param(
+            {"revenue": [float("nan"), *PROJECT["revenue"][1:]]}, "a revenue that is not finite", id="revenue-nan"
+        ),
+        pytest.param(
+            {"cash_costs": [float("inf"), *PROJECT["cash_costs"][1:]]}, "a cash cost that is not finite", id="cost-inf"
+        ),
         pytest.param({"inflation": -1.0}, "inflation of -100 percent", id="inflation-minus-one"),
     ],
 )
@@ -326,6 +355,40 @@ def test_input_project_is_not_changed() -> None:
     after_tax_cash_flows(PROJECT)
     npv_monte_carlo(PROJECT, RATE, 3, 1, 0.1)
     assert before == PROJECT, "the functions must not change their arguments; work on a copy."
+
+
+def test_flow_list_arguments_are_not_changed() -> None:
+    flows = after_tax_cash_flows(PROJECT)
+    before = list(flows)
+    npv(RATE, flows)
+    irr_roots(flows)
+    payback_period(flows)
+    payback_period(flows, RATE)
+    assert flows == before, "npv, irr_roots and payback_period must not change the flows they are given."
+
+
+def test_functions_never_print(capsys: pytest.CaptureFixture[str]) -> None:
+    flows = after_tax_cash_flows(PROJECT)
+    after_tax_cash_flows(PROJECT, real=True)
+    npv(RATE, flows)
+    irr_roots([-100.0, 230.0, -132.0])
+    payback_period(flows, RATE)
+    fisher_nominal(0.05, INFLATION)
+    npv_monte_carlo(PROJECT, RATE, 3, SEED, 0.1)
+    assert capsys.readouterr().out == "", "no function prints; each returns its value for the caller to show."
+
+
+def test_returned_lists_are_fresh_objects() -> None:
+    first = after_tax_cash_flows(PROJECT)
+    second = after_tax_cash_flows(PROJECT)
+    assert first is not second and first == second, "each call returns a new list with the same flows."
+    first.append(0.0)
+    assert len(after_tax_cash_flows(PROJECT)) == LIFE + 1, "changing one returned list must not change the next call."
+    roots = irr_roots([-100.0, 230.0, -132.0])
+    roots.clear()
+    assert len(irr_roots([-100.0, 230.0, -132.0])) == 2, "changing one returned list must not change the next call."
+    draws = npv_monte_carlo(PROJECT, RATE, 3, 1, 0.1)
+    assert draws is not npv_monte_carlo(PROJECT, RATE, 3, 1, 0.1), "each call returns a new list of draws."
 
 
 # ---------------------------------------------------------------- Monte Carlo NPV

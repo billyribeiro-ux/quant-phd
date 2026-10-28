@@ -14,16 +14,19 @@ failure names the property it checks and never prints the expected value.
 
 from __future__ import annotations
 
+import ast
 import calendar
 import copy
 import json
 import os
+import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
-import statements as sol
-from instance import make_instance
+import statements as sol  # type: ignore[import-not-found, unused-ignore]
+from instance import make_instance  # type: ignore[import-not-found, unused-ignore]
 
 pytestmark = pytest.mark.filterwarnings("error")
 
@@ -394,7 +397,22 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
                 }
             ],
         ),
-        ("a line that is not a mapping", [{**SMALL[0], "lines": ["cash"]}]),
+        (
+            "a line without an account",
+            [{**SMALL[0], "lines": [{"debit": 5, "credit": 0}, {"account": "common_stock", "debit": 0, "credit": 5}]}],
+        ),
+        (
+            "a negative amount that balances",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": -5},
+                        {"account": "common_stock", "debit": 0, "credit": 10},
+                    ],
+                }
+            ],
+        ),
     ],
 )
 def test_post_raises_a_value_error(condition: str, transactions: list[dict[str, Any]]) -> None:
@@ -434,6 +452,39 @@ def test_small_ledger_january_articulation_is_zero() -> None:
     got = sol.articulation_check(sol.post(SMALL), "2024-01-31")
     for key in GAP_KEYS:
         assert got.get(key) == 0, f"the articulation gap '{key}' must be zero for a ledger that articulates"
+
+
+# Worked on paper. Cash is 1,000 less 100 paid, so the balance sheet shows cash of 900. The cash flow statement sees
+# only the 1,000 of stock issued, so its ending cash is 1,000 and the cash gap is -100. The 100 debit to accumulated
+# depreciation makes accumulated depreciation -100 (a debit balance), so net equipment is 100 and total assets are
+# 1,000, equal to common stock. Depreciation expense is zero, so the depreciation gap is the change of -100.
+GAP_WITNESS: list[dict[str, Any]] = [
+    _entry("2024-01-02", [("cash", 1000, 0), ("common_stock", 0, 1000)]),
+    _entry("2024-01-15", [("accumulated_depreciation", 100, 0), ("cash", 0, 100)]),
+]
+GAP_WITNESS_JAN = {"balance_gap": 0, "cash_gap": -100, "retained_earnings_gap": 0, "depreciation_gap": -100}
+
+
+def test_articulation_gaps_report_a_ledger_that_does_not_articulate() -> None:
+    got = sol.articulation_check(sol.post(GAP_WITNESS), "2024-01-31")
+    _check_values(got, GAP_WITNESS_JAN, "articulation check", "2024-01-31")
+
+
+def test_the_module_imports_only_the_standard_library() -> None:
+    tree = ast.parse(Path(str(sol.__file__)).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.level > 0:
+            pytest.fail("statements.py must not use a relative import")
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            modules = [node.module or ""]
+        else:
+            continue
+        for name in modules:
+            top = name.split(".")[0]
+            if top not in sys.stdlib_module_names:
+                pytest.fail(f"statements.py imports '{top}', which is not in the standard library")
 
 
 def test_a_month_before_any_entry_is_empty() -> None:

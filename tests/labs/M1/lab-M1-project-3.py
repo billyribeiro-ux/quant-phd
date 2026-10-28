@@ -57,6 +57,13 @@ def main() -> None:
     tail = sum(((1 + 0.02) ** (k - 1)) / (1.05**k) for k in range(1, 401))
     print("direct sum, 400 terms, growth 2%:", f"{tail:.9f}")
     print("exact tail after 400 terms, q^N / (r - g):", f"{((1 + 0.02) / 1.05) ** 400 / 0.03:.3e}")
+    # The perpetuity's partial sum after N payments has error v^N / r exactly; find the least N with error below 1e-6.
+    v = 1 / 1.05
+    n_tolerance = 1
+    while v**n_tolerance / 0.05 >= 1e-6:
+        n_tolerance += 1
+    print("least N with perpetuity error below 1e-6 (payments):", n_tolerance)
+    print("perpetuity error at N - 1 payments:", f"{v ** (n_tolerance - 1) / 0.05:.4e}")
 
 
 main()

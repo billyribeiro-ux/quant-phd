@@ -420,7 +420,7 @@ def main() -> None:
         )
 
     print()
-    print("Check 6: a planted error is caught by the identity it breaks (USD)")
+    print("Check 6: the gap that each omitted term leaves in an identity (USD)")
     for year in YEARS:
         missing_add_back = indirect[year]["operating"] - indirect[year]["depreciation_add_back"]
         difference = direct[year] - missing_add_back

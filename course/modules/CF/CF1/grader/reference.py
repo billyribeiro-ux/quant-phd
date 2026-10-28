@@ -6,6 +6,7 @@ This file is the instructor's solution. It is excluded from publication; the sui
 
 from __future__ import annotations
 
+import itertools
 import math
 import random
 from collections.abc import Mapping, Sequence
@@ -108,11 +109,12 @@ def irr_roots(flows: Sequence[float]) -> list[float]:
     ]
     values = [poly(x) for x in xs]
     roots_x: list[float] = []
-    for k in range(_GRID_POINTS - 1):
-        if values[k] == 0.0:
-            roots_x.append(xs[k])
-        elif values[k] * values[k + 1] < 0.0:
-            lo, hi, f_lo = xs[k], xs[k + 1], values[k]
+    # A root is reported only where the polynomial changes sign. Zero grid values are skipped, so a tangent zero
+    # (the polynomial touches zero without crossing it, as -(x - 1) ** 2 does at x = 1) is never reported.
+    nonzero = [k for k in range(_GRID_POINTS) if values[k] != 0.0]
+    for k1, k2 in itertools.pairwise(nonzero):
+        if values[k1] * values[k2] < 0.0:
+            lo, hi, f_lo = xs[k1], xs[k2], values[k1]
             for _ in range(200):
                 mid = 0.5 * (lo + hi)
                 f_mid = poly(mid)
@@ -126,6 +128,9 @@ def irr_roots(flows: Sequence[float]) -> list[float]:
                 if hi - lo <= 1e-15 * hi:
                     break
             roots_x.append(0.5 * (lo + hi))
+    # A zero exactly at either end of the search window cannot be tested for a sign change inside it: it is reported.
+    if values[0] == 0.0:
+        roots_x.append(xs[0])
     if values[-1] == 0.0:
         roots_x.append(xs[-1])
     return sorted(1.0 / x - 1.0 for x in roots_x)

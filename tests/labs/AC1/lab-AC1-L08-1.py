@@ -30,7 +30,7 @@ def main() -> None:
     rng = random.Random(SEED)
     cost = rng.randrange(1_000_000, 5_000_001, 10_000)  # SCU $10,000 to $50,000, a multiple of $100
     # Pretax income of $40,000 to $90,000 exceeds the largest yearly difference
-    # (40% of a $50,000 cost), so taxable income stays positive.
+    # (20% of cost, which is $10,000 at a $50,000 cost), so taxable income stays positive.
     pretax = [rng.randrange(4_000_000, 9_000_001, 100) for _ in range(LIFE)]
     assert cost % LIFE == 0
     assert sum(TAX_PERCENT) == 100

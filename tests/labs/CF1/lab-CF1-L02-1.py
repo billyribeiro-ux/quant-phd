@@ -2,8 +2,9 @@
 
 SIMULATED: revenues and cash costs are generated from a seeded random number generator. The machine, the tax rate
 and every figure are invented for this lab and are not a real company's. Money is entered in integer cents;
-flows are computed in floating point cents and printed in dollars to two decimals. Standard library only; no
-network; every number printed is computed by the code below.
+the intermediate amounts (EBITDA, tax and operating cash flow) are computed in floating point cents, and the flows
+are held and discounted in dollars and printed to two decimals. Standard library only; no network; every number
+printed is computed by the code below.
 
 Conventions applied: straight-line depreciation over the life, with no salvage; tax at one rate on taxable income,
 with a negative tax (a credit) when taxable income is negative, which assumes the firm uses the loss in the same

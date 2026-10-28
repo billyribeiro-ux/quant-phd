@@ -6,7 +6,7 @@
   (1.50 % to 12.00 %), and a term of 60, 120, 180, 240, 300 or 360 months;
 * an ordinary annuity: a per-period rate (0.10 % to 20.00 %) and 1 to 60 periods;
 * a growing perpetuity: a per-period rate (2.00 % to 20.00 %) and a growth rate in whole basis points, at least
-  100 basis points below the rate, and above -2.00 %.
+  100 basis points below the rate, and at least -2.00 %.
 
 Every instance is valid under the contract in project.html. A draw is rejected, and the next draw taken, when the
 exact schedule would put a level payment or an interest amount within 1e-6 of a half cent. Such an amount has no

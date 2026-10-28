@@ -166,5 +166,14 @@ def main() -> None:
     print(f"totals_equal_under_both_conventions {revenue_2_cum[-1] == revenue_cum[-1]}")
     print(f"month_6_difference_cents {revenue_cum[5] - revenue_2_cum[5]}")
 
+    # Convention-1 revenue from the over-time obligations through month 6: the first six monthly shares of each.
+    over_time_month_6 = sum(
+        sum(over_time_schedule(amount)[:6])
+        for obligation, amount in zip(contract.obligations, allocation, strict=True)
+        if obligation.over_time
+    )
+    print(f"over_time_convention_1_month_6_cents {over_time_month_6}")
+    print(f"month_6_difference_equals_over_time_revenue {revenue_cum[5] - revenue_2_cum[5] == over_time_month_6}")
+
 
 main()

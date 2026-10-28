@@ -91,8 +91,9 @@ def main() -> None:
     flexed = budget_at(PRODUCTS, actual_units)
     actual = actual_totals(PRODUCTS)
 
-    # Identity 1: flexing at the budgeted units returns the master budget exactly.
-    assert budget_at(PRODUCTS, master_units) == master
+    # Identity: the static variance splits into a volume-and-mix part and a flexible variance, with no residual.
+    # Flexing at the budgeted units returning the master budget holds by construction (one function, one argument)
+    # and is not checked here.
     # Identity 2: the static variance splits into a volume-and-mix part and a flexible variance, with no residual.
     static = actual.operating - master.operating
     volume_and_mix = flexed.operating - master.operating
@@ -118,7 +119,6 @@ def main() -> None:
     print(f"static_variance {static}")
     print(f"volume_and_mix_variance {volume_and_mix}")
     print(f"flexible_variance {flexible}")
-    print(f"identity_flex_at_budget_equals_master {budget_at(PRODUCTS, master_units) == master}")
 
 
 main()

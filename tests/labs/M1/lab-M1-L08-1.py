@@ -6,7 +6,8 @@ Part A is exact (fractions.Fraction, no conversion to cents): the balance formul
 final balance, and the principal recursion P(k+1) = (1 + i) P(k). Part B is the schedule a borrower sees:
 every amount is an integer number of cents, interest is taken to the nearest cent with halves going up, the
 regular payment is the exact payment taken to the nearest cent, and the final payment is adjusted so the
-balance closes at exactly zero. Part B reports how far its balances drift from the exact balances.
+balance closes at exactly zero. Part B reports how far its balances drift from two exact schedules: the one that
+uses the rounded regular payment, and the exact-payment schedule of Part A.
 Standard library only; no randomness and no network access.
 """
 
@@ -109,12 +110,27 @@ def part_b() -> None:
     for row in rows[:-1]:
         exact = exact_balance(PRINCIPAL_CENTS, Fraction(regular), MONTHLY, row.period)
         drift = max(drift, abs(row.closing - math.floor(exact + Fraction(1, 2))))
-    exact_cu = float(exact_payment(PRINCIPAL_CENTS, MONTHLY, PERIODS) / 100)
+    exact_pay = exact_payment(PRINCIPAL_CENTS, MONTHLY, PERIODS)
+    worst_gap = Fraction(0)
+    worst_month = 0
+    first_full_cu = 0
+    for row in rows[:-1]:
+        gap = row.closing - exact_balance(PRINCIPAL_CENTS, exact_pay, MONTHLY, row.period)
+        if abs(gap) > abs(worst_gap):
+            worst_gap, worst_month = gap, row.period
+        if first_full_cu == 0 and abs(gap) >= 100:
+            first_full_cu = row.period
+    exact_cu = float(exact_pay / 100)
     print(f"part B: regular payment = {cu(regular)} CU (the exact payment is {exact_cu:.6f} CU)")
     print(f"part B: final payment = {cu(rows[-1].payment)} CU (adjustment {cu(rows[-1].payment - regular)} CU)")
     print(f"part B: total interest = {cu(total_interest)} CU; total paid = {cu(total_paid)} CU")
     print(f"part B: total principal = {cu(total_principal)} CU; final balance = {cu(rows[-1].closing)} CU")
-    print(f"part B: largest drift of a cent balance from the exact balance (in cents) = {drift}")
+    print(f"part B: largest drift from the exact schedule at the rounded regular payment (in cents) = {drift}")
+    print(
+        f"part B: largest drift from the exact-payment balances of Part A (in CU) = "
+        f"{float(abs(worst_gap)) / 100:.2f}, at month {worst_month}"
+    )
+    print(f"part B: first month whose cent balance is 1 CU or more from the exact-payment balance = {first_full_cu}")
     exact_interest = Fraction(PRINCIPAL_CENTS)
     for _ in range(PERIODS - 1):
         exact_interest = exact_interest * (1 + MONTHLY) - regular
