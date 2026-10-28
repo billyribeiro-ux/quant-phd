@@ -154,10 +154,10 @@ Credential hours include every prerequisite the credential pulls in. Credentials
 |---|---|---|---|---|
 | Quantitative Researcher | F6, QR2, PR4, MS4, S7, CAP1 | 40 | 4,076 | 1.89 |
 | Global Macro Portfolio Manager | GM5, FI3, X2, DV5, PR3, PC2 | 56 | 5,166 | 2.39 |
-| Derivatives & Volatility | DV3, DV4, DV5, DV6, FI6 | 42 | 4,296 | 1.99 |
-| Corporate Finance / Investment Banking / Private Equity | CF5, CF6, CF7, CF9, PM1, PM2, AC3, PC2 | 41 | 3,686 | 1.71 |
+| Derivatives & Volatility | DV3, DV4, DV5, DV6, FI6 | 43 | 4,366 | 2.02 |
+| Corporate Finance / Investment Banking / Private Equity | CF5, CF6, CF7, CF9, PM1, PM2, AC3, PC2 | 42 | 3,756 | 1.74 |
 | Equity Research / Asset Management | FC4, CF7, F7, BK2, PR2, PC2 | 36 | 3,261 | 1.51 |
-| Quant Developer | CS6, QR2, MS2, DV4 | 37 | 3,896 | 1.80 |
+| Quant Developer | CS6, QR2, MS2, DV4 | 38 | 3,966 | 1.84 |
 | Risk & Financial Stability | PR4, SR3, SR4, BK3 | 31 | 2,936 | 1.36 |
 | Research doctorate (minimum prerequisite path to thesis) | CAP4 | 47 | 6,096 | 2.82 |
 
@@ -433,7 +433,7 @@ For one asset class, produce a complete field guide covering venues, participant
   - *Sources:* Mishkin, The Economics of Money, Banking and Financial Markets, 13th ed. (2022); Harris, Trading and Exchanges (2003); McLeay, Radia & Thomas (2014), Bank of England Quarterly Bulletin Q1
   - *Lab:* Trace one trade from order entry to settlement.
   - *Project — Instrument cash-flow engine* (`autograder`): Represent bonds, futures, swaps and options as dated cash-flow or payoff objects with a common interface, and test each against hand-computed examples. *Deliverable:* Tested module.
-- **FC2 · Derivatives Fundamentals** · U · 90 h · ← M4, CF1
+- **FC2 · Derivatives Fundamentals** · U · 90 h · ← M4, CF1, FC1
   - *Core:* Forwards, futures, swaps, option payoffs, no-arbitrage forward pricing, put–call parity, one-period and multi-period binomial pricing, using the Black–Scholes formula.
   - *Introduces:* Arbitrage opportunity; Forward contract; No-arbitrage forward price (cost of carry); Futures contract; Futures margining and marking to market; Interest-rate swap; Call and put payoffs; American vs. European exercise; Put–call parity; Model-free option bounds and convexity in strike; Binomial option pricing; Risk-neutral probability (binomial); Black–Scholes formula; Implied volatility
   - *Sources:* Hull, Options, Futures, and Other Derivatives, 11th ed. (2021); Stoll (1969), JF 24(5); Cox, Ross & Rubinstein (1979), JFE 7(3)
