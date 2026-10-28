@@ -526,6 +526,7 @@ def test_a_large_amount_posts_at_its_full_value() -> None:
         ("a date with an unpadded day", [{**SMALL[0], "date": "2024-01-2"}]),
         ("a date in February of a common year that has no 29th", [{**SMALL[0], "date": "2023-02-29"}]),
         ("a date whose month is beyond twelve", [{**SMALL[0], "date": "2024-13-01"}]),
+        ("a date of 2100-02-29, which is not a real calendar date", [{**SMALL[0], "date": "2100-02-29"}]),
         ("a date that is not a string", [{**SMALL[0], "date": 20240102}]),
         (
             "an amount that is a numeric string on the debit side",
@@ -1051,6 +1052,19 @@ def test_a_leap_year_month_end_is_accepted() -> None:
     ledger = sol.post(TXS)
     sol.balance_sheet(ledger, "2024-02-29")
     sol.cash_flow_statement(ledger, "2024-02-29")
+
+
+def test_a_century_leap_day_posts_as_a_real_date() -> None:
+    # 2000 is divisible by 400, so 2000-02-29 is a real calendar date (Constraints on the page): post must accept it.
+    ledger = sol.post([_entry("2000-02-29", [("cash", 5, 0), ("common_stock", 0, 5)])])
+    expected = dict.fromkeys(BALANCE_SHEET_KEYS, 0) | {
+        "cash": 5,
+        "common_stock": 5,
+        "total_equity": 5,
+        "total_assets": 5,
+        "total_liabilities_and_equity": 5,
+    }
+    _check_values(sol.balance_sheet(ledger, "2000-02-29"), expected, "balance sheet", "2000-02-29")
 
 
 def test_a_century_year_follows_the_400_year_rule() -> None:

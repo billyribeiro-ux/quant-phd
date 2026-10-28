@@ -237,7 +237,7 @@ Open questions (the architect decides; the builders do not):
 
 ## 12. Cards (Builder E, after A-C)
 
-`course/modules/CF/CF1/cards.json` follows the AC2 pattern: `id` `CF1-c001` upward, `lesson` in `L01`-`L06`, `front`, `back`, and `cite` (registry keys) or `basis` when the result is established in the lesson's own lab or problem set. Each lesson contributes at least one card, and the planner expects four to six per lesson (one per definition, key result and misconception). Every card cites a key or names its `basis`, and `grade` is a valid BLUEPRINT §3 grade. Duplicates are not allowed.
+`course/modules/CF/CF1/cards.json` follows the AC2 pattern: `id` `CF1-c001` upward, `lesson` in `L01`-`L06`, `front`, `back`, and `cite` (registry keys) or `basis` when the result is established in the lesson's own lab or problem set. Each lesson contributes at least one card, and the count follows BUILDER_RULES section 7 (one atomic card per definition, key result and misconception; no fixed number per lesson). Every card cites a key or names its `basis`, and `grade` is a valid BLUEPRINT §3 grade. Duplicates are not allowed.
 
 ## 13. After the builders
 
