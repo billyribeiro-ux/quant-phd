@@ -149,6 +149,11 @@ def main() -> None:
     for p in products:
         print(f"  {p.name}: overhead {fmt(sens[p.name])}, per unit {fmt(sens[p.name] // p.units)}")
     print(f"  allocated total: {fmt(sum(sens.values()))}, equals pool: {sum(sens.values()) == pool_total}")
+    try:
+        exact_rate(100_000, 3, "demonstration rate")
+        print("Uneven pool (100000 cents over 3 driver units): accepted")
+    except ValueError:
+        print("Uneven pool (100000 cents over 3 driver units): refused")
 
 
 main()
