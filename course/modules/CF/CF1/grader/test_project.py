@@ -9,7 +9,7 @@ with capbudget.py importable from the same directory. Warnings are failures, as 
 Each test checks a property or a number against the specification on the project page and the CF1 lessons. A failure
 names the property it checks and the idea to revisit; it never prints the expected value. Tolerances are stated in the
 specification and used here: relative 1e-9 for flows and NPVs, with an absolute floor of 1e-9 cents (1e-6 cents in six
-checks that sum several products), 1e-7 for an IRR rate, 1e-12 for the Fisher identity, and three sample standard
+named checks), 1e-7 for an IRR rate, 1e-12 for the Fisher identity, and three sample standard
 errors for the Monte Carlo mean.
 """
 
@@ -194,6 +194,26 @@ def test_irr_does_not_report_a_root_outside_the_search_window() -> None:
     )
 
 
+def test_irr_finds_a_root_in_the_first_grid_interval() -> None:
+    # NPV(r) = -0.000100005 + x with x = 1 / (1 + r): its zero is at x = 1.00005e-4, between the low end of the window
+    # (1e-4) and the next sample, so the sign change lies in the first interval of the scan.
+    roots = irr_roots([-0.000100005, 1.0])
+    assert len(roots) == 1 and abs(roots[0] - (1.0 / 0.000100005 - 1.0)) <= 1e-7, (
+        "a sign change between the low end of the search window and the next sample is inside the window and must be "
+        "found: the root at discount factor 0.000100005 (rate 9998.5) lies in the first interval of the scan."
+    )
+
+
+def test_irr_finds_a_root_in_the_last_grid_interval() -> None:
+    # NPV(r) = -9990 + x with x = 1 / (1 + r): its zero is at x = 9990, between the previous sample (about 9954) and
+    # the high end of the window (10000), so the sign change lies in the last interval of the scan (rate -0.9998999).
+    roots = irr_roots([-9990.0, 1.0])
+    assert len(roots) == 1 and abs(roots[0] - (1.0 / 9990.0 - 1.0)) <= 1e-7, (
+        "a sign change between the last sample before the high end of the search window and the high end is inside "
+        "the window and must be found: the root at discount factor 9990 (rate -0.9998999) must be reported."
+    )
+
+
 def test_irr_roots_are_ascending_and_distinct() -> None:
     roots = irr_roots([-100.0, 230.0, -132.0])
     assert roots == sorted(roots) and len(set(roots)) == len(roots), "return roots in ascending order, each once."
@@ -281,10 +301,10 @@ def test_fisher_round_trip_is_exact() -> None:
 
 
 def test_fisher_with_zero_inflation_or_zero_real_rate() -> None:
-    assert close(fisher_nominal(0.05, 0.0), 0.05, absolute=1e-15), (
+    assert close(fisher_nominal(0.05, 0.0), 0.05, rel=1e-12, absolute=1e-12), (
         "with zero inflation the nominal rate is the real rate."
     )
-    assert close(fisher_nominal(0.0, 0.03), 0.03, absolute=1e-15), (
+    assert close(fisher_nominal(0.0, 0.03), 0.03, rel=1e-12, absolute=1e-12), (
         "with a zero real rate the nominal rate is inflation."
     )
 

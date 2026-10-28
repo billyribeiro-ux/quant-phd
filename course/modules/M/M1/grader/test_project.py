@@ -151,7 +151,10 @@ def test_annuity_factor_one_period_at_a_time() -> None:
 
 
 def test_annuity_factor_zero_periods_is_zero() -> None:
-    assert sol.annuity_factor(ANN_RATE, 0) == 0
+    """With no payments the factor is 0, and it is a float like every closed form (the convention is binding)."""
+    zero = sol.annuity_factor(ANN_RATE, 0)
+    assert isinstance(zero, float), "annuity_factor must return a float at zero periods, not an int"
+    assert zero == 0
 
 
 def test_closed_forms_return_floats() -> None:
@@ -206,7 +209,10 @@ def test_annuity_due_zero_rate_is_the_number_of_periods() -> None:
 
 def test_annuity_due_zero_periods_is_zero() -> None:
     """With no payments the due factor is 0 at any valid rate: the due factor is the ordinary factor times (1 + r)."""
-    assert sol.annuity_due_factor(ANN_RATE, 0) == 0
+    due = sol.annuity_due_factor(ANN_RATE, 0)
+    assert isinstance(due, float), "annuity_due_factor must return a float at zero periods, not an int"
+    assert due == 0
+    assert isinstance(sol.annuity_due_factor(0.05, 0), float), "annuity_due_factor must return a float at zero periods"
     assert sol.annuity_due_factor(0.05, 0) == 0
 
 

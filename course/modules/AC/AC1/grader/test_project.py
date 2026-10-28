@@ -312,6 +312,7 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
         ("a date that is not in YYYY-MM-DD form", [{**SMALL[0], "date": "02/01/2024"}]),
         ("a date that does not exist", [{**SMALL[0], "date": "2024-02-30"}]),
         ("a date in the compact form", [{**SMALL[0], "date": "20240102"}]),
+        ("a date in the ISO week form", [{**SMALL[0], "date": "2024-W01-1"}]),
         ("a date with a time of day", [{**SMALL[0], "date": "2024-01-02T10:00"}]),
         ("a date with surrounding spaces", [{**SMALL[0], "date": " 2024-01-02 "}]),
         ("an empty list of lines", [{"date": "2024-01-02", "lines": []}]),
@@ -377,6 +378,18 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
             ],
         ),
         (
+            "an account name with surrounding spaces",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": " cash ", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
             "an account name in capitals",
             [
                 {
@@ -396,6 +409,18 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
                     "lines": [
                         {"account": "cash", "debit": 1, "credit": 0},
                         {"account": "common_stock", "debit": 0, "credit": True},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an amount that is a float on the credit side",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5.0},
                     ],
                 }
             ],

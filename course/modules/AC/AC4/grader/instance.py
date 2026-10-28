@@ -6,8 +6,8 @@ input quantity actually used. Every case is valid, and the seed changes the answ
 prices and the efficiency all vary with it. Nothing here is a real company's figure.
 
 The case is returned as a JSON string under ``payload``, so the value is the same bytes on every run. The
-grader decodes it; a learner never calls make_instance. All money is in whole cents and all quantities are whole
-units, as the project page states.
+grader decodes it; budget_engine.py never calls make_instance, and a learner may call it only to read a case, as the
+project page shows. All money is in whole cents and all quantities are whole units, as the project page states.
 """
 
 from __future__ import annotations

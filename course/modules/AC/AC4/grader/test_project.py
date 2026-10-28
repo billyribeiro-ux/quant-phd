@@ -584,10 +584,11 @@ def test_float_money_raises_value_error(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
-def test_boolean_input_raises_value_error(name: str) -> None:
-    case = fresh(fixed_overhead_cents=True)
-    call = (lambda: sol.flexible_budget(case, 10)) if name == "flexible_budget" else (lambda: getattr(sol, name)(case))
-    must_raise(call, "a boolean where a whole number is required")
+@pytest.mark.parametrize("field", ("input_price_cents", "fixed_overhead_cents", "actual_inputs_used"))
+def test_boolean_input_raises_value_error(name: str, field: str) -> None:
+    # A bool is an int in Python, so True would otherwise pass as one cent or one unit.
+    case = fresh(**{field: True})
+    must_raise(_call_for(name, case), f"{name}: {field} given as a boolean, where a whole number is required")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
@@ -658,6 +659,18 @@ def test_product_field_not_a_whole_number_raises_value_error(name: str, field: s
     must_raise(_call_for(name, with_products(rows)), f"{name}: a product's {field} given as a non-whole number")
 
 
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize(
+    "field",
+    ("budget_units", "budget_price_cents", "standard_inputs_per_unit", "actual_units", "actual_price_cents"),
+)
+def test_product_field_boolean_raises_value_error(name: str, field: str) -> None:
+    # A bool is an int in Python, so True would otherwise pass as one unit or one cent.
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0][field] = True
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a product's {field} given as a boolean")
+
+
 @pytest.mark.parametrize("offset", (0.5, 0.0))
 def test_non_whole_actual_units_argument_raises_value_error(offset: float) -> None:
     total = sum(r["actual_units"] for r in PRODUCTS)
@@ -665,6 +678,10 @@ def test_non_whole_actual_units_argument_raises_value_error(offset: float) -> No
         lambda: sol.flexible_budget(CASE, total + offset),
         "flexible_budget: an actual unit count that is not a whole number",
     )
+
+
+def test_boolean_actual_units_argument_raises_value_error() -> None:
+    must_raise(lambda: sol.flexible_budget(CASE, True), "flexible_budget: a boolean given as the actual unit count")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
