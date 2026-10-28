@@ -27,7 +27,7 @@ CHART: dict[str, tuple[str, str]] = {
 
 @dataclass(frozen=True)
 class Line:
-    """One side of one account. Debit and credit are non-negative integer cents; one of them is zero."""
+    """One side of one account. Debit and credit are non-negative integer cents; at most one of them is non-zero."""
 
     account: str
     debit: int = 0

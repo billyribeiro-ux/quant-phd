@@ -501,6 +501,45 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
                 }
             ],
         ),
+        ("a date with an unpadded month", [{**SMALL[0], "date": "2024-1-02"}]),
+        ("a date with an unpadded day", [{**SMALL[0], "date": "2024-01-2"}]),
+        ("a date in February of a common year that has no 29th", [{**SMALL[0], "date": "2023-02-29"}]),
+        ("a date whose month is beyond twelve", [{**SMALL[0], "date": "2024-13-01"}]),
+        ("a date that is not a string", [{**SMALL[0], "date": 20240102}]),
+        (
+            "an amount that is a numeric string on the debit side",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": "5", "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an amount that is a numeric string on the credit side",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": "5"},
+                    ],
+                }
+            ],
+        ),
+        (
+            "a negative debit balanced by a positive credit",
+            [_entry("2024-01-02", [("cash", -5, 5), ("common_stock", 5, 0)])],
+        ),
+        ("a negative debit of one cent", [_entry("2024-01-02", [("cash", -1, 2), ("common_stock", 3, 0)])]),
+        ("a negative credit of one cent", [_entry("2024-01-02", [("cash", 1, -1), ("common_stock", 0, 2)])]),
+        (
+            "an account outside the chart on the second line of an entry",
+            [_entry("2024-01-02", [("cash", 5, 0), ("retained_earnings", 0, 5)])],
+        ),
     ],
 )
 def test_post_raises_a_value_error(condition: str, transactions: list[dict[str, Any]]) -> None:
@@ -511,6 +550,20 @@ def test_an_invalid_entry_among_valid_ones_still_raises() -> None:
     bad = copy.deepcopy(TXS)
     bad[len(bad) // 2]["lines"][0]["debit"] = int(bad[len(bad) // 2]["lines"][0]["debit"]) + 1
     must_raise(lambda: sol.post(bad), "an unbalanced entry in the middle of a ledger")
+
+
+def test_a_bad_date_in_a_later_entry_still_raises() -> None:
+    must_raise(
+        lambda: sol.post([SMALL[0], {**SMALL[1], "date": "2024-02-30"}]),
+        "a date that does not exist, in an entry after a valid one",
+    )
+
+
+def test_an_account_repeated_within_one_entry_is_posted_in_full() -> None:
+    # Two cash lines and one stock line in one entry: the spec's balance is the debit minus the credit of every line.
+    entry = _entry("2024-01-02", [("cash", 5, 0), ("cash", 0, 2), ("common_stock", 0, 3)])
+    got = sol.balance_sheet(sol.post([entry]), "2024-01-31")
+    _check_values(got, {"cash": 3, "common_stock": 3}, "balance sheet", "2024-01-31")
 
 
 def test_post_does_not_change_its_argument() -> None:
@@ -679,17 +732,46 @@ def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
 )
 @pytest.mark.parametrize(
     "period_end",
-    ["2024-02-28", "2024-1-31", "2024-02-30", "31/01/2024", "2024-01-31T00:00", "2024-04-15"],
+    [
+        "2024-02-28",
+        "2024-1-31",
+        "2024-02-30",
+        "31/01/2024",
+        "2024-01-31T00:00",
+        "2024-04-15",
+        "2024-01-30",
+        "2024-04-31",
+    ],
 )
 def test_period_end_must_be_a_month_end(call: Callable[[object, str], object], period_end: str) -> None:
     ledger = sol.post(TXS)
     must_raise(lambda: call(ledger, period_end), f"a period end of {period_end!r}")
 
 
+def test_a_period_end_that_is_not_a_string_is_rejected() -> None:
+    ledger = sol.post(TXS)
+    bad_end: Any = 20240131
+    condition = "a period end that is not a string"
+    must_raise(lambda: sol.balance_sheet(ledger, bad_end), condition)
+    must_raise(lambda: sol.income_statement(ledger, bad_end), condition)
+    must_raise(lambda: sol.cash_flow_statement(ledger, bad_end), condition)
+    must_raise(lambda: sol.articulation_check(ledger, bad_end), condition)
+
+
 def test_a_leap_year_month_end_is_accepted() -> None:
     ledger = sol.post(TXS)
     sol.balance_sheet(ledger, "2024-02-29")
     sol.cash_flow_statement(ledger, "2024-02-29")
+
+
+def test_a_non_leap_year_february_end_is_accepted() -> None:
+    # 2023 is not in the ledger, so every balance through its February end is zero.
+    _check_values(
+        sol.balance_sheet(sol.post(TXS), "2023-02-28"),
+        dict.fromkeys(BALANCE_SHEET_KEYS, 0),
+        "balance sheet",
+        "2023-02-28",
+    )
 
 
 def test_the_statements_return_fresh_objects() -> None:

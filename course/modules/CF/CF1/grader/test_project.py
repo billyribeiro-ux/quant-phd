@@ -8,9 +8,9 @@ with capbudget.py importable from the same directory. Warnings are failures, as 
 
 Each test checks a property or a number against the specification on the project page and the CF1 lessons. A failure
 names the property it checks and the idea to revisit; it never prints the expected value. Tolerances are stated in the
-specification and used here: relative 1e-9 for flows and NPVs, with an absolute floor of 1e-9 cents (1e-6 cents in six
-named checks), 1e-7 for an IRR rate, 1e-12 for the Fisher identity, and three sample standard
-errors for the Monte Carlo mean.
+specification and used here: relative 1e-9 for flows and NPVs, with an absolute floor of 1e-9 cents (1e-6 cents in the
+named checks), 1e-7 for an IRR rate, 1e-12 for the Fisher identity, and an exact affine identity for the Monte Carlo
+mean (no statistical threshold).
 """
 
 from __future__ import annotations
@@ -108,6 +108,16 @@ def test_npv_rejects_rates_at_or_below_minus_one(bad: float) -> None:
 
 def test_npv_rejects_empty_flows() -> None:
     must_raise(lambda: npv(0.1, []), "an empty list of flows")
+
+
+def test_npv_of_a_single_flow_is_that_flow() -> None:
+    assert close(npv(0.5, [7.0]), 7.0), "a one-element list is valid: its NPV is its only flow, undiscounted at t = 0."
+
+
+def test_npv_accepts_a_rate_just_above_minus_one() -> None:
+    assert close(npv(-0.999, [-1.0, 2.0]), 1999.0), (
+        "a rate of -0.999 is above -1 and therefore valid: -1 + 2 / (1 - 0.999) = 1999."
+    )
 
 
 # ---------------------------------------------------------------- internal rate of return
@@ -239,6 +249,12 @@ def test_irr_rejects_all_zero_flows() -> None:
     must_raise(lambda: irr_roots([0.0, 0.0, 0.0]), "flows that are all zero")
 
 
+def test_irr_accepts_some_zero_flows_when_not_all_are_zero() -> None:
+    assert irr_roots([0.0, 5.0]) == [], (
+        "only all-zero flows are refused: [0, 5] is a valid request, and its NPV never changes sign, so it has no root."
+    )
+
+
 # ---------------------------------------------------------------- payback
 
 
@@ -268,6 +284,23 @@ def test_payback_ignores_flows_after_the_cut_off() -> None:
 
 def test_payback_never_recovered_is_infinite() -> None:
     assert payback_period([-100.0, 10.0, 10.0]) == math.inf, "an outlay never recovered gives math.inf."
+
+
+def test_payback_counts_a_year_that_exactly_recovers_the_outlay_at_the_horizon() -> None:
+    assert close(payback_period([-100.0, 50.0, 50.0]), 2.0), (
+        "cumulative flow of exactly zero counts as recovered ('zero or more'), also in the last year of the horizon."
+    )
+
+
+def test_payback_recovered_exactly_in_year_one() -> None:
+    assert close(payback_period([-100.0, 100.0]), 1.0), "an outlay recovered at the end of year 1 gives payback 1."
+
+
+def test_payback_at_zero_rate_is_simple_payback() -> None:
+    flows = [-100.0, 60.0, 60.0]
+    assert close(payback_period(flows, 0.0), payback_period(flows)), (
+        "a rate of zero discounts nothing, so discounted payback at zero is simple payback."
+    )
 
 
 def test_discounted_payback_uses_discounted_flows() -> None:
@@ -312,6 +345,12 @@ def test_fisher_with_zero_inflation_or_zero_real_rate() -> None:
 @pytest.mark.parametrize(("real", "pi"), [(-1.0, 0.02), (0.02, -1.0)], ids=["real", "inflation"])
 def test_fisher_rejects_rates_at_or_below_minus_one(real: float, pi: float) -> None:
     must_raise(lambda: fisher_nominal(real, pi), "a rate at or below -1")
+
+
+def test_fisher_accepts_rates_just_above_minus_one() -> None:
+    assert close(fisher_nominal(-0.999, 0.0), -0.999, rel=1e-12, absolute=1e-12), (
+        "a real rate of -0.999 is above -1 and valid: with zero inflation the nominal rate is the real rate."
+    )
 
 
 def test_instance_real_rate_round_trips_to_the_nominal_rate() -> None:
@@ -430,15 +469,75 @@ def test_real_flows_at_the_real_rate_equal_nominal_flows_at_the_nominal_rate() -
             {"cash_costs": [float("inf"), *PROJECT["cash_costs"][1:]]}, "a cash cost that is not finite", id="cost-inf"
         ),
         pytest.param({"inflation": -1.0}, "inflation of -100 percent", id="inflation-minus-one"),
+        pytest.param({"inflation": -1.5}, "inflation below -100 percent", id="inflation-below-minus-one"),
+        pytest.param({"capex": True}, "a capex given as a boolean, not a number of cents", id="capex-bool"),
+        pytest.param({"capex": "900000"}, "a capex given as text, not a number of cents", id="capex-text"),
+        pytest.param({"life": -1, "revenue": [], "cash_costs": []}, "a negative life", id="life-negative"),
+        pytest.param(
+            {"revenue": [*PROJECT["revenue"], 1.0]}, "revenue with one entry more than the life", id="revenue-too-long"
+        ),
+        pytest.param(
+            {"cash_costs": [*PROJECT["cash_costs"], 1.0]},
+            "cash costs with one entry more than the life",
+            id="cost-too-long",
+        ),
+        pytest.param({"tax_rate": 1.5}, "a tax rate above 100 percent", id="tax-above-one"),
+        pytest.param({"nwc_share": 1.5}, "a working-capital share above 100 percent", id="share-above-one"),
+        pytest.param(
+            {"revenue": [float("inf"), *PROJECT["revenue"][1:]]}, "a revenue that is infinite", id="revenue-inf"
+        ),
+        pytest.param(
+            {"cash_costs": [float("nan"), *PROJECT["cash_costs"][1:]]},
+            "a cash cost that is not a number",
+            id="cost-nan",
+        ),
     ],
 )
 def test_invalid_project_raises_a_named_error(change: dict[str, Any], condition: str) -> None:
     must_raise(lambda: after_tax_cash_flows(with_(PROJECT, **change)), condition)
 
 
-def test_missing_field_raises_a_named_error() -> None:
-    partial = {k: v for k, v in PROJECT.items() if k != "tax_rate"}
-    must_raise(lambda: after_tax_cash_flows(partial), "a project without a tax rate")
+@pytest.mark.parametrize("field", ["capex", "life", "revenue", "cash_costs", "tax_rate", "nwc_share", "inflation"])
+def test_missing_field_raises_a_named_error(field: str) -> None:
+    partial = {k: v for k, v in PROJECT.items() if k != field}
+    must_raise(lambda: after_tax_cash_flows(partial), f"a project without the field {field}")
+
+
+def test_zero_revenue_and_zero_costs_are_valid_inputs() -> None:
+    flows = after_tax_cash_flows(with_(PROJECT, revenue=[0.0] * LIFE, cash_costs=[0.0] * LIFE))
+    assert len(flows) == LIFE + 1, "zero is a non-negative revenue and a non-negative cost: both are valid."
+
+
+def test_capex_of_one_cent_is_a_valid_project() -> None:
+    flows = after_tax_cash_flows(with_(PROJECT, capex=1))
+    assert flows[0] == -1.0, "a positive whole number of cents, however small, is a valid outlay."
+
+
+def test_working_capital_share_of_zero_is_valid() -> None:
+    flows = after_tax_cash_flows(with_(PROJECT, nwc_share=0.0))
+    assert len(flows) == LIFE + 1, (
+        "a working-capital share of zero is valid: the lower bound of the share is inclusive."
+    )
+
+
+def test_boundary_tax_and_share_values_just_inside_the_range_are_valid() -> None:
+    assert len(after_tax_cash_flows(with_(PROJECT, tax_rate=0.0))) == LIFE + 1, "a tax rate of zero is valid."
+    assert len(after_tax_cash_flows(with_(PROJECT, tax_rate=0.999))) == LIFE + 1, "a tax rate below 1 is valid."
+    assert len(after_tax_cash_flows(with_(PROJECT, nwc_share=0.999))) == LIFE + 1, "a share below 1 is valid."
+
+
+def test_inflation_just_above_minus_one_is_valid() -> None:
+    real = after_tax_cash_flows(with_(PROJECT, inflation=-0.5), real=True)
+    assert len(real) == LIFE + 1, "an inflation rate above -1 (here -50 percent) is valid."
+
+
+def test_tax_credit_is_paid_when_ebitda_is_zero() -> None:
+    # Zero revenue and cost: EBITDA is 0, so the tax is tax_rate * (0 - capex), a credit. The flow is tax_rate * capex.
+    one = with_(PROJECT, life=1, revenue=[0.0], cash_costs=[0.0], nwc_share=0.0)
+    flows = after_tax_cash_flows(one)
+    assert close(flows[1], TAX * CAPEX, absolute=1e-6), (
+        "with no EBITDA the depreciation loss is a tax credit, so the year's flow is positive: tax_rate times capex."
+    )
 
 
 def test_input_project_is_not_changed() -> None:
@@ -525,17 +624,26 @@ def test_monte_carlo_changes_with_the_seed() -> None:
     assert a != b, "different seeds must give different draws when volatility is positive."
 
 
-def test_monte_carlo_mean_is_within_three_standard_errors_of_the_deterministic_npv() -> None:
+def test_monte_carlo_accepts_exactly_two_draws() -> None:
+    draws = npv_monte_carlo(PROJECT, RATE, 2, SEED, INST["volatility"])
+    assert len(draws) == 2, "two draws is the smallest valid request: a standard error needs two draws."
+
+
+def test_monte_carlo_mean_is_the_affine_identity_on_the_same_draws() -> None:
+    # NPV is affine in the multiplier m: NPV(m) = a + b * m, with a the NPV at m = 0 and b the slope. The mean of the
+    # draws is therefore a + b * mean(m), exactly, for the multipliers the specification gives from the same stream.
     n = INST["mc_draws"]
-    draws = npv_monte_carlo(PROJECT, RATE, n, SEED, INST["volatility"])
-    mean = sum(draws) / n
-    variance = sum((d - mean) ** 2 for d in draws) / (n - 1)
-    standard_error = math.sqrt(variance / n)
-    deterministic = npv(RATE, after_tax_cash_flows(PROJECT))
-    assert abs(mean - deterministic) <= 3.0 * standard_error, (
-        "the revenue multiplier has mean one, so the draws' mean estimates the deterministic NPV. A mean that is off "
-        "by more than three standard errors usually means the mean-one correction -volatility**2/2 in the multiplier "
-        "is missing."
+    volatility = INST["volatility"]
+    draws = npv_monte_carlo(PROJECT, RATE, n, SEED, volatility)
+    rng = random.Random(SEED)
+    multipliers = [math.exp(volatility * rng.gauss(0.0, 1.0) - volatility * volatility / 2.0) for _ in range(n)]
+    at_zero = npv(RATE, after_tax_cash_flows(with_(PROJECT, revenue=[0.0] * LIFE)))
+    at_one = npv(RATE, after_tax_cash_flows(PROJECT))
+    expected_mean = at_zero + (at_one - at_zero) * (sum(multipliers) / n)
+    assert close(sum(draws) / n, expected_mean, absolute=1e-6), (
+        "the draws' mean must equal a + b times the mean of the specified multipliers, where a and b come from the "
+        "flows at multiplier zero and one. Check that each draw scales every revenue by the multiplier and that the "
+        "multiplier is exp(volatility * z - volatility squared / 2) for the z of that draw."
     )
 
 

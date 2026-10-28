@@ -1,0 +1,265 @@
+"""Builds the round 9 AC1-a fragment (ledgers/AC1/AC1-a.json) from the rows the verifier recorded."""
+
+import json
+import sys
+from collections import Counter
+
+OUT = sys.argv[1]
+C8 = "Carried from round 8 (course/modules/AC/AC1/index.html byte-identical since the previous pin 2c8162b): "
+L_OUT = "Re-verified at 96dd532: cited lines lie outside every hunk of git diff 2c8162b 96dd532 "
+HIST = "Historical: superseded by AC1a-r9-delta; kept for id continuity. "
+
+P = "PASS"
+F = "FAIL"
+
+rows = [
+    # commands
+    ("AC1a-cmd-check_pages", "tools/check_pages.py --unit AC1", "index, L01-L03", P,
+     "Re-run at 96dd532: 'check_pages AC1: PASS', exit 0 (/tmp/ac1-v/a-r9/check_pages.out)."),
+    ("AC1a-cmd-check_dag", "tools/check_dag.py --unit AC1", "AC1 DAG", P,
+     "Re-run at 96dd532: 'check_dag AC1: PASS', exit 0 (/tmp/ac1-v/a-r9/check_dag.out)."),
+    ("AC1a-cmd-run_labs", "tools/run_labs.py --unit AC1", "tests/labs/AC1", P,
+     "Re-run at 96dd532: 'run_labs AC1: PASS (11/11)', exit 0 (/tmp/ac1-v/a-r9/run_labs.out)."),
+    ("AC1a-cmd-page_smoke", "tools/page_smoke.py --unit AC1 --pages index L01 L02 L03", "index, L01, L02, L03", P,
+     "Re-run at 96dd532: 'page_smoke AC1: PASS', exit 0; lab-AC1-L03-1 0.0 s (/tmp/ac1-v/a-r9/page_smoke.out)."),
+    ("AC1a-cmd-verify_refs", "tools/verify_refs.py --unit AC1 (live) and --offline", "references/references.json", P,
+     "Re-run at 96dd532: live '2 of 560 entries, 0 problems'; offline '560 entries, 0 problems'; both exit 0. "
+     "git diff 2c8162b 96dd532 -- references/references.json is empty (0 lines)."),
+    ("AC1a-cmd-ruff-mypy", "ruff check, ruff format --check, mypy --no-incremental", "repo; tests/labs/AC1", P,
+     "Re-run at 96dd532: ruff check . 'All checks passed!'; ruff format --check . '212 files already formatted'; "
+     "mypy --no-incremental tests/labs/AC1 'Success: no issues found in 11 source files'; all exit 0 "
+     "(/tmp/ac1-v/a-r9/ruff.out, mypy.out)."),
+    ("AC1a-cmd-twin-run", "python -I -W error on each AC1-a twin", "tests/labs/AC1/lab-AC1-L01-1.py, L02-1, L03-1", P,
+     "Re-run at 96dd532: exit 0 each, 0 bytes stderr (/tmp/ac1-v/a-r9/L01.out, L02.out, L03.out). L03 final line "
+     "'all articulation identities hold in every year: True'."),
+    ("AC1a-cmd-pytest-AC1", "pytest -q tests -k 'AC1 or lab'; collect-only count", "tests", P,
+     "Re-run at 96dd532: 143 dots, exit 0. Collect-only per-file counts sum to 143 (test_labs 127, test_run_labs 6, "
+     "test_page_checks 4, test_page_smoke 2, test_memo_exemplars 2, test_fetch_data 1, test_figure_kernels 1)."),
+    ("AC1a-cmd-build-site", "tools/build_site.py --check", "course/concepts.html; site data", P,
+     "Re-run at 96dd532: exit 0, 'site data current: 6 outputs' (/tmp/ac1-v/a-r9/build_site.out)."),
+    ("AC1a-cmd-scope-witness", "scope witness for Proposition 3.2 (L01) hypothesis (i)", "L01.html Proposition 3.2 statement",
+     P, "Re-run in ledgers/AC1/scripts/AC1-a-r9/witness_r9.py (W4): write-off 30 on sales 100, no collections gives "
+     "R=100, K=0, dA=70, R-K=100, identity holds False. Hypothesis (i) of Proposition 3.2 excludes write-offs."),
+    ("AC1a-twin-matches-page", "each AC1-a page's data-run block equals its twin", "L01.html, L02.html, L03.html", P,
+     "Re-run in witness_r9.py (W5): one data-run block per page, equal to the twin after the final newline is stripped "
+     "(True, True, True)."),
+    ("AC1a-cite-none", "no citation markup in the four pages", "index.html, L01-L03.html", P,
+     "Re-run at 96dd532: grep -c for data-cite, class=\"cite\" and data-key gives 0 in each of the four pages."),
+    ("AC1a-lab-seeded-offline", "labs seeded, offline, standard library only", "tests/labs/AC1/lab-AC1-L01-1.py, lab-AC1-L02-1.py, lab-AC1-L03-1.py", P,
+     "Carried from round 8 (tests/labs/AC1/lab-AC1-L01-1.py, lab-AC1-L02-1.py, lab-AC1-L03-1.py byte-identical since the "
+     "previous pin 2c8162b): git diff 2c8162b 96dd532 is empty for the three twins. Imports are __future__, random, "
+     "dataclasses; SEED = 20261027."),
+    ("AC1a-num-hub", "numbers in the hub", "course/modules/AC/AC1/index.html", P, C8 + "the hub is unchanged since 2c8162b."),
+    ("AC1a-hours-hub", "hub hours split and lesson hours arithmetic", "course/modules/AC/AC1/index.html line 29 and lines 150-157", P,
+     "Re-computed at 96dd532: lesson data-hours L01 11, L02 12, L03 11, L04 11, L05 12, L06 12, L07 11, L08 10 sum to 90 "
+     "(11+12+11+11+12+12+11+10); hub project 30; title 120 = 90 + 30. No arithmetic inconsistency. Pace not graded."),
+    ("AC1a-hours-L01", "lesson hours", "course/modules/AC/AC1/L01.html data-hours", P,
+     "data-hours=11 on line 2; line 2 lies outside every hunk of 2c8162b..96dd532 (L01 hunks start at line 85)."),
+    ("AC1a-hours-L02", "lesson hours", "course/modules/AC/AC1/L02.html data-hours", P,
+     "data-hours=12 on line 2; line 2 lies outside every hunk of 2c8162b..96dd532 (L02 hunks start at line 71)."),
+    ("AC1a-hours-L03", "lesson hours", "course/modules/AC/AC1/L03.html data-hours", P,
+     "data-hours=11 on line 2; line 2 lies outside every hunk of 2c8162b..96dd532 (L03 hunks start at line 60)."),
+    ("AC1a-struct-lessons", "template section headings of L01-L03", "L01.html, L02.html, L03.html", P,
+     "Re-run at 96dd532: git diff 2c8162b 96dd532 adds or removes zero h1-h3 lines in each of L01, L02, L03."),
+    ("AC1a-struct-hub", "hub section order", "course/modules/AC/AC1/index.html", P, C8 + "the hub is unchanged since 2c8162b."),
+    ("AC1a-placement-arithmetic", "placement threshold arithmetic", "course/modules/AC/AC1/index.html line 72", P,
+     C8 + "80% of 9 = 7.2, unchanged."),
+    ("AC1a-curriculum-match", "hub meta rows, lede and Unlocks", "course/modules/AC/AC1/index.html", P, C8 + "the hub is unchanged since 2c8162b."),
+    ("AC1a-index-objective5", "hub objective 5 cross-references to L05-L08", "index.html line 53; L05 line 492; L06 line 456; L07; L08 line 287", P,
+     "Re-read at 96dd532: hub line 53 unchanged; L05 line 492 and L06 line 456 unchanged. L07 line 341 no longer carries the point: "
+     "the matching sentence is now L07 line 441 ('The recognition and measurement rules for these awards are not stated here.'). "
+     "L08 line 287 ('The model lacks the per-asset tax schedules and the year-by-year rates') still states the open rule. Both leave a rule open, which objective 5 names. The locator for L07 is corrected here."),
+    ("AC1a-index-registry-scope", "index line 175 registry statements", "course/modules/AC/AC1/index.html line 175", P,
+     C8 + "references/references.json unchanged (0 lines in the diff); verify_refs offline 560 entries, 0 problems."),
+    ("AC1a-r6-hub-glossary-explains", "hub explain texts", "course/modules/AC/AC1/index.html lines 81-131", P,
+     C8 + "the explain at line 136 cites L01 Definition 1.1 (lesson line 71) and line 141 cites L01 Proposition 3.2 (lesson line 387); both exist with those statements."),
+    ("AC1a-data-simulated", "data status statements", "index line 175; L01 line 661; L02 line 802; L03 line 932", P,
+     "Re-read at 96dd532: index line 175 unchanged; footers at L01 line 661, L02 line 802, L03 line 932 each read 'The lab figures in this lesson are SIMULATED.'; "
+     "L01 References line 650 reads 'This lesson cites no registry source'. Each lab is labelled SIMULATED in heading and interpretation (grep -c: 13, 16, 15 hits)."),
+    ("AC1a-notation", "notation macros in the four pages", "index.html, L01-L03.html", P,
+     "Re-run at 96dd532: grep -F for gamma3, gamma4, \\Phi, \\mathbb, \\Rstar, \\R_f, \\mathbf gives 0 hits in each of the four pages."),
+    ("AC1a-banned-phrases", "banned phrases, ellipses and process words in the four pages", "index.html, L01-L03.html", P,
+     "Re-run at 96dd532: grep -F for 'roughly half', 'about 6', 'historically', 'as much as', 'TODO', 'TBD', 'lorem', the ellipsis character, 'builder', 'verifier', 'unit report', 'REQUESTS' gives 0 hits in each page."),
+    ("AC1a-grade-T-L01", "grades T: Proposition 2.1, Proposition 3.2", "course/modules/AC/AC1/L01.html Proposition 2.1 (line 90) and Proposition 3.2 (line 387)", P,
+     "Re-read at 96dd532: both statements and proofs lie outside every hunk (hunks at 85-89, 101-105, 382-386, 408-412). Proof of 2.1 sums balanced entries; proof of 3.2 splits revenue and expense as stated, and its hypotheses (i) to (v) match the lab (write-offs absent; the payable entries; the cash sources)."),
+    ("AC1a-num-L01", "numbers in prose on L01 (Example 3.3, E1-E3, interpretation)", "course/modules/AC/AC1/L01.html (Example 3.3 line 399; E1 line 506; interpretation line 379)", P,
+     "Re-computed at 96dd532: 192,834.97 + 21,046.51 = 213,881.48; 154,267.97 + 21,046.51 = 175,314.48; 213,881.48 - 175,314.48 = 38,567.00; 38,567.00 is the Lab 1 receivable. Lines 379, 399 and 506 lie outside every hunk."),
+    ("AC1a-L01-timings-balances", "L01 Example 3.3 paragraph", "course/modules/AC/AC1/L01.html Example 3.3 (line 399)", P,
+     L_OUT + "(hunks at 85-89, 101-105, 382-386, 408-412). Figures 192,834.97, 21,046.51, 154,267.97, 213,881.48, 175,314.48 and 38,567.00 match the Lab 1 output (/tmp/ac1-v/a-r9/L01.out)."),
+    ("AC1a-L01-E3-five", "L01 E3 and quiz", "course/modules/AC/AC1/L01.html E3 (line 517) and the quiz", P,
+     L_OUT + "(E3 at line 517). The L01 quiz keys were re-read under AC1a-quiz-keys."),
+    ("AC1a-L01-key-scope", "L01 Key results row on the balance check scope", "course/modules/AC/AC1/L01.html Key results row (line 559)", F,
+     "Line 559 says 'Definition 1.1 sets the scope of the check: balance, integer non-negative cents and one side per line.' The lab check (lab-AC1-L01-1.py check_entry) refuses a line with both a debit and a credit but accepts a line with neither (witness W1 in witness_r9.py prints True). The row claims a scope the check does not enforce. Fix: change the row to 'balance, integer non-negative cents, and at most one side per line', or make check_entry refuse a line with neither side and re-embed the lab."),
+    ("AC1a-L01-remark34-amount-sources", "L01 Remark 3.4 amount sources", "course/modules/AC/AC1/L01.html Remark 3.4 (line 404)", P,
+     L_OUT + "(Remark 3.4 at line 404). Lab amounts: credit sale randrange(18,000,000, 24,000,000); collection balance*4//5; payment balance//2; opening investment 8,000,000 cents = 80,000.00 (lab lines 120-139)."),
+    ("AC1a-L01-interp-drawn-scope", "L01 lab interpretation and docstring", "course/modules/AC/AC1/L01.html interpretation (line 379); lab docstring lines 1-7", P,
+     L_OUT + "(interpretation at line 379). Docstring unchanged; it names the four drawn amounts and the fixed fractions."),
+    ("AC1a-lab-L01-claims", "L01 lab hypothesis and printed output", "course/modules/AC/AC1/L01.html hypothesis (line 108)", P,
+     L_OUT + "(hypothesis at line 108). The output shows seven entries, each balanced; trial balance equal; both difference-equals lines True; three malformed entries refused, 'entries before 7, after 7'."),
+    ("AC1a-r8-L01-def13-placement", "Definition 1.3 in section 1", "course/modules/AC/AC1/L01.html lines 80-84", P,
+     L_OUT + "(lines 80-84). Definition 1.3 defines accrual accounting before its first body use (section 3, line 382)."),
+    ("AC1a-r8-L01-s5-leadin", "Section 5 lead-in", "course/modules/AC/AC1/L01.html Section 5 lead-in (line 420)", P,
+     L_OUT + "(line 420). The lead-in says the double-entry rule says nothing about whether an event happened."),
+    ("AC1a-r9-L01-remark22-one-side", "L01 Remark 2.2: posting checks test 'one side per line'", "course/modules/AC/AC1/L01.html Remark 2.2 (line 103)", F,
+     "Line 103 says posting checks test 'that each amount is a non-negative integer number of cents with one side per line'. The lab check accepts a line with neither a debit nor a credit (witness W1: check_entry returns without error on Line('cash') with debit 0 and credit 0). Definition 1.1 (line 71) says 'either a debit or a credit', but the page attributes the test to the posting check."),
+    ("AC1a-grade-T-L02", "grades T: Proposition 2.2, 3.2, 4.2 (statements and proofs)", "course/modules/AC/AC1/L02.html lines 77-78, 96-98, 101-103, 125-127", F,
+     "Proposition 4.2 proof (line 126) and Proposition 2.2 proof (line 82-84) agree with their statements. Proposition 3.2 (line 97) is stated for 'any ledger of balanced entries whose only equity accounts are common stock and dividends', but its proof (line 102) applies Proposition 2.2, which holds only when the only revenue and expense accounts are the four of Definition 2.1 (the hypothesis at line 78). Witness W3: one 1,000-cent interest-income entry on the Lab 2 ledger leaves assets less liabilities and equity at 1000 cents at the 2025 year end. The T grade for 3.2 is not supported as stated (see AC1a-r9-L02-prop32-hypothesis). Fix: keep the grade T only after the Proposition 3.2 hypothesis in AC1a-r9-L02-prop32-hypothesis is added."),
+    ("AC1a-r9-L02-prop32-hypothesis", "L02 Proposition 3.2 statement omits the Proposition 2.2 hypothesis its proof needs", "course/modules/AC/AC1/L02.html Proposition 3.2 statement (line 97) and proof (line 102)", F,
+     "The statement at line 97 says 'For any ledger of balanced entries whose only equity accounts are common stock and dividends'. The proof uses Proposition 2.2 for the income accounts, which needs 'the only revenue and expense accounts are the four of Definition 2.1' (line 78). Witness W3 in witness_r9.py: a balanced entry Dr cash 1000 / Cr interest_income 1000 (a revenue account outside the four) gives assets less liabilities and equity = 1000 cents at 2025 year end, so the statement as written is false. Fix: add that hypothesis to Proposition 3.2 at line 97 (and to card AC1-c029 and to Remark 3.3); or define net income over all revenue and expense accounts and say so in Definition 2.1."),
+    ("AC1a-r8-L02-def21-forward-ref", "Definition 2.1: depreciation before its Lesson 3 definition", "course/modules/AC/AC1/L02.html line 73", P,
+     "Re-read at 96dd532: line 73 now reads 'D for the depreciation expense of the year, an expense with no cash line (its entry is set out in Lesson 3, Definition 1.2)'. L03 Definition 1.2 (line 61) gives the entry: debit depreciation expense, credit accumulated depreciation, no line touches cash. The reference is explicit."),
+    ("AC1a-L02-why-common-error", "L02 paragraph on the common error", "course/modules/AC/AC1/L02.html line 55", P,
+     L_OUT + "(line 55). Paragraph unchanged."),
+    ("AC1a-r8-L02-s6-net-income-bullet", "L02 section 6 net-income bullet", "course/modules/AC/AC1/L02.html line 550", P,
+     L_OUT + "for line 550 (the bullet is a context line of the 547-551 hunk; the change is on line 549). Proposition 2.2 sums the revenue and cost accounts of the ledger as stated."),
+    ("AC1a-r8-L02-P3-reclass", "L02 exercise P3 solution", "course/modules/AC/AC1/L02.html line 623", P,
+     L_OUT + "(line 623). Re-read: the solution says 'The operating and investing subtotals change, in opposite directions and by the same amount', which is correct for that reclassification."),
+    ("AC1a-num-L02", "numbers in L02 section 5, section 6, misconceptions, E1-E3", "course/modules/AC/AC1/L02.html section 5 (line 547), section 6, misconceptions (lines 560-575), E1-E3 (line 634 onward)", P,
+     "Re-computed at 96dd532: 1,003,421.14 - 200,000.00 = 803,421.14; 1,654,305.29 - 200,000.00 = 1,454,305.29; 3,000,000.00 + 1,454,305.29 = 4,454,305.29. Lab 2 output gives 2025 retained earnings 803,421.14. The changed bullet at line 549 ('every year end') matches Lab 2, which prints year-end balance sheets only."),
+    ("AC1a-grade-C-rows", "grade C rows on activity split and straight-line", "course/modules/AC/AC1/L02.html line 689; course/modules/AC/AC1/L03.html lines 813-814", P,
+     L_OUT + "(lines 689 and 813-814). The line 689 row carries C with basis 'Convention of this lab, stated in Definition 4.1; what any reporting framework requires for this split is not stated here'."),
+    ("AC1a-lab-L02-claims", "L02 lab hypothesis and interpretation", "course/modules/AC/AC1/L02.html hypothesis (lines 133-134); interpretation (line 535)", P,
+     L_OUT + "(lines 133-134 and 535). The Lab 2 header lines match the code (SIMULATED; four-year ledger; no closing entries)."),
+    ("AC1a-L02-lab-prop22", "L02 line 86 (Lab 2 net income sentence)", "course/modules/AC/AC1/L02.html line 86", P,
+     L_OUT + "(line 86). The sentence says Lab 2 computes net income from four accounts, which the lab code does (sales, cost_of_sales, operating_expense, depreciation_expense)."),
+    ("AC1a-L02-lab-zero-difference", "L02 line 110", "course/modules/AC/AC1/L02.html line 110", P,
+     L_OUT + "(line 110). Paragraph unchanged; its check is the printed income-statement and balance sheet identity."),
+    ("AC1a-L02-growing-depreciation", "L02 paragraph after the Lab 2 interpretation", "course/modules/AC/AC1/L02.html line 538", P,
+     L_OUT + "(line 538). Paragraph unchanged; the depreciation charge rises with the 2026 step of 7,500,000 cents in lab-AC1-L02-1.py."),
+    ("AC1a-L02-very-different-years", "L02 section 6 bullet 1: balance sheet is a snapshot", "course/modules/AC/AC1/L02.html section 6 bullet 1 (line 549)", P,
+     "Re-read at 96dd532: line 549 now says 'Proposition 3.2 holds at every year end, but the balance sheet at a date says nothing about the path that produced it'. Definition 1.1 (stock, measured at a date) supports the snapshot claim; the every-year-end scope matches Lab 2, which checks year ends only."),
+    ("AC1a-L02-R3-repurchase-standard", "L02 R3 solution", "course/modules/AC/AC1/L02.html lines 669-671", P,
+     L_OUT + "(lines 669-671). Unchanged."),
+    ("AC1a-L02-def41-activity", "L02 Definition 4.1 and the lab activity rules", "course/modules/AC/AC1/L02.html line 116; lab-AC1-L02-1.py activity rules", P,
+     L_OUT + "(line 116). Lab check_entry requires one of operating, investing, financing, noncash; the lab's cash lines carry operating, investing or financing."),
+    ("AC1a-L02-q10-explain-causal", "L02 q10 explanation: 'An interest or tax account is an income-statement account, so the proof covers it'", "course/modules/AC/AC1/L02.html explain (line 775)", F,
+     "Line 775 says: 'An interest or tax account is an income-statement account, so the proof covers it without naming it.' Witness W3 shows an interest-income entry breaks the identity under the Definition 2.1 net income (1000 cents gap), so the proof does not cover an interest account as the explanation says. Fix: state that the proof needs the four income accounts of Definition 2.1 and that interest or tax accounts are outside Lab 2's ledger; or add those accounts to the net income definition and its hypothesis."),
+    ("AC1a-r6-L02-remark33-scope", "L02 Remark 3.3 (what the proof uses)", "course/modules/AC/AC1/L02.html Remark 3.3 (lines 106-107)", F,
+     "Line 107 says 'The proof uses only that the ledger is balanced (Proposition 2.1), that the accounts are partitioned into balance-sheet and income accounts, and that the equity accounts are the two named in the hypothesis.' The proof also uses Proposition 2.2, whose hypothesis is that the revenue and expense accounts are the four of Definition 2.1 (line 78). Witness W3 applies. Fix: add 'and that the revenue and expense accounts are the four of Definition 2.1' to the 'uses only' list."),
+    ("AC1a-r6-L02-H-rename", "L02 H (dividends) and L03 roll-forward notation", "course/modules/AC/AC1/L02.html lines 102, 614-616; course/modules/AC/AC1/L03.html lines 737-739", P,
+     "Re-read at 96dd532: the proof at line 102 still defines H as the debit balance of dividends; L03 lines 737-739 are outside every hunk. No stray D_s or \\(D symbol."),
+    ("AC1a-r6-L02-lab-scope-word", "L02 line 535 lab scope word", "course/modules/AC/AC1/L02.html line 535", P,
+     L_OUT + "(line 535). Unchanged."),
+    ("AC1a-quiz-keys", "quiz keys L01, L02, L03 (L03 q4 explanation)", "course/modules/AC/AC1/L01.html quiz; L02.html quiz; L03.html quiz (q4 explain line 854)", P,
+     "Re-run at 96dd532: L03 q4 key 'A credit to accumulated depreciation'; its explanation (line 854) now reads 'depreciation credits accumulated depreciation and has no cash line. Accumulated depreciation is a contra-asset (Lesson 2, Proposition 3.2 proof)'. The Lesson 2 proof now contains the contra-asset sentence, so the citation resolves. L01 keys (10 items) and L02 keys (11 items) re-read; each key matches its lesson text; L02 q10 key 'No; the proof needs only the balance-sheet accounts, the income accounts and dividends' is affected by AC1a-L02-q10-explain-causal, not by its key."),
+    ("AC1a-grade-T-L03", "grades T: Proposition 2.2 (hypotheses (i)-(v)), 3.1, 4.1, 4.2 (lines 75-127)", "course/modules/AC/AC1/L03.html Proposition 2.2 statement (line 76) and proof (line 81); Proposition 4.2 proof (line 120)", F,
+     "Proposition 4.2 proof now cites Definition 1.2 for 'the two lines of the entry' and Lesson 1 Definition 1.1 for balance; that citation is now correct. Proposition 2.2 hypothesis (iv) at line 76 says 'Depreciation is the only expense with no cash line.' Cost of sales is also an expense with no cash line: the cost entry is 'Dr cost_of_sales / Cr accounts_payable' (lab-AC1-L02-1 and -L03 generate). Witness W2 in witness_r9.py lists 'cost of sales on account' as the only expense entry with no cash line. The hypothesis is false for the lab and contradicts hypothesis (ii) and the proof's 'the credit and cost entries carry no cash line'. Fix: (iv) 'Depreciation and cost of sales are the only expenses that carry no cash line when posted.'"),
+    ("AC1a-grade-T-L03-prop62", "grade T: Proposition 6.2", "course/modules/AC/AC1/L03.html lines 140-146", P,
+     "Carried from round 8 (course/modules/AC/AC1/L03.html lines 140-146 are outside every hunk of 2c8162b..96dd532; the file changed at lines 60-158 and 852-856 only): Proposition 6.2 statement and proof unchanged."),
+    ("AC1a-r8-L03-def12-definition", "L03 Definition 1.2 (depreciation, straight-line)", "course/modules/AC/AC1/L03.html lines 60-64", P,
+     "Re-read at 96dd532: the definition now adds the residual-value parenthetical '(the amount the firm expects to recover when the asset is retired)'. Lab: per_quarter = cost // quarters_of_life (lab-AC1-L03-1.py depreciation_schedule) and ASSETS carry no residual, so 'the lab's assets have no residual value' holds."),
+    ("AC1a-L03-largest-noncash", "L03 line 51 paragraph", "course/modules/AC/AC1/L03.html line 51", P,
+     L_OUT + "(line 51). Unchanged."),
+    ("AC1a-L03-remark63-first-charge", "L03 Remark 6.3 first charge", "course/modules/AC/AC1/L03.html line 150", P,
+     L_OUT + "(line 150). Unchanged."),
+    ("AC1a-L03-check5-wrong-quarter", "L03 Check 5 interpretation", "course/modules/AC/AC1/L03.html interpretation (line 662)", P,
+     L_OUT + "(line 662). Unchanged; Check 5 is the printed schedule comparison (lab lines 348-359)."),
+    ("AC1a-L03-planted-error-detect", "L03 planted-error sentence", "course/modules/AC/AC1/L03.html interpretation (line 662)", P,
+     L_OUT + "(line 662). Unchanged. Witness W6 shows Check 5 is the only printed check that reads False under a one-cent-per-quarter change."),
+    ("AC1a-L03-R3-investing-standard", "L03 R3 solution", "course/modules/AC/AC1/L03.html R3 solution", P,
+     L_OUT + "(the R3 solution lies in the problem set, outside every hunk). Unchanged."),
+    ("AC1a-L03-as-much-as", "no 'as much as' in L03", "course/modules/AC/AC1/L03.html lines 667-671", P,
+     "Re-run at 96dd532: grep -F 'as much as' finds 0 hits in L03.html."),
+    ("AC1a-L03-R1-causal", "L03 R1 solution", "course/modules/AC/AC1/L03.html R1 solution", P,
+     L_OUT + "(the R1 solution lies in the problem set). Unchanged."),
+    ("AC1a-L03-interp-fixed-scope", "L03 interpretation scope", "course/modules/AC/AC1/L03.html interpretation (line 662)", P,
+     L_OUT + "(line 662). Unchanged."),
+    ("AC1a-quiz-L03-q7", "L03 q7 key", "course/modules/AC/AC1/L03.html lines 871-873", P,
+     L_OUT + "(lines 871-873). The q7 key 'Net income falls by 100 cents, and the cash balance does not change' matches Proposition 6.2."),
+    ("AC1a-r6-L03-q7-key", "L03 q7 explanation", "course/modules/AC/AC1/L03.html lines 871-873", P,
+     L_OUT + "(lines 871-873). Unchanged."),
+    ("AC1a-num-L03", "numbers in L03 interpretation and Misconceptions", "course/modules/AC/AC1/L03.html interpretation (line 662); Misconceptions (lines 680-697)", P,
+     L_OUT + "(lines 662, 680-697). Misconception line 684: 'equipment B ... investing line of Lab 3 (1,500,000.00)' matches Check 4 (investing -1,500,000.00 in 2026)."),
+    ("AC1a-r8-L03-theorem-para", "L03 paragraph after Theorem 5.1", "course/modules/AC/AC1/L03.html line 135", P,
+     "Re-verified at 96dd532 against /tmp/ac1-v/a-r9/L03.out: Check 1 prints 0.00 at each year end; Check 2 'indirect equals direct: True'; Check 3 True on each roll-forward line; Check 4 True each year. 'Four of its five parts' matches the lab (investing and financing equalities not printed). Line 135 is outside every hunk."),
+    ("AC1a-lab-L03-claims", "L03 lab hypothesis, Theorem paragraph and lab docstring", "course/modules/AC/AC1/L03.html hypothesis (line 156); Theorem paragraph (line 135); lab-AC1-L03-1.py lines 1-11", P,
+     "Re-verified at 96dd532 against /tmp/ac1-v/a-r9/L03.out: the hypothesis (line 156, changed to 'every year end') matches Check 1 (year ends only), the add-backs 1,000,000.00 / 1,300,000.00 / 1,300,000.00, the roll-forwards, the cash total, the schedule 1,000,000.00 / 2,300,000.00 / 3,600,000.00 and the Check 6 gaps (depreciation, dividends)."),
+    ("AC1a-r6-simulated-labels", "SIMULATED labels in the three lessons", "course/modules/AC/AC1/L01.html 107-108, 379; L02.html 132-133, 535; L03.html 155-156, 662", P,
+     "Re-read at 96dd532: L03 line 155 heading reads '... printed identities (SIMULATED)'; L01 and L02 labels unchanged; the L03 hypothesis at line 156 changed text only."),
+    ("AC1a-dag-concepts", "concept DAG and concept definitions", "course/modules/AC/AC1/L01.html lines 82, 90; L03.html lines 56-64; check_dag", P,
+     "Re-run at 96dd532: check_dag AC1 PASS. Accrual-accounting anchor once (L01 line 82); depreciation-and-amortization anchored once (L03 line 61). The L02 forward pointer to Lesson 3 Definition 1.2 resolves."),
+    ("AC1a-r8-concept-index", "course/concepts.html links to the two anchors", "course/concepts.html lines 101-106", P,
+     "Re-run at 96dd532: tools/build_site.py --check exit 0, 'site data current: 6 outputs'."),
+    ("AC1a-r8-hub-lab-fractions", "hub and lab fractions (four fifths, one half)", "course/modules/AC/AC1/index.html line 175; lab-AC1-L01-1.py lines 131 and 139", P,
+     "Re-run: lab-AC1-L01-1.py line 131 collection = balance * 4 // 5 and line 139 payment = balance // 2; the hub's fraction statement matches."),
+    ("AC1a-r8-witness-wrong-schedule", "wrong-schedule witness (misconception 3 and card AC1-c038)", "course/modules/AC/AC1/L03.html misconception 3 (line 691); cards.json AC1-c038", P,
+     "Re-run at 96dd532 (witness_r9.py W6): the L03 lab with the quarterly charge raised by one cent (25,000,001 cents) prints False only on Check 5 lines (1,000,000.04, 2,300,000.08, 3,600,000.12 against the schedule); the final line remains 'all articulation identities hold in every year: True'. The claim as stated is supported."),
+    ("cards-L01-all", "L01 cards AC1-c001 to AC1-c016", "course/modules/AC/AC1/cards.json (L01 cards); course/modules/AC/AC1/L01.html", P,
+     "Each L01 card re-checked at 96dd532 against the current text. c008 changed in this delta (cards.json line 48): it matches Definition 1.3 and the Section 3 phrase 'whether or not cash has moved'; the parenthetical cites Definition 1.3, which carries the rest of the sentence. c015 matches Remark 2.2 (its test sentence) and Definition 1.1 ('either a debit or a credit'). Numbers 255,314.48, 30,594.17, 224,720.31, 213,881.48, 49,831.40, 19,237.23, 38,567.00 all appear in the Lab 1 output."),
+    ("cards-L02-rest", "L02 cards AC1-c017 to AC1-c031 (except c032)", "course/modules/AC/AC1/cards.json (L02 cards); course/modules/AC/AC1/L02.html", F,
+     "AC1-c028 says 'Yes. Net income equals minus the sum of the period's debits minus credits on the revenue and expense accounts (Proposition 2.2).' Proposition 2.2 needs the four-account hypothesis (L02 line 78), which the card omits. AC1-c029 says 'This holds for any ledger of balanced entries whose only equity accounts are common stock and dividends, at any year end (Proposition 3.2).' Witness W3 falsifies that, because Proposition 3.2 omits the same hypothesis. Fix: add 'with only the four income accounts of Definition 2.1' to c028 and c029. Other L02 cards re-checked: c017-c027, c030, c031 match their lessons and numbers (1,003,421.14; 803,421.14; 3,000,000.00; 4,454,305.29)."),
+    ("cards-L02-c032", "card AC1-c032: 'Is the activity split ... a rule of any reporting framework?'", "course/modules/AC/AC1/cards.json AC1-c032 (line 216); course/modules/AC/AC1/L02.html line 689", F,
+     "The back still opens 'No.' The page does not establish that answer: line 689 says 'what any reporting framework requires for this split is not stated here', and line 791 says the statements are defined from the ledger, not from any reporting framework. The card's 'No' makes the framework claim that the page declines to make; only the second half of the card is supported. Fix: open with 'The lesson does not say.' and keep 'It is a convention set by the generator in Lab 2 (Definition 4.1)'."),
+    ("cards-L03-all", "L03 cards AC1-c033 to AC1-c045, c124, c126", "course/modules/AC/AC1/cards.json (L03 cards); course/modules/AC/AC1/L03.html", P,
+     "Re-checked at 96dd532: no L03 card line changed in cards.json (the changed lines are 48, 216, 716, 761; 48 and 216 are L01 and L02 cards). c036 and c043 cite Proposition 6.2 (L03 line 140) and c045 cites Remark 6.3 (line 150): both exist. c037 numbers 1,300,000.00 and 2,191,615.64 match Lab 3 Check 2; c044 numbers match Check 5."),
+    ("cards-L03-c123", "card AC1-c123 (net equipment roll-forward)", "course/modules/AC/AC1/cards.json AC1-c123; course/modules/AC/AC1/L03.html Proposition 4.2 (line 110-116)", P,
+     L_OUT + "(Proposition 4.2 statement at lines 110-116; the change is in the proof at 120). The card's hypotheses (no entry credits equipment at cost; no entry debits accumulated depreciation; every credit to accumulated depreciation is a depreciation entry) match the statement."),
+    ("cards-L03-theorem-5-1-print-claim", "L03 Theorem paragraph (line 135): which checks print True", "course/modules/AC/AC1/L03.html line 135", P,
+     L_OUT + "(line 135). Matches Check 1-4 output."),
+    ("cards-duplicate-scan", "duplicate scan of the 126 unit cards", "course/modules/AC/AC1/cards.json", P,
+     "Re-run at 96dd532: 126 cards, 126 unique ids, 126 unique fronts."),
+    ("AC1a-r9-delta", "round 9 delta for the slice", "course/modules/AC/AC1/index.html, L01-L03.html; tests/labs/AC1 twins; cards.json", P,
+     "git diff --stat 2c8162b 96dd532 for the slice: L01.html (8 lines, hunks 85-89, 101-105, 382-386, 408-412), L02.html (10 lines, hunks 71-80, 100-109, 547-551), L03.html (18 lines, hunks 60-64, 74-78, 84-88, 91-95, 118-122, 125-134, 154-158, 852-856), cards.json (8 lines; c008 at line 48 and c032 at line 216 are in this slice). index.html and the three twins are unchanged. Other changed lines (L07, L08, project, grader) are another slice."),
+    ("AC1a-r9-L03-theorem-hyp", "L03 Theorem 5.1 hypotheses omit a hypothesis its third claim uses", "course/modules/AC/AC1/L03.html Theorem 5.1 statement (line 127) and proof (line 131)", F,
+     "The hypotheses list (line 127) is 'those of Propositions 2.2, 3.1 and 4.2 of this lesson, and Proposition 3.2 of Lesson 2'. The third claim of the proof uses Lesson 2 Proposition 4.2, whose hypothesis (line 121 of L02.html) is 'every cash line of the ledger carries one of the three activities'. That hypothesis is not listed. The same line also reads 'for every fiscal year:the indirect' (no space after the colon). Fix: add 'and Proposition 4.2 of Lesson 2 with its hypothesis that every cash line carries an activity', and insert the space."),
+    ("AC1a-r8-mutants-not-required", "project mutant minimum", "ledgers/AC1/AC1-a.json (lesson slice)", P,
+     "AC1-a is lessons and hub only (no grader in the slice), so the project mutant minimum does not apply. Witness scripts are in ledgers/AC1/scripts/AC1-a-r9/witness_r9.py; no grader mutants are claimed."),
+]
+
+# historical rows kept for id continuity (PASS, superseded)
+hist = [
+    ("AC1a-r6-delta", "round 6 delta record", "index.html, L01-L03; twins", P, HIST + "Round 6 delta recorded in /tmp/fanout-frags/AC1-a.round6.json."),
+    ("AC1a-r5-delta", "round 5 delta record", "same files", P, HIST),
+    ("AC1a-r4-delta", "round 4 delta record", "same files", P, HIST),
+    ("AC1a-r3-delta", "round 3 delta record", "same files", P, HIST),
+    ("AC1a-r3-scope-witness-prop32", "Proposition 3.2 write-off witness (round 3)", "course/modules/AC/AC1/L01.html Proposition 3.2 (line 387); L02.html Remark 3.3", P,
+     "Re-run at 96dd532 as AC1a-cmd-scope-witness (W4): R=100, K=0, dA=70, R-K=100, identity holds False."),
+    ("AC1a-r8-delta", "round 8 delta record", "index.html; L01-L03; twins", P, HIST + "Round 8 delta ended at 2c8162b."),
+]
+
+rows_all = [
+    {"id": i, "check": c, "location": l, "status": s, "evidence": e,
+     **({"fix": e.split("Fix: ", 1)[1]} if s == F and "Fix: " in e else {}),
+     **({"fix": "See evidence."} if s == F and "Fix: " not in e else {})}
+    for (i, c, l, s, e) in rows + hist
+]
+
+counts = Counter(r["status"] for r in rows_all)
+fragment = {
+    "unit": "AC1",
+    "slice": "AC1-a",
+    "round": 9,
+    "round_note": "round 9 independent verification of AC1-a at 96dd532. Previous pin 2c8162b (AC1-a.round8.json, verdict FAIL, 3 FAIL rows); delta 2c8162b..96dd532 for this slice enumerated in AC1a-r9-delta.",
+    "verifier": "Haiku independent verifier, AC1-a round 9 (did not build AC1)",
+    "pin": "96dd532",
+    "base": "2c8162b (previous verified pin); the 96dd532 fixes for the round 8 rows are inside the delta",
+    "checkout": "/tmp/verify9-AC1-a (detached worktree at 96dd532, .venv symlinked)",
+    "scratch": "/tmp/ac1-v/a-r9",
+    "verified_at": "2026-10-28",
+    "registry_flags": [
+        "references/references.json: unchanged in 2c8162b..96dd532 (git diff empty); live verify_refs --unit AC1: 2 of 560 entries, 0 problems; offline 560 entries, 0 problems."
+    ],
+    "freshness_flags": [],
+    "notes": [
+        "Slice: course/modules/AC/AC1/index.html, L01.html, L02.html, L03.html, the three lab twins, and the L01-L03 cards of cards.json. Witness scripts: ledgers/AC1/scripts/AC1-a-r9/witness_r9.py (W1-W6, run under python -I) and build_fragment_r9.py (this fragment).",
+        "Not a grader slice: no mutants are claimed (mutants: []). Alternative correct implementations do not apply to lessons.",
+        "Hours: the hub split (90 lesson hours, 30 project hours) equals the eight lesson data-hours; no arithmetic inconsistency. Pace is a design target and was not graded.",
+        "Delta: the lesson rows whose cited paragraph lies in a hunk were re-read; rows whose cited lines lie outside every hunk are carried or re-verified with the line-range statement. A row whose cited text was not changed but whose claim is contradicted by new evidence (AC1a-L01-key-scope, AC1a-L02-q10-explain-causal, AC1a-r6-L02-remark33-scope, AC1a-grade-T-L02) is FAIL, not carried.",
+        "Not checked: full line-by-line re-read of every line of L01-L03 in this round (the delta and every row citing a changed or contradicted paragraph were read); the quiz key of every item was re-read only in the summary extraction; the Beneish and FASB texts are not in this slice; a browser render beyond page_smoke; the cards of L04-L08 (other slices); tools/fetch_data.py --check and tools/check_projects.py (not in this slice's gate list; no project in this slice).",
+        "Scope of the W3 witness: it uses the lab's own ledger code with one added revenue account; it does not decide what the author intended for net income, only that the statements as written conflict with the Definition 2.1 formula.",
+    ],
+    "mutants": [],
+    "summary": {
+        "rows": len(rows_all),
+        "pass": counts[P],
+        "fail": counts[F],
+        "unverifiable": counts.get("UNVERIFIABLE", 0),
+    },
+    "verdict": "FAIL" if counts[F] else "PASS",
+    "rows": rows_all,
+}
+
+with open(OUT, "w", encoding="utf-8") as fh:
+    json.dump(fragment, fh, indent=1, ensure_ascii=False)
+    fh.write("\n")
+print("rows", len(rows_all), dict(counts))

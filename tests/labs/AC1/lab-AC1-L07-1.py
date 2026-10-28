@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 SEED = 20260701
 N_GRANTS = 4
-HORIZON = 6  # fiscal years 1 to 6; the latest vesting year of any grant is 3 + 4 - 1 = 6
+HORIZON = 6  # fiscal years 1 to 6; the latest vesting year any grant can have is 3 + 4 - 1 = 6
 
 
 @dataclass(frozen=True)

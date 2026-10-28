@@ -52,7 +52,7 @@ ACTIVITIES = ("operating", "investing", "financing", "noncash")
 
 @dataclass(frozen=True)
 class Line:
-    """One side of one account, in integer cents. Exactly one of debit and credit is non-zero."""
+    """One side of one account, in integer cents. At most one of debit and credit is non-zero."""
 
     account: str
     debit: int = 0

@@ -216,6 +216,42 @@ def test_annuity_due_zero_periods_is_zero() -> None:
     assert sol.annuity_due_factor(0.05, 0) == 0
 
 
+def test_annuity_accepts_a_rate_just_above_minus_one() -> None:
+    """The lower boundary is open: -1 is refused (tested above) and -0.999 is valid. v = 1000, so the three-period sum
+    is 1000 + 10^6 + 10^9 = 1001001000, and the closed form (1 - 10^-9) / (-0.999) gives the same value."""
+    assert close(sol.annuity_factor(-0.999, 3), 1_001_001_000.0, 1e-9), (
+        "a rate above -1 is valid: the factor must be the sum of discount factors at that rate"
+    )
+    assert close(sol.annuity_due_factor(-0.999, 3), 1_001_001_000.0 * (1 - 0.999), 1e-9), (
+        "the due factor at a rate above -1 is the ordinary factor times (1 + r)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("rate", "periods"),
+    [("0.05", 5), (None, 5), (0.05, "5"), (0.05, None), (0.05, [5])],
+)
+def test_annuity_factor_rejects_the_wrong_types(rate: Any, periods: Any) -> None:
+    must_raise(lambda: sol.annuity_factor(rate, periods), "a rate or a period count of the wrong type")
+
+
+@pytest.mark.parametrize(
+    ("rate", "periods", "condition"),
+    [
+        (ANN_RATE, -1, "negative periods for the due annuity"),
+        (ANN_RATE, 12.0, "periods given as a float for the due annuity"),
+        (ANN_RATE, True, "periods given as a bool for the due annuity"),
+        (ANN_RATE, "5", "periods given as a string for the due annuity"),
+        (-1.0, 5, "a rate of -1 for the due annuity, with periods"),
+        ("0.05", 5, "a rate given as a string for the due annuity"),
+        (None, 5, "a rate of None for the due annuity"),
+    ],
+)
+def test_annuity_due_rejects_invalid_inputs(rate: Any, periods: Any, condition: str) -> None:
+    """The due factor is the ordinary factor times (1 + r), so it must refuse exactly what the ordinary one refuses."""
+    must_raise(lambda: sol.annuity_due_factor(rate, periods), condition)
+
+
 def test_perpetuity_factor_is_one_over_the_rate() -> None:
     exact = float(1 / Fraction(PERP_BPS, 10_000))
     assert close(sol.perpetuity_factor(PERP_RATE), exact, 1e-12), (
@@ -313,6 +349,30 @@ def test_level_payment_at_a_tiny_rate_is_exact() -> None:
     )
 
 
+def test_level_payment_below_the_old_cutoffs_is_exact() -> None:
+    """At an annual rate of 5e-9 the loan over the months is 36,934.497 cents, and the interest lifts the exact
+    payment above the half-cent line, so the nearest cent is 36,935. A rate taken as zero below a cutoff of 1e-8
+    returns 36,934 instead. The expected value is recomputed here from the rate as written, in exact arithmetic."""
+    i = Fraction("5e-9") / 12
+    exact = nearest(Fraction(13_296_419) * i / (1 - (1 + i) ** (-360)))
+    assert exact == 36_935
+    assert sol.level_payment_cents(13_296_419, 5e-9, 360) == 36_935, (
+        "a rate of 5e-9 a year still has interest: the payment must be the exact value, rounded to the nearest cent"
+    )
+
+
+def test_level_payment_accepts_a_term_above_360_months() -> None:
+    """The specification gives a lower limit on the term (one month or more) and no upper limit. A 480-month loan of
+    100,000 cents at 5 % has the exact payment 482 cents, and its schedule clears to zero in month 480."""
+    assert sol.level_payment_cents(100_000, 0.05, 480) == 482, (
+        "the term has no upper limit: a 480-month loan is valid and its payment is the exact value"
+    )
+    rows = schedule(100_000, 0.05, 480)
+    assert len(rows) == 480 and rows[-1][0] == 480 and rows[-1][5] == 0, (
+        "a 480-month schedule must have 480 rows and close to exactly zero in the last one"
+    )
+
+
 def test_level_payment_tie_goes_up() -> None:
     """A payment of exactly half a cent goes up: 1 cent over 2 months at a zero rate is 0.5 cents, which is 1 cent."""
     assert sol.level_payment_cents(1, 0, 2) == 1, "a tie of half a cent must go up to the next whole cent"
@@ -332,7 +392,7 @@ def test_level_payment_tie_at_a_non_zero_rate_goes_up() -> None:
         # The binary float of 0.06 lies just below the tie, so the rate must be read as the decimal it is written as.
         (100, 0.06, 101),
         # 1.2e-11 a year is 1e-12 a month: the payment is 499999999999 * (1 + 1e-12) cents, which is
-        # 499999999999.4999999999999 cents, so it rounds down. Exact arithmetic is needed to see the last digits.
+        # 499999999999.499999999999 cents, so it rounds down. Exact arithmetic is needed to see the last digits.
         (499_999_999_999, 1.2e-11, 499_999_999_999),
     ],
     ids=["tie-at-six-percent", "half-cent-at-tiny-rate"],
@@ -349,6 +409,26 @@ def test_schedule_interest_tie_goes_up() -> None:
     accrues exactly 0.5 cents in month 1."""
     rows = schedule(1, 6.0, 2)
     assert rows[0][2] == 1, "interest of exactly half a cent must go up to one whole cent"
+
+
+def test_schedule_interest_just_below_a_half_cent_goes_down() -> None:
+    """The other side of the tie: 499 cents at 0.012 a year accrue exactly 0.499 cents in month 1, which rounds down
+    to 0. A rule that rounds every fraction of a cent up returns 1 here."""
+    assert schedule(499, 0.012, 3)[0][2] == 0, "interest below half a cent must round down to zero cents"
+
+
+def test_schedule_accepts_one_cent_for_one_month() -> None:
+    """The lower boundaries are both valid: a principal of one cent and a term of one month. At a zero rate the one
+    row pays the cent and closes at zero, and at 5 % on 1000 cents it pays 1004 cents, its interest of 4 included."""
+    assert schedule(1, 0.0, 1) == [(1, 1, 0, 1, 1, 0)], "a one-cent loan over one month is a single row that clears"
+    assert schedule(1000, 0.05, 1) == [(1, 1000, 4, 1000, 1004, 0)], (
+        "a one-month loan pays its opening balance plus that month's interest, and closes at zero"
+    )
+
+
+def test_schedule_closing_balance_is_never_negative() -> None:
+    for period, _opening, _interest, _principal, _payment, closing in schedule(PRINCIPAL, RATE, MONTHS):
+        assert closing >= 0, f"period {period}: the closing balance must never be negative"
 
 
 def test_schedule_interest_is_exact_in_the_rate_as_written() -> None:
@@ -509,6 +589,26 @@ def test_perpetuity_rejects_a_non_finite_rate() -> None:
 
 
 @pytest.mark.parametrize(
+    ("rate", "condition"),
+    [
+        (math.inf, "an infinite rate"),
+        (-math.inf, "a rate of minus infinity"),
+        ("0.05", "a rate given as a string"),
+        (None, "a rate of None"),
+    ],
+)
+def test_perpetuity_rejects_non_finite_and_wrong_type_rates(rate: Any, condition: str) -> None:
+    must_raise(lambda: sol.perpetuity_factor(rate), condition)
+
+
+def test_perpetuity_accepts_a_tiny_positive_rate() -> None:
+    """The lower boundary is open at zero: 10^-12 is valid and its value is 10^12."""
+    assert close(sol.perpetuity_factor(1e-12), 1e12, 1e-9), (
+        "a positive rate of 1e-12 is valid: the perpetuity's value is 1 / rate"
+    )
+
+
+@pytest.mark.parametrize(
     ("call", "condition"),
     [
         (lambda: sol.annuity_factor(True, 5), "a boolean rate for the annuity"),
@@ -548,6 +648,51 @@ def test_growing_perpetuity_rejects_growth_at_or_below_minus_one() -> None:
 def test_growing_perpetuity_rejects_non_finite_inputs() -> None:
     must_raise(lambda: sol.growing_perpetuity_factor(math.inf, 0.01), "an infinite rate")
     must_raise(lambda: sol.growing_perpetuity_factor(0.05, math.nan), "a NaN growth rate")
+    must_raise(lambda: sol.growing_perpetuity_factor(0.05, math.inf), "an infinite growth rate")
+
+
+def test_growing_perpetuity_rejects_growth_below_minus_one() -> None:
+    """The lower bound on growth is open at -1: a growth of -150 % per period is refused, not evaluated."""
+    must_raise(lambda: sol.growing_perpetuity_factor(0.05, -1.5), "growth of -150 %")
+
+
+@pytest.mark.parametrize(
+    ("rate", "growth", "condition"),
+    [
+        ("0.05", 0.02, "a rate given as a string"),
+        (0.05, "0.02", "a growth rate given as a string"),
+        (None, 0.02, "a rate of None"),
+        (0.05, None, "a growth rate of None"),
+    ],
+)
+def test_growing_perpetuity_rejects_wrong_types(rate: Any, growth: Any, condition: str) -> None:
+    must_raise(lambda: sol.growing_perpetuity_factor(rate, growth), condition)
+
+
+def test_growing_perpetuity_accepts_growth_just_inside_both_bounds() -> None:
+    """Both bounds are open, and each is valid up to its edge. Growth -0.999 is above -1; growth 0.0499 is below 0.05.
+    The values are 1 / (0.05 + 0.999) and 1 / (0.05 - 0.0499) = 10000."""
+    assert close(sol.growing_perpetuity_factor(0.05, -0.999), 1 / (0.05 + 0.999), 1e-12), (
+        "growth above -1 is valid: the value is 1 / (rate - growth)"
+    )
+    assert close(sol.growing_perpetuity_factor(0.05, 0.0499), 10_000.0, 1e-9), (
+        "growth just below the rate is valid: the value is 1 / (rate - growth), which is large but finite"
+    )
+
+
+def test_growing_perpetuity_with_negative_growth_is_one_over_rate_minus_growth() -> None:
+    """A negative growth lowers the value: 1 / (0.05 - (-0.02)) = 1 / 0.07, not 1 / (0.05 - 0.02)."""
+    assert close(sol.growing_perpetuity_factor(0.05, -0.02), 1 / 0.07, 1e-12), (
+        "with negative growth the value is 1 / (rate - growth), so the denominator grows"
+    )
+
+
+def test_growing_perpetuity_moves_the_right_way() -> None:
+    """A higher growth raises the value of a growing perpetuity, and the value is finite below the rate."""
+    low = sol.growing_perpetuity_factor(0.05, -0.02)
+    mid = sol.growing_perpetuity_factor(0.05, 0.02)
+    high = sol.growing_perpetuity_factor(0.05, 0.03)
+    assert low < mid < high, "the growing perpetuity must rise with the growth rate"
 
 
 @pytest.mark.parametrize(
@@ -595,6 +740,8 @@ def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: 
         (1000, None, 12),
         (1000, 0.05, "12"),
         (1000, 0.05, None),
+        (1000, math.nan, 12),
+        (1000, 0.05, -1),
     ],
 )
 def test_schedule_rejects_invalid_loans(principal: Any, rate: Any, months: Any) -> None:
