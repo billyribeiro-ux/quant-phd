@@ -361,6 +361,25 @@ def test_variances_are_whole_cents() -> None:
         assert type(got[key]) is int, f"{key} must be an int in cents."
 
 
+def test_master_budget_values_are_integers() -> None:
+    # Equality alone would accept 1000.0 for 1000, so the type of every amount and unit count is checked.
+    got = sol.master_budget(CASE)
+    values = [
+        *got["units"].values(),
+        *got["revenue_cents"].values(),
+        *got["variable_cost_cents"].values(),
+        got["total_units"],
+        got["total_revenue_cents"],
+        got["total_variable_cost_cents"],
+        got["fixed_cost_cents"],
+        got["profit_cents"],
+    ]
+    for value in values:
+        assert type(value) is int, (
+            "master_budget: every amount must be whole cents and every unit count a whole number."
+        )
+
+
 def test_mix_is_within_one_cent_of_the_exact_fraction() -> None:
     got = sol.variance_decomposition(CASE)
     assert abs(Fraction(got["sales_mix"]) - oracle(CASE)["exact_mix"]) <= 1, (
@@ -450,8 +469,9 @@ def test_two_product_shift_to_lower_margin_is_unfavourable() -> None:
         "sales_mix: must equal the oracle's mix variance for the shifted case."
     )
     if margins[0] == margins[1]:
-        # Equal budgeted margins: the actual mix contribution is an integer equal to the exact flexed profit, and the
-        # two whole-cent roundings differ by less than one cent, so the integer difference is zero.
+        # Equal budgeted margins m: the actual total times m is a whole number, so rounding the flexed revenue and the
+        # flexed variable cost shifts both by the same integer, and the whole-cent flexed profit equals the exact one.
+        # The mix is therefore zero.
         assert got["sales_mix"] == 0, (
             "with equal budgeted margins, shifting volume between the two has no mix variance."
         )
@@ -611,11 +631,36 @@ def test_negative_actual_units_argument_raises_value_error() -> None:
 
 
 def test_float_actual_units_argument_raises_value_error() -> None:
-    must_raise(lambda: sol.flexible_budget(CASE, 100.0), "a float unit count")
+    must_raise(lambda: sol.flexible_budget(CASE, 100.0), "a float unit count")  # type: ignore[arg-type]
 
 
 def test_negative_input_price_raises_value_error() -> None:
     must_raise(lambda: sol.variance_decomposition(fresh(input_price_cents=-1)), "a negative input price")
+
+
+def _call_for(name: str, case: Mapping[str, Any]) -> Callable[[], object]:
+    """The call to make for a function, on a case: flexible_budget gets the actual total of 10 units."""
+    if name == "flexible_budget":
+        return lambda: sol.flexible_budget(case, 10)
+    return lambda: getattr(sol, name)(case)
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_negative_fixed_overhead_raises_value_error(name: str) -> None:
+    must_raise(_call_for(name, fresh(fixed_overhead_cents=-1)), f"{name}: a negative fixed overhead")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_negative_actual_inputs_raises_value_error(name: str) -> None:
+    must_raise(_call_for(name, fresh(actual_inputs_used=-1)), f"{name}: a negative count of input units used")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize("field", ("actual_units", "actual_price_cents"))
+def test_negative_actual_product_field_raises_value_error(name: str, field: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0][field] = -1
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a negative {field} on a product")
 
 
 def test_non_mapping_case_raises_value_error() -> None:

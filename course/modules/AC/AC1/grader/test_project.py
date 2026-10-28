@@ -311,8 +311,21 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
         ("a transaction without a date", [{"lines": SMALL[0]["lines"]}]),
         ("a date that is not in YYYY-MM-DD form", [{**SMALL[0], "date": "02/01/2024"}]),
         ("a date that does not exist", [{**SMALL[0], "date": "2024-02-30"}]),
+        ("a date in the compact form", [{**SMALL[0], "date": "20240102"}]),
         ("an empty list of lines", [{"date": "2024-01-02", "lines": []}]),
         ("a line without a credit", [{"date": "2024-01-02", "lines": [{"account": "cash", "debit": 5}]}]),
+        (
+            "a line without a debit",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "credit": 5},
+                        {"account": "common_stock", "debit": 5, "credit": 0},
+                    ],
+                }
+            ],
+        ),
         (
             "an account outside the chart",
             [

@@ -11,7 +11,8 @@ or incentives.
 Each year the liability accrues interest at the discount rate and is reduced by the payment. The right-of-use asset
 is amortized straight-line over the term. Two expense patterns for the same lease are compared:
 pattern F (front-loaded) is interest plus amortization, and pattern S (straight-line) spreads the total payments
-in equal yearly shares over the term, the last year taking the remainder. Both patterns are conventions of this lab;
+over the term: each year but the last takes the total divided by the number of years, rounded down to whole cents,
+and the last year takes the remainder. Both patterns are conventions of this lab;
 the lab does not claim either is the required treatment of any framework.
 
 The only floating-point step is the present value, which is rounded once to whole cents. Every later step is integer
@@ -57,7 +58,7 @@ def interest_cents(opening: int, rate_bps: int) -> int:
 
 
 def straight_line(total: int, years: int) -> list[int]:
-    """Equal yearly shares of a total in cents; the last year takes the remainder so the shares sum to the total."""
+    """Yearly shares of a total in cents: each year but the last takes total // years; the last takes the remainder."""
     base = total // years
     return [base] * (years - 1) + [total - base * (years - 1)]
 

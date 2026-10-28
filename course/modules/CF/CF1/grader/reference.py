@@ -103,10 +103,12 @@ def irr_roots(flows: Sequence[float]) -> list[float]:
     def poly(x: float) -> float:
         return sum(cf * x**t for t, cf in enumerate(flows))
 
+    # The end samples are the window ends exactly: exp(log(1e4)) is 10000.00000000001, one ulp outside the window.
     xs = [
         math.exp(math.log(_X_LOW) + (math.log(_X_HIGH) - math.log(_X_LOW)) * k / (_GRID_POINTS - 1))
         for k in range(_GRID_POINTS)
     ]
+    xs[0], xs[-1] = _X_LOW, _X_HIGH
     values = [poly(x) for x in xs]
     roots_x: list[float] = []
     # A root is reported only where the polynomial changes sign. Zero grid values are skipped, so a tangent zero

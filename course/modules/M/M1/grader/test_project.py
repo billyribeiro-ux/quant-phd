@@ -267,8 +267,15 @@ def test_level_payment_tie_goes_up() -> None:
     assert sol.level_payment_cents(1, 0.0, 2) == 1, "a tie of half a cent must go up at a zero rate given as a float"
 
 
+def test_level_payment_tie_at_a_non_zero_rate_goes_up() -> None:
+    """A payment of exactly 4.5 cents goes up to 5. With an annual rate of 6.0 (600 %) the monthly rate is 0.5, so
+    a loan of 3 cents over one month is repaid by 3 x 1.5 = 4.5 cents, computed in exact arithmetic."""
+    assert sol.level_payment_cents(3, 6.0, 1) == 5, "a payment of exactly half a cent above a whole cent must go up"
+
+
 def test_schedule_interest_tie_goes_up() -> None:
-    """Interest of exactly half a cent goes up. At 6.00 % a year the monthly rate is 0.5, so 1 cent accrues 0.5."""
+    """Interest of exactly half a cent goes up. An annual rate of 6.0 (600 %) is a monthly rate of 0.5, so 1 cent
+    accrues exactly 0.5 cents in month 1."""
     rows = schedule(1, 6.0, 2)
     assert rows[0][2] == 1, "interest of exactly half a cent must go up to one whole cent"
 
@@ -420,6 +427,26 @@ def test_perpetuity_rejects_a_zero_or_negative_rate() -> None:
 
 def test_perpetuity_rejects_a_non_finite_rate() -> None:
     must_raise(lambda: sol.perpetuity_factor(math.nan), "a NaN rate")
+
+
+@pytest.mark.parametrize(
+    ("call", "condition"),
+    [
+        (lambda: sol.annuity_factor(True, 5), "a boolean rate for the annuity"),
+        (lambda: sol.annuity_factor(False, 5), "a boolean (False) rate for the annuity"),
+        (lambda: sol.annuity_due_factor(True, 5), "a boolean rate for the annuity due"),
+        (lambda: sol.perpetuity_factor(True), "a boolean rate for the perpetuity"),
+        (lambda: sol.growing_perpetuity_factor(True, 0.01), "a boolean rate for the growing perpetuity"),
+        (lambda: sol.growing_perpetuity_factor(0.05, True), "a boolean growth rate"),
+        (lambda: sol.level_payment_cents(1000, True, 12), "a boolean annual rate for the level payment"),
+        (lambda: sol.level_payment_cents(True, 0.05, 12), "a boolean principal for the level payment"),
+        (lambda: sol.amortization_schedule(1000, True, 12), "a boolean annual rate for the schedule"),
+        (lambda: sol.amortization_schedule(True, 0.05, 12), "a boolean principal for the schedule"),
+    ],
+)
+def test_booleans_are_rejected_where_a_number_is_meant(call: Callable[[], object], condition: str) -> None:
+    """A boolean is not a number: True would be read as 1 and False as 0, so every rate and principal raises."""
+    must_raise(call, condition)
 
 
 def test_growing_perpetuity_rejects_growth_equal_to_the_rate() -> None:

@@ -6,16 +6,16 @@ Units: integer cents for every money amount. Percentages printed below are unitl
 The contract has two to four performance obligations. Each obligation is either delivered at a point in time
 or delivered over twelve months. The transaction price is allocated to the obligations in proportion to their
 stand-alone prices, using whole cents. Revenue for a point obligation is recognized in its delivery month. Revenue
-for an over-time obligation is recognized in equal monthly shares over the twelve months, the last month taking the
-remainder (a straight-line measure of progress).
+for an over-time obligation is recognized in twelve monthly shares (a straight-line measure of progress): each of
+months 1 to 11 receives the amount divided by twelve, rounded down to whole cents, and month 12 takes the remainder.
 
 Two conventions are labelled here for comparison. Convention 1 is the schedule described above. Convention 2
 recognizes every over-time obligation in month 12 instead. Neither convention is claimed to be the rule of any
 accounting framework. The lab shows only what each convention does to the timing of the same total.
 
-Billing: 40 percent of the price is billed at signing (month 0). The rest is billed in twelve equal monthly
-instalments (months 1 to 12). Cash is collected when billed, so the contract balance is cumulative billing less
-cumulative revenue.
+Billing: 40 percent of the price is billed at signing (month 0). The rest is billed in twelve monthly instalments,
+as equal as whole cents allow (months 1 to 12). Cash is collected when billed, so the contract balance is cumulative
+billing less cumulative revenue.
 """
 
 from __future__ import annotations
@@ -81,7 +81,8 @@ def allocate(total: int, weights: list[int]) -> list[int]:
 
 
 def over_time_schedule(amount: int) -> list[int]:
-    """Equal monthly shares of an amount over MONTHS months; the last month takes the remainder."""
+    """Monthly shares of an amount over MONTHS months: each of the first MONTHS - 1 is the amount
+    divided by MONTHS, rounded down to whole cents; the last month takes the remainder."""
     base = amount // MONTHS
     return [base] * (MONTHS - 1) + [amount - base * (MONTHS - 1)]
 
@@ -101,7 +102,7 @@ def revenue_schedule(contract: Contract, allocation: list[int], over_time_as_end
 
 
 def billing_schedule(price: int, upfront_percent: int) -> list[int]:
-    """Billing in cents for months 0..MONTHS: upfront at month 0, the rest in equal monthly instalments."""
+    """Billing in cents for months 0..MONTHS: upfront at month 0, the rest in instalments as equal as cents allow."""
     upfront = price * upfront_percent // 100
     instalments = allocate(price - upfront, [1] * MONTHS)
     return [upfront, *instalments]

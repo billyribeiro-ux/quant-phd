@@ -45,7 +45,7 @@ TRANSACTIONS: list[dict[str, Any]] = [
             {"account": "inventory", "debit": 0, "credit": 1_200_000},
         ],
     },
-    # 6. Depreciation for January: an expense, and a larger credit balance in accumulated depreciation.
+    # 6. Depreciation for January: an expense, and a credit of the same amount to accumulated depreciation.
     {
         "date": "2024-01-31",
         "lines": [

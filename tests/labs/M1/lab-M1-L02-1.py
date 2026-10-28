@@ -2,8 +2,8 @@
 
 Standard library only. No randomness and no network. Each claim is tested on a finite range,
 which is evidence about that range. The proofs on the page are what establish the claims for
-all integers. The searches below can only find counterexamples, and the page reads the output
-that way.
+all integers. The searches below report counterexamples or solutions inside their range. They cannot
+establish a claim over all integers, and the page reads the output that way.
 """
 
 from __future__ import annotations

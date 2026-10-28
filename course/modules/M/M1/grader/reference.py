@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from fractions import Fraction
 
 
 @dataclass(frozen=True)
@@ -66,9 +67,14 @@ def _annual_rate(value: object) -> float:
     return rate
 
 
-def _nearest_cent(amount: float) -> int:
-    """The nearest whole cent of a non-negative amount, a tie going up."""
-    return math.floor(amount + 0.5)
+def _exact_rate(annual_rate: float) -> Fraction:
+    """The annual rate as the decimal it was written as (its shortest repr), in exact rational arithmetic."""
+    return Fraction(repr(annual_rate))
+
+
+def _nearest_cent(amount: Fraction) -> int:
+    """The nearest whole cent of a non-negative exact amount, a tie going up: floor(amount + 1/2)."""
+    return math.floor(amount + Fraction(1, 2))
 
 
 def annuity_factor(rate: float, periods: int) -> float:
@@ -120,13 +126,14 @@ def level_payment_cents(principal_cents: int, annual_rate: float, months: int) -
     """The level monthly payment, in cents, that repays the loan in `months` months.
 
     The payment is the loan times i / (1 - (1 + i)^-months) with i = annual_rate / 12, to the nearest cent.
-    At a zero rate it is the loan divided by the months, to the nearest cent.
+    At a zero rate it is the loan divided by the months, to the nearest cent. The arithmetic is exact, so a
+    payment of exactly half a cent is detected and goes up.
     """
     principal = _principal(principal_cents)
-    i = _annual_rate(annual_rate) / 12
+    i = _exact_rate(_annual_rate(annual_rate)) / 12
     n = _months(months)
     if i == 0:
-        return _nearest_cent(principal / n)
+        return _nearest_cent(Fraction(principal, n))
     return _nearest_cent(principal * i / (1 - (1 + i) ** -n))
 
 
@@ -139,7 +146,7 @@ def amortization_schedule(principal_cents: int, annual_rate: float, months: int)
     principal = _principal(principal_cents)
     rate = _annual_rate(annual_rate)
     n = _months(months)
-    i = rate / 12
+    i = _exact_rate(rate) / 12
     payment = level_payment_cents(principal, rate, n)
     rows: list[ScheduleRow] = []
     opening = principal

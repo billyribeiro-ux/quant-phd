@@ -14,17 +14,21 @@ and three sample standard errors for the Monte Carlo mean.
 
 from __future__ import annotations
 
+import ast
 import copy
+import inspect
 import itertools
 import json
 import math
 import os
 import random
+import sys
 from collections.abc import Callable
 from typing import Any
 
+import capbudget  # type: ignore[import-not-found, unused-ignore]  # the learner's engine, read as source below
 import pytest
-from capbudget import (  # type: ignore[import-not-found]  # the learner's engine, not part of the grader
+from capbudget import (  # type: ignore[import-not-found, unused-ignore]  # the learner's engine, not part of the grader
     after_tax_cash_flows,
     fisher_nominal,
     irr_roots,
@@ -52,7 +56,7 @@ def must_raise(call: Callable[[], object], condition: str) -> None:
         call()
     except ValueError:
         return
-    pytest.fail(f"{condition}: the specification requires a ValueError that names the rule.")
+    pytest.fail(f"{condition}: the specification requires a ValueError.")
 
 
 def close(a: float, b: float, rel: float = 1e-9, absolute: float = 1e-9) -> bool:
@@ -145,6 +149,14 @@ def test_irr_does_not_report_a_tangent_root_at_the_window_end() -> None:
     assert irr_roots([1e-8, -2e-4, 1.0]) == [], (
         "a zero that touches the NPV at an end of the search window is not reported: report only sign changes "
         "between two samples inside the window."
+    )
+
+
+def test_irr_does_not_report_a_zero_at_the_high_end_of_the_window() -> None:
+    # NPV(r) = -10000 + 1 / (1 + r): its zero is at x = 10000 exactly, the high end of the search window (rate -0.9999).
+    assert irr_roots([-10000.0, 1.0]) == [], (
+        "a zero exactly at the high end of the search window is not reported: report only sign changes between two "
+        "samples inside the window."
     )
 
 
@@ -493,3 +505,18 @@ def test_monte_carlo_mean_is_within_three_standard_errors_of_the_deterministic_n
 def test_monte_carlo_rejects_invalid_arguments(args: tuple[int, int, float], condition: str) -> None:
     n_draws, seed, volatility = args
     must_raise(lambda: npv_monte_carlo(PROJECT, RATE, n_draws, seed, volatility), condition)
+
+
+def test_engine_imports_only_the_standard_library() -> None:
+    tree = ast.parse(inspect.getsource(capbudget))
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            modules.append(("." * node.level) + (node.module or ""))
+    outside = sorted({m for m in modules if m.startswith(".") or m.split(".")[0] not in sys.stdlib_module_names})
+    assert not outside, (
+        "the engine uses the Python standard library only and does not import instance.py; "
+        f"these imports are not standard library: {', '.join(outside)}."
+    )

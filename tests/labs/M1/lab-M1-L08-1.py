@@ -128,9 +128,12 @@ def part_b() -> None:
     print(f"part B: final payment = {cu(rows[-1].payment)} CU (adjustment {cu(rows[-1].payment - regular)} CU)")
     print(f"part B: total interest = {cu(total_interest)} CU; total paid = {cu(total_paid)} CU")
     print(f"part B: total principal = {cu(total_principal)} CU; final balance = {cu(rows[-1].closing)} CU")
-    print(f"part B: largest drift from the exact schedule at the rounded regular payment (in cents) = {drift}")
     print(
-        f"part B: largest drift from the exact-payment balances of Part A (in CU) = "
+        f"part B: largest drift over months 1 to 359 from the exact schedule at the rounded regular payment "
+        f"(in cents) = {drift}"
+    )
+    print(
+        f"part B: largest drift over months 1 to 359 from the exact-payment balances of Part A (in CU) = "
         f"{float(abs(worst_gap)) / 100:.2f}, at month {worst_month}"
     )
     print(f"part B: first month whose cent balance is 1 CU or more from the exact-payment balance = {first_full_cu}")
