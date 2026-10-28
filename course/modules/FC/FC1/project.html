@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="FC1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FC1 Project · Instrument Cash-Flow Engine</title>
+  <meta name="description" content="Write a fixed-rate bond and a cash trade as dated cash-flow objects with one interface, price the bond in integer cents by discounting each event, and test the engine. The code is autograded on your own seeded case.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+  <style>.reading-list a, .references a { overflow-wrap: anywhere; }</style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">FC1 The Financial System, Markets &amp; Instruments</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="20">
+      <header class="page-head">
+        <p class="eyebrow">FC1 project · 20 hours · autograded</p>
+        <h1>Instrument Cash-Flow Engine</h1>
+        <p class="lede">A back office receives dated cash-flow records for two cash instruments, a fixed-rate bond and a trade in a cash instrument, and must book them through one interface before reconciliation. You will write the module that turns each into dated amounts in integer cents, price the bond from its cash flows, and test the module against hand-computed fixtures and against the rule the page states.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are at full length. If you met the placement bar on the <a href="index.html#placement">module page</a>, skip rungs 1 and 2 and start at rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: one SIMULATED bond and one trade, every step annotated.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: fill in the two blanks, the discount exponent and the trade's cash flow. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: the module <code>instruments.py</code>, autograded in <a href="#grader-section">the autograder section</a>, with the conventions in its docstring.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio. They are not graded.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Both labs use one illustrative bond and one illustrative trade, both SIMULATED. The bond has a <dfn>face</dfn> of 100000 cents (1,000.00), the amount repaid at maturity; a <dfn>coupon</dfn> of 500 basis points of face in each of its three periods, which is the payment a holder receives in each period; and a per-period yield of 400 basis points. The trade buys 10 units at 9850 cents per unit, settling in period 2. No file is read, and no value is market data.</p>
+
+        <section class="lab" id="lab-FC1-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: the bond and the trade, step by step</h3>
+          <p class="hypothesis">The coupon is the face times 500 over 10000, which is 5000 cents, exact. The events are (1, 5000), (2, 5000) and (3, 105000), since the face is paid with the last coupon. The present value at \(y = 400/10000\) is the sum of each event times \((1+y)^{-t}\), which is 102775.091033 cents before rounding, so the price is 102775 cents. The trade has one event, (2, -98500): the buyer pays 98500 cents in period 2.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: one SIMULATED bond and one cash trade, every step annotated, in exact arithmetic."""
+
+from fractions import Fraction
+
+
+def half_away(x: Fraction) -&gt; int:
+    """The nearest whole cent of an exact amount; an exact half goes away from zero."""
+    magnitude = abs(x)
+    whole = (2 * magnitude.numerator + magnitude.denominator) // (2 * magnitude.denominator)
+    return whole if x &gt;= 0 else -whole
+
+
+def main() -&gt; None:
+    face_cents = 100_000  # SIMULATED face of 1,000.00, not market data
+    coupon_bps = 500  # the coupon in each period, in basis points of face: 5.00 % of face
+    periods = 3
+    yield_bps = 400  # the per-period yield, in basis points: 4.00 % per period
+    # Step 1. The coupon is face * coupon_bps / 10000, rounded once to the nearest cent, a half going away from zero.
+    coupon = half_away(Fraction(face_cents * coupon_bps, 10_000))
+    # Step 2. Periods run from 1 to periods. Every period pays the coupon; the last period also pays the face.
+    events = [(t, coupon) for t in range(1, periods + 1)]
+    events[-1] = (periods, events[-1][1] + face_cents)
+    print("bond events (period, cents):", events)
+    # Step 3. Each event is discounted by (1 + y) ** -t, where y = yield_bps / 10000 is the per-period yield.
+    # The sum is kept exact as a Fraction; nothing is rounded yet.
+    y = Fraction(yield_bps, 10_000)
+    exact_price = sum((Fraction(amount) / (1 + y) ** period for period, amount in events), Fraction(0))
+    print("exact present value (cents):", f"{float(exact_price):.6f}")
+    # Step 4. The price is rounded once, at the end, to the nearest cent. Rounding each term first is not the rule.
+    print("bond price (cents):", half_away(exact_price))
+    # Step 5. A trade: buy 10 units at 9850 cents per unit, settling in period 2. The buyer pays cash, so the amount is
+    # negative in the holder's terms; the trade has one settlement event and no other cash flow.
+    quantity, price_cents, side, settlement_day = 10, 9_850, 1, 2
+    trade_event = (settlement_day, -side * quantity * price_cents)
+    print("trade event (period, cents):", trade_event)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">bond events (period, cents): [(1, 5000), (2, 5000), (3, 105000)]
+exact present value (cents): 102775.091033
+bond price (cents): 102775
+trade event (period, cents): (2, -98500)</pre>
+          <p class="interpretation">Each comment names one step, and the printed lines are those steps. The exact present value, 102775.091033 cents, is shown with six decimals only so that its rounding is visible: the price is that value rounded once to the nearest cent, which is 102775, because the fraction .091033 is below one half. Rounding each discounted term first can give a different answer: Lab 3 prints one such bond. The trade line is the holder's cash flow: negative, because a buyer pays. The lab does not show that either object is correct in general; the autograder does.</p>
+        </section>
+
+        <section class="lab completion" id="lab-FC1-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: the discount exponent and the trade's cash flow</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression the conventions below give. In the price line, the exponent of each event is its period, so that the event in period \(t\) is discounted by \((1+y)^{-t}\). In the trade line, the cash flow is the holder's: minus side times quantity times price, which is negative for a buyer. When both blanks are right, the printed lines are the same as those of Lab 1, and the bond price is 102775 cents.</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completion: the worked example, with its two blanks filled in."""
+
+from fractions import Fraction
+
+
+def half_away(x: Fraction) -&gt; int:
+    """The nearest whole cent of an exact amount; an exact half goes away from zero."""
+    magnitude = abs(x)
+    whole = (2 * magnitude.numerator + magnitude.denominator) // (2 * magnitude.denominator)
+    return whole if x &gt;= 0 else -whole
+
+
+def main() -&gt; None:
+    face_cents = 100_000  # SIMULATED face of 1,000.00, not market data
+    coupon_bps = 500  # the coupon in each period, in basis points of face: 5.00 % of face
+    periods = 3
+    yield_bps = 400  # the per-period yield, in basis points: 4.00 % per period
+    # Step 1. The coupon is face * coupon_bps / 10000, rounded once to the nearest cent, a half going away from zero.
+    coupon = half_away(Fraction(face_cents * coupon_bps, 10_000))
+    # Step 2. Periods run from 1 to periods. Every period pays the coupon; the last period also pays the face.
+    events = [(t, coupon) for t in range(1, periods + 1)]
+    events[-1] = (periods, events[-1][1] + face_cents)
+    print("bond events (period, cents):", events)
+    # Step 3. Each event is discounted by (1 + y) ** -t, where y = yield_bps / 10000 is the per-period yield.
+    # The sum is kept exact as a Fraction; nothing is rounded yet.
+    y = Fraction(yield_bps, 10_000)
+    exact_price = sum((Fraction(amount) / (1 + y) ** ___ for period, amount in events), Fraction(0))
+    print("exact present value (cents):", f"{float(exact_price):.6f}")
+    # Step 4. The price is rounded once, at the end, to the nearest cent. Rounding each term first is not the rule.
+    print("bond price (cents):", half_away(exact_price))
+    # Step 5. A trade: buy 10 units at 9850 cents per unit, settling in period 2. The buyer pays cash, so the amount is
+    # negative in the holder's terms; the trade has one settlement event and no other cash flow.
+    quantity, price_cents, side, settlement_day = 10, 9_850, 1, 2
+    trade_event = (settlement_day, ___)
+    print("trade event (period, cents):", trade_event)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">bond events (period, cents): [(1, 5000), (2, 5000), (3, 105000)]
+exact present value (cents): 102775.091033
+bond price (cents): 102775
+trade event (period, cents): (2, -98500)</pre>
+          <p class="interpretation">The first blank is <code>period</code>: the event's own period is its exponent, which is the discount of Lab 1 and of the conventions. The second is <code>-side * quantity * price_cents</code>: the holder's cash flow is the negative of the side times the amount, so a buyer with side +1 pays. The printed lines match Lab 1 because the completed expressions are the same as in Lab 1. The lab checks the two lines and nothing else; the price is the same only because both blanks are right.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A back office receives dated cash-flow records for two cash instruments: a fixed-rate bond and a trade that settles later. Before reconciliation, each record must become a list of dated amounts in whole cents, from the holder's side, through one interface, and the bond must be priced from its cash flows. You write the module to the interface below and test it against hand-computed fixtures and the rules on this page. Futures, swaps and options are not part of this project; they are the subject of the course's later Derivatives unit (FC2), and this project uses none of them.</dd>
+          <dt>Inputs</dt>
+          <dd>No data file. The autograder's case comes from <code>grader/instance.py</code>, seeded by your workspace ID. It holds one bond (a face in cents, a coupon in basis points, a number of periods and a per-period yield in basis points) and one trade (a quantity, a price in cents per unit, a side and a settlement period). Every value is SIMULATED; none is market data.</dd>
+          <dt>Required outputs</dt>
+          <dd><code>instruments.py</code> at the root of your repository, with these names. <code>Bond(face_cents, coupon_bps, periods)</code> with a method <code>events()</code>, which returns a list of <code>(period, amount_cents)</code> pairs sorted by period. <code>bond_price_cents(bond, yield_bps)</code>, which returns the present value of the bond's events as an int. <code>CashTrade(quantity, price_cents, side, settlement_day)</code> with a method <code>events()</code>, which returns the one settlement event of the trade. Start from <a href="grader/starter.py">the starter file</a>, whose names and signatures are complete. The module docstring holds the conventions block: the sign convention, the period indexing and the rounding rule, in your own words.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only. Money is an int in cents at every output, computed from exact fractions and rounded once. Each named condition below raises <code>ValueError</code>. Any other invalid input may raise any exception or return. No function prints or warns.
+            <ul>
+              <li><code>Bond</code>: <code>periods</code> less than 1; <code>face_cents</code> not positive; <code>coupon_bps</code> negative.</li>
+              <li><code>bond_price_cents</code>: <code>yield_bps</code> at or below -10000, because \(1+y\) must be positive.</li>
+              <li><code>CashTrade</code>: <code>quantity</code> less than 1; <code>price_cents</code> negative; <code>side</code> not in {+1, -1}; <code>settlement_day</code> less than 1.</li>
+            </ul>
+          </dd>
+          <dt>Grading mode</dt>
+          <dd>Autograder only. <code>grader/test_project.py</code> runs 47 checks with warnings as errors: the events of the bond and the trade, the closed-form price on two cases, the hand-computed fixtures, the rounding rule, every named condition with its boundary on each side, and the silence and purity of the module. The same file runs in your browser and on your machine. It is not secret: its integrity comes from your seeded case and from a second case, which a fixed answer for the first would also have to match.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions</h3>
+        <ul>
+          <li><strong>Money.</strong> Every amount is an int number of cents. The exact value of an output is computed from fractions, and it is rounded once, to the nearest cent, with a half going away from zero. No intermediate term is rounded.</li>
+          <li><strong>Periods.</strong> Periods are whole numbers from 1. Period 0 is the trade date, and no event falls in it. The bond's coupon is paid in each of periods 1 to <code>periods</code>, and its face in the last of them, in the same event.</li>
+          <li><strong>Rates.</strong> A rate is an int in basis points, where 10000 is 100 %. The per-period yield is <code>yield_bps</code> over 10000. An event in period \(t\) is discounted by \((1+y)^{-t}\), the <a class="concept" data-concept="discount-factor" href="../../../concepts.html#discount-factor">discount factor</a> of period \(t\), and the price is the sum of the discounted events, the <a class="concept" data-concept="present-value" href="../../../concepts.html#present-value">present value</a> of the bond at that yield.</li>
+          <li><strong>Sides and signs.</strong> Every amount is from the holder's side, and a positive amount is cash received. <code>side</code> is +1 for a long holder, who buys and pays cash, and -1 for a short holder, who sells and receives cash. A trade's event is therefore <code>(settlement_day, -side * quantity * price_cents)</code>.</li>
+          <li><strong>Events.</strong> Each <code>events()</code> call returns the same list for the same object, sorted by period. A zero amount is an event and is kept.</li>
+        </ul>
+
+        <h3 id="fixtures">Hand-computed fixtures</h3>
+        <p>The autograder checks these fixtures, which are computed by hand on this page and do not depend on the seed. Lab 3 prints them.</p>
+        <ul>
+          <li><strong>Fixture A.</strong> <code>Bond(10000, 500, 1).events()</code> is <code>[(1, 10500)]</code>, and its price at 500 basis points is 10000 cents: 10500 divided by 1.05 is exactly 10000.</li>
+          <li><strong>Fixture B.</strong> The same bond at -500 basis points: 10500 divided by 0.95 is 210000/19, which is 11052.6316 to four decimals and rounds to 11053 cents.</li>
+          <li><strong>Fixture C.</strong> <code>Bond(10001, 5000, 2).events()</code> is <code>[(1, 5001), (2, 15002)]</code>: the coupon of 10001 times 50 % is 5000.5 cents, which rounds up to 5001.</li>
+          <li><strong>Fixture D.</strong> <code>Bond(1, 5000, 1).events()</code> is <code>[(1, 2)]</code>: the coupon of 0.5 cents rounds up to 1 cent.</li>
+          <li><strong>Fixture E.</strong> <code>CashTrade(10, 9850, 1, 2).events()</code> is <code>[(2, -98500)]</code>, and the seller's trade with side -1 is <code>[(2, 98500)]</code>.</li>
+          <li><strong>Rounding fixture.</strong> <code>Bond(10000, 500, 3)</code> at 400 basis points has events <code>(1, 500)</code>, <code>(2, 500)</code> and <code>(3, 10500)</code>. The exact present value is 10277.509103 cents, which rounds once to 10278. Rounding each term first gives 481 + 462 + 9334 = 10277, so the price must be 10278.</li>
+        </ul>
+
+        <section class="lab" id="lab-FC1-project-3" data-runtime="python">
+          <h3>Lab 3 · Rung 3 check: the fixtures and the rounding rule</h3>
+          <p class="hypothesis">Stated before running: the program prints the events and prices of fixtures A to E and of the rounding fixture, using the functions of this lab in exact arithmetic. Expected: fixture A is <code>[(1, 10500)]</code> with price 10000; fixture B is 11053 with exact value 11052.6316; fixture C is <code>[(1, 5001), (2, 15002)]</code>; fixture D is <code>[(1, 2)]</code>; the rounding fixture prints events <code>[(1, 500), (2, 500), (3, 10500)]</code>, price 10278 when rounded once, and 10277 when each term is rounded first; and fixture E is <code>(2, -98500)</code>.</p>
+          <pre><code class="language-python" data-run>"""Rung 3 check: the hand-computed fixtures and the rounding case the autograder checks, in exact arithmetic.
+
+Standard library only. The values printed here are the ones the autograder's fixtures expect from your instruments.py.
+"""
+
+from fractions import Fraction
+
+
+def half_away(x: Fraction) -&gt; int:
+    """The nearest whole cent of an exact amount; an exact half goes away from zero."""
+    magnitude = abs(x)
+    whole = (2 * magnitude.numerator + magnitude.denominator) // (2 * magnitude.denominator)
+    return whole if x &gt;= 0 else -whole
+
+
+def bond_events(face_cents: int, coupon_bps: int, periods: int) -&gt; list[tuple[int, int]]:
+    """Coupon in periods 1..periods, the face added in the last period."""
+    coupon = half_away(Fraction(face_cents * coupon_bps, 10_000))
+    rows = [(t, coupon) for t in range(1, periods + 1)]
+    rows[-1] = (periods, rows[-1][1] + face_cents)
+    return rows
+
+
+def bond_price(events: list[tuple[int, int]], yield_bps: int) -&gt; int:
+    """Present value at a per-period yield, summed exactly and rounded once."""
+    y = Fraction(yield_bps, 10_000)
+    return half_away(sum((Fraction(a) / (1 + y) ** t for t, a in events), Fraction(0)))
+
+
+def term_by_term_price(events: list[tuple[int, int]], yield_bps: int) -&gt; int:
+    """The same present value with each term rounded before the terms are added. Not the rule; shown for contrast."""
+    y = Fraction(yield_bps, 10_000)
+    return sum(half_away(Fraction(a) / (1 + y) ** t) for t, a in events)
+
+
+def main() -&gt; None:
+    par = bond_events(10_000, 500, 1)
+    print("fixture A events (one period, par):", par)
+    print("fixture A price at 500 bps (cents):", bond_price(par, 500))
+    negative = bond_events(10_000, 500, 1)
+    exact_negative = Fraction(10_500) / Fraction(95, 100)
+    print(
+        "fixture B price at -500 bps (cents):", bond_price(negative, -500), "| exact:", f"{float(exact_negative):.4f}"
+    )
+    half_cent = bond_events(10_001, 5_000, 2)
+    print("fixture C events (half-cent coupon, two periods):", half_cent)
+    one_cent = bond_events(1, 5_000, 1)
+    print("fixture D events (one-cent face, half coupon):", one_cent)
+    rounding = bond_events(10_000, 500, 3)
+    print("rounding case events (three periods):", rounding)
+    print("rounding case, rounded once (the rule):", bond_price(rounding, 400))
+    print("rounding case, each term rounded first (not the rule):", term_by_term_price(rounding, 400))
+    buy = (2, -10 * 9_850)
+    print("fixture E trade event (buy 10 at 9850, settles in period 2):", buy)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">fixture A events (one period, par): [(1, 10500)]
+fixture A price at 500 bps (cents): 10000
+fixture B price at -500 bps (cents): 11053 | exact: 11052.6316
+fixture C events (half-cent coupon, two periods): [(1, 5001), (2, 15002)]
+fixture D events (one-cent face, half coupon): [(1, 2)]
+rounding case events (three periods): [(1, 500), (2, 500), (3, 10500)]
+rounding case, rounded once (the rule): 10278
+rounding case, each term rounded first (not the rule): 10277
+fixture E trade event (buy 10 at 9850, settles in period 2): (2, -98500)</pre>
+          <p class="interpretation">The printed events and prices are the values that the hand fixtures on this page state, and the autograder tests fixtures A to E and the rounding fixture against the same numbers: fixture A in the tests of the one-period bond and its par price, fixture B in the negative-yield test, fixture C and fixture D in the half-cent tests, fixture E in the buyer and seller tests, and the rounding fixture in the rounding test. The last line of the rounding case shows the contrast the rule decides: the term-by-term price, 10277, is not the price. The lab computes the fixtures in its own code; it does not test your module.</p>
+        </section>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">1</td><td>One bond and one trade, every step explained by the lab's comments.</td></tr>
+              <tr><td>Rung 2 completion problem and its instant check</td><td class="num">2</td><td>Two blanks; the time goes into why each expression is the right one.</td></tr>
+              <tr><td>Bond events and <code>bond_price_cents</code></td><td class="num">5</td><td>The coupon rule with its half-cent case, the face in the last period, and the exact discounted sum rounded once.</td></tr>
+              <tr><td>Cash trade and its settlement event</td><td class="num">4</td><td>One event, its sign convention from the holder's side, and its settlement period.</td></tr>
+              <tr><td>The named conditions and their boundaries</td><td class="num">2</td><td>Eight conditions, each refused on one side of its bound and accepted on the other.</td></tr>
+              <tr><td>Local suite on seeds 0 to 9 and Lab 3's fixtures</td><td class="num">3</td><td>Running the suite locally, then matching each fixture to its printed value.</td></tr>
+              <tr><td>Self-check of the code against the conventions block</td><td class="num">3</td><td>Re-reading the sign, period and rounding conventions against each line of the module.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>20</strong></td><td>Equals the hours of the module's project in the hub: 20 of the module's 70.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>instruments.py</code> and run the suite on your own case. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="FC1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="instruments.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>instruments.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> turns off pytest's comparison details, so a failure shows the test's own message and no values, and <code>-W error</code> turns warnings into failures, both as in the browser. The browser runs the same file.</p>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <p>Not graded. Each extension needs a stated convention and a check against a direct computation.</p>
+        <ul>
+          <li><strong>A limit order book.</strong> Match limit orders on one book by price and then by time, as in Lesson 4, and turn each fill into a <code>CashTrade</code> that settles in the period the book assigns. State the matching rule and check that the total quantity bought equals the total quantity sold.</li>
+          <li><strong>A bond schedule with an odd first period.</strong> Give the first period a different length from the others and state how its coupon is computed. State which rounding rule of this page applies to the coupon of that period.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <p>The two sources the course cites for this unit. This page attributes no statement to either.</p>
+        <ol class="reading-list">
+          <li data-cite="mishkin2021economics"></li>
+          <li data-cite="harris2002trading"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L05.html"><span class="dir">Previous</span>L05 · Clearing, Settlement and the Trade Lifecycle</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>FC1 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">FC1 project · Instrument Cash-Flow Engine · The autograder runs in your browser; nothing you write leaves it.</footer>
+</body>
+</html>

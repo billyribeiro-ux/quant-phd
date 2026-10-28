@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CF8" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CF8 Project · The 13-week cash-flow forecast and liquidity plan</title>
+  <meta name="description" content="Write the CF8 forecast engine, treasury_forecast.py: a 13-week direct cash forecast with a revolving credit facility, the covenant pinch week and the cash impact of two working-capital actions. The engine is autograded on a SIMULATED case generated from your workspace seed; the treasurer memo is rubric-graded.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CF8 Working Capital, Treasury &amp; Short-Term Finance</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="10">
+      <header class="page-head">
+        <p class="eyebrow">CF8 project · 10 hours · autograded engine and rubric-graded memo on a SIMULATED case</p>
+        <h1>The 13-week cash-flow forecast and liquidity plan</h1>
+        <p class="lede">A treasurer has thirteen weeks of slower collections ahead. You write <code>treasury_forecast.py</code>, the engine that turns a case into a week-by-week <a class="concept" data-concept="direct-cash-forecast" href="L03.html#def-direct-cash-forecast">direct cash forecast</a>, sizes the <a class="concept" data-concept="revolving-credit-facility" href="L04.html#def-revolving-credit-facility">revolver</a>, finds the week in which the <a class="concept" data-concept="financial-covenant" href="L04.html#def-financial-covenant">covenant</a> headroom is smallest, and gives the cash impact of two working-capital actions. Then you write a memo that recommends a plan. The autograder runs your engine on a SIMULATED case generated from your workspace seed. The rubric grades the memo.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are short. If you reach the placement bar on the module hub and answer its project-skill items, you may skip them and go to rung 3, as the hub states.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: a 13-week forecast on a SIMULATED stressed case, with every step printed.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: the same case with the revolver draw line left blank, to be completed.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The engine and the memo, in <a href="#spec">the specification</a>. The engine is autograded in <a href="#grader-section">the autograder section</a>. Lab 3 gives the outcome table of a second case to check your engine against.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extensions with a stated hypothesis, in <a href="#stretch">the stretch section</a>.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-CF8-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: a 13-week forecast with a revolver</h3>
+          <p class="hypothesis">The case is SIMULATED: sales are 10,000.00 dollars a week in weeks 1 to 3 and 8,000.00 dollars a week from week 4; purchases are 7,000.00 dollars a week; opex is 2,500.00 dollars a week; the collection lag is 45 days and the payment lag 30 days; opening cash is 1,500.00 dollars, minimum cash 4,000.00 dollars, the commitment 10,000.00 dollars, and the covenant threshold 12,000.00 dollars. Before running the code, predict three things from the rules in the conventions below: the weeks in which the revolver draws, the week in which headroom is smallest, and whether the commitment binds. The run prints each step, and its output is the expected output shown after the code.</p>
+          <pre><code class="language-python" data-run>"""CF8 project lab 1 (rung 1, worked example): a 13-week forecast with a revolver on a SIMULATED stressed case.
+
+SIMULATED: a manufacturer case written here for teaching. It is not any company's data. Money is in whole cents; the
+printed values are dollars to two decimals, and rates are cents per day. Standard library only, no randomness, no
+network. The rules are those of the specification on the project page:
+
+* a week has seven days, and a day's sales are collected collection_lag days after the sale;
+* a day's purchases are paid payment_lag days after the purchase, and opex is paid in its week;
+* before day 1 the daily rate of sales and purchases is week 1's rate (the run-rate before the horizon);
+* if cash before a draw is below minimum cash, the revolver draws the shortfall, capped at availability;
+* if cash before a draw is at or above minimum cash, the revolver repays from the cash above minimum, capped at the
+  drawn balance;
+* liquidity is cash plus undrawn availability; headroom is liquidity minus the covenant threshold.
+"""
+
+from __future__ import annotations
+
+import math
+from fractions import Fraction
+
+COLLECTION_LAG = 45  # days: the collection lag, which is the DSO of the steady business
+PAYMENT_LAG = 30  # days
+SALES = [1_000_000] * 3 + [800_000] * 10  # cents of sales in weeks 1 to 13: a slowdown from week 4
+PURCHASES = [700_000] * 13  # cents of purchases in weeks 1 to 13
+OPEX = [250_000] * 13  # cents of operating cost paid in weeks 1 to 13
+OPENING_CASH = 150_000
+MINIMUM_CASH = 400_000
+COMMITMENT = 1_000_000
+OPENING_DRAWN = 0
+THRESHOLD = 1_200_000
+
+
+def usd(cents: int) -&gt; str:
+    """Cents shown as dollars with two decimals."""
+    return f"{cents / 100:.2f}"
+
+
+def daily(weekly: list[int], day: int) -&gt; Fraction:
+    """Cents of one day's flow on day `day`: a week's amount spread over its seven days, week 1's rate before day 1."""
+    week = 1 if day &lt; 1 else (day - 1) // 7 + 1
+    return Fraction(weekly[week - 1], 7)
+
+
+def week_total(weekly: list[int], lag: int, week: int) -&gt; Fraction:
+    """Exact cents paid or collected in `week` when each day's flow falls `lag` days after it is due."""
+    first = 7 * (week - 1) + 1
+    return sum((daily(weekly, day - lag) for day in range(first, first + 7)), Fraction(0))
+
+
+def half_up(value: Fraction) -&gt; int:
+    """The exact value rounded once to the nearest cent, a half going up."""
+    return math.floor(value + Fraction(1, 2))
+
+
+def main() -&gt; None:
+    print(f"step 1, the run-rate before week 1: sales {usd(SALES[0])} a week, {SALES[0] / 7 / 100:.2f} a day")
+    print(f"step 2, the collection lag is {COLLECTION_LAG} days and the payment lag is {PAYMENT_LAG} days")
+    receipts = [half_up(week_total(SALES, COLLECTION_LAG, w)) for w in range(1, 14)]
+    disbursements = [half_up(week_total(PURCHASES, PAYMENT_LAG, w) + OPEX[w - 1]) for w in range(1, 14)]
+    print("step 3, receipts in dollars, weeks 1 to 13:", ", ".join(usd(x) for x in receipts))
+    print("step 4, disbursements in dollars, weeks 1 to 13:", ", ".join(usd(x) for x in disbursements))
+    cash, drawn = OPENING_CASH, OPENING_DRAWN
+    print("step 5, week by week: receipts, disbursements, draw, repay, ending cash, drawn, headroom (dollars)")
+    rows: list[tuple[int, int, int, int, int, int, int]] = []
+    for w in range(13):
+        before = cash + receipts[w] - disbursements[w]
+        draw = min(max(MINIMUM_CASH - before, 0), COMMITMENT - drawn)
+        repay = 0 if draw &gt; 0 else min(max(before - MINIMUM_CASH, 0), drawn)
+        new_cash = before + draw - repay
+        new_drawn = drawn + draw - repay
+        liquidity = new_cash + COMMITMENT - new_drawn
+        headroom = liquidity - THRESHOLD
+        rows.append((receipts[w], disbursements[w], draw, repay, new_cash, new_drawn, headroom))
+        print(
+            f"  week {w + 1:2d}: {usd(receipts[w])}  {usd(disbursements[w])}  {usd(draw)}  {usd(repay)}  "
+            f"{usd(new_cash)}  {usd(new_drawn)}  {usd(headroom)}"
+        )
+        cash, drawn = new_cash, new_drawn
+    draws, repays = sum(row[2] for row in rows), sum(row[3] for row in rows)
+    closing_check = OPENING_CASH + sum(receipts) - sum(disbursements) + draws - repays
+    print(f"step 6, opening cash plus the horizon's flows equals week 13 ending cash: {closing_check == cash}")
+    peak = max([OPENING_DRAWN] + [row[5] for row in rows])
+    print(f"step 7, peak drawn balance: {usd(peak)} dollars")
+    pinch = min(range(13), key=lambda i: (rows[i][6], i))
+    print(f"step 8, covenant pinch: week {pinch + 1}, headroom {usd(rows[pinch][6])} dollars")
+    lowest = min(row[4] for row in rows)
+    print(f"step 9, lowest week-end cash: {usd(lowest)} dollars, against minimum cash of {usd(MINIMUM_CASH)}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">step 1, the run-rate before week 1: sales 10000.00 a week, 1428.57 a day
+step 2, the collection lag is 45 days and the payment lag is 30 days
+step 3, receipts in dollars, weeks 1 to 13: 10000.00, 10000.00, 10000.00, 10000.00, 10000.00, 10000.00, 10000.00, 10000.00, 10000.00, 8857.14, 8000.00, 8000.00, 8000.00
+step 4, disbursements in dollars, weeks 1 to 13: 9500.00, 9500.00, 9500.00, 9500.00, 9500.00, 9500.00, 9500.00, 9500.00, 9500.00, 9500.00, 9500.00, 9500.00, 9500.00
+step 5, week by week: receipts, disbursements, draw, repay, ending cash, drawn, headroom (dollars)
+  week  1: 10000.00  9500.00  2000.00  0.00  4000.00  2000.00  0.00
+  week  2: 10000.00  9500.00  0.00  500.00  4000.00  1500.00  500.00
+  week  3: 10000.00  9500.00  0.00  500.00  4000.00  1000.00  1000.00
+  week  4: 10000.00  9500.00  0.00  500.00  4000.00  500.00  1500.00
+  week  5: 10000.00  9500.00  0.00  500.00  4000.00  0.00  2000.00
+  week  6: 10000.00  9500.00  0.00  0.00  4500.00  0.00  2500.00
+  week  7: 10000.00  9500.00  0.00  0.00  5000.00  0.00  3000.00
+  week  8: 10000.00  9500.00  0.00  0.00  5500.00  0.00  3500.00
+  week  9: 10000.00  9500.00  0.00  0.00  6000.00  0.00  4000.00
+  week 10: 8857.14  9500.00  0.00  0.00  5357.14  0.00  3357.14
+  week 11: 8000.00  9500.00  142.86  0.00  4000.00  142.86  1857.14
+  week 12: 8000.00  9500.00  1500.00  0.00  4000.00  1642.86  357.14
+  week 13: 8000.00  9500.00  1500.00  0.00  4000.00  3142.86  -1142.86
+step 6, opening cash plus the horizon's flows equals week 13 ending cash: True
+step 7, peak drawn balance: 3142.86 dollars
+step 8, covenant pinch: week 13, headroom -1142.86 dollars
+step 9, lowest week-end cash: 4000.00 dollars, against minimum cash of 4000.00</pre>
+          <p class="interpretation">Step 5 shows a draw of 2,000.00 dollars in week 1, when cash before the draw is 2,000.00 dollars, 2,000.00 dollars below minimum cash, and repayments of 500.00 dollars in each of weeks 2 to 5, when cash is above minimum. The sales slowdown starts in week 4, but receipts show it only in week 10, because a sale is collected 45 days later (step 3). Draws return in weeks 11 to 13. The drawn balance peaks at 3,142.86 dollars in week 13 (step 7), below the 10,000.00-dollar commitment, so the commitment does not bind and the required commitment equals that peak. Headroom is smallest in week 13, at −1,142.86 dollars (step 8): liquidity of 10,857.14 dollars less the 12,000.00-dollar threshold. These are the numbers of this SIMULATED case only.</p>
+        </section>
+
+        <section class="lab completion" id="lab-CF8-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: the revolver draw line</h3>
+          <p class="hypothesis">The case is the case of Lab 1. Replace the blank, <code>___</code>, with the expression for the revolver draw: the shortfall of cash before the draw to minimum cash, but no more than the undrawn availability, which is the commitment less the drawn balance at the start of the week. Every other line is given. Before you run the code, predict the draw in week 11: the shortfall is positive, and availability is 10,000.00 dollars less the drawn balance, so the draw is the smaller of the two. When the blank is right, the output matches the expected output below.</p>
+          <pre><code class="language-python" data-run>"""CF8 project lab 2 (rung 2, completion): the revolver draw line of the rung-1 case.
+
+SIMULATED: the same case as lab 1, written here for teaching. It is not any company's data. Money is in whole cents;
+the printed values are dollars to two decimals. Standard library only, no randomness, no network.
+
+Replace the one blank, ___, with the expression for the revolver draw. The rule: if cash before the draw is below
+minimum cash, draw the shortfall, but no more than the undrawn availability. Every other line is given. When the blank
+is right, the output matches the expected output below exactly.
+"""
+
+from __future__ import annotations
+
+import math
+from fractions import Fraction
+
+COLLECTION_LAG = 45  # days
+PAYMENT_LAG = 30  # days
+SALES = [1_000_000] * 3 + [800_000] * 10  # cents of sales in weeks 1 to 13
+PURCHASES = [700_000] * 13  # cents of purchases in weeks 1 to 13
+OPEX = [250_000] * 13  # cents of operating cost in weeks 1 to 13
+OPENING_CASH = 150_000
+MINIMUM_CASH = 400_000
+COMMITMENT = 1_000_000
+OPENING_DRAWN = 0
+THRESHOLD = 1_200_000
+
+
+def usd(cents: int) -&gt; str:
+    return f"{cents / 100:.2f}"
+
+
+def daily(weekly: list[int], day: int) -&gt; Fraction:
+    week = 1 if day &lt; 1 else (day - 1) // 7 + 1
+    return Fraction(weekly[week - 1], 7)
+
+
+def week_total(weekly: list[int], lag: int, week: int) -&gt; Fraction:
+    first = 7 * (week - 1) + 1
+    return sum((daily(weekly, day - lag) for day in range(first, first + 7)), Fraction(0))
+
+
+def half_up(value: Fraction) -&gt; int:
+    return math.floor(value + Fraction(1, 2))
+
+
+def main() -&gt; None:
+    cash, drawn = OPENING_CASH, OPENING_DRAWN
+    lowest = THRESHOLD
+    for w in range(1, 14):
+        receipts = half_up(week_total(SALES, COLLECTION_LAG, w))
+        disbursements = half_up(week_total(PURCHASES, PAYMENT_LAG, w) + OPEX[w - 1])
+        before = cash + receipts - disbursements
+        draw = ___
+        repay = 0 if draw &gt; 0 else min(max(before - MINIMUM_CASH, 0), drawn)
+        cash = before + draw - repay
+        drawn = drawn + draw - repay
+        headroom = cash + COMMITMENT - drawn - THRESHOLD
+        lowest = min(lowest, headroom)
+        print(
+            f"week {w:2d}: draw {usd(draw)}, repay {usd(repay)}, ending cash {usd(cash)}, "
+            f"drawn {usd(drawn)}, headroom {usd(headroom)} dollars"
+        )
+    print(f"lowest headroom over the horizon: {usd(lowest)} dollars")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">week  1: draw 2000.00, repay 0.00, ending cash 4000.00, drawn 2000.00, headroom 0.00 dollars
+week  2: draw 0.00, repay 500.00, ending cash 4000.00, drawn 1500.00, headroom 500.00 dollars
+week  3: draw 0.00, repay 500.00, ending cash 4000.00, drawn 1000.00, headroom 1000.00 dollars
+week  4: draw 0.00, repay 500.00, ending cash 4000.00, drawn 500.00, headroom 1500.00 dollars
+week  5: draw 0.00, repay 500.00, ending cash 4000.00, drawn 0.00, headroom 2000.00 dollars
+week  6: draw 0.00, repay 0.00, ending cash 4500.00, drawn 0.00, headroom 2500.00 dollars
+week  7: draw 0.00, repay 0.00, ending cash 5000.00, drawn 0.00, headroom 3000.00 dollars
+week  8: draw 0.00, repay 0.00, ending cash 5500.00, drawn 0.00, headroom 3500.00 dollars
+week  9: draw 0.00, repay 0.00, ending cash 6000.00, drawn 0.00, headroom 4000.00 dollars
+week 10: draw 0.00, repay 0.00, ending cash 5357.14, drawn 0.00, headroom 3357.14 dollars
+week 11: draw 142.86, repay 0.00, ending cash 4000.00, drawn 142.86, headroom 1857.14 dollars
+week 12: draw 1500.00, repay 0.00, ending cash 4000.00, drawn 1642.86, headroom 357.14 dollars
+week 13: draw 1500.00, repay 0.00, ending cash 4000.00, drawn 3142.86, headroom -1142.86 dollars
+lowest headroom over the horizon: -1142.86 dollars</pre>
+          <p class="interpretation">The week-11 draw is 142.86 dollars, the whole shortfall: cash before the draw is 3,857.14 dollars, 142.86 dollars below minimum cash, and the drawn balance at the start of week 11 is zero, so the 10,000.00-dollar availability does not limit it. The weekly lines match Lab 1 (step 5), the drawn balance of 3,142.86 dollars in week 13 matches Lab 1 step 7, and the last line, lowest headroom −1,142.86 dollars, is the week-13 headroom of Lab 1. The commitment never binds in this case, so a blank that omits the availability term also matches this output. The autograder's cases include ones where it binds.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A manufacturer draws on a <a class="concept" data-concept="revolving-credit-facility" href="L04.html#def-revolving-credit-facility">revolving credit facility</a> and faces slower customer payments for thirteen weeks. Its credit agreement sets a <a class="concept" data-concept="financial-covenant" href="L04.html#def-financial-covenant">minimum-liquidity covenant</a>: cash plus undrawn availability must stay at or above a threshold at each week end. The treasurer must size the revolver, find the week in which covenant headroom is smallest, and choose working-capital actions with their cash impact.</dd>
+          <dt>Inputs</dt>
+          <dd>A case is a Python <code>dict</code> with these keys. <code>horizon_weeks</code>: the whole number 13. <code>opening_cash_cents</code>: a whole number of cents, at least 0. <code>minimum_cash_cents</code>: a positive whole number of cents. <code>revolver_commitment_cents</code>: a whole number of cents, zero or more. <code>opening_drawn_cents</code>: a whole number of cents from 0 up to the commitment. <code>covenant_threshold_cents</code>: a whole number of cents, at least 0. <code>collection_lag_days</code> and <code>payment_lag_days</code>: whole numbers of days, zero or more. <code>weekly_sales_cents</code>, <code>weekly_purchases_cents</code> and <code>weekly_opex_cents</code>: lists of 13 whole numbers of cents, zero or more, one for each week. The autograder's cases come from <code>grader/instance.py</code>: <code>make_instance(seed)</code> returns a dict whose <code>payload</code> field is such a case as a JSON string, with collection lags from 35 to 80 days, payment lags from 25 to 50 days, and the minimum cash and commitment as positive whole cents. Every such case is SIMULATED. Real company filings in XBRL are not embedded: their reuse terms are not recorded in the program's data sources, so every case on this page and in the autograder is generated.</dd>
+          <dt>Required outputs</dt>
+          <dd>A file <code>treasury_forecast.py</code> at the root of your repository, defining these four functions with these names and signatures. <code>forecast(case) -&gt; list[dict[str, int]]</code>: thirteen weekly rows, in week order, each with the keys <code>receipts_cents</code>, <code>disbursements_cents</code>, <code>draw_cents</code>, <code>repay_cents</code>, <code>ending_cash_cents</code>, <code>drawn_balance_cents</code>, <code>liquidity_cents</code> and <code>headroom_cents</code>. <code>revolver_plan(case) -&gt; dict[str, int]</code>: the keys <code>peak_drawn_cents</code>, <code>required_commitment_cents</code> and <code>shortfall_cents</code>. <code>covenant_pinch(case) -&gt; dict[str, int]</code>: the keys <code>week</code> (1 to 13) and <code>headroom_cents</code>. <code>action_cash_impact(case, action, days) -&gt; int</code>. A file <code>memo.md</code>, the treasurer memo, of about 600 to 900 words in five sections: 1 Forecast, 2 Revolver sizing, 3 Covenant pinch, 4 Working-capital actions, 5 Recommendation and limits.</dd>
+          <dt>Constraints</dt>
+          <dd>The engine uses the Python standard library and does not import <code>instance.py</code>. Every money output is a Python <code>int</code> in cents, computed by the rules in the conventions below. Each function is pure: it never prints or warns, never changes its argument, and returns fresh objects. Three named conditions raise <code>ValueError</code>, and the autograder checks the exception type: a horizon other than 13 weeks, which <code>forecast</code>, <code>revolver_plan</code>, <code>covenant_pinch</code> and <code>action_cash_impact</code> all reject; a negative revolver commitment, which those four functions also reject; and an action that is not <code>"dso"</code> or <code>"dpo"</code>, which <code>action_cash_impact</code> rejects. The wording of a message is not graded. No other invalid input is tested, so for those any behaviour is acceptable. The engine runs unchanged in the browser (Pyodide) and under pytest.</dd>
+          <dt>Grading mode</dt>
+          <dd>Grading: both. The autograder runs your engine on your seed's case. <code>grader/test_project.py</code> collects 65 checks (counted with <code>pytest --collect-only</code> on the reference solution; the count does not depend on the seed, because no <code>parametrize</code> list depends on it), and it runs with warnings as errors. The rubric grades the memo against the five criteria below, with the two annotated exemplar memos in the memo section.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions, defined once</h3>
+        <ul>
+          <li><strong>Weeks and days.</strong> The horizon is 13 weeks of seven days each. Week <em>w</em> is days 7<em>w</em> − 6 to 7<em>w</em>, with day 1 the first day of week 1. Days before day 1 exist only as the pre-horizon run-rate below.</li>
+          <li><strong>Pre-horizon run-rate.</strong> A day's sales, and a day's purchases, before day 1 are taken at the daily rate of week 1. Every flow the case gives for week <em>w</em> is spread evenly over the seven days of that week, so one day carries <code>weekly_sales_cents[w − 1] / 7</code> cents of sales.</li>
+          <li><strong>Day counts.</strong> <em>DSO</em> is receivables times 365 over revenue, and <em>DIO</em> and <em>DPO</em> use the same 365-day form on cost of sales and on purchases. A steady business with a collection lag of <em>L</em> days holds receivables of <em>L</em> days of sales, so its DSO is <em>L</em>; the case states that lag directly as <code>collection_lag_days</code>. A week is seven days and the year is 365 days; no other day count appears.</li>
+          <li><strong>Receipts and disbursements.</strong> A day's sales are collected <code>collection_lag_days</code> after the sale. Receipts in week <em>w</em> are the sum over its seven days of the sales of the day that is that many days earlier. A day's purchases are paid <code>payment_lag_days</code> after the purchase. Disbursements in week <em>w</em> are those paid purchases plus <code>weekly_opex_cents[w − 1]</code>, which is paid in its own week.</li>
+          <li><strong>Revolver.</strong> Let <em>C</em> be cash before the draw, <em>m</em> minimum cash, and <em>A</em> the availability, which is the commitment less the drawn balance at the start of the week. If <em>C</em> is below <em>m</em>, the draw is the smaller of <em>m − C</em> and <em>A</em>, and there is no repayment. Otherwise the draw is zero and the repayment is the smaller of <em>C − m</em> and the drawn balance at the start of the week. Ending cash is <em>C</em> plus the draw less the repayment, and the drawn balance moves by the same draw and repayment.</li>
+          <li><strong>Liquidity and headroom.</strong> Liquidity at week end is ending cash plus the commitment less the drawn balance. Headroom is liquidity less <code>covenant_threshold_cents</code>. A draw moves cash and availability by equal and opposite amounts, so it leaves liquidity unchanged; liquidity changes only with receipts and disbursements.</li>
+          <li><strong>Shortfall and required commitment.</strong> The shortfall in a week is the amount by which ending cash is below minimum cash, or zero. <code>shortfall_cents</code> is the largest weekly shortfall. The <em>free path</em> is the same calculation with the draw never capped by availability. <code>required_commitment_cents</code> is the largest drawn balance on the free path, opening balance included. A commitment at or above it leaves no shortfall; a commitment below it leaves one, because the two paths agree until the first week in which the free path's drawn balance exceeds the commitment, and in that week the capped draw is less than the need.</li>
+          <li><strong>Peak drawn balance.</strong> The largest drawn balance over the opening balance and the 13 week ends.</li>
+          <li><strong>Covenant pinch.</strong> The week in 1 to 13 with the smallest headroom; on a tie, the earliest week. <code>headroom_cents</code> is that week's headroom.</li>
+          <li><strong>Action cash impact.</strong> The change in cumulative cash by the end of week 13 from a change in terms, before any revolver effect. Shortening DSO by <em>d</em> days (<code>"dso"</code>, with <em>d</em> from 0 up to the current lag) brings forward the collection of the sales of the <em>d</em> days whose collection, after the change, falls on or before day 91; the impact is the sum of those days' daily sales. Lengthening DPO by <em>d</em> days (<code>"dpo"</code>, with <em>d</em> zero or more) keeps the purchases of the <em>d</em> days whose payment, before the change, fell on or before day 91 and now falls after it; the impact is the sum of those days' daily purchases. Flows that move before week 1 count, because they change cash at week 13.</li>
+          <li><strong>Rounding.</strong> Every money output is the exact value rounded to the nearest cent, with a half going up. Each daily amount is a whole number of cents divided by seven, so every exact value the engine forms is a whole number of sevenths of a cent, and no exact value sits at exactly one half of a cent. The truncation of an exact value is therefore wrong for four sevenths and for five and six sevenths of a cent.</li>
+        </ul>
+
+        <h3 id="errors">Named errors</h3>
+        <p>Each of these raises <code>ValueError</code>: a case whose <code>horizon_weeks</code> is not 13, in each of the four functions; a case whose <code>revolver_commitment_cents</code> is negative, in each of the four functions; and an <code>action</code> that is not <code>"dso"</code> or <code>"dpo"</code>, in <code>action_cash_impact</code>. Zero is a valid commitment, and a commitment equal to the opening drawn balance is valid. Just inside these bounds the input is valid, and each function returns a value.</p>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours-table">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Read the specification, set up the repository, run the starter, and do Labs 1 and 2</td><td class="num">2</td><td>Every test that calls a function you have not written fails with <code>NotImplementedError</code>; those failures are your checklist. Lab 2 is blanked and matches Lab 1's lines when its blank is right.</td></tr>
+              <tr><td><code>forecast</code>: receipts, disbursements, the revolver rules and the cash identity</td><td class="num">2</td><td>The weekly rows are the largest part. The day shift of each lag and the capped draw are where the errors are.</td></tr>
+              <tr><td><code>revolver_plan</code>, <code>covenant_pinch</code>, <code>action_cash_impact</code>, and edge cases on your seed</td><td class="num">2</td><td>The free path is a second run of the same loop with no cap; the tie rule is one line; the two action windows are sums over days. Each failing property names the rule it checks.</td></tr>
+              <tr><td>Treasurer memo (rubric)</td><td class="num">3</td><td>The forecast, the revolver size, the pinch week, and two actions with cash impact, each with its numbers taken from your engine.</td></tr>
+              <tr><td>Self-assessment against the exemplars</td><td class="num">1</td><td>Score your memo, then compare your scores with exemplar A and exemplar B.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>10</strong></td><td>The hub declares 40 lesson hours and this 10-hour project, which together make the module's 50 hours.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>treasury_forecast.py</code> and run the suite on your own seed's case. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="CF8" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="treasury_forecast.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> to the root of your repository, next to <code>treasury_forecast.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> keeps failure messages to the property that failed, and <code>-W error</code> turns warnings into failures, both as in the browser. Use Python 3.14 with pytest 9, the versions the in-browser grader runs.</p>
+      </section>
+
+      <section id="rung3-labs">
+        <h2 id="h-rung3">Lab 3 · Reference outcome table to check your engine against</h2>
+        <section class="lab" id="lab-CF8-project-3" data-runtime="python">
+          <h3>Lab 3 · Outcome table of a stressed case where the commitment binds</h3>
+          <p class="hypothesis">The case is SIMULATED and is given in the code as the dict <code>CASE</code>: a 30-day collection lag and a 20-day payment lag, sales of 10,000.00 dollars a week in weeks 1 to 5 and 7,000.00 dollars from week 6, purchases of 7,000.00 dollars a week, opex of 2,500.00 dollars, a commitment of 8,000.00 dollars, an opening drawn balance of 2,000.00 dollars, minimum cash of 3,000.00 dollars and a threshold of 4,000.00 dollars. Before running, predict whether the commitment binds and in which week. Run <code>treasury_forecast.py</code> on exactly this case and compare each printed line with its output, dividing money by 100 for the engine's cents. The lab's numbers are a check on your engine, not a target to copy.</p>
+          <pre><code class="language-python" data-run>"""CF8 project lab 3 (rung 3, reference run): the outcome table of a second SIMULATED case, to check your engine.
+
+SIMULATED: a case written here for teaching. It is not any company's data. Money is in whole cents on input; the
+printed values are dollars or days, to two decimals. Standard library only, no randomness, no network.
+
+Run treasury_forecast.py on exactly this case (the dict CASE below, with the same keys) and compare the printed
+lines with your engine's output, after dividing money by 100. A line that differs is a defect in one of the two. The
+printed numbers are a check, not a target to copy.
+
+The case is stressed: sales fall from week 6, receipts follow after the 30-day collection lag, the commitment binds
+in week 13 only, and the shortfall below minimum cash is reported.
+"""
+
+from __future__ import annotations
+
+import math
+from fractions import Fraction
+from typing import Any
+
+CASE: dict[str, Any] = {
+    "horizon_weeks": 13,
+    "opening_cash_cents": 100_000,
+    "minimum_cash_cents": 300_000,
+    "revolver_commitment_cents": 800_000,
+    "opening_drawn_cents": 200_000,
+    "covenant_threshold_cents": 400_000,
+    "collection_lag_days": 30,
+    "payment_lag_days": 20,
+    "weekly_sales_cents": [1_000_000] * 5 + [700_000] * 8,
+    "weekly_purchases_cents": [700_000] * 13,
+    "weekly_opex_cents": [250_000] * 13,
+}
+
+
+def daily(weekly: list[int], day: int) -&gt; Fraction:
+    """Cents of one day's flow; the days before day 1 use week 1's rate, as the specification states."""
+    week = 1 if day &lt; 1 else (day - 1) // 7 + 1
+    return Fraction(weekly[week - 1], 7)
+
+
+def week_total(weekly: list[int], lag: int, week: int) -&gt; Fraction:
+    first = 7 * (week - 1) + 1
+    return sum((daily(weekly, day - lag) for day in range(first, first + 7)), Fraction(0))
+
+
+def half_up(value: Fraction) -&gt; int:
+    return math.floor(value + Fraction(1, 2))
+
+
+def path(capped: bool) -&gt; list[tuple[int, int, int, int, int, int, int, int]]:
+    """Week rows: receipts, disbursements, draw, repay, ending cash, drawn, liquidity, headroom, in cents."""
+    rows = []
+    cash = CASE["opening_cash_cents"]
+    drawn = CASE["opening_drawn_cents"]
+    for w in range(1, 14):
+        got = half_up(week_total(CASE["weekly_sales_cents"], CASE["collection_lag_days"], w))
+        out = half_up(week_total(CASE["weekly_purchases_cents"], CASE["payment_lag_days"], w))
+        out += CASE["weekly_opex_cents"][w - 1]
+        before = cash + got - out
+        need = max(CASE["minimum_cash_cents"] - before, 0)
+        room = CASE["revolver_commitment_cents"] - drawn
+        draw = min(need, room) if capped else need
+        repay = 0 if need &gt; 0 else min(before - CASE["minimum_cash_cents"], drawn)
+        cash = before + draw - repay
+        drawn = drawn + draw - repay
+        liquidity = cash + CASE["revolver_commitment_cents"] - drawn
+        rows.append((got, out, draw, repay, cash, drawn, liquidity, liquidity - CASE["covenant_threshold_cents"]))
+    return rows
+
+
+def usd(cents: int) -&gt; str:
+    return f"{cents / 100:.2f}"
+
+
+def cumulative(weekly: list[int], lag: int) -&gt; Fraction:
+    """Cents that flow by day 91 when each day's amount falls lag days later; sales from day -300 onwards."""
+    return sum((daily(weekly, k) for k in range(-300, 92 - lag)), Fraction(0))
+
+
+def main() -&gt; None:
+    capped = path(capped=True)
+    free = path(capped=False)
+    print("week: receipts, disbursements, draw, repay, ending cash, drawn, headroom (dollars)")
+    for w, row in enumerate(capped, start=1):
+        print(f"  week {w:2d}: " + "  ".join(usd(x) for x in row[:4]) + "  " + "  ".join(usd(x) for x in row[4:]))
+    peak = max([CASE["opening_drawn_cents"]] + [row[5] for row in capped])
+    required = max([CASE["opening_drawn_cents"]] + [row[5] for row in free])
+    shortfall = max([0] + [max(CASE["minimum_cash_cents"] - row[4], 0) for row in capped])
+    print(f"peak drawn balance: {usd(peak)} dollars")
+    print(f"required commitment: {usd(required)} dollars, against {usd(CASE['revolver_commitment_cents'])} in the case")
+    print(f"largest shortfall below minimum cash: {usd(shortfall)} dollars")
+    pinch = min(range(13), key=lambda i: (capped[i][7], i))
+    print(f"covenant pinch: week {pinch + 1}, headroom {usd(capped[pinch][7])} dollars")
+    lag = CASE["collection_lag_days"]
+    dso = half_up(cumulative(CASE["weekly_sales_cents"], lag - 5) - cumulative(CASE["weekly_sales_cents"], lag))
+    lag = CASE["payment_lag_days"]
+    dpo = half_up(cumulative(CASE["weekly_purchases_cents"], lag) - cumulative(CASE["weekly_purchases_cents"], lag + 5))
+    print(f"cash impact of a 5-day DSO shortening: {usd(dso)} dollars")
+    print(f"cash impact of a 5-day DPO lengthening: {usd(dpo)} dollars")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">week: receipts, disbursements, draw, repay, ending cash, drawn, headroom (dollars)
+  week  1: 10000.00  9500.00  1500.00  0.00  3000.00  3500.00  7500.00  3500.00
+  week  2: 10000.00  9500.00  0.00  500.00  3000.00  3000.00  8000.00  4000.00
+  week  3: 10000.00  9500.00  0.00  500.00  3000.00  2500.00  8500.00  4500.00
+  week  4: 10000.00  9500.00  0.00  500.00  3000.00  2000.00  9000.00  5000.00
+  week  5: 10000.00  9500.00  0.00  500.00  3000.00  1500.00  9500.00  5500.00
+  week  6: 10000.00  9500.00  0.00  500.00  3000.00  1000.00  10000.00  6000.00
+  week  7: 10000.00  9500.00  0.00  500.00  3000.00  500.00  10500.00  6500.00
+  week  8: 10000.00  9500.00  0.00  500.00  3000.00  0.00  11000.00  7000.00
+  week  9: 10000.00  9500.00  0.00  0.00  3500.00  0.00  11500.00  7500.00
+  week 10: 7857.14  9500.00  1142.86  0.00  3000.00  1142.86  9857.14  5857.14
+  week 11: 7000.00  9500.00  2500.00  0.00  3000.00  3642.86  7357.14  3357.14
+  week 12: 7000.00  9500.00  2500.00  0.00  3000.00  6142.86  4857.14  857.14
+  week 13: 7000.00  9500.00  1857.14  0.00  2357.14  8000.00  2357.14  -1642.86
+peak drawn balance: 8000.00 dollars
+required commitment: 8642.86 dollars, against 8000.00 in the case
+largest shortfall below minimum cash: 642.86 dollars
+covenant pinch: week 13, headroom -1642.86 dollars
+cash impact of a 5-day DSO shortening: 5000.00 dollars
+cash impact of a 5-day DPO lengthening: 5000.00 dollars</pre>
+          <p class="interpretation">The peak drawn balance is 8,000.00 dollars, equal to the commitment, and the required commitment is 8,642.86 dollars, so the commitment falls 642.86 dollars short of the free path. The largest shortfall below minimum cash is also 642.86 dollars. It arises in week 13 alone: cash before the draw is 500.00 dollars, the need is 2,500.00 dollars, the commitment leaves 1,857.14 dollars of availability, and the draw is capped at that amount, so ending cash is 2,357.14 dollars against minimum cash of 3,000.00 dollars. The pinch is week 13, with headroom of −1,642.86 dollars. Both five-day impacts are 5,000.00 dollars, because the DSO window falls in weeks whose sales are 700,000 cents a week and the DPO window falls in weeks whose purchases are 700,000 cents a week, so each gives five days at 100,000 cents. That equality belongs to this case, not to a rule.</p>
+        </section>
+      </section>
+
+      <section id="memo">
+        <h2 id="h-memo">Rung 3 · The treasurer memo</h2>
+        <p>The memo recommends a plan for the case, either the Lab 1 case or a case of your own from the autograder's seed. It has five sections, in this order: <strong>1 Forecast</strong>, <strong>2 Revolver sizing</strong>, <strong>3 Covenant pinch</strong>, <strong>4 Working-capital actions</strong> and <strong>5 Recommendation and limits</strong>. Take every number from your engine's output or from a lab, state its unit, and state the day count and the rounding you used. Give the decision rule before the numbers that apply it.</p>
+        <p>The memo needs no literature. Any source it cites must be a registry key from this page's reading list, with the locator of the statement it supports, and each claim carries its grade (T, A, B, C, D or X, as the course's evidence standard defines them). A practice claim without a confirmed locator is graded C at most and quotes no figure.</p>
+
+        <h3 id="rubric">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric-memo">
+            <caption>The treasurer memo: five criteria, four levels each. A memo scores the highest level whose elements it shows in full.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Forecast construction</th><td>Names each input the weekly rows use (the two lags, the weekly sales, purchases and opex, and the opening balances); states the identity opening cash plus receipts less disbursements plus draws less repayments equals ending cash in every week.</td><td>States the cash identity and names the lag and the weekly flows that drive receipts and disbursements.</td><td>Lists weekly rows without the identity, or names the inputs without the lag shift.</td><td>Says only "a reasonable forecast", or gives no rows.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Revolver sizing</th><td>States the minimum-cash rule and the availability cap; gives the peak drawn balance and the required commitment in cents; says whether the commitment binds.</td><td>States the minimum-cash rule and gives the peak drawn balance and the required commitment in dollars.</td><td>Gives a peak drawn balance with no rule, or an amount without its unit.</td><td>Says "enough credit", or gives no number.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Covenant pinch point</th><td>Names the pinch week and its headroom in cents; states the covenant definition (cash plus undrawn availability, less the threshold, at week end); states the tie-break rule.</td><td>Names the pinch week and its headroom, with the covenant definition.</td><td>Names a week with no headroom figure, or gives headroom without the definition.</td><td>Names no week, or says the covenant is "tight".</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Working-capital actions</th><td>Gives both actions, each with its sign, its cash impact in cents and the day-count convention; each impact traces to an engine output or to a printed lab value, with the calculation shown.</td><td>Gives two actions with their cash impacts in cents.</td><td>Gives one action, or an impact without its sign or convention.</td><td>Lists actions with no cash impact.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Recommendation and limits</th><td>Recommends an action set; names one change that would reverse the recommendation; states that the inputs are SIMULATED and the covenant definition as limits.</td><td>Recommends an action set and states that the inputs are SIMULATED.</td><td>Recommends without a stated limit, or states a limit without a recommendation.</td><td>Makes no recommendation.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two memos written to this brief, on the Lab 1 case, at two levels. Every number in them is printed by Lab 1 or is computed from values printed by Lab 1, with the calculation shown. Each passage carries an annotation that names the criteria it meets or misses. The official scoring is shown beside each exemplar, and it is revealed in the self-assessment after you score them yourself.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2.</p>
+          <h5>1 Forecast</h5>
+          <p>The forecast runs for 13 weeks. Receipts fall in week 10 and the revolver draws in weeks 1, 11, 12 and 13.</p>
+          <p class="annotation" data-reveal>C1, level 2: the weekly rows are named and the draws are right (Lab 1, step 5), but the memo states no identity and does not name the collection lag or the payment lag.</p>
+          <h5>2 Revolver sizing</h5>
+          <p>The peak drawn balance is 3,142.86 dollars.</p>
+          <p class="annotation" data-reveal>C2, level 2: a peak with no rule. The minimum-cash rule and the availability cap are not stated, and the memo does not say whether the commitment binds.</p>
+          <h5>3 Covenant pinch</h5>
+          <p>The pinch is in week 13, with headroom of −1,142.86 dollars.</p>
+          <p class="annotation" data-reveal>C3, level 2: a week and a headroom figure, both correct (Lab 1, step 8), but the covenant definition and the tie rule are missing.</p>
+          <h5>4 Working-capital actions</h5>
+          <p>Shortening DSO by five days is worth 5,714.29 dollars.</p>
+          <p class="annotation" data-reveal>C4, level 2: one action with a correct figure, but no sign, no day-count convention and no second action.</p>
+          <h5>5 Recommendation and limits</h5>
+          <p>Recommend the DSO action.</p>
+          <p class="annotation" data-reveal>C5, level 2: a recommendation with no stated limit and no change that would reverse it.</p>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4.</p>
+          <h5>1 Forecast</h5>
+          <p>The inputs are the 45-day collection lag and the 30-day payment lag, the weekly sales (10,000.00 dollars in weeks 1 to 3 and 8,000.00 dollars from week 4), purchases of 7,000.00 dollars a week, opex of 2,500.00 dollars a week, opening cash of 1,500.00 dollars and an opening drawn balance of zero. Receipts in a week are the sales of the days that are 45 days earlier. Each week satisfies ending cash equals opening cash plus receipts less disbursements plus draws less repayments. Week 1 is 1,500.00 + 10,000.00 − 9,500.00 + 2,000.00 − 0.00 = 4,000.00 dollars, which matches Lab 1, step 5. Week 10 receipts are the sales of days 19 to 25, three days at 1,000,000 cents a week and four at 800,000: (3 × 1,000,000 + 4 × 800,000) / 7 = 885,714.29 cents, which is 8,857.14 dollars to the cent (Lab 1, step 3).</p>
+          <p class="annotation" data-reveal>C1, level 4: names each input the rows use, states the identity, and checks it on week 1 against the printed output.</p>
+          <h5>2 Revolver sizing</h5>
+          <p>The rule: if cash before the draw is below minimum cash of 4,000.00 dollars, draw the smaller of the shortfall and the undrawn availability; otherwise repay the smaller of the cash above minimum and the drawn balance. No week's draw is capped, because the drawn balance never exceeds the 10,000.00-dollar commitment. The peak drawn balance is 3,142.86 dollars (314,286 cents), in week 13 (Lab 1, step 7). The required commitment is the largest drawn balance on the free path, which here equals the capped path, so it is also 314,286 cents, 3,142.86 dollars. The commitment does not bind.</p>
+          <p class="annotation" data-reveal>C2, level 4: states the rule and the cap, gives the peak and the required commitment in cents, and says the commitment does not bind.</p>
+          <h5>3 Covenant pinch</h5>
+          <p>The covenant is minimum liquidity: cash plus undrawn availability at week end, less the threshold of 12,000.00 dollars, must be zero or more. The pinch is week 13, where liquidity is 10,857.14 dollars and headroom is −1,142.86 dollars (−114,286 cents). The tie rule is the earliest week; no tie occurs in this case. A draw leaves liquidity unchanged, so the pinch reflects receipts and disbursements only, and the revolver does not move it.</p>
+          <p class="annotation" data-reveal>C3, level 4: names the week and its headroom in cents, states the definition and the earliest-week tie rule.</p>
+          <h5>4 Working-capital actions</h5>
+          <p>Action 1, shortening DSO by five days, brings the sales of days 47 to 51 into the horizon. Those days fall in weeks 7 and 8, when sales are 800,000 cents a week, so the impact is 5 × 800,000 / 7 = 571,428.57 cents, which is 571,429 cents, or 5,714.29 dollars, to the cent. Action 2, lengthening DPO by five days, keeps the purchases of days 57 to 61, which fall in week 9 at 700,000 cents a week, so the impact is 5 × 700,000 / 7 = 500,000 cents, or 5,000.00 dollars. Both impacts are positive. The seven-day week sets the daily rate; the 365-day DSO and DPO form defines the lags and does not enter the impact. The 5,714.29-dollar figure is the change in cash by the end of week 13 before any revolver effect, so it counts the sales that move before week 1 as well as those that move inside the horizon.</p>
+          <p class="annotation" data-reveal>C4, level 4: both actions, each with its sign, its number in cents and dollars, and its day-count convention, with the calculation shown.</p>
+          <h5>5 Recommendation and limits</h5>
+          <p>Recommend both actions and no change to the commitment of 10,000.00 dollars, because the peak drawn balance of 3,142.86 dollars leaves 6,857.14 dollars of availability. The covenant pinch is the limit that matters: a threshold of 10,857.14 dollars or less would leave no week in breach, because that is the lowest liquidity in the case, so at that threshold the case for the actions as covenant fixes would disappear. The inputs are SIMULATED, and the covenant is defined as minimum liquidity.</p>
+          <p class="annotation" data-reveal>C5, level 4: recommends, names one change that would reverse the recommendation with its computed threshold, and states the SIMULATED inputs and the covenant definition as limits.</p>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric-memo" data-exemplars="exemplar-a exemplar-b" data-store-key="CF8/project/memo">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own memo on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own memo. Your scores stay in this browser.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Covenant pinch under a collection slip.</strong> Raise <code>collection_lag_days</code> of the Lab 1 case by five days. State first the hypothesis that the pinch week moves earlier, or does not move, and the result that would falsify it. Then run the engine and report the pinch week and headroom before and after.</li>
+          <li><strong>Required commitment against the payment lag.</strong> Vary <code>payment_lag_days</code> from 20 to 60 days on the Lab 1 case. State the hypothesis about the direction of the required commitment before you compute it, and report the required commitment at each lag in cents, with the lag at which it is largest.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <ol class="reading-list">
+          <li data-cite="bates2009us">Bates, Kahle and Stulz (2009), the module's core reading on corporate cash holdings. No claim from it is used on this page.</li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="index.html"><span class="dir">Module</span>CF8 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CF8 project · The autograder runs in your browser on a SIMULATED case; nothing you write leaves it.</footer>
+</body>
+</html>

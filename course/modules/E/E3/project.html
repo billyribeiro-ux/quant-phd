@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="E3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>E3 Project · Preference Elicitation</title>
+  <meta name="description" content="Design a lottery questionnaire, write the engine that turns a participant's answers into certainty equivalents and maximum-likelihood estimates of curvature, loss aversion and choice precision, and report the estimates with their uncertainty. The engine is autograded on a seeded SIMULATED participant; the instrument and the report are graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">E3 Decision Theory Under Risk &amp; Ambiguity</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="14">
+      <header class="page-head">
+        <p class="eyebrow">E3 project · 14 hours · autograded engine, rubric-graded instrument and report</p>
+        <h1>Preference Elicitation</h1>
+        <p class="lede">A participant answers a short questionnaire of choices between lotteries. From the answers you estimate how curved the participant's value of money is, how much more a loss weighs than a gain of the same size, and how precisely the participant's choices follow the values. You write the engine that does the estimation, design the questionnaire, and report the estimates with their uncertainty.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are at full length. If you met the placement bar on the <a href="index.html#placement">module page</a>, skip rungs 1 and 2 and start at rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: one SIMULATED participant, three choice pairs, every certainty equivalent and likelihood term annotated.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: the log-likelihood contribution of one choice, with its sign and logit terms removed. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: the engine <code>elicit.py</code>, autograded in <a href="#grader-section">the autograder section</a>, and the instrument and the report, graded by the rubric in <a href="#report">the report section</a>, with annotated exemplars and a self-assessment.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Both labs use one SIMULATED participant. The participant's parameters are stated inputs: a curvature of 0.40, a loss-aversion coefficient of 2.00 and a choice precision of 1.50. Nothing here is estimated from data, and no file is read. The value of a lottery is defined in <a class="concept" data-concept="loss-aversion" href="L06.html#def-loss-aversion">Lesson 6</a>, and the certainty equivalent in <a class="concept" data-concept="certainty-equivalent" href="L02.html#def-certainty-equivalent">Lesson 2</a>.</p>
+
+        <section class="lab" id="lab-E3-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: three answers, step by step</h3>
+          <p class="hypothesis">The participant is SIMULATED, with \(\gamma = 0.40\), \(\lambda = 2.00\) and \(\kappa = 1.50\). Expected, stated before running: the CRRA certainty equivalents of pair 1 are 496 cents for A and 500 cents for B, and the prospect certainty equivalents of pair 1 are \(-30\) cents for A and 500 cents for B. The participant chose A in pair 1, so the printed \(P(A) = 0.480149\) gives a log-probability of the chosen answer of \(-0.733658\). The three log-probabilities sum to \(-2.302315\). Every money amount below is in cents, and each certainty equivalent is printed as a whole cent, an exact half going up; the likelihood uses the unrounded values.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: one SIMULATED participant, three choice pairs, their certainty equivalents and likelihood.
+
+Standard library only. The participant's parameters are stated values chosen for this example (gamma 0.40,
+lambda 2.00, kappa 1.50). They are not estimates, and the participant is not a real person.
+"""
+
+import math
+from fractions import Fraction
+
+GAMMA = 0.40  # curvature of the value function, in (0, 1) for the prospect model
+LAMBDA = 2.00  # loss-aversion coefficient
+KAPPA = 1.50  # choice precision: the logit scale, per $100 of certainty-equivalent difference
+WEALTH = 100_000  # starting wealth in cents ($1,000.00); used by the CRRA model only
+
+
+def nearest_cent(amount: float) -&gt; int:
+    """The nearest whole cent of a float, with an exact half going up (toward plus infinity)."""
+    return math.floor(amount + 0.5)
+
+
+def crra_certainty_equivalent(prizes: list[int], probs: list[Fraction], gamma: float, wealth: int) -&gt; float:
+    """CRRA certainty equivalent as a change from wealth, in cents, unrounded: the sure amount whose utility of final
+    wealth equals the lottery's expected utility of final wealth."""
+    finals = [wealth + x for x in prizes]
+    expected = sum(float(p) * math.pow(w, 1.0 - gamma) for p, w in zip(probs, finals, strict=True))
+    return math.pow(expected, 1.0 / (1.0 - gamma)) - wealth
+
+
+def prospect_value(x: int, gamma: float, lam: float) -&gt; float:
+    """Value of a change x from the reference point 0: x^(1-gamma) for a gain, -lambda (-x)^(1-gamma) for a loss."""
+    if x &gt;= 0:
+        return math.pow(float(x), 1.0 - gamma)
+    return -lam * math.pow(float(-x), 1.0 - gamma)
+
+
+def prospect_certainty_equivalent(prizes: list[int], probs: list[Fraction], gamma: float, lam: float) -&gt; float:
+    """The sure change whose value equals the lottery's value (the probability-weighted sum of prospect values), in
+    cents, unrounded. The inverse of the value function is taken on each side of zero."""
+    total = sum(float(p) * prospect_value(x, gamma, lam) for x, p in zip(prizes, probs, strict=True))
+    if total &gt;= 0.0:
+        return math.pow(total, 1.0 / (1.0 - gamma))
+    return -math.pow(-total / lam, 1.0 / (1.0 - gamma))
+
+
+def choice_probability_a(ce_a: float, ce_b: float, kappa: float) -&gt; float:
+    """P(choose A) = 1 / (1 + exp(-z)), z = kappa (CE_A - CE_B) / 10000: the difference is in units of $100."""
+    z = kappa * (ce_a - ce_b) / 10_000.0
+    return 1.0 / (1.0 + math.exp(-z))
+
+
+def main() -&gt; None:
+    pairs = [
+        ("pair 1", [2000, -1000], [Fraction(1, 2), Fraction(1, 2)], [500], [Fraction(1)], "A"),
+        ("pair 2", [3000], [Fraction(1)], [4000, -2000], [Fraction(1, 4), Fraction(3, 4)], "B"),
+        ("pair 3", [1500, 2500], [Fraction(1, 3), Fraction(2, 3)], [-500, 3000], [Fraction(1, 2), Fraction(1, 2)], "A"),
+    ]
+    total = 0.0
+    for name, pa, qa, pb, qb, chosen in pairs:
+        crra_a = nearest_cent(crra_certainty_equivalent(pa, qa, GAMMA, WEALTH))
+        crra_b = nearest_cent(crra_certainty_equivalent(pb, qb, GAMMA, WEALTH))
+        ce_a = prospect_certainty_equivalent(pa, qa, GAMMA, LAMBDA)
+        ce_b = prospect_certainty_equivalent(pb, qb, GAMMA, LAMBDA)
+        print(
+            name, "| CRRA cents A, B:", crra_a, crra_b, "| prospect cents A, B:", nearest_cent(ce_a), nearest_cent(ce_b)
+        )
+        p_a = choice_probability_a(ce_a, ce_b, KAPPA)
+        p_chosen = p_a if chosen == "A" else 1.0 - p_a
+        total += math.log(p_chosen)
+        print(name, "| P(A):", f"{p_a:.6f}", "| chosen:", chosen, "| log P(chosen):", f"{math.log(p_chosen):.6f}")
+    print("log-likelihood of the three choices:", f"{total:.6f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">pair 1 | CRRA cents A, B: 496 500 | prospect cents A, B: -30 500
+pair 1 | P(A): 0.480149 | chosen: A | log P(chosen): -0.733658
+pair 2 | CRRA cents A, B: 3000 -513 | prospect cents A, B: 3000 -762
+pair 2 | P(A): 0.637452 | chosen: B | log P(chosen): -1.014598
+pair 3 | CRRA cents A, B: 2166 1244 | prospect cents A, B: 2144 140
+pair 3 | P(A): 0.574613 | chosen: A | log P(chosen): -0.554059
+log-likelihood of the three choices: -2.302315</pre>
+          <p class="interpretation">Each function's docstring states its units, and <code>main()</code> prints one line per pair and one total. The CRRA values are changes from wealth of $1,000.00 at a final-wealth utility \(W^{1-\gamma}/(1-\gamma)\). The prospect values are changes from the reference point 0, with a loss weighted by \(\lambda\). Pair 2 shows the difference: a sure $30.00 gain (its CE is 3000 cents under both models) against a lottery that loses $20.00 with probability 3/4, whose prospect certainty equivalent is \(-762\) cents. The choices are demonstration inputs chosen for this example, not a measurement.</p>
+        </section>
+
+        <section class="lab completion" id="lab-E3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: one choice in the likelihood</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression that gives the log-probability of the chosen alternative. For A, the log-probability is \(-\log(1+e^{-z})\), and for B it is \(-\log(1+e^{z})\), with \(z = \kappa(\mathrm{CE}_A-\mathrm{CE}_B)/10\,000\). With \(\mathrm{CE}_A = 1500\) cents, \(\mathrm{CE}_B = 2200\) cents and \(\kappa = 2\), the completed lines print a log contribution of \(-0.765595182\) for A and \(-0.625595182\) for B, and the two probabilities sum to 1. The participant is SIMULATED.</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completed solution: the log-likelihood contribution of one logit choice, from its two certainty equivalents.
+
+Standard library only. The certainty equivalents are in cents and are unrounded floats; the logit uses them directly.
+"""
+
+import math
+
+
+def contribution(ce_a: float, ce_b: float, kappa: float, chosen: str) -&gt; float:
+    """The log-probability of the chosen alternative: log P(A) = -log(1 + exp(-z)) for A, and log(1 - P(A)) =
+    -log(1 + exp(z)) for B, with z = kappa (CE_A - CE_B) / 10000."""
+    z = kappa * (ce_a - ce_b) / 10_000.0
+    if chosen == "A":
+        return ___
+    return ___
+
+
+def main() -&gt; None:
+    ce_a, ce_b, kappa = 1500.0, 2200.0, 2.0
+    for chosen in ("A", "B"):
+        value = contribution(ce_a, ce_b, kappa, chosen)
+        probability = math.exp(value)
+        print("chosen", chosen, "| log contribution:", f"{value:.9f}", "| probability:", f"{probability:.9f}")
+    p_a = 1.0 / (1.0 + math.exp(-kappa * (ce_a - ce_b) / 10_000.0))
+    print(
+        "P(A) from the sigmoid:",
+        f"{p_a:.9f}",
+        "| check of the A branch:",
+        abs(math.exp(contribution(ce_a, ce_b, kappa, "A")) - p_a) &lt; 1e-12,
+    )
+    print(
+        "the two probabilities sum to one:",
+        abs(math.exp(contribution(ce_a, ce_b, kappa, "A")) + math.exp(contribution(ce_a, ce_b, kappa, "B")) - 1.0)
+        &lt; 1e-12,
+    )
+
+
+main()
+</code></pre>
+          <pre class="expected" data-tolerance="1e-6">chosen A | log contribution: -0.765595182 | probability: 0.465057055
+chosen B | log contribution: -0.625595182 | probability: 0.534942945
+P(A) from the sigmoid: 0.465057055 | check of the A branch: True
+the two probabilities sum to one: True</pre>
+          <p class="interpretation">The first blank is <code>-math.log1p(math.exp(-z))</code>, the log of the sigmoid for A. The second is <code>-math.log1p(math.exp(z))</code>, the log of \(1-P(A)\), which is the contribution of the unchosen alternative when B is chosen. The printed line for A has probability 0.465057055, which is the sigmoid of \(z=-0.14\) that the last two output lines check. The completed contribution is a log-probability, so it is never positive.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A participant answers a questionnaire in which each question offers a sure amount or a lottery, or two lotteries. Each answer is a noisy signal of the participant's values. You want three numbers from one questionnaire: the curvature of the value of money \(\gamma\), the loss-aversion coefficient \(\lambda\) of a value function that weighs losses against gains, and the precision \(\kappa\) of the choices. The question is how precisely a questionnaire of a given size can estimate each of them, and you answer it with the standard errors.</dd>
+          <dt>Inputs</dt>
+          <dd>(a) The instrument: a file <code>instrument.json</code> of at least 12 pairs that you write. Each lottery gives its prizes in whole cents and its probabilities as exact fractions, and at least one pair in the instrument has a lottery that mixes a gain and a loss. (b) The participant's responses, as a JSON list of objects with the keys <code>pair_id</code> (an integer), <code>choice</code> (the text <code>"A"</code> or <code>"B"</code>), <code>prizes_a</code> and <code>probs_a</code>, <code>prizes_b</code> and <code>probs_b</code>. Each probability is text of the form <code>"numerator/denominator"</code> that <code>Fraction</code> reads exactly. The autograder's responses come from <code>grader/instance.py</code> for your seed, and they are SIMULATED. Your own responses are personal data. Keep them on your machine: nothing on this page sends them anywhere.</dd>
+          <dt>Required outputs</dt>
+          <dd>In a repository of your own: <code>elicit.py</code> at its root, with the three functions below; <code>instrument.json</code>; and <code>report/report.md</code> with the sections of <a href="#brief">the brief</a>, followed by its appendix, and <code>report/self_assessment.md</code> produced by the form in <a href="#self-assessment">the self-assessment section</a>. The functions of <code>elicit.py</code> are <code>certainty_equivalent_cents(model: str, prizes_cents: list[int], probabilities: list[Fraction], params: dict[str, float], wealth_cents: int) -&gt; int</code>, <code>log_likelihood(responses: list[dict[str, object]], params: dict[str, float]) -&gt; float</code> and <code>estimate(responses: list[dict[str, object]]) -&gt; dict[str, float]</code>. The estimate returns the keys <code>gamma_hat</code>, <code>lambda_hat</code>, <code>kappa_hat</code>, <code>se_gamma</code>, <code>se_lambda</code>, <code>se_kappa</code> and <code>log_likelihood</code>. Start from <a href="grader/starter.py">the starter file</a>, whose signatures are complete.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only; no network. Every money output is an <code>int</code> number of cents. Every named invalid input raises the exception of <a href="#exceptions">the exception table</a>, with its message. No function prints or warns. The conventions of <a href="#conventions">the next subsection</a> are binding. The engine is graded on the same seeded participant, in your browser and on your machine, so the answers are the same there.</dd>
+          <dt>Grading mode</dt>
+          <dd>Both modes apply. The engine is autograded by <code>grader/test_project.py</code>, which runs 26 checks with warnings as errors. The checks compare the engine with oracles written for the suite: exact cents where the answer is exact, a stated tolerance elsewhere, and the score, the local maximum and the standard errors of the estimate. The suite is not secret; its integrity comes from the seeded participant and from a second participant, which a fixed answer for one seed would also have to match. The instrument and the report are graded by rubric, against the five criteria of <a href="#rubric">the report rubric</a>, each with four observable levels. You score yourself with <a href="#self-assessment">the self-assessment form</a>, calibrated on two annotated exemplars. The report meets the bar at level 3 or above on every criterion.</dd>
+          <dt>Reading list</dt>
+          <dd>See <a href="#reading">the reading section</a>: the five registry keys that the lessons cite. The page attributes no statement to any of them.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions</h3>
+        <ul>
+          <li><strong>Models.</strong> <code>model</code> is <code>"crra"</code> or <code>"prospect"</code>, with no other spelling accepted. The <code>"crra"</code> model is expected utility of final wealth, \(W^{1-\gamma}/(1-\gamma)\) for \(\gamma \ne 1\) and \(\ln W\) at \(\gamma = 1\), with \(W = \texttt{wealth\_cents} + x\) for each prize \(x\). Its certainty equivalent is the sure change from wealth whose utility equals the lottery's expected utility. The <code>"prospect"</code> model is the loss-averse power value defined in <a class="concept" data-concept="prospect-theory" href="L06.html#def-prospect-theory">Lesson 6</a>, with no probability weighting: \(v(x)=x^{1-\gamma}\) for \(x \ge 0\) and \(v(x)=-\lambda(-x)^{1-\gamma}\) for \(x<0\), with \(0 \le \gamma < 1\) and \(\lambda > 0\). Its lottery value is \(V=\sum_i p_i v(x_i)\), and its certainty equivalent is the sure change \(c\) with \(v(c)=V\), namely \(c=V^{1/(1-\gamma)}\) when \(V \ge 0\) and \(c=-(-V/\lambda)^{1/(1-\gamma)}\) otherwise. The prospect model does not use wealth.</li>
+          <li><strong>Whole cents.</strong> A certainty equivalent is computed in floating point from the exact probabilities, then taken to the nearest whole cent once. An exact half cent goes toward plus infinity: \(\lfloor c + \tfrac12 \rfloor\). So \(2.5\) gives 3 and \(-0.5\) gives 0. No other rounding is applied to a money amount.</li>
+          <li><strong>Choice probability.</strong> \(P(\text{choose }A)=1/(1+e^{-z})\) with \(z=\kappa\,(\mathrm{CE}_A-\mathrm{CE}_B)/10\,000\), so the difference is measured in units of $100. The likelihood uses the unrounded certainty equivalents, and \(\kappa > 0\). The likelihood of the responses is the product of the probabilities of the chosen alternatives, so its logarithm is the sum of \(\log P(A)\) for each response that chose A and \(\log(1-P(A))\) for each response that chose B.</li>
+          <li><strong>Estimation.</strong> <code>estimate</code> uses the prospect model only, with \(\gamma \in (0,1)\), \(\lambda > 0\) and \(\kappa > 0\). The estimates are floats. Its standard errors are the square roots of the diagonal of the inverse of the observed information, the negative Hessian of the log-likelihood at the estimate, in the coordinates \(c=\log(\gamma/(1-\gamma))\), \(\log\lambda\) and \(\log\kappa\), carried to the parameters by the delta method.</li>
+          <li><strong>Probabilities.</strong> Each probability is a <code>Fraction</code>, non-negative, and the probabilities of a lottery sum to exactly 1. A probability of exactly zero is allowed.</li>
+        </ul>
+
+        <h3 id="exceptions">Exception table</h3>
+        <p>These are the named invalid inputs, the only ones for which a particular exception type is required. Any other invalid input may raise any exception or return a value.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Condition</th><th>Exception</th><th>The message names</th></tr></thead>
+            <tbody>
+              <tr><td><code>model</code> is not <code>"crra"</code> or <code>"prospect"</code></td><td><code>ValueError</code></td><td>the two allowed names</td></tr>
+              <tr><td>a probability is negative, or the probabilities of a lottery do not sum to exactly 1</td><td><code>ValueError</code></td><td>"probabilities must sum to 1"</td></tr>
+              <tr><td><code>model</code> is <code>"crra"</code> and <code>wealth_cents</code> plus a prize is zero or negative</td><td><code>ValueError</code></td><td>"wealth plus prize must stay positive"</td></tr>
+              <tr><td><code>responses</code> is empty, or no response has a lottery that mixes a gain and a loss, each with positive probability</td><td><code>ValueError</code></td><td>the condition, for example "need mixed-sign lotteries to identify loss aversion"</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">1</td><td>One SIMULATED participant with three answers; the comments carry the reason for each step.</td></tr>
+              <tr><td>Rung 2 completion problem and its instant check</td><td class="num">1</td><td>Two blanks, each one line of the likelihood; the time goes into why each term is there.</td></tr>
+              <tr><td>Instrument design and the questionnaire file</td><td class="num">3</td><td>At least 12 pairs in cents with exact probabilities, and a mixed-sign lottery in enough pairs to identify loss aversion.</td></tr>
+              <tr><td><code>elicit.py</code> and its local test run</td><td class="num">4</td><td>The three functions to the specification, the exception table, and a pass on seeds 0 to 49 of the autograder.</td></tr>
+              <tr><td>Uncertainty and the report</td><td class="num">3</td><td>Standard errors from the observed information, the convergence check, and the limits of a questionnaire of this size.</td></tr>
+              <tr><td>Self-assessment against the exemplars</td><td class="num">2</td><td>Score the report, then compare with exemplar A and exemplar B and reconcile the scores.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>14</strong></td><td>Equals the hours of the project in the hub: 14 of the module's 70.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>elicit.py</code> and run the suite on your own seeded participant. Your code is saved in this browser as you type. The participant is SIMULATED, and the answers are generated from the seed alone.</p>
+        <section class="grader-panel" id="grader" data-unit="E3" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="elicit.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>elicit.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> turns off pytest's comparison details, so a failure shows the test's own message and no values, and <code>-W error</code> turns warnings into failures, both as in the browser.</p>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The instrument and the report</h2>
+        <p>The report estimates the three parameters from the questionnaire and states what the estimates do and do not say. Its numbers are the ones Lab 3 prints for a fixed questionnaire of twelve SIMULATED answers, so you can check every number before you write it.</p>
+
+        <section class="lab" id="lab-E3-project-3" data-runtime="python">
+          <h3>Lab 3 · The reference case: estimates and standard errors</h3>
+          <p class="hypothesis">The questionnaire has twelve SIMULATED answers, generated from a stated participant (curvature 0.35, loss aversion 2.20, precision 1.20) with a fixed seed. Expected, stated before running: the estimates are <code>gamma_hat</code> = 0.6352, <code>lambda_hat</code> = 6.1503 and <code>kappa_hat</code> = 2.0201, printed to four decimals, with standard errors printed to two decimals, and the largest score component at the estimate is below \(10^{-6}\), so the search has stopped at a maximum. The standard error of <code>lambda_hat</code> is larger than <code>lambda_hat</code> itself, so the questionnaire does not pin loss aversion down. Eleven of the twelve pairs contain a mixed-sign lottery. Copy this file as <code>report/run_case.py</code>, and replace the function <code>newton</code> and its start with a call to your module's <code>estimate</code>. It must print the same lines.</p>
+          <pre><code class="language-python" data-run>"""Rung 3 reference case: the estimates and standard errors for one fixed questionnaire of twelve SIMULATED answers.
+
+Standard library only. The twelve answers were generated for this page from a stated participant (gamma 0.35,
+lambda 2.20, kappa 1.20) with a fixed seed, and they are printed here as data. The participant is not a real person,
+and the estimates below are the numbers your elicit.py must reproduce for this case (copy this file as
+run_case.py, then replace the estimate function with a call to your module; it must print the same lines).
+
+Each answer is (pair_id, choice, prizes of A, probabilities of A, prizes of B, probabilities of B). Prizes are whole
+cents and probabilities are exact fractions, read with Fraction. The model is the prospect model of the
+specification: gamma in (0, 1), lambda &gt; 0, kappa &gt; 0. Standard errors come from the observed information, the
+negative Hessian of the log-likelihood in the coordinates (c, log lambda, log kappa), c = log(gamma / (1 - gamma)),
+inverted and carried to the parameters by the delta method.
+"""
+
+import math
+from fractions import Fraction
+
+# (pair_id, choice, prizes of A, probabilities of A, prizes of B, probabilities of B)
+ANSWERS: list[tuple[int, str, list[int], list[str], list[int], list[str]]] = [
+    (0, "B", [6200, -15100], ["9/10", "1/10"], [3300, -3000, -700], ["1/20", "7/20", "3/5"]),
+    (1, "B", [-9400, -10100, 19000], ["2/5", "3/10", "3/10"], [-12200, 17000, -1100], ["1/2", "1/4", "1/4"]),
+    (2, "A", [10700, -3400, -13400], ["7/10", "1/10", "1/5"], [-14900, -13600, 15200], ["9/20", "2/5", "3/20"]),
+    (3, "A", [18800, -12500], ["3/4", "1/4"], [16500, -17700], ["2/5", "3/5"]),
+    (4, "B", [-10700, -5600, -7300], ["1/2", "2/5", "1/10"], [-13800, -9700], ["1/4", "3/4"]),
+    (5, "B", [-11600, 7900, -12200], ["3/4", "1/10", "3/20"], [-12000, 11300], ["17/20", "3/20"]),
+    (6, "A", [-9900, 5400, -4200], ["1/2", "1/4", "1/4"], [-15300, 16100, 6800], ["1/4", "1/2", "1/4"]),
+    (7, "A", [600, -17500], ["3/5", "2/5"], [15800, -2600, -17600], ["2/5", "2/5", "1/5"]),
+    (8, "B", [-10400, 13800], ["9/10", "1/10"], [10400, 1800], ["1/20", "19/20"]),
+    (9, "B", [-17900, -12000, -3600], ["1/4", "1/4", "1/2"], [15600, 11600, -12200], ["3/10", "13/20", "1/20"]),
+    (10, "B", [17000, 1600], ["1/10", "9/10"], [-18700, 3800], ["7/20", "13/20"]),
+    (11, "B", [10400, -11300], ["2/5", "3/5"], [9300, 7200, -13200], ["1/2", "1/4", "1/4"]),
+]
+
+
+def value(x: float, gamma: float, lam: float) -&gt; float:
+    """Prospect value of a change x from 0: x^(1-gamma) for gains, -lam (-x)^(1-gamma) for losses."""
+    if x &gt;= 0.0:
+        return math.pow(x, 1.0 - gamma)
+    return -lam * math.pow(-x, 1.0 - gamma)
+
+
+def certainty_equivalent(prizes: list[int], probs: list[str], gamma: float, lam: float) -&gt; float:
+    """The sure change whose prospect value equals the lottery's value, in cents, unrounded."""
+    total = sum(float(Fraction(p)) * value(x, gamma, lam) for x, p in zip(prizes, probs, strict=True))
+    if total &gt;= 0.0:
+        return math.pow(total, 1.0 / (1.0 - gamma))
+    return -math.pow(-total / lam, 1.0 / (1.0 - gamma))
+
+
+def log_likelihood(theta: list[float]) -&gt; float:
+    """The logit log-likelihood at theta = (c, log lambda, log kappa); each answer contributes log P(chosen)."""
+    gamma = 1.0 / (1.0 + math.exp(-theta[0]))
+    lam, kappa = math.exp(theta[1]), math.exp(theta[2])
+    total = 0.0
+    for _, choice, pa, qa, pb, qb in ANSWERS:
+        z = kappa * (certainty_equivalent(pa, qa, gamma, lam) - certainty_equivalent(pb, qb, gamma, lam)) / 10_000.0
+        total += -math.log1p(math.exp(-z)) if choice == "A" else -math.log1p(math.exp(z))
+    return total
+
+
+def grid_start() -&gt; list[float]:
+    """The best point of a small grid over gamma, lambda and kappa, used to start the search."""
+    best = [0.0, 0.0, 0.0]
+    best_value = log_likelihood(best)
+    for gamma in (0.05, 0.25, 0.45, 0.65, 0.85):
+        for lam in (1.0, 2.0, 4.0):
+            for kappa in (0.5, 2.0, 5.0):
+                start = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
+                if log_likelihood(start) &gt; best_value:
+                    best, best_value = start, log_likelihood(start)
+    return best
+
+
+def newton(theta: list[float]) -&gt; list[float]:
+    """Newton's method on the log-likelihood, with central differences of step 1e-6 and step halving."""
+    h = 1e-6
+    for _ in range(100):
+        f0 = log_likelihood(theta)
+        grad = [0.0, 0.0, 0.0]
+        neg_hess = [[0.0] * 3 for _ in range(3)]
+        for i in range(3):
+            up = [x + (h if k == i else 0.0) for k, x in enumerate(theta)]
+            down = [x - (h if k == i else 0.0) for k, x in enumerate(theta)]
+            grad[i] = (log_likelihood(up) - log_likelihood(down)) / (2 * h)
+            neg_hess[i][i] = -(log_likelihood(up) - 2 * f0 + log_likelihood(down)) / (h * h)
+        for i in range(3):
+            for j in range(i + 1, 3):
+                pp = [x + (h if k in (i, j) else 0.0) for k, x in enumerate(theta)]
+                pm = [x + (h if k == i else 0.0) - (h if k == j else 0.0) for k, x in enumerate(theta)]
+                mp = [x - (h if k == i else 0.0) + (h if k == j else 0.0) for k, x in enumerate(theta)]
+                mm = [x - (h if k in (i, j) else 0.0) for k, x in enumerate(theta)]
+                neg_hess[i][j] = neg_hess[j][i] = -(
+                    log_likelihood(pp) - log_likelihood(pm) - log_likelihood(mp) + log_likelihood(mm)
+                ) / (4 * h * h)
+        step = solve3(neg_hess, grad)
+        scale = 1.0
+        while scale &gt; 1e-14 and log_likelihood([x + scale * d for x, d in zip(theta, step, strict=True)]) &lt;= f0:
+            scale /= 2.0
+        if scale &lt;= 1e-14:
+            break
+        theta = [x + scale * d for x, d in zip(theta, step, strict=True)]
+        if max(abs(g) for g in grad) &lt; 1e-7:
+            break
+    return theta
+
+
+def solve3(matrix: list[list[float]], rhs: list[float]) -&gt; list[float]:
+    """Solves a 3 by 3 linear system by Gaussian elimination with partial pivoting."""
+    rows = [[*row, b] for row, b in zip(matrix, rhs, strict=True)]
+    n = 3
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(rows[r][col]))
+        rows[col], rows[pivot] = rows[pivot], rows[col]
+        for r in range(n):
+            if r != col:
+                factor = rows[r][col] / rows[col][col]
+                rows[r] = [a - factor * b for a, b in zip(rows[r], rows[col], strict=True)]
+    return [rows[i][n] / rows[i][i] for i in range(n)]
+
+
+def inverse3(matrix: list[list[float]]) -&gt; list[list[float]]:
+    """The inverse of a 3 by 3 matrix, column by column with solve3."""
+    columns = [solve3(matrix, [1.0 if k == i else 0.0 for k in range(3)]) for i in range(3)]
+    return [[columns[j][i] for j in range(3)] for i in range(3)]
+
+
+def observed_information(theta: list[float]) -&gt; list[list[float]]:
+    """The negative Hessian of the log-likelihood at theta, by central differences of step 1e-5."""
+    h = 1e-5
+    f0 = log_likelihood(theta)
+    info = [[0.0] * 3 for _ in range(3)]
+    for i in range(3):
+        up = [x + (h if k == i else 0.0) for k, x in enumerate(theta)]
+        down = [x - (h if k == i else 0.0) for k, x in enumerate(theta)]
+        info[i][i] = -(log_likelihood(up) - 2 * f0 + log_likelihood(down)) / (h * h)
+    for i in range(3):
+        for j in range(i + 1, 3):
+            pp = [x + (h if k in (i, j) else 0.0) for k, x in enumerate(theta)]
+            pm = [x + (h if k == i else 0.0) - (h if k == j else 0.0) for k, x in enumerate(theta)]
+            mp = [x - (h if k == i else 0.0) + (h if k == j else 0.0) for k, x in enumerate(theta)]
+            mm = [x - (h if k in (i, j) else 0.0) for k, x in enumerate(theta)]
+            info[i][j] = info[j][i] = -(
+                log_likelihood(pp) - log_likelihood(pm) - log_likelihood(mp) + log_likelihood(mm)
+            ) / (4 * h * h)
+    return info
+
+
+def main() -&gt; None:
+    theta = newton(grid_start())
+    gamma = 1.0 / (1.0 + math.exp(-theta[0]))
+    lam, kappa = math.exp(theta[1]), math.exp(theta[2])
+    cov = inverse3(observed_information(theta))
+    se_gamma = gamma * (1.0 - gamma) * math.sqrt(cov[0][0])
+    se_lambda = lam * math.sqrt(cov[1][1])
+    se_kappa = kappa * math.sqrt(cov[2][2])
+    print("answers:", len(ANSWERS), "| mixed-sign answers:", sum(1 for a in ANSWERS if mixed_pair(a)))
+    print("gamma_hat:", f"{gamma:.4f}", "| se_gamma:", f"{se_gamma:.2f}")
+    print("lambda_hat:", f"{lam:.4f}", "| se_lambda:", f"{se_lambda:.2f}")
+    print("kappa_hat:", f"{kappa:.4f}", "| se_kappa:", f"{se_kappa:.2f}")
+    print("log-likelihood at the estimate:", f"{log_likelihood(theta):.4f}")
+    print("largest score component at the estimate:", f"{largest_score(theta):.2e}")
+    print("every parameter lies in its domain:", 0.0 &lt; gamma &lt; 1.0 and lam &gt; 0.0 and kappa &gt; 0.0)
+
+
+def largest_score(theta: list[float]) -&gt; float:
+    """The largest absolute partial derivative of the log-likelihood at theta, in its three coordinates."""
+    h = 1e-5
+    values = []
+    for i in range(3):
+        up = [x + (h if k == i else 0.0) for k, x in enumerate(theta)]
+        down = [x - (h if k == i else 0.0) for k, x in enumerate(theta)]
+        values.append(abs(log_likelihood(up) - log_likelihood(down)) / (2 * h))
+    return max(values)
+
+
+def mixed_pair(answer: tuple[int, str, list[int], list[str], list[int], list[str]]) -&gt; bool:
+    """A question is mixed when one of its two lotteries has a gain and a loss, each with positive probability."""
+    _, _, pa, qa, pb, qb = answer
+    for prizes, probs in ((pa, qa), (pb, qb)):
+        gain = any(x &gt; 0 and Fraction(p) &gt; 0 for x, p in zip(prizes, probs, strict=True))
+        loss = any(x &lt; 0 and Fraction(p) &gt; 0 for x, p in zip(prizes, probs, strict=True))
+        if gain and loss:
+            return True
+    return False
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">answers: 12 | mixed-sign answers: 11
+gamma_hat: 0.6352 | se_gamma: 0.32
+lambda_hat: 6.1503 | se_lambda: 9.59
+kappa_hat: 2.0201 | se_kappa: 1.86
+log-likelihood at the estimate: -7.1445
+largest score component at the estimate: 3.55e-10
+every parameter lies in its domain: True</pre>
+          <p class="interpretation">The estimates are the maximum of the log-likelihood over the three parameters, found by a grid and by Newton's method with finite differences of step \(10^{-6}\), and the standard errors come from the observed information at that point. The largest score component is the derivative in the three coordinates of the likelihood, not in \(\gamma\), \(\lambda\) and \(\kappa\). The printed log-likelihood, \(-7.1445\), is the value at the estimate. The lab shows that the estimate is a maximum of this questionnaire; it does not show that the participant's true values are the estimates, and the standard errors say how far they could be.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Write for a reader who knows Lessons 1 to 8, not for a referee of this participant. Use these four sections, in this order and under these headings, followed by the appendix.</p>
+        <ol>
+          <li><strong>Instrument</strong>: the pairs you wrote, their prizes in cents and probabilities as exact fractions, and why the pairs contain gains and losses.</li>
+          <li><strong>Model and likelihood</strong>: the value function, the logit choice rule, and the likelihood with its two terms, with the simplification you made and the pairs that identify each parameter.</li>
+          <li><strong>Estimates and uncertainty</strong>: the three estimates, their standard errors, the convergence check and the sample size, with the assumption under which the standard errors are valid.</li>
+          <li><strong>Interpretation and limits</strong>: what the estimates say about this participant, what they do not say, and at least two limits with the direction of the bias each one could cause.</li>
+        </ol>
+        <p><strong>Appendix A · Evidence.</strong> Every empirical claim in the four sections carries a grade (T, A, B, C, D or X, as in the program's evidence scale) and a registry key, or it is a derivation shown in the appendix. A claim about a published result carries a key, and the report states no locator it has not read.</p>
+        <p><strong>Length.</strong> The four sections run 350 to 800 words. A word is a run of characters between spaces.</p>
+        <p><strong>Numbers.</strong> Every number the report quotes is printed by <code>report/run_case.py</code>, with its unit: cents for money and a number without a unit for a parameter. Quote each parameter to four decimals and each standard error to two, as Lab 3 prints them.</p>
+        <p><strong>Scoring.</strong> Each criterion scores the highest level whose every element the report shows. Each level contains the one below it. The report meets the bar at level 3 or above on every criterion.</p>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The estimation report: five criteria, four levels each, scored by the rule above. The report meets the bar at level 3 or above on every criterion.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Instrument design</th><td>Everything in level 3, and lists the pairs with prizes in cents and exact probabilities, and states how many pairs mix a gain and a loss.</td><td>States the number of pairs (at least 12), the prize scale in cents, and why the pairs contain gains and losses, and gives two example pairs with cents and exact probabilities.</td><td>States the number of pairs or the scale, but not both, or gives the reason for the losses without an example pair.</td><td>"A reasonable set of questions", or no design described.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Estimation model</th><td>Everything in level 3, and names the simplification (no probability weighting), and states which pairs identify loss aversion and which identify precision.</td><td>States the value function, the logit choice rule, and the likelihood with its term for the chosen alternative and its term for the unchosen one.</td><td>States the value function or the logit rule, but the likelihood omits a term, or the rule is not stated.</td><td>No model stated.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Uncertainty</th><td>Everything in level 3, and states that the standard errors are from the observed information at the estimate, names the sample size, and says when the standard errors would be unreliable.</td><td>Reports <code>se_gamma</code>, <code>se_lambda</code> and <code>se_kappa</code>, the convergence check, the sample size and the asymptotic assumption.</td><td>Reports the estimates without standard errors, or without the sample size, or quotes a number that the run does not print.</td><td>No uncertainty reported.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Interpretation and limits</th><td>Everything in level 3, and for each of at least two limits states the direction its error would take, for example that a noisy choice confounds curvature with precision.</td><td>Says what the estimates do and do not say about this participant, names at least two limits (one participant, hypothetical stakes, a small sample, the omitted probability weighting), and says that a standard error larger than its estimate means the parameter is not pinned down.</td><td>Names one limit, or treats the estimates as facts about the participant beyond the questionnaire.</td><td>No limits stated.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Evidence</th><td>Everything in level 3, and every claim carries a grade and a key or a derivation, and no locator is stated that was not read.</td><td>Every empirical claim carries a grade and a registry key, or is marked as a computed result of Lab 3, and no locator is invented.</td><td>Some empirical claims lack a grade or a registry key.</td><td>No evidence grades or keys.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two reports written to this brief, at different levels, on the twelve answers of Lab 3. Their numbers are the lab's printed numbers. Each passage carries an annotation that names the descriptors it meets or misses. With JavaScript on, the annotations stay hidden until you reveal the official scoring with the form below, so score both exemplars first.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,1,2,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 1 · C4 2 · C5 2. The pairs are counted and the scale is named, but no pair is shown; the model is stated without the likelihood's two terms; no standard error is reported; one limit is named; the empirical claims have no grade or key.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Instrument</h5>
+              <p>The questionnaire has twelve pairs of lotteries paid in dollars. Some of the lotteries lose money, so that the participant's loss aversion can show.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: states the count and the scale, but in dollars, not cents, and gives no pair.</li>
+                <li class="misses" data-criterion="C1" data-level="3">Misses C1 level 3: no exact probabilities and no example pair; the reason for the losses is stated without a pair that shows it.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model and estimates</h5>
+              <p>The value function is loss-averse with a power form, and the choices follow a logit rule. The likelihood is the sum of the log probabilities of the choices. The estimates are a curvature of 0.64, a loss aversion of 6.15 and a precision of 2.02.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: states the value function and the logit rule.</li>
+                <li class="misses" data-criterion="C2" data-level="3">Misses C2 level 3: "the sum of the log probabilities" does not show the term for the unchosen alternative.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Uncertainty</h5>
+              <p>The estimates are the three values above, and no standard error is given.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="1">Meets C3 level 1: no uncertainty is reported.</li>
+                <li class="misses" data-criterion="C3" data-level="2">Misses C3 level 2: no standard error and no sample size are reported.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limitations and evidence</h5>
+              <p>The answers are from one participant. Loss aversion is found in most people, and the model is a simplification.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: names one limit, the single participant.</li>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: some empirical claims lack a grade and a registry key; "most people" has neither.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="3,4,4,3,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 3 · C2 4 · C3 4 · C4 3 · C5 4. The likelihood has both terms and the identification is stated; the standard errors, the convergence check and the sample size are reported and the case where they are unreliable is named; every number is one Lab 3 prints. It falls short of level 4 for C1 because the memo lists two example pairs rather than all twelve, and for C4 because the limits do not state a direction of bias.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Instrument</h5>
+              <p>The questionnaire has twelve pairs. The prizes are whole cents between \(-18\,700\) and \(19\,000\), and each lottery has two or three prizes with probabilities such as \(9/10\) and \(1/10\) that sum to 1 exactly. Pair 0 is a lottery of \(6200\) cents with probability \(9/10\) and \(-15100\) cents with probability \(1/10\), against three prizes in B. Pair 3 sets 18800 cents with probability 3/4 and \(-12500\) cents with probability 1/4 against 16500 cents with probability 2/5 and \(-17700\) cents with probability 3/5; both lotteries mix a gain and a loss. Eleven of the twelve pairs contain a mixed lottery (Lab 3 prints this count), which is why loss aversion can be estimated.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="3">Meets C1 level 3: the count, the scale in cents, the reason for losses, and two example pairs with exact probabilities.</li>
+                <li class="misses" data-criterion="C1" data-level="4">Misses C1 level 4: the memo does not list all twelve pairs; the instrument file does.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model and likelihood</h5>
+              <p>The value function is \(v(x)=x^{1-\gamma}\) for gains and \(-\lambda(-x)^{1-\gamma}\) for losses, with \(0\le\gamma<1\). Each lottery's certainty equivalent is the sure change whose value equals the lottery's value. The choice probability is \(P(A)=1/(1+e^{-z})\), with \(z=\kappa(\mathrm{CE}_A-\mathrm{CE}_B)/10\,000\). The log-likelihood adds \(\log P(A)\) for each response that chose A and \(\log(1-P(A))\) for each response that chose B. I assume no probability weighting, which is a simplification: a lottery's probabilities enter linearly. Loss aversion is identified by the eleven mixed pairs; precision is identified by the spread of the differences in certainty equivalent, and curvature by the pure and mixed pairs together.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: writes both terms, names the simplification, and states which pairs identify which parameter.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Estimates and uncertainty</h5>
+              <p>The estimates are <code>gamma_hat</code> = 0.6352, <code>lambda_hat</code> = 6.1503 and <code>kappa_hat</code> = 2.0201, with standard errors 0.32, 9.59 and 1.86, from the observed information at the estimate. The largest score component at the estimate is 3.55e-10 (Lab 3), which is the convergence check. The sample has 12 answers, so the asymptotic approximation is rough. The standard error of \(\hat\lambda\) is larger than \(\hat\lambda\), so the standard errors are unreliable for loss aversion at this size. The log-likelihood at the estimate is \(-7.1445\).</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: three standard errors, the convergence check, the sample size, and when the standard errors are unreliable.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Interpretation and limits</h5>
+              <p>The estimates describe this participant's answers to these twelve pairs. Loss aversion is not pinned down: its standard error exceeds the estimate. The participant's answers were hypothetical stakes, and the model has no probability weighting. A noisy choice confounds curvature with precision when the pairs are close, so a poor design would raise the standard error of curvature.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="3">Meets C4 level 3: says what the estimates do not say, and names two limits, and says that a standard error larger than its estimate means the parameter is not pinned down.</li>
+                <li class="misses" data-criterion="C4" data-level="4">Misses C4 level 4: names the direction of the confounding only in words; it does not say whether omitted probability weighting would raise or lower the estimated curvature.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Evidence</h5>
+              <p>Every number above is printed by Lab 3 (the derivations of the value function and the choice rule are on this page), and each is graded T as a computed result. The memo cites no published result, so it attributes nothing to the registry sources; the reading section lists them for the lessons.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: every claim carries a grade and no locator is invented.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="E3/project/report" data-work-label="Your report" data-work-noun="report" data-summary-path="report/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own report on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own report. Your scores stay in this browser; keep the summary the form produces as <code>report/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>A second model of the choice noise.</strong> Replace the logit with a probit link, \(P(A)=\Phi(\kappa(\mathrm{CE}_A-\mathrm{CE}_B)/10\,000)\), and state as a hypothesis which model the questionnaire prefers. Compare the two log-likelihoods on the same answers.</li>
+          <li><strong>Probability weighting.</strong> Add a weighting function to the value of a lottery, state the identification argument, and report which pairs identify its parameter.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <p>The lessons cite five registry keys. The project uses them for its vocabulary only: the reference point and the power value (prospect theory), the certainty equivalent (risk aversion), and the Epstein–Zin and maxmin models of Lessons 5 and 8, which the project does not implement. No passage locator from these sources has been confirmed, so the report attributes no statement to any of them.</p>
+        <ol class="reading-list">
+          <li data-cite="pratt1964risk"></li>
+          <li data-cite="kahneman1979prospect"></li>
+          <li data-cite="epstein1989substitution"></li>
+          <li data-cite="ellsberg1961risk"></li>
+          <li data-cite="gilboa1989maxmin"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L08.html"><span class="dir">Previous</span>L08 · Ambiguity aversion and the four-model comparison</a>
+        <a class="next" href="index.html"><span class="dir">Unit</span>E3 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">E3 project · Preference Elicitation · The autograder and the self-assessment run in your browser; nothing you write leaves it.</footer>
+</body>
+</html>

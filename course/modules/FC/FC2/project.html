@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="FC2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FC2 Project · Arbitrage scanner</title>
+  <meta name="description" content="Write scanner.py, which scans a one-expiry European option chain for put-call parity and convexity-in-strike findings, nets each finding against a stated cost model, and explains each one. The code is autograded on a SIMULATED chain generated from your workspace seed, and a findings note is graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">FC2 Derivatives Fundamentals</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="30">
+      <header class="page-head">
+        <p class="eyebrow">FC2 project · 30 hours · autograded code and a rubric-graded findings note, on a SIMULATED chain</p>
+        <h1>Arbitrage scanner</h1>
+        <p class="lede">A desk wants a daily check of one expiry's European option quotes for <a class="concept" data-concept="arbitrage-opportunity" href="L01.html#def-arbitrage-opportunity">model-free violations</a>, net of the cost it pays to trade them. You write <code>scanner.py</code> to the specification below. It finds each <a class="concept" data-concept="put-call-parity" href="L05.html#def-put-call-parity">put–call parity</a> gap and each violation of <a class="concept" data-concept="option-arbitrage-bounds" href="L05.html#def-option-arbitrage-bounds">convexity in strike</a>, keeps only the findings that survive the cost, and states why each one is a finding. The autograder runs your module on a SIMULATED chain generated from your workspace seed.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are on this page. Rung 3 is graded and cannot be skipped. Rungs 1 and 2 are optional for a student who passes the placement quiz on the module hub.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1: one six-strike SIMULATED chain, scanned step by step, with the decision on each strike annotated.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2: the same scan with three lines left as blanks. Its expected output grades the blanks instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: <code>scanner.py</code>, autograded in <a href="#grader-section">the autograder section</a>, and a findings note graded by the rubric in <a href="#report">the report section</a>. Lab 3 gives reference findings for a second chain to check your scanner against.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-FC2-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: scanning one chain, strike by strike</h3>
+          <p class="hypothesis">The gross amount of a finding is the size of its gap or violation before costs, and its net amount is the gross less the cost. The chain is SIMULATED: one expiry, six strikes, quotes in integer cents, a discount factor of 0.990000 to expiry, and a cost of 5 cents of fee and 10 cents of half-spread per contract. Each finding trades three legs, so a finding costs 45 cents. Before running the code, predict how many findings the cost model keeps. Then check each step: the parity gap at each strike, the chord test at each interior strike, and the net amount of each violation.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: scan one SIMULATED six-strike chain for parity and convexity findings, net of cost.
+
+Standard library only. The chain is SIMULATED and is not a market quote. Money is integer cents. Every money value
+is computed from exact Fractions and rounded once to the nearest cent, a tie going toward plus infinity. A finding
+trades three legs, and each leg pays the fee and the half-spread, so a finding costs 3 * (fee + half-spread) cents.
+The printed numbers are the output of this file and nothing else.
+"""
+
+from __future__ import annotations
+
+from fractions import Fraction
+from typing import Any
+
+# SIMULATED chain: one expiry, six strikes, quotes in integer cents (not a market quote).
+CHAIN: dict[str, Any] = {
+    "spot_cents": 10_000,
+    "df_ppm": 990_000,  # the discount factor to expiry, 0.990000, in parts per million
+    "strikes_cents": [9_000, 9_500, 10_000, 10_500, 11_000, 11_500],
+    "call_cents": [1_500, 1_100, 800, 700, 450, 350],
+    "put_cents": [410, 385, 700, 1_095, 1_360, 1_735],
+    "cost": {"fee_cents_per_contract": 5, "half_spread_cents": 10},
+}
+LEGS = 3  # every finding trades three legs
+
+
+def round_cents(x: Fraction) -&gt; int:
+    """The nearest whole cent of an exact amount, a tie going toward plus infinity: floor(x + 1/2)."""
+    return (2 * x.numerator + x.denominator) // (2 * x.denominator)
+
+
+def parity_gap(call: int, put: int, spot: int, strike: int, df_ppm: int) -&gt; Fraction:
+    """The exact parity gap C - P - (S - K df) in cents, with df = df_ppm / 1e6. The caller rounds it."""
+    return Fraction(call) - Fraction(put) - (Fraction(spot) - Fraction(strike * df_ppm, 1_000_000))
+
+
+def chord_less_call(strikes: list[int], calls: list[int], j: int) -&gt; Fraction:
+    """The chord through the two neighbours of strike j, evaluated at strike j, less the call at j, in cents.
+
+    A negative value is a convexity violation: the call sits above the chord. The weights are the distances to the
+    other neighbour, divided by the distance between the two neighbours, so unequal spacing is handled exactly.
+    """
+    low, mid, high = strikes[j - 1], strikes[j], strikes[j + 1]
+    w_low = Fraction(high - mid, high - low)
+    w_high = Fraction(mid - low, high - low)
+    return w_low * calls[j - 1] + w_high * calls[j + 1] - calls[j]
+
+
+def main() -&gt; None:
+    strikes = CHAIN["strikes_cents"]
+    calls = CHAIN["call_cents"]
+    puts = CHAIN["put_cents"]
+    spot = CHAIN["spot_cents"]
+    df_ppm = CHAIN["df_ppm"]
+    cost = LEGS * (CHAIN["cost"]["fee_cents_per_contract"] + CHAIN["cost"]["half_spread_cents"])
+    print(f"cost per finding: {LEGS} legs x (fee + half-spread) = {cost} cents")
+
+    print("step 1: parity gap C - P - (S - K df) at each strike")
+    findings: list[tuple[str, int, int, int]] = []
+    for k, strike in enumerate(strikes):
+        gap = parity_gap(calls[k], puts[k], spot, strike, df_ppm)
+        gross = round_cents(abs(gap))
+        net = gross - cost
+        verdict = "kept" if net &gt; 0 else "dropped, net not positive"
+        print(f"  strike {strike}: gap {round_cents(gap)}, gross {gross}, net {net}: {verdict}")
+        if net &gt; 0:
+            findings.append(("parity", strike, gross, net))
+
+    print("step 2: convexity in strike, the call against the chord of its neighbours")
+    for j in range(1, len(strikes) - 1):
+        diff = chord_less_call(strikes, calls, j)
+        if diff &gt;= 0:
+            print(f"  strike {strikes[j]}: chord less call {diff}, no violation")
+            continue
+        gross = round_cents(-diff)
+        net = gross - cost
+        verdict = "kept" if net &gt; 0 else "dropped, net not positive"
+        print(f"  strike {strikes[j]}: chord less call {diff}, gross {gross}, net {net}: {verdict}")
+        if net &gt; 0:
+            findings.append(("convexity", strikes[j], gross, net))
+
+    print(f"findings kept: {len(findings)}")
+    for kind, strike, gross, net in findings:
+        why = (
+            "parity: the call less the put differs from the synthetic forward"
+            if kind == "parity"
+            else ("convexity in strike: the call sits above the chord of its neighbours")
+        )
+        print(f"  {kind} at strike {strike}: gross {gross}, net {net}; {why}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">cost per finding: 3 legs x (fee + half-spread) = 45 cents
+step 1: parity gap C - P - (S - K df) at each strike
+  strike 9000: gap 0, gross 0, net -45: dropped, net not positive
+  strike 9500: gap 120, gross 120, net 75: kept
+  strike 10000: gap 0, gross 0, net -45: dropped, net not positive
+  strike 10500: gap 0, gross 0, net -45: dropped, net not positive
+  strike 11000: gap -20, gross 20, net -25: dropped, net not positive
+  strike 11500: gap 0, gross 0, net -45: dropped, net not positive
+step 2: convexity in strike, the call against the chord of its neighbours
+  strike 9500: chord less call 50, no violation
+  strike 10000: chord less call 100, no violation
+  strike 10500: chord less call -75, gross 75, net 30: kept
+  strike 11000: chord less call 75, no violation
+findings kept: 2
+  parity at strike 9500: gross 120, net 75; parity: the call less the put differs from the synthetic forward
+  convexity at strike 10500: gross 75, net 30; convexity in strike: the call sits above the chord of its neighbours</pre>
+          <p class="interpretation">Two findings are kept, so the prediction for the count is two. The parity gap at 9500 is 120 cents and survives its 45-cent cost with a net of 75. The parity gap at 11000 is minus 20 cents: its gross of 20 is below the cost, so its net is minus 25 and it is dropped. The other four parity gaps are exactly zero, because this chain was set up so that its puts agree with parity there. In step 2, the call at 10500 is 75 cents above the chord through the calls at 10000 and 11000 (the chord is 625 cents, the call is 700), so it is a convexity finding with a gross of 75 and a net of 30. The other three interior strikes have the call on or below the chord. The lab shows what this one chain gives under these rules. It does not show that a scanner is correct on any other chain.</p>
+        </section>
+
+        <section class="lab completion" id="lab-FC2-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: the same scan with three lines blank</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression the specification defines. The parity gap is the exact <a href="#conventions">parity gap</a> C − P − (S − K df), and the net amount of a finding is its gross less the cost of its three legs, with the cost in <a href="#conventions">the cost model</a>. The chain is the Lab 1 chain. When every line is right, the printed output matches the expected output below.</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completion problem: the rung 1 scan with its parity-gap line and its cost-netting lines left blank.
+
+This twin is the completed solution, so it runs as written. Standard library only. The chain is SIMULATED and is
+not a market quote. Money is integer cents, rounded once from exact Fractions, a tie going toward plus infinity.
+"""
+
+from __future__ import annotations
+
+from fractions import Fraction
+from typing import Any
+
+# SIMULATED chain: one expiry, six strikes, quotes in integer cents (not a market quote).
+CHAIN: dict[str, Any] = {
+    "spot_cents": 10_000,
+    "df_ppm": 990_000,  # the discount factor to expiry, 0.990000, in parts per million
+    "strikes_cents": [9_000, 9_500, 10_000, 10_500, 11_000, 11_500],
+    "call_cents": [1_500, 1_100, 800, 700, 450, 350],
+    "put_cents": [410, 385, 700, 1_095, 1_360, 1_735],
+    "cost": {"fee_cents_per_contract": 5, "half_spread_cents": 10},
+}
+LEGS = 3  # every finding trades three legs
+
+
+def round_cents(x: Fraction) -&gt; int:
+    """The nearest whole cent of an exact amount, a tie going toward plus infinity: floor(x + 1/2)."""
+    return (2 * x.numerator + x.denominator) // (2 * x.denominator)
+
+
+def parity_gap(call: int, put: int, spot: int, strike: int, df_ppm: int) -&gt; Fraction:
+    """The exact parity gap C - P - (S - K df) in cents, with df = df_ppm / 1e6. The caller rounds it."""
+    return Fraction(call) - Fraction(put) - (Fraction(spot) - Fraction(strike * df_ppm, 1_000_000))
+
+
+def chord_less_call(strikes: list[int], calls: list[int], j: int) -&gt; Fraction:
+    """The chord through the two neighbours of strike j, evaluated at strike j, less the call at j, in cents.
+
+    A negative value is a convexity violation: the call sits above the chord. The weights are the distances to the
+    other neighbour, divided by the distance between the two neighbours, so unequal spacing is handled exactly.
+    """
+    low, mid, high = strikes[j - 1], strikes[j], strikes[j + 1]
+    w_low = Fraction(high - mid, high - low)
+    w_high = Fraction(mid - low, high - low)
+    return w_low * calls[j - 1] + w_high * calls[j + 1] - calls[j]
+
+
+def main() -&gt; None:
+    strikes = CHAIN["strikes_cents"]
+    calls = CHAIN["call_cents"]
+    puts = CHAIN["put_cents"]
+    spot = CHAIN["spot_cents"]
+    df_ppm = CHAIN["df_ppm"]
+    cost = LEGS * (CHAIN["cost"]["fee_cents_per_contract"] + CHAIN["cost"]["half_spread_cents"])
+    print(f"cost per finding: {LEGS} legs x (fee + half-spread) = {cost} cents")
+
+    print("step 1: parity gap C - P - (S - K df) at each strike")
+    findings: list[tuple[str, int, int, int]] = []
+    for k, strike in enumerate(strikes):
+        gap = ___
+        gross = round_cents(abs(gap))
+        net = ___
+        verdict = "kept" if net &gt; 0 else "dropped, net not positive"
+        print(f"  strike {strike}: gap {round_cents(gap)}, gross {gross}, net {net}: {verdict}")
+        if net &gt; 0:
+            findings.append(("parity", strike, gross, net))
+
+    print("step 2: convexity in strike, the call against the chord of its neighbours")
+    for j in range(1, len(strikes) - 1):
+        diff = chord_less_call(strikes, calls, j)
+        if diff &gt;= 0:
+            print(f"  strike {strikes[j]}: chord less call {diff}, no violation")
+            continue
+        gross = round_cents(-diff)
+        net = ___
+        verdict = "kept" if net &gt; 0 else "dropped, net not positive"
+        print(f"  strike {strikes[j]}: chord less call {diff}, gross {gross}, net {net}: {verdict}")
+        if net &gt; 0:
+            findings.append(("convexity", strikes[j], gross, net))
+
+    print(f"findings kept: {len(findings)}")
+    for kind, strike, gross, net in findings:
+        why = (
+            "parity: the call less the put differs from the synthetic forward"
+            if kind == "parity"
+            else ("convexity in strike: the call sits above the chord of its neighbours")
+        )
+        print(f"  {kind} at strike {strike}: gross {gross}, net {net}; {why}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">cost per finding: 3 legs x (fee + half-spread) = 45 cents
+step 1: parity gap C - P - (S - K df) at each strike
+  strike 9000: gap 0, gross 0, net -45: dropped, net not positive
+  strike 9500: gap 120, gross 120, net 75: kept
+  strike 10000: gap 0, gross 0, net -45: dropped, net not positive
+  strike 10500: gap 0, gross 0, net -45: dropped, net not positive
+  strike 11000: gap -20, gross 20, net -25: dropped, net not positive
+  strike 11500: gap 0, gross 0, net -45: dropped, net not positive
+step 2: convexity in strike, the call against the chord of its neighbours
+  strike 9500: chord less call 50, no violation
+  strike 10000: chord less call 100, no violation
+  strike 10500: chord less call -75, gross 75, net 30: kept
+  strike 11000: chord less call 75, no violation
+findings kept: 2
+  parity at strike 9500: gross 120, net 75; parity: the call less the put differs from the synthetic forward
+  convexity at strike 10500: gross 75, net 30; convexity in strike: the call sits above the chord of its neighbours</pre>
+          <p class="interpretation">The output is the same as Lab 1's, because the completed lines are the same computation. Check your answer by comparing each completed line with the Lab 1 line it replaces: the parity gap at 9500 must print 120, and the net of the convexity finding at 10500 must print 30.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A desk wants a daily check of one expiry's European option quotes for model-free violations, net of the cost it actually pays to trade them. Each finding must be explained, not only listed. The desk asks two questions about each finding: does it survive the cost, and is the quote a data error or a true violation. The chain is labelled SIMULATED on every page of this project and in the autograder.</dd>
+          <dt>Inputs</dt>
+          <dd>
+            <p><strong>No market data is embedded.</strong> No option-quote source has a reuse statement that the registry or <code>tools/data_sources.yaml</code> records, so every chain on this page and in the autograder is generated and labelled <strong>SIMULATED</strong>. A chain of your own, from a source whose terms you have read, uses the same dictionary, and your code must check it under the same rules. Nothing on this page uploads or reads a file.</p>
+            <p>A chain is a Python dictionary with these keys:</p>
+            <ul>
+              <li><code>spot_cents</code>: the spot price of the underlying, an integer number of cents.</li>
+              <li><code>df_ppm</code>: the discount factor to expiry in parts per million, an integer from 1 to 1000000. It is supplied, not computed, so the parity check is exact (assumption P4).</li>
+              <li><code>strikes_cents</code>: the strikes, integers in cents, strictly increasing and positive.</li>
+              <li><code>call_cents</code> and <code>put_cents</code>: the call and put quotes, one integer per strike, in cents, mid prices.</li>
+              <li><code>cost</code>: a dictionary with <code>fee_cents_per_contract</code> and <code>half_spread_cents</code>, both integers that are zero or more.</li>
+            </ul>
+          </dd>
+          <dt>Required outputs</dt>
+          <dd>
+            <p>A file <code>scanner.py</code> that defines these three functions, with these names and parameters. Start from <a href="grader/starter.py">the starter file</a>: each function raises <code>NotImplementedError</code> until you replace it, and the suite fails on the starter.</p>
+            <ul>
+              <li><code>parity_<wbr>gap_<wbr>cents(call_<wbr>cents, put_<wbr>cents, spot_<wbr>cents, strike_<wbr>cents, df_<wbr>ppm)</code> returns the parity gap C − P − (S − K df) of one strike, as an integer number of cents.</li>
+              <li><code>convexity_<wbr>violations(strikes_<wbr>cents, calls_<wbr>cents, df_<wbr>ppm)</code> returns the list of interior indices, in increasing order, at which the call lies strictly above the chord through its two neighbours.</li>
+              <li><code>scan(chain)</code> returns one record for each finding whose net amount is strictly positive. A record is a dictionary with the keys <code>kind</code> (the string <code>"parity"</code> or <code>"convexity"</code>), <code>strike_cents</code>, <code>gross_cents</code>, <code>net_cents</code> and <code>explanation</code>. Parity findings come first, in strike order, then convexity findings, in strike order. The explanation is a non-empty string that names the rule and the assumptions the finding depends on, by the labels in <a href="#conventions">the conventions</a>.</li>
+            </ul>
+            <p>A file <code>findings.md</code>, the findings note described in <a href="#report">the report section</a>.</p>
+          </dd>
+          <dt>Constraints</dt>
+          <dd>
+            <p>The standard library only. The module must not import any file from the grader, so it runs on its own. The three functions never print, and none of them changes its arguments.</p>
+            <p>Money is integer cents. Each money value is computed from exact fractions and rounded once to the nearest cent. A tie goes toward plus infinity for a signed gap. A gross amount is the magnitude of the gap, rounded once, half up in magnitude. The cost of a finding is three legs, each paying <code>fee_cents_per_contract</code> plus <code>half_spread_cents</code>, so the net amount is the gross less 3 × (fee + half-spread). A finding is kept only if its net amount is strictly greater than zero.</p>
+            <p>The named error conditions raise <code>ValueError</code>, and the grader checks the exception type. Each message names its condition. The conditions are these:</p>
+            <ul>
+              <li>the strikes are not strictly increasing, or a strike is zero or less: the message says that the strikes must be strictly increasing and positive;</li>
+              <li><code>df_ppm</code> is not in 1 to 1000000: the message says that df_ppm must lie in 1 to 1000000;</li>
+              <li><code>calls_cents</code> or <code>put_cents</code> does not have one quote per strike: the message names the lengths;</li>
+              <li><code>fee_cents_per_contract</code> or <code>half_spread_cents</code> is negative: the message says that the cost terms must be non-negative.</li>
+            </ul>
+            <p>Any other invalid input may raise any exception, or return a value. The grader does not require a type for those cases.</p>
+          </dd>
+          <dt>Grading</dt>
+          <dd>
+            <p>Both modes apply. The code is autograded by <code>grader/test_project.py</code>, which collects <strong>75 checks</strong>, counted with <code>pytest --collect-only</code> on the reference solution, and the count is 75 for each of the seeds 0 to 49. It runs with warnings as errors. It checks the parity gap against an exact computation for every strike of two seeded chains, the convexity test against an exhaustive check of every interior strike, including a chain with unequal spacing, the net-of-cost rule at its boundary in both directions, the rounding of a half-cent tie, the named error conditions at their boundaries, the output types, the purity of the module, and a clean chain with no findings. The suite is not secret: the chain changes with the seed, and the expected findings change with it.</p>
+            <p>The findings note is graded by rubric. It is scored on the five criteria of <a href="#rubric">the rubric</a>, each with four observable levels. You score it yourself with the form in <a href="#self-assessment">the self-assessment section</a>, and you calibrate that scoring on two annotated exemplars. The note meets the bar at level 3 or above on every criterion.</p>
+          </dd>
+        </dl>
+
+        <h3 id="conventions">Conventions and assumptions</h3>
+        <p>The findings and the explanations use these labels. Each finding names the labels it depends on. These are the project's own labels: the lessons state their assumptions under their own labels, which are not these.</p>
+        <ul>
+          <li><strong>P1 · European exercise.</strong> An option can be exercised only at expiry.</li>
+          <li><strong>P2 · One expiry.</strong> Every quote in the chain has the same expiry.</li>
+          <li><strong>P3 · No income.</strong> The underlying pays no dividend and no other income before expiry.</li>
+          <li><strong>P4 · Supplied discount factor.</strong> <code>df_ppm</code> is the factor to expiry. The project does not model the interest rate and does not compute the factor. The parity gap uses it, and the convexity test does not.</li>
+          <li><strong>P5 · Present-value quotes.</strong> Every quote is a present value at the valuation date and is taken at one moment. So the convexity test compares the quotes directly, without discounting. The sign of the test does not depend on <code>df_ppm</code>.</li>
+          <li><strong>P6 · Cost model.</strong> Quotes are mid prices. The half-spread is half of a leg's bid–ask spread, the cost of crossing from the mid to the market on that leg. A finding trades three legs, each leg pays the fee and the half-spread, and so a finding costs 3 × (fee + half-spread) cents. A parity finding trades the call, the put and the underlying. A convexity finding trades three calls.</li>
+        </ul>
+        <p>The parity gap is C − P − (S − K df). The term S − K df is the synthetic forward: the value of owning the underlying and borrowing the discounted strike. A positive gap means the call is rich against the synthetic forward: the trade sells the call, buys the put and the underlying, and borrows the discounted strike. A negative gap means the reverse trade. The chord is the straight line through the calls at the two neighbouring strikes, read at the strike between them. The convexity test compares the call at a strike with its chord. The weights on the two neighbours are their distances to the strike divided by the distance between the neighbours, so unequal spacing is handled exactly. The lessons define parity in <a class="concept" data-concept="put-call-parity" href="L05.html#def-put-call-parity">Lesson 5</a> and the bounds in <a class="concept" data-concept="option-arbitrage-bounds" href="L05.html#def-option-arbitrage-bounds">Lesson 5</a>.</p>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">2</td><td>One chain, every decision explained; the lab's comments carry the reasons.</td></tr>
+              <tr><td>Rung 2 completion problem and its instant check</td><td class="num">3</td><td>Three blanks, each a line of the scan; the time goes into why each line is right.</td></tr>
+              <tr><td>Derivations: parity, the convexity test and the cost-netting rule</td><td class="num">5</td><td>Write the parity relation and the chord inequality in your own words, with the assumptions each one uses (P1 to P6).</td></tr>
+              <tr><td><code>scanner.py</code>: three functions, exact arithmetic and the named conditions</td><td class="num">9</td><td>Implement to the specification; the named conditions are the work that the suite checks most closely.</td></tr>
+              <tr><td>Edge cases and local runs on your seed</td><td class="num">3</td><td>Ties at half a cent, one-strike and two-strike chains, the cost boundary, and unequal spacing.</td></tr>
+              <tr><td>Findings note, graded by rubric</td><td class="num">5</td><td>Each finding has its strike, its amounts, its assumptions and the check that would settle it.</td></tr>
+              <tr><td>Self-assessment against the exemplars</td><td class="num">3</td><td>Score the note on the five criteria, then compare with exemplar level 4 and exemplar level 2.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>30</strong></td><td>Equals the project hours on the module hub: 30 of the unit's 90 hours.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>scanner.py</code> and run the suite on your own chain. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="FC2" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="scanner.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>scanner.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> keeps a failure to the property that failed, with no values, and <code>-W error</code> turns warnings into failures, both as in the browser. The suite needs no package other than pytest.</p>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The findings note</h2>
+        <p>The note reports the findings of one chain and explains each one. Lab 3 is the reference chain for it: its findings are printed, so you can check your <code>scanner.py</code> on the same chain before you write the note.</p>
+
+        <section class="lab" id="lab-FC2-project-3" data-runtime="python">
+          <h3>Lab 3 · Reference findings for a chain with uneven strikes</h3>
+          <p class="hypothesis">The chain is SIMULATED: six strikes from 4000 to 7000 cents on an uneven grid (spacing 500, 500, 1000, 500 and 500 cents), a spot of 5000 cents, a discount factor of 0.950000, and a cost of 8 cents of fee and 12 cents of half-spread per contract, so each finding costs 60 cents. Stated before running: at least one finding is kept, and the gross of the parity gap at 4500 is exactly the cost, so its net is zero and it is not kept. The printed table is the reference for your <code>scanner.py</code> on the same chain.</p>
+          <pre><code class="language-python" data-run>"""Rung 3 check: the findings of one SIMULATED six-strike chain on an uneven strike grid, net of cost.
+
+Standard library only. The chain is SIMULATED and is not a market quote. Money is integer cents. Every money value
+is computed from exact Fractions and rounded once to the nearest cent, a tie going toward plus infinity. A finding
+trades three legs, and each leg pays the fee and the half-spread, so a finding costs 3 * (fee + half-spread) cents.
+The printed numbers are the output of this file and nothing else.
+"""
+
+from __future__ import annotations
+
+from fractions import Fraction
+from typing import Any
+
+# SIMULATED chain: one expiry, six strikes, quotes in integer cents (not a market quote).
+CHAIN: dict[str, Any] = {
+    "spot_cents": 5_000,
+    "df_ppm": 950_000,  # the discount factor to expiry, 0.950000, in parts per million
+    "strikes_cents": [4_000, 4_500, 5_000, 6_000, 6_500, 7_000],  # uneven spacing: 500, 500, 1000, 500, 500
+    "call_cents": [1_210, 820, 500, 330, 151, 90],
+    "put_cents": [10, 155, 250, 1_030, 1_100, 1_200],
+    "cost": {"fee_cents_per_contract": 8, "half_spread_cents": 12},
+}
+LEGS = 3  # every finding trades three legs
+
+
+def round_cents(x: Fraction) -&gt; int:
+    """The nearest whole cent of an exact amount, a tie going toward plus infinity: floor(x + 1/2)."""
+    return (2 * x.numerator + x.denominator) // (2 * x.denominator)
+
+
+def parity_gap(call: int, put: int, spot: int, strike: int, df_ppm: int) -&gt; Fraction:
+    """The exact parity gap C - P - (S - K df) in cents, with df = df_ppm / 1e6. The caller rounds it."""
+    return Fraction(call) - Fraction(put) - (Fraction(spot) - Fraction(strike * df_ppm, 1_000_000))
+
+
+def chord_less_call(strikes: list[int], calls: list[int], j: int) -&gt; Fraction:
+    """The chord through the two neighbours of strike j, evaluated at strike j, less the call at j, in cents.
+
+    A negative value is a convexity violation: the call sits above the chord. The weights are the distances to the
+    other neighbour, divided by the distance between the two neighbours, so unequal spacing is handled exactly.
+    """
+    low, mid, high = strikes[j - 1], strikes[j], strikes[j + 1]
+    w_low = Fraction(high - mid, high - low)
+    w_high = Fraction(mid - low, high - low)
+    return w_low * calls[j - 1] + w_high * calls[j + 1] - calls[j]
+
+
+def main() -&gt; None:
+    strikes = CHAIN["strikes_cents"]
+    calls = CHAIN["call_cents"]
+    puts = CHAIN["put_cents"]
+    spot = CHAIN["spot_cents"]
+    df_ppm = CHAIN["df_ppm"]
+    cost = LEGS * (CHAIN["cost"]["fee_cents_per_contract"] + CHAIN["cost"]["half_spread_cents"])
+    print(f"cost per finding: {LEGS} legs x (fee + half-spread) = {cost} cents")
+
+    print("step 1: parity gap C - P - (S - K df) at each strike")
+    findings: list[tuple[str, int, int, int]] = []
+    for k, strike in enumerate(strikes):
+        gap = parity_gap(calls[k], puts[k], spot, strike, df_ppm)
+        gross = round_cents(abs(gap))
+        net = gross - cost
+        verdict = "kept" if net &gt; 0 else "dropped, net not positive"
+        print(f"  strike {strike}: gap {round_cents(gap)}, gross {gross}, net {net}: {verdict}")
+        if net &gt; 0:
+            findings.append(("parity", strike, gross, net))
+
+    print("step 2: convexity in strike, the call against the chord of its neighbours")
+    for j in range(1, len(strikes) - 1):
+        diff = chord_less_call(strikes, calls, j)
+        if diff &gt;= 0:
+            print(f"  strike {strikes[j]}: chord less call {diff}, no violation")
+            continue
+        gross = round_cents(-diff)
+        net = gross - cost
+        verdict = "kept" if net &gt; 0 else "dropped, net not positive"
+        print(f"  strike {strikes[j]}: chord less call {diff}, gross {gross}, net {net}: {verdict}")
+        if net &gt; 0:
+            findings.append(("convexity", strikes[j], gross, net))
+
+    print(f"findings kept: {len(findings)}")
+    for kind, strike, gross, net in findings:
+        why = (
+            "parity: the call less the put differs from the synthetic forward"
+            if kind == "parity"
+            else ("convexity in strike: the call sits above the chord of its neighbours")
+        )
+        print(f"  {kind} at strike {strike}: gross {gross}, net {net}; {why}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">cost per finding: 3 legs x (fee + half-spread) = 60 cents
+step 1: parity gap C - P - (S - K df) at each strike
+  strike 4000: gap 0, gross 0, net -60: dropped, net not positive
+  strike 4500: gap -60, gross 60, net 0: dropped, net not positive
+  strike 5000: gap 0, gross 0, net -60: dropped, net not positive
+  strike 6000: gap 0, gross 0, net -60: dropped, net not positive
+  strike 6500: gap 226, gross 226, net 166: kept
+  strike 7000: gap 540, gross 540, net 480: kept
+step 2: convexity in strike, the call against the chord of its neighbours
+  strike 4500: chord less call 35, no violation
+  strike 5000: chord less call 470/3, no violation
+  strike 6000: chord less call -188/3, gross 63, net 3: kept
+  strike 6500: chord less call 59, no violation
+findings kept: 3
+  parity at strike 6500: gross 226, net 166; parity: the call less the put differs from the synthetic forward
+  parity at strike 7000: gross 540, net 480; parity: the call less the put differs from the synthetic forward
+  convexity at strike 6000: gross 63, net 3; convexity in strike: the call sits above the chord of its neighbours</pre>
+          <p class="interpretation">Three findings are kept. The parity gap at 6500 is 226 cents, a gross of 226 and a net of 166. The parity gap at 7000 is 540 cents, a gross of 540 and a net of 480. The convexity finding at 6000 has a chord less call of minus 188/3 cents, which is minus 62.67 cents, so its gross is 63 cents after one half-up rounding, and its net is 3 cents. The parity gap at 4500 is minus 60 cents: its gross equals the 60-cent cost, so its net is exactly zero, and the strict rule drops it. The lab prints the exact fraction for the chord, so the one rounding is visible. The lab is a reference for this chain only; it is not a test of your module, which the autograder runs on its own seeded chains.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Write for a risk manager who knows Lessons 1 to 6 and has not seen this chain. Use these sections, in this order and under these headings.</p>
+        <ol>
+          <li><strong>Summary</strong>: the chain, the cost model and the number of findings kept, in at most 80 words.</li>
+          <li><strong>Chain and cost model</strong>: the inputs, the cost per finding, and which function computes each number.</li>
+          <li><strong>Findings</strong>: one entry for each finding, with its strike, its kind, its gross and net amounts in cents, and the leg prices it trades.</li>
+          <li><strong>Model-free and model-dependent</strong>: which findings use only the no-arbitrage rules, and which use the supplied discount factor.</li>
+          <li><strong>Explanation and settlement</strong>: for each finding, whether it is a data error or a true violation, and the check that would settle it.</li>
+          <li><strong>Limitations</strong>: what the one-expiry, European and no-income assumptions leave out, and which way each omission would move the findings.</li>
+        </ol>
+        <p><strong>Numbers.</strong> Every number the note quotes is either a chain input or a value that <code>scanner.py</code> returns, with its unit (cents, or a count). A cent amount is quoted as the integer the module returns.</p>
+        <p><strong>Scoring.</strong> Each criterion scores the highest level whose every element the note shows. Each level contains the one below it: level 4 is level 3 plus the elements its cell names; level 2 is any attempt that misses an element of level 3 or makes an error its cell names; level 1 is the absence its cell names. The note meets the bar at level 3 or above on every criterion.</p>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The findings note: five criteria, four levels each, scored by the rule above. The note meets the bar at level 3 or above on every criterion.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Each finding is reproduced</th><td>Everything in level 3, and gives for each finding the leg prices it trades: the call, the put and the underlying for a parity finding, and the three calls for a convexity finding.</td><td>Every finding is listed with its strike, its kind, its gross amount and its net amount, all in whole cents, and each amount is the one <code>scan</code> returns for the chain.</td><td>Findings are listed with a strike and an amount, but an amount is not in cents, or one finding that <code>scan</code> returns is missing from the list.</td><td>Lists some violations, without strikes or amounts.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Cost netting</th><td>Everything in level 3, and states, for each finding, the net amount after the cost and the gap between the net and zero.</td><td>States the cost model, three legs at fee plus half-spread, and says for each finding whether it survives the cost.</td><td>States the cost model, but says whether only some findings survive it, or reports gross amounts without the cost.</td><td>No cost model, or the costs are ignored.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Assumptions</th><td>Everything in level 3, and says, for each assumption a finding depends on, what would change the finding if the assumption failed.</td><td>Names, for each finding, the labels P1 to P4 that it depends on, as the conventions define them.</td><td>Names assumptions for some findings, or says a finding is European without the rule that makes it so.</td><td>No assumption named.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Model-free versus model-dependent</th><td>Everything in level 3, and states, for each model-dependent finding, the size of the supplied discount factor's effect on its gross.</td><td>Separates the findings that use only the no-arbitrage rules (P1, P2, P5) from those that use the supplied discount factor (P4), and says which input each finding uses.</td><td>Separates the two classes for some findings, or gives the classes without naming the input each one uses.</td><td>Treats every finding as model-free, without comment.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Explanation and settlement</th><td>Everything in level 3, and says which direction each settling check would move the finding, and by how many cents.</td><td>For each finding, says whether it is a data error or a true violation, and names the check that would settle it, such as re-quoting the legs at the same moment.</td><td>Says that some findings may be data errors, with no check named.</td><td>Says the market is inefficient, as the explanation of every finding.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two findings notes written to this brief, at different levels. Both use the Lab 3 chain. Each number either is printed by Lab 3, or is a chain input or a product of inputs that the passage shows. Each passage carries an annotation that names the descriptors it meets or misses. With JavaScript on, the official scoring is hidden until you reveal it with the form below, so score both exemplars first.</p>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,3,3" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 3 · C5 3. Every finding has its legs, its amounts and its cost netting, and the assumptions are named by label. The shortfalls from level 4 are C4, which does not state the size of the factor's effect on the parity grosses, and C5, where the settlement for the convexity finding does not say which way its net would move.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>The Lab 3 chain has six strikes and a cost of 60 cents per finding. Three findings survive the cost: a parity finding at 6500 with a gross of 226 cents and a net of 166, a parity finding at 7000 with a gross of 540 and a net of 480, and a convexity finding at 6000 with a gross of 63 and a net of 3.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: states the net for each finding and its gap from zero, and the cost of 60 cents comes from three legs at 8 plus 12.</li>
+                <li class="meets" data-criterion="C1" data-level="3">Meets C1 level 3: each finding has a strike, a kind, a gross and a net, all in whole cents.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Findings</h5>
+              <p>Parity at 6500: the call is 151 cents, the put 1100 and the underlying 5000 at a strike of 6500 with the discount factor 0.950000, which makes the discounted strike 6175. The gap is 151 minus 1100 minus (5000 minus 6175), which is 226 cents, so the gross is 226 and the net is 166. Parity at 7000: the call is 90, the put 1200, and the discounted strike 6650, so the gap is 90 minus 1200 minus (5000 minus 6650), which is 540 cents, a gross of 540 and a net of 480. Convexity at 6000: the chord through the calls at 5000 (500 cents) and 6500 (151 cents) has weights one third and two thirds, and it equals 802/3 cents, while the call is 330. The chord less the call is minus 188/3, so the gross is 63 cents after one half-up rounding, and the net is 3.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: gives the three legs for the parity findings (the call, the put and the underlying) and the three calls for the convexity finding.</li>
+                <li class="meets" data-criterion="C3" data-level="3">Meets C3 level 3: names P4 for the two parity findings, which use the discount factor, and P1, P2 and P5 for the convexity finding.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model-free and model-dependent</h5>
+              <p>The convexity finding uses only P1, P2 and P5: it needs no discount factor, because the quotes are present values. The two parity findings use the supplied discount factor, which is the one model input the project admits (P4). Their gross amounts would change if the factor were different, by the strike times the change in the factor, and the note does not state that figure.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="3">Meets C4 level 3: separates the model-free convexity finding from the two findings that use the supplied factor, and says which input each uses.</li>
+                <li class="misses" data-criterion="C4" data-level="4">Misses C4 level 4: does not state the size of the factor's effect on the parity grosses, which level 4 requires.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Explanation and settlement</h5>
+              <p>The parity findings at 6500 and 7000 are large against the 60-cent cost, and each would be settled by re-quoting the call, the put and the underlying at the same moment. If the gap survives the re-quote, it is a true violation of parity at P1 to P3, and the direction is that the call is rich. The convexity finding at 6000 has a net of 3 cents, which is small against the half-spread of 12 cents per leg. A re-quote could remove it, and a re-quote is the check that settles it: if the re-quoted call at 6000 sits at or below the chord, it is a data error.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="3">Meets C5 level 3: says for each finding whether it is a data error or a true violation, and names the re-quote as the check that settles each one.</li>
+                <li class="misses" data-criterion="C5" data-level="4">Misses C5 level 4: says the re-quote could remove the 3-cent finding, but does not say which way the net would move, or by how many cents, if the re-quoted call were 10 cents higher or lower.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limitations</h5>
+              <p>The note assumes one expiry, European exercise and no income, which are P1 to P3. If the underlying paid a dividend before expiry, the parity relation would change, and both parity findings would need a second look. A change in the discount factor moves both parity grosses. The chain is SIMULATED, so the note makes no claim about any market.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: for the dividend assumption P3, says what would change, and which findings it would move.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,1,2,1" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 1 · C4 2 · C5 1. Findings are listed with their amounts, but the convexity amount is gross only, no assumption is named, the classes are not separated, and every finding is explained as the market being inefficient.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Findings</h5>
+              <p>The scanner finds three violations on this chain. There is a parity violation at 6500 of about 226 cents and one at 7000 of about 540 cents. There is a convexity violation at 6000 of about 63 cents.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: lists the findings with a strike and an amount, but the amounts are given as about values and the legs are not stated.</li>
+                <li class="misses" data-criterion="C1" data-level="3">Misses C1 level 3: the amounts are approximate, not exact whole cents, so the list is not the one scan returns.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Costs</h5>
+              <p>The costs are important. The convexity finding is small, so the costs might make it go away, but the note does not check that. The parity findings are big enough to survive.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: says whether some findings survive the cost, but gives no cost model and reports the convexity finding without its net.</li>
+                <li class="misses" data-criterion="C2" data-level="3">Misses C2 level 3: no cost model is stated, and the convexity finding is not checked against the cost.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Assumptions and models</h5>
+              <p>The parity findings depend on the discount factor. The rest is standard.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: says the parity findings use the discount factor, without naming the input or separating the convexity finding.</li>
+                <li class="misses" data-criterion="C3" data-level="2">Misses C3 level 2: names no assumption by label, so the claim that the rest is standard is not checkable.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Conclusion</h5>
+              <p>The market is inefficient on this chain, and the desk should trade these violations.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="1">Meets C5 level 1: the explanation is that the market is inefficient, for every finding, with no check named.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="FC2/project/findings" data-work-label="Your findings note" data-work-noun="findings note" data-summary-path="findings/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own findings note on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own note. Your scores stay in this browser; keep the summary the form produces as <code>findings/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>A known dividend.</strong> Extend the scanner to a chain whose underlying pays one known discrete dividend before expiry. State the parity adjustment as a hypothesis before you run anything, then show on a SIMULATED chain which findings change and by how much.</li>
+          <li><strong>A calendar check.</strong> Add a check across two expiries on the same strike. This needs a rule that the chain does not yet state, so write that rule first, in plain words, and show where it is used.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <ol class="reading-list">
+          <li data-cite="hull2021options"></li>
+          <li data-cite="stoll1969relationship"></li>
+          <li data-cite="cox1979option"></li>
+        </ol>
+        <p>No chapter, page or equation is assigned from these works, and the findings note quotes no locator from them. The parity relation and the convexity bound are proved in Lesson 5, under that lesson's own stated assumptions, and not taken from the listed reading.</p>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="index.html"><span class="dir">Module</span>FC2 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">FC2 project · Arbitrage scanner · The autograder runs in your browser on a SIMULATED chain; nothing you write leaves it.</footer>
+</body>
+</html>

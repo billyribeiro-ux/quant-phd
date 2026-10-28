@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M6" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M6 Project · Proof portfolio: martingales</title>
+  <meta name="description" content="Prove optional stopping for a bounded stopping time, Doob's maximal inequality and the convergence theorem for martingales bounded in second moment, and write the engine that checks each result exactly on generated cases. The engine is autograded on your own seeded instance; the proofs and the report are graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M6 Measure-Theoretic Probability</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="42">
+      <header class="page-head">
+        <p class="eyebrow">M6 project · 42 hours · autograded engine and a rubric-graded proof portfolio</p>
+        <h1>Proof portfolio: martingales</h1>
+        <p class="lede">A fair game looks safe, and a stopping rule looks like a way to beat it. You will prove the three results that decide the question for martingales: optional stopping for a bounded stopping time, Doob's maximal inequality, and convergence for martingales bounded in second moment. Then you will write the engine that checks each result exactly on generated cases, including the doubling strategy, with a capital limit and without one, which shows why the boundedness hypothesis is needed.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are short. If you met the placement bar on the <a href="index.html#placement">module page</a> and answered both skill checks, skip rungs 1 and 2 and start at rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: one bounded stopping time of the fair walk, enumerated exactly, with the reason for each step.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: the doubling recursion with its capital limit, with two blanks to fill. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: the engine <code>martingale_checks.py</code>, autograded in <a href="#grader-section">the autograder section</a>; the three proofs and the report, graded by the rubric in <a href="#report">the report section</a> with annotated exemplars and a self-assessment.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Both labs use exact arithmetic on finite spaces and print their results. Neither reads a file, and neither uses a random draw. Lab 1 uses the fair walk of <a href="L08.html">Lesson 8</a>: it starts at \(S_0 = 0\) and takes steps of \(+1\) or \(-1\), each with probability \(1/2\). Lab 2 uses the doubling bets of <a href="L10.html">Lesson 10</a>.</p>
+
+        <section class="lab" id="lab-M6-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: one bounded stopping time, step by step</h3>
+          <p class="hypothesis">Take \(N = 3\) and the stopping time \(\tau = \min(\text{the first time } S_k = +1,\ 3)\). Since \(\tau \le 3\), optional stopping for a bounded stopping time gives \(\E[S_\tau] = S_0 = 0\). Expected: \(\E[S_\tau] = 0\), and \(\E[S_{\tau\wedge k}] = 0\) for \(k = 0, 1, 2, 3\), on the 8 equally likely paths of length 3.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: E[S_tau] for a bounded stopping time of the fair walk, by exact enumeration.
+
+The fair walk S starts at S_0 = 0 and takes steps of +1 or -1, each with probability 1/2. The stopping time tau is the
+first time the walk reaches +1, or the cap N = 3, whichever comes first, so tau is bounded by 3. Optional stopping for a
+bounded stopping time says E[S_tau] = S_0 = 0. The lab lists the 8 equally likely paths of length 3, prints the value of
+S at tau on each path, and prints E[S_(tau and k)] for k = 0, 1, 2, 3. Each printed expectation should be 0.
+Everything is an exact fractions.Fraction on a finite space, so every run prints the same lines. No random draws.
+"""
+
+from __future__ import annotations
+
+import itertools
+from fractions import Fraction
+
+HORIZON = 3
+LEVEL = 1
+
+
+def stopping_time(steps: tuple[int, ...]) -&gt; int:
+    """tau for one path: the first k with S_k = LEVEL, and HORIZON if the walk does not reach LEVEL by then."""
+    position = 0
+    for k, step in enumerate(steps, start=1):
+        position += step
+        if position == LEVEL:
+            return k
+    return HORIZON
+
+
+def main() -&gt; None:
+    """Enumerate the paths, print tau and S_tau on each, then the expectation of the stopped walk at each time."""
+    paths = list(itertools.product((1, -1), repeat=HORIZON))
+    weight = Fraction(1, len(paths))
+    total = Fraction(0)
+    print("path tau S_tau weight")
+    for steps in paths:
+        tau = stopping_time(steps)
+        value = sum(steps[:tau])
+        total += weight * value
+        label = "".join("+" if step == 1 else "-" for step in steps)
+        print(f"{label} {tau} {value:+d} {weight}")
+    print("E[S_tau] =", total)
+    for k in range(HORIZON + 1):
+        expectation = sum(
+            (weight * sum(steps[: min(k, stopping_time(steps))]) for steps in paths),
+            Fraction(0),
+        )
+        print(f"E[S_(tau and {k})] =", expectation)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">path tau S_tau weight
++++ 1 +1 1/8
+++- 1 +1 1/8
++-+ 1 +1 1/8
++-- 1 +1 1/8
+-++ 3 +1 1/8
+-+- 3 -1 1/8
+--+ 3 -1 1/8
+--- 3 -3 1/8
+E[S_tau] = 0
+E[S_(tau and 0)] = 0
+E[S_(tau and 1)] = 0
+E[S_(tau and 2)] = 0
+E[S_(tau and 3)] = 0</pre>
+          <p class="interpretation">Each row is one path, with its stopping time and the walk's value there. Step 1: a path whose first step is \(+1\) reaches \(+1\) at time 1, so \(\tau = 1\) and the value is \(+1\). These four paths have total weight \(1/2\) and contribute \(+1/2\) to the expectation. Step 2: a path whose first step is \(-1\) reaches \(+1\) only at time 3, on the path that steps \(-1, +1, +1\), where \(\tau = 3\) and the value is \(+1\). The other three paths that start with \(-1\) do not reach \(+1\) by time 3, so \(\tau = 3\) by the cap, with values \(-1\), \(-1\) and \(-3\). Together the four paths that start with \(-1\) contribute \((1 - 1 - 1 - 3)/8 = -1/2\). Step 3: the two halves cancel, so \(\E[S_\tau] = 0 = S_0\). Step 4: the same cancellation holds at each time \(k\), since \(\E[S_{\tau\wedge k}] = 0\) for \(k = 0, 1, 2, 3\). The printed expectations are exact, so the equality is exact and not a close value. The lab checks this one stopping time on one finite space. The theorem for every bounded stopping time is part P1 of this page.</p>
+        </section>
+
+        <section class="lab completion" id="lab-M6-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: the doubling recursion with a capital limit</h3>
+          <p class="hypothesis">Bet number \(k\) stakes \(\text{base} \cdot 2^{k-1}\) cents, and it is placed only if its stake does not exceed the wealth on hand. Every placed bet loses in this lab. Replace each <code>___</code> with the expression that the rule requires: the first blank is the wealth on hand, and the second is the wealth after the stake is lost. Expected, once both lines are right: for capital 100 cents and base 1 cent, 6 bets are placed and 37 cents remain; for capital 1 cent, 1 bet is placed and 0 cents remain; for capital 1000 cents with at most 6 bets, 6 bets are placed and 937 cents remain.</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completed solution: the doubling strategy with finite capital, when every placed bet loses.
+
+Bet k (k = 1, 2, ...) stakes base * 2**(k-1) cents. A bet is placed only if its stake does not exceed the
+wealth on hand, and a placed bet that loses takes its stake from the wealth. The loop stops when the next
+stake does not fit the wealth (ruin) or when the cap on the number of bets is reached. The function returns
+the number of bets placed and the wealth left after those losses. All money is an integer number of cents,
+and the lab is an exact integer computation.
+"""
+
+from __future__ import annotations
+
+
+def lost_bets(capital: int, base: int, cap: int) -&gt; tuple[int, int]:
+    """The bets placed when every placed bet loses, at most cap of them, and the wealth in cents after those losses."""
+    wealth = capital
+    placed = 0
+    while placed &lt; cap:
+        stake = base * 2**placed
+        if stake &gt; ___:
+            break
+        wealth = ___
+        placed += 1
+    return placed, wealth
+
+
+def main() -&gt; None:
+    """Print the bets placed and the wealth left for three capitals, base stake 1 cent."""
+    for capital, base, cap in ((100, 1, 10), (1, 1, 10), (1000, 1, 6)):
+        placed, wealth = lost_bets(capital, base, cap)
+        print(f"capital {capital} base {base} cap {cap}: bets placed {placed}, wealth after losses {wealth}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">capital 100 base 1 cap 10: bets placed 6, wealth after losses 37
+capital 1 base 1 cap 10: bets placed 1, wealth after losses 0
+capital 1000 base 1 cap 6: bets placed 6, wealth after losses 937</pre>
+          <p class="interpretation">The first blank is <code>wealth</code>: a bet is placed only if its stake is at most the wealth on hand. The second is <code>wealth - stake</code>: a lost bet takes its stake from the wealth. Capital 100 cents covers 6 losing bets, since the stakes 1, 2, 4, 8, 16 and 32 sum to 63 and the seventh stake, 64, is larger than the 37 cents left. Capital 1 cent covers one bet, and the printed 0 cents after one loss is the wealth on ruin in that case. The third capital is cut off by the cap of 6 bets, not by ruin, so the lab shows that the cap and the ruin test are separate conditions. The lab computes one path, every bet lost; the probability of that path, and the wins that stop the strategy earlier, are computed by the engine's <code>doubling_outcome</code>.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>The curriculum names the later modules AP1 and SC1 as users of the three martingale results of this unit. Each result has hypotheses, and a result applied without them can fail, as the doubling strategy shows. You prove the three results, and you write the engine that checks each one exactly on generated cases, so that a claim about a model can be tested against exact numbers rather than against a plot.</dd>
+          <dt>Inputs</dt>
+          <dd>No data file. The autograder's instances come from <code>grader/instance.py</code>, seeded by your workspace. Each instance holds a horizon \(N\) between 4 and 10 steps, a stopping rule of level 1 or 2 with a cap between 1 and \(N\), a base stake and a capital in integer cents, a dyadic level and a barrier. Every instance is SIMULATED: it is a generated case and not a market, a price or a real stake. The report uses the instance of seed 0. Lab 3 prints the reference numbers of one illustrative case, which is an input and not data.</dd>
+          <dt>Required outputs</dt>
+          <dd>In a repository of your own: <code>martingale_checks.py</code> at its root, with the five functions of the table below. Start from <a href="grader/starter.py">the starter file</a>, whose signatures are complete. The module has these names: <code>stopped_value_expectation(instance) -&gt; Fraction</code>, <code>doob_max_probability(instance, lam: int) -&gt; tuple[Fraction, Fraction]</code>, <code>doubling_outcome(instance) -&gt; dict[str, int | Fraction]</code>, <code>dyadic_martingale_error(instance, n: int) -&gt; Fraction</code>, and <code>dyadic_martingale_value(instance, n: int, x: Fraction) -&gt; Fraction</code>, the last one giving the value of the dyadic martingale at a point. Also commit <code>proofs.html</code>, a typeset file of your three proofs in the form of the statements below; <code>report/run_report.py</code>, which prints the report's numbers for seed 0 and the same lines as Lab 3 for the illustrative case; and <code>report/self_assessment.md</code>, the summary that the form in <a href="#self-assessment">the self-assessment section</a> produces.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only. Every probability is an exact <code>fractions.Fraction</code>. Every money amount is an integer number of cents, computed from the exact value and rounded once, half up, to the nearest cent. A run in your browser stops after 120 seconds. No function prints or warns. The conditions that raise <code>ValueError</code> are the ones in <a href="#conventions">the conventions</a>, and nothing else is specified for invalid input.</dd>
+          <dt>Grading mode</dt>
+          <dd>Both modes apply. The engine is autograded by <code>grader/test_project.py</code>, which runs 64 tests with warnings as errors, and the autograder panel below runs it on your own instance. The same file runs in your browser and on your machine, and it is not secret: its integrity comes from the seeded instance and from a second instance, which a fixed answer for the first would also have to match. The proofs and the report are graded by rubric, against the five criteria of <a href="#rubric">the rubric</a>, each with four observable levels. You score your own work with the form in <a href="#self-assessment">the self-assessment section</a> and calibrate that scoring on two annotated exemplars.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions</h3>
+        <ul>
+          <li>The walk \(S\) starts at \(S_0 = 0\). Each step is \(+1\) with probability \(p\) and \(-1\) with probability \(1-p\), and the instance's <code>win_probability</code> is \(p\), an exact <code>Fraction</code>. The instances use \(p = 1/2\), so \(S\) is a martingale; the control walk uses \(p = 1/3\).</li>
+          <li>A stopping rule in an instance is \(\tau = \min(\text{the first time } S_k = \text{stop\_level},\ \text{stop\_cap})\). Its cap is bounded by the horizon \(N\), and <code>stopped_value_expectation</code> returns \(\E[S_\tau]\), exact.</li>
+          <li><code>doob_max_probability(instance, lam)</code> uses the fair walk \(X_k = |S_k|\) for \(0 \le k \le N\), and returns the pair \((\Prob(\max_{k \le N} X_k \ge \lambda),\ \E[X_N]/\lambda)\), both exact. The level \(\lambda\) is a whole number of steps.</li>
+          <li>The doubling strategy has base stake \(s\) and capital \(K\), both in integer cents, with \(s \le K\). Bet \(k\) stakes \(s\,2^{k-1}\) cents. A bet is placed only if its stake does not exceed the wealth on hand. A win pays the stake, and the strategy stops at the first win or at the first bet that is not placed. The function returns the number \(J\) of bets placed when every placed bet loses, with the win and ruin probabilities, the wealths on each branch, the largest stake placed, and \(\E[\text{final wealth}]\) rounded once, half up, to the nearest cent.</li>
+          <li><code>dyadic_martingale_error(instance, n)</code> is \(\E[(M_n - Y)^2]\), where \(Y(x) = x\) on \([0,1]\) under the measure that gives each interval its length and \(M_n\) is the average of \(Y\) over each level-\(n\) cell \([j/2^n, (j+1)/2^n)\), the last cell closed at 1. <code>dyadic_martingale_value(instance, n, x)</code> is the value \(M_n(x)\) on the cell that contains \(x\), which is the cell's midpoint.</li>
+          <li>Each of the following raises <code>ValueError</code>, and no other invalid input is specified: a horizon \(N\) below 1 in <code>stopped_value_expectation</code> or <code>doob_max_probability</code>; a stopping cap above \(N\) in <code>stopped_value_expectation</code>; a level \(\lambda \le 0\) in <code>doob_max_probability</code>; a capital of zero or less in <code>doubling_outcome</code>; a base stake larger than the capital in <code>doubling_outcome</code>.</li>
+          <li>The three results that the proofs establish are stated here with their assumptions, and the statements are the ones the tests check. They are proved in your own words in <code>proofs.html</code>.</li>
+        </ul>
+
+        <h3 id="statements">The three results to prove</h3>
+        <p><strong>P1 · Optional stopping, bounded case.</strong></p>
+        <ol class="assumptions">
+          <li>\((\Omega, \mathcal F, \Prob)\) is a probability space, and \((\mathcal F_k)_{k \ge 0}\) is a filtration on it.</li>
+          <li>\(M = (M_k)_{k \ge 0}\) is a martingale on \((\mathcal F_k)\): each \(M_k\) is integrable and adapted, and \(\E[M_{k+1} \mid \mathcal F_k] = M_k\).</li>
+          <li>\(\tau\) is a stopping time on \((\mathcal F_k)\), so \(\{\tau \le k\} \in \mathcal F_k\) for every \(k\), and there is a fixed whole number \(N \ge 0\) with \(\tau \le N\) everywhere.</li>
+        </ol>
+        <p>Then \(M_\tau\) is integrable and \(\E[M_\tau] = \E[M_0]\).</p>
+        <p><strong>P2 · Doob's maximal inequality.</strong></p>
+        <ol class="assumptions">
+          <li>\((\Omega, \mathcal F, \Prob)\) is a probability space, and \((\mathcal F_k)_{k \ge 0}\) is a filtration on it.</li>
+          <li>\(X = (X_k)_{k \ge 0}\) is adapted, integrable and nonnegative, and it is a submartingale: \(\E[X_{k+1}\indic_B] \ge \E[X_k\indic_B]\) for every \(k\) and every \(B \in \mathcal F_k\).</li>
+          <li>\(N \ge 0\) is a fixed whole number, and \(\lambda > 0\) is a real number.</li>
+        </ol>
+        <p>Then \(\lambda\,\Prob(\max_{k \le N} X_k \ge \lambda) \le \E[X_N]\), and so \(\Prob(\max_{k \le N} X_k \ge \lambda) \le \E[X_N]/\lambda\).</p>
+        <p><strong>P3 · Convergence for martingales bounded in second moment.</strong></p>
+        <ol class="assumptions">
+          <li>\((\Omega, \mathcal F, \Prob)\) is a probability space, and \((\mathcal F_n)_{n \ge 0}\) is a filtration on it.</li>
+          <li>\(M = (M_n)_{n \ge 0}\) is a martingale on \((\mathcal F_n)\), and each \(M_n\) is square-integrable.</li>
+          <li>There is a real number \(L\) with \(\E[M_n^2] \le L\) for every \(n \ge 0\).</li>
+        </ol>
+        <p>Then there is an event \(\Omega_0\) with \(\Prob(\Omega_0) = 1\) such that \(M_n(\omega)\) converges to a finite limit for every \(\omega \in \Omega_0\).</p>
+        <p>The proofs in Lessons 10, 11 and 12 are the reference for the steps. Each of your proofs must name the lemma or definition that justifies each step, and must say which assumption each step uses. A proof of a different statement does not count for these three.</p>
+
+        <h3 id="sheet">The stopping rule that fails</h3>
+        <p>The doubling strategy of Lesson 10 shows what happens when a stopping time is not bounded. Without a capital limit, the net gain of the doubling bets, stopped at its first win, has \(\Prob(\tau > n) = 2^{-n}\) for every \(n\), so no fixed \(N\) bounds \(\tau\) almost surely. The stopped gain equals 1 with probability 1 while its start is 0, so the identity of P1 fails for this \(\tau\) (Lesson 10, Proposition 10.9). Your engine reproduces the bounded case through its outputs for a finite capital, where \(\tau\) is bounded by \(J\), and your P1 proof must show which assumption this example breaks.</p>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">3</td><td>One stopping time on eight paths; the time goes into why each path stops where it does.</td></tr>
+              <tr><td>Rung 2 completion problem and its instant check</td><td class="num">4</td><td>Two blanks, the cap and the ruin test; the time goes into why each condition is needed.</td></tr>
+              <tr><td>Proofs P1, P2 and P3, with every assumption stated</td><td class="num">17</td><td>Three typeset proofs; the convergence proof P3 is the longest, with the orthogonality and the null-set step.</td></tr>
+              <tr><td>Engine <code>martingale_checks.py</code> with exact enumeration and its edge cases</td><td class="num">10</td><td>Five functions in exact fractions and integer cents; the time goes into the enumerations and the ValueError conditions.</td></tr>
+              <tr><td>Printed report for seed 0 and the rounding statement</td><td class="num">5</td><td>The printed lines of <code>run_report.py</code>, the rounding of each decimal, and what the checks do and do not show.</td></tr>
+              <tr><td>Self-assessment against the exemplars</td><td class="num">3</td><td>Score the rubric, then compare with the annotated scoring.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>42</strong></td><td>Equals the hours of the module's project in the hub: 42 of the module's 150.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>martingale_checks.py</code> and run the suite on your own instance. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="M6" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="martingale_checks.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>martingale_checks.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> turns off pytest's comparison details, so a failure shows the test's own message and no values, and <code>-W error</code> turns warnings into failures, both as in the browser. The browser runs the same file.</p>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The report and the proofs</h2>
+        <p>The report runs your engine for seed 0 and states, with proofs, what the printed numbers show. Its numbers are the ones <code>report/run_report.py</code> prints, so you can check every one before you write it. Lab 3 prints the reference numbers of an illustrative case, so that the rubric's exemplars can be checked against exact values.</p>
+
+        <section class="lab" id="lab-M6-project-3" data-runtime="python">
+          <h3>Lab 3 · The report's reference numbers</h3>
+          <p class="hypothesis">The illustrative case has horizon \(N = 6\), the stopping time \(\tau = \min(\text{the first time } S = +1,\ 4)\), Doob's level \(\lambda = 3\), doubling with capital 100 cents and base stake 1 cent, the dyadic martingale for levels 0 to 10, and a control walk with win probability \(1/3\). Expected, stated before running: the fair stopped expectation is exactly 0; the control's is not 0; Doob's probability is at most its bound; the fair doubling expectation is exactly the capital, 100 cents; the control's expectation rounds half up to 95 cents; and the dyadic error at level \(n\) is \(1/(12 \cdot 4^n)\). Copy this file into <code>report/run_report.py</code>, then replace the enumerations with calls to your module. It must print the same lines.</p>
+          <pre><code class="language-python" data-run>"""Rung 3 reference numbers: the values the report quotes for one illustrative case of each martingale check.
+
+Standard library only. Everything is exact: each probability and expectation is a fractions.Fraction computed by
+enumeration or by a closed sum, and each money amount is an integer number of cents, rounded once, half up, from the
+exact value. The case is illustrative and is not a generated instance: a walk of horizon N = 6, a stopping rule
+tau = min(first time S = +1, 4), Doob's level 3, doubling with capital 100 cents and base stake 1 cent, the dyadic
+martingale for levels 0 to 10, and a biased control with win probability 1/3. Copy this file into report/run_report.py,
+then replace the enumerations with calls to your martingale_checks module. It must print the same lines.
+"""
+
+from __future__ import annotations
+
+import itertools
+import math
+from fractions import Fraction
+
+HALF = Fraction(1, 2)
+HORIZON = 6
+LEVEL = 1
+CAP = 4
+LAM = 3
+CAPITAL = 100
+BASE = 1
+CONTROL = Fraction(1, 3)
+
+
+def half_up(amount: Fraction) -&gt; int:
+    """An exact amount in cents, rounded once, half up: floor(x + 1/2)."""
+    return math.floor(amount + HALF)
+
+
+def stopped_expectation(p: Fraction) -&gt; Fraction:
+    """E[S_tau] for tau = min(first time S = LEVEL, CAP), by enumerating the 2**HORIZON paths."""
+    total = Fraction(0)
+    for steps in itertools.product((1, -1), repeat=HORIZON):
+        weight = Fraction(1)
+        for step in steps:
+            weight *= p if step == 1 else 1 - p
+        position = 0
+        value = None
+        for step in steps[:CAP]:
+            position += step
+            if position == LEVEL:
+                value = position
+                break
+        if value is None:
+            value = sum(steps[:CAP])
+        total += weight * value
+    return total
+
+
+def doob(lam: int) -&gt; tuple[Fraction, Fraction]:
+    """P(max over k &lt;= HORIZON of |S_k| &gt;= lam) and E|S_HORIZON| / lam for the fair walk, by enumeration."""
+    hits = Fraction(0)
+    expected_abs = Fraction(0)
+    weight = Fraction(1, 2**HORIZON)
+    for steps in itertools.product((1, -1), repeat=HORIZON):
+        position = 0
+        peak = 0
+        for step in steps:
+            position += step
+            peak = max(peak, abs(position))
+        if peak &gt;= lam:
+            hits += weight
+        expected_abs += weight * abs(position)
+    return hits, expected_abs / lam
+
+
+def doubling(p: Fraction) -&gt; dict[str, Fraction | int]:
+    """Doubling with CAPITAL cents and base stake BASE: bets placed, probabilities, wealths and E[final], exact.
+
+    A bet is placed while its stake does not exceed the wealth on hand. The strategy stops at the first win, which
+    leaves CAPITAL + BASE, or at ruin, after the placed bets have all lost.
+    """
+    branches: list[tuple[Fraction, int, str, int]] = []
+
+    def play(wealth: int, bet: int, weight: Fraction) -&gt; None:
+        stake = BASE * 2 ** (bet - 1)
+        if stake &gt; wealth:
+            branches.append((weight, wealth, "ruin", bet - 1))
+            return
+        branches.append((weight * p, wealth + stake, "win", bet))
+        play(wealth - stake, bet + 1, weight * (1 - p))
+
+    play(CAPITAL, 1, Fraction(1))
+    win = sum((w for w, _, kind, _ in branches if kind == "win"), Fraction(0))
+    ruin = sum((w for w, _, kind, _ in branches if kind == "ruin"), Fraction(0))
+    expected = sum((w * wealth for w, wealth, _, _ in branches), Fraction(0))
+    placed = next(bets for _, _, kind, bets in branches if kind == "ruin")
+    return {
+        "bets": placed,
+        "win": win,
+        "ruin": ruin,
+        "wealth_on_win": CAPITAL + BASE,
+        "wealth_on_ruin": CAPITAL - BASE * (2**placed - 1),
+        "expected": expected,
+        "expected_cents": half_up(expected),
+    }
+
+
+def dyadic_error(n: int) -&gt; Fraction:
+    """E[(M_n - Y)^2] for Y(x) = x on [0, 1]: the sum over the 2**n cells of the exact integral of (x - midpoint)^2."""
+    cells = 2**n
+    width = Fraction(1, cells)
+    total = Fraction(0)
+    for j in range(cells):
+        a = Fraction(j, cells)
+        b = a + width
+        c = (a + b) / 2
+        total += ((b - c) ** 3 - (a - c) ** 3) / 3
+    return total
+
+
+def dyadic_value(n: int, x: Fraction) -&gt; Fraction:
+    """M_n(x): the midpoint of the level-n cell that contains x, for x in [0, 1]."""
+    cells = 2**n
+    index = min(int(x * cells), cells - 1)  # x is in [0, 1], so truncation is the floor
+    return Fraction(2 * index + 1, 2 * cells)
+
+
+def main() -&gt; None:
+    """Print the reference values for the four checks, the control and the dyadic martingale."""
+    fair = stopped_expectation(HALF)
+    control = stopped_expectation(CONTROL)
+    print("stopped walk, fair coin: E[S_tau] =", fair)
+    print("stopped walk, control p = 1/3: E[S_tau] =", control, "| decimal", f"{float(control):.6f}")
+    prob, bound = doob(LAM)
+    print(f"Doob, N = {HORIZON}, level {LAM}: P(max |S_k| &gt;= {LAM}) =", prob, "| bound E|S_N|/level =", bound)
+    print("Doob bound decimal", f"{float(bound):.6f}", "| probability decimal", f"{float(prob):.6f}")
+    print("Doob holds:", prob &lt;= bound)
+    fair_out = doubling(HALF)
+    print(
+        f"doubling, capital {CAPITAL}, base {BASE}, fair coin: bets {fair_out['bets']}, "
+        f"P(win) = {fair_out['win']}, P(ruin) = {fair_out['ruin']}, "
+        f"wealth on win {fair_out['wealth_on_win']}, wealth on ruin {fair_out['wealth_on_ruin']}"
+    )
+    print("doubling, fair coin: E[final wealth] =", fair_out["expected"], "| cents", fair_out["expected_cents"])
+    control_out = doubling(CONTROL)
+    print(
+        "doubling, control p = 1/3: E[final wealth] =",
+        control_out["expected"],
+        "| decimal",
+        f"{float(control_out['expected']):.6f}",
+        "| cents",
+        control_out["expected_cents"],
+    )
+    for n in (0, 1, 2, 3, 10):
+        print(
+            f"dyadic level {n}: E[(M_n - Y)^2] =",
+            dyadic_error(n),
+            "| closed form equal:",
+            dyadic_error(n) == Fraction(1, 12 * 4**n),
+        )
+    x = Fraction(1, 3)
+    print(
+        "dyadic level 10 at x = 1/3: M_10(x) =",
+        dyadic_value(10, x),
+        "| |M_10(x) - x| &lt;= 2**-11:",
+        abs(dyadic_value(10, x) - x) &lt;= Fraction(1, 2**11),
+    )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">stopped walk, fair coin: E[S_tau] = 0
+stopped walk, control p = 1/3: E[S_tau] = -79/81 | decimal -0.975309
+Doob, N = 6, level 3: P(max |S_k| &gt;= 3) = 7/16 | bound E|S_N|/level = 5/8
+Doob bound decimal 0.625000 | probability decimal 0.437500
+Doob holds: True
+doubling, capital 100, base 1, fair coin: bets 6, P(win) = 63/64, P(ruin) = 1/64, wealth on win 101, wealth on ruin 37
+doubling, fair coin: E[final wealth] = 100 | cents 100
+doubling, control p = 1/3: E[final wealth] = 69533/729 | decimal 95.381344 | cents 95
+dyadic level 0: E[(M_n - Y)^2] = 1/12 | closed form equal: True
+dyadic level 1: E[(M_n - Y)^2] = 1/48 | closed form equal: True
+dyadic level 2: E[(M_n - Y)^2] = 1/192 | closed form equal: True
+dyadic level 3: E[(M_n - Y)^2] = 1/768 | closed form equal: True
+dyadic level 10: E[(M_n - Y)^2] = 1/12582912 | closed form equal: True
+dyadic level 10 at x = 1/3: M_10(x) = 683/2048 | |M_10(x) - x| &lt;= 2**-11: True</pre>
+          <p class="interpretation">The lines labelled decimal are exact fractions rounded for display, to six decimal places, and each label says so. The control's exact expectation is 69533/729, which is 95.381344 to six places and rounds half up to 95 cents. The fair expectation is exactly 100 cents, so its rounding is trivial. The lab checks each identity for this one case on a finite space. The lab does not test your engine; the suite does, and the proofs state the results for every case.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Write for a reader who knows Lessons 8 to 12, not for a referee of this case. Use these five sections, in this order and under these headings, followed by the appendix.</p>
+        <ol>
+          <li><strong>Summary</strong>: the case, the three checks and the one number that shows each of them holds, in at most 80 words.</li>
+          <li><strong>Setup and conventions</strong>: the walk, the stopping rule, the coin, the cent rule, and which module function computes each number.</li>
+          <li><strong>The checks</strong>: the stopped expectation, Doob's probability and bound, and the doubling outcome, each with its printed value and its exact check.</li>
+          <li><strong>The dyadic martingale</strong>: the error at each level and the value at a point, with the convergence bound.</li>
+          <li><strong>Limitations</strong>: what a finite horizon does not show, what the seeded instance does and does not cover, and what the cent rule does.</li>
+        </ol>
+        <p><strong>Appendix · Proofs.</strong> The three results P1, P2 and P3 of <a href="#statements">the statements section</a>, each with its numbered assumptions, proved in <code>proofs.html</code> in your own words.</p>
+        <p><strong>Length.</strong> The body (the five sections) runs 400 to 900 words. The appendix has no limit. A word is a run of characters between spaces.</p>
+        <p><strong>Numbers.</strong> Every number the report quotes is printed by <code>report/run_report.py</code>, with its unit or as a fraction. A decimal is quoted at no more than six decimal places, with the rounding stated. A cent amount is quoted as the integer the run prints.</p>
+        <p><strong>Scoring.</strong> Each criterion scores the highest level whose every element the report shows. Each level contains the one below it: level 4 is level 3 plus the elements its cell names; level 2 is any attempt that misses an element of level 3 or makes an error its cell names; level 1 is the absence its cell names. The report meets the bar at level 3 or above on every criterion.</p>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The martingale proof portfolio: five criteria, four levels each, scored by the rule above. The portfolio meets the bar at level 3 or above on every criterion.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Hypotheses</th><td>Everything in level 3, and ties each assumption to the step of the proof that uses it, and names the doubling case as the one in which the boundedness assumption of P1 fails, with \(\Prob(\tau &gt; N) = 2^{-N} &gt; 0\) for the unbounded rule.</td><td>Each of P1, P2 and P3 lists its numbered assumptions before its statement: the probability space and the filtration; for P1 the integrability of each \(M_k\) and the bound \(\tau \le N\); for P2 the nonnegativity and the submartingale inequality; for P3 the square-integrability and the bound \(L\).</td><td>Lists the assumptions of two results, or lists them for all three but omits one the proof uses: integrability, nonnegativity, or the bound on the second moment.</td><td>No numbered assumptions, or assumptions stated after the proof.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Proof steps</th><td>Everything in level 3, and each step names the lemma or definition that justifies it, including the orthogonality identity that P3 uses and the continuity of probability from below that P3 uses to pass from finite to infinite horizons.</td><td>P1, P2 and P3 are proved in full: P1 by the stopped increments and the stopping-time indicator, P2 by the first-exceedance decomposition, P3 by orthogonality, Doob's inequality for the squared increments and a null-set argument. No step is skipped without a stated gap.</td><td>Two proofs are complete, or one step is skipped without a stated gap, or a step is justified by a reason that does not hold.</td><td>No proof, or a proof of a different statement.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Numbers</th><td>Everything in level 3, and states for each printed value whether it is an exact integer of cents, an exact fraction or a decimal rounded from an exact value, with the digits and the rounding rule.</td><td>Every number the report quotes is printed by <code>run_report.py</code> with its unit or as a fraction; each decimal has at most six decimal places and its rounding is stated; the terms of the case are stated where the numbers first appear.</td><td>A number is quoted that <code>run_report.py</code> does not print, or a decimal is given with no rounding statement, or a cent amount is given with no unit.</td><td>No numbers are quoted.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Scope</th><td>Everything in level 3, and for every check states whether it is a proof, an exact enumeration on the stated horizon or a seeded simulation, and what that check cannot show.</td><td>Separates the proved statements from the checked ones, and says that a check on a finite horizon does not establish the statement for every \(N\), or almost surely.</td><td>Presents a finite check as a proof of a statement for every \(N\) or almost surely, at least once.</td><td>Reports the results as established by a simulation or an enumeration alone.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Inequalities and constants</th><td>Everything in level 3, and explains why Doob's bound concerns a probability and cannot be replaced by a bound on the expected maximum, using the case of Lesson 11 in which the bound is attained: \(N = 1\) and \(\lambda = 1\) for \(|S|\), where both sides equal 1.</td><td>States Doob's bound with \(\E[X_N]\) to the first power and the constant 1 in front of it; states the dyadic error as \(1/(12 \cdot 4^n)\) and derives it for at least one level from the cell integral.</td><td>Uses a power or a constant that differs from the statement once, such as \(\E[X_N^2]\), or states a direction wrongly once.</td><td>Constants and directions are absent or wrong throughout.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two reports written to this brief, at different levels. Both use the illustrative case of Lab 3, so their numbers are the ones Lab 3 prints. Each passage carries an annotation naming the descriptors it meets or misses. With JavaScript on, the annotations stay hidden until you reveal the official scoring with the form below, so score both exemplars first.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,1,2,2,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 1 · C3 2 · C4 2 · C5 2. The assumptions are listed for P1 and P2, with P1 missing the integrability of each \(M_k\), no proof is given, the decimals are quoted without a rounding statement, and the scope is claimed for every horizon from a single run.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>The stopped fair walk keeps its expectation at 0, and Doob's bound holds at level 3. The fair doubling strategy has expected final wealth of 100 cents, and the control gives about 95 cents. The three results hold for every horizon, as the run shows.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="misses" data-criterion="C4" data-level="3">Misses C4 level 3: claims the results hold for every horizon from one run with horizon 6, which is a finite check and not a proof.</li>
+                <li class="misses" data-criterion="C3" data-level="3">Misses C3 level 3: gives the control as "about 95 cents" with no statement of the rounding; Lab 3 prints 69533/729 and the cent amount 95, and the word "about" hides which figure is quoted.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Checks</h5>
+              <p>The stopped expectation is 0 for the fair walk, because stopping does not change the mean of a martingale. Doob's bound, written with the square of the endpoint, is \(\E[X_N^2]/3 = 2\), and the probability 7/16 lies below it. The doubling outcome has win probability 63/64 and ruin probability 1/64.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="2">Meets C3 level 2: quotes fractions that Lab 3 prints, with no number that the run does not print.</li>
+                <li class="misses" data-criterion="C1" data-level="3">Misses C1 level 3: does not list the assumptions of P1, so the claim that stopping does not change the mean has no stated hypothesis.</li>
+                <li class="misses" data-criterion="C5" data-level="3">Misses C5 level 3: writes Doob's bound with the second power of the endpoint; the bound is \(\E[X_N]/\lambda\), with the first power, and Lab 3 prints it as 5/8.</li>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: states the direction of the inequality correctly.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limitations</h5>
+              <p>The model uses a fair coin and a horizon of six steps.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: names the horizon and the coin as limits, and misses the statement that a finite check does not give the result for every horizon.</li>
+
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Appendix · Proofs</h5>
+              <p><strong>Assumptions.</strong> P1 assumes a martingale \(M\) and a stopping time \(\tau\) with \(\tau \le N\). P2 assumes a nonnegative submartingale \(X\) and a level \(\lambda > 0\). No proof of either is given.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: lists the assumptions of P1 and P2, and P1 omits the integrability of each \(M_k\), which its proof uses.</li>
+                <li class="misses" data-criterion="C2" data-level="1">Misses C2 level 2: no proof of any result is given, so the criterion is at level 1.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,3,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 3 · C5 4. The three proofs state every assumption and every step is justified, the numbers are Lab 3's printed values with their units and rounding, and the bound is checked against its attained case. It falls short of level 4 for C4 once: the limitations do not say which way a finite horizon can move each value.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>For the illustrative case of Lab 3, the stopped fair walk has expectation exactly 0, Doob's probability of 7/16 lies below its bound of 5/8, and the fair doubling strategy has expected final wealth of exactly 100 cents. The biased control gives 95 cents, rounded half up from 69533/729. The dyadic error at level \(n\) is \(1/(12 \cdot 4^n)\).</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="3">Meets C3 level 3: every value the Summary states is printed by Lab 3 with its unit.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Setup and conventions</h5>
+              <p>The walk \(S\) starts at 0 and steps by \(\pm 1\) with probability \(1/2\) each, so \(S\) is a martingale on its natural filtration. The stopping rule is \(\tau = \min(\text{first } S = +1,\ 4)\), and \(N = 6\). Money is integer cents. <code>stopped_value_expectation</code> computes \(\E[S_\tau]\), <code>doob_max_probability</code> computes the Doob pair, <code>doubling_outcome</code> computes the doubling values, and <code>dyadic_martingale_error</code> and <code>dyadic_martingale_value</code> compute the dyadic values. The control walk has win probability \(1/3\). Every number below is printed by Lab 3 as it prints it.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="3">Meets C3 level 3: the section names the module function behind each number and states the terms of the case where the numbers first appear.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>The checks</h5>
+              <p>The fair stopped expectation is \(0 = S_0\). For the control, \(\E[S_\tau] = -79/81\), which is not 0, so the control breaks the identity as it should. Doob at level \(\lambda = 3\) gives \(\Prob(\max_{k \le 6}|S_k| \ge 3) = 7/16\), and the bound \(\E|S_6|/3 = 5/8\), so \(7/16 \le 5/8\). For the doubling strategy with capital 100 cents and base 1 cent, \(J = 6\) bets are placed, the win probability is \(63/64\), the ruin probability is \(1/64\), the wealth on a win is 101 cents and on ruin 37 cents. The fair expectation is 100 cents, the capital, by P1 applied to the net gain of the bets, which is a martingale stopped at a time bounded by \(J\). The control's expectation is \(69533/729 \approx 95.381344\), which rounds half up to 95 cents; the six-place decimal is rounded from the exact fraction for display only.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: each value is marked as an exact fraction, an integer of cents, or a decimal rounded from an exact value, and the rounding is stated.</li>
+                <li class="meets" data-criterion="C1" data-level="3">Meets C1 level 3: the bounded strategy is named as the case in which P1 applies, with its assumption \(\tau \le J\) stated.</li>
+                <li class="meets" data-criterion="C5" data-level="3">Meets C5 level 3: the bound uses the first power of \(\E|S_6|\) and the constant 1, and the probability is compared with it.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limitations</h5>
+              <p>The check uses one horizon, one stopping rule and one coin, so it shows the identities for this case only. The three theorems are proved for every case in the appendix, and the lab does not extend them. The cent rule leaves each printed cent amount within half a cent of its exact value. Lowering the win probability lowers the control's expectation, since \(\E = K + s - s\,(2(1-p))^J\) and the subtracted term grows as \(p\) falls. The model has no fees, no interest and no limit on bets beyond the capital. A finite horizon cannot show almost-sure convergence, and the dyadic check at level 10 shows the mean-square error and one point only.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="3">Meets C4 level 3: states that one horizon is a finite check and that the theorems hold for every case in the appendix, and names the cent rule.</li>
+                <li class="misses" data-criterion="C4" data-level="4">Misses C4 level 4: does not say which way a change of the horizon or of the stopping cap would move the expectations, which level 4 requires.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Appendix · Proofs</h5>
+              <p><strong>P1.</strong> Assume the probability space, the filtration, the martingale \(M\) with integrable \(M_k\), and the stopping time \(\tau \le N\) everywhere. Since \(\tau \le N\), \(M_\tau = M_{\tau \wedge N}\), and \(|M_{\tau \wedge N}| \le \sum_{k \le N}|M_k|\), so \(M_\tau\) is integrable. For \(0 \le k < N\), \(M_{\tau \wedge (k+1)} - M_{\tau \wedge k} = \indic_{\{\tau > k\}}(M_{k+1} - M_k)\), because on \(\{\tau \le k\}\) both stopped values equal \(M_\tau\). The event \(\{\tau > k\}\) lies in \(\mathcal F_k\), since \(\{\tau \le k\} \in \mathcal F_k\) by the definition of a stopping time. The martingale property with \(A = \{\tau > k\}\) gives \(\E[\indic_A(M_{k+1} - M_k)] = 0\). Summing over \(k = 0, \ldots, N-1\) telescopes to \(\E[M_\tau] = \E[M_{\tau\wedge N}] = \E[M_0]\).</p>
+              <p><strong>P2.</strong> Assume \(X\) is a nonnegative submartingale on \((\mathcal F_k)\), \(N\) is fixed and \(\lambda > 0\). Let \(A = \{\max_{k \le N} X_k \ge \lambda\}\), and let \(A_k = \{X_k \ge \lambda\} \cap \bigcap_{j < k}\{X_j < \lambda\}\), for \(0 \le k \le N\). The sets \(A_k\) are disjoint, have union \(A\), and \(A_k \in \mathcal F_k\). For \(B \in \mathcal F_k\) and \(k \le N\), chaining the submartingale inequality from \(i = k\) to \(N - 1\), with \(B \in \mathcal F_k \subseteq \mathcal F_i\), gives \(\E[X_N\indic_B] \ge \E[X_k\indic_B]\). Take \(B = A_k\): then \(\E[X_N\indic_{A_k}] \ge \E[X_k\indic_{A_k}] \ge \lambda\,\Prob(A_k)\), since \(X_k \ge \lambda\) on \(A_k\). Summing over \(k\) gives \(\E[X_N\indic_A] \ge \lambda\,\Prob(A)\). Since \(X_N \ge 0\), \(\E[X_N\indic_A] \le \E[X_N]\). Dividing by \(\lambda\) gives the bound. The bound is attained in one case: for \(|S|\) with \(N = 1\) and \(\lambda = 1\), the probability is 1 and \(\E|S_1|/1 = 1\), so the bound cannot be sharpened there. It bounds a probability, not \(\E[\max_k X_k]\).</p>
+              <p><strong>P3.</strong> Assume the probability space, the filtration, the martingale \(M\) with square-integrable \(M_n\), and \(\E[M_n^2] \le L\) for all \(n\). Let \(v_n = \E[M_n^2]\). For \(m \le n\), \(M_m\) is square-integrable and \(\mathcal F_m\)-measurable, so \(\E[M_m(M_n - M_m)] = 0\) by the orthogonality of martingale increments (Lemma 12.1 of Lesson 12). Expanding \(M_n = M_m + (M_n - M_m)\) gives \(\E[(M_n - M_m)^2] = v_n - v_m\), so \(v_n\) is nondecreasing and bounded by \(L\). Let \(L^\ast = \lim_n v_n \le L\), which exists. Fix \(m\) and \(\varepsilon > 0\). The process \(Y_k = (M_k - M_m)^2\) for \(k \ge m\) is a nonnegative submartingale (Lemma 12.3 of Lesson 12). Doob's inequality (P2) with level \(\varepsilon^2\), applied to \(Y\) on \(m \le k \le N\), gives \(\Prob(\max_{m \le k \le N}|M_k - M_m| \ge \varepsilon) \le \E[Y_N]/\varepsilon^2 = (v_N - v_m)/\varepsilon^2 \le (L^\ast - v_m)/\varepsilon^2\). Let \(D_m(\varepsilon) = \{\exists k \ge m: |M_k - M_m| \ge \varepsilon\}\). The events in the maximum increase with \(N\), so by continuity of probability from below, \(\Prob(D_m(\varepsilon)) \le (L^\ast - v_m)/\varepsilon^2\). Let \(G\) be the set where \((M_n)\) is not Cauchy. If \(\omega \in G\), there is \(j\) with \(|M_k - M_l| \ge 1/j\) for some \(k, l \ge m\), for every \(m\); then one of \(|M_k - M_m|\) and \(|M_l - M_m|\) is at least \(1/(2j)\), so \(\omega \in D_m(1/(2j))\) for every \(m\). Hence \(G \subseteq \bigcup_j \bigcap_m D_m(1/(2j))\). For each \(j\), \(\Prob(\bigcap_m D_m(1/(2j))) \le \inf_m 4j^2(L^\ast - v_m) = 0\), because \(v_m \to L^\ast\). A countable union of null sets is null, so \(\Prob(G) = 0\). Off \(G\), the real sequence is Cauchy and converges, by the completeness of the reals. Take \(\Omega_0 = G^c\).</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: lists the assumptions of P1, P2 and P3, and ties the bound \(\tau \le N\) and the nonnegativity of \(X\) to the steps that use them.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: names the lemma behind each step, the orthogonality of P3, the continuity from below, and Doob's inequality for the squared increments.</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: the bound of P2 has the first power of \(\E[X_N]\), and the Lesson 11 case with \(N = 1\), \(\lambda = 1\) for \(|S|\) attains it.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="M6/project/report" data-work-label="Your report" data-work-noun="report" data-summary-path="report/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own portfolio on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own work. Your scores stay in this browser; keep the summary the form produces as <code>report/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>A predictable bet.</strong> Let \(H_k\) be a bounded bet that is known at time \(k-1\), so \(|H_k| \le C\) and \(H_k\) is \(\mathcal F_{k-1}\)-measurable. Show that the transform \(\sum_{k \le n} H_k(S_k - S_{k-1})\) is a martingale, state the assumptions, and check its mean and its second moment exactly on generated cases.</li>
+          <li><strong>A rate in \(L^p\).</strong> For the dyadic martingale, find the rate at which \(\E|M_n - Y|^p\) falls for an exponent \(p \ne 2\), state the hypothesis you use, and check the rate exactly for \(p = 1\) on levels 0 to 10.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <p>The proofs use the methods of Lessons 8 to 12: the stopped increments, the first-exceedance decomposition and orthogonality. The two sources below are the curriculum's sources for this unit. No passage or theorem number from either has been read, so this page attributes no statement to them, and the proofs cite the lessons rather than the books.</p>
+        <ol class="reading-list">
+          <li data-cite="williams1991probability"></li>
+          <li data-cite="billingsley2012probability"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L12.html"><span class="dir">Previous</span>L12 · Martingale convergence</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>M6 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M6 project · Proof portfolio: martingales · The autograder and the self-assessment run in your browser; nothing you write leaves it.</footer>
+</body>
+</html>
