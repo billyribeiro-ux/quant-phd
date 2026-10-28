@@ -658,6 +658,33 @@ def test_a_large_amount_posts_at_its_full_value() -> None:
                 {"date": "2024-01-03", "lines": [{"account": "common_stock", "debit": 0, "credit": 5}]},
             ],
         ),
+        (
+            "an unbalanced entry of four lines",
+            [
+                {
+                    "date": "2024-01-02",
+                    "lines": [
+                        {"account": "cash", "debit": 6, "credit": 0},
+                        {"account": "sales", "debit": 0, "credit": 2},
+                        {"account": "operating_expenses", "debit": 1, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 4},
+                    ],
+                }
+            ],
+        ),
+        (
+            "a line with both a debit and a credit on the last line of a balanced entry",
+            [
+                {
+                    "date": "2024-01-02",
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                        {"account": "equipment", "debit": 7, "credit": 7},
+                    ],
+                }
+            ],
+        ),
     ],
 )
 def test_post_raises_a_value_error(condition: str, transactions: list[dict[str, Any]]) -> None:
@@ -1023,6 +1050,21 @@ def test_a_leap_year_month_end_is_accepted() -> None:
     ledger = sol.post(TXS)
     sol.balance_sheet(ledger, "2024-02-29")
     sol.cash_flow_statement(ledger, "2024-02-29")
+
+
+def test_a_century_year_follows_the_400_year_rule() -> None:
+    # 2000 is divisible by 400, so it is a leap year and 2000-02-29 is a month end. 2100 is divisible by 100 but not by
+    # 400, so it is not a leap year: 2100-02-28 is the month end and 2100-02-29 is not a date. Only the 2024 entries of
+    # SMALL are in the ledger, so both balances below are the balances of SMALL.
+    ledger = sol.post(SMALL)
+    _check_values(
+        sol.balance_sheet(ledger, "2000-02-29"),
+        dict.fromkeys(BALANCE_SHEET_KEYS, 0),
+        "balance sheet",
+        "2000-02-29",
+    )
+    _check_values(sol.balance_sheet(ledger, "2100-02-28"), SMALL_JAN_BALANCE_SHEET, "balance sheet", "2100-02-28")
+    must_raise(lambda: sol.balance_sheet(ledger, "2100-02-29"), "a period end of 2100-02-29, which is not a date")
 
 
 def test_a_non_leap_year_february_end_is_accepted() -> None:

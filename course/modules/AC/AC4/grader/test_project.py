@@ -442,7 +442,8 @@ def test_master_budget_values_are_integers() -> None:
 
 @pytest.mark.parametrize("seed", range(50))
 def test_mix_is_within_one_cent_of_the_exact_fraction(seed: int) -> None:
-    # Each rounding moves a flexed amount by at most half a cent, so their difference is less than one cent.
+    # Each rounding moves a flexed amount by at most half a cent, and an exact half cent always moves up, so the two
+    # moves cannot differ by a full cent.
     case = json.loads(make_instance(seed)["payload"])
     got = sol.variance_decomposition(case)
     assert abs(Fraction(got["sales_mix"]) - oracle(case)["exact_mix"]) < 1, (
@@ -1041,6 +1042,57 @@ def test_product_number_given_as_text_raises_value_error(name: str, field: str) 
 @pytest.mark.parametrize("bad", ("1500", None), ids=["text", "none"])
 def test_actual_units_argument_that_is_not_a_number_raises_value_error(bad: Any) -> None:
     must_raise(lambda: sol.flexible_budget(CASE, bad), "flexible_budget: an actual unit count that is text or nothing")
+
+
+# ---------------------------------------------------------------- the same refusals for a later product
+#
+# Most refusal tests above put the bad value in the first product. Each condition below is put in the middle or the last
+# product instead, one condition per test, so that a check made only for the first product is caught.
+
+LATER_PRODUCT_CONDITIONS: dict[str, Callable[[list[Any], int], None]] = {
+    "negative budgeted units": lambda rows, i: rows[i].__setitem__("budget_units", -1),
+    "boolean budgeted units": lambda rows, i: rows[i].__setitem__("budget_units", True),
+    "negative actual units": lambda rows, i: rows[i].__setitem__("actual_units", -1),
+    "float budgeted price": lambda rows, i: rows[i].__setitem__(
+        "budget_price_cents", float(rows[i]["budget_price_cents"])
+    ),
+    "text input count": lambda rows, i: rows[i].__setitem__(
+        "standard_inputs_per_unit", str(rows[i]["standard_inputs_per_unit"])
+    ),
+    "missing actual price": lambda rows, i: rows[i].pop("actual_price_cents"),
+    "missing name": lambda rows, i: rows[i].pop("name"),
+    "empty name": lambda rows, i: rows[i].__setitem__("name", ""),
+    "name that is a number": lambda rows, i: rows[i].__setitem__("name", 5),
+    "product that is a list": lambda rows, i: rows.__setitem__(i, ["Alpha"]),
+}
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize("position", (1, 2), ids=["middle-product", "last-product"])
+@pytest.mark.parametrize("condition", tuple(LATER_PRODUCT_CONDITIONS))
+def test_bad_later_product_raises_value_error(name: str, position: int, condition: str) -> None:
+    rows: list[Any] = copy.deepcopy(PRODUCTS)
+    LATER_PRODUCT_CONDITIONS[condition](rows, position)
+    must_raise(_call_for(name, with_products(rows)), f"{name}: {condition} in product {position + 1} of {len(rows)}")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_zero_budgeted_units_in_the_first_product_is_valid(name: str) -> None:
+    # Only a budget with no budgeted units in total is refused. A first product that budgets no units is a valid case.
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0]["budget_units"] = 0
+    _call_for(name, with_products(rows))()
+    decomposition_matches(with_products(rows))
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_first_product_name_repeated_in_the_last_position_raises_value_error(name: str) -> None:
+    # The repeat is not adjacent: the last product repeats the first, and the middle product sits between them.
+    rows = copy.deepcopy(PRODUCTS)
+    rows[2]["name"] = rows[0]["name"]
+    must_raise(
+        _call_for(name, with_products(rows)), f"{name}: a product name that appears twice, not next to each other"
+    )
 
 
 # ---------------------------------------------------------------- purity and silence

@@ -136,6 +136,13 @@ def test_npv_of_a_single_flow_is_that_flow() -> None:
     assert close(npv(0.5, [7.0]), 7.0), "a one-element list is valid: its NPV is its only flow, undiscounted at t = 0."
 
 
+def test_npv_reads_a_rate_above_one_as_a_decimal_per_year() -> None:
+    assert close(npv(2.0, [-100.0, 0.0, 300.0]), -100.0 + 300.0 / 9.0), (
+        "every rate is a decimal per year, so a rate of 2.0 is 200 percent a year and the factor at t = 2 is "
+        "1 / (1 + 2.0) ** 2; a rate of 2.0 must not be read as 2 percent."
+    )
+
+
 def test_npv_accepts_a_rate_just_above_minus_one() -> None:
     assert close(npv(-0.999, [-1.0, 2.0]), 1999.0), (
         "a rate of -0.999 is above -1 and therefore valid: -1 + 2 / (1 - 0.999) = 1999."
@@ -182,6 +189,14 @@ def test_irr_does_not_report_a_tangent_root_at_the_window_end() -> None:
     assert irr_roots([1e-8, -2e-4, 1.0]) == [], (
         "a zero that touches the NPV at an end of the search window is not reported: report only sign changes "
         "between two samples inside the window."
+    )
+
+
+def test_irr_does_not_report_a_zero_at_the_low_end_of_the_window() -> None:
+    # NPV(r) = x - 1e-4 with x = 1 / (1 + r): a sign-changing zero exactly at the low end of the window (rate 9999).
+    assert irr_roots([-0.0001, 1.0]) == [], (
+        "a zero exactly at the low end of the search window is not reported: report only sign changes between two "
+        "samples inside the window."
     )
 
 
@@ -267,8 +282,9 @@ def test_irr_rejects_too_short_flows(bad: list[float]) -> None:
     must_raise(lambda: irr_roots(bad), "flows with fewer than two entries")
 
 
-def test_irr_rejects_all_zero_flows() -> None:
-    must_raise(lambda: irr_roots([0.0, 0.0, 0.0]), "flows that are all zero")
+@pytest.mark.parametrize("zeros", [[0.0, 0.0, 0.0], [0.0, 0.0]], ids=["three-zeros", "two-zeros"])
+def test_irr_rejects_all_zero_flows(zeros: list[float]) -> None:
+    must_raise(lambda: irr_roots(zeros), "flows that are all zero")
 
 
 def test_irr_accepts_some_zero_flows_when_not_all_are_zero() -> None:
@@ -421,7 +437,11 @@ def test_fisher_with_zero_inflation_or_zero_real_rate() -> None:
     )
 
 
-@pytest.mark.parametrize(("real", "pi"), [(-1.0, 0.02), (0.02, -1.0)], ids=["real", "inflation"])
+@pytest.mark.parametrize(
+    ("real", "pi"),
+    [(-1.0, 0.02), (0.02, -1.0), (-2.0, 0.02), (0.02, -2.0)],
+    ids=["real-minus-one", "inflation-minus-one", "real-below-minus-one", "inflation-below-minus-one"],
+)
 def test_fisher_rejects_rates_at_or_below_minus_one(real: float, pi: float) -> None:
     must_raise(lambda: fisher_nominal(real, pi), "a rate at or below -1")
 
@@ -820,10 +840,11 @@ def test_monte_carlo_refuses_negative_draws() -> None:
     )
 
 
-def test_monte_carlo_refuses_a_rate_at_or_below_minus_one() -> None:
+@pytest.mark.parametrize("bad_rate", [-1.0, -2.0], ids=["minus-one", "below-minus-one"])
+def test_monte_carlo_refuses_a_rate_at_or_below_minus_one(bad_rate: float) -> None:
     must_raise(
-        lambda: npv_monte_carlo(PROJECT, -1.0, 3, SEED, 0.1),
-        "a rate of -1 in the Monte Carlo request (rate at or below -1)",
+        lambda: npv_monte_carlo(PROJECT, bad_rate, 3, SEED, 0.1),
+        "a rate at or below -1 in the Monte Carlo request",
     )
 
 

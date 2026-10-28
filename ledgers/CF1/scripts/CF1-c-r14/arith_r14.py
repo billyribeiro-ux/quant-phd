@@ -1,0 +1,6 @@
+q10, q90 = 14896.623057, 143406.126569  # unrounded, from l06_unrounded.py output (.6f)
+print("unrounded difference", round(q90 - q10, 4), "two-dp", f"{q90 - q10:.2f}")
+print("printed difference", f"{143406.13 - 14896.62:.2f}", "gap", round(143406.13 - 14896.62 - (q90 - q10), 6))
+print("width currency units", round((q90 - q10) / 100, 6), f"{(q90 - q10) / 100:.2f}")
+print("printed width currency", f"{(143406.13 - 14896.62) / 100:.2f}")
+print("sqrt(500)", round(500 ** 0.5, 2), "SE ratio", round(4400.22 / 221.01, 2))
