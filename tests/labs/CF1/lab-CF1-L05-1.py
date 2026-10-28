@@ -1,4 +1,4 @@
-"""CF1 L05 lab 1: simple and discounted payback on SIMULATED project cash flows. It checks what payback uses.
+"""CF1 L05 lab 1: simple and discounted payback on SIMULATED project cash flows. It shows what payback uses.
 
 SIMULATED: every cash flow in this lab is written into the code by the author or drawn from a seeded generator.
 No company, filing or market series is read. The lab computes two rules on the same flows: the simple payback

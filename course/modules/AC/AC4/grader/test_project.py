@@ -442,7 +442,7 @@ def test_master_budget_values_are_integers() -> None:
 
 @pytest.mark.parametrize("seed", range(50))
 def test_mix_is_within_one_cent_of_the_exact_fraction(seed: int) -> None:
-    # Each rounding moves a flexed amount by less than half a cent, so their difference is less than one cent.
+    # Each rounding moves a flexed amount by at most half a cent, so their difference is less than one cent.
     case = json.loads(make_instance(seed)["payload"])
     got = sol.variance_decomposition(case)
     assert abs(Fraction(got["sales_mix"]) - oracle(case)["exact_mix"]) < 1, (

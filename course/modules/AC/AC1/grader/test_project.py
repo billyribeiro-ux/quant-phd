@@ -306,6 +306,14 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
     sol.balance_sheet(ledger, "2024-01-31")
 
 
+def test_a_large_amount_posts_at_its_full_value() -> None:
+    # A balanced entry of 1,000,000,000,000 cents (ten billion dollars). The spec names no upper limit on an amount,
+    # and money is never adjusted: the statements report the cents that were posted.
+    ledger = sol.post([_entry("2024-03-05", [("cash", 10**12, 0), ("common_stock", 0, 10**12)])])
+    expected = {"cash": 10**12, "common_stock": 10**12, "total_assets": 10**12, "total_liabilities_and_equity": 10**12}
+    _check_values(sol.balance_sheet(ledger, "2024-03-31"), expected, "balance sheet", "2024-03-31")
+
+
 @pytest.mark.parametrize(
     ("condition", "transactions"),
     [
@@ -990,6 +998,8 @@ def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
         "2024-06-29",
         "2024-12-30",
         "2023-02-27",
+        "2023-02-29",
+        "2024-13-31",
         "",
         " 2024-01-31",
     ],

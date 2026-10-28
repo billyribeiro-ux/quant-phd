@@ -516,19 +516,21 @@ def test_schedule_interest_tie_goes_up() -> None:
 @pytest.mark.parametrize(
     ("principal", "annual_rate", "first_interest"),
     [
-        # 462554000 x 0.027 / 12 = 1040746.5 exactly, a tie that goes up to 1040747. In floating point the product
-        # is 1040746.4999999999, which rounds down, so the exact rule is needed to see the tie.
+        # 462554000 x 0.027 / 12 = 1040746.5 exactly, a tie that goes up to 1040747. Computed in floating point as
+        # 462554000 x (0.027 / 12) the product is 1040746.4999999999, which rounds down, so the exact rule is needed.
         (462_554_000, 0.027, 1_040_747),
-        # 804509400 x 0.23 / 12 = 15419763.5 exactly, a tie that goes up to 15419764; the float product is 15419763.49.
-        (804_509_400, 0.23, 15_419_764),
+        # 100000250 x 0.072 / 12 = 600001.5 exactly, a tie that goes up to 600002. Computed in floating point as
+        # 100000250 x (0.072 / 12) the product is 600001.4999999999, which rounds down.
+        (100_000_250, 0.072, 600_002),
     ],
-    ids=["tie-at-2.7-percent", "tie-at-23-percent"],
+    ids=["tie-at-2.7-percent", "tie-at-7.2-percent"],
 )
 def test_schedule_interest_tie_is_exact_not_floating_point(
     principal: int, annual_rate: float, first_interest: int
 ) -> None:
     """The first month's interest is the opening balance times the monthly rate, computed exactly: an exact half cent
-    goes up. Floating point multiplication lands just below the tie and would round down."""
+    goes up. Computed as the opening balance times (annual rate / 12) in floating point, both cases land just below
+    the tie and round down."""
     rows = schedule(principal, annual_rate, 360)
     assert rows[0][2] == first_interest, (
         "monthly interest must be the exact product of the opening balance and the monthly rate, rounded once"

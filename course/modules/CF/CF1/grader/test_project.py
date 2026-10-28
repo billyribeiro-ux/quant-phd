@@ -60,6 +60,14 @@ def must_raise(call: Callable[[], object], condition: str) -> None:
     pytest.fail(f"{condition}: the specification requires a ValueError.")
 
 
+def must_accept(call: Callable[[], Any], condition: str) -> Any:
+    """Return call()'s value unless it raises ValueError, which fails the test with the condition that was valid."""
+    try:
+        return call()
+    except ValueError:
+        pytest.fail(f"{condition}: the specification accepts it, so a ValueError is wrong.")
+
+
 def close(a: float, b: float, rel: float = 1e-9, absolute: float = 1e-9) -> bool:
     return math.isfinite(a) and abs(a - b) <= max(absolute, rel * max(abs(a), abs(b)))
 
@@ -325,6 +333,22 @@ def test_payback_counts_a_year_that_exactly_recovers_the_outlay_at_the_horizon()
     )
 
 
+def test_payback_accepts_a_discount_rate_just_above_minus_one() -> None:
+    value = must_accept(
+        lambda: payback_period([-100.0, 60.0, 60.0], -0.999),
+        "a discount rate of -0.999 is above -1 and valid in a discounted payback request",
+    )
+    assert isinstance(value, float), "a discounted payback request with a valid rate returns a number of years."
+
+
+def test_payback_accepts_a_first_flow_just_below_zero() -> None:
+    value = must_accept(lambda: payback_period([-1e-9, 1.0]), "a first flow of -1e-9 cents is negative and valid")
+    assert isinstance(value, float) and abs(value - 1e-9) <= 1e-15, (
+        "the payback on the flows -1e-9 and +1 is (t - 1) + (-cumulative at t - 1) / flow at t = 0 + 1e-9 / 1.0 = 1e-9 "
+        "years: a first flow only just below zero is an outlay, not a refused input."
+    )
+
+
 def test_payback_recovered_exactly_in_year_one() -> None:
     assert close(payback_period([-100.0, 100.0]), 1.0), "an outlay recovered at the end of year 1 gives payback 1."
 
@@ -400,6 +424,33 @@ def test_fisher_with_zero_inflation_or_zero_real_rate() -> None:
 @pytest.mark.parametrize(("real", "pi"), [(-1.0, 0.02), (0.02, -1.0)], ids=["real", "inflation"])
 def test_fisher_rejects_rates_at_or_below_minus_one(real: float, pi: float) -> None:
     must_raise(lambda: fisher_nominal(real, pi), "a rate at or below -1")
+
+
+def test_fisher_accepts_inflation_just_above_minus_one() -> None:
+    value = must_accept(lambda: fisher_nominal(0.02, -0.999), "an inflation rate of -0.999 is above -1 and valid")
+    assert close(1.0 + value, 1.02 * 0.001, rel=1e-12, absolute=1e-12), (
+        "with inflation -0.999 the nominal rate is (1 + real)(1 + inflation) - 1, here 1.02 * 0.001 - 1."
+    )
+
+
+def test_fisher_identity_holds_for_rates_with_many_decimals() -> None:
+    # Nominal rates with more than nine decimals: rounding the nominal rate to nine decimals misses the identity.
+    real, pi = 0.0123456789123, 0.0314159265358
+    nominal = fisher_nominal(real, pi)
+    assert close(1.0 + nominal, (1.0 + real) * (1.0 + pi), rel=1e-12, absolute=1e-12), (
+        "the Fisher identity holds to a relative 1e-12 for every pair of rates, not only for rates with few decimals."
+    )
+
+
+def test_fisher_identity_holds_on_a_seeded_sweep() -> None:
+    rng = random.Random(SEED)
+    for _ in range(200):
+        real, pi = rng.uniform(-0.5, 0.5), rng.uniform(-0.5, 0.5)
+        nominal = fisher_nominal(real, pi)
+        assert close(1.0 + nominal, (1.0 + real) * (1.0 + pi), rel=1e-12, absolute=1e-12), (
+            f"the Fisher identity is exact for real {real!r} and inflation {pi!r}; a nominal rate rounded to fewer "
+            "digits does not satisfy it."
+        )
 
 
 def test_fisher_accepts_rates_just_above_minus_one() -> None:
@@ -774,6 +825,14 @@ def test_monte_carlo_refuses_a_rate_at_or_below_minus_one() -> None:
         lambda: npv_monte_carlo(PROJECT, -1.0, 3, SEED, 0.1),
         "a rate of -1 in the Monte Carlo request (rate at or below -1)",
     )
+
+
+def test_monte_carlo_accepts_a_rate_just_above_minus_one() -> None:
+    draws = must_accept(
+        lambda: npv_monte_carlo(PROJECT, -0.999, 3, SEED, 0.1),
+        "a rate of -0.999 is above -1 and valid in a Monte Carlo request",
+    )
+    assert isinstance(draws, list) and len(draws) == 3, "a valid request returns one NPV for each of its draws."
 
 
 def test_monte_carlo_refuses_a_volatility_just_below_zero() -> None:
