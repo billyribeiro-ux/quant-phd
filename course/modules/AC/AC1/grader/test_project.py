@@ -1026,6 +1026,7 @@ def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
         "2024-12-30",
         "2023-02-27",
         "2023-02-29",
+        "2100-02-29",
         "2024-13-31",
         "",
         " 2024-01-31",
@@ -1054,8 +1055,8 @@ def test_a_leap_year_month_end_is_accepted() -> None:
 
 def test_a_century_year_follows_the_400_year_rule() -> None:
     # 2000 is divisible by 400, so it is a leap year and 2000-02-29 is a month end. 2100 is divisible by 100 but not by
-    # 400, so it is not a leap year: 2100-02-28 is the month end and 2100-02-29 is not a date. Only the 2024 entries of
-    # SMALL are in the ledger, so both balances below are the balances of SMALL.
+    # 400, so it is not a leap year: 2100-02-28 is the month end and 2100-02-29 is not a date. The 2100-02-28 balance is
+    # the January balance of SMALL; no entry is dated before 2024, so the 2000-02-29 balance is zero.
     ledger = sol.post(SMALL)
     _check_values(
         sol.balance_sheet(ledger, "2000-02-29"),
@@ -1065,6 +1066,22 @@ def test_a_century_year_follows_the_400_year_rule() -> None:
     )
     _check_values(sol.balance_sheet(ledger, "2100-02-28"), SMALL_JAN_BALANCE_SHEET, "balance sheet", "2100-02-28")
     must_raise(lambda: sol.balance_sheet(ledger, "2100-02-29"), "a period end of 2100-02-29, which is not a date")
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda ledger, end: sol.balance_sheet(ledger, end),
+        lambda ledger, end: sol.income_statement(ledger, end),
+        lambda ledger, end: sol.cash_flow_statement(ledger, end),
+        lambda ledger, end: sol.articulation_check(ledger, end),
+    ],
+)
+def test_every_function_accepts_a_century_month_end(call: Callable[[object, str], object]) -> None:
+    # 2000-02-29 and 2100-02-28 are month ends, so every function accepts them (see the Constraints on the page).
+    ledger = sol.post(SMALL)
+    for end in ("2000-02-29", "2100-02-28"):
+        assert isinstance(call(ledger, end), dict), f"a period end of {end} is a month end and must be accepted"
 
 
 def test_a_non_leap_year_february_end_is_accepted() -> None:
