@@ -154,6 +154,22 @@ def test_annuity_factor_zero_periods_is_zero() -> None:
     assert sol.annuity_factor(ANN_RATE, 0) == 0
 
 
+@pytest.mark.parametrize(("rate", "periods"), [(-0.01, 12), (-0.5, 3)])
+def test_annuity_factor_accepts_a_negative_rate_above_minus_one(rate: float, periods: int) -> None:
+    """A rate in (-1, 0) is valid, since the specification requires only r > -1. The factor is computed at that
+    rate, not refused and not replaced by the factor of |r|: the sum of v^k, v = 1/(1+r), and the exact closed form."""
+    v = 1 / (1 + rate)
+    direct = sum(v**k for k in range(1, periods + 1))
+    exact_rate = Fraction(repr(rate))
+    exact = float((1 - (1 + exact_rate) ** (-periods)) / exact_rate)
+    assert close(sol.annuity_factor(rate, periods), direct, 1e-9), (
+        "annuity_factor at a negative rate above -1 must equal the sum of discount factors at that rate"
+    )
+    assert close(sol.annuity_factor(rate, periods), exact, 1e-9), (
+        "annuity_factor at a negative rate above -1 must be the closed form (1 - (1+r)^-n) / r at that rate"
+    )
+
+
 def test_annuity_factor_zero_rate_is_the_number_of_periods() -> None:
     """At a zero rate every payment is worth 1, so the factor is the number of payments (handled explicitly)."""
     assert sol.annuity_factor(0, ANN_N) == ANN_N
@@ -178,6 +194,12 @@ def test_annuity_due_is_the_ordinary_annuity_one_period_earlier() -> None:
 
 def test_annuity_due_zero_rate_is_the_number_of_periods() -> None:
     assert sol.annuity_due_factor(0, ANN_N) == ANN_N
+
+
+def test_annuity_due_zero_periods_is_zero() -> None:
+    """With no payments the due factor is 0 at any valid rate: the due factor is the ordinary factor times (1 + r)."""
+    assert sol.annuity_due_factor(ANN_RATE, 0) == 0
+    assert sol.annuity_due_factor(0.05, 0) == 0
 
 
 def test_perpetuity_factor_is_one_over_the_rate() -> None:
@@ -273,11 +295,35 @@ def test_level_payment_tie_at_a_non_zero_rate_goes_up() -> None:
     assert sol.level_payment_cents(3, 6.0, 1) == 5, "a payment of exactly half a cent above a whole cent must go up"
 
 
+@pytest.mark.parametrize(
+    ("principal", "annual_rate", "expected"),
+    [
+        # 0.06 a year is 0.005 a month; one month on 100 cents is exactly 100.5 cents, a tie that goes up to 101.
+        # The binary float of 0.06 lies just below the tie, so the rate must be read as the decimal it is written as.
+        (100, 0.06, 101),
+        # 1.2e-11 a year is 1e-12 a month: the payment is 499999999999 * (1 + 1e-12) cents, which is
+        # 499999999999.4999999999999 cents, so it rounds down. Exact arithmetic is needed to see the last digits.
+        (499_999_999_999, 1.2e-11, 499_999_999_999),
+    ],
+)
+def test_level_payment_is_exact_in_the_rate_as_written(principal: int, annual_rate: float, expected: int) -> None:
+    assert sol.level_payment_cents(principal, annual_rate, 1) == expected, (
+        "level_payment_cents must be exact: the annual rate is read as its decimal, and the cent amount is rounded "
+        "once, from the exact value"
+    )
+
+
 def test_schedule_interest_tie_goes_up() -> None:
     """Interest of exactly half a cent goes up. An annual rate of 6.0 (600 %) is a monthly rate of 0.5, so 1 cent
     accrues exactly 0.5 cents in month 1."""
     rows = schedule(1, 6.0, 2)
     assert rows[0][2] == 1, "interest of exactly half a cent must go up to one whole cent"
+
+
+def test_schedule_interest_is_exact_in_the_rate_as_written() -> None:
+    """1000 cents at 0.018 a year accrues exactly 1.5 cents in month 1 (1000 x 0.018 / 12), a tie that goes up to 2.
+    The binary float of 0.018 divided by 12 lies just below the tie and would round to 1."""
+    assert schedule(1000, 0.018, 2)[0][2] == 2, "monthly interest must be read from the rate as written, exactly"
 
 
 def test_level_payment_scales_with_the_loan() -> None:
@@ -487,6 +533,12 @@ def test_growing_perpetuity_rejects_non_finite_inputs() -> None:
         (1000, 0.05, -3),
         (1000, 0.05, 12.0),
         (1000, 0.05, True),
+        ("1000", 0.05, 12),
+        (None, 0.05, 12),
+        (1000, "0.05", 12),
+        (1000, None, 12),
+        (1000, 0.05, "12"),
+        (1000, 0.05, None),
     ],
 )
 def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: Any) -> None:
@@ -506,6 +558,12 @@ def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: 
         (1000, 0.05, -3),
         (1000, 0.05, 2.0),
         (1000, 0.05, True),
+        ("1000", 0.05, 12),
+        (None, 0.05, 12),
+        (1000, "0.05", 12),
+        (1000, None, 12),
+        (1000, 0.05, "12"),
+        (1000, 0.05, None),
     ],
 )
 def test_schedule_rejects_invalid_loans(principal: Any, rate: Any, months: Any) -> None:
@@ -521,6 +579,18 @@ def test_invalid_input_message_names_the_condition() -> None:
 
 
 def test_functions_do_not_print_or_warn() -> None:
+    """No function prints or warns, on a valid input or on an invalid one (each invalid call must raise ValueError)."""
+    float_periods: Any = 12.0
+    invalid_calls: tuple[Callable[[], object], ...] = (
+        lambda: sol.annuity_factor(-1.5, 5),
+        lambda: sol.annuity_factor(0.01, float_periods),
+        lambda: sol.annuity_due_factor(-1.5, 0),
+        lambda: sol.perpetuity_factor(0.0),
+        lambda: sol.growing_perpetuity_factor(0.03, 0.05),
+        lambda: sol.level_payment_cents(0, RATE, MONTHS),
+        lambda: sol.level_payment_cents(PRINCIPAL, RATE, 0),
+        lambda: sol.amortization_schedule(PRINCIPAL, True, MONTHS),
+    )
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer), warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -530,8 +600,10 @@ def test_functions_do_not_print_or_warn() -> None:
         sol.growing_perpetuity_factor(PERP_RATE, GROWTH)
         sol.level_payment_cents(PRINCIPAL, RATE, MONTHS)
         sol.amortization_schedule(PRINCIPAL, RATE, 12)
-    assert buffer.getvalue() == "", "no function may print"
-    assert not caught, "no function may warn"
+        for invalid in invalid_calls:
+            must_raise(invalid, "an invalid input in the purity check")
+    assert buffer.getvalue() == "", "no function may print, on a valid or an invalid input"
+    assert not caught, "no function may warn, on a valid or an invalid input"
 
 
 def test_module_uses_only_the_standard_library() -> None:

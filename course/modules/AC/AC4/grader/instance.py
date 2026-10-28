@@ -1,6 +1,6 @@
 """Per-learner instances for the AC4 budget and variance engine (budget_engine.py).
 
-make_instance(seed) is deterministic. It returns a SIMULATED case for a small plant with two or three products:
+make_instance(seed) is deterministic. It returns a SIMULATED case for a small plant with three products:
 the standard quantities of one input, the budgeted and actual volumes and prices, the fixed overhead and the
 input quantity actually used. Every case is valid, and the seed changes the answers: the volumes, the mix, the
 prices and the efficiency all vary with it. Nothing here is a real company's figure.
@@ -29,7 +29,7 @@ def make_instance(seed: int) -> dict[str, Any]:
         standard_inputs = rng.randint(2, 6)  # input units per unit of this product, from the standard
         budget_price = standard_inputs * input_price + rng.randint(1500, 5000)  # a positive budgeted margin
         budget_units = rng.randint(200, 1200)
-        actual_units = max(1, budget_units * rng.randint(60, 150) // 100)  # the actual mix departs from the budget
+        actual_units = max(1, budget_units * rng.randint(60, 150) // 100)  # each product's volume is drawn separately
         actual_price = budget_price + rng.randint(-400, 300)
         products.append(
             {
@@ -42,7 +42,7 @@ def make_instance(seed: int) -> dict[str, Any]:
             }
         )
     standard_for_actual = sum(p["standard_inputs_per_unit"] * p["actual_units"] for p in products)
-    actual_inputs = max(0, standard_for_actual * rng.randint(88, 118) // 100)  # efficiency departs from standard
+    actual_inputs = max(0, standard_for_actual * rng.randint(88, 118) // 100)  # 88% to 118% of standard; can equal it
     case: dict[str, Any] = {
         "label": f"SIMULATED budget case, seed {int(seed)}: {n_products} products, not a real company",
         "input_price_cents": input_price,

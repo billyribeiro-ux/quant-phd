@@ -171,6 +171,15 @@ def test_irr_finds_roots_across_the_whole_search_window() -> None:
     )
 
 
+def test_irr_finds_a_root_at_the_low_end_of_the_discount_factor_window() -> None:
+    # NPV(r) = -1 + (1 / 1.5e-4) * x with x = 1 / (1 + r): its zero is at x = 1.5e-4, inside [0.0001, 10000].
+    roots = irr_roots([-1.0, 1.0 / 1.5e-4])
+    assert len(roots) == 1 and abs(roots[0] - (1.0 / 1.5e-4 - 1.0)) <= 1e-7, (
+        "the search covers discount factors from 0.0001 upward: a root at discount factor 0.00015 (rate 6665.67) is "
+        "inside it and must be found."
+    )
+
+
 def test_irr_roots_are_ascending_and_distinct() -> None:
     roots = irr_roots([-100.0, 230.0, -132.0])
     assert roots == sorted(roots) and len(set(roots)) == len(roots), "return roots in ascending order, each once."
@@ -491,7 +500,8 @@ def test_monte_carlo_mean_is_within_three_standard_errors_of_the_deterministic_n
     deterministic = npv(RATE, after_tax_cash_flows(PROJECT))
     assert abs(mean - deterministic) <= 3.0 * standard_error, (
         "the revenue multiplier has mean one, so the draws' mean estimates the deterministic NPV. A mean that is off "
-        "by more than three standard errors usually means the lognormal correction -volatility**2/2 is missing."
+        "by more than three standard errors usually means the mean-one correction -volatility**2/2 in the multiplier "
+        "is missing."
     )
 
 

@@ -58,7 +58,7 @@ def return_ratio(d: Division) -> Fraction:
 
 
 def generate(seed: int, n: int) -> list[Division]:
-    """n SIMULATED divisions. C is a multiple of 1000 cents; OI/C runs from about 4% to 16%."""
+    """n SIMULATED divisions. C is a multiple of 1000 cents; OI/C lies in [4%, 5/31], so at most 16.13%."""
     rng = random.Random(seed)
     out: list[Division] = []
     for i in range(n):

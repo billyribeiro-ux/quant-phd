@@ -25,7 +25,7 @@ cost, where s_i is standard kilograms per unit and pi the material price.
     sales mix variance     M  = sum_i CM_i * (q_a,i - Q_a * m_i)
     efficiency variance    E  = -pi * sum_i (kg_a,i - s_i * q_a,i)
 
-The four sum to the total contribution variance T = C_a - C_b. The code asserts this identity and
+The four sum to the total contribution variance T = C_a - C_b. The code checks this identity and
 raises ValueError if the residual is not zero.
 """
 

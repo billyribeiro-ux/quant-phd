@@ -1,8 +1,10 @@
 """AC1 lab L03: link the three statements and check the articulation identities that it prints.
 
-SIMULATED: the quarterly sales, cost of sales and operating expense are drawn from a seeded random number generator
-for this lab. The opening position, equipment, borrowing, dividends and depreciation are fixed amounts in the code.
-It is not a real company.
+SIMULATED: the quarterly credit sales, cash sales, operating expense and cost percentage (55 to 65 per cent) are drawn
+from a seeded random number generator for this lab. Cost of sales is that percentage of the quarter's sales. The
+opening position, equipment, borrowing, dividends and depreciation are fixed amounts in the code. Collections are
+four fifths of the receivable and payments are nine tenths of the payable, both fixed fractions of balances. It is
+not a real company.
 The same ledger as Lab 2 is used. Amounts are integer cents and are printed in USD. The indirect cash-flow
 statement is derived from the income statement and the balance sheet, and each printed identity linking the statements
 is checked against the ledger. The investing and financing equalities of Proposition 3.1 are not printed.

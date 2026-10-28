@@ -40,11 +40,14 @@ INPUT_PRICE: int = CASE["input_price_cents"]
 ACTUAL_INPUTS: int = CASE["actual_inputs_used"]
 FUNCTIONS: tuple[str, ...] = ("master_budget", "flexible_budget", "variance_decomposition")
 VARIANCES: tuple[str, ...] = ("sales_price", "sales_volume", "sales_mix", "efficiency")
+# The case as generated, before any test runs. A learner's function that changes CASE in place would otherwise be
+# hidden from the purity test, which builds its own case from CASE; the snapshot is what every check compares with.
+PRISTINE: dict[str, Any] = copy.deepcopy(CASE)
 
 
 def fresh(**changes: Any) -> dict[str, Any]:
-    """A deep copy of the learner's case, with top-level fields replaced."""
-    case = copy.deepcopy(CASE)
+    """A deep copy of the case as generated, with top-level fields replaced."""
+    case = copy.deepcopy(PRISTINE)
     case.update(changes)
     return case
 
@@ -549,11 +552,11 @@ def test_every_grader_seed_reconciles_exactly(seed: int) -> None:
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
-def test_missing_field_raises_value_error(name: str) -> None:
+@pytest.mark.parametrize("field", ("input_price_cents", "fixed_overhead_cents", "actual_inputs_used", "products"))
+def test_missing_case_field_raises_value_error(name: str, field: str) -> None:
     case = fresh()
-    del case["fixed_overhead_cents"]
-    call = (lambda: sol.flexible_budget(case, 10)) if name == "flexible_budget" else (lambda: getattr(sol, name)(case))
-    must_raise(call, "a case without fixed_overhead_cents")
+    del case[field]
+    must_raise(_call_for(name, case), f"{name}: a case without {field}")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
@@ -634,8 +637,9 @@ def test_float_actual_units_argument_raises_value_error() -> None:
     must_raise(lambda: sol.flexible_budget(CASE, 100.0), "a float unit count")  # type: ignore[arg-type]
 
 
-def test_negative_input_price_raises_value_error() -> None:
-    must_raise(lambda: sol.variance_decomposition(fresh(input_price_cents=-1)), "a negative input price")
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_negative_input_price_raises_value_error(name: str) -> None:
+    must_raise(_call_for(name, fresh(input_price_cents=-1)), f"{name}: a negative input_price_cents")
 
 
 def _call_for(name: str, case: Mapping[str, Any]) -> Callable[[], object]:
@@ -672,13 +676,6 @@ def test_missing_product_field_raises_value_error(name: str, field: str) -> None
     rows = copy.deepcopy(PRODUCTS)
     del rows[0][field]
     must_raise(_call_for(name, with_products(rows)), f"{name}: a product without its {field} field")
-
-
-@pytest.mark.parametrize("name", FUNCTIONS)
-def test_missing_input_price_raises_value_error(name: str) -> None:
-    case = fresh()
-    del case["input_price_cents"]
-    must_raise(_call_for(name, case), f"{name}: a case without input_price_cents")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
@@ -730,4 +727,11 @@ def test_results_do_not_depend_on_call_order() -> None:
     sol.master_budget(CASE)
     assert sol.variance_decomposition(CASE) == first, (
         "variance_decomposition: a result must not depend on earlier calls."
+    )
+
+
+def test_shared_case_is_unchanged_by_the_suite() -> None:
+    # Runs last in the file: every test before it has passed the shared CASE to the learner's functions.
+    assert CASE == PRISTINE, (
+        "the suite's shared case was changed by a function call; a function must never change its argument."
     )

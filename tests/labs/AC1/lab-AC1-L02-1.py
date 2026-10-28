@@ -1,8 +1,10 @@
 """AC1 lab L02: sort a posted ledger into the income statement, the balance sheet and the cash-flow statement.
 
-SIMULATED: the quarterly sales, cost of sales and operating expense are drawn from a seeded random number generator
-for this lab. The opening position, equipment, borrowing, dividends and depreciation are fixed amounts in the code.
-It is not a real company.
+SIMULATED: the quarterly credit sales, cash sales, operating expense and cost percentage (55 to 65 per cent) are drawn
+from a seeded random number generator for this lab. Cost of sales is that percentage of the quarter's sales. The
+opening position, equipment, borrowing, dividends and depreciation are fixed amounts in the code. Collections are
+four fifths of the receivable and payments are nine tenths of the payable, both fixed fractions of balances. It is
+not a real company.
 Amounts are integer cents and are printed in USD. The three statements are produced from one ledger, one at a
 time; this lab does not yet check that they agree with one another. Standard library only; no network.
 """

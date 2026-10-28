@@ -11,7 +11,8 @@ months 1 to 11 receives the amount divided by twelve, rounded down to whole cent
 
 Two conventions are labelled here for comparison. Convention 1 is the schedule described above. Convention 2
 recognizes every over-time obligation in month 12 instead. Neither convention is claimed to be the rule of any
-accounting framework. The lab shows only what each convention does to the timing of the same total.
+accounting framework. Convention 2 changes only the month in which each over-time amount is recognized:
+the allocation and the total are the same under both conventions.
 
 Billing: 40 percent of the price is billed at signing (month 0). The rest is billed in twelve monthly instalments,
 as equal as whole cents allow (months 1 to 12). Cash is collected when billed, so the contract balance is cumulative

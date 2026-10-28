@@ -3,9 +3,9 @@
 SIMULATED: the same three-year machine project as the worked example, not any company's project. Money is in integer
 cents; flows are floats in cents, printed in dollars. Standard library only, no randomness, no network.
 
-This is the completed solution. The page shows the same code with the key lines blanked out; every other line of the
-page is identical to this file. The expected output below is this file's output: a completed page run matches it only
-when every blank is right.
+This file is the completed version. On the page, the three lines that assign tax, operating and working_capital are
+blanked with ___; every other line of the page is the same as this file. The expected output below is this file's
+output, so a completed page run matches it only when every blank is right.
 """
 
 from __future__ import annotations
