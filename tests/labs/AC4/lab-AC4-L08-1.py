@@ -68,11 +68,16 @@ def generate(seed: int, n: int) -> list[Division]:
     return out
 
 
+# Hand-built boundary division: OI / C = 90 / 1000 = 9% = r exactly, so RI = 0 exactly.
+BOUNDARY = Division("BOUNDARY", 1000, 90)
+
+
 def capitalized(d: Division) -> Division:
     """Treat a SPEND outlay as an asset amortized straight-line over LIFE_YEARS, first year only.
 
     Reported OI already charges the outlay in full. Capitalizing adds it back to OI net of the first
-    year's amortization, and adds the unamortized balance to C. Tax effects of the choice are not modeled.
+    year's amortization, and adds the unamortized balance to C. The tax rate applies to the changed operating
+    income. The model does not represent a difference between tax and book treatment of the outlay.
     """
     first_year = SPEND // LIFE_YEARS
     return replace(d, invested=d.invested + SPEND - first_year, oi=d.oi + SPEND - first_year)
@@ -95,9 +100,15 @@ def main() -> None:
         )
 
     gap_ok = [eva(d) - residual_income(d) == -Fraction(TAX_BP, 10_000) * d.oi for d in divisions]
-    sign_ok = [(residual_income(d) >= 0) == (return_ratio(d) >= Fraction(RATE_BP, 10_000)) for d in divisions]
+    rate = Fraction(RATE_BP, 10_000)
+    sign_ok = [(residual_income(d) >= 0) == (return_ratio(d) >= rate) for d in [*divisions, BOUNDARY]]
     print(f"identity EVA - RI = -tax * OI holds for {sum(gap_ok)}/{N_DIVISIONS} divisions")
-    print(f"RI >= 0 exactly when OI/C >= r holds for {sum(sign_ok)}/{N_DIVISIONS} divisions")
+    print(f"RI >= 0 exactly when OI/C >= r holds for {sum(sign_ok)}/{N_DIVISIONS + 1} divisions, boundary included")
+    b = BOUNDARY
+    print(
+        f"boundary division (hand-built, OI/C = r): RI {show(residual_income(b))} cents, "
+        f"RI >= 0 {residual_income(b) >= 0}, OI/C >= r {return_ratio(b) >= rate}"
+    )
 
     discordant: list[tuple[str, str]] = []
     for a in divisions:

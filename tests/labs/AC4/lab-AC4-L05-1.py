@@ -1,8 +1,8 @@
 """AC4 L05 lab 1: the master budget, then the flexible budget at actual volume. SIMULATED company.
 
-SIMULATED: every number in this lab is an invented input chosen by the author. No company's accounts are read and no
-published figure is reproduced. The lab checks the arithmetic of two budgets and one comparison. It says nothing about
-how any real firm budgets.
+SIMULATED: every input in this lab is an invented value chosen by the author, and every printed number is computed
+from those inputs. No company's accounts are read and no published figure is reproduced. The lab checks the arithmetic
+of two budgets and one comparison. It says nothing about how any real firm budgets.
 
 All money is integer cents (1 dollar = 100 cents). Quantities are whole units or whole kilograms. Nothing is a float,
 so every total below is exact.

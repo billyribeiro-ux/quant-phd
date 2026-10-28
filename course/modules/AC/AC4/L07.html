@@ -66,7 +66,7 @@
 
       <div class="block definition">
         <span class="block-title">Definition 7.1 <span class="name">(transfer pricing)</span></span>
-        <p><dfn id="def-transfer-pricing" data-concept="transfer-pricing">Transfer pricing</dfn> is the choice of the price \(t\), in SCU per unit, at which one division of a firm supplies another division of the same firm. The transfer price is an internal amount. It moves money between the two divisions and leaves the firm's total cash flow from the sale unchanged, a fact §3 proves.</p>
+        <p><dfn id="def-transfer-pricing" data-concept="transfer-pricing">Transfer pricing</dfn> is the choice of the price \(t\), in SCU per unit, at which one division of a firm supplies another division of the same firm. The transfer price is an internal amount. It moves money between the two divisions and leaves the firm's total gain from the sale unchanged, a fact §3 proves.</p>
       </div>
 
       <p>Several terms need a precise meaning here. The <em>displaced units</em> are the outside sales that the internal order forces out. Their number is \(D = \max(0,\, q + E - K)\), derived in §2. Each displaced unit gives up the <a class="concept" data-concept="contribution-margin" href="L01.html#def-contribution-margin">contribution margin</a> \(p_m - v\) per unit. The <em>opportunity cost</em> of the internal order is the total contribution of the displaced units, \(D(p_m - v)\). The <em>opportunity cost per internal unit</em> is that total spread over the \(q\) internal units, \(D(p_m - v)/q\), derived in §2. Of the \(q\) internal units, \(q - D\) are absorbed by spare capacity and give up nothing. The quantities here are derived from the inputs above, not taken from a source.</p>
@@ -137,7 +137,7 @@
 
       <section class="lab" id="lab-AC4-L07-1" data-runtime="python">
         <h3>Lab 1 · The transfer-price range on SIMULATED division pairs</h3>
-        <p class="hypothesis">Stated before running: for every pair with \(q \le K\), the supplier's gain is exactly zero at \(t_{\min}\), the buyer's gain is exactly zero at \(t_{\max}\), the range is nonempty exactly when \(\Sigma \ge 0\), and the two gains sum to \(\Sigma\) at the ends and the midpoint of the range. The lab does not predict how often a range is empty. That count describes the generator's settings. One hand-built pair sits on the boundary, with \(\Sigma = 0\) and \(t_{\min} = t_{\max}\), so the nonempty test is run at equality as well. All divisions are SIMULATED. Money is in integer cents, and every test uses exact fractions, not floating-point tolerances.</p>
+        <p class="hypothesis">Stated before running: for each pair the lab generates with \(q \le K\), the supplier's gain is exactly zero at \(t_{\min}\), the range is nonempty exactly when \(\Sigma \ge 0\), and for each nonempty range the two gains sum to \(\Sigma\) at both ends and at the midpoint. The buyer's gain is zero at \(t_{\max}\) by the definition \(t_{\max} = r\), so the lab does not count it. The lab does not predict how often a range is empty. That count describes the generator's settings. One hand-built pair sits on the boundary, with \(\Sigma = 0\) and \(t_{\min} = t_{\max}\), and the lab prints its range as nonempty, so the nonempty test is run at equality as well. All divisions are SIMULATED. Money is in integer cents, and every test uses exact fractions, not floating-point tolerances.</p>
         <pre><code class="language-python" data-run>"""Lab AC4-L07-1: the transfer-price range under a capacity constraint, on SIMULATED divisions.
 
 Every division here is SIMULATED: the cases come from a seeded generator, no firm is represented,
@@ -214,6 +214,16 @@ def firm_surplus(c: Case) -&gt; int:
     return c.q * (c.r_net - c.v) - displaced(c) * (c.p_m - c.v)
 
 
+def nonempty(c: Case) -&gt; bool:
+    """True when the transfer range [t_min, t_max] contains at least one price, that is t_min &lt;= t_max."""
+    return t_min(c) &lt;= t_max(c)
+
+
+def midpoint(c: Case) -&gt; Fraction:
+    """Midpoint of the transfer range [t_min, t_max]. Meaningful only when the range is nonempty."""
+    return (t_min(c) + t_max(c)) / 2
+
+
 # Hand-built boundary pair: the worked case of the page (v = 40, p_m = 60, K = 10,000, E = 8,000, q = 5,000
 # units, so D = 3,000) with r = 52 SCU. Then t_min = t_max = 52 SCU and the firm-wide surplus is exactly 0.
 BOUNDARY = Case(case_id=0, v=4000, p_m=6000, capacity=10000, external=8000, q=5000, r_net=5200)
@@ -260,8 +270,8 @@ def main() -&gt; None:
 
     over = [c for c in cases if c.q &gt; c.capacity]
     fits = [c for c in cases if c.q &lt;= c.capacity]
-    empty = [c for c in fits if t_min(c) &gt; t_max(c)]
-    feasible = [c for c in fits if t_min(c) &lt;= t_max(c)]
+    empty = [c for c in fits if not nonempty(c)]
+    feasible = [c for c in fits if nonempty(c)]
     binding = [c for c in feasible if displaced(c) &gt; 0]
     print(f"cases with q &gt; K (no transfer): {len(over)}")
     print(f"cases with q &lt;= K and an empty range: {len(empty)}")
@@ -270,20 +280,24 @@ def main() -&gt; None:
     b = BOUNDARY
     print(
         f"boundary case (hand-built): t_min {show(t_min(b))}, t_max {show(t_max(b))}, "
-        f"firm-wide surplus {firm_surplus(b)} cents"
+        f"nonempty {nonempty(b)}, firm-wide surplus {firm_surplus(b)} cents"
     )
 
-    checks = 0
-    for c in fits:
-        lo, hi = t_min(c), t_max(c)
-        assert supplier_increment(c, lo) == 0
-        assert buyer_increment(c, hi) == 0
-        assert (lo &lt;= hi) == (firm_surplus(c) &gt;= 0)
-        if lo &lt;= hi:
-            for t in (lo, hi, (lo + hi) / 2):
-                assert supplier_increment(c, t) + buyer_increment(c, t) == firm_surplus(c)
-        checks += 1
-    print(f"exact checks passed: {checks}/{len(fits)} cases with q &lt;= K")
+    supplier_zero = sum(1 for c in fits if supplier_increment(c, t_min(c)) == 0)
+    sign_match = sum(1 for c in fits if nonempty(c) == (firm_surplus(c) &gt;= 0))
+    midpoint_inside = sum(1 for c in feasible if t_min(c) &lt;= midpoint(c) &lt;= t_max(c))
+    sum_identity = sum(
+        1
+        for c in feasible
+        if all(
+            supplier_increment(c, t) + buyer_increment(c, t) == firm_surplus(c)
+            for t in (t_min(c), t_max(c), midpoint(c))
+        )
+    )
+    print(f"supplier gain is zero at t_min: {supplier_zero}/{len(fits)} cases with q &lt;= K")
+    print(f"range is nonempty exactly when the firm-wide surplus is &gt;= 0: {sign_match}/{len(fits)} cases with q &lt;= K")
+    print(f"midpoint of the range lies inside it: {midpoint_inside}/{len(feasible)} feasible cases")
+    print(f"gains sum to the surplus at both ends and the midpoint: {sum_identity}/{len(feasible)} feasible cases")
 
 
 main()</code></pre>
@@ -300,9 +314,12 @@ cases with q &gt; K (no transfer): 14
 cases with q &lt;= K and an empty range: 75
 cases with a feasible range: 112
   of which capacity binds (D &gt; 0): 73
-boundary case (hand-built): t_min 5200.00, t_max 5200.00, firm-wide surplus 0 cents
-exact checks passed: 187/187 cases with q &lt;= K</pre>
-        <p class="interpretation">The first six rows are generated pairs; the price columns are in cents, so 3400.00 means 34.00 SCU. Case 2 shows an empty range: its lowest price, 3600.00, is above its highest, 2326.00. Case 1 has no displaced units, so its lowest price is the variable cost. The counts describe the generator, not any firm. The exact-check line covers the 187 pairs with \(q \le K\): the 186 generated pairs of that kind and the hand-built boundary pair, whose line is printed under the counts. The 14 pairs with \(q > K\) have no transfer and are excluded from it.</p>
+boundary case (hand-built): t_min 5200.00, t_max 5200.00, nonempty True, firm-wide surplus 0 cents
+supplier gain is zero at t_min: 187/187 cases with q &lt;= K
+range is nonempty exactly when the firm-wide surplus is &gt;= 0: 187/187 cases with q &lt;= K
+midpoint of the range lies inside it: 112/112 feasible cases
+gains sum to the surplus at both ends and the midpoint: 112/112 feasible cases</pre>
+        <p class="interpretation">The first six rows are generated pairs; the price columns are in cents, so 3400.00 means 34.00 SCU. Case 2 shows an empty range: its lowest price, 3600.00, is above its highest, 2326.00. Case 1 has no displaced units, so its lowest price is the variable cost. The counts describe the generator, not any firm. The supplier-gain and sign lines count over the 187 pairs with \(q \le K\), which are the 186 generated pairs of that kind and the hand-built boundary pair. The midpoint and sum lines count over the 112 feasible pairs. The 14 pairs with \(q > K\) have no transfer and are excluded from every line.</p>
       </section>
 
       <h2 id="s5"><span class="section-number">5</span>Reading the lab's counts</h2>
@@ -367,9 +384,9 @@ exact checks passed: 187/187 cases with q &lt;= K</pre>
           <div class="problem" id="E1"><span class="problem-title">E1 · Read the feasible share in Lab 1</span>
             <p>From Lab 1's output, what share of the 187 pairs with \(q \le K\) has an empty range? State what the share describes.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>The output gives 75 empty ranges among 187 pairs with \(q \le K\). The share is \(75/187 = 0.4011\). The boundary pair is not empty, since its lowest and highest prices are equal, so the 75 are all generated pairs. It describes the generator's settings for \(v\), \(p_m\), \(K\), \(E\), \(q\) and \(r\), and nothing about real divisions. The lab fixes those settings in code, and the seed selects the draws, so a different seed could give a different share. None of seeds 1 to 40 gives the same 186 generated pairs with \(q \le K\) and 75 empty ranges.</p></details></div>
-          <div class="problem" id="E2"><span class="problem-title">E2 · Why the exact-check count is 187</span>
-            <p>Lab 1 prints a check count of 187 out of 187. Explain why the denominator is not 201.</p>
+              <p>The output gives 75 empty ranges among 187 pairs with \(q \le K\). The share is \(75/187 = 0.4011\). The boundary pair is not empty, since its lowest and highest prices are equal, so none of the 75 is the boundary pair. It describes the generator's settings for \(v\), \(p_m\), \(K\), \(E\), \(q\) and \(r\), and nothing about real divisions. The lab fixes those settings in code, and the seed selects the draws, so a different seed could give a different share. None of seeds 1 to 40 gives 186 pairs with \(q \le K\) and 75 empty ranges.</p></details></div>
+          <div class="problem" id="E2"><span class="problem-title">E2 · Why the check denominator is 187</span>
+            <p>Lab 1's supplier-gain and sign lines each print 187/187. Explain why the denominator is not 201.</p>
             <details class="solution"><summary>Solution</summary>
               <p>The lab runs the identities only where a transfer is possible, which needs \(q \le K\). The output gives 14 pairs with \(q > K\), and \(201 - 14 = 187\). The 14 pairs have no transfer, so \(\Delta_S\) is not defined for them, and the lab excludes them rather than counting them as passes.</p></details></div>
           <div class="problem" id="E3"><span class="problem-title">E3 · Which bound a case hits</span>
@@ -404,7 +421,7 @@ exact checks passed: 187/187 cases with q &lt;= K</pre>
             <tr><td>The range is nonempty if and only if \(\Sigma \ge 0\)</td><td><span class="grade" data-grade="T">T</span></td><td>Theorem 7.3 part 2</td></tr>
             <tr><td>The lowest price never exceeds \(p_m\), when \(p_m \ge v\) and \(E \le K\)</td><td><span class="grade" data-grade="T">T</span></td><td>P2</td></tr>
             <tr><td>Worked case: range \([52, 80]\) SCU and \(\Sigma = 140{,}000\) SCU; with \(K = 12{,}000\), \(t_{\min} = 44\) SCU</td><td><span class="grade" data-grade="T">T</span></td><td>§4 and M1, M2 (arithmetic on the stated inputs)</td></tr>
-            <tr><td>Of 187 pairs with \(q \le K\) (186 SIMULATED and one hand-built boundary pair), 75 have an empty range and 112 a feasible one; the identities hold exactly for all 187</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1 (SIMULATED), output lines for the counts and the exact-check line</td></tr>
+            <tr><td>Of 187 pairs with \(q \le K\) (186 SIMULATED and one hand-built boundary pair), 75 have an empty range and 112 a feasible one; the supplier-gain and sign identities hold for all 187, and the sum identity for all 112 feasible pairs</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1 (SIMULATED), output lines for the counts and the four check lines</td></tr>
             <tr><td>Among 112 feasible pairs, 73 have binding capacity</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1 (SIMULATED), output line for binding capacity</td></tr>
           </tbody>
         </table></div>
@@ -463,7 +480,7 @@ exact checks passed: 187/187 cases with q &lt;= K</pre>
             <div class="explain" hidden><p>§7, misconception 2. The surplus is \(2{,}000 \times 15 = 30{,}000\) SCU, which is positive.</p></div>
           </li>
           <li class="item" data-kind="mc">
-            <p class="prompt">Lab 1 counts 187 exact checks, not 201. The reason is:</p>
+            <p class="prompt">Lab 1's check lines count 187 pairs, not 201. The reason is:</p>
             <fieldset><legend class="visually-hidden">Options</legend>
               <label class="option"><input type="radio" name="L07q8"> the lab discards pairs whose range is empty</label>
               <label class="option" data-correct><input type="radio" name="L07q8"> 14 pairs have \(q > K\), so no transfer is possible for them</label>

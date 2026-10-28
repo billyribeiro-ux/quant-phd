@@ -293,6 +293,13 @@ def test_irr_accepts_some_zero_flows_when_not_all_are_zero() -> None:
     )
 
 
+def test_irr_accepts_leading_zero_flows_when_not_all_are_zero() -> None:
+    assert irr_roots([0.0, 0.0, 5.0]) == [], (
+        "only all-zero flows are refused: [0, 0, 5] is a valid request, and its NPV, 5 / (1 + r) ** 2, never changes "
+        "sign, so it has no root."
+    )
+
+
 def test_irr_zero_flow_keeps_its_place_in_the_time_index() -> None:
     roots = irr_roots([-100.0, 0.0, 110.0])
     assert len(roots) == 1 and abs(roots[0] - (math.sqrt(1.1) - 1.0)) <= 1e-7, (
@@ -369,6 +376,13 @@ def test_payback_recovered_exactly_in_year_one() -> None:
     assert close(payback_period([-100.0, 100.0]), 1.0), "an outlay recovered at the end of year 1 gives payback 1."
 
 
+def test_payback_zero_flow_keeps_its_place_in_the_year_index() -> None:
+    assert close(payback_period([-100.0, 0.0, 100.0]), 2.0), (
+        "a zero flow in year 1 is still a year: the outlay is recovered in year 2, so payback is 2; dropping the zero "
+        "would give 1."
+    )
+
+
 def test_payback_at_zero_rate_is_simple_payback() -> None:
     flows = [-100.0, 60.0, 60.0]
     assert close(payback_period(flows, 0.0), payback_period(flows)), (
@@ -405,8 +419,8 @@ def test_payback_rejects_fewer_than_two_flows(bad: list[float]) -> None:
 
 @pytest.mark.parametrize(
     "bad",
-    [[0.0, 10.0], [5.0, -10.0], [1e-9, 10.0]],
-    ids=["zero-outlay", "positive-first", "positive-first-just-above-zero"],
+    [[0.0, 10.0], [5.0, -10.0], [1e-9, 10.0], [float("nan"), 10.0]],
+    ids=["zero-outlay", "positive-first", "positive-first-just-above-zero", "first-not-a-number"],
 )
 def test_payback_rejects_a_first_flow_that_is_not_an_outlay(bad: list[float]) -> None:
     must_raise(lambda: payback_period(bad), "a first flow that is not negative")
@@ -417,6 +431,14 @@ def test_payback_rejects_a_discount_rate_at_or_below_minus_one(bad_rate: float) 
     must_raise(
         lambda: payback_period([-100.0, 60.0, 60.0], bad_rate),
         "a discount rate at or below -1 in a discounted payback request",
+    )
+
+
+@pytest.mark.parametrize("bad_rate", [float("nan"), float("inf")], ids=["nan", "inf"])
+def test_payback_rejects_a_discount_rate_that_is_not_finite(bad_rate: float) -> None:
+    must_raise(
+        lambda: payback_period([-100.0, 60.0, 60.0], bad_rate),
+        "a discount rate that is not finite (nan or infinity) in a discounted payback request",
     )
 
 
@@ -448,6 +470,15 @@ def test_fisher_with_zero_inflation_or_zero_real_rate() -> None:
 )
 def test_fisher_rejects_rates_at_or_below_minus_one(real: float, pi: float) -> None:
     must_raise(lambda: fisher_nominal(real, pi), "a rate at or below -1")
+
+
+@pytest.mark.parametrize(
+    ("real", "pi"),
+    [(float("nan"), 0.02), (float("inf"), 0.02), (0.02, float("nan")), (0.02, float("inf"))],
+    ids=["real-nan", "real-inf", "inflation-nan", "inflation-inf"],
+)
+def test_fisher_rejects_a_rate_that_is_not_finite(real: float, pi: float) -> None:
+    must_raise(lambda: fisher_nominal(real, pi), "a rate that is not finite (nan or infinity) in a Fisher conversion")
 
 
 def test_fisher_accepts_inflation_just_above_minus_one() -> None:
@@ -869,6 +900,14 @@ def test_monte_carlo_refuses_a_rate_at_or_below_minus_one(bad_rate: float) -> No
     must_raise(
         lambda: npv_monte_carlo(PROJECT, bad_rate, 3, SEED, 0.1),
         "a rate at or below -1 in the Monte Carlo request",
+    )
+
+
+@pytest.mark.parametrize("bad_rate", [float("nan"), float("inf")], ids=["nan", "inf"])
+def test_monte_carlo_refuses_a_rate_that_is_not_finite(bad_rate: float) -> None:
+    must_raise(
+        lambda: npv_monte_carlo(PROJECT, bad_rate, 3, SEED, 0.1),
+        "a rate that is not finite (nan or infinity) in the Monte Carlo request",
     )
 
 
