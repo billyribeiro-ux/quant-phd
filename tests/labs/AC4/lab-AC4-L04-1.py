@@ -7,7 +7,7 @@ rounding can hide a reconciliation error. Standard library only.
 
 Two methods are compared on the same overhead pool of 100,000.00 CU. Volume-based costing spreads the pool by one
 volume driver (direct labour hours). Activity-based costing (two stages) first assigns each activity pool to products by
-its own driver, then divides by product volume. The lab checks that each method allocates the whole pool, and prints
+its own driver, then divides by product volume. The lab prints whether each method allocates the whole pool, and prints
 the cross-subsidy between the two products.
 """
 
