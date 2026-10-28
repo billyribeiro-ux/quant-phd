@@ -272,7 +272,7 @@ Build a price-time-priority matching engine (limit, market, cancel, modify) in C
   - *Sources:* Python Software Foundation, The Python Language Reference, Python 3.13 (primary); Ramalho, Fluent Python, 2nd ed. (2022)
   - *Lab:* Vectorized returns computation vs. loops: correctness and speed.
   - *Project — Atlas A1: repository skeleton* (`autograder`): Create the Atlas package with typed modules, a CLI, a pytest suite, formatting and linting config, and CI. Every later Atlas milestone builds on this repository. *Deliverable:* Atlas repository at milestone A1.
-- **CS2 · Algorithms & Data Structures** · F · 130 h · ← CS1
+- **CS2 · Algorithms & Data Structures** · F · 130 h · ← CS1, M1
   - *Core:* Complexity, arrays, hash maps, heaps, trees, graphs, sorting, searching, dynamic programming, and the data structures behind order books and event queues.
   - *Introduces:* Asymptotic complexity (big-O); Hash map; Binary heap and priority queue; Event queue for discrete-event simulation; Balanced search tree; Graph traversal (BFS, DFS); Comparison sorting and its lower bound; Binary search; Dynamic programming (algorithmic); Order-book data structure (price levels with FIFO queues); Welford's online mean and variance; Monotonic deque for rolling minimum and maximum; Streaming quantile sketch
   - *Sources:* Cormen, Leiserson, Rivest & Stein, Introduction to Algorithms, 4th ed. (2022)
