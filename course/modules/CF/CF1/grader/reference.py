@@ -94,7 +94,11 @@ def npv(rate: float, flows: Sequence[float]) -> float:
 
 
 def irr_roots(flows: Sequence[float]) -> list[float]:
-    """Every rate above -1 at which npv is zero, ascending. Searched on x = 1 / (1 + r) over [1e-4, 1e4]."""
+    """Each rate above -1 at which npv changes sign on the grid, ascending.
+
+    The search runs on x = 1 / (1 + r) over [1e-4, 1e4]. Two roots between the same pair of neighbouring grid points
+    can both be missed, since the polynomial keeps one sign at both points; the project page states this limit.
+    """
     if len(flows) < 2:
         raise ValueError("irr_roots needs at least an outlay and one inflow")
     if all(cf == 0 for cf in flows):

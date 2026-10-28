@@ -469,8 +469,8 @@ def test_two_product_shift_to_lower_margin_is_unfavourable() -> None:
         "sales_mix: must equal the oracle's mix variance for the shifted case."
     )
     if margins[0] == margins[1]:
-        # Equal budgeted margins m: the actual total times m is a whole number, so rounding the flexed revenue and the
-        # flexed variable cost shifts both by the same integer, and the whole-cent flexed profit equals the exact one.
+        # Equal budgeted margins m: the exact flexed revenue and variable cost differ by AT*m, an integer, so their
+        # whole-cent roundings differ by that same integer, and the whole-cent flexed profit equals the exact one.
         # The mix is therefore zero.
         assert got["sales_mix"] == 0, (
             "with equal budgeted margins, shifting volume between the two has no mix variance."
@@ -661,6 +661,38 @@ def test_negative_actual_product_field_raises_value_error(name: str, field: str)
     rows = copy.deepcopy(PRODUCTS)
     rows[0][field] = -1
     must_raise(_call_for(name, with_products(rows)), f"{name}: a negative {field} on a product")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize(
+    "field",
+    ("name", "budget_units", "budget_price_cents", "standard_inputs_per_unit", "actual_units", "actual_price_cents"),
+)
+def test_missing_product_field_raises_value_error(name: str, field: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    del rows[0][field]
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a product without its {field} field")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_missing_input_price_raises_value_error(name: str) -> None:
+    case = fresh()
+    del case["input_price_cents"]
+    must_raise(_call_for(name, case), f"{name}: a case without input_price_cents")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_negative_budget_price_raises_value_error(name: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0]["budget_price_cents"] = -1
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a negative budget_price_cents on a product")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_negative_standard_inputs_raises_value_error(name: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0]["standard_inputs_per_unit"] = -1
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a negative standard_inputs_per_unit on a product")
 
 
 def test_non_mapping_case_raises_value_error() -> None:

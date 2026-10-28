@@ -4,7 +4,7 @@ SIMULATED: revenues and cash costs are generated from a seeded random number gen
 and every figure are invented for this lab and are not a real company's. Money is entered in integer cents;
 EBITDA is exact integer cents; tax and operating cash flow are floating point cents, and the flows are held and
 discounted in dollars and printed to two decimals. Standard library only; no network; every number
-printed is computed by the code below.
+printed in the table and the results is computed by the code below; the capex line restates typed-in inputs.
 
 Conventions applied: straight-line depreciation over the life, with no salvage; tax at one rate on taxable income,
 with a negative tax (a credit) when taxable income is negative, which assumes the firm uses the loss in the same

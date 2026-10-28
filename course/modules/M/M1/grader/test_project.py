@@ -405,6 +405,8 @@ def test_schedule_rows_are_a_frozen_dataclass_with_the_named_fields() -> None:
 def test_annuity_rejects_a_rate_at_or_below_minus_one() -> None:
     must_raise(lambda: sol.annuity_factor(-1.0, 5), "a rate of -1 per period")
     must_raise(lambda: sol.annuity_factor(-1.5, 5), "a rate below -1 per period")
+    must_raise(lambda: sol.annuity_factor(-1.5, 0), "a rate below -1 per period with zero periods")
+    must_raise(lambda: sol.annuity_due_factor(-1.5, 0), "a rate below -1 per period for the due annuity, zero periods")
 
 
 def test_annuity_rejects_negative_or_fractional_periods() -> None:
@@ -495,10 +497,13 @@ def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: 
     ("principal", "rate", "months"),
     [
         (0, 0.05, 12),
+        (-100, 0.05, 12),
         (1000.0, 0.05, 12),
+        (True, 0.05, 12),
         (1000, -0.01, 12),
         (1000, math.inf, 12),
         (1000, 0.05, 0),
+        (1000, 0.05, -3),
         (1000, 0.05, 2.0),
         (1000, 0.05, True),
     ],

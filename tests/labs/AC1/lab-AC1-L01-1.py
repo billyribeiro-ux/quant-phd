@@ -1,8 +1,9 @@
 """AC1 lab L01: post generated transactions to T-accounts and check that every entry balances.
 
-SIMULATED: the firm and every amount are generated from a seeded random number generator for this lab.
-The firm is not a real company. Amounts are integer cents; no floating-point money. Standard library
-only, no network. Every number printed below is computed by this file.
+SIMULATED: the firm's transaction amounts are drawn from a seeded random number generator for this lab. The
+opening investment and the entry dates are fixed in the code. The firm is not a real company. Amounts are
+integer cents; no floating-point money. Standard library only, no network. Every number printed below is
+computed by this file.
 """
 
 from __future__ import annotations
