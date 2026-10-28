@@ -11,8 +11,9 @@ table below. The reward at time H = 4 is the bequest W // 100 utils.
 Part A prints the value table V_t(W) from the backward recursion, for t = 0 to 4.
 Part B enumerates every consumption sequence of length H - t from each state, takes the best total, and compares it
 with the recursion. It prints the number of feasible sequences checked from (0, 400).
-Part C prints the optimal plan from (0, 400), checks that each of its tails is optimal from the state it reaches, and
-compares the greedy plan (the largest period reward at each step) with the optimum.
+Part C prints the optimal plan from (0, 400), checks that each continuation of it (the printed names say tail)
+is optimal from the state it reaches, and compares the greedy plan (the largest period reward at each step)
+with the optimum.
 """
 
 from __future__ import annotations
@@ -128,7 +129,7 @@ def main() -> None:
     print(f"plans_checked_from_0_400 {checked}")
     print(f"recursion_matches_brute_force {all_match}")
 
-    print("Part C: optimal plan from (0, 400), its tails, and the greedy plan")
+    print("Part C: optimal plan from (0, 400), its continuations, and the greedy plan")
     plan, path = optimal_plan(values, 400)
     print("optimal_consumption " + " ".join(str(c) for c in plan))
     print("optimal_wealth_path " + " ".join(str(w) for w in path))

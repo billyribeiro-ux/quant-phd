@@ -3,7 +3,7 @@
 Standard library only (fractions, math). No randomness and no network. The reference case is a = 120, b = 1, c = 20,
 so the gap is d = a - b*c = 100. The best quantity of one exchange against its rival's quantity q is q_i = (d -
 q_j)/2, the solution of the first-order condition of its profit ((a - Q)/b - c) q_i. Starting from zero, the iteration
-converges to the symmetric quantity d/3 for each exchange, so the volume is 2d/3 = 200/3 trades. The lab checks that
+converges to the symmetric quantity d/3 for each exchange, so the volume is 2d/3 = 200/3 trades. The lab prints whether
 the gap from d/3 after 60 steps is below 10^-12, and prints the volume, the fee and the welfare of the Cournot market.
 The welfare is the gross value (a Q - Q^2/2)/b less the cost c Q, rounded once, a tie going up.
 """

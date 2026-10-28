@@ -331,9 +331,10 @@ def test_unknown_scheme_raises_value_error(scheme: str) -> None:
     )
 
 
-@pytest.mark.parametrize("scheme", [None, 1])
+@pytest.mark.parametrize("scheme", [None, 1, True, 1.0, b"central"])
 def test_scheme_that_is_not_a_name_raises_value_error(scheme: Any) -> None:
-    # A scheme other than "forward" or "central" is refused, whatever its type: None and an integer are not names.
+    # A scheme other than "forward" or "central" is refused, whatever its type: None, an integer, a bool (True equals
+    # 1), a float (1.0 equals 1) and bytes (b"central" is not the str "central") are not names.
     coeffs, x0 = INST["cubic"], INST["x0"]
     must_raise(
         lambda: sol.fd_derivative(lambda x: cubic(coeffs, x), x0, 1e-3, scheme),
@@ -352,6 +353,17 @@ def test_forward_mode_matches_the_analytic_derivative(inst: dict[str, Any]) -> N
     require(
         close(value, cubic_prime(coeffs, x0), 1e-9),
         "forward-mode AD must return f'(x) to 1e-9 relative (hint: Lesson 14, forward-mode automatic differentiation)",
+    )
+
+
+def test_forward_mode_is_exact_far_from_zero() -> None:
+    # d/dx x^3 = 3x^2 is 3e10 at x = 1e5. Forward mode is exact up to round-off at any point, so it must return 3e10 to
+    # 1e-9 relative. A difference quotient with a fixed step does not: its round-off grows as the function grows.
+    value = sol.ad_derivative(lambda x: x * x * x, 1e5)
+    require(
+        close(value, 3e10, 1e-9),
+        "forward-mode AD must return f'(x) to 1e-9 relative at a large point, as it does near zero "
+        "(hint: Lesson 14, forward mode carries the derivative exactly, with no step)",
     )
 
 
@@ -575,6 +587,25 @@ def test_price_at_par_equals_face() -> None:
     for face, coupon in ((1_000_000, 500), (12_345_678, 0), (4_000_000, 1000)):
         require(
             sol.bond_price_cents(bond(face, coupon, 7, coupon)) == face, "a bond with yield equal to coupon is at par"
+        )
+
+
+def test_prices_at_a_negative_yield_round_half_to_even() -> None:
+    # A one-year bond at a yield of -50 % (-5000 basis points, above -1) has price 2 * (face + coupon) in cents, so an
+    # exact half cent comes at a coupon of 2500 basis points. Face 1 gives 2.5, which rounds to 2; face 3 gives 7.5,
+    # which rounds to 8; and the prices either side of a half cent round to the nearer cent.
+    cases = {
+        (1, 2500, 1, -5000): 2,
+        (3, 2500, 1, -5000): 8,
+        (1, 2499, 1, -5000): 2,
+        (1, 2501, 1, -5000): 3,
+    }
+    for (face, coupon, years, yield_bps), want in cases.items():
+        got = sol.bond_price_cents(bond(face, coupon, years, yield_bps))
+        require(
+            got == want,
+            "a price at a yield above -1 must round half to even like any other price "
+            "(hint: the price convention, half-to-even rounding of the unrounded price)",
         )
 
 

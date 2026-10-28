@@ -2,7 +2,8 @@
 
 Standard library only. Every input is SIMULATED: the positions and the covariance are illustrative numbers, not market
 data. Losses are whole cents, rounded once with round(). The 99% loss is the order statistic with 1-based index
-ceil(0.99 n), computed in exact integers. The Student-t draws are scaled by the matched factor (nu - 2) / nu.
+ceil(0.99 n), computed in exact integers. The Student-t draws are scaled by sqrt((NU - 2) / W), the square root of the
+matched factor (NU - 2) / NU times sqrt(NU / W), where W is the chi-square draw.
 """
 
 import math
@@ -16,7 +17,7 @@ NU = 5  # Student-t degrees of freedom
 
 
 def cholesky_2x2(cov: list[list[float]]) -> list[list[float]]:
-    """The lower-triangular L with L L^\top = cov, for a 2 x 2 positive definite matrix."""
+    """The lower-triangular L with L L^T = cov, for a 2 x 2 positive definite matrix."""
     l11 = math.sqrt(cov[0][0])
     l21 = cov[1][0] / l11
     l22 = math.sqrt(cov[1][1] - l21 * l21)

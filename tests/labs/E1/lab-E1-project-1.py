@@ -7,7 +7,7 @@ volume and fee, then profit, consumer surplus, welfare and deadweight loss as Fr
 tie going up. It prints the exact value and the rounded value. Expected: monopoly volume 50 trades and fee 70 cents;
 Cournot volume 200/3 trades (67 after rounding) and fee 160/3 cents (53 after rounding); Bertrand volume 100 trades and
 fee 20 cents. Profit is (fee - c) times volume. Consumer surplus is Q^2/(2b). Welfare is consumer surplus plus profit.
-The deadweight loss is (d - Q)^2/(2b), which is zero for Bertrand. The lab checks the reference case only.
+The deadweight loss is (d - Q)^2/(2b), which is zero for Bertrand. The lab prints the reference case only.
 """
 
 from __future__ import annotations

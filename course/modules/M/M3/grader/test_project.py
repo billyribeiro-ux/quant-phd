@@ -316,6 +316,48 @@ def test_is_psd_default_tolerance_is_1e_minus_10() -> None:
     )
 
 
+def test_is_psd_accepts_eigenvalue_exactly_at_minus_tol() -> None:
+    """diag(-0.5, 1, 1) has smallest eigenvalue -0.5. With tol set to minus that eigenvalue, the page's rule 'at least
+    -tol' holds with equality, so is_psd must be True. The tol is taken from min_eigenvalue, so the test does not
+    depend on the rounding of an approximate eigenvalue routine at the boundary."""
+    a = [[-0.5, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    lam = as_number(sol.min_eigenvalue(a))
+    assert abs(lam + 0.5) <= 1e-12, "min_eigenvalue of diag(-0.5, 1, 1) must be -0.5"
+    assert sol.is_psd(a, tol=-lam) is True, "is_psd must accept a smallest eigenvalue exactly equal to -tol"
+
+
+def test_is_psd_default_tolerance_accepts_just_above_minus_tol() -> None:
+    """A smallest eigenvalue of -0.9e-10 lies above -1e-10, so the default tolerance accepts it."""
+    a = [[-0.9e-10, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    assert sol.is_psd(a) is True, "is_psd with the default tolerance must accept a smallest eigenvalue of -0.9e-10"
+
+
+def test_is_psd_default_tolerance_refuses_just_below_minus_tol() -> None:
+    """A smallest eigenvalue of -1.1e-10 lies below -1e-10, so the default tolerance refuses it."""
+    a = [[-1.1e-10, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    assert sol.is_psd(a) is False, "is_psd with the default tolerance must refuse a smallest eigenvalue of -1.1e-10"
+
+
+def test_is_psd_tolerance_is_not_scaled_by_the_diagonal() -> None:
+    """diag(100, -5e-9): the smallest eigenvalue -5e-9 is below -1e-10 (the default tol), so it is refused."""
+    a = [[100.0, 0.0], [0.0, -5e-9]]
+    assert sol.is_psd(a) is False, (
+        "is_psd must apply -tol to every eigenvalue; a large diagonal does not loosen the tolerance"
+    )
+
+
+def test_is_psd_accepts_small_negative_eigenvalue_on_large_diagonal() -> None:
+    """diag(100, -5e-11): the smallest eigenvalue -5e-11 is above -1e-10, so it is accepted at the default tolerance."""
+    a = [[100.0, 0.0], [0.0, -5e-11]]
+    assert sol.is_psd(a) is True, "is_psd must accept a smallest eigenvalue above -1e-10 on a large-diagonal matrix"
+
+
+def test_is_psd_zero_tolerance_refuses_negative_eigenvalue() -> None:
+    """With tol=0.0 a smallest eigenvalue of -1e-12 is below 0, so it is refused."""
+    a = [[-1e-12, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    assert sol.is_psd(a, tol=0.0) is False, "is_psd with tol=0.0 must refuse a smallest eigenvalue of -1e-12"
+
+
 def test_is_psd_one_by_one() -> None:
     assert sol.is_psd([[0.0]]) is True, "the zero matrix is positive semidefinite"
     assert sol.is_psd([[-0.1]]) is False, "a negative one-by-one matrix is not positive semidefinite"
@@ -652,6 +694,14 @@ def test_weights_accept_a_tiny_positive_volatility() -> None:
     weights_sum_check(w, 2)
     assert abs(sum(w) - 1.0) <= 1e-12, (
         "comparison_weights must return weights that sum to 1 for a tiny positive volatility"
+    )
+
+
+def test_weights_accept_a_volatility_of_one_e_minus_13() -> None:
+    """A volatility of 1e-13 is strictly greater than zero, so it is accepted: no positivity tolerance applies."""
+    w = as_number_list(sol.comparison_weights([[1.0, 0.2], [0.2, 1.0]], [1e-13, 0.2]), 2)
+    assert abs(sum(w) - 1.0) <= 1e-9, (
+        "comparison_weights must accept a strictly positive volatility of 1e-13 and return weights that sum to 1"
     )
 
 

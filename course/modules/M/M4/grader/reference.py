@@ -26,7 +26,7 @@ def matched_scale(nu: int) -> float:
 
 
 def _cholesky(cov: Sequence[Sequence[float]], n: int) -> list[list[float]]:
-    """The lower-triangular factor L with L L^\top = cov, computed row by row. Requires cov to be n x n, symmetric
+    """The lower-triangular factor L with L L^T = cov, computed row by row. Requires cov to be n x n, symmetric
     and positive definite: every pivot must be strictly positive."""
     if len(cov) != n or any(len(row) != n for row in cov):
         raise ValueError("cov must be a square matrix with one row and one column per position")
@@ -60,7 +60,7 @@ def simulate_losses(
 
     The returns are r = sqrt(s) L Z for the Gaussian family (s = 1) and r = sqrt(s nu / W) L Z for the Student-t
     family, where Z is standard normal, W is chi-square with nu degrees of freedom, s = (nu - 2) / nu, and
-    L L^\top = cov.
+    L L^T = cov.
     """
     if not isinstance(position_cents, list) or not position_cents or any(not _whole(w) for w in position_cents):
         raise ValueError("position_cents must be a non-empty list of whole numbers of cents")

@@ -347,8 +347,9 @@ def test_welford_none_input_is_refused() -> None:
     refuse_or_correct(lambda: (acc.update(None), acc.mean())[1], float("nan"), "None passed as a value")
 
 
-@pytest.mark.parametrize("ddof", [2, -1, 3, 2.0, "1"])
+@pytest.mark.parametrize("ddof", [2, -1, 3, 2.0, 0.5, "2", "-1"])
 def test_welford_other_ddof_is_refused(ddof: Any) -> None:
+    """ddof 2, -1, 3, 0.5 and the strings that denote 2 or -1 do not denote 0 or 1, so each must be refused."""
     acc = WelfordAccumulator()
     for x in VALUES[:5]:
         acc.update(x)
@@ -358,7 +359,39 @@ def test_welford_other_ddof_is_refused(ddof: Any) -> None:
         raise
     except Exception:
         return
-    pytest.fail(f"variance(ddof) is defined for ddof 0 and 1 only; ddof {ddof} returned a {type(answer).__name__}.")
+    pytest.fail(f"variance(ddof) is defined for ddof 0 and 1 only; ddof {ddof!r} returned a {type(answer).__name__}.")
+
+
+@pytest.mark.parametrize(("ddof", "denotes"), [("1", 1), (1.0, 1), ("0", 0), (0.0, 0)])
+def test_welford_ddof_that_denotes_0_or_1_is_refused_or_correct(ddof: Any, denotes: int) -> None:
+    """A string or float ddof that denotes 0 or 1 is refused, or answered as the variance that number names."""
+    acc = WelfordAccumulator()
+    for x in VALUES[:5]:
+        acc.update(x)
+    _, sample, population = exact_stats(VALUES[:5])
+    correct = float(sample if denotes == 1 else population)
+    refuse_or_correct(lambda: acc.variance(ddof), correct, f"ddof {ddof!r}, which denotes {denotes}")
+
+
+def test_welford_none_ddof_is_refused() -> None:
+    """None denotes no number, so variance(None) must raise (the page says so for every None)."""
+    acc = WelfordAccumulator()
+    for x in VALUES[:5]:
+        acc.update(x)
+    wrong_type: Any = None  # None is not a number, on purpose
+    try:
+        answer = acc.variance(wrong_type)
+    except NotImplementedError:
+        raise
+    except Exception:
+        return
+    pytest.fail(f"None denotes no number, so variance(None) must raise; it returned {answer!r}.")
+
+
+def test_welford_false_input_is_refused_or_denotes_zero() -> None:
+    acc = WelfordAccumulator()
+    acc.update(1.0)
+    refuse_or_correct(lambda: (acc.update(False), acc.mean())[1], 0.5, "False passed as a value")
 
 
 @pytest.mark.parametrize("infinite", [float("inf"), float("-inf")])
@@ -512,6 +545,64 @@ def test_rolling_string_value_is_refused_or_correct() -> None:
     refuse_or_correct(action, min([*VALUES[:5], 2.5][-WINDOW:]), "a string pushed as a value")
 
 
+def test_rolling_none_window_is_refused() -> None:
+    """None denotes no number, so a window of None must raise whenever the call fails (the page says so)."""
+
+    def action() -> float:
+        wrong_type: Any = None  # None is not a window, on purpose
+        r = RollingMinMax(wrong_type)
+        for x in VALUES[:6]:
+            r.push(x)
+        smallest: float = r.minimum()
+        return smallest
+
+    try:
+        answer = action()
+    except NotImplementedError:
+        raise
+    except Exception:
+        return
+    pytest.fail(f"None denotes no number, so RollingMinMax(None) must raise; it returned {answer!r}.")
+
+
+def test_rolling_non_integral_float_window_is_refused() -> None:
+    """2.5 is a float window that is not a whole number, so it denotes no count of values: the call must raise."""
+
+    def action() -> float:
+        wrong_type: Any = 2.5  # a float window that is not an integer, on purpose
+        r = RollingMinMax(wrong_type)
+        for x in VALUES[:6]:
+            r.push(x)
+        smallest: float = r.minimum()
+        return smallest
+
+    try:
+        answer = action()
+    except NotImplementedError:
+        raise
+    except Exception:
+        return
+    pytest.fail(f"a window of 2.5 is not a whole number of values, so it must raise; it returned {answer!r}.")
+
+
+def test_rolling_bool_value_is_refused_or_denotes_one() -> None:
+    r = RollingMinMax(WINDOW)
+    r.push(5.0)
+    refuse_or_correct(lambda: (r.push(True), r.minimum())[1], 1.0, "True pushed as a value")
+
+
+def test_rolling_false_value_is_refused_or_denotes_zero() -> None:
+    r = RollingMinMax(WINDOW)
+    r.push(5.0)
+    refuse_or_correct(lambda: (r.push(False), r.minimum())[1], 0.0, "False pushed as a value")
+
+
+def test_rolling_padded_string_value_is_refused_or_correct() -> None:
+    r = RollingMinMax(WINDOW)
+    r.push(5.0)
+    refuse_or_correct(lambda: (r.push(" 2.5 "), r.minimum())[1], 2.5, "a padded string pushed as a value")
+
+
 def test_rolling_none_push_is_refused() -> None:
     def action() -> float:
         wrong_type: Any = None  # None denotes no number, so the call must refuse it
@@ -629,6 +720,25 @@ def test_sketch_value_that_denotes_a_number_is_refused_or_correct(bad: Any, deno
         return
     if not guarantee_holds([*VALUES[:5], denotes], answer, 0.5, EPS):
         pytest.fail("a value that denotes a number must be refused, or added as the number it denotes.")
+
+
+@pytest.mark.parametrize(("bad", "denotes"), [(False, 0.0), (True, 1.0), (" 2.5 ", 2.5), ("2.5", 2.5)])
+def test_sketch_denoted_value_is_not_silently_dropped(bad: Any, denotes: float) -> None:
+    """The value is refused, or it is added as the number it denotes. With nine copies of 10.0 and n = 10, epsilon
+    0.05, the slack is 0.5 rank, so a sketch that drops the value answers 10.0 at q = 0, which breaks the guarantee
+    on the stream that includes it (one value lies below 10.0)."""
+    sketch = QuantileSketch(0.05)
+    try:
+        sketch.add(bad)
+    except NotImplementedError:
+        raise
+    except Exception:
+        return
+    for _ in range(9):
+        sketch.add(10.0)
+    answer = float(sketch.quantile(0.0))
+    if not guarantee_holds([denotes, *[10.0] * 9], answer, 0.0, 0.05):
+        pytest.fail("a value that denotes a number must be refused, or added as the number it denotes, not dropped.")
 
 
 def test_sketch_none_value_is_refused() -> None:

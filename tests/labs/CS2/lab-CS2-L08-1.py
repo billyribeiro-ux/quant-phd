@@ -2,16 +2,18 @@
 
 SIMULATED: prices, quantities and the message stream come from a fixed seed; no real order flow is used.
 Prices are integer cents (10000 is 100.00 in currency units) and quantities are integer shares; the code
-raises an error for any other type. The book's prices and quantities are never floats; Part A passes one
-float to show that it is refused. Each side of the book keeps a sorted list of the prices that have resting
-orders, and each price keeps a first-in first-out queue of its orders. An
-incoming limit order first trades against resting orders on the other side that it crosses, at the resting
-order's price, taking the best price first and then the earliest arrival; any remainder rests in the book.
+raises an error for any other type. Every order enters the book through submit, which checks the types of the
+price and the quantity before the book changes; Part A passes one float price to show that it is refused.
+Each side of the book keeps a sorted list of the prices that have resting orders, and each price keeps a
+first-in first-out queue of its orders. An incoming limit order first trades against resting orders on the other
+side that it crosses, at the resting order's price, taking the best price first and then the earliest arrival;
+any remainder rests in the book.
 A cancel removes a resting order by its id.
 
 Part A: hand-built cases of price-time priority, cancellation and refusal of bad input. Part B: 400 seeded
 messages, each applied to the book and to a reference that keeps a flat list of resting orders and sorts the crossing
-candidates by (price, arrival number) on every match. After every message the trades must be identical, and the best bid
+candidates by price (lowest ask first for a buy, highest bid first for a sell) and then by arrival number, on
+every match. After every message the trades must be identical, and the best bid
 and best ask must equal a sorted scan of the reference. Part C: operation counts. The binary search over each
 sorted price list is counted, and the queue steps are counted against the number of orders added. The lab
 counts operations only; it does not time anything. Standard library only, no network access, no randomness

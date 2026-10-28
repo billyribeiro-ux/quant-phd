@@ -286,6 +286,29 @@ def test_converged_means_certified_within_tolerance(which: int) -> None:
 
 
 @pytest.mark.parametrize("which", [0, 1])
+@pytest.mark.parametrize("sweeps", [1, 2, 3])
+def test_certified_error_is_beta_over_one_minus_beta_times_the_last_change(which: int, sweeps: int) -> None:
+    """After n sweeps from zero, certified_error is beta / (1 - beta) times the sup-norm change of the last sweep.
+
+    The tolerance is far below any certificate here, so the solver makes exactly the requested sweeps."""
+    inst = INSTANCES[which]
+    beta, alpha, grid = inst["beta"], inst["alpha"], inst["grid"]
+    out = sol.solve(params_of(inst), grid, 1e-300, sweeps)
+    expect(out["iterations"] == sweeps, "the solver must make exactly the sweeps its budget allows here")
+    values = [0.0] * len(grid)
+    change = math.inf
+    for _ in range(sweeps):
+        new = ref_sweep(beta, alpha, grid, values)
+        change = max(abs(a - b) for a, b in zip(new, values, strict=False))
+        values = new
+    expect(
+        close(float(out["certified_error"]), beta / (1 - beta) * change, 1e-9),
+        "certified_error must be beta / (1 - beta) times the sup-norm change of the last sweep: check the factor "
+        "and the change it multiplies",
+    )
+
+
+@pytest.mark.parametrize("which", [0, 1])
 def test_iterations_within_the_a_priori_count(which: int) -> None:
     """iterations is at most the a priori count from beta, the grid and tol, plus one."""
     inst = INSTANCES[which]
@@ -396,9 +419,8 @@ def test_the_first_sweep_starts_from_zero_and_is_synchronous(which: int) -> None
 def test_certified_error_exactly_at_tol_stops_the_first_sweep() -> None:
     """The stop is at the first sweep whose certified error is at most tol, so a tie stops it.
 
-    The tolerance is the solver's own certified error after one sweep, read from a run with a budget of one sweep.
-    Any valid certified error is accepted this way, because the tie is then exact for the solver's own bound: a
-    correct solver must stop at sweep 1 with converged True."""
+    The tolerance is the solver's own certified error after one sweep, read from a run with a budget of one sweep,
+    so the tie is exact: a correct solver must stop at sweep 1 with converged True."""
     p = {"beta": 0.5, "alpha": 0.5}
     grid = [0.75, 1.0]
     first = sol.solve(p, grid, 1e-12, 1)
@@ -417,8 +439,7 @@ def test_certified_error_exactly_at_tol_stops_the_first_sweep() -> None:
 
 def test_tolerance_just_below_the_first_certified_error_does_not_stop() -> None:
     """The stop is not looser than the definition: a tolerance just below the solver's own first certified error does
-    not stop. The tolerance is read from the solver's certificate after one sweep, so any valid certified error is
-    accepted; the test does not assume which bound the solver uses."""
+    not stop. The tolerance is read from the solver's certificate after one sweep."""
     p = {"beta": 0.5, "alpha": 0.5}
     grid = [0.75, 1.0]
     first = sol.solve(p, grid, 1e-12, 1)

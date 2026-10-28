@@ -90,7 +90,7 @@ def main() -> None:
     print("step 6 lower-bound multipliers non-negative:", dual_feasible)
     print("step 6 weight times multiplier, held assets:", [str(w[j] * lam[c]) for c, j in enumerate(held)])
 
-    # Step 7. Objective at the solution. Why: this is the value the certificate of the project describes.
+    # Step 7. Objective at the solution. Why: this is the minimized value of the objective at the answer.
     quadratic = sum(SIGMA[i][j] * w[i] * w[j] for i in range(N) for j in range(N))
     objective = GAMMA / 2 * quadratic - sum(MU[i] * w[i] for i in range(N))
     print("step 7 objective (exact):", str(objective), "approximately", f"{float(objective):.6f}")

@@ -740,10 +740,10 @@ def test_missing_field_is_refused_with_value_error(field: str) -> None:
         sol.allocate(case)
 
 
-def test_a_non_mapping_is_refused_with_value_error() -> None:
+@pytest.mark.parametrize("not_a_mapping", [[PRISTINE], "text", None, 0.5], ids=["list", "text", "nothing", "number"])
+def test_a_non_mapping_is_refused_with_value_error(not_a_mapping: Any) -> None:
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
     with pytest.raises(ValueError, match=r"\S"):
-        not_a_mapping: Any = [PRISTINE]
         sol.allocate(not_a_mapping)
 
 
@@ -827,6 +827,191 @@ def test_empty_sector_caps_is_refused_with_an_exception() -> None:
     with pytest.raises(Exception, match=r"\S") as info:
         sol.allocate(case_copy(sector_caps=[]))
     assert str(info.value), "sector_caps: the refusal must carry a message."
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Every position: each named condition at asset 0, asset 1, asset 2 and the last asset. N is at least 3 on every seed,
+# so these ids are the same on every seed and the collected count does not change with the seed.
+# Each test changes one thing only: the starting-sum and box tests also give the asset room in its box and its sector
+# cap, so that the named condition is the only one broken.
+# ---------------------------------------------------------------------------------------------------------------------
+
+POSITIONS: tuple[int, ...] = (0, 1, 2, -1)
+POSITION_IDS: tuple[str, ...] = ("asset-0", "asset-1", "asset-2", "last-asset")
+
+
+def _make_room(case: dict[str, Any], pos: int) -> None:
+    """Room for the starting weight at pos in its box and in its sector cap, so only the sum or the box is broken."""
+    case["upper"][pos] = max(case["upper"][pos], case["w0"][pos] + 0.000001)
+    case["sector_caps"][case["sector"][pos]] += 0.01
+
+
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+@pytest.mark.parametrize("delta", [0.000000002, -0.000000002], ids=["sum-high", "sum-low"])
+def test_start_sum_off_by_more_than_tolerance_is_refused_at_every_position(pos: int, delta: float) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    case = case_copy()
+    case["w0"][pos] = case["w0"][pos] + delta
+    _make_room(case, pos)
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(case)
+
+
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+@pytest.mark.parametrize("delta", [0.0000000005, -0.0000000005], ids=["sum-high-inside", "sum-low-inside"])
+def test_start_sum_inside_tolerance_is_accepted_at_every_position(pos: int, delta: float) -> None:
+    case = case_copy()
+    case["w0"][pos] = case["w0"][pos] + delta
+    _make_room(case, pos)
+    out = sol.allocate(case)
+    output_shape(case, out)
+    assert_kkt(case, out)
+
+
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+@pytest.mark.parametrize("bound", ["upper", "lower"])
+def test_start_outside_a_bound_by_more_than_tolerance_is_refused_at_every_position(pos: int, bound: str) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    case = case_copy()
+    if bound == "upper":
+        case["upper"][pos] = case["w0"][pos] - 0.000000002
+    else:
+        case["lower"][pos] = case["w0"][pos] + 0.000000002
+        case["upper"][pos] = max(case["upper"][pos], case["w0"][pos] + 0.000001)
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(case)
+
+
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+@pytest.mark.parametrize("bound", ["upper", "lower"])
+@pytest.mark.parametrize("offset", [0.0, 0.0000000005], ids=["on-limit", "inside-tolerance"])
+def test_start_on_or_inside_a_bound_is_accepted_at_every_position(pos: int, bound: str, offset: float) -> None:
+    case = case_copy()
+    if bound == "upper":
+        case["upper"][pos] = case["w0"][pos] - offset
+    else:
+        case["lower"][pos] = case["w0"][pos] + offset
+        case["upper"][pos] = max(case["upper"][pos], case["w0"][pos] + 0.000001)
+    out = sol.allocate(case)
+    output_shape(case, out)
+    assert_kkt(case, out)
+
+
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+def test_bounds_out_of_order_by_one_trillionth_refused_at_every_position(pos: int) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    case = case_copy()
+    case["upper"][pos] = case["w0"][pos]
+    case["lower"][pos] = case["w0"][pos] + 0.000000000001
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(case)
+
+
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+def test_bounds_equal_at_the_start_are_accepted_at_every_position(pos: int) -> None:
+    case = case_copy()
+    case["upper"][pos] = case["w0"][pos]
+    case["lower"][pos] = case["w0"][pos]
+    out = sol.allocate(case)
+    output_shape(case, out)
+    assert_kkt(case, out)
+
+
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+@pytest.mark.parametrize("label", [K, -1], ids=["label-K", "label-minus-one"])
+def test_sector_label_out_of_range_is_refused_at_every_position(pos: int, label: int) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    case = case_copy()
+    case["sector"][pos] = label
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(case)
+
+
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+def test_float_sector_label_is_refused_at_every_position(pos: int) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    case = case_copy()
+    case["sector"][pos] = float(case["sector"][pos])
+    with pytest.raises(Exception, match=r"\S") as info:
+        sol.allocate(case)
+    assert str(info.value), "sector: the refusal must carry a message."
+
+
+@pytest.mark.parametrize(("i", "j"), [(0, 1), (1, 2), (0, -1)], ids=["pair-0-1", "pair-1-2", "pair-0-last"])
+@pytest.mark.parametrize("delta", [0.0001, -0.0001], ids=["above", "below"])
+def test_asymmetric_pair_is_refused_for_each_pair_in_both_directions(i: int, j: int, delta: float) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    case = case_copy()
+    case["sigma"][i][j] = case["sigma"][j][i] + delta
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(case)
+
+
+_POSITIONAL_FIELDS: tuple[str, ...] = ("mu", "w0", "lower", "upper", "sigma")
+
+
+def _poison_at(field: str, pos: int, value: float) -> Callable[[dict[str, Any]], None]:
+    def apply(case: dict[str, Any]) -> None:
+        if field == "sigma":
+            case["sigma"][pos][pos] = value
+        else:
+            case[field][pos] = value
+
+    return apply
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf], ids=["nan", "plus-infinity", "minus-infinity"])
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+@pytest.mark.parametrize("field", _POSITIONAL_FIELDS)
+def test_non_finite_value_at_every_position_is_refused_with_value_error(field: str, pos: int, value: float) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(changed(_poison_at(field, pos, value)))
+
+
+def _wrong_type_at(field: str, pos: int, bad: Any) -> Callable[[dict[str, Any]], None]:
+    def apply(case: dict[str, Any]) -> None:
+        if field == "sigma":
+            case["sigma"][pos][pos] = bad
+        else:
+            case[field][pos] = bad
+
+    return apply
+
+
+@pytest.mark.parametrize("bad", [True, "0.1", None], ids=["boolean", "text", "nothing"])
+@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
+@pytest.mark.parametrize("field", (*_POSITIONAL_FIELDS, "sector"))
+def test_wrong_type_at_every_position_is_refused_with_an_exception(field: str, pos: int, bad: Any) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    case = case_copy()
+    _wrong_type_at(field, pos, bad)(case)
+    with pytest.raises(Exception, match=r"\S") as info:
+        sol.allocate(case)
+    assert str(info.value), f"{field}: the refusal must carry a message."
+
+
+# Each sector cap, both directions. The generator fixes two sectors on every seed (SECTOR_COUNT in instance.py), so the
+# ids below are the same on every seed.
+@pytest.mark.parametrize("k", [0, 1], ids=["sector-0", "sector-1"])
+def test_start_sector_cap_below_start_by_more_than_tolerance_is_refused(k: int) -> None:
+    output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
+    case = case_copy()
+    in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
+    case["sector_caps"][k] = in_sector - 0.000000002
+    with pytest.raises(ValueError, match=r"\S"):
+        sol.allocate(case)
+
+
+@pytest.mark.parametrize("k", [0, 1], ids=["sector-0", "sector-1"])
+@pytest.mark.parametrize("offset", [0.0, -0.0000000005], ids=["cap-on-start", "cap-inside-tolerance"])
+def test_start_sector_cap_on_or_inside_its_limit_is_accepted(k: int, offset: float) -> None:
+    case = case_copy()
+    in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
+    case["sector_caps"][k] = in_sector + offset
+    out = sol.allocate(case)
+    output_shape(case, out)
+    assert_kkt(case, out)
 
 
 # ---------------------------------------------------------------------------------------------------------------------

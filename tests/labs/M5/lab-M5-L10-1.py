@@ -1,7 +1,8 @@
 """M5 L10 lab 1: Riemann-Stieltjes sums for the integral of f against dG on [0, 1].
 
 Generated inputs, not data. Part A uses f(x) = x and G(x) = x^2. The integral is I = integral from 0 to 1 of
-x * 2x dx = 2/3, the value that Corollary 3.2 of this lesson gives for a continuously differentiable integrator.
+x * 2x dx = 2/3, the value that Corollary 3.2 of this lesson gives for a continuously differentiable integrator,
+under Assumption 1 of this lesson.
 Part D uses the same f with the identity integrator G(x) = x, which gives the ordinary Riemann sums of x.
 
 Part A: uniform partitions into n parts, with left tags and with right tags, computed exactly in Fraction

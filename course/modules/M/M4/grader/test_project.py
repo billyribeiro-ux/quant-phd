@@ -329,7 +329,13 @@ def test_covariance_symmetry_is_checked_for_every_pair(pair: tuple[int, int], up
 
 @pytest.mark.parametrize(
     "ragged",
-    [[[4e-4]], [[4e-4, 0.0], [0.0]], [[4e-4, 0.0, 0.0], [0.0, 4e-4]], [[4e-4, 0.0], [0.0, 4e-4], [0.0, 0.0]]],
+    [
+        [[4e-4]],
+        [[4e-4, 0.0], [0.0]],
+        [[4e-4, 0.0, 0.0], [0.0, 4e-4]],
+        [[4e-4, 0.0], [0.0, 4e-4], [0.0, 0.0]],
+        [[4e-4, 0.0], [0.0, 4e-4, 0.0]],
+    ],
 )
 @pytest.mark.parametrize("family, nu", FAMILY_CASES)
 def test_covariance_must_be_square_with_one_row_per_position(

@@ -73,7 +73,7 @@ def first_order_error(p: Point, d: Point, s: float) -> float:
 
 
 def second_order_error(p: Point, d: Point, s: float) -> float:
-    """f(p + s d) minus its second-order Taylor polynomial f(p) + s grad f(p) . d + (s**2 / 2) d^T H d."""
+    """f(p + s d) minus its second-order Taylor polynomial f(p) + s grad f(p) . d + (s**2 / 2) * (d H d)."""
     g = gradient_closed(p)
     hess = hessian_closed(p)
     quad = d[0] * (hess[0][0] * d[0] + hess[0][1] * d[1]) + d[1] * (hess[1][0] * d[0] + hess[1][1] * d[1])

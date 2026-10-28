@@ -15,6 +15,7 @@ property it checks and the idea to revisit; it never prints the expected value.
 from __future__ import annotations
 
 import ast
+import importlib
 import inspect
 import math
 import os
@@ -300,6 +301,24 @@ def test_smallest_valid_case_is_accepted(structure: str, a: int, b: int, c: int)
     )
 
 
+@pytest.mark.parametrize("structure", STRUCTURES)
+def test_unit_cost_is_accepted(structure: str) -> None:
+    # c = 1 is the smallest positive cost. a = 10 > b*c = 5 and b = 5 > 0, so only the c check is at its edge.
+    check(
+        sol.outcome(structure, 10, 5, 1) == expected(structure, 10, 5, 1),
+        f"c = 1 is positive and must be accepted for {structure}; the closed forms apply",
+    )
+
+
+@pytest.mark.parametrize("structure", STRUCTURES)
+def test_smallest_positive_b_is_accepted(structure: str) -> None:
+    # b = 1 is the smallest positive b. a = 100 > b*c = 50 and c = 50 > 0, so only the b check is at its edge.
+    check(
+        sol.outcome(structure, 100, 1, 50) == expected(structure, 100, 1, 50),
+        f"b = 1 is positive and must be accepted for {structure}; the closed forms apply",
+    )
+
+
 @pytest.mark.parametrize("args", [(120.0, 1, 20), (120, True, 20), (120, 1, 20.0), ("120", 1, 20)])
 def test_non_integer_inputs_do_not_yield_float_money(args: tuple[Any, ...]) -> None:
     try:
@@ -348,6 +367,16 @@ def test_outcome_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:
         sol.outcome(structure, A, B, C)
     captured = capsys.readouterr()
     check(captured.out == "" and captured.err == "", "outcome must not print anything")
+
+
+def test_import_prints_nothing_and_warns_nothing(capsys: pytest.CaptureFixture[str]) -> None:
+    # The module is run again under capture, so a print or a warning left at module level is caught.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        importlib.reload(sol)
+    captured = capsys.readouterr()
+    check(captured.out == "" and captured.err == "", "market_structure must print nothing when it is imported")
+    check(not caught, "market_structure must warn nothing when it is imported")
 
 
 def test_repeated_calls_agree() -> None:

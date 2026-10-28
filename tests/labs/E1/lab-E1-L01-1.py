@@ -63,7 +63,7 @@ def main() -> None:
         i, x_grid, u_grid = grid_optimum(px, py, m)
         y_grid = budget_y(px, py, m, x_grid)
         agrees = i == STEPS // 2 and x_grid == xs and y_grid == ys
-        print(f"case p_x={px}, p_y={py}, m={m}: closed form x_bar={xs}, y_bar={ys}, u*={us}")
+        print(f"case p_x={px}, p_y={py}, m={m}: closed form x_bar={xs}, y_bar={ys}, u_bar={us}")
         print(f"  grid maximiser: point {i}, x={x_grid}, y={y_grid}, u={u_grid}; equals closed form: {agrees}")
         print(f"  budget exhausted at x_bar, y_bar: {px * xs + py * ys == m}")
         print(

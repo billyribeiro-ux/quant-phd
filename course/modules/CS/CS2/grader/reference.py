@@ -56,6 +56,8 @@ class RollingMinMax:
     def __init__(self, window: int) -> None:
         if window < 1:
             raise ValueError("the window must hold at least one value")
+        if window != int(window):
+            raise ValueError("the window must be a whole number of values")
         self._window = window
         self._pushed = 0
         self._mins: deque[tuple[int, float]] = deque()
