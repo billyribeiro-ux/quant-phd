@@ -368,7 +368,7 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
                     **SMALL[0],
                     "lines": [
                         {"account": "cash", "debit": 5, "credit": 5},
-                        {"account": "common_stock", "debit": 0, "credit": 0},
+                        {"account": "common_stock", "debit": 5, "credit": 5},
                     ],
                 }
             ],
@@ -426,9 +426,11 @@ def test_an_invalid_entry_among_valid_ones_still_raises() -> None:
 
 
 def test_post_does_not_change_its_argument() -> None:
-    before = copy.deepcopy(TXS)
-    sol.post(TXS)
-    assert before == TXS, "post must not change the transactions it is given"
+    # A fresh decode, not the shared TXS list: earlier tests pass TXS to post, so it may already be changed.
+    fresh: list[dict[str, Any]] = json.loads(INST["payload"])
+    before = copy.deepcopy(fresh)
+    sol.post(fresh)
+    assert fresh == before, "post must not change the transactions it is given"
 
 
 def test_post_twice_gives_the_same_statements() -> None:

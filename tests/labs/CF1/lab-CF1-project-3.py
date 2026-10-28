@@ -43,7 +43,7 @@ def npv(rate: float, flows: list[float]) -> float:
 
 
 def roots(flows: list[float]) -> list[float]:
-    """Sign changes of the NPV on the grid -0.5 to 1.0, each bracket bisected to about 1e-12."""
+    """Sign changes of the NPV on the grid -0.5 to 1.0, each bracket bisected for 60 halvings."""
     grid = [-0.5 + 0.0005 * k for k in range(3001)]
     found: list[float] = []
     for lo, hi in itertools.pairwise(grid):

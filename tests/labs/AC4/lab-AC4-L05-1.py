@@ -94,7 +94,6 @@ def main() -> None:
     # Identity: the static variance splits into a volume-and-mix part and a flexible variance, with no residual.
     # Flexing at the budgeted units returning the master budget holds by construction (one function, one argument)
     # and is not checked here.
-    # Identity 2: the static variance splits into a volume-and-mix part and a flexible variance, with no residual.
     static = actual.operating - master.operating
     volume_and_mix = flexed.operating - master.operating
     flexible = actual.operating - flexed.operating

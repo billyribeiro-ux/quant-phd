@@ -1,7 +1,7 @@
 """M1 L08 lab 1: a full amortization schedule for an illustrative loan, in integer cents.
 
 ILLUSTRATIVE INPUT, NOT DATA: the principal, rate and term are chosen for the example and are not a market quote.
-Convention (project Q5): the nominal annual rate j is compounded monthly, so the monthly rate is i = j / 12.
+Convention: the nominal annual rate j is compounded monthly, so the monthly rate is i = j / 12.
 Part A is exact (fractions.Fraction, no conversion to cents): the balance formula, the closed-form payment, the zero
 final balance, and the principal recursion P(k+1) = (1 + i) P(k). Part B is the schedule a borrower sees:
 every amount is an integer number of cents, interest is taken to the nearest cent with halves going up, the
@@ -120,6 +120,9 @@ def part_b() -> None:
             worst_gap, worst_month = gap, row.period
         if first_full_cu == 0 and abs(gap) >= 100:
             first_full_cu = row.period
+    identity_months = [
+        row.period for row in rows[1:-1] if Fraction(row.principal) == (1 + MONTHLY) * rows[row.period - 2].principal
+    ]
     exact_cu = float(exact_pay / 100)
     print(f"part B: regular payment = {cu(regular)} CU (the exact payment is {exact_cu:.6f} CU)")
     print(f"part B: final payment = {cu(rows[-1].payment)} CU (adjustment {cu(rows[-1].payment - regular)} CU)")
@@ -131,6 +134,10 @@ def part_b() -> None:
         f"{float(abs(worst_gap)) / 100:.2f}, at month {worst_month}"
     )
     print(f"part B: first month whose cent balance is 1 CU or more from the exact-payment balance = {first_full_cu}")
+    print(
+        f"part B: cent principal equals (1 + i) times the previous month's principal in {len(identity_months)} "
+        f"of the {PERIODS - 2} months from 2 to {PERIODS - 1}, at months {identity_months}"
+    )
     exact_interest = Fraction(PRINCIPAL_CENTS)
     for _ in range(PERIODS - 1):
         exact_interest = exact_interest * (1 + MONTHLY) - regular

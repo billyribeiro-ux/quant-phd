@@ -261,6 +261,18 @@ def test_level_payment_zero_rate_is_the_loan_over_the_months() -> None:
     assert sol.level_payment_cents(PRINCIPAL, 0, MONTHS) == nearest(Fraction(PRINCIPAL, MONTHS))
 
 
+def test_level_payment_tie_goes_up() -> None:
+    """A payment of exactly half a cent goes up: 1 cent over 2 months at a zero rate is 0.5 cents, which is 1 cent."""
+    assert sol.level_payment_cents(1, 0, 2) == 1, "a tie of half a cent must go up to the next whole cent"
+    assert sol.level_payment_cents(1, 0.0, 2) == 1, "a tie of half a cent must go up at a zero rate given as a float"
+
+
+def test_schedule_interest_tie_goes_up() -> None:
+    """Interest of exactly half a cent goes up. At 6.00 % a year the monthly rate is 0.5, so 1 cent accrues 0.5."""
+    rows = schedule(1, 6.0, 2)
+    assert rows[0][2] == 1, "interest of exactly half a cent must go up to one whole cent"
+
+
 def test_level_payment_scales_with_the_loan() -> None:
     once = sol.level_payment_cents(PRINCIPAL, RATE, MONTHS)
     twice = sol.level_payment_cents(2 * PRINCIPAL, RATE, MONTHS)
@@ -376,7 +388,8 @@ def test_schedule_rows_are_a_frozen_dataclass_with_the_named_fields() -> None:
     assert names == FIELDS, "ScheduleRow must have the six fields of the specification, in order"
     row = sol.amortization_schedule(PRINCIPAL, RATE, MONTHS)[0]
     with pytest.raises(dataclasses.FrozenInstanceError):
-        row.payment_cents = 0
+        untyped_row: Any = row
+        untyped_row.payment_cents = 0
 
 
 # --- invalid inputs fail loudly
@@ -389,7 +402,8 @@ def test_annuity_rejects_a_rate_at_or_below_minus_one() -> None:
 
 def test_annuity_rejects_negative_or_fractional_periods() -> None:
     must_raise(lambda: sol.annuity_factor(0.01, -1), "negative periods")
-    must_raise(lambda: sol.annuity_factor(0.01, 12.0), "periods given as a float")
+    float_periods: Any = 12.0
+    must_raise(lambda: sol.annuity_factor(0.01, float_periods), "periods given as a float")
     must_raise(lambda: sol.annuity_factor(0.01, True), "periods given as a bool")
 
 
@@ -439,9 +453,11 @@ def test_growing_perpetuity_rejects_non_finite_inputs() -> None:
         (True, 0.05, 12),
         (1000, -0.01, 12),
         (1000, math.nan, 12),
+        (1000, math.inf, 12),
         (1000, 0.05, 0),
         (1000, 0.05, -3),
         (1000, 0.05, 12.0),
+        (1000, 0.05, True),
     ],
 )
 def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: Any) -> None:
@@ -457,6 +473,7 @@ def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: 
         (1000, math.inf, 12),
         (1000, 0.05, 0),
         (1000, 0.05, 2.0),
+        (1000, 0.05, True),
     ],
 )
 def test_schedule_rejects_invalid_loans(principal: Any, rate: Any, months: Any) -> None:

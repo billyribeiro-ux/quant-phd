@@ -128,11 +128,8 @@ def irr_roots(flows: Sequence[float]) -> list[float]:
                 if hi - lo <= 1e-15 * hi:
                     break
             roots_x.append(0.5 * (lo + hi))
-    # A zero exactly at either end of the search window cannot be tested for a sign change inside it: it is reported.
-    if values[0] == 0.0:
-        roots_x.append(xs[0])
-    if values[-1] == 0.0:
-        roots_x.append(xs[-1])
+    # Only a sign change between two samples inside the window is reported. A zero exactly at an end of the window
+    # is not reported, because no sample lies beyond it to show a sign change.
     return sorted(1.0 / x - 1.0 for x in roots_x)
 
 

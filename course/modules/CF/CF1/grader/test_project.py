@@ -19,6 +19,7 @@ import itertools
 import json
 import math
 import os
+import random
 from collections.abc import Callable
 from typing import Any
 
@@ -31,7 +32,7 @@ from capbudget import (  # type: ignore[import-not-found]  # the learner's engin
     npv_monte_carlo,
     payback_period,
 )
-from instance import make_instance
+from instance import make_instance  # type: ignore[import-not-found, unused-ignore]
 
 pytestmark = pytest.mark.filterwarnings("error")  # the specification: no function warns
 
@@ -136,6 +137,25 @@ def test_irr_does_not_report_a_tangent_root() -> None:
     # NPV(r) = -1 + 2/(1+r) - 1/(1+r)**2 = -(1/(1+r) - 1)**2 touches zero at r = 0 and never changes sign.
     assert irr_roots([-1.0, 2.0, -1.0]) == [], (
         "a rate where the NPV touches zero without changing sign is not an IRR root: report only sign changes."
+    )
+
+
+def test_irr_does_not_report_a_tangent_root_at_the_window_end() -> None:
+    # NPV(r) = (x - 1e-4) ** 2 with x = 1 / (1 + r): a double root at x = 1e-4, the low end of the search window.
+    assert irr_roots([1e-8, -2e-4, 1.0]) == [], (
+        "a zero that touches the NPV at an end of the search window is not reported: report only sign changes "
+        "between two samples inside the window."
+    )
+
+
+def test_irr_finds_roots_across_the_whole_search_window() -> None:
+    high = irr_roots([-1.0, 501.0])
+    assert len(high) == 1 and abs(high[0] - 500.0) <= 1e-7, (
+        "the search covers discount factors from 0.0001 to 10000: a root near rate 500 is inside it and must be found."
+    )
+    low = irr_roots([-5000.0, 1.0])
+    assert len(low) == 1 and abs(low[0] - (-0.9998)) <= 1e-7, (
+        "the search covers rates down to -0.9999: a root near rate -0.9998 is inside it and must be found."
     )
 
 
@@ -291,6 +311,21 @@ def test_single_year_project_has_no_working_capital() -> None:
     )
 
 
+def test_working_capital_flow_in_each_year_is_minus_the_change_in_the_balance() -> None:
+    with_wc = after_tax_cash_flows(PROJECT)
+    without = after_tax_cash_flows(with_(PROJECT, nwc_share=0.0))
+
+    def balance(t: int) -> float:
+        return 0.0 if t == 0 or t == LIFE else PROJECT["nwc_share"] * PROJECT["revenue"][t - 1]
+
+    for t in range(1, LIFE + 1):
+        expected = -(balance(t) - balance(t - 1))
+        assert close(with_wc[t] - without[t], expected, rel=1e-9, absolute=1e-6), (
+            f"year {t}: the working-capital flow is minus the change in the balance; the balance is zero at the start "
+            "and at the end of the life, and a share of revenue in between."
+        )
+
+
 def test_real_flows_are_deflated_year_by_year() -> None:
     nominal = after_tax_cash_flows(PROJECT)
     real = after_tax_cash_flows(PROJECT, real=True)
@@ -315,6 +350,7 @@ def test_real_flows_at_the_real_rate_equal_nominal_flows_at_the_nominal_rate() -
     ("change", "condition"),
     [
         pytest.param({"capex": 0}, "a zero capex", id="capex-zero"),
+        pytest.param({"capex": -1000}, "a negative capex", id="capex-negative"),
         pytest.param(
             {"capex": 1000.0}, "a capex given as a float rather than an integer number of cents", id="capex-float"
         ),
@@ -405,6 +441,21 @@ def test_monte_carlo_with_zero_volatility_is_the_deterministic_npv() -> None:
     assert all(close(d, deterministic) for d in draws), (
         "with zero volatility every revenue multiplier is one, so every draw equals the deterministic NPV."
     )
+
+
+def test_monte_carlo_draws_follow_the_seeded_gauss_stream() -> None:
+    volatility = 0.2
+    rng = random.Random(42)
+    draws = npv_monte_carlo(PROJECT, RATE, 3, 42, volatility)
+    for k, d in enumerate(draws, start=1):
+        z = rng.gauss(0.0, 1.0)
+        m = math.exp(volatility * z - volatility * volatility / 2.0)
+        scaled = with_(PROJECT, revenue=[m * float(x) for x in PROJECT["revenue"]])
+        expected = npv(RATE, after_tax_cash_flows(scaled))
+        assert close(d, expected, rel=1e-9, absolute=1e-6), (
+            f"draw {k}: take one gauss(0, 1) number per draw, in draw order, and scale every revenue by "
+            "exp(volatility * z - volatility squared / 2)."
+        )
 
 
 def test_monte_carlo_is_reproducible_for_a_seed() -> None:

@@ -1,7 +1,8 @@
 """CF1 lab L01: net present value of SIMULATED projects.
 
-SIMULATED: every project in this lab is generated from a seeded random number generator. No project is a
-real company's. Money is entered in integer cents; discounted values are computed in floating point and printed
+SIMULATED: no project in this lab is a real company's. The fixed project in Part A and Part D and the
+counterexample in Part E are typed in; the projects in Parts B and C are generated from a seeded random number
+generator. Money is entered in integer cents; discounted values are computed in floating point and printed
 in dollars to two decimals. Standard library only; no network; every number printed is computed by the code below.
 """
 

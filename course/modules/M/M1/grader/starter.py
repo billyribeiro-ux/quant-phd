@@ -6,7 +6,7 @@ autograder there, or locally with the browser's flags:
     QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
 
 Use the standard library only. Every function must validate its inputs and raise ValueError for the conditions
-the specification names. None may print or warn, or change its arguments.
+the specification names. No function may print or warn.
 """
 
 from __future__ import annotations

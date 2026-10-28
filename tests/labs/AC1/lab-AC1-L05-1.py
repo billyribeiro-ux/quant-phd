@@ -6,7 +6,8 @@ Units: integer cents for every money amount. Percentages printed below are unitl
 The contract has two to four performance obligations. Each obligation is either delivered at a point in time
 or delivered over twelve months. The transaction price is allocated to the obligations in proportion to their
 stand-alone prices, using whole cents. Revenue for a point obligation is recognized in its delivery month. Revenue
-for an over-time obligation is recognized evenly over the twelve months (a straight-line measure of progress).
+for an over-time obligation is recognized in equal monthly shares over the twelve months, the last month taking the
+remainder (a straight-line measure of progress).
 
 Two conventions are labelled here for comparison. Convention 1 is the schedule described above. Convention 2
 recognizes every over-time obligation in month 12 instead. Neither convention is claimed to be the rule of any

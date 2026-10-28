@@ -449,7 +449,14 @@ def test_two_product_shift_to_lower_margin_is_unfavourable() -> None:
     assert got["sales_mix"] == oracle(case)["variances"]["sales_mix"], (
         "sales_mix: must equal the oracle's mix variance for the shifted case."
     )
-    assert got["sales_mix"] < 0, "with two products, volume moved to the lower budgeted margin is unfavourable."
+    if margins[0] == margins[1]:
+        # Equal budgeted margins: the actual mix contribution is an integer equal to the exact flexed profit, and the
+        # two whole-cent roundings differ by less than one cent, so the integer difference is zero.
+        assert got["sales_mix"] == 0, (
+            "with equal budgeted margins, shifting volume between the two has no mix variance."
+        )
+    else:
+        assert got["sales_mix"] < 0, "with two products, volume moved to the lower budgeted margin is unfavourable."
 
 
 # ---------------------------------------------------------------- edge cases
@@ -573,10 +580,13 @@ def test_zero_budgeted_units_raise_value_error(name: str) -> None:
     must_raise(call, "a budget with no budgeted units")
 
 
-def test_duplicate_product_names_raise_value_error() -> None:
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_duplicate_product_names_raise_value_error(name: str) -> None:
     rows = copy.deepcopy(PRODUCTS)
     rows[1]["name"] = rows[0]["name"]
-    must_raise(lambda: sol.variance_decomposition(with_products(rows)), "two products with the same name")
+    case = with_products(rows)
+    call = (lambda: sol.flexible_budget(case, 10)) if name == "flexible_budget" else (lambda: getattr(sol, name)(case))
+    must_raise(call, f"{name}: two products with the same name")
 
 
 def test_empty_product_name_raises_value_error() -> None:
@@ -589,8 +599,11 @@ def test_empty_product_name_raises_value_error() -> None:
     )
 
 
-def test_empty_product_list_raises_value_error() -> None:
-    must_raise(lambda: sol.master_budget(with_products([])), "a case with no products")
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_empty_product_list_raises_value_error(name: str) -> None:
+    case = with_products([])
+    call = (lambda: sol.flexible_budget(case, 10)) if name == "flexible_budget" else (lambda: getattr(sol, name)(case))
+    must_raise(call, f"{name}: a case with no products")
 
 
 def test_negative_actual_units_argument_raises_value_error() -> None:

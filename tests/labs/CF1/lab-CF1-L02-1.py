@@ -2,8 +2,8 @@
 
 SIMULATED: revenues and cash costs are generated from a seeded random number generator. The machine, the tax rate
 and every figure are invented for this lab and are not a real company's. Money is entered in integer cents;
-the intermediate amounts (EBITDA, tax and operating cash flow) are computed in floating point cents, and the flows
-are held and discounted in dollars and printed to two decimals. Standard library only; no network; every number
+EBITDA is exact integer cents; tax and operating cash flow are floating point cents, and the flows are held and
+discounted in dollars and printed to two decimals. Standard library only; no network; every number
 printed is computed by the code below.
 
 Conventions applied: straight-line depreciation over the life, with no salvage; tax at one rate on taxable income,
@@ -59,8 +59,10 @@ def main() -> None:
         shield = TAX_RATE * depreciation_cents
         # The identity: after-tax operating cash flow = EBITDA x (1 - tax rate) + depreciation x tax rate.
         identity_ok = identity_ok and abs(ocf - (ebitda * (1 - TAX_RATE) + shield)) < TOLERANCE
-        # The shield: the cash flow that depreciation saves in tax, which must equal depreciation x tax rate.
-        shield_ok = shield_ok and abs(shield - depreciation_cents * TAX_RATE) < TOLERANCE
+        # The shield, measured as the difference between the operating cash flow with depreciation and the one
+        # without it (EBIT equal to EBITDA, no add-back), must equal depreciation x tax rate.
+        ocf_without = ebitda - TAX_RATE * ebitda
+        shield_ok = shield_ok and abs((ocf - ocf_without) - depreciation_cents * TAX_RATE) < TOLERANCE
         nwc_flow = -(nwc_cents[t] - nwc_cents[t - 1]) / 100
         nwc_flows.append(nwc_flow)
         total = ocf / 100 + nwc_flow

@@ -9,7 +9,7 @@ Conventions (binding, from the project specification):
 * money is integer cents; a cent amount that is not exact is taken to the nearest cent, a tie going up;
 * a zero rate is handled explicitly: the annuity factor is the number of periods, the level payment is the loan
   divided by the number of months;
-* invalid inputs raise ValueError; no function prints, warns or changes its arguments.
+* invalid inputs raise ValueError; no function prints or warns.
 """
 
 from __future__ import annotations

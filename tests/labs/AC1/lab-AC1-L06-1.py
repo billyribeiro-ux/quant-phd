@@ -11,8 +11,8 @@ or incentives.
 Each year the liability accrues interest at the discount rate and is reduced by the payment. The right-of-use asset
 is amortized straight-line over the term. Two expense patterns for the same lease are compared:
 pattern F (front-loaded) is interest plus amortization, and pattern S (straight-line) spreads the total payments
-evenly over the term. Both patterns are conventions of this lab; the lab does not claim either is the required
-treatment of any framework.
+in equal yearly shares over the term, the last year taking the remainder. Both patterns are conventions of this lab;
+the lab does not claim either is the required treatment of any framework.
 
 The only floating-point step is the present value, which is rounded once to whole cents. Every later step is integer
 arithmetic. The final payment absorbs the schedule's rounding, and the lab prints the size of that adjustment.

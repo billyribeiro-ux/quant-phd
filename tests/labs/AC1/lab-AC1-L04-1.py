@@ -3,8 +3,9 @@
 SIMULATED: every transaction is generated from a seeded generator. No filing is read and no company is represented.
 Units: integer cents for every money amount. The ratios printed below are unitless.
 
-Rule A recognizes a prepaid service in full when it is paid. Rule B recognizes the same payment evenly over the
-four quarters the service covers. These two rules are labelled conventions of this lab. The lab does not claim
+Rule A recognizes a prepaid service in full when it is paid. Rule B recognizes the same payment in four shares over
+the four quarters the service covers: the first three are the payment divided by four, rounded down, and the last
+takes the remainder. These two rules are labelled conventions of this lab. The lab does not claim
 that either one is the rule of any accounting framework.
 
 Presentation 1 places interest paid in operating cash flow. Presentation 2 places it in financing cash flow. Both
