@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M2" data-page="L14" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L14 · Automatic differentiation · M2 Single &amp; Multivariable Calculus</title>
+  <meta name="description" content="Automatic differentiation as the chain rule applied to each elementary operation of a program. Dual numbers and the proof of forward mode, a worked reverse-mode pass, where the method breaks at kinks and branches. Lab on dual numbers against closed-form derivatives.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M2 Single &amp; Multivariable Calculus</a><span class="sep">›</span>
+      <span>L14</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">M2 · Lesson 14 of 24 · 10 study hours</p>
+        <h1>Automatic Differentiation: Forward and Reverse Mode</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="derivative" href="L04.html#def-derivative">the derivative</a> (Lesson L04), the product, quotient and chain rules (Lesson L05, stated there in prose), and <a class="concept" data-concept="finite-difference-derivative" href="L13.html#def-finite-difference-derivative">the finite-difference approximation</a> (Lesson L13), which this lesson compares with</li>
+          <li><strong>Introduces:</strong> automatic differentiation</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">A program that computes a price, a yield or a risk measure is a sequence of arithmetic steps and standard functions. Its derivative can be found by applying the chain rule to each step. Lesson L13 showed that a difference quotient has truncation and rounding errors that depend on a step size. This lesson shows a different method. Automatic differentiation carries a derivative alongside each value, so it has no step size and no truncation error. It has its own limits, which are set by the program's branches and by the memory that the reverse mode needs.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>A program as a sequence of operations</h2>
+
+      <p>Take a formula such as \(f(x) = x\,e^{x} + \sin(x)/x\). A program that evaluates it at a number \(x\) does so in steps: it forms \(x\,e^{x}\), forms \(\sin(x)/x\), and adds the two. Each step is one of a few primitive operations. This lesson uses the operations addition, subtraction, multiplication, division, \(\exp\) and \(\sin\), with constants.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(automatic differentiation)</span></span>
+        <p>Let \(f\) be a function given by a program built from the primitive operations above, with each operation differentiable at the point where it is used. <dfn id="def-automatic-differentiation" data-concept="automatic-differentiation">Automatic differentiation</dfn> is a method that computes \(f'(a)\) by applying the chain rule, the product rule or the quotient rule to each primitive operation in the order the program runs, rather than by a difference quotient or by a symbolic formula for \(f'\).</p>
+      </div>
+
+      <p>Two properties of Definition 1.1 separate the method from Lesson L13. It uses no step \(h\), so there is no truncation error of the kind Theorem 2.1 of that lesson bounds. It also does not subtract nearly equal values to find a slope, so the rounding model of Proposition 3.2 in that lesson does not describe its error in the same way. The method still uses floating-point arithmetic, so it has rounding error of a different kind, which Section 6 discusses.</p>
+
+      <h2 id="s2"><span class="section-number">2</span>Dual numbers</h2>
+
+      <p>The forward mode attaches to each value a second number, its tangent. The two numbers are carried together as a dual number, which is a pair written with a symbol \(\varepsilon\) that satisfies \(\varepsilon^2 = 0\).</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(dual numbers and their operations)</span></span>
+        <p>A dual number is an expression \(a + b\varepsilon\) with real \(a\) and \(b\), with \(\varepsilon^2 = 0\). Its value is \(a\) and its tangent is \(b\). The operations are:</p>
+        <p>\[(a + b\varepsilon) + (c + d\varepsilon) = (a + c) + (b + d)\varepsilon, \qquad (a + b\varepsilon)(c + d\varepsilon) = ac + (ad + bc)\varepsilon,\]</p>
+        <p>\[\frac{a + b\varepsilon}{c + d\varepsilon} = \frac{a}{c} + \frac{bc - ad}{c^2}\,\varepsilon \quad (c \ne 0), \qquad \exp(a + b\varepsilon) = e^{a} + b\,e^{a}\,\varepsilon, \qquad \sin(a + b\varepsilon) = \sin a + b\cos a\,\varepsilon.\]</p>
+        <p>A real number \(c\) is the dual number \(c + 0\varepsilon\). The variable \(x\) at the point \(a\) is the dual number \(a + 1\varepsilon\).</p>
+      </div>
+
+      <p>Definition 2.1 is a rule for computing with pairs. The tangent rules are the product, quotient and chain rules written for the pair. Proposition 3.1 shows that they compute derivatives.</p>
+
+      <h2 id="s3"><span class="section-number">3</span>Forward mode computes the derivative</h2>
+
+      <p>An expression is a formula built from the variable, constants, and the operations of Definition 2.1. The next result says that evaluating an expression on \(a + \varepsilon\) returns its value at \(a\) and its derivative at \(a\) as the tangent.</p>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 3.1 <span class="name">(forward mode returns the derivative)</span></span>
+        <p>Let \(F\) be an expression built from the variable \(x\), real constants, the operations \(+\), \(-\), \(\times\), \(\div\), \(\exp\) and \(\sin\). Let \(a\) be a real number such that every division in \(F\) has a non-zero denominator at \(a\). Let \(F\) define the function \(f\), and assume each sub-expression of \(F\) defines a function differentiable at \(a\). Then evaluating \(F\) on \(a + 1\varepsilon\) gives a dual number \(f(a) + f'(a)\,\varepsilon\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>The proof is by induction on the structure of \(F\). The sub-expressions of \(F\) are smaller expressions, and the claim is that each one returns its value and its derivative at \(a\).</p>
+        <p>Base cases. The variable \(x\) gives \(a + 1\varepsilon\), with value \(a\) and tangent \(1 = \frac{d}{dx}x\). A constant \(c\) gives \(c + 0\varepsilon\), with value \(c\) and tangent \(0 = \frac{d}{dx}c\).</p>
+        <p>Sums. If \(F = G + H\) and \(G\) returns \(g(a) + g'(a)\varepsilon\), \(H\) returns \(h(a) + h'(a)\varepsilon\), then by Definition 2.1 the sum returns \((g(a) + h(a)) + (g'(a) + h'(a))\varepsilon\), and \((g + h)'(a) = g'(a) + h'(a)\) by the sum rule. Differences are the same argument with a minus sign.</p>
+        <p>Products. If \(F = GH\), the operation returns \(g(a)h(a) + \bigl(g(a)h'(a) + g'(a)h(a)\bigr)\varepsilon\), and the product rule from Lesson L05 gives \((gh)'(a) = g(a)h'(a) + g'(a)h(a)\).</p>
+        <p>Quotients. If \(F = G/H\) and \(h(a) \ne 0\), the operation returns \(\frac{g(a)}{h(a)} + \frac{g'(a)h(a) - g(a)h'(a)}{h(a)^2}\varepsilon\), and the quotient rule of Lesson L05 gives the same tangent for \((g/h)'(a)\).</p>
+        <p>Exponentials and sines. If \(F = \exp(G)\), the operation returns \(e^{g(a)} + g'(a)e^{g(a)}\varepsilon\). The chain rule, together with the fact that the derivative of \(\exp\) is \(\exp\) (assumed here, as in Lesson L13 and not proved on this page), gives \(\frac{d}{dx}\exp(g(x)) = \exp(g(x))\,g'(x)\), so the tangent is the derivative. The sine case is the same with \(\cos\) in place of \(e^{\cdot}\).</p>
+        <p>Each step uses the induction hypothesis for the sub-expressions, and each sub-expression is differentiable at \(a\) by hypothesis. The induction therefore covers the whole of \(F\). \(\blacksquare\)</p>
+      </div>
+
+      <p>The hypotheses of Proposition 3.1 are the denominators being non-zero at \(a\) and the sub-expressions being differentiable at \(a\). The second one is not automatic: a sub-expression built from \(\exp\) and \(\sin\) is differentiable everywhere, but a sub-expression built from a branch, as in Section 6, may not be. The proof does not use the step size, because the tangent is an exact rule and not a limit.</p>
+
+      <h2 id="s4"><span class="section-number">4</span>A worked forward-mode example</h2>
+
+      <div class="block example">
+        <span class="block-title">Example 4.1 <span class="name">(the formula of Section 1 at \(x = 2\))</span></span>
+        <p>Let \(f(x) = x\,e^{x} + \sin(x)/x\). Evaluate \(f\) on \(2 + 1\varepsilon\) step by step, and read the tangent at each step.</p>
+        <p>The variable gives \(2 + 1\varepsilon\). Then \(\exp(2 + 1\varepsilon) = e^2 + e^2\varepsilon\), with \(e^2 = 7.389056099\). The product with \(x\) is \((2 + 1\varepsilon)(e^2 + e^2\varepsilon) = 2e^2 + (2e^2 + e^2)\varepsilon = 14.778112198 + 22.167168297\,\varepsilon\). Next, \(\sin(2 + 1\varepsilon) = \sin 2 + \cos 2\,\varepsilon = 0.909297427 - 0.416146837\,\varepsilon\). The quotient by \(x = 2 + 1\varepsilon\) is \(\frac{0.909297427}{2} + \frac{(-0.416146837)(2) - 0.909297427 \cdot 1}{4}\varepsilon = 0.454648714 - 0.435397775\,\varepsilon\). Adding the two parts gives \(f(2) + f'(2)\varepsilon\) with \(f(2) = 14.778112198 + 0.454648714 = 15.232760912\) and \(f'(2) = 22.167168297 - 0.435397775 = 21.731770522\).</p>
+        <p>Check against the closed form. Differentiating by hand gives \(f'(x) = e^{x} + x e^{x} + \frac{x\cos x - \sin x}{x^2}\). At \(x = 2\) the three terms are \(7.389056099\), \(14.778112198\) and \(-0.435397775\), with sum \(21.731770522\). The tangent from the dual computation agrees with this sum.</p>
+      </div>
+
+      <p>Example 4.1 has the same structure as the lab below. The dual evaluation applies each operation to pairs, and the tangent at each step is the derivative of the sub-expression. Lab 1 runs this on a grid and compares the tangent with the closed form at 251 points.</p>
+
+      <section class="lab" id="lab-M2-L14-1" data-runtime="python">
+        <h3>Lab 1 · Dual numbers against closed-form derivatives</h3>
+        <p class="hypothesis">Predicted before running. The lab implements Definition 2.1 for addition, subtraction, multiplication, division, integer powers, \(\exp\) and \(\sin\). It evaluates two functions on the grid \(0.5 + i/100\) for \(i = 0, \dots, 250\), which is 251 points from 0.5 to 3.0. The first is \(f_1(x) = x e^{x} + \sin(x)/x\) from Example 4.1, and the second is \(f_2(x) = \exp(\sin(x^2))\). The tangent of each dual evaluation is compared with its closed-form derivative at every grid point. Proposition 3.1 says the tangent is the exact derivative, so the errors should be at the level of rounding in double precision, far below \(10^{-12}\), with no step size anywhere in the computation.</p>
+        <pre><code class="language-python" data-run>"""M2 lab L14: forward-mode automatic differentiation with dual numbers, checked against analytic derivatives.
+
+Standard library only. A dual number a + b*eps (with eps*eps = 0) carries a value and a tangent.
+Each primitive operation updates both, so evaluating a function on a dual number a + 1*eps returns
+f(a) in the value part and f'(a) in the tangent part. No step size h appears anywhere. The test
+functions are evaluated on a grid of 251 points from 0.5 to 3.0 and compared with closed-form
+derivatives. Nothing is random and nothing is fetched, so the output is the same on every run.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Callable
+
+Number = int | float
+
+
+class Dual:
+    """A dual number val + dot*eps with eps*eps = 0. val is the value; dot is the tangent (the derivative)."""
+
+    __slots__ = ("dot", "val")
+
+    def __init__(self, val: float, dot: float = 0.0) -&gt; None:
+        self.val = float(val)
+        self.dot = float(dot)
+
+    def __add__(self, other: Number | Dual) -&gt; Dual:
+        o = lift(other)
+        return Dual(self.val + o.val, self.dot + o.dot)
+
+    __radd__ = __add__
+
+    def __neg__(self) -&gt; Dual:
+        return Dual(-self.val, -self.dot)
+
+    def __sub__(self, other: Number | Dual) -&gt; Dual:
+        return self + (-lift(other))
+
+    def __rsub__(self, other: Number | Dual) -&gt; Dual:
+        return lift(other) + (-self)
+
+    def __mul__(self, other: Number | Dual) -&gt; Dual:
+        o = lift(other)
+        return Dual(self.val * o.val, self.val * o.dot + self.dot * o.val)
+
+    __rmul__ = __mul__
+
+    def __truediv__(self, other: Number | Dual) -&gt; Dual:
+        o = lift(other)
+        if o.val == 0.0:
+            raise ZeroDivisionError("dual division by a zero value")
+        return Dual(self.val / o.val, (self.dot * o.val - self.val * o.dot) / (o.val * o.val))
+
+    def __rtruediv__(self, other: Number | Dual) -&gt; Dual:
+        return lift(other) / self
+
+    def __pow__(self, n: int) -&gt; Dual:
+        """Integer power n &gt;= 0 by repeated multiplication. Other exponents are not needed here."""
+        if not isinstance(n, int) or n &lt; 0:
+            raise ValueError(f"Dual power needs an integer n &gt;= 0, got {n!r}")
+        result = Dual(1.0)
+        for _ in range(n):
+            result = result * self
+        return result
+
+
+def lift(x: Number | Dual) -&gt; Dual:
+    """A plain number becomes a dual number with zero tangent. A dual number is returned unchanged."""
+    return x if isinstance(x, Dual) else Dual(float(x), 0.0)
+
+
+def dexp(x: Dual) -&gt; Dual:
+    """exp with its chain-rule tangent: d/dt exp(v) = exp(v) * dv."""
+    e = math.exp(x.val)
+    return Dual(e, e * x.dot)
+
+
+def dsin(x: Dual) -&gt; Dual:
+    """sin with its chain-rule tangent: d/dt sin(v) = cos(v) * dv."""
+    return Dual(math.sin(x.val), math.cos(x.val) * x.dot)
+
+
+def f1(x: Dual) -&gt; Dual:
+    """f1(x) = x exp(x) + sin(x) / x, defined for x != 0."""
+    return x * dexp(x) + dsin(x) / x
+
+
+def f1_exact(x: float) -&gt; float:
+    """The closed-form derivative of f1: exp(x) + x exp(x) + (x cos x - sin x) / x^2."""
+    return math.exp(x) + x * math.exp(x) + (x * math.cos(x) - math.sin(x)) / (x * x)
+
+
+def f2(x: Dual) -&gt; Dual:
+    """f2(x) = exp(sin(x^2)), a composition of three primitives."""
+    return dexp(dsin(x**2))
+
+
+def f2_exact(x: float) -&gt; float:
+    """The closed-form derivative of f2: exp(sin(x^2)) cos(x^2) 2x."""
+    return math.exp(math.sin(x * x)) * math.cos(x * x) * 2.0 * x
+
+
+def grid() -&gt; list[float]:
+    """The 251 points 0.5 + i/100 for integer i from 0 to 250, so the last point is 3.0."""
+    return [0.5 + i / 100 for i in range(251)]
+
+
+def max_error(ad: Callable[[Dual], Dual], exact: Callable[[float], float]) -&gt; float:
+    """The largest absolute difference between the dual-number tangent and the closed form on the grid."""
+    worst = 0.0
+    for x in grid():
+        worst = max(worst, abs(ad(Dual(x, 1.0)).dot - exact(x)))
+    return worst
+
+
+def main() -&gt; None:
+    print(f"grid points: {len(grid())}")
+    e1 = max_error(f1, f1_exact)
+    e2 = max_error(f2, f2_exact)
+    print(f"max error, f1: below 1e-12: {e1 &lt; 1e-12}")
+    print(f"max error, f2: below 1e-12: {e2 &lt; 1e-12}")
+    x = 2.0
+    print(f"f1 at x = 2: value {f1(Dual(x)).val:.10f}")
+    print(f"f1'(2) by dual numbers: {f1(Dual(x, 1.0)).dot:.10f}")
+    print(f"f1'(2) closed form: {f1_exact(x):.10f}")
+    print(f"f2'(1) by dual numbers: {f2(Dual(1.0, 1.0)).dot:.10f}")
+    print(f"f2'(1) closed form: {f2_exact(1.0):.10f}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">grid points: 251
+max error, f1: below 1e-12: True
+max error, f2: below 1e-12: True
+f1 at x = 2: value 15.2327609113
+f1'(2) by dual numbers: 21.7317705218
+f1'(2) closed form: 21.7317705218
+f2'(1) by dual numbers: 2.5067615350
+f2'(1) closed form: 2.5067615350</pre>
+        <p class="interpretation">The first line counts the 251 grid points. The next two lines compare the largest absolute error on the grid with \(10^{-12}\), and both are True: the tangents agree with the closed forms to better than \(10^{-12}\) at every point of each grid. The lab's own test compares the tangent with the derivative, so the agreement checks Proposition 3.1 on these two functions and this grid. It does not prove the proposition, and it does not show what happens at a point outside the grid or at a branch. The values at \(x = 2\) are \(f_1(2) = 15.2327609113\) and \(f_1'(2) = 21.7317705218\) by dual numbers and by the closed form, matching Example 4.1 to the printed digits. The derivative of \(f_2\) at \(1\) is \(2.5067615350\) by both routes. The printed values are one double-precision run of the lab and are not claimed to hold on every Python installation beyond the stated tolerance.</p>
+      </section>
+
+      <h2 id="s5"><span class="section-number">5</span>Reverse mode: one backward pass for all the partial derivatives</h2>
+
+      <p>Forward mode, as defined in this lesson, carries one tangent direction, so each forward pass gives the derivative in one input direction. Reverse mode works with the adjoint of each intermediate value, which is the sensitivity of the output to that value. In Example 5.1 one backward pass gives the derivative of the output with respect to each input, and Proposition 5.2 proves this for that graph.</p>
+
+      <div class="block example">
+        <span class="block-title">Example 5.1 <span class="name">(two inputs, one output, the adjoints by hand)</span></span>
+        <p>Let \(f(x_1, x_2) = x_1 x_2 + \sin x_1\), evaluated at \((x_1, x_2) = (1, 2)\). The forward pass stores the intermediate values in a sequence: \(v_1 = x_1 = 1\), \(v_2 = x_2 = 2\), \(v_3 = v_1 v_2 = 2\), \(v_4 = \sin v_1 = 0.841470985\), and \(f = v_3 + v_4 = 2.841470985\). The stored values are needed in the backward pass, because the adjoints use them.</p>
+        <p>The backward pass starts with the adjoint of the output, \(\bar f = 1\), and visits each operation in reverse order. The output is \(f = v_3 + v_4\), so \(\bar v_3 = 1\) and \(\bar v_4 = 1\). The operation \(v_4 = \sin v_1\) contributes \(\bar v_1 \mathrel{+}= \cos(v_1)\,\bar v_4 = \cos 1\). The operation \(v_3 = v_1 v_2\) contributes \(\bar v_1 \mathrel{+}= v_2\,\bar v_3 = 2\) and \(\bar v_2 \mathrel{+}= v_1\,\bar v_3 = 1\). The adjoints of the inputs are therefore \(\bar x_1 = \bar v_1 = 2 + \cos 1 = 2.540302306\) and \(\bar x_2 = \bar v_2 = 1\).</p>
+        <p>These are the partial derivatives of \(f\): \(\partial f/\partial x_1 = x_2 + \cos x_1\) and \(\partial f/\partial x_2 = x_1\), which at \((1, 2)\) are \(2 + \cos 1\) and \(1\).</p>
+      </div>
+
+      <p>Example 5.1 shows the count. Forward mode needs two passes, one for each input direction. Reverse mode needs one backward pass that produces both partial derivatives. This lesson does not prove a general count for programs with many inputs. The example shows the mechanism that gives the count.</p>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 5.2 <span class="name">(the reverse pass gives the partial derivatives of Example 5.1)</span></span>
+        <p>Let \(f = v_3 + v_4\), \(v_3 = v_1 v_2\), \(v_4 = \sin v_1\), \(v_1 = x_1\) and \(v_2 = x_2\), with \(x_1\) and \(x_2\) real. Let \(\bar v_k\) be the sum, over the operations that use \(v_k\), of the partial derivative of the operation's output with respect to \(v_k\), multiplied by the adjoint of that output, with \(\bar f = 1\). Then \(\bar x_1 = \partial f/\partial x_1\) and \(\bar x_2 = \partial f/\partial x_2\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Each adjoint is a sum over the paths from the variable to the output in the graph of operations, and each path contributes a product of the local partial derivatives along it. For \(x_1 = v_1\), there are two paths. The first is \(v_1 \to v_3 \to f\), with local derivatives \(\partial v_3/\partial v_1 = v_2\) and \(\partial f/\partial v_3 = 1\), contributing \(v_2\). The second is \(v_1 \to v_4 \to f\), with local derivatives \(\cos v_1\) and \(1\), contributing \(\cos v_1\). Their sum is \(v_2 + \cos v_1 = \partial f/\partial x_1\), which is what \(\bar v_1\) computes. For \(x_2 = v_2\), the only path is \(v_2 \to v_3 \to f\), with contribution \(v_1 = \partial f/\partial x_2\). The backward pass computes these sums by adding the contributions as it visits each operation, so it returns the same sums. \(\blacksquare\)</p>
+      </div>
+
+      <p>The proof uses the path sum of the chain rule for the graph of Example 5.1, and it is written for that graph. It is not a general theorem for every program. Section 6 notes what the backward pass needs in storage.</p>
+
+      <section class="canon-breaks" id="canon-breaks">
+      <h2 id="s6"><span class="section-number">6</span>Where the canon breaks</h2>
+
+      <p>Automatic differentiation is exact for the program it runs, and the derivative it returns is the derivative of that program. Four points show where the program and the intended function come apart.</p>
+      <ul>
+        <li><strong>A branch changes the program.</strong> Take \(g(x) = x\) for \(x > 0\) and \(g(x) = -x\) for \(x \le 0\), which is \(|x|\). At \(a = 0\), the program written as <code>x if x &gt; 0 else -x</code> sees the dual number \(0 + 1\varepsilon\), takes the else branch and returns \(0 - 1\varepsilon\), so the tangent is \(-1\). The same function written as <code>x if x &gt;= 0 else -x</code> takes the first branch and returns tangent \(+1\). The function \(|x|\) has no derivative at \(0\), and the two programs return different tangents for the same function.</li>
+        <li><strong>A discrete operation has zero tangent.</strong> Suppose a rounding operation returns the nearest integer to its value and sets the tangent to \(0\). Between two half-integers the operation is constant, so its tangent is \(0\) there, and the jumps at the half-integers are invisible to the method. Automatic differentiation then reports a zero derivative for a function that jumps.</li>
+        <li><strong>Reverse mode stores the forward values.</strong> In Example 5.1 the backward step for \(\sin\) needs \(v_1\), and the step for the product needs \(v_1\) and \(v_2\). A program with many steps must keep those values until the backward pass reads them. The storage grows with the length of the program, and this is the cost that forward mode avoids.</li>
+        <li><strong>Floating-point arithmetic still rounds.</strong> The tangent rules are exact on paper, but each stored value and each tangent is a double-precision number. A tangent can lose digits when two large tangents cancel. Lab 1 measures this on a grid and finds the errors below \(10^{-12}\), which is not a bound for every expression or every point.</li>
+      </ul>
+
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+      <h2 id="s7"><span class="section-number">7</span>Misconceptions</h2>
+      <ol>
+        <li class="misconception">
+          <p class="wrong">“Automatic differentiation is a finite difference with a very small step.”</p>
+          <p>Definition 2.1 has no step, and Proposition 3.1 shows that the tangent is the derivative exactly, with no truncation error of order \(h\) or \(h^2\). Lesson L13 shows that a shorter step in a difference quotient brings rounding error, which the dual computation does not have in the same form. The two methods have different error sources.</p>
+        </li>
+        <li class="misconception">
+          <p class="wrong">“Reverse mode is always the cheaper choice.”</p>
+          <p>Example 5.1 has two inputs, and forward mode needs two passes while reverse mode needs one. Reverse mode also stores the forward values, as Section 6 states. This lesson does not prove a general comparison of the two modes, so the example is the only count it establishes.</p>
+        </li>
+        <li class="misconception">
+          <p class="wrong">“The tangent of a program is the derivative of the function it was meant to compute.”</p>
+          <p>The tangent is the derivative of the program. The branch example in Section 6 gives \(-1\) and \(+1\) for the same function \(|x|\) at \(0\), and \(|x|\) has no derivative there. The program and the intended function agree only where the program is differentiable and its branches match the intended formula.</p>
+        </li>
+      </ol>
+
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s8"><span class="section-number">8</span>Problem set</h2>
+        <p>Every problem has a full worked solution. Attempt each one before opening it. Problems marked E use the output of Lab 1.</p>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · Dual evaluation of a quadratic</span>
+            <p>Evaluate \(g(x) = x^2 + 3x\) on \(2 + 1\varepsilon\), and state the value and the tangent.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The product \((2 + \varepsilon)(2 + \varepsilon) = 4 + (2 + 2)\varepsilon = 4 + 4\varepsilon\), since \(\varepsilon^2 = 0\). Then \(3(2 + \varepsilon) = 6 + 3\varepsilon\). The sum is \(10 + 7\varepsilon\). The value is \(g(2) = 10\) and the tangent is \(7\), which equals \(g'(2) = 2 \cdot 2 + 3 = 7\).</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · The reciprocal on a dual number</span>
+            <p>Use the quotient rule of Definition 2.1 to evaluate \(1/(a + b\varepsilon)\), and check the tangent at \(a = 2\), \(b = 1\) against \(-1/x^2\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Take \(c = a\) and \(d = b\) in the quotient formula with numerator \(1 + 0\varepsilon\). Then \(\frac{1}{a + b\varepsilon} = \frac{1}{a} + \frac{0 \cdot a - 1 \cdot b}{a^2}\varepsilon = \frac{1}{a} - \frac{b}{a^2}\varepsilon\). At \(a = 2\), \(b = 1\), the tangent is \(-1/4\). The derivative of \(1/x\) is \(-1/x^2 = -1/4\) at \(2\), which agrees.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · Partial derivatives of a product by reverse mode</span>
+            <p>For \(f(x_1, x_2) = x_1 x_2\) at \((3, 4)\), run the reverse pass with \(\bar f = 1\) and state the two adjoints.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The operation \(f = x_1 x_2\) gives \(\bar x_1 = x_2 \bar f = 4\) and \(\bar x_2 = x_1 \bar f = 3\). These agree with \(\partial f/\partial x_1 = x_2 = 4\) and \(\partial f/\partial x_2 = x_1 = 3\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="proof-1">
+            <span class="problem-title">P1 · The product rule in dual form</span>
+            <p>Starting from the product of Definition 2.1, show that the tangent of \((a + b\varepsilon)(c + d\varepsilon)\) equals \(f'(x)g(x) + f(x)g'(x)\) when \(f\) and \(g\) are the functions whose dual values are \(a + b\varepsilon\) and \(c + d\varepsilon\), with \(b = f'\) and \(d = g'\) at the point.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The tangent of the product is \(ad + bc\) by Definition 2.1. Here \(a = f(x)\), \(b = f'(x)\), \(c = g(x)\) and \(d = g'(x)\). So the tangent is \(f(x)g'(x) + f'(x)g(x)\), which is the product rule. This is exactly the calculation in the product case of Proposition 3.1.</p>
+            </details>
+          </div>
+          <div class="problem" id="proof-2">
+            <span class="problem-title">P2 · The chain rule for \(\exp(x^2)\)</span>
+            <p>Evaluate \(\exp(x^2)\) on \(a + 1\varepsilon\) with the rules of Definition 2.1 and show that the tangent is \(2a\,e^{a^2}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>First \((a + \varepsilon)^2 = a^2 + 2a\varepsilon\). Then \(\exp(a^2 + 2a\varepsilon) = e^{a^2} + 2a\,e^{a^2}\varepsilon\), by the exponential rule of Definition 2.1 with \(b = 2a\). The tangent is \(2a\,e^{a^2}\), which is the derivative \(\frac{d}{dx} e^{x^2} = 2x\,e^{x^2}\) at \(a\).</p>
+            </details>
+          </div>
+          <div class="problem" id="proof-3">
+            <span class="problem-title">P3 · The quotient rule in dual form</span>
+            <p>Show that the quotient formula of Definition 2.1 gives the tangent of \(f/g\) at \(a\) when \(g(a) \ne 0\), by stating the tangent of \((a + b\varepsilon)/(c + d\varepsilon)\) and comparing it with the quotient rule.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The tangent of the quotient is \((bc - ad)/c^2\) by Definition 2.1. With \(a = f(x)\), \(b = f'(x)\), \(c = g(x)\) and \(d = g'(x)\), this is \(\frac{f'(x)g(x) - f(x)g'(x)}{g(x)^2}\), which is the quotient rule for \((f/g)'\). The condition \(g(a) \ne 0\) is the non-zero denominator of Proposition 3.1.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · The derivative of \(f_2\) at 1 (Lab 1)</span>
+            <p>Lab 1 prints \(f_2'(1) = 2.5067615350\). Derive this value from the chain rule by hand, and check the printed digits.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>\(f_2(x) = \exp(\sin(x^2))\) has derivative \(\exp(\sin(x^2))\cos(x^2)\cdot 2x\). At \(x = 1\) this is \(\exp(\sin 1)\cos 1 \cdot 2\). With \(\sin 1 = 0.8414709848\), \(\exp(\sin 1) = 2.3197768247\), and \(\cos 1 = 0.5403023059\), the product is \(2.3197768247 \times 0.5403023059 \times 2 = 2.5067615350\). The printed value agrees with the chain-rule computation to the printed digits.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · What the grid does not test (Lab 1)</span>
+            <p>Lab 1 tests 251 points from 0.5 to 3.0. Name one point type that the grid does not contain, and say what the lab's result does not establish about it.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The grid does not contain points below \(0.5\), negative points, or points where \(\sin(x)/x\) would need \(x = 0\). The lab's result does not establish the tangent at those points, because it checks only the 251 grid values. At \(x = 0\), \(f_1\) is undefined because of the division by \(x\), so the lab's grid avoids the one point where the formula fails. A statement about negative \(x\) or about \(x\) near \(0\) would need its own check, which Proposition 3.1 does not replace for the printed numbers.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Comparing with Lesson L13</span>
+            <p>Lesson L13 shows that a forward difference at \(h = 10^{-8}\) has an error of about \(6.6 \times 10^{-9}\) for \(\exp\) at \(1\). Explain why the dual-number computation for \(\exp\) at \(1\) has no step to choose, and state which part of the L13 error analysis does not apply.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The dual computation uses the rule \(\exp(1 + \varepsilon) = e + e\varepsilon\), which has no step: the tangent is \(e\), not a difference of values at nearby points. So there is no \(h\) to choose and no truncation term of Theorem 2.1 in L13. The rounding model of Proposition 3.2 in L13 used a difference of two stored values divided by \(h\). The dual computation does not form that difference, so that part of the L13 analysis does not apply in the same form. The tangent still carries floating-point rounding, as Section 6 says.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · Second derivatives by nesting</span>
+            <p>Suppose each dual number carries a tangent that is itself a dual number. Describe what the nested evaluation of \(x^3\) at \(a\) returns, and identify which coefficient is \(f''(a)\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Write the inner dual number as \(a + \varepsilon_1\) and the outer tangent as \(\varepsilon_2\), with \(\varepsilon_2^2 = 0\) and \(\varepsilon_1^2 = 0\). Then \((a + \varepsilon_1 + \varepsilon_2)^3\) expands to \(a^3 + 3a^2(\varepsilon_1 + \varepsilon_2) + 6a\,\varepsilon_1\varepsilon_2\), since \(\varepsilon_1^2 = \varepsilon_2^2 = 0\). The coefficient of \(\varepsilon_1\varepsilon_2\) is \(6a = f''(a)\), because \(f''(x) = 6x\). The problem does not extend the argument to a general expression, and the nested form is a design choice that this lesson does not analyse for cost.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · The storage of a long program</span>
+            <p>A program runs a loop of 1000 steps, and each step stores 3 intermediate values for the reverse pass. Count the values stored, and say what the reverse pass must read in the order of the backward sweep.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The forward pass stores \(1000 \times 3 = 3000\) values. The backward pass visits the steps from the last to the first and reads, at each step, the values that step stored, so it reads the stored list in reverse order. The count depends only on the stated number of values per step, and this lesson does not analyse memory-saving schemes for long loops.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Two programs for \(\max(x, 0)\) at zero</span>
+            <p>Write the two implementations <code>x if x &gt; 0 else 0</code> and <code>x if x &gt;= 0 else 0</code>. State the tangent each returns at \(a = 0\) for the input \(0 + 1\varepsilon\), and say whether either matches the derivative of \(\max(x, 0)\) at zero.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For <code>x if x &gt; 0 else 0</code> the condition \(0 &gt; 0\) is false, so the program returns the constant \(0\), with tangent \(0\). For <code>x if x &gt;= 0 else 0</code> the condition holds, so the program returns \(x\), with tangent \(1\). The two programs compute the same function \(\max(x, 0)\) at every point, but they return tangents \(0\) and \(1\) at zero. The derivative of \(\max(x, 0)\) does not exist at zero, since the one-sided slopes are \(0\) and \(1\). Neither tangent is the derivative, and the answer depends on the branch the program takes.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="canon-breaks-note" id="canon-note">
+        <h2 id="s9"><span class="section-number">9</span>Remark on the proofs and the lab</h2>
+        <p>Proposition 3.1 and Proposition 5.2 are proved in full on this page. Lab 1 checks Proposition 3.1 on two functions and a grid, and its printed result is grade C because it is one run. No registry source is cited for automatic differentiation on this page, because no passage has been read for this lesson. The lesson does not state a general cost bound for reverse mode, and Problem R2 and Misconception 2 mark that gap.</p>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s10"><span class="section-number">10</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>Evaluating an expression on \(a + 1\varepsilon\) returns \(f(a) + f'(a)\varepsilon\), under the stated hypotheses (Proposition 3.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3 by induction on the expression</td></tr>
+              <tr><td>The dual quotient formula gives the quotient rule for the tangent (Definition 2.1 with Problem P3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3 and Problem P3</td></tr>
+              <tr><td>The reverse pass of Example 5.1 returns \(\partial f/\partial x_1 = 2 + \cos 1\) and \(\partial f/\partial x_2 = 1\) at \((1, 2)\) (Proposition 5.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §5 for the graph of Example 5.1</td></tr>
+              <tr><td>The dual evaluation of \(f_1\) at \(2\) has tangent \(21.7317705218\), equal to the closed form to the printed digits (Example 4.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Arithmetic on the page, checked against the closed form</td></tr>
+              <tr><td>Automatic differentiation of \(|x|\) at \(0\) returns tangent \(-1\) or \(+1\) depending on the branch written (Section 6)</td><td><span class="grade" data-grade="T">T</span></td><td>Worked on the page from Definition 2.1</td></tr>
+              <tr><td>Lab 1 prints the largest grid error below \(10^{-12}\) for both \(f_1\) and \(f_2\) on 251 points</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1, one run on the stated grid</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="M2" data-page="L14" data-cards="cards.json">
+        <h2 id="s11"><span class="section-number">11</span>Retrieval quiz</h2>
+        <p>Answer from memory, then check. Finishing the quiz adds this lesson's cards to your review deck.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does \(\varepsilon^2\) equal in the dual numbers of Definition 2.1?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L14q1"> \(1\)</label>
+              <label class="option" data-correct><input type="radio" name="L14q1"> \(0\)</label>
+              <label class="option"><input type="radio" name="L14q1"> \(\varepsilon\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 2.1 sets \(\varepsilon^2 = 0\), which is what makes the tangent a derivative.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="7" data-tolerance="1e-9">
+            <p class="prompt">For \(g(x) = x^2 + 3x\) at \(x = 2\), what is the tangent of the dual evaluation?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(g'(x) = 2x + 3\), which is \(7\) at \(x = 2\). Problem M1 gives the same value.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the central idea of automatic differentiation in Definition 1.1?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L14q3"> It approximates the derivative with a small step</label>
+              <label class="option" data-correct><input type="radio" name="L14q3"> It applies the chain, product and quotient rules to each operation of the program</label>
+              <label class="option"><input type="radio" name="L14q3"> It fits a polynomial to sampled values</label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 1.1 describes applying the rules to each primitive operation in program order, with no step size.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="-0.25" data-tolerance="1e-9">
+            <p class="prompt">For the reciprocal \(1/(a + b\varepsilon)\) with \(a = 2\) and \(b = 1\), what is the tangent?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>The tangent is \(-b/a^2 = -1/4\), as Problem M2 shows.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In Example 5.1, how many forward passes does the method need for the two partial derivatives, and how many backward passes?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L14q5"> One forward and one backward</label>
+              <label class="option" data-correct><input type="radio" name="L14q5"> Two forward and one backward</label>
+              <label class="option"><input type="radio" name="L14q5"> Two forward and two backward</label>
+            </fieldset>
+            <div class="explain" hidden><p>Forward mode needs one pass per input direction, two here. Reverse mode gives both partial derivatives in one backward pass.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does the reverse pass of Example 5.1 need the forward values \(v_1\) and \(v_2\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L14q6"> They are needed only to print the output</label>
+              <label class="option" data-correct><input type="radio" name="L14q6"> The local partial derivatives \(\cos v_1\) and \(v_2\) depend on them</label>
+              <label class="option"><input type="radio" name="L14q6"> They are the step sizes</label>
+            </fieldset>
+            <div class="explain" hidden><p>The adjoint of \(v_4 = \sin v_1\) uses \(\cos v_1\), and the adjoint of \(v_3 = v_1 v_2\) uses \(v_2\) and \(v_1\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">At \(a = 0\), the program <code>x if x &gt; 0 else -x</code> applied to \(0 + 1\varepsilon\) returns what tangent?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L14q7"> \(+1\)</label>
+              <label class="option" data-correct><input type="radio" name="L14q7"> \(-1\)</label>
+              <label class="option"><input type="radio" name="L14q7"> \(0\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>The condition \(0 &gt; 0\) is false, so the else branch \(-x\) runs, and its tangent is \(-1\). Section 6 uses this example.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which statement about the tangent of a dual evaluation is correct?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L14q8"> It always equals the derivative of the function the program was meant to compute</label>
+              <label class="option" data-correct><input type="radio" name="L14q8"> It equals the derivative of the program, which can differ from the intended function at a branch</label>
+              <label class="option"><input type="radio" name="L14q8"> It carries a truncation error of order \(h\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>Section 6 and Misconception 3 show that a branch can make the program's tangent differ from the intended function's derivative.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="2" data-tolerance="1e-9">
+            <p class="prompt">In Example 5.1, how many partial derivatives does the single backward pass return?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>The pass returns \(\partial f/\partial x_1\) and \(\partial f/\partial x_2\), so two.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Lab 1 checks the tangent of \(f_1\) on a grid. Which statement does the lab's result establish?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L14q10"> The derivative is correct at every real number</label>
+              <label class="option" data-correct><input type="radio" name="L14q10"> The tangent agrees with the closed form at the 251 grid points, to the stated tolerance</label>
+              <label class="option"><input type="radio" name="L14q10"> The method has no rounding error</label>
+            </fieldset>
+            <div class="explain" hidden><p>The lab is a check on a finite grid, and Proposition 3.1 is the proof for all points where the hypotheses hold.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s12"><span class="section-number">12</span>References</h2>
+        <p>No registry source is cited on this page. The results are proved here (grade T) or read from Lab 1 (grade C, with the lab named as its basis). The curriculum names Spivak, <em>Calculus</em>, and Hubbard and Hubbard, <em>Vector Calculus, Linear Algebra, and Differential Forms</em>, as M2 sources (registry keys <code>spivak2008calculus</code> and <code>hubbard2015vector</code>). No passage locator from either has been confirmed, so no statement on this page is attributed to them.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L13.html"><span class="dir">Previous</span>L13 · Finite-difference derivative approximation</a>
+        <a class="next" href="L15.html"><span class="dir">Next</span>L15 · Euclidean space and functions of several variables</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M2 · Single &amp; Multivariable Calculus · Each graded result carries a proof or a lab result labelled C.</footer>
+</body>
+</html>

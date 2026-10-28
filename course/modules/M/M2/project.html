@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M2 Project · Sensitivity Engine</title>
+  <meta name="description" content="Write the sensitivity engine: the first and second derivatives of a SIMULATED bond price in its yield, by analytic formula, by finite differences and by forward-mode automatic differentiation, the Hessian of a function of two variables, and the price in integer cents. The module is autograded on your own seeded instance; the error-analysis note is graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M2 Single &amp; Multivariable Calculus</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="60">
+      <header class="page-head">
+        <p class="eyebrow">M2 project · 60 hours · autograded code and a rubric-graded error-analysis note</p>
+        <h1>Sensitivity Engine</h1>
+        <p class="lede">A desk reports how a bond price moves when its yield moves, to the cent, at first and second order. Each sensitivity can be computed by a formula, by a finite difference, or by automatic differentiation, and each method fails in its own way. You will write the module that computes all three, the Hessian of a function of two variables and the price in integer cents, and then write a note that shows where each numerical method is accurate and where it breaks.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are at full length. If you met the placement bar on the <a href="index.html#placement">module page</a>, skip rungs 1 and 2 and start at rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: the price and both yield derivatives of one SIMULATED bond, each step annotated, with the central differences that check them.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: the second difference and the product line of the dual number are blanked. Fill them in. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: the module <code>sensitivity_engine.py</code>, autograded in <a href="#grader-section">the autograder section</a>, and an error-analysis note, graded by the rubric in <a href="#report">the note section</a> with annotated exemplars and a self-assessment.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Lab 1 and Lab 3 use one SIMULATED bond: a face value of 1000000 cents (10000.00) in Lab 1 and of 2500000 cents (25000.00) in Lab 3, paid with an annual coupon, with a yield compounded once a year. The bond is an illustrative input. It is not market data, and no file is read. Lab 2 differentiates a test cubic, not a bond. Lab 3 is the reference run for the note in rung 3.</p>
+
+        <section class="lab" id="lab-M2-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: one bond, step by step</h3>
+          <p class="hypothesis">The bond has face value 1000000 cents, a 5.00 % annual coupon, ten annual payments, and a yield of 4.00 %. Each year pays 50000 cents of coupon, and the last year adds the face value. Stated before running: the unrounded price is 1081108.96 cents, which rounds to 1081109 cents; the analytic \(dP/dy\) is about \(-8514667.40\) cents per unit of yield, and its central difference with step \(10^{-5}\) agrees with it to about \(2\times10^{-9}\) relative; the analytic \(d^2P/dy^2\) is about 83766485.12, and its central difference agrees with it to about \(10^{-7}\) relative; the duration \(-P'/P\) is 7.88 years. The derivatives use the chain rule of Lesson 5 on each discount factor \((1+y)^{-t}\), and the central differences are the finite-difference derivative of Lesson 13.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: price and yield sensitivities of one SIMULATED bond, analytic and by central difference.
+
+The bond is SIMULATED, not market data: face value 1000000 cents (10000.00), an annual coupon of 5.00 %, ten annual
+payments, and a yield of 4.00 % compounded once a year. The program prints the unrounded price in cents, the rounded
+price, the first and second derivatives in the yield by their cash-flow formulas and by central differences with
+step 1e-5, the differences between each formula and its central difference, and the duration -P'/P in years.
+Standard library only.
+"""
+
+Flow = tuple[int, float]
+
+
+def price_cents(flows: list[Flow], y: float) -&gt; float:
+    """The unrounded price in cents at the annual yield y: the sum of cash_t / (1 + y)**t over the flows."""
+    v = 1 / (1 + y)
+    return sum(cash * v**t for t, cash in flows)
+
+
+def main() -&gt; None:
+    face_cents = 1_000_000  # SIMULATED face value, 10000.00 in cents
+    coupon = face_cents * 0.05  # cents paid at the end of each year
+    years = 10
+    y = 0.04
+    # Step 1. The cash flow of year t: the coupon, and the face value added in the last year.
+    flows = [(t, coupon + (face_cents if t == years else 0)) for t in range(1, years + 1)]
+    # Step 2. The discount factor of year t is v**t with v = 1 / (1 + y); the price is the sum of the discounted flows.
+    price = price_cents(flows, y)
+    v = 1 / (1 + y)
+    # Step 3. The derivative of v**t in y is -t * v**(t+1), so dP/dy = -sum t * cash * v**(t+1). The second derivative
+    # of v**t is t(t+1) * v**(t+2), so d2P/dy2 = sum t(t+1) * cash * v**(t+2).
+    first = -sum(t * cash * v ** (t + 1) for t, cash in flows)
+    second = sum(t * (t + 1) * cash * v ** (t + 2) for t, cash in flows)
+    # Step 4. The same two derivatives by central differences of the unrounded price, with step h = 1e-5.
+    h = 1e-5
+    up, down = price_cents(flows, y + h), price_cents(flows, y - h)
+    first_numeric = (up - down) / (2 * h)
+    second_numeric = (up - 2 * price + down) / (h * h)
+    print("unrounded price (cents):", f"{price:.4f}")
+    print("rounded price (cents, half to even):", round(price))
+    print("dP/dy analytic (cents per unit yield):", f"{first:.4f}")
+    print("dP/dy central difference:", f"{first_numeric:.4f}")
+    print("difference:", f"{abs(first - first_numeric):.2e}")
+    print("d2P/dy2 analytic (cents per squared unit yield):", f"{second:.4f}")
+    print("d2P/dy2 central difference:", f"{second_numeric:.4f}")
+    print("difference:", f"{abs(second - second_numeric):.2e}")
+    print("duration -P'/P (years):", f"{-first / price:.6f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">unrounded price (cents): 1081108.9578
+rounded price (cents, half to even): 1081109
+dP/dy analytic (cents per unit yield): -8514667.3953
+dP/dy central difference: -8514667.4109
+difference: 1.56e-02
+d2P/dy2 analytic (cents per squared unit yield): 83766485.1192
+d2P/dy2 central difference: 83766493.4807
+difference: 8.36e+00
+duration -P'/P (years): 7.875864</pre>
+          <p class="interpretation">Each comment names one step. The price is the sum of the ten discounted cash flows, and the derivatives are the sums of their derivatives, term by term. The analytic and the central values agree to the digits printed: their differences are 1.56e-02 for the first derivative, which is about 2e-9 of its size, and 8.36e+00 for the second, which is about 1e-7 of its size. The central difference is a check on the analytic formulas, and Lab 3 shows that it is accurate only over a range of steps. The price is printed twice: unrounded, which the derivatives use, and rounded to the cent, which the module returns as an integer. The duration is \(-P'/P\) in years, a ratio that does not depend on the units of money. Its name is previewed here; this project uses only the formula.</p>
+        </section>
+
+        <section class="lab completion" id="lab-M2-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: the second difference and the dual product</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression that the lesson gives. The central second difference is \((f(x+h)-2f(x)+f(x-h))/h^2\), and the product rule of Lesson 14 says that the dot part of a product of two dual numbers (a value with its derivative, Lesson 14) is \(a\,\dot b + \dot a\,b\). When both lines are right, the second difference of the test cubic at \(x_0 = 0.8\) with step \(10^{-4}\) agrees with its analytic value 8.4 to better than \(10^{-7}\), and the forward-mode derivative agrees with the analytic value 3.76 to better than \(10^{-15}\).</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completed solution: a central second difference, and forward-mode AD on a dual number.
+
+The completion problem shows the two blanked lines as ___. Both are checked here on a cubic with coefficients
+(1, -2, 3, 0.5), a test function and not a bond: the second difference at x0 = 0.8 against its analytic value 8.4, and
+the forward-mode derivative at x0 against its analytic value 3.76. Each line is printed with its analytic value and the
+difference. Standard library only.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+
+class Dual:
+    """A dual number value + dot * eps, with eps squared equal to zero: the carrier of forward-mode AD."""
+
+    def __init__(self, value: float, dot: float) -&gt; None:
+        self.value = value
+        self.dot = dot
+
+    def __add__(self, other: Any) -&gt; Dual:
+        o = lift(other)
+        return Dual(self.value + o.value, self.dot + o.dot)
+
+    __radd__ = __add__
+
+    def __mul__(self, other: Any) -&gt; Dual:
+        o = lift(other)
+        return Dual(self.value * o.value, ___)
+
+    __rmul__ = __mul__
+
+
+def lift(x: Any) -&gt; Dual:
+    """A dual number unchanged, or a real number as a dual number with zero derivative."""
+    return x if isinstance(x, Dual) else Dual(float(x), 0.0)
+
+
+def second_difference(f: Callable[[float], float], x: float, h: float) -&gt; float:
+    """The central second difference (f(x+h) - 2f(x) + f(x-h)) / h**2 of f at x with step h."""
+    return ___
+
+
+def ad_derivative(f: Callable[[Any], Any], x: float) -&gt; float:
+    """The derivative of f at x: f is evaluated on a dual number whose dot part is 1."""
+    return float(lift(f(Dual(x, 1.0))).dot)
+
+
+def cubic(x: Any) -&gt; Any:
+    """The test cubic 1 - 2x + 3x^2 + 0.5x^3 in Horner form, so that a dual number argument works."""
+    return 1.0 + x * (-2.0 + x * (3.0 + x * 0.5))
+
+
+def main() -&gt; None:
+    x0 = 0.8
+    h = 1e-4
+    second_numeric = second_difference(cubic, x0, h)
+    second_analytic = 2 * 3.0 + 6 * 0.5 * x0
+    print("second difference:", f"{second_numeric:.6f}", "| analytic:", f"{second_analytic:.6f}")
+    print("difference:", f"{abs(second_numeric - second_analytic):.2e}")
+    derivative = ad_derivative(cubic, x0)
+    first_analytic = -2.0 + 2 * 3.0 * x0 + 3 * 0.5 * x0 * x0
+    print("AD derivative:", f"{derivative:.6f}", "| analytic:", f"{first_analytic:.6f}")
+    print("difference:", f"{abs(derivative - first_analytic):.2e}")
+
+
+main()
+</code></pre>
+          <pre class="expected" data-tolerance="1e-6">second difference: 8.400000 | analytic: 8.400000
+difference: 5.11e-08
+AD derivative: 3.760000 | analytic: 3.760000
+difference: 4.44e-16</pre>
+          <p class="interpretation">The central second difference of a cubic is exact in exact arithmetic, because its fourth derivative is zero, so the printed difference of 5.11e-08 is floating-point error alone. The dual number carries the derivative alongside the value, so the product line must add both product terms. The printed difference of 4.44e-16 is the floating-point error of the sum; the derivative is exact up to that error. The test cubic is written in Horner form, so the same function runs on a float and on a dual number.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A desk reports the price of each bond in integer cents and the sensitivity of that price to its yield, first and second order, so that a reader can see how far the price moves for a given move in the yield. The formulas are exact, but the desk also computes the same sensitivities numerically, and it needs to know where each numerical method is accurate. You write the module to the interface below, check it against the analytic values, and show in a note where each numerical method breaks.</dd>
+          <dt>Inputs</dt>
+          <dd>No data file. The autograder's instance comes from <code>grader/instance.py</code>, seeded by your workspace ID. It holds a SIMULATED bond (a face value in whole cents, a coupon in whole basis points, a maturity in whole years, and a yield in whole basis points), a cubic test function of one variable with a point <code>x0</code>, and a test function of two variables, a quadratic with a cubic cross term, with a point. All of it is SIMULATED. The note uses the bond of Lab 3: 2500000 cents face, a 6.00 % coupon, 12 years and a 5.00 % yield. It is an illustrative input and not market data.</dd>
+          <dt>Required outputs</dt>
+          <dd>In a repository of your own: <code>sensitivity_engine.py</code> at its root, with the five functions below, and a <code>report/</code> folder beside it. Start from <a href="grader/starter.py">the starter file</a>, whose signatures are complete. The functions are <code>fd_derivative(f, x, h, scheme)</code>, returning a float; <code>ad_derivative(f, x)</code>, returning a float; <code>hessian_fd(f, x, h)</code>, returning a square list of lists of floats; <code>bond_price_cents(instance)</code>, returning an int; and <code>sensitivities(instance)</code>, returning a dictionary of floats with the keys <code>dprice_dy</code>, <code>d2price_dy2</code>, <code>duration_analytic</code> and <code>convexity_analytic</code>. For the note, commit three more files: <code>report/run_report.py</code>, which is Lab 3 with its calls replaced by calls to your module and which prints the same lines; <code>report/error_analysis.md</code>, the note described in <a href="#brief">the brief</a> with its appendix; and <code>report/self_assessment.md</code>, the summary that the form in <a href="#self-assessment">the self-assessment section</a> produces.</dd>
+          <dt>Constraints</dt>
+          <dd>The standard library, or NumPy, only. Three conditions raise <code>ValueError</code>, and the conventions below name them: a step that is not above zero, a scheme other than <code>"forward"</code> or <code>"central"</code>, and a yield at or below -1. No other exception is required, and no other input is specified. No function prints or warns. A run in your browser stops after 120 seconds. The conventions in <a href="#conventions">the next subsection</a> are binding.</dd>
+          <dt>Grading mode</dt>
+          <dd>Both modes apply. The code is autograded by <code>grader/test_project.py</code>, which runs 46 tests with warnings as errors. The tests cover the orders of the two finite differences from two steps, the forward-mode derivative and the Hessian against their analytic values, the symmetry of the Hessian, the price in integer cents against an exact rational calculation, the sensitivities against central differences of the unrounded price, the three named <code>ValueError</code> conditions in both directions, and the purity of the module. The same file runs in your browser and on your machine. It is not secret: its integrity comes from your seeded instance and from a second instance. The error-analysis note is graded by rubric: five criteria with four observable levels each, scored with the form in <a href="#self-assessment">the self-assessment section</a> and calibrated on two annotated exemplars. The note meets the bar at level 3 or above on every criterion.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions</h3>
+        <ul>
+          <li><strong>Rates and yields.</strong> A rate is a decimal per period: 0.04 is 4 %. The yield is an annual rate compounded once a year. The instance gives it in whole basis points, so the yield is <code>yield_bps / 10000</code>, and the coupon rate is <code>coupon_bps / 10000</code>.</li>
+          <li><strong>Cash flows.</strong> A bond with face value \(F\) cents, a coupon rate \(c\) and \(T\) whole years pays \(C_t = Fc\) cents at the end of each year \(t < T\), and \(C_T = Fc + F\) at the end of year \(T\). With \(F > 0\) and \(c \ge 0\), every cash flow is positive.</li>
+          <li><strong>Unrounded price.</strong> The price is \(P(y) = \sum_{t=1}^{T} C_t\,(1+y)^{-t}\) in cents. It is not rounded. The derivatives are taken of this unrounded price.</li>
+          <li><strong>Price in integer cents.</strong> <code>bond_price_cents</code> returns \(P(y)\) rounded to the nearest whole cent, an exact half cent going to the even cent, as an <code>int</code>. This is half-to-even rounding, and no other rounding rule is used.</li>
+          <li><strong>Sensitivities.</strong> \(P'(y) = -\sum_{t} t\,C_t\,(1+y)^{-t-1}\) is <code>dprice_dy</code>, in cents per unit of yield. \(P''(y) = \sum_{t} t(t+1)\,C_t\,(1+y)^{-t-2}\) is <code>d2price_dy2</code>, in cents per squared unit of yield. Both are floats, not money.</li>
+          <li><strong>Named ratios.</strong> <code>duration_analytic</code> is \(-P'(y)/P(y)\), in years, and <code>convexity_analytic</code> is \(P''(y)/P(y)\), in years squared. The two names are previews. The module uses only these formulas, and their later development is not part of this project.</li>
+          <li><strong>Forward and central differences.</strong> For a step \(h > 0\), the forward estimate of \(f'(x)\) is \((f(x+h)-f(x))/h\), and the central estimate is \((f(x+h)-f(x-h))/(2h)\). Both are <a href="L13.html#def-finite-difference-derivative" class="concept" data-concept="finite-difference-derivative">finite-difference derivatives</a> of Lesson 13.</li>
+          <li><strong>Hessian.</strong> For a step \(h > 0\), the diagonal entry \(i\) is \((f(x+he_i)-2f(x)+f(x-he_i))/h^2\), and the off-diagonal entry \((i,j)\) is \((f(x+he_i+he_j)-f(x+he_i-he_j)-f(x-he_i+he_j)+f(x-he_i-he_j))/(4h^2)\). The result is a list of lists, the matrix of second partial derivatives, the <a class="concept" data-concept="hessian" href="L19.html#def-hessian">Hessian</a> of Lesson 19.</li>
+          <li><strong>Automatic differentiation.</strong> <code>ad_derivative(f, x)</code> evaluates \(f\) on an object of your own design that carries a value and a derivative together, a dual number, and returns the derivative at \(x\). The function \(f\) is written with numbers and the operators <code>+</code>, <code>-</code> and <code>*</code>. The result is the exact derivative of the function, not an approximation.</li>
+          <li><strong>The three ValueError conditions.</strong> (a) A step \(h\) that is not above zero raises <code>ValueError</code> in <code>fd_derivative</code> and in <code>hessian_fd</code>. (b) A scheme other than <code>"forward"</code> or <code>"central"</code> raises <code>ValueError</code> in <code>fd_derivative</code>. (c) A yield at or below -1, that is <code>yield_bps</code> at or below -10000, raises <code>ValueError</code> in <code>bond_price_cents</code> and in <code>sensitivities</code>. A yield above -1 is accepted.</li>
+          <li><strong>Tolerances.</strong> A comparison passes when its error is at most the tolerance times the larger of 1 and the magnitude of the expected value. The tolerances are: \(10^{-6}\) for the central difference of the cubic at step \(10^{-5}\); \(10^{-9}\) for the forward-mode derivative of the cubic; \(10^{-5}\) for each Hessian entry at step \(10^{-4}\); \(10^{-6}\) for symmetry, as the difference of the two off-diagonal entries against one plus the larger of them; \(10^{-6}\) for <code>dprice_dy</code> against the central difference of the unrounded price at step \(10^{-5}\); \(10^{-4}\) for <code>d2price_dy2</code> against the second central difference at step \(10^{-5}\); and \(10^{-9}\) for the two named ratios. The order checks take the errors of the forward and the central estimates at steps \(10^{-2}\) and \(5 \times 10^{-3}\), and require the ratio of the two errors to lie from 1.9 to 2.1 for forward and from 3.8 to 4.2 for central.</li>
+        </ul>
+
+        <h3 id="conventions-check">What the suite does not check</h3>
+        <p>The suite does not fix a default step, a particular algorithm, or an internal representation. An implementation may use a Richardson extrapolation, a complex step, a reverse-mode tape, a NumPy vector sum, or a closed-form cash-flow sum, and the same suite accepts each of them. A failing test names the property it checks and the idea to revisit, and it never prints the expected value.</p>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">4</td><td>One bond, every step explained; the lab's comments carry the reasons for each formula.</td></tr>
+              <tr><td>Rung 2 completion problem and its instant check</td><td class="num">6</td><td>Two blanks, the second difference and the product line; the time goes into why each line is right.</td></tr>
+              <tr><td>3a Engine: analytic, finite-difference, automatic and Hessian paths</td><td class="num">22</td><td>Four sensitivity paths and the Hessian, each tested on the instances the suite draws.</td></tr>
+              <tr><td>3a' Edge cases and failure behaviour</td><td class="num">6</td><td>A step that is not above zero, an unknown scheme, and a yield at or below -1, in both directions.</td></tr>
+              <tr><td>3b Error-analysis note (rubric)</td><td class="num">14</td><td>A step-size sweep, the convergence orders and the two failure cases, each derived in the note.</td></tr>
+              <tr><td>3c Self-check against the grader and the rubric</td><td class="num">8</td><td>Run the suite, then score the note against the two exemplars and compare the scores.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>60</strong></td><td>Equals the hours of the module's project in the hub: 60 of the module's 300.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>sensitivity_engine.py</code> and run the suite on your own instance. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="M2" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="sensitivity_engine.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>sensitivity_engine.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> turns off pytest's comparison details, so a failure shows the test's own message and no values, and <code>-W error</code> turns warnings into failures, both as in the browser. The browser runs the same file.</p>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The error-analysis note</h2>
+        <p>The note runs your module on the Lab 3 bond and states, with derivations, where each numerical method is accurate and where it breaks. Its numbers are the ones Lab 3 prints, so you can check every one before you write it.</p>
+
+        <section class="lab" id="lab-M2-project-3" data-runtime="python">
+          <h3>Lab 3 · The note's reference numbers</h3>
+          <p class="hypothesis">The bond is SIMULATED: face value 2500000 cents, a 6.00 % annual coupon, twelve annual payments, and a yield of 5.00 %. Stated before running: the unrounded price is 2721581.29 cents, which rounds to 2721581 cents; the analytic \(dP/dy\) is \(-23407826.81\) cents per unit of yield; the smallest error of the central difference over the sweep is at step \(10^{-6}\), where it is 7.1e-4 cents per unit of yield; the observed order of the forward difference from steps \(10^{-2}\) and \(10^{-3}\) is about 1 and that of the central difference is 2; the kink \(|x-0.3|\) gives +1, -1 and 0 for the forward, backward and central differences at \(x = 0.3\); and the cancellation case \(10^{8}+\sin x\) loses its derivative as the step shrinks. Copy this file into <code>report/run_report.py</code> and replace its calls to the price and the difference functions with calls to your module. It must print the same lines.</p>
+          <pre><code class="language-python" data-run>"""
+The bond is SIMULATED, not market data: face value 2500000 cents (25000.00), an annual coupon of 6.00 %, twelve
+annual payments, and a yield of 5.00 %. The program prints the unrounded price, the analytic dP/dy with its forward
+and central differences over a sweep of steps from 1e-1 to 1e-12, the step with the smallest central error, the
+observed orders from a tenfold cut in the step, a kink case |x - 0.3| at x = 0.3 by forward, backward and central
+differences, and a cancellation case 1e8 + sin(x) at x = 0.5 by the central difference. Standard library only.
+"""
+
+import math
+from collections.abc import Callable
+
+Flow = tuple[int, float]
+
+
+def bond_price(flows: list[Flow], y: float) -&gt; float:
+    """The unrounded price in cents at the annual yield y."""
+    v = 1 / (1 + y)
+    return sum(cash * v**t for t, cash in flows)
+
+
+def difference(f: Callable[[float], float], x: float, h: float, scheme: str) -&gt; float:
+    """A forward or central difference estimate of f'(x) with step h."""
+    if scheme == "forward":
+        return (f(x + h) - f(x)) / h
+    if scheme == "backward":
+        return (f(x) - f(x - h)) / h
+    return (f(x + h) - f(x - h)) / (2 * h)
+
+
+def main() -&gt; None:
+    face_cents = 2_500_000  # SIMULATED face value, 25000.00 in cents
+    coupon = face_cents * 0.06  # cents paid at the end of each year
+    years = 12
+    y = 0.05
+    flows = [(t, coupon + (face_cents if t == years else 0)) for t in range(1, years + 1)]
+    price = bond_price(flows, y)
+    v = 1 / (1 + y)
+    exact = -sum(t * cash * v ** (t + 1) for t, cash in flows)
+    print("unrounded price (cents):", f"{price:.4f}")
+    print("rounded price (cents, half to even):", round(price))
+    print("dP/dy analytic (cents per unit yield):", f"{exact:.6f}")
+
+    def price_of(yield_rate: float) -&gt; float:
+        return bond_price(flows, yield_rate)
+
+    steps = [10.0**-k for k in range(1, 13)]
+    errors: dict[float, tuple[float, float]] = {}
+    print("step h | forward error | central error")
+    for h in steps:
+        fwd = abs(difference(price_of, y, h, "forward") - exact)
+        cen = abs(difference(price_of, y, h, "central") - exact)
+        errors[h] = (fwd, cen)
+        print(f"{h:.0e} | {fwd:.6e} | {cen:.6e}")
+    best = min(steps, key=lambda h: errors[h][1])
+    print("smallest central error at step:", f"{best:.0e}", "| error:", f"{errors[best][1]:.6e}")
+    fwd_order = math.log10(errors[1e-2][0] / errors[1e-3][0])
+    cen_order = math.log10(errors[1e-2][1] / errors[1e-3][1])
+    print("observed order, forward (log10 of the error ratio, steps 1e-2 to 1e-3):", f"{fwd_order:.3f}")
+    print("observed order, central (log10 of the error ratio, steps 1e-2 to 1e-3):", f"{cen_order:.3f}")
+
+    def kink(x: float) -&gt; float:
+        return abs(x - 0.3)
+
+    print("kink |x - 0.3| at x = 0.3, step 1e-3: forward", f"{difference(kink, 0.3, 1e-3, 'forward'):.1f}")
+    print("kink at x = 0.3, step 1e-3: backward", f"{difference(kink, 0.3, 1e-3, 'backward'):.1f}")
+    print("kink at x = 0.3, step 1e-3: central", f"{difference(kink, 0.3, 1e-3, 'central'):.1f}")
+    print("kink at x = 0.3, step 1e-6: central", f"{difference(kink, 0.3, 1e-6, 'central'):.1f}")
+
+    def offset(x: float) -&gt; float:
+        return 1e8 + math.sin(x)
+
+    truth = math.cos(0.5)
+    print("cancellation 1e8 + sin(x) at x = 0.5, exact f' =", f"{truth:.10f}")
+    for h in (1e-4, 1e-8, 1e-12):
+        cen = difference(offset, 0.5, h, "central")
+        print(f"cancellation, central at step {h:.0e}:", f"{cen:.6f}", "| error:", f"{abs(cen - truth):.2e}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">unrounded price (cents): 2721581.2909
+rounded price (cents, half to even): 2721581
+dP/dy analytic (cents per unit yield): -23407826.805475
+step h | forward error | central error
+1e-01 | 8.995621e+06 | 6.082359e+06
+1e-02 | 1.249698e+06 | 5.485760e+04
+1e-03 | 1.297200e+05 | 5.480170e+02
+1e-04 | 1.302113e+04 | 5.480106e+00
+1e-05 | 1.302606e+03 | 5.496066e-02
+1e-06 | 1.302673e+02 | 7.111207e-04
+1e-07 | 1.300591e+01 | 2.329569e-02
+1e-08 | 1.490103e+00 | 1.396858e-01
+1e-09 | 3.399315e+00 | 6.053470e-01
+1e-10 | 1.178122e+01 | 1.396858e-01
+1e-11 | 3.478491e+01 | 1.150185e+01
+1e-12 | 2.293522e+03 | 5.004462e+02
+smallest central error at step: 1e-06 | error: 7.111207e-04
+observed order, forward (log10 of the error ratio, steps 1e-2 to 1e-3): 0.984
+observed order, central (log10 of the error ratio, steps 1e-2 to 1e-3): 2.000
+kink |x - 0.3| at x = 0.3, step 1e-3: forward 1.0
+kink at x = 0.3, step 1e-3: backward -1.0
+kink at x = 0.3, step 1e-3: central 0.0
+kink at x = 0.3, step 1e-6: central 0.0
+cancellation 1e8 + sin(x) at x = 0.5, exact f' = 0.8775825619
+cancellation, central at step 1e-04: 0.877529 | error: 5.32e-05
+cancellation, central at step 1e-08: 0.745058 | error: 1.33e-01
+cancellation, central at step 1e-12: 0.000000 | error: 8.78e-01</pre>
+          <p class="interpretation">The sweep prints the forward and central errors for steps from \(10^{-1}\) to \(10^{-12}\). The forward error falls close to tenfold for each tenfold cut in the step between \(10^{-3}\) and \(10^{-6}\), and among the printed steps it is smallest at 1.490103, at step \(10^{-8}\). The central error falls faster, and its smallest printed value is 7.111207e-04 at step \(10^{-6}\). Below that step the central error is larger than that minimum at every printed step. The lab does not print the floating-point error of the prices, so it does not measure the cause of the rise. The observed orders, 0.984 for the forward and 2.000 for the central difference, are read from the errors at steps \(10^{-2}\) and \(10^{-3}\) only. The kink and the cancellation rows show two cases where the printed values are not the derivative: at the kink the one-sided slopes differ, and at the cancellation the error reaches 8.78e-01 at step \(10^{-12}\). The lab does not test the module; the suite does.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Write for a reader who knows Lessons 4, 8, 13 and 14, not for a referee of this bond. Use these five sections, in this order and under these headings, followed by the appendix.</p>
+        <ol>
+          <li><strong>Summary</strong>: the bond, its price, and the one number that shows where the central difference is most accurate, in at most 80 words.</li>
+          <li><strong>Setup and conventions</strong>: the bond and its cash flows, the unrounded and the rounded price, and which module function computes each number.</li>
+          <li><strong>Truncation and floating-point error</strong>: the expansion of each scheme with its power of \(h\), the step-size sweep, the step of smallest central error, and the observed orders.</li>
+          <li><strong>Where differences break</strong>: the kink and the cancellation case, each with the sweep rows that show it.</li>
+          <li><strong>Limitations</strong>: what the sweep covers, what it does not show, and what the two failure cases do not settle.</li>
+        </ol>
+        <p><strong>Appendix A · Derivations.</strong> Four results, each stated with its assumptions and derived in your own words: <strong>A1</strong> the forward error, from the Taylor expansion of \(f\) at \(x\) with the remainder in Lagrange form; <strong>A2</strong> the central error, from the same expansion to the third order; <strong>A3</strong> the effect of floating-point error on a difference quotient, with the assumption about the size of the error in each value; <strong>A4</strong> the one-sided slopes of the kink \(|x-0.3|\) at \(x = 0.3\).</p>
+        <p><strong>Length.</strong> The body (the five sections) runs 400 to 900 words. The appendix has no limit. A word is a run of characters between spaces.</p>
+        <p><strong>Numbers.</strong> Every number the note quotes is printed by <code>report/run_report.py</code>, with its unit, or is derived in the note from the bond's inputs. A derivative is quoted with its unit: cents per unit of yield, or cents per squared unit of yield. A cent amount is quoted as the integer the run prints.</p>
+        <p><strong>Scoring.</strong> Each criterion scores the highest level whose every element the note shows. Each level contains the one below it: level 4 is level 3 plus the elements its cell names; level 2 is any attempt that misses an element of level 3 or makes an error its cell names; level 1 is the absence its cell names. The note meets the bar at level 3 or above on every criterion.</p>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The error-analysis note: five criteria, four levels each, scored by the rule above. The note meets the bar at level 3 or above on every criterion.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Truncation and floating-point error</th><td>Everything in level 3, and states how the floating-point error of a difference quotient depends on the step, as proportional to \(1/h\) with the reason, and names the step at which the sweep turns.</td><td>States the truncation error of both schemes with its power of \(h\), gives a step-size sweep over at least five decades of \(h\), and names the step of smallest central error.</td><td>States that the forward error is of order \(h\) and the central error of order \(h^2\), with no sweep, or with a sweep over fewer than five decades of \(h\).</td><td>Says only that a smaller step is better, or gives no order for either error.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Where differences break</th><td>Everything in level 3, and derives each failure from the definition of the scheme: the one-sided slopes at the kink, and the size of the float spacing against the step in the cancellation case.</td><td>Names the kink and the cancellation case, each with the sweep rows that show it: for the kink, the forward, backward and central values; for the cancellation, the central errors at three steps.</td><td>Names one of the two cases, with its sweep rows.</td><td>Names no case, or names one with no sweep row.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Agreement with the analytic value</th><td>Everything in level 3, and states the relative tolerance of each comparison and shows that the printed error at the chosen step is below it.</td><td>For each instance the note uses, reports the analytic, the finite-difference and the automatic-differentiation value of the first derivative, with the tolerance used and the outcome of each comparison.</td><td>Reports the analytic value and the finite-difference value, without the automatic-differentiation value or the tolerance.</td><td>Reports no comparison with an analytic value.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Convergence orders</th><td>Everything in level 3, and states the remainder of each expansion in Lagrange form at a named point, with the bound it gives on the error for a stated step.</td><td>Derives the order of each scheme from its Taylor expansion, with each step shown, and compares the order the sweep observed with the derived order.</td><td>Gives the orders with a derivation for one scheme only, or states them with no derivation, and no comparison with the sweep.</td><td>Asserts the orders with no derivation and no sweep.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Units and conventions</th><td>Everything in level 3, and states which price, the unrounded or the rounded, each derivative and each ratio is computed from.</td><td>States the unit of the price, in integer cents for the rounded price and in cents for the unrounded one; the unit of each derivative, in cents per unit of yield and cents per squared unit of yield; and the unit of the duration, in years; and uses each unit consistently.</td><td>States the unit of the price, and leaves a derivative's unit unstated or used inconsistently.</td><td>Leaves a derivative's unit unstated and states no unit of the price.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two notes written to this brief, at different levels. Their numbers are Lab 3's printed output, apart from the bond's inputs and the cash flows that follow from them. Each passage carries an annotation naming the descriptors it meets or misses. With JavaScript on, the annotations stay hidden until you reveal the official scoring with the form below, so score both exemplars first.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,1,2,2,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 1 · C3 2 · C4 2 · C5 2. The orders are stated but no sweep is shown, no case is named, the comparison omits the automatic value and the tolerance, the orders are asserted without derivation, and the derivative's unit is left out.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>The bond price is 2721581 cents. The central difference is more accurate than the forward difference for small steps.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: states the unit of the price, in cents.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Errors of the two schemes</h5>
+              <p>The forward difference has error of order \(h\) and the central difference has error of order \(h^2\). So the central difference is better for small steps. The derivative is about -23407827.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="misses" data-criterion="C5" data-level="3">Misses C5 level 3: the derivative's value is given with no unit.</li>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: states the two orders, with no sweep.</li>
+                <li class="misses" data-criterion="C1" data-level="3">Misses C1 level 3: no sweep of the step is given, and no step of smallest error is named.</li>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: states the orders, with no derivation.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Where it breaks</h5>
+              <p>Differences are sometimes inaccurate, for example when the function is not smooth. The note does not give a case.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="1">Meets C2 level 1: names no case.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Agreement</h5>
+              <p>The analytic derivative is compared with the central difference, and they agree.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="2">Meets C3 level 2: reports the analytic and the finite-difference values, with no automatic value and no tolerance.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,3,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 3 · C5 4. The expansions, the sweep and the two failure cases are derived and printed; the tolerance is stated and shown to hold. It falls short of level 4 for C4: the remainders are given in Lagrange form, but no bound on the error for a stated step is derived from them.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>The bond is SIMULATED: 2500000 cents face, a 6.00 % coupon, 12 years, a 5.00 % yield. Its unrounded price is 2721581.2909 cents, rounded to 2721581 cents. The smallest printed error of the central difference is 7.111207e-04 cents per unit of yield, at step 1e-6, against the analytic derivative of -23407826.805475 cents per unit of yield.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: states the unit of the price, in cents.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Truncation and floating-point error</h5>
+              <p>By Taylor's theorem with the remainder in Lagrange form, \(f(x+h) = f(x) + hf'(x) + \tfrac{h^2}{2}f''(\xi)\) for some \(\xi\) between \(x\) and \(x+h\). So the forward error is \(\tfrac{h}{2}f''(\xi)\), of order \(h\) (A1). To the third order, \(f(x\pm h) = f(x) \pm hf'(x) + \tfrac{h^2}{2}f''(x) \pm \tfrac{h^3}{6}f'''(\xi_\pm)\), so the central error is of order \(h^2\) (A2). The sweep over steps from 1e-1 to 1e-12 shows the forward error at 1e-6 is 1.302673e+02, and the central error at 1e-6 is 7.111207e-04, the smallest central error printed. Below 1e-6 the central error is larger than its minimum at every printed step: 2.329569e-02 at 1e-7 and 5.004462e+02 at 1e-12. Each price is a float near 2.7 million, whose spacing is 2^-31, about 4.7e-10 cents; the difference of two prices divided by 2h then magnifies that error by 1/(2h), which is 5e11 at h = 1e-12 (A3). The lab prints the errors, not the spacing, so this is the stated mechanism and not a measured one.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="3">Meets C1 level 3: states both truncation errors with their powers of \(h\), and gives a sweep over eleven decades that names the step of smallest central error.</li>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: states the floating-point error as proportional to \(1/h\), with its reason, and identifies the step where the sweep turns.</li>
+                <li class="meets" data-criterion="C4" data-level="3">Meets C4 level 3: derives both orders from the expansions, with each step shown.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Observed orders and the tolerance</h5>
+              <p>From steps 1e-2 and 1e-3 the sweep gives an observed order of 0.984 for the forward difference and 2.000 for the central difference. The derived orders are 1 for the forward and 2 for the central difference (A1, A2). The forward value 0.984 is below the derived 1, and the lab does not separate the two terms of its expansion, so the note does not attribute the gap to either term. The central value 2.000 matches the derived 2. The tolerance is 1e-6 relative. The central error at 1e-6 is 7.111207e-04, and relative to 23407826.805475 it is about 3e-11, which is below the tolerance.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: states the relative tolerance and shows that the printed error at the chosen step is below it.</li>
+                <li class="misses" data-criterion="C4" data-level="4">Misses C4 level 4: the remainders are stated in Lagrange form, but no bound on the error for a stated step is derived from them.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Where the differences break</h5>
+              <p>For \(f(x) = |x-0.3|\) at \(x = 0.3\), the forward estimate is \((|h|)/h = +1\) for every step \(h > 0\), the backward estimate is \((0-|-h|)/h = -1\), and their average, which the central difference returns, is 0. The printed values are 1.0, -1.0 and 0.0. The derivative does not exist at the corner, and no step fixes the central value. For \(f(x) = 10^8 + \sin x\) at \(x = 0.5\), the float spacing near \(10^8\) is \(2^{-26}\), about 1.49e-8. At step \(10^{-8}\) the difference \(f(x+h)-f(x-h)\) spans \(2h = 2\times10^{-8}\), about 1.3 spacings, and the central error is 1.33e-01. At step \(10^{-4}\) the error is 5.32e-05, and at step \(10^{-12}\) the computed derivative is 0.000000, with error 8.78e-01.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: derives the kink from the one-sided slopes, and the cancellation case from the float spacing, with the sweep rows that show each.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Units</h5>
+              <p>The bond's price is 2721581 cents when rounded, and the derivatives use the unrounded 2721581.2909 cents. The first derivative is in cents per unit of yield, the second derivative is in cents per squared unit of yield, and the duration of the bond is in years. The rounding of the price does not enter any derivative.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: states which price each derivative is computed from, the unrounded one, and the rounded integer that the function returns.</li>
+                <li class="meets" data-criterion="C5" data-level="3">Meets C5 level 3: states the unit of the price, each derivative and the duration, and uses each consistently.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="M2/project/error_note" data-work-label="Your note" data-work-noun="note" data-summary-path="report/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own note on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own note. Your scores stay in this browser; keep the summary the form produces as <code>report/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Total error of the second difference.</strong> Find the step that minimises the total error of a central second difference of the bond price, from the truncation term and the floating-point term that your note derives. Derive the step, and test it against the sweep that Lab 3 prints.</li>
+          <li><strong>Gradient of a two-variable price.</strong> Extend <code>hessian_fd</code> to a gradient, and check the gradient of a two-variable function against its analytic value, with a stated tolerance.</li>
+          <li><strong>A corner in the price.</strong> A kinked payoff has no derivative at its corner. State a hypothesis about where a numerical sensitivity of such a payoff breaks, and test it with a sweep, as Lab 3 does for \(|x-0.3|\).</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <p>The module's two named sources are listed below. The note attributes no statement to either of them, because no passage locator has been checked against them. Its derivations use only Taylor's theorem as stated in Lesson 8 and the definitions of the lessons named above.</p>
+        <ol class="reading-list">
+          <li data-cite="spivak2008calculus"></li>
+          <li data-cite="hubbard2015vector"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L24.html"><span class="dir">Previous</span>L24 · Where numerical sensitivities fail</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>M2 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M2 project · Sensitivity Engine · The autograder and the self-assessment run in your browser; nothing you write leaves it.</footer>
+</body>
+</html>

@@ -1,0 +1,322 @@
+"""Autograder for the M4 tail-risk simulator (tail_risk.py). All inputs are SIMULATED.
+
+Run in the browser or locally with the flags the page shows:
+
+    QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
+
+Every test checks a property the page states, or a condition the page names. Failure messages name the property and
+give a concept hint; they never print a computed value or the answer.
+"""
+
+from __future__ import annotations
+
+import math
+import os
+import random
+from collections.abc import Callable
+from fractions import Fraction
+from typing import Any
+
+import pytest
+import tail_risk as sol
+from instance import make_instance
+
+SEED = int(os.environ.get("QF_SEED", "0"))
+INST = make_instance(SEED)
+POSITIONS: list[int] = INST["positions_cents"]
+COV: list[list[float]] = INST["cov"]
+NU: int = INST["nu"]
+N_DRAWS: int = INST["n_draws"]
+
+# Relative tolerances on the loss variance. The Gaussian is held tight. The Student-t is held loosely on purpose: at
+# nu = 3 the fourth moment is infinite, so its sample variance settles slowly. Measured on seeds 0 to 49 with five
+# correct streams, the largest relative error was 0.52 at nu = 3 and 0.31 at nu = 4. The tolerance is 0.60, so the
+# test catches a missing matched factor (an inflation of nu / (nu - 2)) only where that inflation exceeds 1.6,
+# that is for nu of 5 or less. The page states this limit.
+TOL_GAUSSIAN_VARIANCE = 0.10
+TOL_T_VARIANCE = 0.60
+
+
+def check(condition: bool, message: str) -> None:
+    """Fail with message when condition is false. The message names the property; it never shows a value."""
+    __tracebackhide__ = True
+    if not condition:
+        raise AssertionError(message)
+
+
+def expect_value_error(call: Callable[[], object], message: str) -> None:
+    """Pass only when call raises ValueError. Any other exception, or no exception, fails with message."""
+    __tracebackhide__ = True
+    try:
+        call()
+    except ValueError:
+        return
+    except Exception:
+        raise AssertionError(message + " (a different exception type was raised)") from None
+    raise AssertionError(message)
+
+
+def sample_variance(xs: list[Any]) -> float:
+    """The unbiased sample variance of a list of numbers, summed with math.fsum."""
+    mean = math.fsum(xs) / len(xs)
+    return math.fsum((x - mean) ** 2 for x in xs) / (len(xs) - 1)
+
+
+def portfolio_variance() -> float:
+    """w' Sigma w in cents squared, from the instance's positions and covariance."""
+    n = len(POSITIONS)
+    return math.fsum(POSITIONS[i] * POSITIONS[j] * COV[i][j] for i in range(n) for j in range(n))
+
+
+def relative_error(measured: float, target: float) -> float:
+    """The absolute relative error |measured / target - 1|."""
+    return abs(measured / target - 1.0)
+
+
+# --- the instance -----------------------------------------------------------------------------------------------
+
+
+def test_instance_is_simulated_and_in_range() -> None:
+    check(INST["label"] == "SIMULATED", "the instance must be labelled SIMULATED")
+    check(3 <= NU <= 8, "the instance's degrees of freedom must lie between 3 and 8")
+    check(
+        N_DRAWS <= 20_000 and N_DRAWS % 100 != 0,
+        "the instance's draw count must be at most 20,000 and not a multiple of 100",
+    )
+    check(all(type(w) is int and w > 0 for w in POSITIONS), "the instance's positions must be positive whole cents")
+
+
+# --- matched_scale ------------------------------------------------------------------------------------------------
+
+
+def test_matched_scale_is_nu_minus_two_over_nu() -> None:
+    for nu in range(3, 9):
+        got = sol.matched_scale(nu)
+        check(abs(got - (nu - 2) / nu) <= 1e-12, "matched_scale must return (nu - 2) / nu for nu above 2")
+
+
+def test_matched_scale_accepts_nu_just_above_two() -> None:
+    check(abs(sol.matched_scale(3) - 1 / 3) <= 1e-12, "matched_scale(3) must return 1/3, the boundary above nu = 2")
+
+
+def test_matched_scale_rejects_nu_equal_to_two() -> None:
+    expect_value_error(lambda: sol.matched_scale(2), "matched_scale must raise ValueError at nu = 2")
+
+
+@pytest.mark.parametrize("nu", [1, 0, -3])
+def test_matched_scale_rejects_nu_below_two(nu: int) -> None:
+    expect_value_error(lambda: sol.matched_scale(nu), "matched_scale must raise ValueError for nu below 2")
+
+
+@pytest.mark.parametrize("nu", [3.0, True, "3"])
+def test_matched_scale_rejects_a_value_that_is_not_a_whole_number(nu: Any) -> None:
+    expect_value_error(lambda: sol.matched_scale(nu), "matched_scale must reject a value that is not a whole number")
+
+
+# --- simulate_losses: shape, moments, determinism -------------------------------------------------------------------
+
+
+def test_gaussian_returns_one_whole_cent_loss_per_draw() -> None:
+    losses = sol.simulate_losses(POSITIONS, COV, N_DRAWS, SEED, "gaussian", None)
+    check(len(losses) == N_DRAWS, "simulate_losses must return one loss per draw")
+    check(all(type(x) is int for x in losses), "every gaussian loss must be an int number of cents, not a float")
+
+
+def test_student_t_returns_one_whole_cent_loss_per_draw() -> None:
+    losses = sol.simulate_losses(POSITIONS, COV, N_DRAWS, SEED, "student_t", NU)
+    check(len(losses) == N_DRAWS, "simulate_losses must return one loss per draw")
+    check(all(type(x) is int for x in losses), "every student_t loss must be an int number of cents, not a float")
+
+
+def test_gaussian_loss_variance_matches_portfolio_covariance() -> None:
+    losses = sol.simulate_losses(POSITIONS, COV, N_DRAWS, SEED, "gaussian", None)
+    target = portfolio_variance()
+    check(
+        relative_error(sample_variance(losses), target) <= TOL_GAUSSIAN_VARIANCE,
+        "the gaussian losses' variance must match w' Sigma w: check that the draws use the covariance factor L",
+    )
+
+
+def test_student_t_loss_variance_matches_matched_covariance() -> None:
+    losses = sol.simulate_losses(POSITIONS, COV, N_DRAWS, SEED, "student_t", NU)
+    target = portfolio_variance()
+    check(
+        relative_error(sample_variance(losses), target) <= TOL_T_VARIANCE,
+        "the student_t losses' variance must match w' Sigma w: the Student-t draws need the matched factor",
+    )
+
+
+def test_same_seed_gives_the_same_losses() -> None:
+    for family, nu in (("gaussian", None), ("student_t", NU)):
+        first = sol.simulate_losses(POSITIONS, COV, 500, SEED, family, nu)
+        second = sol.simulate_losses(POSITIONS, COV, 500, SEED, family, nu)
+        check(first == second, "the same seed must give the same losses (determinism)")
+
+
+def test_different_seed_gives_different_losses() -> None:
+    first = sol.simulate_losses(POSITIONS, COV, 500, SEED, "gaussian", None)
+    other = sol.simulate_losses(POSITIONS, COV, 500, SEED + 1, "gaussian", None)
+    check(first != other, "a different seed must give different draws")
+
+
+# --- simulate_losses: named conditions -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("family", ["Gaussian", "t", None])
+def test_unknown_family_is_rejected(family: Any) -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, family, NU),
+        'family must be "gaussian" or "student_t"',
+    )
+
+
+def test_gaussian_accepts_no_degrees_of_freedom() -> None:
+    losses = sol.simulate_losses(POSITIONS, COV, 10, SEED, "gaussian", None)
+    check(len(losses) == 10, "the gaussian family must accept nu = None")
+
+
+def test_gaussian_rejects_a_degrees_of_freedom() -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, "gaussian", 5),
+        "the gaussian family must reject a non-None nu",
+    )
+
+
+def test_student_t_requires_degrees_of_freedom() -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, "student_t", None),
+        "the student_t family must reject nu = None",
+    )
+
+
+def test_student_t_rejects_nu_equal_to_two() -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, "student_t", 2),
+        "the student_t family must reject nu = 2",
+    )
+
+
+def test_student_t_accepts_nu_just_above_two() -> None:
+    losses = sol.simulate_losses(POSITIONS, COV, 10, SEED, "student_t", 3)
+    check(len(losses) == 10, "the student_t family must accept nu = 3")
+
+
+def test_zero_draws_are_rejected() -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses(POSITIONS, COV, 0, SEED, "gaussian", None),
+        "n_draws must be 1 or more: zero draws must raise ValueError",
+    )
+
+
+def test_one_draw_is_accepted() -> None:
+    losses = sol.simulate_losses(POSITIONS, COV, 1, SEED, "gaussian", None)
+    check(len(losses) == 1, "n_draws = 1 must return one loss, the boundary above zero")
+
+
+@pytest.mark.parametrize("n_draws", [10.0, True])
+def test_draw_count_must_be_a_whole_number(n_draws: Any) -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses(POSITIONS, COV, n_draws, SEED, "gaussian", None),
+        "n_draws must be a whole number, and a float or a boolean is not",
+    )
+
+
+@pytest.mark.parametrize("positions", [[1.0, 2], [True, 2]])
+def test_positions_must_be_whole_cents(positions: Any) -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses(positions, [[1e-4, 0.0], [0.0, 1e-4]], 10, SEED, "gaussian", None),
+        "position_cents must hold whole numbers of cents: a float or a boolean is rejected",
+    )
+
+
+def test_positions_must_not_be_empty() -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses([], [], 10, SEED, "gaussian", None),
+        "position_cents must not be empty",
+    )
+
+
+def test_covariance_must_match_the_number_of_positions() -> None:
+    three_by_three = [[4e-4, 0.0, 0.0], [0.0, 4e-4, 0.0], [0.0, 0.0, 4e-4]]
+    expect_value_error(
+        lambda: sol.simulate_losses(POSITIONS[:2], three_by_three, 10, SEED, "gaussian", None),
+        "cov must have one row and one column per position",
+    )
+
+
+def test_covariance_must_be_symmetric() -> None:
+    skew = [[4e-4, 1e-4], [2e-4, 9e-4]]
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000, 1_000], skew, 10, SEED, "gaussian", None),
+        "cov must be symmetric",
+    )
+
+
+def test_indefinite_covariance_is_rejected() -> None:
+    indefinite = [[1.0, 2.0], [2.0, 1.0]]
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000, 1_000], indefinite, 10, SEED, "gaussian", None),
+        "cov must be positive definite: a pivot is not above zero",
+    )
+
+
+def test_singular_covariance_is_rejected() -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000], [[0.0]], 10, SEED, "gaussian", None),
+        "cov must be positive definite: a zero pivot is not above zero",
+    )
+
+
+def test_one_position_with_positive_variance_is_accepted() -> None:
+    losses = sol.simulate_losses([1_000_000], [[4e-4]], 100, SEED, "gaussian", None)
+    check(len(losses) == 100 and all(type(x) is int for x in losses), "a positive 1 x 1 covariance must be accepted")
+
+
+# --- quantile_99 -----------------------------------------------------------------------------------------------------
+
+
+def test_quantile_99_is_the_exact_order_statistic() -> None:
+    losses = sol.simulate_losses(POSITIONS, COV, N_DRAWS, SEED, "gaussian", None)
+    k = math.ceil(Fraction(99, 100) * len(losses))
+    check(
+        sol.quantile_99(losses) == sorted(losses)[k - 1],
+        "quantile_99 must be the order statistic with index ceil(0.99 n)",
+    )
+
+
+def test_quantile_99_convention_on_small_lists() -> None:
+    check(sol.quantile_99(list(range(1, 101))) == 99, "for n = 100 the index is ceil(99) = 99, the 99th smallest")
+    check(sol.quantile_99(list(range(1, 102))) == 100, "for n = 101 the index is ceil(99.99) = 100, not 99")
+    check(sol.quantile_99(list(range(1, 3))) == 2, "for n = 2 the index is ceil(1.98) = 2, the largest value")
+
+
+def test_quantile_99_ignores_the_input_order() -> None:
+    losses = sol.simulate_losses(POSITIONS, COV, 500, SEED, "gaussian", None)
+    shuffled = losses[:]
+    random.Random(SEED).shuffle(shuffled)
+    check(sol.quantile_99(losses) == sol.quantile_99(shuffled), "quantile_99 must not depend on the order of the list")
+
+
+def test_quantile_99_does_not_modify_its_input() -> None:
+    losses = [5, 1, 4, 2, 3]
+    before = losses[:]
+    sol.quantile_99(losses)
+    check(losses == before, "quantile_99 must leave the list it is given unchanged")
+
+
+def test_quantile_99_of_one_loss_is_that_loss() -> None:
+    check(sol.quantile_99([7]) == 7, "for n = 1 the index is ceil(0.99) = 1, the only value")
+
+
+def test_quantile_99_rejects_an_empty_list() -> None:
+    expect_value_error(lambda: sol.quantile_99([]), "quantile_99 must reject an empty list")
+
+
+@pytest.mark.parametrize("losses", [[1.0, 2], [True, 2]])
+def test_quantile_99_rejects_non_whole_losses(losses: Any) -> None:
+    expect_value_error(lambda: sol.quantile_99(losses), "quantile_99 must reject a float or a boolean loss")
+
+
+def test_quantile_99_returns_an_int() -> None:
+    result = sol.quantile_99(sol.simulate_losses(POSITIONS, COV, 300, SEED, "student_t", NU))
+    check(type(result) is int, "quantile_99 must return an int number of cents")

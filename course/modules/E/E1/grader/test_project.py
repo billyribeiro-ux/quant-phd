@@ -1,0 +1,249 @@
+"""Acceptance suite for the E1 project: the trade-fee market engine (market_structure.py).
+
+Runs identically in the browser (Pyodide) and locally:
+
+    QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
+
+with your market_structure.py next to this file. Warnings are failures, as in the browser.
+
+Every expected value is computed here from the inputs a, b and c by a separate route: the volume and fee come from the
+closed forms of the specification, and the surpluses come from the integral of the inverse demand, evaluated exactly by
+the trapezoid rule, which is exact for a linear function. The oracle does not call the reference. A failure names the
+property it checks and the idea to revisit; it never prints the expected value.
+"""
+
+from __future__ import annotations
+
+import math
+import os
+from collections.abc import Callable
+from fractions import Fraction
+from typing import Any
+
+import market_structure as sol
+import pytest
+from instance import make_instance
+
+pytestmark = pytest.mark.filterwarnings("error")
+
+SEED = int(os.environ.get("QF_SEED", "0"))
+CASE: dict[str, int] = make_instance(SEED)
+A: int = CASE["a"]
+B: int = CASE["b"]
+C: int = CASE["c"]
+STRUCTURES: tuple[str, ...] = ("monopoly", "cournot", "bertrand")
+KEYS: tuple[str, ...] = (
+    "volume_trades",
+    "fee_cents",
+    "profit_cents",
+    "consumer_surplus_cents",
+    "welfare_cents",
+    "deadweight_loss_cents",
+)
+
+
+def check(condition: bool, message: str) -> None:
+    """Fail with message unless condition holds. The message names the property; it never shows a value."""
+    __tracebackhide__ = True
+    if not condition:
+        pytest.fail(message)
+
+
+def half_up(x: Fraction) -> int:
+    """The nearest whole number to a non-negative exact value, a tie going up: the rounding rule of the page."""
+    return math.floor(x + Fraction(1, 2))
+
+
+def gross_value(x: Fraction, a: int, b: int) -> Fraction:
+    """The integral of the inverse demand (a - t) / b from 0 to x, by the trapezoid rule: exact for a line."""
+    return x * (Fraction(a, b) + (a - x) / b) / 2
+
+
+def exact(structure: str, a: int, b: int, c: int) -> dict[str, Fraction]:
+    """Every output of the specification as an exact value, before rounding."""
+    gap = Fraction(a - b * c)
+    volume = {"monopoly": gap / 2, "cournot": 2 * gap / 3, "bertrand": gap}[structure]
+    fee = (a - volume) / b  # the inverse demand at the volume; it equals c for Bertrand
+    gross = gross_value(volume, a, b)
+    consumer = gross - fee * volume
+    profit = (fee - c) * volume
+    welfare = gross - c * volume
+    deadweight = (gross_value(gap, a, b) - c * gap) - welfare
+    return {
+        "volume_trades": volume,
+        "fee_cents": fee,
+        "profit_cents": profit,
+        "consumer_surplus_cents": consumer,
+        "welfare_cents": welfare,
+        "deadweight_loss_cents": deadweight,
+    }
+
+
+def expected(structure: str, a: int, b: int, c: int) -> dict[str, int]:
+    """Every output of the specification, rounded once by the rule of the page."""
+    return {key: half_up(value) for key, value in exact(structure, a, b, c).items()}
+
+
+def must_raise(call: Callable[[], object], condition: str, phrases: tuple[str, ...]) -> None:
+    """Fail unless call() raises ValueError whose message contains every phrase: the specification names the type."""
+    __tracebackhide__ = True
+    try:
+        call()
+    except ValueError as error:
+        text = str(error)
+        missing = [p for p in phrases if p not in text]
+        check(not missing, f"the ValueError for {condition} must state the condition it checks, as the page names it")
+        return
+    pytest.fail(f"{condition} must raise ValueError, as the specification requires")
+
+
+def test_instance_is_a_valid_case() -> None:
+    check(set(CASE) == {"a", "b", "c"}, "make_instance must return the three inputs a, b and c")
+    check(all(type(v) is int for v in CASE.values()), "make_instance must return whole numbers")
+    check(A > B * C > 0, "the instance must satisfy a > b*c > 0")
+
+
+def test_outcome_has_exactly_the_six_keys() -> None:
+    for structure in STRUCTURES:
+        result = sol.outcome(structure, A, B, C)
+        check(set(result) == set(KEYS), f"outcome for {structure} must return exactly the six keys of the page")
+
+
+@pytest.mark.parametrize("structure", STRUCTURES)
+def test_every_output_is_an_int(structure: str) -> None:
+    result: dict[str, Any] = sol.outcome(structure, A, B, C)
+    check(all(type(v) is int for v in result.values()), f"every output for {structure} must be an int, not a float")
+
+
+@pytest.mark.parametrize("structure", STRUCTURES)
+@pytest.mark.parametrize("key", KEYS)
+def test_closed_form_matches(structure: str, key: str) -> None:
+    result = sol.outcome(structure, A, B, C)
+    check(
+        result[key] == expected(structure, A, B, C)[key],
+        f"{key} for {structure} differs from the closed form after the stated rounding; revisit the first-order "
+        "condition of the exchange and the rounding rule",
+    )
+
+
+def test_volume_ordering() -> None:
+    mono = sol.outcome("monopoly", A, B, C)["volume_trades"]
+    cournot = sol.outcome("cournot", A, B, C)["volume_trades"]
+    bertrand = sol.outcome("bertrand", A, B, C)["volume_trades"]
+    check(mono < cournot < bertrand, "trade volume must rise from monopoly to Cournot to Bertrand")
+
+
+def test_fee_ordering() -> None:
+    mono = sol.outcome("monopoly", A, B, C)["fee_cents"]
+    cournot = sol.outcome("cournot", A, B, C)["fee_cents"]
+    check(mono > cournot, "the monopoly fee must exceed the Cournot fee")
+
+
+def test_bertrand_fee_is_marginal_cost() -> None:
+    check(sol.outcome("bertrand", A, B, C)["fee_cents"] == C, "the Bertrand fee must equal the cost of one trade")
+
+
+def test_bertrand_has_no_deadweight_loss() -> None:
+    check(
+        sol.outcome("bertrand", A, B, C)["deadweight_loss_cents"] == 0,
+        "Bertrand trade volume is the competitive volume, so its deadweight loss must be zero",
+    )
+
+
+def test_bertrand_profit_is_zero() -> None:
+    check(sol.outcome("bertrand", A, B, C)["profit_cents"] == 0, "two Bertrand exchanges must earn zero profit")
+
+
+def test_monopoly_profit_at_least_cournot_total() -> None:
+    mono = sol.outcome("monopoly", A, B, C)["profit_cents"]
+    cournot = sol.outcome("cournot", A, B, C)["profit_cents"]
+    check(mono >= cournot, "the monopoly profit must be at least the total profit of the two Cournot exchanges")
+
+
+@pytest.mark.parametrize("structure", STRUCTURES)
+def test_welfare_is_consumer_surplus_plus_profit(structure: str) -> None:
+    values = exact(structure, A, B, C)
+    result = sol.outcome(structure, A, B, C)
+    total = values["consumer_surplus_cents"] + values["profit_cents"]
+    check(
+        result["welfare_cents"] == half_up(total),
+        f"welfare for {structure} must be consumer surplus plus exchange profit, rounded once from the exact sum",
+    )
+
+
+def test_tie_rounds_up_for_fee_and_volume() -> None:
+    # a = 121, b = 1, c = 20: the monopoly fee is 141/2 and the volume is 101/2 (exact halves).
+    result = sol.outcome("monopoly", 121, 1, 20)
+    want = expected("monopoly", 121, 1, 20)
+    check(result["fee_cents"] == want["fee_cents"], "a fee that is an exact half cent must round up")
+    check(result["volume_trades"] == want["volume_trades"], "a volume that is an exact half trade must round up")
+
+
+UNKNOWN_STRUCTURES: tuple[str, ...] = ("duopoly", "", "Monopoly", "perfect")
+
+
+@pytest.mark.parametrize("name", UNKNOWN_STRUCTURES)
+def test_unknown_structure_raises_value_error(name: str) -> None:
+    must_raise(
+        lambda: sol.outcome(name, A, B, C),
+        "a structure that is not one of the three names",
+        STRUCTURES,
+    )
+
+
+@pytest.mark.parametrize("a, b, c", [(20, 2, 10), (19, 2, 10)])
+def test_a_not_above_b_times_c_raises_value_error(a: int, b: int, c: int) -> None:
+    must_raise(lambda: sol.outcome("cournot", a, b, c), "a <= b*c", ("a must exceed b*c",))
+
+
+@pytest.mark.parametrize("a, b, c", [(10, 0, 5), (10, -1, 5)])
+def test_b_not_positive_raises_value_error(a: int, b: int, c: int) -> None:
+    must_raise(lambda: sol.outcome("monopoly", a, b, c), "b <= 0", ("b must be positive",))
+
+
+@pytest.mark.parametrize("a, b, c", [(10, 2, 0), (10, 2, -1)])
+def test_c_not_positive_raises_value_error(a: int, b: int, c: int) -> None:
+    must_raise(lambda: sol.outcome("bertrand", a, b, c), "c <= 0", ("c must be positive",))
+
+
+@pytest.mark.parametrize("structure", STRUCTURES)
+@pytest.mark.parametrize("a, b, c", [(B * C + 1, B, C), (2, 1, 1)])
+def test_smallest_valid_case_is_accepted(structure: str, a: int, b: int, c: int) -> None:
+    result = sol.outcome(structure, a, b, c)
+    check(
+        result == expected(structure, a, b, c),
+        f"the valid case a = b*c + 1 for {structure} must match the closed forms",
+    )
+
+
+@pytest.mark.parametrize("args", [(120.0, 1, 20), (120, True, 20), (120, 1, 20.0)])
+def test_non_integer_inputs_do_not_yield_float_money(args: tuple[Any, ...]) -> None:
+    try:
+        result = sol.outcome("monopoly", *args)
+    except Exception:
+        return
+    check(all(type(v) is int for v in result.values()), "a non-integer input must not produce a float output")
+
+
+def test_outcome_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:
+    for structure in STRUCTURES:
+        sol.outcome(structure, A, B, C)
+    captured = capsys.readouterr()
+    check(captured.out == "" and captured.err == "", "outcome must not print anything")
+
+
+def test_repeated_calls_agree() -> None:
+    first = sol.outcome("cournot", A, B, C)
+    sol.outcome("monopoly", A + 1, B, C)
+    check(sol.outcome("cournot", A, B, C) == first, "outcome must give the same answer on every call")
+
+
+@pytest.mark.parametrize("structure", STRUCTURES)
+def test_second_instance_matches_closed_forms(structure: str) -> None:
+    other = make_instance(SEED + 1)
+    check(other["a"] > other["b"] * other["c"] > 0, "the second instance must be valid")
+    result = sol.outcome(structure, other["a"], other["b"], other["c"])
+    check(
+        result == expected(structure, other["a"], other["b"], other["c"]),
+        f"outcome for {structure} must match the closed forms on a second instance as well",
+    )

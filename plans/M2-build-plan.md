@@ -190,11 +190,15 @@ Mutants the verifier must write (VERIFIER_RULES §2.6; each must be killed, muta
 ### 5.2 Engine signatures (proposal; the architect freezes them, Q9)
 
 ```python
-def fd_derivative(f: Callable[[float], float], x: float, h: float, scheme: str) -> float: ...        # scheme: "forward" | "central"
-def ad_derivative(f: Callable[[Dual], Dual], x: float) -> float: ...                                # forward-mode, Dual is student-defined
+def fd_derivative(
+    f: Callable[[float], float], x: float, h: float, scheme: str
+) -> float: ...  # scheme: "forward" | "central"
+def ad_derivative(f: Callable[[Dual], Dual], x: float) -> float: ...  # forward-mode, Dual is student-defined
 def hessian_fd(f: Callable[[list[float]], float], x: list[float], h: float) -> list[list[float]]: ...
-def bond_price_cents(instance: dict[str, Any]) -> int: ...                                         # integer cents, round-half-even
-def sensitivities(instance: dict[str, Any]) -> dict[str, float]: ...                               # keys: "dprice_dy", "d2price_dy2", "duration_analytic", "convexity_analytic"
+def bond_price_cents(instance: dict[str, Any]) -> int: ...  # integer cents, round-half-even
+def sensitivities(
+    instance: dict[str, Any],
+) -> dict[str, float]: ...  # keys: "dprice_dy", "d2price_dy2", "duration_analytic", "convexity_analytic"
 ```
 
 ### 5.3 Rubric and exemplars (`grading: both`)

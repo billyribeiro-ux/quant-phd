@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CS2 Project · Streaming statistics library</title>
+  <meta name="description" content="Write streamstats.py: an online mean and variance by Welford's update, a rolling minimum and maximum with a monotonic deque, and a quantile sketch with a stated rank guarantee. Autograded on SIMULATED streams from your workspace seed, and the proof and design note are rubric-graded.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS2 Algorithms &amp; Data Structures</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="30">
+      <header class="page-head">
+        <p class="eyebrow">CS2 project · 30 hours · autograded and rubric-graded · SIMULATED streams</p>
+        <h1>Streaming statistics library</h1>
+        <p class="lede">A monitoring team receives one number at a time and needs three things from each stream: the <a class="concept" data-concept="welford-algorithm" href="L09.html#def-welford-algorithm">online mean and variance</a> without a second pass, the minimum and maximum of the last few values in <a class="concept" data-concept="monotonic-deque" href="L10.html#def-monotonic-deque">constant amortized time per value</a>, and an estimate of a quantile from a <a class="concept" data-concept="quantile-sketch" href="L11.html#def-quantile-sketch">quantile sketch</a> with a stated rank guarantee. You write <code>streamstats.py</code> to the specification below, prove the update formula that Welford's method rests on, and write a design note for the sketch. The autograder runs your library on a stream generated from your workspace seed, so the numbers are yours to compute.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are short. If you meet the placement bar and answer both skill checks on the module hub, go straight to rung 3, as the hub states.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: a fully solved rolling minimum and maximum over twelve SIMULATED integers, with a note at each step on why it is there.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: one step of the Welford update with two expressions left as blanks. Its expected output grades the blanks instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: <code>streamstats.py</code>, autograded in <a href="#grader-section">the autograder section</a> on a generated stream, and the proof and design note in <a href="#memo">the write-up section</a>, rubric-graded. Lab 3 gives reference numbers for a smaller stream to check your code against.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-CS2-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: a rolling minimum and maximum with a monotonic deque</h3>
+          <p class="hypothesis">The code runs a rolling minimum and maximum with a window of four over twelve SIMULATED integers from a seeded generator, and it checks every step against a brute-force scan of its window. Before running it, predict the minimum and the maximum at step 12. The window at step 12 holds the last four values of the series. The code also counts the deque operations, and the lab states the bound 4n on that count.</p>
+          <pre><code class="language-python" data-run>"""CS2 project lab 1 (rung 1, worked example): a rolling minimum and maximum with a monotonic deque.
+
+SIMULATED: twelve integers drawn from random.Random(12) in [0, 99]. They are generated here and are not market data.
+Standard library only, no randomness after the seed, no network. The window holds the last four values. For every
+value the code prints the window and its minimum and maximum. At the end it prints whether every step agrees with a
+brute-force scan of its window, then the count of deque pushes and pops over both deques and the bound 4n on that count.
+"""
+
+from __future__ import annotations
+
+import random
+from collections import deque
+
+WINDOW = 4
+_RNG = random.Random(12)
+SERIES: list[int] = [_RNG.randint(0, 99) for _ in range(12)]
+
+
+class RollingMinMax:
+    """Minimum and maximum of the last WINDOW values. Each deque holds (index, value) pairs."""
+
+    def __init__(self, window: int) -&gt; None:
+        self.window = window
+        self.index = -1  # index of the latest value pushed
+        # Why: the minimum deque keeps values in increasing order, so its front is the window's minimum.
+        self.mins: deque[tuple[int, int]] = deque()
+        # Why: the maximum deque keeps values in decreasing order, so its front is the window's maximum.
+        self.maxs: deque[tuple[int, int]] = deque()
+        self.ops = 0  # pushes and pops on both deques, counted to measure the work
+
+    def push(self, x: int) -&gt; None:
+        self.index += 1
+        # Why: an older value at least as large as x can never be the minimum again while x is in the window.
+        while self.mins and self.mins[-1][1] &gt;= x:
+            self.mins.pop()
+            self.ops += 1
+        self.mins.append((self.index, x))
+        self.ops += 1
+        # Why: an older value at most as large as x can never be the maximum again while x is in the window.
+        while self.maxs and self.maxs[-1][1] &lt;= x:
+            self.maxs.pop()
+            self.ops += 1
+        self.maxs.append((self.index, x))
+        self.ops += 1
+        # Why: an index at or before index - window has left the window, and it can only be at the front.
+        while self.mins[0][0] &lt;= self.index - self.window:
+            self.mins.popleft()
+            self.ops += 1
+        while self.maxs[0][0] &lt;= self.index - self.window:
+            self.maxs.popleft()
+            self.ops += 1
+
+    def minimum(self) -&gt; int:
+        return self.mins[0][1]
+
+    def maximum(self) -&gt; int:
+        return self.maxs[0][1]
+
+
+def main() -&gt; None:
+    rolling = RollingMinMax(WINDOW)
+    print("series:", SERIES)
+    all_agree = True
+    for t, x in enumerate(SERIES, start=1):
+        rolling.push(x)
+        window = SERIES[max(0, t - WINDOW) : t]
+        agree = rolling.minimum() == min(window) and rolling.maximum() == max(window)
+        all_agree = all_agree and agree
+        print(f"step {t:2d} value {x:2d} window {window} min {rolling.minimum()} max {rolling.maximum()}")
+    print("every step agrees with brute force:", all_agree)
+    print(f"deque operations: {rolling.ops} for n = {len(SERIES)} values, bound 4n = {4 * len(SERIES)}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">series: [60, 34, 84, 67, 85, 44, 18, 48, 1, 47, 61, 35]
+step  1 value 60 window [60] min 60 max 60
+step  2 value 34 window [60, 34] min 34 max 60
+step  3 value 84 window [60, 34, 84] min 34 max 84
+step  4 value 67 window [60, 34, 84, 67] min 34 max 84
+step  5 value 85 window [34, 84, 67, 85] min 34 max 85
+step  6 value 44 window [84, 67, 85, 44] min 44 max 85
+step  7 value 18 window [67, 85, 44, 18] min 18 max 85
+step  8 value 48 window [85, 44, 18, 48] min 18 max 85
+step  9 value  1 window [44, 18, 48, 1] min 1 max 48
+step 10 value 47 window [18, 48, 1, 47] min 1 max 48
+step 11 value 61 window [48, 1, 47, 61] min 1 max 61
+step 12 value 35 window [1, 47, 61, 35] min 1 max 61
+every step agrees with brute force: True
+deque operations: 44 for n = 12 values, bound 4n = 48</pre>
+          <p class="interpretation">Each step's minimum and maximum are the least and greatest of that step's window, and the last line says the brute-force check agreed at every step. At step 9 the minimum is 1, and the value 1 is still in the window at step 12, so it is reported there too; it leaves the window at the next push. The count of 44 deque operations is at most the bound 4n = 48. Each value is appended once to each deque, and an element is popped at most once from each deque, so the count is at most 4n. A count bounded by a multiple of n gives constant amortized work per value, which is the argument of <a class="concept" data-concept="monotonic-deque" href="L10.html#def-monotonic-deque">Lesson 10</a>. This lab shows the count on one seeded series; it does not measure time.</p>
+        </section>
+
+        <section class="lab completion" id="lab-CS2-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: one step of Welford's update</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression that the update's comment describes: the new mean is the old mean plus the deviation divided by the new count, and the new M2 is the old M2 plus the deviation times the deviation from the new mean. The other lines are given. When both blanks are right, the output lines match the expected output below exactly. Before running it, predict whether the sample variance is above or below 10.</p>
+          <pre><code class="language-python" data-run>"""CS2 project lab 2 (rung 2, completion): one step of Welford's update, on a SIMULATED stream.
+
+SIMULATED: eight integers near a common offset of 1,000,000, written out here. They are not market data.
+Standard library only, no randomness, no network. Each blank in the page is one expression of the update: the
+new mean is the old mean plus the deviation divided by the new count, and the new M2 is the old M2 plus the
+deviation times the deviation from the new mean.
+
+Fill in each blank so that the output matches the expected output below. The other lines are given.
+"""
+
+from __future__ import annotations
+
+STREAM: list[int] = [1000002, 1000005, 1000001, 1000004, 1000009, 1000003, 1000006, 1000000]
+
+
+def update(count: int, mean: float, m2: float, x: float) -&gt; tuple[int, float, float]:
+    """One Welford step. Arguments: the count, mean and M2 before x, and x. Returns the same three after x."""
+    count = count + 1
+    delta = x - mean
+    mean = ___
+    m2 = ___
+    return count, mean, m2
+
+
+def main() -&gt; None:
+    count, mean, m2 = 0, 0.0, 0.0
+    for x in STREAM:
+        count, mean, m2 = update(count, mean, m2, float(x))
+    print(f"count {count}")
+    print(f"mean {mean:.6f}")
+    print(f"sample variance {m2 / (count - 1):.6f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">count 8
+mean 1000003.750000
+sample variance 8.500000</pre>
+          <p class="interpretation">The expected output is the output of the completed code, and it is the same for every correct pair of expressions. The mean is the offset of 1,000,000 plus 3.75, which is the mean of the eight offsets 2, 5, 1, 4, 9, 3, 6 and 0. The sample variance is 8.5, which is the sum of squared deviations from that mean divided by 7. The lab prints the variance and not M2, so the sum of squares is not in the output. The lab does not test stability at a larger offset: Lab 3 compares the update with exact arithmetic.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A monitoring team receives a stream of real numbers one at a time. For each stream it needs the mean and the variance of everything seen so far, the minimum and maximum of the last few values, and an estimate of a quantile without a second pass over the data. You implement a small library that does these three things and that a later analysis can call. The streams in the labs and the autograder are SIMULATED. The autograder's stream is generated from the workspace seed by <code>grader/instance.py</code>, and the labs' streams are written out in their code.</dd>
+          <dt>Inputs</dt>
+          <dd>A value is a real number, given as a Python <code>float</code>. The autograder's stream has between 20 and 400 values, each a finite float with one or six decimal places, around a common offset of 0, 10,000 or 1,000,000. The window is an integer from 2 to 30. The quantile sketch's epsilon is 0.05, 0.1 or 0.2. The autograder checks ten probe quantiles in the closed interval from 0 to 1. A student does not call <code>make_instance</code>; the grader decodes the instance. Every instance is labelled <strong>SIMULATED</strong>: it is generated, it is not market data, and nothing in it is a measurement of anything real.</dd>
+          <dt>Required outputs</dt>
+          <dd>
+            <ul>
+              <li>A file <code>streamstats.py</code> that defines three classes, with these methods and signatures. <code>WelfordAccumulator()</code> has <code>update(x: float) -&gt; None</code>, a read-only property <code>count</code> that returns an <code>int</code>, <code>mean() -&gt; float</code>, and <code>variance(ddof: int = 1) -&gt; float</code>. <code>RollingMinMax(window: int)</code> has <code>push(x: float) -&gt; None</code>, <code>minimum() -&gt; float</code> and <code>maximum() -&gt; float</code>. <code>QuantileSketch(epsilon: float)</code> has <code>add(x: float) -&gt; None</code> and <code>quantile(q: float) -&gt; float</code>.</li>
+              <li>A file <code>proof.md</code>: the proof of Welford's update, with its hypotheses, as described in the write-up section.</li>
+              <li>A file <code>design.md</code>: the design note for the quantile sketch, of about 500 to 800 words, as described in the write-up section.</li>
+            </ul>
+            Start from <a href="grader/starter.py">the starter file</a>. Every method in it raises <code>NotImplementedError</code> until you replace it, and the suite fails on the starter.
+          </dd>
+          <dt>Constraints</dt>
+          <dd>The standard library and nothing else. The module does not import any file from the grader, so it runs on its own. The three classes never print or warn, and no method changes its arguments. No method changes the value it is given, and each class holds its state in the object only. The conventions below define every number the library returns. The following conditions are named, and each raises <code>ValueError</code>: (1) <code>mean()</code>, or <code>variance()</code> with either <code>ddof</code>, before any value has been added; (2) <code>variance(1)</code> when fewer than two values have been added; (3) <code>update(x)</code> with NaN; (4) <code>RollingMinMax(window)</code> with a window below 1; (5) <code>push(x)</code> with NaN; (6) <code>minimum()</code> or <code>maximum()</code> before any value has been pushed; (7) <code>QuantileSketch(epsilon)</code> with an epsilon that is not strictly between 0 and 1, NaN included; (8) <code>add(x)</code> with NaN; (9) <code>quantile(q)</code> with a q outside the closed interval from 0 to 1, NaN included; (10) <code>quantile(q)</code> on an empty sketch. The autograder checks the exception type for these ten and not the wording of a message. The conditions the specification does not name have no exception type required of them. For <code>variance(ddof)</code> with a <code>ddof</code> other than 0 or 1, the call raises an exception of any type, and it returns nothing. For a value that is not a real number, such as a string or <code>None</code>, the call raises an exception of any type, or it accepts the value and gives the answer for the number that the value denotes. For an infinite value, the call raises, or the mean and the sample variance that follow are not finite numbers. For a window that is not an integer, such as the string <code>"3"</code>, the call raises an exception of any type, or it gives the minimum of the last window values that the number denotes.</dd>
+          <dt>Grading mode</dt>
+          <dd>Grading: both. The autograder is <code>grader/test_project.py</code>, which collects <strong>112 checks</strong>, counted with <code>pytest --collect-only</code> on the reference solution. The count is 112 for each of the seeds 0 to 49, because every parametrized list has a fixed length. The suite runs with warnings as errors. It covers the named conditions, each in both directions where the condition is a boundary (a window of 0 and of 1, an epsilon of 0 and of 1e-6, a q of 1.1 and of 1.0); the Welford mean and variance against an exact <code>Fraction</code> reference to a relative tolerance of 1e-9 with an absolute floor of 1e-9, on every prefix of 2 to 20 values and on the whole stream; the scaling of the variance by a factor of four when every value is doubled; the rolling minimum and maximum against brute force for every position and for eight window widths; the rank guarantee of the sketch at each of the ten probes, on short streams and on sorted streams; the constant-stream and single-value checks; the monotonicity of the quantile in q; and the standard-library imports. A failing check names the property it tests and never prints the expected value. The rubric grades the proof write-up and the design note against the six criteria in the write-up section, with two annotated exemplars.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions, defined once</h3>
+        <ul>
+          <li><strong>Welford.</strong> After <em>n</em> values \(x_1, \dots, x_n\) the mean is <code>mean()</code>, and <code>variance(0)</code> is the population variance: the sum of squared deviations from the mean divided by <em>n</em>. <code>variance(1)</code> is the sample variance: the same sum divided by <em>n</em> − 1. Both describe every value added so far, and neither describes a window.</li>
+          <li><strong>Rolling window.</strong> <code>minimum()</code> and <code>maximum()</code> describe the last <code>window</code> values pushed. Before the window is full they describe every value pushed so far. A value that has left the window is never reported.</li>
+          <li><strong>The rank guarantee.</strong> For a sketch that has been given <em>n</em> values, and a probe <em>q</em>, the answer <em>v</em> returned by <code>quantile(q)</code> satisfies two inequalities, with the counts taken over the stream as it was given. The first is that the number of values strictly below <em>v</em> is at most <em>qn</em> + <em>εn</em>. The second is that the number of values at or below <em>v</em> is at least <em>qn</em> − <em>εn</em>. The specification requires that <code>quantile(q)</code> never decrease as <em>q</em> increases. The specification does not bound the memory of the sketch, and the autograder does not test memory.</li>
+          <li><strong>Exact counts.</strong> The autograder computes the mean, the variance and the rank counts with exact rational arithmetic on the floats that it passes to your code. Your code is checked against those exact values to the tolerances above, so the tolerance is the only allowance for floating-point error.</li>
+          <li><strong>Infinite values.</strong> Infinite values are outside the domain of the specification and are covered only by the rule in Constraints.</li>
+        </ul>
+
+        <h3 id="errors">Named errors, in brief</h3>
+        <p>The ten named conditions in Constraints are the only conditions that the autograder requires to raise <code>ValueError</code>. Each of them has at least one test in the suite that starts from a valid input and changes it to the boundary. A value just inside a bound is valid: a window of 1, an epsilon of 0.000001, a q of 0 and a q of 1, and a variance with <code>ddof</code> 0 on a single value each return an answer.</p>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example</td><td class="num">2</td><td>Read and annotate one rolling-minimum computation, Lab 1, with each why note.</td></tr>
+              <tr><td>Rung 2 completion</td><td class="num">3</td><td>Fill the two blanks of the Welford update and run the instant check, Lab 2.</td></tr>
+              <tr><td>Welford accumulator and its tests</td><td class="num">4</td><td>Implement the update, then check every prefix and the whole stream against the exact reference.</td></tr>
+              <tr><td>Welford proof write-up</td><td class="num">4</td><td>An induction with every algebra step shown and the hypotheses stated first.</td></tr>
+              <tr><td>Monotonic-deque minimum and maximum with tests</td><td class="num">4</td><td>Implement the deque, then check every window against brute force.</td></tr>
+              <tr><td>Quantile sketch with rank-error tests</td><td class="num">6</td><td>Design the sketch, then prove the rank guarantee the tests check, and see it fail on the short streams.</td></tr>
+              <tr><td>Package API, input validation, property tests</td><td class="num">4</td><td>The ten named <code>ValueError</code> conditions, each tested at its boundary, and the invariants of the sketch.</td></tr>
+              <tr><td>Design note and self-assessment</td><td class="num">3</td><td>Write the note, then score your work against the two exemplars and compare.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>30</strong></td><td>The hub declares 100 lesson hours and this 30-hour project, which together make the unit's 130 hours.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>streamstats.py</code> and run the suite on the stream your workspace seed generates. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="CS2" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="streamstats.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> into the folder that holds your <code>streamstats.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> keeps failure messages to the property that failed, and <code>-W error</code> turns warnings into failures, both as in the browser. Use Python 3.14 and pytest 9.0.2, the versions the in-browser grader runs. The suite needs no other package.</p>
+      </section>
+
+      <section id="rung3-labs">
+        <h2 id="h-rung3">Lab 3 · Reference numbers for an eleven-value stream</h2>
+        <section class="lab" id="lab-CS2-project-3" data-runtime="python">
+          <h3>Lab 3 · Reference numbers: an eleven-value SIMULATED stream, checked against exact arithmetic</h3>
+          <p class="hypothesis">The code prints reference numbers for an eleven-value SIMULATED stream with a common offset of 10,000. It prints the exact mean and sample variance from exact rational arithmetic, the same two numbers from Welford's update in floats, whether the float mean lies within 1e-9 of the exact mean, the minimum and maximum of the last four values, and the exact rank target and answer for the median with epsilon 0.1. Before running it, predict whether the Welford mean agrees with the exact mean to within 1e-9.</p>
+          <pre><code class="language-python" data-run>"""CS2 project lab 3 (rung 3, reference numbers): an eleven-value SIMULATED stream, checked against exact arithmetic.
+
+SIMULATED: the eleven values are written out here, one decimal each, with a common offset of 10,000 (dimensionless).
+They are not market data. Standard library only, no randomness, no network. The code computes the exact mean and
+sample variance with Fraction, the same values by Welford's update in floats, the minimum and maximum of the last
+four values, and the exact rank target and answer for the median with epsilon 0.1. Exact values are printed to six
+decimals, rounded from the unrounded Fraction.
+"""
+
+from __future__ import annotations
+
+import math
+from fractions import Fraction
+
+STREAM: list[str] = [
+    "10003.2",
+    "10001.7",
+    "10007.5",
+    "10000.4",
+    "10004.9",
+    "10002.1",
+    "10009.6",
+    "10001.0",
+    "10006.3",
+    "10003.8",
+    "10005.5",
+]
+WINDOW = 4
+EPSILON = Fraction("0.1")
+
+
+def welford(values: list[float]) -&gt; tuple[float, float]:
+    """Return the mean and the sample variance by Welford's update."""
+    count, mean, m2 = 0, 0.0, 0.0
+    for x in values:
+        count += 1
+        delta = x - mean
+        mean += delta / count
+        m2 += delta * (x - mean)
+    return mean, m2 / (count - 1)
+
+
+def main() -&gt; None:
+    exact = [Fraction(s) for s in STREAM]
+    n = len(exact)
+    mean_exact = sum(exact) / n
+    var_exact = sum((x - mean_exact) ** 2 for x in exact) / (n - 1)
+    print(f"count {n}")
+    print(f"exact mean {float(mean_exact):.6f}")
+    print(f"exact sample variance {float(var_exact):.6f}")
+    mean_w, var_w = welford([float(s) for s in STREAM])
+    print(f"welford mean {mean_w:.6f}")
+    print(f"welford sample variance {var_w:.6f}")
+    print("welford mean within 1e-9 of exact:", abs(mean_w - float(mean_exact)) &lt;= 1e-9)
+    last = [float(s) for s in STREAM[-WINDOW:]]
+    print(f"last {WINDOW} values minimum {min(last):.1f} maximum {max(last):.1f}")
+    q = Fraction(1, 2)
+    target = max(1, math.ceil(q * n - EPSILON * n))
+    ordered = sorted(exact)
+    print(f"median target rank k = {target} of {n} with epsilon 0.1")
+    print(f"the {target}th smallest value is {float(ordered[target - 1]):.1f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">count 11
+exact mean 10004.181818
+exact sample variance 8.313636
+welford mean 10004.181818
+welford sample variance 8.313636
+welford mean within 1e-9 of exact: True
+last 4 values minimum 10001.0 maximum 10006.3
+median target rank k = 5 of 11 with epsilon 0.1
+the 5th smallest value is 10003.2</pre>
+          <p class="interpretation">The exact mean is 10004.181818, the sum of the eleven values, 110046.0, divided by 11, and the exact sample variance is 8.313636. Welford's update in floats gives the same six digits for both, and the lab prints True for the mean. Each printed value is computed from the unrounded fraction and printed to six decimals; the comparison uses the unrounded float. The median target is rank 5. The code computes \(qn - \varepsilon n = 5.5 - 1.1 = 4.4\) for \(q = 1/2\), \(n = 11\) and \(\varepsilon = 0.1\), and takes the smallest integer rank at or above 4.4, which is 5. The 5th smallest value is 10003.2. The lab does not show a sketch; it shows the answer that the exact sorted list gives, which a sketch must satisfy within the guarantee.</p>
+        </section>
+      </section>
+
+      <section id="memo">
+        <h2 id="h-memo">Rung 3 · The proof write-up and the design note</h2>
+        <p>Write two files. <code>proof.md</code> proves Welford's update. It starts with a numbered list of the hypotheses, states the update, and proves it by <a class="concept" data-concept="mathematical-induction" href="../../../concepts.html#mathematical-induction">induction</a> on the number of values, showing every algebra step. <code>design.md</code> describes the quantile sketch you implemented. It states the rank guarantee of the specification, names the probe set you checked it on, and states what your checks do not cover. Take every number from a lab output or from your code's output, state its unit, and say which arithmetic the claim assumes. A claim about speed or stability must cite a count or a measured error printed by a lab, and must not cite a timing.</p>
+
+        <h3 id="rubric">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric-memo">
+            <caption>The proof write-up and the design note: six criteria, four levels each. A piece of work scores the highest level whose elements it shows in full.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Hypotheses listed and used</th><td>Lists every hypothesis of the update as a numbered item before the statement (the count is a positive integer, the values are real numbers, the arithmetic is exact); cites each hypothesis at the step that uses it.</td><td>Lists every hypothesis before the statement, and every one is used; one use is not cited at its step.</td><td>States the hypotheses after the statement, or the proof uses one hypothesis that the list does not contain.</td><td>No hypotheses are listed, or the statement is given without its assumptions.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Base case and inductive step</th><td>Shows the base case at one value (the mean is the value and M2 is zero). The inductive step derives the new mean and the new M2 from the old ones, and each algebra line is justified by name: the definition of the mean, an identity, or a cancellation.</td><td>Shows both cases and every algebra line is correct; one line is asserted without its justification.</td><td>Shows both cases, but the inductive step asserts the M2 update with no algebra between the hypothesis and the conclusion.</td><td>The base case or the inductive step is missing, or the update is stated without proof.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · The variance invariant</th><td>States that M2 after n values is the sum of squared deviations from the mean of those n values, and that the sample variance is M2 divided by n − 1; carries both through the inductive step and into the final statement.</td><td>States the invariant and uses it in the step; the conversion of M2 to the sample variance is shown.</td><td>Uses M2 without saying what it equals after each count.</td><td>Uses a variance formula that has no link to the running M2.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Exact versus floating-point arithmetic</th><td>Names the arithmetic the proof assumes (real numbers, exact). Names where the code differs (64-bit floats). Ties the agreement claim to a lab output that prints the measured difference, with the lab named.</td><td>States the real-number assumption and names floating point as the difference from it.</td><td>Claims the proof holds for the floats in the code, without naming the assumption.</td><td>Does not state an arithmetic, or claims the code is exact.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Design note: guarantee, probes and limits</th><td>States the rank guarantee with both inequalities and the slack of epsilon n; names the ten probe quantiles and the streams the rank tests run on; states what the checks do not cover (memory, adversarial order, values outside the domain).</td><td>States the guarantee and the probe set; the limits are partly named.</td><td>States the guarantee without its probe set, or the probe set without the guarantee.</td><td>No guarantee is stated, or the guarantee stated is not the one in the specification.</td></tr>
+              <tr data-criterion="C6"><th scope="row">C6 · Speed and stability claims tied to output</th><td>Each claim about speed cites a count printed by a lab (deque operations, with the bound it is compared with). Each claim about stability cites a printed error or an agreement, with the lab named. No claim cites a timing.</td><td>Each speed or stability claim names a lab output; one claim names none.</td><td>Names a lab for each claim but quotes no number from it.</td><td>Asserts speed or stability with no measurement, or cites a timing.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two write-ups to this brief, at two levels. Exemplar A is a proof and a note that do not meet the criteria in full. Exemplar B meets them in full. Each number in them is printed by Lab 1, Lab 2 or Lab 3, or is computed from those printed values with the calculation shown. Each passage carries an annotation that names the criteria it meets or misses. The official scoring is shown beside each exemplar.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,2,2,2,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2 · C6 2.</p>
+          <h5>proof.md: Welford's update</h5>
+          <p>Let the mean be <em>m</em> and the sum of squares be <em>M</em>. When a value <em>x</em> arrives, the mean moves by the deviation divided by the new count, and <em>M</em> moves by the deviation times the new deviation. Induction on the count gives this. The base case is clear. For the inductive step the algebra works out, so the update holds for every count.</p>
+          <p class="annotation" data-reveal>C1, level 2: no hypotheses are listed; the count, the values and the arithmetic are never stated, so the induction has no declared domain. C2, level 2: the inductive step asserts that the algebra works out, and no line of the algebra is shown. C3, level 2: <em>M</em> is named but not tied to a sum of squared deviations after each count.</p>
+          <h5>design.md: the sketch</h5>
+          <p>The sketch keeps some of the values and answers quantiles from them. It is fast, and it gives a good answer on the eleven values of Lab 3, where the median is 10003.2.</p>
+          <p class="annotation" data-reveal>C4 is not met here, because the proof does not name an arithmetic. C5, level 2: the answer is named, but the guarantee is not stated and no probe set is given. C6, level 2: "fast" is a speed claim with no count printed by a lab, and the agreement with Lab 3 names no number that the lab printed for the sketch.</p>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,4,4,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4 · C6 4.</p>
+          <h5>proof.md: Welford's update</h5>
+          <p><strong>Hypotheses.</strong> (H1) <em>n</em> is a positive integer. (H2) The values \(x_1, \dots, x_n\) are real numbers. (H3) Arithmetic is exact, over the real numbers. <strong>Definitions.</strong> \(m_n = \frac{1}{n}\sum_{i=1}^{n} x_i\) and \(M_n = \sum_{i=1}^{n}(x_i - m_n)^2\). <strong>Statement.</strong> Under H1 to H3, for \(\delta = x_{n+1} - m_n\), we have \(m_{n+1} = m_n + \delta/(n+1)\) and \(M_{n+1} = M_n + \delta\,(x_{n+1} - m_{n+1})\). Also \(\sum_{i=1}^{n}(x_i - m_n) = 0\) by the definition of \(m_n\).</p>
+          <p><strong>Proof.</strong> By induction on <em>n</em>. Base case, <em>n</em> = 1: \(m_1 = x_1\) and \(M_1 = 0\), since the only deviation is zero. Inductive step: assume the definitions hold for <em>n</em>. Since \(m_{n+1} = (n\,m_n + x_{n+1})/(n+1)\), we get \(m_{n+1} = m_n + (x_{n+1} - m_n)/(n+1)\), which is the mean update. Write \(a = m_n - m_{n+1} = -\delta/(n+1)\). Then \(\sum_{i \le n}(x_i - m_{n+1})^2 = \sum_{i \le n}(x_i - m_n)^2 + 2a\sum_{i \le n}(x_i - m_n) + n a^2\). The middle sum is zero by the definition of \(m_n\), so this equals \(M_n + n a^2 = M_n + n\delta^2/(n+1)^2\). The new value deviates by \(x_{n+1} - m_{n+1} = \delta - \delta/(n+1) = n\delta/(n+1)\), so its squared deviation is \(n^2\delta^2/(n+1)^2\). Adding the two parts gives \(M_{n+1} = M_n + (n + n^2)\delta^2/(n+1)^2 = M_n + n\delta^2/(n+1)\). Finally \(\delta\,(x_{n+1} - m_{n+1}) = \delta \cdot n\delta/(n+1) = n\delta^2/(n+1)\), which is the increment just found, so \(M_{n+1} = M_n + \delta\,(x_{n+1} - m_{n+1})\). Each step used H1 (the count is positive, so the division is defined) or H3 (exact algebra). ∎</p>
+          <p class="annotation" data-reveal>C1, level 4: the three hypotheses are listed before the statement, and each is cited where it is used (H1 for the division, H3 for the algebra). C2, level 4: the base case is shown, and each algebra line of the inductive step is justified by the definition of the mean or by the cancellation shown. C3, level 4: M is stated as the sum of squared deviations from the current mean, and the invariant is carried through the step.</p>
+          <p>The sample variance after <em>n</em> values is \(M_n/(n-1)\) for <em>n</em> at least 2. Lab 3 gives the exact sample variance 8.313636 for its eleven values, and the Welford output in the same lab agrees to six digits. The proof is over the real numbers; the code computes in 64-bit floats, so the claim that the two agree is a measured claim, not a consequence of the proof.</p>
+          <p class="annotation" data-reveal>C4, level 4: the real-number assumption is named, the floating-point difference is named, and the agreement is tied to Lab 3's printed value of the Welford mean within 1e-9 of the exact mean, True.</p>
+          <h5>design.md: the sketch</h5>
+          <p>For <em>n</em> values added and a probe <em>q</em>, the answer <em>v</em> satisfies two inequalities: at most \(qn + \varepsilon n\) of the values lie strictly below <em>v</em>, and at least \(qn - \varepsilon n\) of them lie at or below <em>v</em>. The sketch I implemented answers with a stored value whose rank, among the values seen so far, is within the slack of the target rank. The rank target is the ceiling of \(qn - \varepsilon n\), and at least 1. The rank guarantee is checked at the ten probes of the instance (0, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 1, and one seeded value), on streams of one to eight values with epsilon 0.05, 0.1 and 0.2, and on sorted and constant streams.</p>
+          <p>The note does not claim a memory bound, and it does not claim a guarantee for an adversarial order of the input beyond the sorted and constant cases checked. The domain excludes infinite and non-real values, as the specification states.</p>
+          <p class="annotation" data-reveal>C5, level 4: both inequalities are stated with the slack; the ten probes and the streams are named; the limits (memory, adversarial order, the domain) are stated.</p>
+          <p>Lab 1 prints 44 deque operations for twelve values, below the bound 4n = 48 that the lab prints. The bound follows from the deque's structure: each value is appended once to each deque and popped at most once from each, so the count is at most 4n. The lab measures the count on one series; it does not time anything. Lab 3's printed agreement of the Welford mean within 1e-9 is the stability evidence for the update. No claim here cites a timing.</p>
+          <p class="annotation" data-reveal>C6, level 4: the speed claim cites Lab 1's printed count and its bound; the stability claim cites Lab 3's printed agreement; no timing is quoted.</p>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric-memo" data-exemplars="exemplar-a exemplar-b" data-store-key="CS2/project/proof-and-note">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own proof and design note on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own write-up. Your scores stay in this browser.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>A weighted or time-decayed accumulator.</strong> Extend the Welford update to weighted values, or to values whose weight decays with age. State the hypothesis that the weights are nonnegative, prove the update for your weighting, and show on a SIMULATED stream that the unweighted case is recovered when every weight is 1.</li>
+          <li><strong>A merge for two sketches.</strong> Write a merge operation that combines two quantile sketches built with the same epsilon. State the rank guarantee the merged sketch satisfies, and check it on a SIMULATED split of one stream into two halves.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <ol class="reading-list">
+          <li data-cite="cormen2022introduction"></li>
+        </ol>
+        <p>The registry record for the textbook names no page or section, so this page gives no locator for it. Read the chapters on the data structures and on the sorting bounds for the textbook treatment of the same topics. The Welford update, the monotonic deque and the sketch are proved on the page or in the lessons, and none of them rests on a locator.</p>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="index.html"><span class="dir">Module</span>CS2 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS2 project · Streaming statistics library · The autograder runs in your browser on a SIMULATED stream; nothing you write leaves it.</footer>
+</body>
+</html>

@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M3 Project · Covariance-matrix doctor</title>
+  <meta name="description" content="Repair a pairwise-estimated matrix that is not positive semidefinite by eigenvalue clipping and by a Frobenius-nearest projection, compare their distances and the weights each one gives, and prove the properties the repairs rest on. The code is autograded on your own seeded instances; the report is graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M3 Linear Algebra</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="45">
+      <header class="page-head">
+        <p class="eyebrow">M3 project · 45 hours · autograded code and a rubric-graded report</p>
+        <h1>Covariance-matrix doctor</h1>
+        <p class="lede">A risk team estimates the pairwise relations of several assets one pair at a time. The resulting matrix has a unit diagonal, but it need not be positive semidefinite, and a covariance matrix must be. You will write the module that diagnoses such a matrix and repairs it two ways, prove the properties the repairs rest on, and report which repair is nearer the input and what each does to the weights.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are at full length. If you met the placement bar on the <a href="index.html#placement">module page</a>, skip rungs 1 and 2 and start at rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: one three-asset matrix, repaired step by step, with the reason for each step.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: the same repair on a second matrix, with the rescaling and the verdict left blank. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: the module <code>covariance_doctor.py</code>, autograded in <a href="#grader-section">the autograder section</a>, and a report with a proof appendix, graded by the rubric in <a href="#report">the report section</a> with annotated exemplars and a self-assessment.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Both labs repair one matrix of pairwise estimates with unit diagonal. The entries are SIMULATED: they are set by hand for these examples, and no file is read. The repair uses the eigendecomposition of a symmetric matrix, which is defined in <a class="concept" data-concept="eigendecomposition" href="L03.html#def-eigendecomposition">Lesson 3</a> and used through the <a class="concept" data-concept="spectral-theorem" href="L04.html#def-spectral-theorem">spectral theorem</a> of Lesson 4. An eigenvalue is a number λ for which Av = λv has a nonzero solution v; the eigenvalues of a symmetric matrix are real.</p>
+
+        <section class="lab" id="lab-M3-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: one matrix, repaired step by step</h3>
+          <p class="hypothesis">The off-diagonal entries are 0.8, −0.5 and 0.6, and the diagonal is 1. Stated before running: the smallest eigenvalue is negative, so the matrix is not positive semidefinite, and the verdict printed for it is False. After clipping the negative eigenvalue to 0 and rescaling, the diagonal is 1 to six decimals and the repaired matrix passes the check at tolerance 1e-9.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: repair one pairwise-estimated matrix by eigenvalue clipping, step by step.
+
+SIMULATED: the three off-diagonal entries are set by hand for this example. They are not estimated from data.
+Standard library only. Every number printed is computed from unrounded values; printing rounds it for display.
+"""
+
+import math
+
+Matrix = list[list[float]]
+
+
+def jacobi_eigen(a: Matrix) -&gt; tuple[list[float], Matrix]:
+    """Eigenvalues and eigenvectors (as columns) of a symmetric matrix, by cyclic Jacobi rotations."""
+    n = len(a)
+    m = [row[:] for row in a]
+    v = [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
+    for _ in range(100):
+        off = math.sqrt(sum(m[i][j] ** 2 for i in range(n) for j in range(n) if i != j))
+        scale = math.sqrt(sum(m[i][j] ** 2 for i in range(n) for j in range(n)))
+        if off &lt;= 1e-15 * max(scale, 1e-300):
+            break
+        for p in range(n - 1):
+            for q in range(p + 1, n):
+                if m[p][q] == 0.0:
+                    continue
+                theta = (m[q][q] - m[p][p]) / (2.0 * m[p][q])
+                t = (1.0 if theta &gt;= 0 else -1.0) / (abs(theta) + math.sqrt(theta * theta + 1.0))
+                c = 1.0 / math.sqrt(t * t + 1.0)
+                s = t * c
+                for k in range(n):
+                    mkp, mkq = m[k][p], m[k][q]
+                    m[k][p] = c * mkp - s * mkq
+                    m[k][q] = s * mkp + c * mkq
+                for k in range(n):
+                    mpk, mqk = m[p][k], m[q][k]
+                    m[p][k] = c * mpk - s * mqk
+                    m[q][k] = s * mpk + c * mqk
+                for k in range(n):
+                    vkp, vkq = v[k][p], v[k][q]
+                    v[k][p] = c * vkp - s * vkq
+                    v[k][q] = s * vkp + c * vkq
+    return [m[i][i] for i in range(n)], v
+
+
+def main() -&gt; None:
+    # Step 1. The pairwise estimates form a symmetric matrix with unit diagonal. The entries are SIMULATED.
+    corr = [[1.0, 0.8, -0.5], [0.8, 1.0, 0.6], [-0.5, 0.6, 1.0]]
+    n = len(corr)
+    # Step 2. Eigenvalues and orthonormal eigenvectors. The eigenvalues of a symmetric matrix are real.
+    values, vectors = jacobi_eigen(corr)
+    print("eigenvalues, sorted:", " ".join(f"{x:.6f}" for x in sorted(values)))
+    # Step 3. The PSD check: every eigenvalue must be at least -tol. Here tol = 1e-10.
+    smallest = min(values)
+    print("smallest eigenvalue:", f"{smallest:.6f}", "| positive semidefinite at tol 1e-10:", smallest &gt;= -1e-10)
+    # Step 4. Clipping: each eigenvalue below the floor 0 becomes 0; the matrix is rebuilt from the same eigenvectors.
+    clipped = [max(x, 0.0) for x in values]
+    rebuilt = [[sum(vectors[i][k] * clipped[k] * vectors[j][k] for k in range(n)) for j in range(n)] for i in range(n)]
+    print("rebuilt diagonal:", " ".join(f"{rebuilt[i][i]:.6f}" for i in range(n)))
+    # Step 5. Rescaling: entry (i, j) is divided by sqrt(d_i d_j), where d is the diagonal of the rebuilt matrix.
+    # The diagonal becomes 1, and D^(-1/2) X D^(-1/2) stays positive semidefinite.
+    d = [rebuilt[i][i] for i in range(n)]
+    repaired = [[rebuilt[i][j] / math.sqrt(d[i] * d[j]) for j in range(n)] for i in range(n)]
+    for row in repaired:
+        print("repaired row:", " ".join(f"{x:.6f}" for x in row))
+    # Step 6. Checks on the repaired matrix: the largest deviation of its diagonal from 1, and its own PSD check.
+    deviation = max(abs(repaired[i][i] - 1.0) for i in range(n))
+    new_values, _ = jacobi_eigen(repaired)
+    print("largest deviation of the diagonal from 1:", f"{deviation:.6f}")
+    print("positive semidefinite at tol 1e-9 after repair:", min(new_values) &gt;= -1e-9)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">eigenvalues, sorted: -0.275297 1.463830 1.811467
+smallest eigenvalue: -0.275297 | positive semidefinite at tol 1e-10: False
+rebuilt diagonal: 1.096064 1.104409 1.074824
+repaired row: 1.000000 0.636095 -0.382551
+repaired row: 0.636095 1.000000 0.469578
+repaired row: -0.382551 0.469578 1.000000
+largest deviation of the diagonal from 1: 0.000000
+positive semidefinite at tol 1e-9 after repair: True</pre>
+          <p class="interpretation">Step 3 prints False, so the input needs a repair. The rebuilt diagonal in step 4 is not 1 (1.096064, 1.104409, 1.074824), which is why step 5 rescales each entry by the square roots of its two diagonal entries. The repaired off-diagonal entries are 0.636095, −0.382551 and 0.469578, not the input's 0.8, −0.5 and 0.6: clipping changes the relations, and the lab does not show whether this is the nearest repair (Lab 3 compares two repairs on another matrix). The printed deviation 0.000000 means the largest diagonal deviation is below 5e-7 after six-decimal display. The lab shows these steps on one matrix only.</p>
+        </section>
+
+        <section class="lab completion" id="lab-M3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: rescaling and the verdict</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression from Step 5 (the rescaling of entry (i, j) by the square roots of the diagonal entries d_i and d_j of the rebuilt matrix) and from Step 3 (the test that the smallest eigenvalue is at least −1e-10). When both are right, the printed verdict for the input is False, the repaired diagonal deviates from 1 by less than 5e-7, and the repaired matrix passes at tolerance 1e-9. The matrix is a second hand-set example, SIMULATED.</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completion problem, completed solution: the same clipping repair on a second hand-set matrix."""
+
+import math
+
+Matrix = list[list[float]]
+
+
+def jacobi_eigen(a: Matrix) -&gt; tuple[list[float], Matrix]:
+    """Eigenvalues and eigenvectors (as columns) of a symmetric matrix, by cyclic Jacobi rotations."""
+    n = len(a)
+    m = [row[:] for row in a]
+    v = [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
+    for _ in range(100):
+        off = math.sqrt(sum(m[i][j] ** 2 for i in range(n) for j in range(n) if i != j))
+        scale = math.sqrt(sum(m[i][j] ** 2 for i in range(n) for j in range(n)))
+        if off &lt;= 1e-15 * max(scale, 1e-300):
+            break
+        for p in range(n - 1):
+            for q in range(p + 1, n):
+                if m[p][q] == 0.0:
+                    continue
+                theta = (m[q][q] - m[p][p]) / (2.0 * m[p][q])
+                t = (1.0 if theta &gt;= 0 else -1.0) / (abs(theta) + math.sqrt(theta * theta + 1.0))
+                c = 1.0 / math.sqrt(t * t + 1.0)
+                s = t * c
+                for k in range(n):
+                    mkp, mkq = m[k][p], m[k][q]
+                    m[k][p] = c * mkp - s * mkq
+                    m[k][q] = s * mkp + c * mkq
+                for k in range(n):
+                    mpk, mqk = m[p][k], m[q][k]
+                    m[p][k] = c * mpk - s * mqk
+                    m[q][k] = s * mpk + c * mqk
+                for k in range(n):
+                    vkp, vkq = v[k][p], v[k][q]
+                    v[k][p] = c * vkp - s * vkq
+                    v[k][q] = s * vkp + c * vkq
+    return [m[i][i] for i in range(n)], v
+
+
+def main() -&gt; None:
+    # Step 1. The pairwise estimates form a symmetric matrix with unit diagonal. The entries are SIMULATED.
+    corr = [[1.0, 0.6, 0.5], [0.6, 1.0, -0.7], [0.5, -0.7, 1.0]]
+    n = len(corr)
+    # Step 2. Eigenvalues and orthonormal eigenvectors. The eigenvalues of a symmetric matrix are real.
+    values, vectors = jacobi_eigen(corr)
+    print("eigenvalues, sorted:", " ".join(f"{x:.6f}" for x in sorted(values)))
+    # Step 3. The PSD check: every eigenvalue must be at least -tol. Here tol = 1e-10.
+    smallest = min(values)
+    print("smallest eigenvalue:", f"{smallest:.6f}", "| positive semidefinite at tol 1e-10:", ___)
+    # Step 4. Clipping: each eigenvalue below the floor 0 becomes 0; the matrix is rebuilt from the same eigenvectors.
+    clipped = [max(x, 0.0) for x in values]
+    rebuilt = [[sum(vectors[i][k] * clipped[k] * vectors[j][k] for k in range(n)) for j in range(n)] for i in range(n)]
+    print("rebuilt diagonal:", " ".join(f"{rebuilt[i][i]:.6f}" for i in range(n)))
+    # Step 5. Rescaling: entry (i, j) is divided by sqrt(d_i d_j), where d is the diagonal of the rebuilt matrix.
+    # The diagonal becomes 1, and D^(-1/2) X D^(-1/2) stays positive semidefinite.
+    d = [rebuilt[i][i] for i in range(n)]
+    repaired = [[rebuilt[i][j] / ___ for j in range(n)] for i in range(n)]
+    for row in repaired:
+        print("repaired row:", " ".join(f"{x:.6f}" for x in row))
+    # Step 6. Checks on the repaired matrix: the largest deviation of its diagonal from 1, and its own PSD check.
+    deviation = max(abs(repaired[i][i] - 1.0) for i in range(n))
+    new_values, _ = jacobi_eigen(repaired)
+    print("largest deviation of the diagonal from 1:", f"{deviation:.6f}")
+    print("positive semidefinite at tol 1e-9 after repair:", min(new_values) &gt;= -1e-9)
+
+
+main()
+</code></pre>
+          <pre class="expected" data-tolerance="1e-6">eigenvalues, sorted: -0.203711 1.486490 1.717222
+smallest eigenvalue: -0.203711 | positive semidefinite at tol 1e-10: False
+rebuilt diagonal: 1.060165 1.075224 1.068322
+repaired row: 1.000000 0.498962 0.409576
+repaired row: 0.498962 1.000000 -0.586237
+repaired row: 0.409576 -0.586237 1.000000
+largest deviation of the diagonal from 1: 0.000000
+positive semidefinite at tol 1e-9 after repair: True</pre>
+          <p class="interpretation">The first blank is <code>math.sqrt(d[i] * d[j])</code>: dividing by it turns the rebuilt matrix X into D<sup>−1/2</sup> X D<sup>−1/2</sup>, which has the unit diagonal printed as the largest deviation. The second blank is <code>smallest &gt;= -1e-10</code>: the verdict is True only when the smallest eigenvalue is no lower than the tolerance. The printed False is the verdict for the input, not for the repair. The rebuilt diagonal printed in step 4 (1.060165, 1.075224, 1.068322) is not 1, which is why the rescaling is needed.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A risk team forms a matrix of pairwise estimates for its assets. The matrix has a unit diagonal and may fail to be positive semidefinite; Lab 1 shows one such matrix. A matrix that fails the test cannot be the covariance matrix of any set of returns. You write the module that tests the matrix, repairs it by two methods, measures how far each repair moves the input, and computes the weights that each repaired matrix gives to the assets. The module must match the reference numbers of one illustrative matrix in Lab 3, and must pass the autograder on your own seeded instances.</dd>
+          <dt>Inputs</dt>
+          <dd>No data file. The autograder's instance comes from <code>grader/instance.py</code>, seeded by your workspace ID. For each seed it holds the number of assets k (3, 4 or 5), k volatilities, a pairwise matrix that is not positive semidefinite by a margin of 0.02, a positive definite matrix with unit diagonal, two sets of planted eigenvalues, and the orthonormal eigenvectors they are built on. All of it is SIMULATED. The report uses the four-by-four matrix and the volatilities of Lab 3, which are set by hand for that run and are not estimated from data.</dd>
+          <dt>Required outputs</dt>
+          <dd>In a repository of your own: <code>covariance_doctor.py</code> at its root, and a <code>report/</code> folder beside it. The module has these functions: <code>min_eigenvalue(matrix)</code>, the smallest eigenvalue of a symmetric matrix; <code>is_psd(matrix, tol=1e-10)</code>, which is True when every eigenvalue is at least <code>-tol</code>; <code>clip_repair(matrix, floor=0.0)</code>, which sets every eigenvalue below <code>floor</code> to <code>floor</code>, rebuilds the matrix from its eigenvectors and rescales it to unit diagonal; <code>projection_repair(matrix, tol=1e-10, max_iter=500)</code>, an approximation of the Frobenius-nearest matrix that is symmetric, positive semidefinite and has unit diagonal; and <code>comparison_weights(corr, vols)</code>, the weights of the closed form in <a href="#conventions">the conventions</a>. Start from <a href="grader/starter.py">the starter file</a>, whose signatures are complete. For the report, commit three more files: <code>report/run_report.py</code>, which is Lab 3 with its repair and weight calls replaced by calls to your module and which prints the same lines; <code>report/report.md</code>, the report described in <a href="#brief">the brief</a> with its appendix; and <code>report/self_assessment.md</code>, the summary that the form in <a href="#self-assessment">the self-assessment section</a> produces.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only. Each function raises <code>ValueError</code> for the four conditions the conventions below name, and no test asserts an exception for any other input. No function prints or warns. A run in your browser stops after 120 seconds. The conventions are binding.</dd>
+          <dt>Grading mode</dt>
+          <dd>Both modes apply. The code is autograded by <code>grader/test_project.py</code>, which runs 89 tests with warnings as errors: the eigenvalues of planted matrices, the sign and tolerance of the positive semidefinite test, the unit diagonal and symmetry of both repairs, the nearness of the projection, the closed-form weights, the named refusals, and the purity of the module. The same file runs in your browser and on your machine. It is not secret: its integrity comes from your seeded instances and from a second instance, which a fixed answer for the first would also have to match. The report and its proof appendix are graded by rubric, against the five criteria of <a href="#rubric">the report rubric</a>, each with four observable levels. You score it yourself with the form in <a href="#self-assessment">the self-assessment section</a> and calibrate that scoring on two annotated exemplars. The report meets the bar at level 3 or above on every criterion.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions</h3>
+        <ul>
+          <li><strong>Unit-diagonal matrix.</strong> A symmetric matrix whose diagonal entries are all 1. The repairs are specified for any symmetric matrix with a positive diagonal. Every instance of the autograder is unit-diagonal, and the tests use only those instances as inputs.</li>
+          <li><strong>Positive semidefinite.</strong> A symmetric matrix is positive semidefinite (PSD) when every eigenvalue is at least zero; <a class="concept" data-concept="positive-semidefinite-matrix" href="L05.html#def-positive-semidefinite-matrix">Lesson 5</a> gives the definition and its equivalent forms. The PSD verdict of this specification is the test of <code>is_psd</code>: the smallest eigenvalue is at least <code>-tol</code>. The autograder accepts a repaired matrix as PSD when its smallest eigenvalue is at least -1e-9 for clipping and at least -1e-8 for the projection.</li>
+          <li><strong>Frobenius distance.</strong> For matrices A and B of the same size, the square root of the sum of the squared differences of their entries, written \(\lVert A-B\rVert_F\). A repair is nearer the input when this distance is smaller. The Frobenius-nearest repair is the PSD unit-diagonal matrix with the smallest distance from the input.</li>
+          <li><strong>Clipping.</strong> Write the eigendecomposition of the input as \(A = V\Lambda V^{\top}\), with V orthogonal. Clipping sets \(\Lambda_{ii}\) to \(\max(\Lambda_{ii}, f)\) for the floor \(f\), gives \(X = V\Lambda_f V^{\top}\), and then rescales to \(Y = D^{-1/2} X D^{-1/2}\) with \(D\) the diagonal of \(X\). Clipping followed by rescaling is a valid repair; Lab 3 shows that it is not the nearest one on its input.</li>
+          <li><strong>Weights.</strong> With \(D = \diag(v_1,\dots,v_k)\) for the volatilities \(v_i > 0\) and a unit-diagonal correlation matrix \(C\), let \(\Sigma = DCD\). The weights are \(w = \Sigma^{-1}\mathbf{1} / (\mathbf{1}^{\top}\Sigma^{-1}\mathbf{1})\). They sum to 1, and a weight may be negative.</li>
+          <li><strong>The four named ValueError conditions.</strong> (1) A matrix that is not square: a row has a number of entries other than the number of rows. (2) A matrix that is not symmetric beyond 1e-9: some pair of entries \(m_{ij}\) and \(m_{ji}\) differ by more than 1e-9. (3) A volatility that is not strictly greater than zero, in <code>comparison_weights</code>. (4) A volatility list whose length differs from the number of rows of the correlation matrix. No other input is named, and no test asserts an exception for one.</li>
+          <li><strong>Precision.</strong> Results are floats. The tests compare them with the tolerances the conventions and the test file state, and a result that is correct to the tolerance passes.</li>
+        </ul>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">2</td><td>One matrix, every step explained; the lab's comments carry the reasons.</td></tr>
+              <tr><td>Rung 2 completion problem and its instant check</td><td class="num">3</td><td>Two blanks; the time goes into why each line is right.</td></tr>
+              <tr><td>Engine: PSD test, clipping, projection and the minimum eigenvalue (rung 3, module part)</td><td class="num">14</td><td>Four functions, the named refusals, and the tests for planted spectra and for the nearness of the projection.</td></tr>
+              <tr><td>Comparison of the weights across the two repairs (rung 3, module part)</td><td class="num">8</td><td>The closed form, its check against the Gaussian solve and the scaling property, and the refusals.</td></tr>
+              <tr><td>Comparison report, proof appendix and draft revision (rung 3, report part)</td><td class="num">12</td><td>Five sections and three proofs; the proofs are the slow steps.</td></tr>
+              <tr><td>Self-check against the autograder and the rubric (rung 3, calibration)</td><td class="num">6</td><td>Run the suite on your seeds; score both exemplars before revealing the official scoring.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>45</strong></td><td>Equals the hours of the module's project in the hub: 45 of the module's 150.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>covariance_doctor.py</code> and run the suite on your own instance. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="M3" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="covariance_doctor.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>covariance_doctor.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> turns off pytest's comparison details, so a failure shows the test's own message and no values, and <code>-W error</code> turns warnings into failures, both as in the browser. The browser runs the same file.</p>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The report</h2>
+        <p>The report repairs the illustrative matrix of Lab 3 with both methods, states the distances and the weights, and proves the properties it relies on. Its numbers are the ones Lab 3 prints, so you can check each one before you write it.</p>
+
+        <section class="lab" id="lab-M3-project-3" data-runtime="python">
+          <h3>Lab 3 · The report's reference numbers</h3>
+          <p class="hypothesis">The input is a four-by-four matrix with unit diagonal (entries 0.7, 0.3, −0.6, 0.5, 0.4 and 0.2 off the diagonal), set by hand and SIMULATED, with volatilities 0.10, 0.20, 0.15 and 0.30. Stated before running: the smallest eigenvalue is negative, so the input is not PSD; the projection is nearer the input than clipping is, by a positive distance; both repairs have unit diagonal to 5e-7; and the two weight vectors sum to 1. Copy this file into <code>report/run_report.py</code>, delete the six functions above <code>main</code> and import those names from your module; <code>frobenius</code> stays. It must print the same lines.</p>
+          <pre><code class="language-python" data-run>"""Rung 3 reference numbers: the repairs, their distances from the input, and the weights the report quotes.
+
+SIMULATED: the four-by-four matrix and the volatilities are set by hand for this run. They are not estimated from data.
+Standard library only. Copy this file into report/run_report.py, delete the functions jacobi_eigen, psd_projection,
+min_eigenvalue, clip_repair, projection_repair and comparison_weights, and import those six names from your
+covariance_doctor module. frobenius stays. Your module must print the same lines.
+"""
+
+import math
+
+Matrix = list[list[float]]
+
+
+def jacobi_eigen(a: Matrix) -&gt; tuple[list[float], Matrix]:
+    """Eigenvalues and eigenvectors (as columns) of a symmetric matrix, by cyclic Jacobi rotations."""
+    n = len(a)
+    m = [row[:] for row in a]
+    v = [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
+    for _ in range(100):
+        off = math.sqrt(sum(m[i][j] ** 2 for i in range(n) for j in range(n) if i != j))
+        scale = math.sqrt(sum(m[i][j] ** 2 for i in range(n) for j in range(n)))
+        if off &lt;= 1e-15 * max(scale, 1e-300):
+            break
+        for p in range(n - 1):
+            for q in range(p + 1, n):
+                if m[p][q] == 0.0:
+                    continue
+                theta = (m[q][q] - m[p][p]) / (2.0 * m[p][q])
+                t = (1.0 if theta &gt;= 0 else -1.0) / (abs(theta) + math.sqrt(theta * theta + 1.0))
+                c = 1.0 / math.sqrt(t * t + 1.0)
+                s = t * c
+                for k in range(n):
+                    mkp, mkq = m[k][p], m[k][q]
+                    m[k][p] = c * mkp - s * mkq
+                    m[k][q] = s * mkp + c * mkq
+                for k in range(n):
+                    mpk, mqk = m[p][k], m[q][k]
+                    m[p][k] = c * mpk - s * mqk
+                    m[q][k] = s * mpk + c * mqk
+                for k in range(n):
+                    vkp, vkq = v[k][p], v[k][q]
+                    v[k][p] = c * vkp - s * vkq
+                    v[k][q] = s * vkp + c * vkq
+    return [m[i][i] for i in range(n)], v
+
+
+def psd_projection(a: Matrix) -&gt; Matrix:
+    """The nearest positive semidefinite matrix in the Frobenius norm: negative eigenvalues set to 0, then rebuilt."""
+    n = len(a)
+    values, vectors = jacobi_eigen(a)
+    clipped = [max(x, 0.0) for x in values]
+    return [[sum(vectors[i][k] * clipped[k] * vectors[j][k] for k in range(n)) for j in range(n)] for i in range(n)]
+
+
+def min_eigenvalue(a: Matrix) -&gt; float:
+    """The smallest eigenvalue of a symmetric matrix."""
+    values, _ = jacobi_eigen(a)
+    return min(values)
+
+
+def clip_repair(a: Matrix) -&gt; Matrix:
+    """Eigenvalue clipping at 0, then rescaling to unit diagonal: D^(-1/2) X D^(-1/2) with D the diagonal of X."""
+    n = len(a)
+    values, vectors = jacobi_eigen(a)
+    clipped = [max(x, 0.0) for x in values]
+    x_matrix = [[sum(vectors[i][k] * clipped[k] * vectors[j][k] for k in range(n)) for j in range(n)] for i in range(n)]
+    d = [x_matrix[i][i] for i in range(n)]
+    return [[x_matrix[i][j] / math.sqrt(d[i] * d[j]) for j in range(n)] for i in range(n)]
+
+
+def projection_repair(a: Matrix, tol: float = 1e-10, max_iter: int = 500) -&gt; Matrix:
+    """Dykstra's alternating projections between the positive semidefinite and the unit-diagonal matrices."""
+    n = len(a)
+    x = [row[:] for row in a]
+    corr_s = [[0.0] * n for _ in range(n)]
+    corr_u = [[0.0] * n for _ in range(n)]
+    for _ in range(max_iter):
+        y = psd_projection([[x[i][j] + corr_s[i][j] for j in range(n)] for i in range(n)])
+        corr_s = [[x[i][j] + corr_s[i][j] - y[i][j] for j in range(n)] for i in range(n)]
+        new_x = [[y[i][j] + corr_u[i][j] for j in range(n)] for i in range(n)]
+        for i in range(n):
+            new_x[i][i] = 1.0
+        corr_u = [[y[i][j] + corr_u[i][j] - new_x[i][j] for j in range(n)] for i in range(n)]
+        gap = math.sqrt(sum((new_x[i][j] - y[i][j]) ** 2 for i in range(n) for j in range(n)))
+        step = math.sqrt(sum((new_x[i][j] - x[i][j]) ** 2 for i in range(n) for j in range(n)))
+        x = new_x
+        if gap &lt;= tol and step &lt;= tol:
+            break
+    return x
+
+
+def comparison_weights(corr: Matrix, vols: list[float]) -&gt; list[float]:
+    """Weights proportional to Sigma^(-1) 1, with Sigma = D C D and D = diag(vols), normalised to sum to 1."""
+    n = len(corr)
+    sigma = [[vols[i] * corr[i][j] * vols[j] for j in range(n)] for i in range(n)]
+    aug = [[*sigma[i], 1.0] for i in range(n)]
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(aug[r][col]))
+        aug[col], aug[pivot] = aug[pivot], aug[col]
+        for r in range(n):
+            if r != col:
+                factor = aug[r][col] / aug[col][col]
+                aug[r] = [p - factor * q for p, q in zip(aug[r], aug[col], strict=True)]
+    solution = [aug[i][n] / aug[i][i] for i in range(n)]
+    total = sum(solution)
+    return [x / total for x in solution]
+
+
+def frobenius(a: Matrix, b: Matrix) -&gt; float:
+    """The Frobenius distance: the square root of the sum of squared entry differences."""
+    n = len(a)
+    return math.sqrt(sum((a[i][j] - b[i][j]) ** 2 for i in range(n) for j in range(n)))
+
+
+def main() -&gt; None:
+    # The illustrative input: a symmetric matrix with unit diagonal that is not positive semidefinite, and volatilities.
+    corr = [
+        [1.0, 0.7, 0.3, -0.6],
+        [0.7, 1.0, 0.5, 0.4],
+        [0.3, 0.5, 1.0, 0.2],
+        [-0.6, 0.4, 0.2, 1.0],
+    ]
+    vols = [0.10, 0.20, 0.15, 0.30]
+    n = len(corr)
+    smallest = min_eigenvalue(corr)
+    print("smallest eigenvalue:", f"{smallest:.6f}", "| positive semidefinite at tol 1e-10:", smallest &gt;= -1e-10)
+    clip = clip_repair(corr)
+    proj = projection_repair(corr)
+    dist_clip = frobenius(clip, corr)
+    dist_proj = frobenius(proj, corr)
+    print("distance from the input, clipping:", f"{dist_clip:.6f}")
+    print("distance from the input, projection:", f"{dist_proj:.6f}")
+    print("distance saved by projection over clipping:", f"{dist_clip - dist_proj:.6f}")
+    print(
+        "largest entry difference, projection minus clipping:",
+        f"{max(abs(proj[i][j] - clip[i][j]) for i in range(n) for j in range(n)):.6f}",
+    )
+    print(
+        "largest diagonal deviation: clipping",
+        f"{max(abs(clip[i][i] - 1.0) for i in range(n)):.6f}",
+        "| projection",
+        f"{max(abs(proj[i][i] - 1.0) for i in range(n)):.6f}",
+    )
+    print("projection positive semidefinite at tol 1e-8:", min_eigenvalue(proj) &gt;= -1e-8)
+    w_clip = comparison_weights(clip, vols)
+    w_proj = comparison_weights(proj, vols)
+    print("weights, clipping:", " ".join(f"{x:.6f}" for x in w_clip), "| sum", f"{sum(w_clip):.6f}")
+    print("weights, projection:", " ".join(f"{x:.6f}" for x in w_proj), "| sum", f"{sum(w_proj):.6f}")
+    print(
+        "largest weight difference, projection minus clipping:",
+        f"{max(abs(w_proj[i] - w_clip[i]) for i in range(n)):.6f}",
+    )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">smallest eigenvalue: -0.142113 | positive semidefinite at tol 1e-10: False
+distance from the input, clipping: 0.176573
+distance from the input, projection: 0.175003
+distance saved by projection over clipping: 0.001570
+largest entry difference, projection minus clipping: 0.011516
+largest diagonal deviation: clipping 0.000000 | projection 0.000000
+projection positive semidefinite at tol 1e-8: True
+weights, clipping: 1.218951 -0.546718 -0.012462 0.340229 | sum 1.000000
+weights, projection: 1.220113 -0.545144 -0.013004 0.338035 | sum 1.000000
+largest weight difference, projection minus clipping: 0.002194</pre>
+          <p class="interpretation">The printed distances are computed from unrounded entries and printed to six decimals. The projection's distance is smaller than clipping's by the printed gap of 0.001570, so on this input clipping is not the nearest repair; the largest entry difference between the two repairs is 0.011516. The weights differ by at most 0.002194, on the fourth asset. Two weights are negative under both repairs, which the closed form allows. The lab does not test the module; the suite does. These numbers are for this matrix and these volatilities only.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Write for a reader who knows Lessons 3 to 9, not for a referee of this matrix. Use these five sections, in this order and under these headings, followed by the appendix.</p>
+        <ol>
+          <li><strong>Summary</strong>: the input, its smallest eigenvalue, the two distances and the largest weight change, in at most 80 words.</li>
+          <li><strong>Setup and conventions</strong>: the input, the volatilities, the Frobenius distance and the module function that computes each number.</li>
+          <li><strong>Repairs and their checks</strong>: the PSD verdict and the diagonal of each repair, each with the tolerance used and the hypotheses of A1 and A2.</li>
+          <li><strong>Distances and weights</strong>: which repair is nearer and by how much, each weight with its two values, and the sum to one.</li>
+          <li><strong>Limitations and recommendation</strong>: what the repairs assume and do not guarantee, the direction of each limitation's effect, and what would change the recommendation.</li>
+        </ol>
+        <p><strong>Appendix A · Proofs.</strong> Three results, each with its hypotheses and proved in your own words: <strong>A1</strong> clipping gives a PSD matrix, for a real symmetric input and a floor \(f \ge 0\); <strong>A2</strong> rescaling a PSD matrix whose diagonal entries are all positive gives a PSD matrix with unit diagonal; <strong>A3</strong> for two assets with correlation \(\rho\) and \(|\rho| < 1\), and volatilities \(a, b > 0\), the weights are \((b(b-\rho a), a(a-\rho b))/(a^2+b^2-2\rho ab)\), and multiplying both volatilities by a constant \(c > 0\) leaves them unchanged.</p>
+        <p><strong>Length.</strong> The body (the five sections) runs 400 to 900 words. The appendix has no limit. A word is a run of characters between spaces.</p>
+        <p><strong>Numbers.</strong> Every number the report quotes is printed by <code>report/run_report.py</code>, with its unit (a distance, a weight or an eigenvalue, all dimensionless). A number is quoted at six decimals, as Lab 3 prints it. The input and the volatilities are inputs, and say so where they first appear.</p>
+        <p><strong>Scoring.</strong> Each criterion scores the highest level whose every element the report shows. Each level contains the one below it: level 4 is level 3 plus the elements its cell names; level 2 is any attempt that misses an element of level 3 or makes an error its cell names; level 1 is the absence its cell names. The report meets the bar at level 3 or above on every criterion.</p>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The covariance-matrix report: five criteria, four levels each, scored by the rule above. The report meets the bar at level 3 or above on every criterion.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · PSD and unit-diagonal status of each repair, with proofs A1 and A2</th><td>Everything in level 3, and proves A1 and A2 in full, with each hypothesis named where it is used.</td><td>For each repair states the PSD verdict and the largest diagonal deviation as Lab 3 prints them, with the tolerance used; states the hypotheses of A1 (real symmetric input, floor at least zero) and of A2 (positive diagonal).</td><td>States a verdict without its tolerance, or quotes a verdict or deviation that Lab 3 does not print.</td><td>No verdict on either repair.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Weight changes tied to printed numbers, with proof A3</th><td>Everything in level 3, and proves A3 for the two-asset case, with \(|\rho| < 1\) and \(a, b > 0\) named, and proves the scaling statement.</td><td>Every weight the report discusses appears with its clipping value and its projection value as Lab 3 prints them; the report states that the weights sum to 1 for each repair.</td><td>Discusses a weight change without its printed values, or quotes a weight that Lab 3 does not print.</td><td>No weights discussed.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · The Frobenius-nearest repair, and why</th><td>Everything in level 3, and states what the named test shows and what it cannot show: it checks the property on the seeded instances and does not prove that the iteration reaches the nearest matrix.</td><td>States which repair is nearer on Lab 3's input, by the two printed distances, and names the test in the suite that checks the nearness property.</td><td>Names the nearer repair without its printed distances, or gives a reason that is not the distance.</td><td>No comparison of distances.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · SIMULATED labelling and what is not claimed</th><td>Everything in level 3, and states what a market claim would require: a real data source whose terms permit its use, and the same check of positive semidefiniteness on that data. States that no such claim is made.</td><td>Labels every matrix and every volatility as SIMULATED or illustrative, and states that no result is data-backed.</td><td>Labels some inputs, or presents one printed result as market evidence.</td><td>No input is labelled.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Limitations and a recommendation that follows from the numbers</th><td>Everything in level 3, and for each limitation gives the direction its error would take on a distance or a weight, and names what new evidence would change the recommendation.</td><td>Names at least two limitations of the repairs or of the instances, and states a recommendation that a printed number supports.</td><td>Names one limitation, or gives a recommendation that no printed number supports.</td><td>No limitation and no recommendation.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two reports written to this brief, at different levels. Their numbers are Lab 3's printed output, apart from the input and the volatilities, which are the run's inputs. Exemplar A quotes some numbers rounded, and its annotations mark where that misses the brief. Each passage carries an annotation naming the descriptors it meets or misses. With JavaScript on, the annotations stay hidden until you reveal the official scoring with the form below, so score both exemplars first.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,2,1,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 1 · C5 2. The verdicts are given without the tolerance, the weights are quoted rounded, the nearer repair is named without its distances, the input is not labelled, and one limitation is named.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>The projection is the better repair for this matrix, so the projection should be used. The weights change a little when the repair changes. The input has one negative eigenvalue.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="misses" data-criterion="C3" data-level="3">Misses C3 level 3: names the nearer repair without the two printed distances, so the reason is not shown.</li>
+                <li class="meets" data-criterion="C3" data-level="2">Meets C3 level 2: names the nearer repair without its printed distances.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Setup and conventions</h5>
+              <p>The matrix is a four-by-four example with unit diagonal. The volatilities are 0.1, 0.2, 0.15 and 0.3. The distance is the Frobenius distance, computed by the module.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="misses" data-criterion="C4" data-level="2">Misses C4 level 2: the input is not labelled SIMULATED or illustrative, so C4 falls to level 1.</li>
+                <li class="meets" data-criterion="C4" data-level="1">Meets C4 level 1: no input is labelled.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Repairs and their checks</h5>
+              <p>Clipping gives a matrix with unit diagonal. The projection is PSD. The clipped matrix is not PSD in general, so clipping is not a complete repair. The checks pass.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: states a verdict for each repair without the tolerance.</li>
+                <li class="misses" data-criterion="C1" data-level="3">Misses C1 level 3: gives no tolerance, no printed deviation and no hypotheses of A1 or A2. The sentence about clipping contradicts the proof in A1, which shows that clipping gives a PSD matrix.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Distances and weights</h5>
+              <p>The weight of the first asset is 1.2190 under clipping and 1.2201 under the projection. The largest change is about 0.002. The weights sum to 1.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: discusses a weight change with some printed values.</li>
+                <li class="misses" data-criterion="C2" data-level="3">Misses C2 level 3: quotes the first weights rounded to four decimals, where Lab 3 prints 1.218951 and 1.220113, and gives the largest change as about 0.002 where Lab 3 prints 0.002194.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limitations and recommendation</h5>
+              <p>The matrix is small, so the result may not hold for larger matrices. Use the projection.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: names one limitation.</li>
+                <li class="misses" data-criterion="C5" data-level="3">Misses C5 level 3: names one limitation where two are required, and the recommendation is not tied to a printed number.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,3,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 3 · C5 4. The proofs are complete with their hypotheses, every number is a printed value of Lab 3 with its unit, and the nearness claim is limited to the test that checks it. It falls short of level 4 for C4 once: the report labels the inputs but does not say what a market claim would require.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>On the illustrative four-by-four matrix of Lab 3 the smallest eigenvalue is −0.142113, so the input is not positive semidefinite at tolerance 1e-10. Clipping is 0.176573 from the input in Frobenius distance, and the projection is 0.175003. The projection is nearer by 0.001570. The largest weight change between the two repairs is 0.002194, on the fourth asset.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: the Summary is under 80 words and every number it states is printed by the run.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Setup and conventions</h5>
+              <p>The input \(C\) is a symmetric four-by-four matrix with unit diagonal, set by hand for Lab 3 and SIMULATED. Its volatilities are \(v = (0.10, 0.20, 0.15, 0.30)\), which are inputs. Distances are Frobenius distances, \(\lVert A-B\rVert_F\), dimensionless. Weights are \(w = \Sigma^{-1}\mathbf{1}\) normalised to sum to 1, with \(\Sigma = DCD\) and \(D = \diag(v)\). The module functions are <code>min_eigenvalue</code> for the smallest eigenvalue, <code>clip_repair</code> and <code>projection_repair</code> for the two repairs, <code>comparison_weights</code> for the weights and <code>is_psd</code> for the verdict. Lab 3 prints every number below.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="3">Meets C4 level 3: labels the input and the volatilities as SIMULATED or inputs, and names the module function behind each number.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Repairs and their checks</h5>
+              <p>Clipping is PSD by A1 and rescaling keeps it PSD with unit diagonal by A2. The hypotheses are a real symmetric input with floor \(f \ge 0\) for A1, and a positive diagonal for A2. Lab 3 prints the largest diagonal deviation of each repair as 0.000000, that is, below 5e-7, and prints True for the projection's smallest eigenvalue at tolerance 1e-8. The input is not PSD: Lab 3 prints False at tolerance 1e-10, with smallest eigenvalue −0.142113.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="3">Meets C1 level 3: states the verdict and the diagonal deviation of each repair as printed, with the tolerance, and the hypotheses of A1 and A2.</li>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: the proofs in the appendix are complete, with each hypothesis named where it is used.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Distances and weights</h5>
+              <p>Clipping is 0.176573 from the input and the projection is 0.175003, so the projection is nearer by 0.001570. The largest entry difference between the repairs is 0.011516. The weights under clipping are 1.218951, −0.546718, −0.012462 and 0.340229, and under the projection 1.220113, −0.545144, −0.013004 and 0.338035. Each sums to 1 as printed. The largest weight change is 0.002194, on the fourth asset. Proof A3 gives the closed form for two assets; the four-asset weights have no closed form in this report; the suite checks them by the property that Sigma times the weights is a constant vector.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="3">Meets C2 level 3: every weight discussed appears with both printed values, and the sums are stated.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: A3 proves the two-asset closed form, with \(|\rho| < 1\) and \(a, b > 0\), and the scaling statement.</li>
+                <li class="meets" data-criterion="C3" data-level="3">Meets C3 level 3: names the nearer repair by its two printed distances.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limitations and recommendation</h5>
+              <p>Clipping is 0.001570 farther from the input than the projection on this input, so clipping's weights come from a matrix that is not the nearest one. The projection's nearness is checked by <code>test_projection_repair_is_no_farther<wbr>_than_clipping</code> on the seeded instances; that test shows the property on those instances and does not prove that the iteration reaches the nearest matrix. The iteration stops when its gap and its step are both at most <code>tol</code>, so the suite checks the result, not the stopping rule. The weights can be negative, as two of them are. The instances and Lab 3's matrix are SIMULATED. Recommendation: use the projection for the weights, because it is nearer by 0.001570 and the largest weight change is 0.002194. A market study would need real pairwise estimates, a source whose terms permit their use, and the same test of positive semidefiniteness on them, before the recommendation applies to any portfolio.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="3">Meets C5 level 3: names the stopping tolerance and the negative weights as limitations, and the recommendation follows from the printed distance gap.</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: gives the direction of the clipping error on the distance, and names the new evidence that would change the recommendation.</li>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: names the test that checks the nearness property and states what that test cannot show.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Appendix A · Proofs</h5>
+              <p><strong>A1.</strong> Let \(A\) be a real symmetric matrix and \(f \ge 0\). The spectral theorem gives \(A = V\Lambda V^{\top}\) with V orthogonal and \(\Lambda\) diagonal and real. Let \(\Lambda_f = \diag(\max(\Lambda_{ii}, f))\) and \(X = V\Lambda_f V^{\top}\). X is symmetric. For any vector z, \(z^{\top}Xz = \sum_i \max(\Lambda_{ii}, f)\,(V^{\top}z)_i^2 \ge 0\), since each \(\max(\Lambda_{ii}, f) \ge f \ge 0\). So X is PSD.</p>
+              <p><strong>A2.</strong> Let X be symmetric and PSD, with \(d_i = X_{ii} > 0\) for every i, D = diag(d), and \(Y = D^{-1/2}XD^{-1/2}\). Then \(Y_{ii} = X_{ii}/(\sqrt{d_i})^2 = 1\). For any z, \(z^{\top}Yz = w^{\top}Xw \ge 0\) with \(w = D^{-1/2}z\), so Y is PSD. The positivity of \(d_i\) is needed for the division; it fails only when row i of X is zero.</p>
+              <p><strong>A3.</strong> Let C have unit diagonal and off-diagonal entries \(\rho\), with \(|\rho| < 1\), and let the volatilities be \(a, b > 0\). Then \(\Sigma\) has diagonal entries \(a^2\) and \(b^2\) and off-diagonal entries \(\rho ab\), and \(\det\Sigma = a^2b^2(1-\rho^2) > 0\), so \(\Sigma\) is invertible. Its inverse has diagonal entries \(b^2/\det\Sigma\) and \(a^2/\det\Sigma\) and off-diagonal entries \(-\rho ab/\det\Sigma\), so \(\Sigma^{-1}\mathbf{1} = (\det\Sigma)^{-1}(b(b-\rho a),\, a(a-\rho b))\). Normalising, the \(\det\Sigma\) cancels, and the sum of the two components is \(a^2+b^2-2\rho ab\), which is positive because \(a^2+b^2-2\rho ab = (a-b)^2 + 2ab(1-\rho) > 0\). For \(c > 0\), replacing \((a, b)\) by \((ca, cb)\) multiplies every component and the sum by \(c^2\), so the normalised weights do not change.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: A1 and A2 are complete, and each hypothesis is named at the step that uses it.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: A3 states \(|\rho| < 1\) and \(a, b > 0\), and proves the scaling statement.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="M3/project/report" data-work-label="Your report" data-work-noun="report" data-summary-path="report/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own report on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own report. Your scores stay in this browser; keep the summary the form produces as <code>report/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>A weighted distance.</strong> Replace the Frobenius distance by \(\lVert D(X-C)D\rVert_F\), with \(D\) the diagonal of the volatilities. Find the repair nearest in that distance by any method you can justify, and state what your method's tolerance does to its answer. Compare its weights with Lab 3's.</li>
+          <li><strong>How often clipping is not nearest.</strong> Over 200 seeded matrices of each size from three to five, count how often the projection is nearer than clipping by more than 1e-6. State the seeds, the generator, and the count you find; do not extend the count to matrices you did not generate.</li>
+          <li><strong>The stopping rule.</strong> Run the projection with several values of <code>tol</code> on one instance, and report how the distance and the unit-diagonal deviation change with <code>tol</code> and with <code>max_iter</code>.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <p>The curriculum names two sources for this module: Axler (2024, 4th ed.) and Strang (2023, 6th ed.). No passage locator from either has been confirmed, so this page attributes no statement to them. The proofs in the appendix are derived on this page.</p>
+        <ol class="reading-list">
+          <li data-cite="axler2024linear">Axler (2024, 4th ed.), the first curriculum source of this module.</li>
+          <li data-cite="strang2023introduction">Strang (2023, 6th ed.), the second curriculum source of this module.</li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L09.html"><span class="dir">Previous</span>L09 · Nearest correlation matrices and eigenvalue clipping</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>M3 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M3 project · Covariance-matrix doctor · The autograder and the self-assessment run in your browser; nothing you write leaves it.</footer>
+</body>
+</html>

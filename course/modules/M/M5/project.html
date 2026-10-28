@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M5" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M5 Project · Contraction-mapping solver</title>
+  <meta name="description" content="Prove that the discounted Bellman operator of a finite savings grid is a sup-norm contraction, derive the certified error bound of value-function iteration, and write a solver that reports it. The code is autograded on your own seeded instance; the proof write-up is graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M5 Real Analysis</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="26">
+      <header class="page-head">
+        <p class="eyebrow">M5 project · 26 hours · autograded code and a rubric-graded proof write-up</p>
+        <h1>Contraction-mapping solver</h1>
+        <p class="lede">A planner chooses how much of a finite grid of capital values to save, and the value function of the grid is the fixed point of the discounted Bellman operator. You will prove that the operator is a <a class="concept" data-concept="contraction-mapping" href="L07.html#def-contraction-mapping">contraction</a> in the sup norm (the conventions below define the operator and the norm), derive a certified error bound for value-function iteration, write the solver that reports that bound, and show that it reproduces the reference numbers of one illustrative instance.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are at full length. If you met the placement bar on the <a href="index.html#placement">module page</a>, skip rungs 1 and 2 and start at rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: one sweep of the operator on a three-point grid, with the feasibility table, the contraction check and the certified error of the iteration, each step annotated.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: fill in the two lines that carry the observed contraction ratio and the bound. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: the module <code>contraction_solver.py</code>, autograded in <a href="#grader-section">the autograder section</a>, and a proof write-up, graded by the rubric in <a href="#report">the report section</a> with annotated exemplars and a self-assessment.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Both labs use one illustrative grid: the three capital values 0.5, 0.9 and 1.4, a discount factor \(\beta = 0.9\), and a production exponent \(\alpha = 0.5\). The output from capital \(k\) is \(k^{\alpha}\), and saving \(k'\) leaves the consumption \(k^{\alpha}-k'\). The utility of consumption \(c\ge 0\) is \(\sqrt{c}\). The inputs are illustrative. They are not data, and no file is read.</p>
+
+        <section class="lab" id="lab-M5-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: one sweep and its certified error</h3>
+          <p class="hypothesis">Stated before running. The resources are \(0.5^{0.5}=0.707107\), \(0.9^{0.5}=0.948683\) and \(1.4^{0.5}=1.183216\). The feasible savings are \(\{0.5\}\) from 0.5, and \(\{0.5, 0.9\}\) from 0.9 and from 1.4. One sweep from the zero vector gives \(V_1 = (0.455090,\ 0.669838,\ 0.826569)\). The contraction inequality holds for \(V = V_0\) and \(W = V_1\): \(0.409581 \le 0.743912\). The first sweep has a change of 0.826569 and a certified error of 7.439119. The iteration stops after sweep 146, with a certified error below \(10^{-6}\), and its actual error, measured against a reference fixed point iterated to \(10^{-12}\), agrees with the certified error to nine decimals.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: one discounted Bellman sweep and its certified error on a three-point grid.
+
+Standard library only; the example uses no random numbers. The model: output from capital k is k**alpha, so saving
+kp leaves consumption k**alpha - kp; utility is sqrt(consumption); the operator takes the best feasible saving plus
+beta times the value of that saving. Step 1 prints the resources, step 2 the feasible savings, step 3 one sweep from
+zero, step 4 a contraction check, step 5 the iteration to a certified error of 1e-6, and step 6 the actual error
+against a reference fixed point iterated to 1e-12.
+"""
+
+import math
+
+BETA = 0.9
+ALPHA = 0.5
+GRID = [0.5, 0.9, 1.4]
+
+
+def resources(k: float) -&gt; float:
+    """Output available from capital k: k to the power alpha."""
+    return float(k**ALPHA)
+
+
+def feasible(k: float) -&gt; list[int]:
+    """Indices of the successors kp with kp &lt;= k**alpha, that is, consumption k**alpha - kp &gt;= 0."""
+    return [j for j, kp in enumerate(GRID) if kp &lt;= resources(k)]
+
+
+def bellman(values: list[float]) -&gt; list[float]:
+    """One application of the discounted Bellman operator: max over feasible kp of sqrt(k**alpha - kp) + beta V(kp)."""
+    out = []
+    for k in GRID:
+        out.append(max(math.sqrt(resources(k) - GRID[j]) + BETA * values[j] for j in feasible(k)))
+    return out
+
+
+def sup_distance(a: list[float], b: list[float]) -&gt; float:
+    """The sup norm of a difference: the largest absolute entry."""
+    return max(abs(x - y) for x, y in zip(a, b, strict=False))
+
+
+def main() -&gt; None:
+    # Step 1. The resources k**alpha at each grid point.
+    for k in GRID:
+        print(f"resources at k={k}: {resources(k):.6f}")
+    # Step 2. The feasible successors: kp is feasible from k when kp &lt;= k**alpha.
+    for k in GRID:
+        print(f"feasible successors from k={k}: {[GRID[j] for j in feasible(k)]}")
+    # Step 3. One sweep from the zero vector: the continuation term beta V(kp) is zero, so V1 is the best consumption.
+    v0 = [0.0, 0.0, 0.0]
+    v1 = bellman(v0)
+    print("V1:", [f"{x:.6f}" for x in v1])
+    # Step 4. Contraction check with V = V0 and W = V1: sup|BV - BW| is at most beta times sup|V - W|.
+    bv, bw = bellman(v0), bellman(v1)
+    lhs = sup_distance(bv, bw)
+    rhs = BETA * sup_distance(v0, v1)
+    print(f"sup|BV - BW| = {lhs:.6f} | beta * sup|V - W| = {rhs:.6f} | holds: {lhs &lt;= rhs}")
+    # Step 5. Iterate from V0. After each sweep: the change sup|V_n - V_{n-1}| and the certified error
+    # beta/(1-beta) times that change. Print the first three sweeps, then stop at the first certified error &lt;= 1e-6.
+    values = v0
+    n = 0
+    certified = math.inf
+    while certified &gt; 1e-6:
+        n += 1
+        new = bellman(values)
+        change = sup_distance(new, values)
+        certified = BETA / (1 - BETA) * change
+        values = new
+        if n &lt;= 3:
+            print(f"sweep {n}: change {change:.6f} | certified error {certified:.6f}")
+    print(f"stopped after sweep {n}: change {change:.9f} | certified error {certified:.9f}")
+    # Step 6. Compare with a reference fixed point, iterated until its certified error is at most 1e-12.
+    reference = v0
+    for _ in range(100_000):
+        nxt = bellman(reference)
+        small = BETA / (1 - BETA) * sup_distance(nxt, reference) &lt;= 1e-12
+        reference = nxt
+        if small:
+            break
+    print("value after the last sweep:", [f"{x:.6f}" for x in values])
+    print(f"actual error {sup_distance(values, reference):.9f} &lt;= certified error {certified:.9f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">resources at k=0.5: 0.707107
+resources at k=0.9: 0.948683
+resources at k=1.4: 1.183216
+feasible successors from k=0.5: [0.5]
+feasible successors from k=0.9: [0.5, 0.9]
+feasible successors from k=1.4: [0.5, 0.9]
+V1: ['0.455090', '0.669838', '0.826569']
+sup|BV - BW| = 0.409581 | beta * sup|V - W| = 0.743912 | holds: True
+sweep 1: change 0.826569 | certified error 7.439119
+sweep 2: change 0.409581 | certified error 3.686228
+sweep 3: change 0.368623 | certified error 3.317605
+stopped after sweep 146: change 0.000000106 | certified error 0.000000950
+value after the last sweep: ['4.550898', '4.765646', '4.922377']
+actual error 0.000000950 &lt;= certified error 0.000000950</pre>
+          <p class="interpretation">Step 1 prints the resources and step 2 the feasible savings: the table is the feasibility rule \(k' \le k^{\alpha}\) applied to each state, and it is the only place where the constraint enters. Step 3 is the operator applied once to the zero vector, so the continuation term is zero. Step 4 is the contraction inequality with \(\beta = 0.9\) on one pair. It holds here, and one pair cannot prove it for every pair: that is result A1 in the report's appendix. Step 5 stops at the first certified error at most \(10^{-6}\). The stopping sweep is 146, and the certified error at that sweep is about \(9.5\times 10^{-7}\). The two printed errors agree to nine decimals in this run; that is a property of this instance, not a general fact about the bound.</p>
+        </section>
+
+        <section class="lab completion" id="lab-M5-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: the contraction ratio and the bound</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression that the lines above it describe. The ratio line is the observed contraction ratio \(\sup|BV-BW|/\sup|V-W|\) for \(V = 0\) and \(W = (0.1, 0.2, 0.3)\), and the bound line is the certified error \(\beta/(1-\beta)\) times the last change. Expected when both lines are right: a ratio of 0.300000, which is at most \(\beta\); the iteration stops after 146 sweeps with a certified error of \(9.495\times 10^{-7}\) and a last change of \(1.055\times 10^{-7}\).</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completed solution: the contraction ratio of the Bellman operator, and the certified error of its iteration.
+
+Standard library only. The model is the rung 1 model: output k**alpha, feasible savings kp &lt;= k**alpha, utility sqrt of
+consumption, and beta times the continuation value. The completed lines are the modulus step (the observed ratio
+sup|BV - BW| / sup|V - W|) and the bound line (beta / (1 - beta) times the last change).
+"""
+
+import math
+
+BETA = 0.9
+ALPHA = 0.5
+GRID = [0.5, 0.9, 1.4]
+
+
+def resources(k: float) -&gt; float:
+    """Output available from capital k: k to the power alpha."""
+    return float(k**ALPHA)
+
+
+def bellman(values: list[float]) -&gt; list[float]:
+    """One application of the discounted Bellman operator: max over feasible kp of sqrt(k**alpha - kp) + beta V(kp)."""
+    out = []
+    for k in GRID:
+        best = max(math.sqrt(resources(k) - kp) + BETA * values[j] for j, kp in enumerate(GRID) if kp &lt;= resources(k))
+        out.append(best)
+    return out
+
+
+def sup_distance(a: list[float], b: list[float]) -&gt; float:
+    """The sup norm of a difference: the largest absolute entry."""
+    return max(abs(x - y) for x, y in zip(a, b, strict=False))
+
+
+def main() -&gt; None:
+    v = [0.0, 0.0, 0.0]
+    w = [0.1, 0.2, 0.3]
+    ratio = ___
+    print(f"contraction ratio: {ratio:.6f} | modulus beta: {BETA}")
+    print("ratio at most beta:", ratio &lt;= BETA)
+    values = [0.0, 0.0, 0.0]
+    n = 0
+    certified = math.inf
+    while certified &gt; 1e-6 and n &lt; 300:
+        n += 1
+        new = bellman(values)
+        change = sup_distance(new, values)
+        certified = ___
+        values = new
+    print(f"sweeps: {n} | certified error: {certified:.3e} | last change: {change:.3e}")
+    print("values:", [f"{x:.6f}" for x in values])
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">contraction ratio: 0.300000 | modulus beta: 0.9
+ratio at most beta: True
+sweeps: 146 | certified error: 9.495e-07 | last change: 1.055e-07
+values: ['4.550898', '4.765646', '4.922377']</pre>
+          <p class="interpretation">The ratio is the observed value for one pair. The contraction modulus of the operator is the supremum (the least upper bound) of this ratio over all pairs of distinct vectors. Result A1 in the appendix bounds that supremum by \(\beta\); the lab shows one pair at or below the bound and proves nothing else. The bound line is the one the solver reports: the change after sweep \(n\) is multiplied by \(\beta/(1-\beta)\), and the printed sweep count and certified error are the same as in Lab 1.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A planner chooses how much of the output at each capital level on a finite grid to save. The value function of the grid is the fixed point \(V\) of the discounted Bellman operator \(\mathcal{B}\), defined in the conventions below. You write the operator, prove that it is a contraction in the sup norm, prove the fixed-point facts the solver relies on, and write a <a class="concept" data-concept="value-function-iteration" href="L09.html#def-value-function-iteration">value-function iteration</a> that reports a certified error. The solver must reproduce the reference numbers of one illustrative instance.</dd>
+          <dt>Inputs</dt>
+          <dd>No data file. The autograder's instance comes from <code>grader/instance.py</code>, seeded by your workspace ID. It holds a discount factor <code>beta</code>, a production exponent <code>alpha</code>, a strictly increasing grid <code>grid</code> and a tolerance <code>tol</code>. All of it is SIMULATED: generated parameters, not data. The report uses the illustrative instance of Lab 3 (\(\beta = 0.9\), \(\alpha = 0.3\), ten grid points from 0.45 to 2.70, and a tolerance of \(10^{-10}\)), which is an input and not data.</dd>
+          <dt>Required outputs</dt>
+          <dd>In a repository of your own: <code>contraction_solver.py</code> at its root, and a <code>report/</code> folder beside it. The module defines <code>bellman_operator(params, grid, values)</code>, which returns the list \(\mathcal{B}V\), and <code>solve(params, grid, tol, max_iter)</code>, which returns a dictionary with the keys <code>value</code>, <code>iterations</code>, <code>certified_error</code> and <code>converged</code>. The parameters are passed as <code>params = {"beta": beta, "alpha": alpha}</code>, where <code>beta</code> and <code>alpha</code> are the two numbers. Start from <a href="grader/starter.py">the starter file</a>, whose signatures are complete. For the report, commit three more files: <code>report/run_report.py</code>, which is Lab 3 with its operator and solver calls replaced by calls to your module, and which prints the same lines; <code>report/report.md</code>, the proof write-up described in <a href="#brief">the brief</a>; and <code>report/self_assessment.md</code>, the summary that the form in <a href="#self-assessment">the self-assessment section</a> produces.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only. Each input named in the conventions below raises <code>ValueError</code> when it is invalid. No function prints or warns. A run in your browser stops after 120 seconds. The conventions are in <a href="#conventions">the next subsection</a>, and they are binding.</dd>
+          <dt>Grading mode</dt>
+          <dd>Both modes apply. The code is autograded by <code>grader/test_project.py</code>, which runs 59 checks with warnings as errors: the operator against its definition, the contraction and monotonicity properties on seeded pairs, the feasibility rule, the certified error against the fixed point, the iteration budget, and the named invalid inputs. The same file runs in your browser and on your machine. It is not secret: its integrity comes from your seeded instance and from a second instance, which a fixed answer for the first would also have to match. The proof write-up is graded by rubric, against the six criteria of <a href="#rubric">the report rubric</a>, each with four observable levels. You score it yourself with the form in <a href="#self-assessment">the self-assessment section</a> and calibrate that scoring on two annotated exemplars. The report meets the bar at level 3 or above on every criterion.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions</h3>
+        <ul>
+          <li><strong>The state space.</strong> A state is a capital value on a grid \(k_1 < k_2 < \cdots < k_m\) of positive real numbers, with \(k_1 \le 1\). The grid is a finite subset of \(\R\) with the sup norm \(\lVert V\rVert_\infty = \max_i |V(k_i)|\), so a value vector is a point of \(\R^m\).</li>
+          <li><strong>Feasibility.</strong> Output from capital \(k\) is \(k^{\alpha}\). Saving \(k'\) leaves consumption \(c = k^{\alpha}-k'\), and \(k'\) is feasible from \(k\) when \(c \ge 0\), that is, when \(k' \le k^{\alpha}\). Every state has a feasible saving: \(k_1\) is feasible from every state. For \(k \le 1\), \(k^{\alpha} \ge k \ge k_1\), because \(\alpha < 1\); for \(k > 1\), \(k^{\alpha} > 1 \ge k_1\).</li>
+          <li><strong>Utility.</strong> The utility of consumption \(c \ge 0\) is \(u(c) = \sqrt{c}\).</li>
+          <li><strong>The operator.</strong> For a vector \(V\) on the grid, \((\mathcal{B}V)(k) = \max\{\sqrt{k^{\alpha}-k'} + \beta V(k') : k' \text{ feasible from } k\}\), with \(\beta\in(0,1)\). The maximum is over the grid points \(k'\) of the feasible set. <code>bellman_operator</code> returns \(\mathcal{B}V\) as a list, one entry per grid point, computed from the vector it is given.</li>
+          <li><strong>Iteration.</strong> <code>solve</code> starts from the zero vector, \(V_0 = 0\). A sweep is one application of the operator to the current vector, and \(V_n\) is the vector after \(n\) sweeps. The sweep may update the states in place, as long as the certified error below is valid for the sweep you use.</li>
+          <li><strong>Certified error.</strong> <code>certified_error</code> is an upper bound on the sup-norm distance \(\lVert V_{\mathrm{out}} - V^{\ast}\rVert_\infty\), where \(V^{\ast}\) is the fixed point of \(\mathcal{B}\) on the grid. It is not a bound on the distance to a continuous problem. The bound \(\frac{\beta}{1-\beta}\lVert V_n - V_{n-1}\rVert_\infty\) is one valid choice; another is any bound your proof establishes. The suite checks validity against a reference fixed point, not the formula.</li>
+          <li><strong>Stopping.</strong> The solver stops at the first sweep at which <code>certified_error</code> is at most <code>tol</code>, or after <code>max_iter</code> sweeps. <code>iterations</code> is the number of sweeps made, at least 1. <code>converged</code> is <code>True</code> exactly when <code>certified_error</code> is at most <code>tol</code>. <code>value</code> is the vector the certified error refers to.</li>
+          <li><strong>Iteration budget.</strong> A correct solver stops within the a priori count plus one, where the a priori count is the least \(n \ge 0\) with \(\beta^{n}\sqrt{k_m^{\alpha}}/(1-\beta) \le \mathrm{tol}\).</li>
+          <li><strong>Named invalid inputs.</strong> Each of these raises <code>ValueError</code>: <code>beta</code> or <code>alpha</code> that is not a real number in the open interval \((0,1)\), including a boolean or a non-finite number; <code>tol</code> that is not a finite real number greater than zero; <code>max_iter</code> that is not a whole number of sweeps, one or more, including a boolean or a float; a <code>grid</code> that is empty, has a point that is not a positive real number, is not strictly increasing, or whose first point exceeds 1; and, in <code>bellman_operator</code>, a <code>values</code> list whose length is not the grid's length.</li>
+        </ul>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">1</td><td>One three-point grid, every step explained; the lab's comments carry the reasons.</td></tr>
+              <tr><td>Rung 2 completion problem and its instant check</td><td class="num">2</td><td>Two blanks, each a line of the operator or the bound; the time goes into why each line is right.</td></tr>
+              <tr><td>Proof write-up: the contraction, the completeness step, the fixed point and the certified bound</td><td class="num">8</td><td>Four results with every hypothesis listed; the geometric sum in the certified bound is the slow step.</td></tr>
+              <tr><td>Solver implementation and property tests in <code>contraction_solver.py</code></td><td class="num">7</td><td>The operator, the iteration and the stopping rule; the time goes into the named invalid inputs and into passing the suite.</td></tr>
+              <tr><td>Self-check against the grader and the numerical check</td><td class="num">3</td><td>Run the suite on your own instances, then reconcile the numbers in the report with Lab 3's printed lines.</td></tr>
+              <tr><td>Report revision and self-assessment</td><td class="num">5</td><td>Revise the proof write-up against the rubric; score it against the two exemplars.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>26</strong></td><td>Equals the project hours in the hub: 26 of the module's 130, or 20.0 %.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>contraction_solver.py</code> and run the suite on your own instance. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="M5" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="contraction_solver.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>contraction_solver.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> turns off pytest's comparison details, so a failure shows the test's own message and no values, and <code>-W error</code> turns warnings into failures, both as in the browser. The browser runs the same file.</p>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The report</h2>
+        <p>The report runs your module on the illustrative instance and proves what the numbers mean. Its numbers are the ones Lab 3 prints, so you can check every one before you write it.</p>
+
+        <section class="lab" id="lab-M5-project-3" data-runtime="python">
+          <h3>Lab 3 · The report's reference numbers</h3>
+          <p class="hypothesis">Stated before running. The instance is \(\beta = 0.9\), \(\alpha = 0.3\), and the ten grid points 0.45, 0.70, and so on up to 2.70, with tolerance \(10^{-10}\). The smallest gap between a grid point and a resource level \(k^{\alpha}\) is positive, so no feasibility test is a tie. The iteration stops after 236 sweeps with a certified error of \(9.226\times 10^{-11}\), inside the a priori count of 242 plus one. The residual of the output is at most \((1+\beta)\) times the certified error. On 200 seeded pairs the largest observed contraction ratio is at most \(\beta\). Copy this file into <code>report/run_report.py</code> and replace its operator and solver calls with calls to your module. It must print the same lines.</p>
+          <pre><code class="language-python" data-run>"""Rung 3 reference numbers: the solver's output on the report's illustrative instance, and the report's checks.
+
+Standard library only. The inputs are illustrative, not data: beta = 0.9, alpha = 0.3, the ten grid points
+0.45, 0.70, 0.95 and so on up to 2.70, and the tolerance 1e-10. The model is the one in the specification: output
+k**alpha, feasible
+savings kp &lt;= k**alpha, utility sqrt of consumption, and value iteration from the zero vector. The random pairs
+use the seed 7.
+
+Copy this file into report/run_report.py, replace the operator and solver calls with calls to your
+contraction_solver module, and print the same lines. The numbers are the ones the report quotes.
+"""
+
+import math
+import random
+
+BETA = 0.9
+ALPHA = 0.3
+GRID = [0.45 + 0.25 * j for j in range(10)]
+TOL = 1e-10
+
+
+def resources(k: float) -&gt; float:
+    """Output available from capital k: k to the power alpha."""
+    return float(k**ALPHA)
+
+
+def bellman(values: list[float]) -&gt; list[float]:
+    """One application of the discounted Bellman operator: max over feasible kp of sqrt(k**alpha - kp) + beta V(kp)."""
+    out = []
+    for k in GRID:
+        best = max(math.sqrt(resources(k) - kp) + BETA * values[j] for j, kp in enumerate(GRID) if kp &lt;= resources(k))
+        out.append(best)
+    return out
+
+
+def sup_distance(a: list[float], b: list[float]) -&gt; float:
+    """The sup norm of a difference: the largest absolute entry."""
+    return max(abs(x - y) for x, y in zip(a, b, strict=False))
+
+
+def main() -&gt; None:
+    # The smallest gap between a grid point and a resource level k**alpha: a gap near zero would make the
+    # feasibility test a near-tie.
+    gap = min(abs(kp - resources(k)) for k in GRID for kp in GRID)
+    print(f"instance: beta {BETA}, alpha {ALPHA}, {len(GRID)} grid points from {GRID[0]} to {GRID[-1]}")
+    print(f"smallest gap between a grid point and a resource level: {gap:.6f} | clear of a tie: {gap &gt; 1e-6}")
+    # Value iteration from zero, stopped at the first certified error at most TOL.
+    values = [0.0] * len(GRID)
+    sweeps = 0
+    certified = math.inf
+    change = math.inf
+    while certified &gt; TOL:
+        new = bellman(values)
+        change = sup_distance(new, values)
+        certified = BETA / (1 - BETA) * change
+        values = new
+        sweeps += 1
+    print(f"sweeps: {sweeps} | last change: {change:.3e} | certified error: {certified:.3e}")
+    # The a priori count: the least n with beta**n * U / (1 - beta) at most TOL, where U = sqrt(max grid**alpha).
+    bound_u = math.sqrt(max(GRID) ** ALPHA)
+    n_apriori = 0
+    while BETA**n_apriori * bound_u / (1 - BETA) &gt; TOL:
+        n_apriori += 1
+    print(f"a priori count: {n_apriori} | sweeps within the count plus one: {sweeps &lt;= n_apriori + 1}")
+    # The residual of the output: |BV - V| is at most (1 + beta) times the certified error.
+    residual = sup_distance(bellman(values), values)
+    print(
+        f"residual: {residual:.3e} | at most (1 + beta) times the certified error: {residual &lt;= (1 + BETA) * certified}"
+    )
+    # The contraction ratio on seeded random pairs: the largest sup|BV - BW| / sup|V - W| seen is at most beta.
+    rng = random.Random(7)
+    worst = 0.0
+    for _ in range(200):
+        v = [rng.uniform(0.0, 4.0) for _ in GRID]
+        w = [rng.uniform(0.0, 4.0) for _ in GRID]
+        worst = max(worst, sup_distance(bellman(v), bellman(w)) / sup_distance(v, w))
+    print(f"largest observed contraction ratio over 200 pairs: {worst:.6f} | at most beta: {worst &lt;= BETA + 1e-12}")
+    # The value at each grid point.
+    for k, value in zip(GRID, values, strict=False):
+        print(f"V({k}) = {value:.6f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">instance: beta 0.9, alpha 0.3, 10 grid points from 0.45 to 2.7
+smallest gap between a grid point and a resource level: 0.021829 | clear of a tie: True
+sweeps: 236 | last change: 1.025e-11 | certified error: 9.226e-11
+a priori count: 242 | sweeps within the count plus one: True
+residual: 9.226e-12 | at most (1 + beta) times the certified error: True
+largest observed contraction ratio over 200 pairs: 0.900000 | at most beta: True
+V(0.45) = 5.804999
+V(0.7) = 5.894218
+V(0.95) = 5.955751
+V(1.2) = 6.003100
+V(1.45) = 6.041762
+V(1.7) = 6.074534
+V(1.95) = 6.103037
+V(2.2) = 6.128299
+V(2.45) = 6.151013
+V(2.7) = 6.171668</pre>
+          <p class="interpretation">The first line states the instance. The second prints the smallest gap between a grid point and a resource level, and whether it exceeds \(10^{-6}\), so that no feasibility test is a near-tie. The sweep count and the certified error come from the same loop, and the a priori count is the least \(n\) with \(\beta^{n}\sqrt{k_m^{\alpha}}/(1-\beta) \le \mathrm{tol}\), computed with the grid's largest point. The residual line checks the inequality \(\lVert\mathcal{B}V-V\rVert_\infty \le (1+\beta)\,\mathrm{certified\ error}\) at the printed output. The contraction line is a check on 200 pairs, not a proof, and the ratio it prints can reach \(\beta\) exactly, so the check allows a rounding margin of \(10^{-12}\). The printed values are the output of this instance and say nothing about any other grid.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Write the proof write-up in <code>report/report.md</code>, with these sections in this order: Setting, Contraction, Fixed point, Certified bound, Numerical check and Limitations. Then an appendix, A, with four proofs. Each proof states its hypotheses in a numbered list before its conclusion, and each uses only those hypotheses.</p>
+        <ol>
+          <li><strong>A1, the contraction.</strong> Hypotheses: a grid of positive points, \(\beta\in(0,1)\), and the feasibility and utility rules above. Conclusion: \(\lVert\mathcal{B}V-\mathcal{B}W\rVert_\infty \le \beta\lVert V-W\rVert_\infty\) for all vectors \(V\), \(W\) on the grid.</li>
+          <li><strong>A2, the space.</strong> Hypothesis: a finite grid of \(m\) points. Conclusion: the vectors on the grid form a complete metric space under the sup norm, with a reason that does not assume the conclusion.</li>
+          <li><strong>A3, the fixed point.</strong> Hypotheses: A1 and A2, and the zero vector as the start. Conclusion: \(\mathcal{B}\) has exactly one fixed point \(V^{\ast}\) on the grid, and the sweeps from zero converge to it. Lesson 7 states the general argument; check its hypotheses for this operator and prove the step your solver relies on.</li>
+          <li><strong>A4, the certified bound.</strong> Hypotheses: A1, A3 (the sweeps converge to \(V^{\ast}\)), and the sweep \(V_n = \mathcal{B}V_{n-1}\). Conclusion: \(\lVert V_n - V^{\ast}\rVert_\infty \le \frac{\beta}{1-\beta}\lVert V_n-V_{n-1}\rVert_\infty\). Derive it from A1 by summing a geometric series; do not assert it.</li>
+        </ol>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The proof write-up: six criteria, four levels each, scored by the rule above. The report meets the bar at level 3 or above on every criterion.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Assumptions</th><td>Names all five of: the grid and the sup norm; the rule that a saving is feasible when \(k' \le k^{\alpha}\); the utility \(\sqrt{c}\) on \(c \ge 0\); the parameters \(\beta, \alpha \in (0,1)\); and the start \(V_0 = 0\) with the fixed point taken on the grid.</td><td>Names four of the five, and the fixed point is identified as the grid's.</td><td>Names two or three of the five; the feasibility rule or the start is missing.</td><td>Names none of the five, or states the operator without its domain.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Contraction</th><td>Proves A1 step by step: each inequality is written, and each step names the property it uses (the bound on a difference of maxima, the continuation term, the sup norm). The constant \(\beta\) appears in the last line.</td><td>Proves A1 with every step justified, but one step (the difference of two maxima) is stated without its property.</td><td>States the inequality and gives a proof in one sentence, with no step for the maxima.</td><td>No proof, or a proof of a different inequality.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Completeness</th><td>Proves A2 with the coordinatewise step: a Cauchy sequence of vectors converges in each coordinate, and the sup norm controls each coordinate, so the limit is in the space.</td><td>Gives the finite-dimensional reason and cites the completeness of \(\R\), without showing the coordinatewise step.</td><td>States that the space is complete, with no reason given.</td><td>Does not address completeness.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Certified bound</th><td>Derives A4 from A1 by summing the geometric series of changes, showing each term and the constant \(\beta/(1-\beta)\); states that the bound holds for the sweep the solver uses.</td><td>Derives the bound and its constant, but states the sum without showing the geometric series.</td><td>States the bound with its constant and gives no derivation.</td><td>Asserts a bound with no constant, or uses the last change alone as the bound.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Numerical check</th><td>Every number in the report is printed by <code>run_report.py</code>, with its unit, the instance and the tolerance stated, and the report names the printed line that each number comes from.</td><td>Every number is printed by <code>run_report.py</code> and the tolerance is stated, but at least one number has no line reference.</td><td>One or two numbers are quoted that <code>run_report.py</code> does not print, or a number is given without its tolerance.</td><td>Numbers are quoted without a source, or most of the numbers are not printed by the run.</td></tr>
+              <tr data-criterion="C6"><th scope="row">C6 · Limitations</th><td>States that the certified bound is for the fixed point of the grid operator and not for a continuous problem; names the grid resolution and the discretization error, with the direction each moves the error; and says in what sense the bound is certified.</td><td>States the grid limitation and the scope of the bound, without the direction of the error.</td><td>Names one limitation.</td><td>No limitation is stated.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two write-ups to this brief, at different levels. Both quote only the printed numbers of Lab 3, and their annotations mark where a passage meets or misses the descriptors. Each exemplar carries the official scoring after its annotations; reveal it after you have scored the exemplar yourself.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,1,2,2,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 1 · C4 2 · C5 2 · C6 2. The contraction is stated and proved in a sentence, completeness is not addressed, the bound has its constant but no sum, one number is quoted that the run does not print, and the write-up has no Fixed point section.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Setting</h5>
+              <p>The grid has ten points. The operator uses output \(k^{0.3}\) and utility \(\sqrt{c}\) with \(\beta = 0.9\). The iteration starts from zero and stops at a tolerance of \(10^{-10}\).</p>
+              <h5>Contraction</h5>
+              <p>The operator is a contraction with modulus \(\beta\), because the maximum of a difference is at most the maximum of the differences.</p>
+              <h5>Certified bound</h5>
+              <p>The certified error is \(\frac{\beta}{1-\beta}\) times the last change. At the stop it is \(9.226\times 10^{-11}\).</p>
+              <h5>Numerical check</h5>
+              <p>The iteration takes about 240 sweeps, and the residual is well inside the bound.</p>
+              <h5>Limitations</h5>
+              <p>The grid is a limitation of the model.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: names the utility, the parameter \(\beta\) and the start, but not the feasibility rule or the identity of the fixed point on the grid.</li>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: states the inequality and gives a one-sentence proof.</li>
+                <li class="misses" data-criterion="C2" data-level="3">Misses C2 level 3: the sentence names no property for the difference of two maxima, and no other step is shown.</li>
+                <li class="meets" data-criterion="C3" data-level="1">Meets C3 level 1: the passage does not address completeness, and no reason for it is given.</li>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: states the bound with its constant and gives no derivation.</li>
+                <li class="misses" data-criterion="C4" data-level="3">Misses C4 level 3: the geometric series is not summed, so the bound is asserted with its constant.</li>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: the certified error is printed by Lab 3, but the count of about 240 is not the printed value, which is 236.</li>
+                <li class="misses" data-criterion="C5" data-level="3">Misses C5 level 3: the count of about 240 has no line of Lab 3 behind it, and the instance is not stated where the count first appears.</li>
+                <li class="meets" data-criterion="C6" data-level="2">Meets C6 level 2: names one limitation, the grid, without saying what it does to the error.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,4,4,3" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4 · C6 3. Every criterion is met at level 4 except the limitations, where the direction of the discretization error is not stated.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Setting</h5>
+              <p>The state space is a grid \(k_1 < \cdots < k_{10}\) of positive points, with \(k_1 = 0.45 \le 1\), under the sup norm. A saving \(k'\) is feasible from \(k\) when \(k' \le k^{0.3}\), and utility is \(\sqrt{k^{0.3}-k'}\). The discount factor is \(\beta = 0.9\), with \(\beta\in(0,1)\). The iteration starts at \(V_0 = 0\), and the fixed point \(V^{\ast}\) is the one of the grid operator.</p>
+              <h5>Contraction (A1)</h5>
+              <p>For a state \(k\), let \(a\) and \(b\) be the maxima of \(\sqrt{k^{0.3}-k'}+\beta V(k')\) and \(\sqrt{k^{0.3}-k'}+\beta W(k')\) over the same feasible set. Each of the two maxima is taken over the same family of summands, which differ only by \(\beta(V(k')-W(k'))\). The maximum of a family of numbers moves by at most the largest move of its members, so \(|a-b| \le \beta\max_{k'}|V(k')-W(k')| = \beta\lVert V-W\rVert_\infty\). Taking the maximum over \(k\) gives \(\lVert\mathcal{B}V-\mathcal{B}W\rVert_\infty \le \beta\lVert V-W\rVert_\infty\).</p>
+              <h5>Fixed point (A2, A3)</h5>
+              <p>A2: a vector on the grid is a point of \(\R^{10}\), and \(|V(k_i)-W(k_i)|\le\lVert V-W\rVert_\infty\) for each \(i\). A Cauchy sequence in the sup norm is therefore Cauchy in each of the ten coordinates, each coordinate converges because \(\R\) is complete, and the ten limits form a vector on the grid that is the sup-norm limit, since there are only ten indices. A3: by A1, \(d_{n+1}\le\beta d_n\) for \(d_n = \lVert V_n-V_{n-1}\rVert_\infty\), so \(\sum_n d_n\) is a geometric series and the sweeps are Cauchy. Their limit \(V^{\ast}\) satisfies \(V^{\ast}=\mathcal{B}V^{\ast}\), because \(\mathcal{B}\) is continuous by A1. If \(W\) is another fixed point, \(\lVert V^{\ast}-W\rVert_\infty = \lVert\mathcal{B}V^{\ast}-\mathcal{B}W\rVert_\infty \le \beta\lVert V^{\ast}-W\rVert_\infty\), which with \(\beta<1\) forces \(W=V^{\ast}\).</p>
+              <h5>Certified bound (A4)</h5>
+              <p>Let \(d_n\) be as above. By A3 the sweeps converge to \(V^{\ast}\), so \(\lVert V_n-V^{\ast}\rVert_\infty \le \sum_{j\ge 1} d_{n+j} \le d_n\sum_{j\ge 1}\beta^{j} = d_n\beta/(1-\beta)\). At the stop, the last change is printed as \(1.025\times 10^{-11}\), and the certified error as \(9.226\times 10^{-11}\). The ratio of the two is \(\beta/(1-\beta) = 9\). The printed change is rounded, so nine times the unrounded change gives the printed 9.226 to four figures.</p>
+              <h5>Numerical check</h5>
+              <p>Lab 3 prints 236 sweeps, a certified error of \(9.226\times 10^{-11}\), an a priori count of 242, and a residual of \(9.226\times 10^{-12}\). The residual is at most \((1+\beta)\) times the certified error, \(1.9\times 9.226\times 10^{-11}\), as the printed check confirms. Its contraction line reports a largest ratio of 0.900000 over 200 pairs, at most \(\beta\) within the stated rounding margin.</p>
+              <h5>Limitations</h5>
+              <p>The bound is for the fixed point of the grid operator. It does not bound the error of a continuous model, and the grid's own spacing is part of the error the bound leaves out. A finer grid is needed to shrink that part, and this implementation costs about \(m^2\) operations per sweep, so the cost grows with the square of the number of points.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: names the grid and the sup norm, the feasibility rule, the utility on \(c \ge 0\), the parameters, and the start, with the fixed point taken on the grid.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: each step names its property, and the constant appears at the end of the inequality.</li>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: proves A2 with the coordinatewise step, and the sup-norm limit is identified on the grid.</li>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: sums the geometric series, shows the constant, and states the bound for the sweep the solver uses.</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: every number is named as printed by Lab 3, with its instance and tolerance, and the rounding of the change is explained.</li>
+                <li class="meets" data-criterion="C6" data-level="3">Meets C6 level 3: states the grid limitation and the scope of the bound, but does not give the direction in which the discretization error moves with the grid spacing.</li>
+                <li class="misses" data-criterion="C6" data-level="4">Misses C6 level 4: the direction of the discretization error is not stated, and the passage says only that a finer grid is needed.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="M5/project/report" data-work-label="Your report" data-work-noun="report" data-summary-path="report/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own report on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own report. Your scores stay in this browser; keep the summary the form produces as <code>report/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Sweep order.</strong> Count the sweeps of the synchronous and the in-place sweeps on the same instance, to the same tolerance. State which bound each run certifies, and prove that the in-place bound is valid.</li>
+          <li><strong>Howard policy iteration.</strong> Replace the sweeps by policy evaluation followed by an improvement step, with a certified error for each stage. Compare the number of operator applications with the value iteration of this project.</li>
+          <li><strong>A measured rate.</strong> On a family of instances with \(\beta\) from 0.80 to 0.95, measure the sweep count against \(\beta\) and compare it with the a priori count. Report which of the two is the better predictor, and why.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <p>The proofs use the results of Lessons 1, 2, 4, 5, 6 and 7, and every proof is written out on this page or in the report. Neither source below is cited for a specific statement: no passage locator has been checked, so the appendix attributes nothing to them.</p>
+        <ol class="reading-list">
+          <li data-cite="abbott2015understanding"></li>
+          <li data-cite="rudin1976principles"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L09.html"><span class="dir">Previous</span>L09 · Value-function iteration</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>M5 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M5 project · Contraction-mapping solver · The autograder and the self-assessment run in your browser; nothing you write leaves it.</footer>
+</body>
+</html>

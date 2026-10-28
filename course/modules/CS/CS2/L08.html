@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS2" data-page="L08" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L08 · Order Books: Price Levels with FIFO Queues · CS2 Algorithms &amp; Data Structures</title>
+  <meta name="description" content="An order book of integer-cent price levels with first-in first-out queues: the price-time matching rule, the invariant that a book never rests a crossed pair of quotes, the operation counts of queues and searches, and a lab that checks the structure trade by trade against a sorted scan.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS2 Algorithms &amp; Data Structures</a><span class="sep">›</span>
+      <span>L08</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS2 · Lesson 8 of 11 · 10 study hours</p>
+        <h1>Order Books: Price Levels with FIFO Queues</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="hash-map" href="L02.html#def-hash-map">hash map</a>, <a class="concept" data-concept="binary-search" href="L04.html#def-binary-search">binary search</a>, <a class="concept" data-concept="mathematical-induction" href="../../../concepts.html#mathematical-induction">proof by induction</a></li>
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="order-book-data-structure" href="#def-order-book-data-structure">order-book data structure (price levels with FIFO queues)</a></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">A limit order book is a list of resting orders, grouped by price, that buyers and sellers add to and take from. In this model each message either adds an order, which may trade at once, or cancels an order. Two data-structure questions decide what the book can answer quickly: where the best price is, and in what order orders at one price are filled. This lesson defines the structure in integer cents and integer shares, fixes the rule of price-time priority, proves that the book never rests a crossed pair of quotes, and counts the operations. Lab 1 checks the structure against a plain reference on a SIMULATED stream.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Orders, sides and price levels</h2>
+
+      <p>A <em>limit order</em> instructs the book to buy or sell a quantity at a stated price or better. A buy order is a <em>bid</em>, and a sell order is an <em>ask</em>. An order that is not filled at once <em>rests</em> in the book until it is filled or cancelled. A <em>first-in first-out</em> (FIFO) queue hands out its items in the order they were added. Every price in this lesson is an integer number of cents, so 10000 is 100.00 currency units (CU) and one tick is one cent. Every quantity is an integer number of shares. The code in Lab 1 raises an error for any other type, and it never uses floating point.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(order-book data structure)</span></span>
+        <p>An <dfn id="def-order-book-data-structure" data-concept="order-book-data-structure">order-book data structure</dfn> stores resting orders on two sides, bids and asks. An order is <em>live</em> while it is unfilled and not cancelled. For each side, the structure keeps (a) a sorted list of the prices that have at least one live order, and (b) for each such price, a FIFO queue of the orders at that price in arrival order. The pair (price, queue) is a <em>price level</em>. The structure also keeps an index from order identifiers to live orders.</p>
+      </div>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.2 <span class="name">(best bid, best ask and an uncrossed book)</span></span>
+        <p>The <em>best bid</em> is the highest price with a live bid, and the <em>best ask</em> is the lowest price with a live ask. Either is undefined when its side has no live order. A bid at price \(p\) <em>crosses</em> an ask at price \(a\) when \(p \ge a\). The book is <em>uncrossed</em> when best bid &lt; best ask whenever both are defined, so that no bid crosses the best ask.</p>
+      </div>
+
+      <p>The matching rule that fills orders is in Section 2. The next proposition shows that the matching rule never leaves the book crossed, so the best bid and best ask always describe a book in which no bid reaches an ask.</p>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 1.3 <span class="name">(a book never rests a crossed quote)</span></span>
+        <p>Hypotheses.</p>
+        <ol>
+          <li>The book starts with no orders.</li>
+          <li>Each message is either a submission, matched by the rule of Definition 2.1, or a cancellation of a live order.</li>
+        </ol>
+        <p>Then after every message the book is uncrossed.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Induction on the number of messages. Before the first message the book is empty, so it is uncrossed. Assume it is uncrossed before a message.</p>
+        <p><em>Cancellation.</em> Removing a live order can only remove a price from a side. The best bid can only fall and the best ask can only rise, so the inequality still holds.</p>
+        <p><em>Submission of a buy at price \(p\).</em> Matching stops when no live ask remains or when the best live ask is above \(p\). Let \(B\) and \(A\) be the best bid and best ask before the submission, when defined. If no ask exists after matching, the book has no ask and the claim is vacuous, so assume one exists after matching. Matching only removes asks, so the best ask after matching is some \(A'\) with \(A' \ge A\) when defined. If the remainder of the buy is zero, the bids are unchanged and \(\text{best bid} = B &lt; A \le A'\). If a remainder rests at \(p\), the new best bid is \(\max\{B, p\}\). The case \(B\) is undefined is trivial, since then the new best bid is \(p\), and it is below \(A'\) whenever \(A'\) is defined because matching stopped with \(A' &gt; p\). When \(B\) is defined, \(B &lt; A \le A'\), and \(p &lt; A'\) by the same stopping condition, so the new best bid is below \(A'\).</p>
+        <p><em>Submission of a sell.</em> Symmetric, with the roles of bids and asks exchanged.</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>The matching rule: price-time priority</h2>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(price-time priority)</span></span>
+        <p>An incoming buy at price \(p\) is matched against live asks in this order: the lowest ask price first, and at one price the earliest arrival first. A match with an ask at price \(a \le p\) executes the smaller of the remaining quantity and the resting quantity, in shares, at price \(a\), which is the price of the resting order. The remaining quantity after all matches, if positive, rests as a bid at \(p\). A sell is symmetric: the highest bid first, then the earliest arrival, with bids at prices \(b \ge p\), and the remainder rests as an ask at \(p\).</p>
+      </div>
+
+      <p>The rule is written as pseudocode below. It is not runnable. Lab 1 contains the runnable version, which is checked against a second implementation on seeded messages.</p>
+
+      <pre><code class="language-pseudocode">Pseudocode: submit a buy of quantity q at price p, identifier id
+  while q &gt; 0:
+      if no live ask exists, stop
+      a := the lowest price with a live ask
+      if a &gt; p, stop
+      take the earliest live order o at price a
+      fill := min(q, quantity of o)
+      reduce q and the quantity of o by fill; record a trade of fill shares at price a
+      if o is filled, mark it not live; if price a has no live order, remove price a
+  if q &gt; 0, rest q shares at price p as the newest order at that price</pre>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 2.2 <span class="name">(the rule is price-time priority)</span></span>
+        <p>Hypotheses.</p>
+        <ol>
+          <li>Each price level's queue holds its orders in arrival order, because an order is appended when it rests and never moved.</li>
+          <li>The head of a queue passes only entries that are not live.</li>
+          <li>Every price in the sorted list has at least one live order.</li>
+        </ol>
+        <p>Then the trades produced by the pseudocode are the trades produced by the sorted-scan rule: sort the live crossing orders by (price best first, then arrival number), and fill them in that order until the incoming quantity is used up or no crossing order remains.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Let \(C_1, C_2, \ldots\) be the sorted sequence of live crossing orders at the start of the submission. The claim is that the pseudocode fills exactly \(C_1, C_2, \ldots\), in that order, with the same amounts. Induct on the number of fills. Suppose the first \(t\) fills agree, and let \(C\) be the next order of the sorted sequence, not yet fully filled. The lowest live ask price \(a\) among the remaining crossing orders is the price of \(C\), because the sorted sequence orders by price first. Hypothesis (3) makes the level at \(a\) exist with a live order. By hypothesis (2) the head passes only dead entries, so after the head moves, it rests on the earliest live order at \(a\). By hypothesis (1) that is the earliest arrival among live orders at \(a\). So the pseudocode's next fill is \(C\), with the same amount, since both take the minimum of the two quantities. If \(C\) is filled completely, both procedures move on to \(C_{t+2}\); otherwise both keep \(C\) first. The two procedures stop together, when the quantity is used or when no live crossing order remains.</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 2.3 <span class="name">(price before time)</span></span>
+        <p>Let an ask of 1 share at 10010 arrive first, and an ask of 1 share at 10000 arrive second. A buy of 1 share at 10010 arrives third. Price-time priority fills the second ask, at 10000, even though it arrived later. The first ask, at 10010, is not touched, because the lower price is filled first.</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>What the operations cost</h2>
+
+      <p>The counts in this section are the operations the proofs use. Three counts are kept: queue steps, binary-search comparisons, and level creations and removals. A <em>queue step</em> is one move of a queue's head past an entry. The binary search is the halving search below, which keeps the sorted list of prices in order.</p>
+
+      <div class="block lemma">
+        <span class="block-title claim" data-grade="T">Lemma 3.1 <span class="name">(each queue entry is passed at most once)</span></span>
+        <p>Hypotheses. (1) Entries are appended to a queue only when their orders rest, and (2) a queue's head moves only forward. Then the total number of queue steps over the whole run is at most the number of orders that rested.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>A queue step moves the head one index forward past one entry. The head starts at the first entry and never moves back, so it passes each index at most once. Entries are appended at the end and are never removed from the middle, so every index in a queue is an entry that rested. Summing over all queues, the number of steps is at most the number of entries that rested over the run.</p>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 3.2 <span class="name">(the halving search)</span></span>
+        <p>Hypotheses.</p>
+        <ol>
+          <li>A list of \(L\) distinct prices is sorted in increasing order.</li>
+          <li>The search looks for the first index whose price is at least a given price \(p\), by testing the middle entry of the current interval and keeping the half that can contain the answer.</li>
+        </ol>
+        <p>Then the search makes at most \(\lfloor \log_2 L \rfloor + 1\) tests when \(L \ge 1\), and no test when \(L = 0\). The bound equals the number of binary digits of \(L\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Let the current interval have length \(n\). The middle test is at \(\mathrm{lo} + \lfloor n/2 \rfloor\). If that price is below \(p\), the new interval starts after it, and its length is \(n - \lfloor n/2 \rfloor - 1\), which equals \(\lceil n/2 \rceil - 1\). If it is not below \(p\), the new interval ends at it and has length \(\lfloor n/2 \rfloor\). In both cases the new length is at most \(\lfloor n/2 \rfloor\). Starting from length \(L\), after \(k\) tests the length is at most \(\lfloor L / 2^k \rfloor\). A test is made only when the length is at least 1, so the \(k\)th test needs \(\lfloor L / 2^{k-1} \rfloor \ge 1\), that is \(2^{k-1} \le L\), that is \(k - 1 \le \log_2 L\). So \(k \le \lfloor \log_2 L \rfloor + 1\). For \(L \ge 1\), \(\lfloor \log_2 L \rfloor + 1\) is the number of binary digits of \(L\).</p>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 3.3 <span class="name">(cost of each book operation)</span></span>
+        <p>Hypotheses. The book of Definition 1.1 with \(L\) prices on the side affected, and the counts of this section.</p>
+        <ol>
+          <li>Reading the best bid or best ask is one index access into the sorted list, with no comparison.</li>
+          <li>Joining an existing price level is one lookup of the price in the index of levels, then one append.</li>
+          <li>Creating a price level is one halving search of at most \(\lfloor \log_2 L \rfloor + 1\) tests, then one insertion that moves at most \(L\) entries.</li>
+          <li>Removing a price level is one halving search and one deletion that moves at most \(L\) entries.</li>
+        </ol>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Each item follows from the operation as written. The best bid is the last entry of the sorted list, and the best ask is the first, so each is one index access. A new level needs one search by Proposition 3.2 and one insertion, which moves the entries after the insertion point, at most \(L\) of them. Removal is the same search and a deletion. Joining a level finds the existing queue by its price and appends to it. The lookup of a price is counted as one operation, as the hash map of Lesson 2 counts it.</p>
+      </div>
+
+      <section class="lab" id="lab-CS2-L08-1" data-runtime="python">
+        <h3>Lab 1 · The book against a sorted scan</h3>
+        <p class="hypothesis">Stated before running: a hand-built book shows price-time priority, a cancellation and the refusal of a non-integer price. For 400 seeded messages, the trades, the best bid and the best ask of the book match a reference that sorts its resting orders on every match, after every message. Every binary search makes no more comparisons than the number of binary digits of its list length, and the queue steps do not exceed the orders that were added.</p>
+        <pre><code class="language-python" data-run>"""CS2 L08 lab 1: an order book of integer-cent price levels with FIFO queues, checked against a sorted scan.
+
+SIMULATED: prices, quantities and the message stream come from a fixed seed; no real order flow is used.
+Prices are integer cents (10000 is 100.00 in currency units) and quantities are integer shares; the code
+raises an error for any other type and never uses floating point. Each side of the book keeps a sorted list
+of the prices that have resting orders, and each price keeps a first-in first-out queue of its orders. An
+incoming limit order first trades against resting orders on the other side that it crosses, at the resting
+order's price, taking the best price first and then the earliest arrival; any remainder rests in the book.
+A cancel removes a resting order by its id.
+
+Part A: hand-built cases of price-time priority, cancellation and refusal of bad input. Part B: 400 seeded
+messages, each applied to the book and to a reference that keeps a flat list of resting orders and sorts the crossing
+candidates by (price, arrival number) on every match. After every message the trades must be identical, and the best bid
+and best ask must equal a sorted scan of the reference. Part C: operation counts. The binary search over each
+sorted price list is counted, and the queue steps are counted against the number of orders added. The lab
+counts operations only; it does not time anything. Standard library only, no network access, no randomness
+other than the seeded generator.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import cast
+
+LCG_MULT = 1103515245
+LCG_INC = 12345
+LCG_MOD = 2**31
+SEED = 20261029
+MESSAGES = 400
+MID = 10000
+HALF_RANGE = 20
+MAX_QTY = 20
+CANCEL_PERCENT = 25
+
+
+class Lcg:
+    """A linear congruential generator on integers, so every run draws the same numbers."""
+
+    def __init__(self, seed: int) -&gt; None:
+        self.state = seed % LCG_MOD
+
+    def below(self, n: int) -&gt; int:
+        """Return an integer k with 0 &lt;= k &lt; n."""
+        if n &lt; 1:
+            raise ValueError("below needs n &gt;= 1")
+        self.state = (LCG_MULT * self.state + LCG_INC) % LCG_MOD
+        return (self.state &gt;&gt; 16) % n
+
+
+@dataclass
+class Order:
+    """A resting order. qty is the remaining shares; it is 0 once the order is filled or cancelled."""
+
+    oid: int
+    side: str
+    price: int
+    qty: int
+
+
+@dataclass(frozen=True)
+class Trade:
+    """One execution: qty shares at price cents, between the resting order maker and the incoming order taker."""
+
+    price: int
+    qty: int
+    maker: int
+    taker: int
+
+
+@dataclass
+class Level:
+    """All orders resting at one price, in arrival order. head is the first entry not yet passed."""
+
+    queue: list[Order] = field(default_factory=list)
+    head: int = 0
+    live: int = 0
+
+
+@dataclass
+class Counts:
+    """Operation counts. queue_steps counts entries the head passed; comparisons counts binary-search tests."""
+
+    orders_added: int = 0
+    queue_steps: int = 0
+    levels_created: int = 0
+    levels_removed: int = 0
+
+
+def check_order(price: object, qty: object) -&gt; None:
+    """Refuse anything but integer cents and integer shares, with an error that says why."""
+    if type(price) is not int or type(qty) is not int:
+        raise TypeError("prices must be integer cents and quantities integer shares")
+    if qty &lt; 1:
+        raise ValueError("a quantity must be at least 1 share")
+    if price &lt; 1:
+        raise ValueError("a price must be at least 1 cent")
+
+
+class Book:
+    """Two sides, each a sorted price list and a dict of FIFO levels, plus an index of live orders by id."""
+
+    def __init__(self) -&gt; None:
+        self.prices: dict[str, list[int]] = {"B": [], "S": []}
+        self.levels: dict[str, dict[int, Level]] = {"B": {}, "S": {}}
+        self.live: dict[int, Order] = {}
+        self.counts = Counts()
+        self.search_log: list[tuple[int, int]] = []
+
+    def best(self, side: str) -&gt; int | None:
+        """Best bid ("B": highest price) or best ask ("S": lowest price), or None when that side is empty."""
+        prices = self.prices[side]
+        if not prices:
+            return None
+        return prices[-1] if side == "B" else prices[0]
+
+    def _search(self, prices: list[int], price: int) -&gt; int:
+        """Binary search for the index of price in a sorted list: the first index whose entry is not below price."""
+        lo, hi, comparisons = 0, len(prices), 0
+        while lo &lt; hi:
+            mid = (lo + hi) // 2
+            comparisons += 1
+            if prices[mid] &lt; price:
+                lo = mid + 1
+            else:
+                hi = mid
+        self.search_log.append((len(prices), comparisons))
+        return lo
+
+    def _front(self, level: Level) -&gt; Order | None:
+        """The earliest live entry at a level. The head passes each entry it finds with qty 0, once."""
+        while level.head &lt; len(level.queue) and level.queue[level.head].qty == 0:
+            level.head += 1
+            self.counts.queue_steps += 1
+        if level.head &lt; len(level.queue):
+            return level.queue[level.head]
+        return None
+
+    def _rest(self, order: Order) -&gt; None:
+        prices = self.prices[order.side]
+        levels = self.levels[order.side]
+        level = levels.get(order.price)
+        if level is None:
+            index = self._search(prices, order.price)
+            prices.insert(index, order.price)
+            level = Level()
+            levels[order.price] = level
+            self.counts.levels_created += 1
+        level.queue.append(order)
+        level.live += 1
+        self.live[order.oid] = order
+
+    def _drop_if_empty(self, side: str, price: int) -&gt; None:
+        level = self.levels[side][price]
+        if level.live != 0:
+            return
+        prices = self.prices[side]
+        index = self._search(prices, price)
+        if index &gt;= len(prices) or prices[index] != price:
+            raise RuntimeError("a price level is missing from its sorted list")
+        del prices[index]
+        del self.levels[side][price]
+        self.counts.levels_removed += 1
+
+    def submit(self, side: str, price: int, qty: int, oid: int) -&gt; list[Trade]:
+        """Match an incoming limit order against the other side, then rest any remainder. Returns its trades."""
+        check_order(price, qty)
+        self.counts.orders_added += 1
+        opposite = "S" if side == "B" else "B"
+        incoming = Order(oid, side, price, qty)
+        trades: list[Trade] = []
+        while incoming.qty &gt; 0:
+            best = self.best(opposite)
+            if best is None or (side == "B" and best &gt; price) or (side == "S" and best &lt; price):
+                break
+            level = self.levels[opposite][best]
+            resting = self._front(level)
+            if resting is None:
+                raise RuntimeError("a level in the price index has no live order")
+            fill = min(incoming.qty, resting.qty)
+            resting.qty -= fill
+            incoming.qty -= fill
+            trades.append(Trade(best, fill, resting.oid, oid))
+            if resting.qty == 0:
+                level.live -= 1
+                del self.live[resting.oid]
+            self._drop_if_empty(opposite, best)
+        if incoming.qty &gt; 0:
+            self._rest(incoming)
+        return trades
+
+    def cancel(self, oid: int) -&gt; bool:
+        """Remove a live order by id. Returns False when no live order has that id."""
+        order = self.live.pop(oid, None)
+        if order is None:
+            return False
+        level = self.levels[order.side][order.price]
+        order.qty = 0
+        level.live -= 1
+        self._drop_if_empty(order.side, order.price)
+        return True
+
+
+@dataclass
+class Resting:
+    oid: int
+    side: str
+    price: int
+    qty: int
+
+
+class Reference:
+    """A flat list of resting orders. Every match sorts the candidates by (price, arrival number)."""
+
+    def __init__(self) -&gt; None:
+        self.resting: list[Resting] = []
+
+    def submit(self, side: str, price: int, qty: int, oid: int) -&gt; list[Trade]:
+        opposite = "S" if side == "B" else "B"
+        if side == "B":
+            candidates = [r for r in self.resting if r.side == opposite and r.price &lt;= price]
+            candidates.sort(key=lambda r: (r.price, r.oid))
+        else:
+            candidates = [r for r in self.resting if r.side == opposite and r.price &gt;= price]
+            candidates.sort(key=lambda r: (-r.price, r.oid))
+        trades: list[Trade] = []
+        remaining = qty
+        for r in candidates:
+            if remaining == 0:
+                break
+            fill = min(remaining, r.qty)
+            trades.append(Trade(r.price, fill, r.oid, oid))
+            r.qty -= fill
+            remaining -= fill
+        self.resting = [r for r in self.resting if r.qty &gt; 0]
+        if remaining &gt; 0:
+            self.resting.append(Resting(oid, side, price, remaining))
+        return trades
+
+    def cancel(self, oid: int) -&gt; bool:
+        before = len(self.resting)
+        self.resting = [r for r in self.resting if r.oid != oid]
+        return len(self.resting) &lt; before
+
+    def best(self, side: str) -&gt; int | None:
+        """A sorted scan: sort the prices on this side, then take the first (ask) or last (bid)."""
+        prices = sorted(r.price for r in self.resting if r.side == side)
+        if not prices:
+            return None
+        return prices[-1] if side == "B" else prices[0]
+
+
+def describe(trades: list[Trade]) -&gt; str:
+    if not trades:
+        return "none"
+    return "; ".join(f"{t.qty} at {t.price} from order {t.maker}" for t in trades)
+
+
+def part_a() -&gt; None:
+    book = Book()
+    book.submit("S", 10000, 5, 1)
+    book.submit("S", 10000, 3, 2)
+    book.submit("S", 10000, 4, 3)
+    book.submit("S", 10010, 2, 4)
+    trades = book.submit("B", 10010, 7, 5)
+    print(f"part A: buy 7 at 10010 trades: {describe(trades)}")
+    print(f"part A: best bid {book.best('B')}, best ask {book.best('S')}, resting orders {len(book.live)}")
+    book.submit("B", 9990, 1, 6)
+    print(f"part A: buy 1 at 9990 does not cross and rests: best bid {book.best('B')}, best ask {book.best('S')}")
+    book.cancel(3)
+    trades = book.submit("B", 10000, 5, 7)
+    print(f"part A: after cancelling order 3, buy 5 at 10000 trades: {describe(trades)}")
+    print(f"part A: best bid {book.best('B')}, best ask {book.best('S')}, ask price levels {len(book.prices['S'])}")
+    try:
+        book.submit("B", cast(int, 100.5), 1, 8)
+    except TypeError as exc:
+        print(f"part A: a float price is refused: {exc}")
+    try:
+        book.submit("B", 10000, 0, 9)
+    except ValueError as exc:
+        print(f"part A: a zero quantity is refused: {exc}")
+
+
+def part_b() -&gt; None:
+    gen = Lcg(SEED)
+    book, ref = Book(), Reference()
+    next_id = 1
+    trades_total = 0
+    cancels = 0
+    crossing_messages = 0
+    for step in range(MESSAGES):
+        live_ids = sorted(r.oid for r in ref.resting)
+        if live_ids and gen.below(100) &lt; CANCEL_PERCENT:
+            oid = live_ids[gen.below(len(live_ids))]
+            if not (book.cancel(oid) and ref.cancel(oid)):
+                raise AssertionError(f"step {step}: cancel of live order {oid} failed")
+            cancels += 1
+        else:
+            side = "B" if gen.below(2) == 0 else "S"
+            price = MID - HALF_RANGE + gen.below(2 * HALF_RANGE + 1)
+            qty = 1 + gen.below(MAX_QTY)
+            book_trades = book.submit(side, price, qty, next_id)
+            ref_trades = ref.submit(side, price, qty, next_id)
+            if book_trades != ref_trades:
+                raise AssertionError(f"step {step}: trades differ from the reference")
+            trades_total += len(book_trades)
+            crossing_messages += bool(book_trades)
+            next_id += 1
+        if book.best("B") != ref.best("B") or book.best("S") != ref.best("S"):
+            raise AssertionError(f"step {step}: best bid or ask differs from the sorted scan")
+        if set(book.live) != {r.oid for r in ref.resting}:
+            raise AssertionError(f"step {step}: resting orders differ from the reference")
+    print(f"part B: messages applied: {MESSAGES}; cancels: {cancels}; new orders: {next_id - 1}")
+    print(f"part B: messages that traded: {crossing_messages}; executions: {trades_total}")
+    print("part B: after every message, trades, best bid and best ask match the reference")
+    print(f"part B: final best bid {book.best('B')}, best ask {book.best('S')}, resting orders {len(book.live)}")
+
+
+def part_c() -&gt; None:
+    gen = Lcg(SEED)
+    book, ref = Book(), Reference()
+    next_id = 1
+    for _ in range(MESSAGES):
+        live_ids = sorted(r.oid for r in ref.resting)
+        if live_ids and gen.below(100) &lt; CANCEL_PERCENT:
+            oid = live_ids[gen.below(len(live_ids))]
+            book.cancel(oid)
+            ref.cancel(oid)
+        else:
+            side = "B" if gen.below(2) == 0 else "S"
+            price = MID - HALF_RANGE + gen.below(2 * HALF_RANGE + 1)
+            qty = 1 + gen.below(MAX_QTY)
+            book.submit(side, price, qty, next_id)
+            ref.submit(side, price, qty, next_id)
+            next_id += 1
+    counts = book.counts
+    if counts.queue_steps &gt; counts.orders_added:
+        raise AssertionError("the queue head passed more entries than orders were added")
+    for length, comparisons in book.search_log:
+        if comparisons &gt; length.bit_length():
+            raise AssertionError(f"a search over {length} prices made {comparisons} comparisons")
+    worst = max((c for _, c in book.search_log), default=0)
+    print(f"part C: orders added: {counts.orders_added}; queue steps: {counts.queue_steps} (at most orders added)")
+    print(f"part C: price levels created: {counts.levels_created}; removed: {counts.levels_removed}")
+    print(f"part C: binary searches: {len(book.search_log)}; largest comparison count: {worst}")
+    print("part C: every search met its bound of floor(log2 L) + 1 comparisons, where L is the list length")
+
+
+def main() -&gt; None:
+    part_a()
+    part_b()
+    part_c()
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">part A: buy 7 at 10010 trades: 5 at 10000 from order 1; 2 at 10000 from order 2
+part A: best bid None, best ask 10000, resting orders 3
+part A: buy 1 at 9990 does not cross and rests: best bid 9990, best ask 10000
+part A: after cancelling order 3, buy 5 at 10000 trades: 1 at 10000 from order 2
+part A: best bid 10000, best ask 10010, ask price levels 1
+part A: a float price is refused: prices must be integer cents and quantities integer shares
+part A: a zero quantity is refused: a quantity must be at least 1 share
+part B: messages applied: 400; cancels: 102; new orders: 298
+part B: messages that traded: 117; executions: 177
+part B: after every message, trades, best bid and best ask match the reference
+part B: final best bid 9980, best ask 9989, resting orders 10
+part C: orders added: 298; queue steps: 7 (at most orders added)
+part C: price levels created: 185; removed: 177
+part C: binary searches: 362; largest comparison count: 4
+part C: every search met its bound of floor(log2 L) + 1 comparisons, where L is the list length</pre>
+        <p class="interpretation">Part A can be read by hand from the cents in the code. The buy of 7 at 10010 fills 5 shares of order 1 and 2 shares of order 2, both at 10000: the lowest ask fills first, and at 10000 the earlier order fills first. The order at 10010 is not reached. Cancelling order 3 leaves order 2 with 1 share, so the buy of 5 at 10000 fills 1 share and rests the other 4 as a bid at 10000, which is the best bid printed. The float price is refused by its type, and the zero quantity by its value. Part B is SIMULATED: the stream is generated from a fixed seed and is not order flow from any venue. The agreement holds after each of the 400 messages, so the test is exact for this stream: 298 new orders and 102 cancellations, 117 messages that traded, and 177 executions. The lab does not show that the book agrees with the reference on every stream. Proposition 2.2 gives that for every stream. The final best bid of 9980 is below the final best ask of 9989, as Proposition 1.3 requires. Part C counts operations, not time. The 185 creations and 177 removals of price levels make 362 binary searches, and the largest comparison count is 4. A search with 4 comparisons has a list of at least 8 prices, because the bound allows at most the number of binary digits of the list length, which is 4 only for lengths 8 to 15. The queue steps are 7. The lab checks them against the 298 orders added, and Lemma 3.1 gives the sharper bound of the orders that rested, which is at most 298.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the canon breaks</h2>
+        <ul>
+          <li><strong>Price-time priority is one rule.</strong> This lesson defines it exactly and proves its structure, and it studies no other allocation rule. No claim is made here about which rule any venue applies.</li>
+          <li><strong>Cancellation is lazy.</strong> A cancelled order stays in its queue as a dead entry until the head passes it. A queue can therefore hold more entries than live orders. Lemma 3.1 bounds the passes by the orders that rested, not by the live orders.</li>
+          <li><strong>The model is simulated.</strong> Prices lie on a one-cent grid, the stream has two message types, limit orders and cancellations, and there is no latency, no hidden quantity and no order type beyond the limit order. The lab's stream is SIMULATED and carries no market information.</li>
+          <li><strong>Counts are not times.</strong> Proposition 3.3 counts operations. It does not say how long any operation takes on any machine.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“Time priority applies across prices: the oldest resting order on the book fills first.”</p>
+            <p>Price comes first. In Example 2.3 the ask at 10010 arrived first, but a buy of 1 share at 10010 fills the later ask at 10000, because Definition 2.1 takes the lowest price before the arrival number. The oldest order on the book is the one at 10010, and it is not filled.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“A bid above the best ask can rest in the book, because the buyer is willing to pay more.”</p>
+            <p>An incoming buy that is above the best ask trades first. Only the remainder rests, and Proposition 1.3 shows that it rests below the best ask. Lab 1, part B ends with a best bid of 9980 and a best ask of 9989, which is uncrossed.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“A price stays in the book as a level after its last order is cancelled.”</p>
+            <p>A level is removed when it has no live order. Lab 1, part C creates 185 levels and removes 177, so 8 levels remain in the index at the end, which is the difference of the two printed counts. The 10 resting orders of part B sit on those 8 levels, so more than one order can share a level.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem set</h2>
+        <p>Every problem has a full worked solution. Attempt each one before opening it.</p>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · A buy across two asks at one price</span>
+            <p>The asks are: order 1, 3 shares at 10020; order 2, 2 shares at 10010; order 3, 4 shares at 10010, arriving in that order. A buy of 5 shares at 10020 arrives. Which trades occur, and what rests?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The lowest ask is 10010, which is at most 10020, so the buy trades there first. At 10010 the earlier order 2 fills 2 shares, then order 3 fills 3 shares, and the buy's quantity is used up. The trades are 2 shares at 10010 from order 2 and 3 shares at 10010 from order 3. Order 3 keeps 1 share resting at 10010, and order 1 is untouched, so 3 shares rest at 10020 as an ask. Nothing rests as a bid.</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · The halving bound for a list of 7 prices</span>
+            <p>Using Proposition 3.2, what is the most tests a search can make on a list of 7 prices, and on a list of 8 prices?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For \(L = 7\), \(\lfloor \log_2 7 \rfloor + 1 = 2 + 1 = 3\), and 7 has three binary digits (111). For \(L = 8\), \(\lfloor \log_2 8 \rfloor + 1 = 3 + 1 = 4\), and 8 has four binary digits (1000). So the bounds are 3 and 4.</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · A partial fill and a rest</span>
+            <p>The asks are 1 share at 10000 and 5 shares at 10005, and the bids are empty. A buy of 3 shares at 10001 arrives. What trades occur, and what is the best bid and best ask afterwards?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The lowest ask 10000 is at most 10001, so 1 share trades at 10000. The buy has 2 shares left. The next ask, 10005, is above 10001, so matching stops. The 2 shares rest as a bid at 10001. The best bid is 10001 and the best ask is 10005, so the book is uncrossed, as Proposition 1.3 requires.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Insertion cost for a run of new prices</span>
+            <p>Suppose \(n\) orders arrive at \(n\) distinct new prices on one side, so each creates a level, and no level is removed. Prove that the total number of binary-search tests over the run is at most \(n(\lfloor \log_2 n \rfloor + 1)\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The \(k\)th arrival searches a list of \(k - 1\) prices, so by Proposition 3.2 it makes at most \(\lfloor \log_2 (k-1) \rfloor + 1\) tests when \(k \ge 2\), and no test when \(k = 1\). Each term is at most \(\lfloor \log_2 n \rfloor + 1\), because \(k - 1 \le n\) and \(\log_2\) is increasing. There are \(n\) arrivals, so the total is at most \(n(\lfloor \log_2 n \rfloor + 1)\).</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · The loop never trades past its price</span>
+            <p>Prove that every trade of a buy at price \(p\) under Definition 2.1 is at a price \(a \le p\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The pseudocode records a trade only after the test that stops the loop when the lowest live ask \(a\) is above \(p\). So a trade happens only when \(a \le p\), and the trade is at price \(a\). Since the lowest live ask is the price used, every trade price satisfies \(a \le p\).</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · The traded quantity</span>
+            <p>Let \(q\) be the buy's quantity and \(Q\) the total live quantity on the ask side at prices at most \(p\). Prove that the total traded by the buy is \(\min\{q, Q\}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Each pass of the loop trades the smaller of the remaining and resting quantities, and reduces the remaining quantity by that amount, and it reduces the live quantity at crossing prices by the same amount. The loop stops in one of two ways. Either the remaining quantity reaches 0, so the total traded is \(q\), and then \(q \le Q\) because the traded amount never exceeds the live quantity. Or no live crossing quantity remains, so the total traded is \(Q\), and then \(Q \le q\) because the loop did not stop earlier. In both cases the total is \(\min\{q, Q\}\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · The cancellation share</span>
+            <p>Lab 1, part B reports 102 cancellations among 400 messages. Compute the share, and say what rule in the code sets it.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The share is \(102/400 = 25.5\%\). The code cancels when a live order exists and a seeded draw from 0 to 99 is below 25, so the expected share is 25% of the steps that have a live order. The first message has no live order and must be a new order, and the seeded draws give 25.5% here. The lab does not test the share against 25%; it reports the count.</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Why the queue steps are few</span>
+            <p>Lab 1, part C reports 7 queue steps against 298 orders added. Explain why the count is small.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>A queue step passes a dead entry that sits at the front of a level still present at the moment of the lookup. The head moves only when a fill or a lookup examines the front of that level. Entries behind a live front are not passed, and a level that empties is deleted with its queue, so its dead entries are never passed. The lab's 7 steps are the dead entries that sat at a live level's front when it was examined, and they are far below the 298 orders added.</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · What a comparison count of 4 implies</span>
+            <p>Lab 1, part C reports a largest comparison count of 4 over all binary searches. What does Proposition 3.2 imply about the list that produced it?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>A search that makes 4 tests satisfies \(4 \le \lfloor \log_2 L \rfloor + 1\), so \(\lfloor \log_2 L \rfloor \ge 3\), so \(L \ge 8\). The list had at least 8 prices. The lab does not print the list lengths, so this is a bound, not a measured length.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Last-in first-out is not price-time priority</span>
+            <p>Two asks of 1 share each rest at 10000, the first arriving as order 1 and the second as order 2. A buy of 1 share at 10000 arrives. Show that a rule that fills the newest order first at a price gives a different trade from Definition 2.1.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Definition 2.1 fills the earliest arrival at the price, so the buy trades 1 share with order 1. The newest-first rule fills order 2. The two trades differ in the resting order's identifier, so the rules are different, and Proposition 2.2 does not hold for the newest-first rule.</p>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Levels bounded by live orders</span>
+            <p>Prove that at any time the number of price levels on one side is at most the number of live orders on that side.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By Definition 1.1 every price in the sorted list has at least one live order, and a price with a live order is listed on exactly one level. Mapping each listed price to one of its live orders is injective, since two different prices have different orders. So the number of levels is at most the number of live orders on the side.</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Why the best price must be recomputed</span>
+            <p>Explain why the matching loop must read the best ask again after each fill, and give a book where reading it once gives a wrong trade.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>After a level is filled completely and removed, the best ask is a different price. Suppose the asks are 1 share at 10000 and 5 shares at 10005, and a buy of 3 shares at 10010 arrives. The first read gives 10000. After that fill the remaining buy is 2 shares, and the next best ask is 10005, which is at most 10010, so it must trade. If the loop used the stale price 10000 again, it would look up a level that was removed, and the code raises an error for a missing level rather than trading at a wrong price.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>A book after any sequence of messages is uncrossed (best bid &lt; best ask when both exist)</td><td><span class="grade" data-grade="T">T</span></td><td>Proposition 1.3</td></tr>
+              <tr><td>The matching rule fills orders in price-time priority</td><td><span class="grade" data-grade="T">T</span></td><td>Proposition 2.2</td></tr>
+              <tr><td>Each queue entry is passed at most once, so queue steps are at most the orders that rested</td><td><span class="grade" data-grade="T">T</span></td><td>Lemma 3.1</td></tr>
+              <tr><td>A halving search of a list of \(L\) prices makes at most \(\lfloor \log_2 L \rfloor + 1\) tests</td><td><span class="grade" data-grade="T">T</span></td><td>Proposition 3.2</td></tr>
+              <tr><td>Operation costs: one index access for best prices; one halving search and one insertion or deletion for a level change</td><td><span class="grade" data-grade="T">T</span></td><td>Proposition 3.3</td></tr>
+              <tr><td>On 400 seeded messages, trades, best bid and best ask match a sorted-scan reference after every message</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1, part B (SIMULATED stream, one run)</td></tr>
+              <tr><td>The run creates 185 price levels, removes 177, and makes 362 binary searches with at most 4 comparisons each</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1, part C (SIMULATED stream, one run)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS2" data-page="L08" data-cards="cards.json">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval quiz</h2>
+        <p>Answer from memory, then check. Finishing the quiz adds this lesson's cards to your review deck.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under price-time priority, which resting order does a buy at 10010 fill first, if asks at 10000 and 10010 both rest?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q1"> <span>the oldest order on the book, whatever its price</span></label>
+              <label class="option" data-correct><input type="radio" name="L08q1"> <span>the earliest arrival at 10000, because the lowest ask fills first</span></label>
+              <label class="option"><input type="radio" name="L08q1"> <span>the newest arrival at 10010</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 2.1 and Example 2.3: price first, then arrival.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="3" data-tolerance="0">
+            <p class="prompt">A list has 7 prices. How many binary-search tests can the halving search make at most?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\lfloor \log_2 7 \rfloor + 1 = 3\), and 7 has three binary digits (Proposition 3.2, Problem M2).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1" data-tolerance="0">
+            <p class="prompt">A buy of 3 shares at 10000 arrives, the ask at 10000 holds 2 shares, and no other ask exists. How many shares rest as a bid?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>2 shares fill and \(3 - 2 = 1\) share rests (Proposition 1.3 holds with the best bid at 10000 against no ask).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are prices stored as integer cents?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q4"> <span>so that the best price is faster to read</span></label>
+              <label class="option" data-correct><input type="radio" name="L08q4"> <span>so that prices compare exactly, with no floating-point error</span></label>
+              <label class="option"><input type="radio" name="L08q4"> <span>so that the book can hold fractional shares</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Lesson convention: integer cents and integer shares, with no floating point in the code path (Lab 1, part A refuses a float).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">A cancellation removes the last live order at a price. What happens to the price level?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q5"> <span>it stays, empty, until the book is reset</span></label>
+              <label class="option" data-correct><input type="radio" name="L08q5"> <span>it is removed from the sorted list and its queue is discarded</span></label>
+              <label class="option"><input type="radio" name="L08q5"> <span>it moves to the back of the sorted list</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 1.1 keeps only prices with a live order. Misconception 3 and Lab 1, part C (185 created, 177 removed).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="4" data-tolerance="0">
+            <p class="prompt">A list has 8 prices. How many binary-search tests can the halving search make at most?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\lfloor \log_2 8 \rfloor + 1 = 4\) (Proposition 3.2, Problem M2).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which operation costs one index access in the book?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q7"> <span>creating a new price level</span></label>
+              <label class="option"><input type="radio" name="L08q7"> <span>cancelling an order</span></label>
+              <label class="option" data-correct><input type="radio" name="L08q7"> <span>reading the best bid or best ask</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Proposition 3.3, item 1: the best prices are the ends of the sorted list.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Lemma 3.1 bounds the queue steps by which count?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q8"> <span>the live orders at the end of the run</span></label>
+              <label class="option" data-correct><input type="radio" name="L08q8"> <span>the orders that rested over the run</span></label>
+              <label class="option"><input type="radio" name="L08q8"> <span>the price levels created</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Each queue entry is passed at most once, and entries exist only for orders that rested. Lab 1, part C: 7 steps, 298 orders added.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under the matching rule, at what price does a trade execute?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q9"> <span>the incoming order's limit price</span></label>
+              <label class="option" data-correct><input type="radio" name="L08q9"> <span>the resting order's price</span></label>
+              <label class="option"><input type="radio" name="L08q9"> <span>the midpoint of the two prices</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 2.1: a match executes at the price of the resting order.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson cites no registry source. Every result is a theorem proved on the page (grade T), or a count from Lab 1 on SIMULATED seeded streams (grade C, basis named in the key-results table).</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L07.html"><span class="dir">Previous</span>L07 · Dynamic Programming</a>
+        <a class="next" href="L09.html"><span class="dir">Next</span>L09 · Welford's Online Mean and Variance</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS2 · Algorithms &amp; Data Structures · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

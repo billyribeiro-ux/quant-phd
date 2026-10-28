@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M7" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M7 Project · Constrained allocator</title>
+  <meta name="description" content="Write a constrained mean-variance allocator with budget, box, sector and turnover constraints, and a KKT certificate for the answer it returns. The project is autograded on a SIMULATED problem generated from your workspace seed.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M7 Optimization</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="33">
+      <header class="page-head">
+        <p class="eyebrow">M7 project · 33 hours · autograded on a SIMULATED problem</p>
+        <h1>Constrained allocator</h1>
+        <p class="lede">You write <code>constrained_allocator.py</code>, which allocates weights across three to five assets under a budget, box bounds, sector caps and a turnover limit, and returns with each answer the multipliers and a certificate of its optimality. The autograder checks the answer on a SIMULATED problem generated from your workspace seed. The problem is a convex quadratic program, and the certificate is the set of Karush-Kuhn-Tucker conditions that the answer must satisfy.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are full length in this module. A placement pass on the module hub skips them; the hub names the bar and the skill checks.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: a three-asset problem with a long-only bound, solved in exact arithmetic, with each step's reason.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: the same problem with the stationarity line and the two dual-sign lines blanked. Each blank is filled and checked against the completed output.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The allocator in <a href="#spec">the specification</a>, autograded in <a href="#grader-section">the autograder section</a>. Lab 3 below checks a certificate before you submit.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-M7-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: a long-only allocation, solved and certified</h3>
+          <p class="hypothesis">The problem has three assets, the objective (gamma / 2) w' Sigma w minus mu' w with gamma equal to 2, the budget that the weights sum to one, and a long-only bound on each weight. The expected returns are 5.0%, 3.0% and minus 2.0% for the three assets, and the third asset has the lowest. Before running the code, predict which weight the bound should hold at zero. The unconstrained answer should put a negative weight on the third asset, because it has the lowest expected return, so the bound on the third weight should bind at the answer. The code tests that prediction in step 1 and step 2, then solves the constrained problem exactly, checks the four KKT conditions in steps 4 to 6, and reports the objective. The data are SIMULATED.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: a three-asset allocation with long-only bounds, solved in exact arithmetic step by step.
+
+SIMULATED three-asset problem, not market data. The objective is (gamma / 2) w' Sigma w - mu' w with gamma = 2, so the
+quadratic term is w' Sigma w. The constraints are that the weights sum to one and that each weight lies in [0, 1].
+Every input is an exact decimal read as a Fraction, so the printed values are exact, except the approximation in step 7.
+"""
+
+from fractions import Fraction
+
+# SIMULATED three-asset problem, not market data.
+GAMMA = Fraction(2)
+SIGMA = [
+    [Fraction(4, 100), Fraction(1, 100), Fraction(0)],
+    [Fraction(1, 100), Fraction(9, 100), Fraction(2, 100)],
+    [Fraction(0), Fraction(2, 100), Fraction(16, 100)],
+]
+MU = [Fraction(5, 100), Fraction(3, 100), Fraction(-2, 100)]
+N = 3
+
+
+def solve(matrix: list[list[Fraction]], rhs: list[Fraction]) -&gt; list[Fraction]:
+    """Solve a square linear system by Gauss-Jordan elimination in exact arithmetic."""
+    size = len(rhs)
+    rows = [[*matrix[i], rhs[i]] for i in range(size)]
+    for col in range(size):
+        pivot = next(r for r in range(col, size) if rows[r][col] != 0)
+        rows[col], rows[pivot] = rows[pivot], rows[col]
+        for r in range(size):
+            if r != col and rows[r][col] != 0:
+                factor = rows[r][col] / rows[col][col]
+                rows[r] = [x - factor * y for x, y in zip(rows[r], rows[col], strict=True)]
+    return [rows[i][size] / rows[i][i] for i in range(size)]
+
+
+def kkt_solution(held_at_zero: list[int]) -&gt; tuple[list[Fraction], Fraction, list[Fraction]]:
+    """The weights, the budget multiplier and the lower-bound multipliers, with the listed assets held at zero.
+
+    The unknowns are the N weights, the budget multiplier, and one multiplier per held asset. The equations are the
+    stationarity of each weight, the budget, and each held weight equal to zero: as many equations as unknowns.
+    """
+    size = N + 1 + len(held_at_zero)
+    matrix = [[Fraction(0)] * size for _ in range(size)]
+    rhs = [Fraction(0)] * size
+    for i in range(N):
+        for j in range(N):
+            matrix[i][j] = GAMMA * SIGMA[i][j]
+        matrix[i][N] = Fraction(1)
+        for c, j in enumerate(held_at_zero):
+            if i == j:
+                matrix[i][N + 1 + c] = Fraction(-1)
+        rhs[i] = MU[i]
+    for j in range(N):
+        matrix[N][j] = Fraction(1)
+    rhs[N] = Fraction(1)
+    for c, j in enumerate(held_at_zero):
+        matrix[N + 1 + c][j] = Fraction(1)
+    solution = solve(matrix, rhs)
+    return solution[:N], solution[N], solution[N + 1 :]
+
+
+def main() -&gt; None:
+    # Step 1. Budget only. Why: without the bounds, the answer shows which bound the optimum would break.
+    free, _, _ = kkt_solution([])
+    print("step 1 budget-only weights:", [str(w) for w in free])
+
+    # Step 2. Active set. Why: a lower bound is active when the budget-only weight below it is negative.
+    held = [i for i in range(N) if free[i] &lt; 0]
+    print("step 2 assets held at zero:", held)
+
+    # Step 3. Constrained solution. Why: with the held assets at zero, the remaining equations are linear.
+    w, nu, lam = kkt_solution(held)
+    print("step 3 weights:", [str(x) for x in w])
+    print("step 3 budget multiplier nu:", str(nu))
+    print("step 3 lower-bound multipliers of the held assets:", [str(x) for x in lam])
+
+    # Step 4. Stationarity. Why: at the optimum, the gradient plus the multipliers is zero in every weight.
+    residual = [GAMMA * sum(SIGMA[i][j] * w[j] for j in range(N)) - MU[i] + nu for i in range(N)]
+    for c, j in enumerate(held):
+        residual[j] -= lam[c]
+    print("step 4 stationarity residuals:", [str(r) for r in residual])
+
+    # Step 5. Primal feasibility. Why: the weights must sum to one and each must be in [0, 1].
+    print("step 5 budget gap:", str(sum(w) - 1))
+    print("step 5 smallest weight:", str(min(w)), "largest weight:", str(max(w)))
+
+    # Step 6. Dual feasibility and complementary slackness. Why: a bound multiplier is non-negative, and it is zero
+    # unless its weight sits on the bound.
+    signs = [x &gt;= 0 for x in lam]
+    dual_feasible = all(signs)
+    print("step 6 lower-bound multipliers non-negative:", dual_feasible)
+    print("step 6 weight times multiplier, held assets:", [str(w[j] * lam[c]) for c, j in enumerate(held)])
+
+    # Step 7. Objective at the solution. Why: this is the value the certificate of the project describes.
+    quadratic = sum(SIGMA[i][j] * w[i] * w[j] for i in range(N) for j in range(N))
+    objective = GAMMA / 2 * quadratic - sum(MU[i] * w[i] for i in range(N))
+    print("step 7 objective (exact):", str(objective), "approximately", f"{float(objective):.6f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">step 1 budget-only weights: ['54/65', '5/26', '-3/130']
+step 2 assets held at zero: [2]
+step 3 weights: ['9/11', '2/11', '0']
+step 3 budget multiplier nu: -21/1100
+step 3 lower-bound multipliers of the held assets: ['9/1100']
+step 4 stationarity residuals: ['0', '0', '0']
+step 5 budget gap: 0
+step 5 smallest weight: 0 largest weight: 9/11
+step 6 lower-bound multipliers non-negative: True
+step 6 weight times multiplier, held assets: ['0']
+step 7 objective (exact): -3/220 approximately -0.013636</pre>
+          <p class="interpretation">Step 1 gives the budget-only weights 54/65, 5/26 and −3/130. The third is negative, so step 2 holds that weight at zero, as the prediction says. Step 3 gives the answer (9/11, 2/11, 0), a budget multiplier of −21/1100 and a bound multiplier of 9/1100 on the third asset. Step 4 shows that the stationarity residuals are exactly zero. Step 5 shows that the budget gap is zero and that the weights lie in their bounds. Step 6 shows that the bound multiplier is non-negative and that its product with the held weight is zero. Those four checks are the KKT conditions for this problem, and the sufficiency proposition on this page then makes the answer the minimizer. The lab does not show that a different method would reach this answer, and it does not show the answer for any other inputs. The objective at the answer is −3/220, about −0.013636, in the units of the inputs.</p>
+        </section>
+
+        <section class="lab completion" id="lab-M7-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: the stationarity line and two dual-sign lines</h3>
+          <p class="hypothesis">This is the problem of Lab 1 with three lines blanked, each shown as <code>___</code>: the stationarity residual of step 4, and the two lines of step 6 that test the sign of the bound multiplier. Fill each blank with the expression the project page defines for it. For step 4, the residual of each weight is gamma times the row of Sigma times w, minus mu, plus the budget multiplier; the loop after it subtracts the bound multiplier of each held asset. For step 6, the sign test is applied to each bound multiplier, and the list of those signs is combined into one result. When every blank is right, the output matches Lab 1 line for line.</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completed solution: the worked example of Lab 1 with its three blanks filled.
+
+SIMULATED three-asset problem, not market data. The objective is (gamma / 2) w' Sigma w - mu' w with gamma = 2, so the
+quadratic term is w' Sigma w. The constraints are that the weights sum to one and that each weight lies in [0, 1].
+Every input is an exact decimal read as a Fraction, so the printed values are exact, except the approximation in step 7.
+"""
+
+from fractions import Fraction
+
+# SIMULATED three-asset problem, not market data.
+GAMMA = Fraction(2)
+SIGMA = [
+    [Fraction(4, 100), Fraction(1, 100), Fraction(0)],
+    [Fraction(1, 100), Fraction(9, 100), Fraction(2, 100)],
+    [Fraction(0), Fraction(2, 100), Fraction(16, 100)],
+]
+MU = [Fraction(5, 100), Fraction(3, 100), Fraction(-2, 100)]
+N = 3
+
+
+def solve(matrix: list[list[Fraction]], rhs: list[Fraction]) -&gt; list[Fraction]:
+    """Solve a square linear system by Gauss-Jordan elimination in exact arithmetic."""
+    size = len(rhs)
+    rows = [[*matrix[i], rhs[i]] for i in range(size)]
+    for col in range(size):
+        pivot = next(r for r in range(col, size) if rows[r][col] != 0)
+        rows[col], rows[pivot] = rows[pivot], rows[col]
+        for r in range(size):
+            if r != col and rows[r][col] != 0:
+                factor = rows[r][col] / rows[col][col]
+                rows[r] = [x - factor * y for x, y in zip(rows[r], rows[col], strict=True)]
+    return [rows[i][size] / rows[i][i] for i in range(size)]
+
+
+def kkt_solution(held_at_zero: list[int]) -&gt; tuple[list[Fraction], Fraction, list[Fraction]]:
+    """The weights, the budget multiplier and the lower-bound multipliers, with the listed assets held at zero.
+
+    The unknowns are the N weights, the budget multiplier, and one multiplier per held asset. The equations are the
+    stationarity of each weight, the budget, and each held weight equal to zero: as many equations as unknowns.
+    """
+    size = N + 1 + len(held_at_zero)
+    matrix = [[Fraction(0)] * size for _ in range(size)]
+    rhs = [Fraction(0)] * size
+    for i in range(N):
+        for j in range(N):
+            matrix[i][j] = GAMMA * SIGMA[i][j]
+        matrix[i][N] = Fraction(1)
+        for c, j in enumerate(held_at_zero):
+            if i == j:
+                matrix[i][N + 1 + c] = Fraction(-1)
+        rhs[i] = MU[i]
+    for j in range(N):
+        matrix[N][j] = Fraction(1)
+    rhs[N] = Fraction(1)
+    for c, j in enumerate(held_at_zero):
+        matrix[N + 1 + c][j] = Fraction(1)
+    solution = solve(matrix, rhs)
+    return solution[:N], solution[N], solution[N + 1 :]
+
+
+def main() -&gt; None:
+    # Step 1. Budget only. Why: without the bounds, the answer shows which bound the optimum would break.
+    free, _, _ = kkt_solution([])
+    print("step 1 budget-only weights:", [str(w) for w in free])
+
+    # Step 2. Active set. Why: a lower bound is active when the budget-only weight below it is negative.
+    held = [i for i in range(N) if free[i] &lt; 0]
+    print("step 2 assets held at zero:", held)
+
+    # Step 3. Constrained solution. Why: with the held assets at zero, the remaining equations are linear.
+    w, nu, lam = kkt_solution(held)
+    print("step 3 weights:", [str(x) for x in w])
+    print("step 3 budget multiplier nu:", str(nu))
+    print("step 3 lower-bound multipliers of the held assets:", [str(x) for x in lam])
+
+    # Step 4. Stationarity. Why: at the optimum, the gradient plus the multipliers is zero in every weight.
+    residual = ___
+    for c, j in enumerate(held):
+        residual[j] -= lam[c]
+    print("step 4 stationarity residuals:", [str(r) for r in residual])
+
+    # Step 5. Primal feasibility. Why: the weights must sum to one and each must be in [0, 1].
+    print("step 5 budget gap:", str(sum(w) - 1))
+    print("step 5 smallest weight:", str(min(w)), "largest weight:", str(max(w)))
+
+    # Step 6. Dual feasibility and complementary slackness. Why: a bound multiplier is non-negative, and it is zero
+    # unless its weight sits on the bound.
+    signs = ___
+    dual_feasible = ___
+    print("step 6 lower-bound multipliers non-negative:", dual_feasible)
+    print("step 6 weight times multiplier, held assets:", [str(w[j] * lam[c]) for c, j in enumerate(held)])
+
+    # Step 7. Objective at the solution. Why: this is the value the certificate of the project describes.
+    quadratic = sum(SIGMA[i][j] * w[i] * w[j] for i in range(N) for j in range(N))
+    objective = GAMMA / 2 * quadratic - sum(MU[i] * w[i] for i in range(N))
+    print("step 7 objective (exact):", str(objective), "approximately", f"{float(objective):.6f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">step 1 budget-only weights: ['54/65', '5/26', '-3/130']
+step 2 assets held at zero: [2]
+step 3 weights: ['9/11', '2/11', '0']
+step 3 budget multiplier nu: -21/1100
+step 3 lower-bound multipliers of the held assets: ['9/1100']
+step 4 stationarity residuals: ['0', '0', '0']
+step 5 budget gap: 0
+step 5 smallest weight: 0 largest weight: 9/11
+step 6 lower-bound multipliers non-negative: True
+step 6 weight times multiplier, held assets: ['0']
+step 7 objective (exact): -3/220 approximately -0.013636</pre>
+          <p class="interpretation">The completed lines reproduce Lab 1 exactly. If step 4 prints a non-zero residual, check that the residual is the gradient plus the budget multiplier, and not the gradient alone: the bound multiplier is subtracted afterwards. If step 6 prints False, check the sign test, which asks for each bound multiplier to be zero or positive.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A SIMULATED fund allocates its capital across three to five assets each period. The manager sets an expected return for each asset, a symmetric positive definite matrix Sigma of risk for the assets, a risk-aversion parameter, a starting portfolio, a bound on each weight, a cap on the total weight in each of two sectors, and a limit on how far the portfolio may move from the starting portfolio in one period. The allocator returns the weights that minimize the risk-adjusted cost under those limits, and a certificate that shows the answer is optimal. This module takes the covariance matrix Sigma as an input and does not estimate it; estimation is outside this module.</dd>
+          <dt>Inputs</dt>
+          <dd>
+            One case: a mapping that <code>grader/instance.py</code> returns as JSON under the <code>payload</code> key of <code>make_instance(seed)</code>. The grader decodes the payload and passes the mapping to your function, so your code never calls <code>make_instance</code>. The mapping has these fields. <code>gamma</code>: a positive number, the risk aversion. <code>mu</code>: a list of <em>n</em> expected returns for one period. <code>sigma</code>: an <em>n</em> by <em>n</em> symmetric, positive definite matrix. <code>w0</code>: the starting weights, one per asset. <code>lower</code> and <code>upper</code>: the bounds on each weight, one per asset. <code>sector</code>: one integer label per asset, from 0 to <em>K</em> minus 1. <code>sector_caps</code>: the cap of each sector, a list of <em>K</em> numbers. <code>turnover_limit</code>: a non-negative number, the limit on the total change from the starting portfolio. The field <code>label</code> says the case is SIMULATED. All weights, returns and limits are numbers in one stated period, with no annualization. No currency amount appears in this module.
+          </dd>
+          <dt>Required outputs</dt>
+          <dd>
+            <p>A file <code>constrained_allocator.py</code> at the root of your repository, with one function <code>allocate(instance)</code> whose parameter is the decoded case. It returns a dictionary with the three keys <code>weights</code>, <code>multipliers</code> and <code>certificate</code>, and no other keys.</p>
+            <p><code>weights</code> is a list of <em>n</em> numbers, the optimal <em>w</em>. <code>multipliers</code> is a dictionary with the seven keys <code>budget</code>, <code>lower</code>, <code>upper</code>, <code>sector</code>, <code>turnover_plus</code>, <code>turnover_minus</code> and <code>turnover_total</code>. <code>budget</code> is a number. <code>lower</code>, <code>upper</code>, <code>turnover_plus</code> and <code>turnover_minus</code> are lists of <em>n</em> numbers, and <code>sector</code> is a list of <em>K</em> numbers, one per sector cap. <code>turnover_total</code> is a number. <code>certificate</code> is a dictionary with the four keys <code>primal_residual</code>, <code>stationarity_residual</code>, <code>dual_residual</code> and <code>complementary_slackness</code>, each a number that you compute from your weights and multipliers by the definitions below.</p>
+            <p>The starter file is <a href="grader/starter.py">the starter</a>. Its <code>allocate</code> raises <code>NotImplementedError</code> until you replace it, and the suite fails on the starter.</p>
+          </dd>
+          <dt>Conventions</dt>
+          <dd>
+            <p>Write \(\gamma\) for the risk aversion, \(\mu\) for the expected returns, \(\Sigma\) for the input matrix, \(w_0\) for the starting weights, \(l\) and \(u\) for the bounds, \(c_k\) for the cap of sector \(k\), and \(\tau\) for the turnover limit. The sectors partition the assets: asset \(i\) belongs to sector \(k(i)\), and \(S_k\) is the set of assets in sector \(k\). Write \(d_i = w_i - w_{0,i}\) and \(t_i = |d_i|\).</p>
+            <p>The problem is to minimize
+            \[ f(w) = \tfrac{\gamma}{2}\, w^{\top}\Sigma w - \mu^{\top} w \]
+            subject to \(\mathbf{1}^{\top} w = 1\), \(l \le w \le u\), \(\sum_{i\in S_k} w_i \le c_k\) for each sector \(k\), and \(\sum_i |w_i - w_{0,i}| \le \tau\).</p>
+            <p>The turnover constraint is convex but not linear, so the page uses the linearized form. A point \(w\) satisfies \(\sum_i |d_i| \le \tau\) if and only if some \(t\) satisfies \(t_i \ge d_i\), \(t_i \ge -d_i\) and \(\sum_i t_i \le \tau\). For the direction that matters: if \(\sum_i |d_i| \le \tau\), then \(t_i = |d_i|\) satisfies all three. For the converse, \(\sum_i |d_i| \le \sum_i t_i \le \tau\). The variables are \((w, t)\), and every constraint is affine in them.</p>
+            <p>The multipliers are those of the Lagrangian of this linear form. The budget multiplier is \(\nu\). The lower and upper bound multipliers are \(\lambda^l_i\) and \(\lambda^u_i\). The sector multiplier is \(\eta_k\). The two turnover multipliers are \(\alpha_i\), attached to \(t_i \ge d_i\), and \(\beta_i\), attached to \(t_i \ge -d_i\). The total turnover multiplier is \(\kappa\), attached to \(\sum_i t_i \le \tau\). Each inequality is written as a constraint \(g_j \le 0\): \(l_i - w_i\), \(w_i - u_i\), \(\sum_{i\in S_k} w_i - c_k\), \(d_i - t_i\), \(-d_i - t_i\) and \(\sum_i t_i - \tau\).</p>
+            <p>At \(t_i = |d_i|\) the residuals are these. The stationarity residual in the weights is
+            \[ r^w_i = \gamma (\Sigma w)_i - \mu_i + \nu - \lambda^l_i + \lambda^u_i + \eta_{k(i)} + \alpha_i - \beta_i, \]
+            and the stationarity residual in the turnover variables is \(r^t_i = \kappa - \alpha_i - \beta_i\). The four certificate fields are the largest absolute value of each residual, defined as follows:</p>
+            <ul>
+              <li><strong>primal residual</strong>: the largest of 0, \(|\mathbf{1}^{\top} w - 1|\), \(l_i - w_i\), \(w_i - u_i\), \(\sum_{i\in S_k} w_i - c_k\) and \(\sum_i |d_i| - \tau\), over all \(i\) and \(k\);</li>
+              <li><strong>stationarity residual</strong>: the largest of \(|r^w_i|\) and \(|r^t_i|\) over all \(i\);</li>
+              <li><strong>dual residual</strong>: the larger of 0 and the negative of the smallest inequality multiplier, where the inequality multipliers are the lower, upper, sector, turnover-plus, turnover-minus and turnover-total multipliers;</li>
+              <li><strong>complementary slackness</strong>: the largest of \(|\lambda_j g_j|\) over the inequality multipliers, each with its constraint \(g_j\) at \(t_i = |d_i|\).</li>
+            </ul>
+            <p>The tolerance on each certificate field is \(10^{-8}\), and the value you report must agree with the value the suite recomputes from your weights and multipliers to \(10^{-9}\). The starting portfolio is checked with a tolerance of \(10^{-9}\): its weights sum to one, lie in their bounds and satisfy the sector caps, each to that tolerance.</p>
+            <p>The objective is the convex function \(f\) of the weights, and \(\Sigma\) is positive definite, so \(f\) is strictly convex in \(w\). The next statement is the test the certificate uses.</p>
+            <p><span class="block-title claim" data-grade="T">Proposition (sufficiency of the KKT conditions).</span> Let \(f\) be convex in \(w\), let the constraints be affine in \((w, t)\), and let \((w, t)\) be feasible. Suppose there are multipliers, each non-negative for an inequality, such that the stationarity conditions in \(w\) and in \(t\) hold, and each inequality's product with its multiplier is zero. Then \(w\) minimizes \(f\) over the feasible set. If \(f\) is strictly convex in \(w\), the minimizer \(w\) is unique.</p>
+            <p><em>Proof.</em> Let \(L(w, t) = f(w) + \sum_j \lambda_j g_j(w, t) + \nu(\mathbf{1}^{\top}w - 1)\), with the sum over the inequalities. Since \(f\) is convex and each \(g_j\) is affine, \(L\) is convex in \((w, t)\). The stationarity conditions say that its gradient vanishes at \((w, t)\), so \((w, t)\) minimizes \(L\). For any feasible \((y, s)\), each \(g_j(y, s) \le 0\) and \(\lambda_j \ge 0\), and the budget term is zero, so \(f(y) \ge L(y, s) \ge L(w, t)\). Complementary slackness gives \(L(w, t) = f(w)\), so \(f(y) \ge f(w)\). If \(f\) is strictly convex in \(w\) and \((w', t')\) is another minimizer, then \(f((w + w')/2) < f(w)\) for \(w' \ne w\), which contradicts minimality, so the minimizer is unique in \(w\). \(\square\)</p>
+            <p>Hypotheses: \(f\) is convex and strictly convex in \(w\) because \(\Sigma\) is positive definite; the constraints are affine in \((w, t)\), as the linearization shows; the answer is feasible; and the multipliers satisfy the conditions above. The instances the grader generates have one, because \(\Sigma = (A^{\top}A + I)/1000\) for a matrix \(A\) with integer entries, and \(x^{\top}\Sigma x = (|Ax|^2 + |x|^2)/1000 > 0\) for \(x \ne 0\).</p>
+            <p>A named condition is refused with <code>ValueError</code>, and the message names the condition. The conditions are these: the instance is not a mapping; a field is missing; a value is NaN or infinite; the instance has no assets; a list does not have one entry per asset; \(\Sigma\) is not symmetric; \(\Sigma\) is not positive definite; \(\gamma\) is not positive; the turnover limit is negative; a lower bound lies above its upper bound; the starting portfolio does not sum to one, lies outside a bound or breaks a sector cap; a sector label lies outside 0 to \(K-1\); or a sector has no asset. Any other invalid input, such as a boolean or text where a number belongs, raises an exception that carries a message. A bound equal to the starting weight, a cap equal to the starting sector weight, a turnover limit of zero and a \(\gamma\) of \(10^{-6}\) are valid.</p>
+            <p>The function is pure. It does not print, does not emit warnings, does not change its argument and returns the same output for the same input. The standard library is the only import you may use.</p>
+          </dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only. Your file must not import a grader file. Use exact arithmetic, floating-point arithmetic with the stated tolerance, or any method, as long as the returned numbers satisfy the definitions above. The suite does not inspect your method: it inspects the returned weights, multipliers and certificate.</dd>
+          <dt>Grading</dt>
+          <dd>Autograder only. The autograder is <code>grader/test_project.py</code>. It collects <strong>99 checks</strong>, the same number for every seed, and runs them with warnings as errors. The checks cover the output's shape and names; the budget, the bounds, the sector caps and the turnover limit on your weights; dual feasibility; stationarity in the weights and in the turnover variables; complementary slackness; agreement of your certificate with the recomputed residuals; the objective against three feasible comparators; five hand-worked cases with known answers, each with its own certificate check; each named <code>ValueError</code> condition, refused in its invalid form and accepted in its boundary form; the other invalid inputs, refused with an exception that carries a message; a missing field, a non-mapping, a non-finite value, an instance with no assets and a list one entry short; and purity and silence. A failing check names the property it tests and never prints the value it expected.</dd>
+          <dt>Reading list</dt>
+          <dd>The reading list gives the registry keys of the sources in this module's curriculum. The specification defines every quantity the autograder tests, so no reading is needed to pass.</dd>
+        </dl>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1: worked example, annotated step by step</td><td class="num">2</td><td>One fully solved instance, annotated at each step, so each step is read against its reason.</td></tr>
+              <tr><td>Rung 2: completion problem, three blanks</td><td class="num">3</td><td>Eight to ten lines with three blanks, each graded by the output.</td></tr>
+              <tr><td>Core solver: equality and inequality QP, active-set search</td><td class="num">10</td><td>The main algorithmic work; the checks in the suite test its output, and the solver's method is yours to choose.</td></tr>
+              <tr><td>Linear constraints: box, sector and turnover as auxiliary variables</td><td class="num">6</td><td>The linearization of the turnover limit, the sector sums and the two sign constraints for each asset.</td></tr>
+              <tr><td>KKT certificate output and your own tests</td><td class="num">7</td><td>The four certificate fields and the seven multipliers, each computed from the definitions and checked against your weights.</td></tr>
+              <tr><td>Self-check: run the autograder on your seed and read each failure</td><td class="num">5</td><td>Each failing check names the property it tests; the fix is in the definition, not in the number.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>33</strong></td><td>The module hub declares 77 lesson hours and this 33-hour project, which together make the module's 110 hours.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>constrained_allocator.py</code> and run the suite on the problem your seed generates. Your code is saved in this browser as you type, where the browser allows storage.</p>
+        <section class="grader-panel" id="grader" data-unit="M7" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="constrained_allocator.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> to a folder, add <a href="grader/starter.py">starter.py</a> there under the name <code>constrained_allocator.py</code>, replace its function with yours, and run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p>To read your case, decode the payload: <code class="no-math">python3 -c "import json; from instance import make_instance; print(json.loads(make_instance(&lt;your seed&gt;)['payload']))"</code>. Use Python 3.14, the version the course's tools use. The suite needs no packages beyond the standard library and pytest.</p>
+      </section>
+
+      <section id="check">
+        <h2 id="h-check">Rung 3 · Certificate check before you submit</h2>
+        <p>Lab 3 computes the four certificate fields for three candidate answers to the problem of Lab 1. It uses the same definitions as the autograder, restricted to the budget and the bounds, because that problem has no sector caps and no turnover constraint.</p>
+        <section class="lab" id="lab-M7-project-3" data-runtime="python">
+          <h3>Lab 3 · The certificate for three candidate answers</h3>
+          <p class="hypothesis">The first candidate is the answer of Lab 1, for which all four residuals should be zero. The second reverses the sign of the bound multiplier; for it, the dual residual should be positive, and the stationarity residual should change, because the multiplier enters the stationarity equation. The third moves 1/1000 of weight from the second asset to the first, which keeps the budget; for it, the budget residual should stay zero and the stationarity residual should become non-zero. The data are SIMULATED, the same as in Lab 1.</p>
+          <pre><code class="language-python" data-run>"""Rung 3 check: the certificate of the project, computed for three candidate answers to the worked example of Lab 1.
+
+SIMULATED three-asset problem, not market data. The residuals are the four of the project page, restricted to the
+budget and the long-only bounds of this example (the example has no sector caps and no turnover constraint). Each
+residual is the largest violation among the constraints it covers, so a correct answer has all four residuals
+at zero in exact arithmetic.
+The three candidates are: the answer of Lab 1; the same answer with the sign of its bound multiplier reversed; and the
+same answer with a weight moved by 1/1000 between the first two assets, which keeps the budget.
+"""
+
+from fractions import Fraction
+
+# SIMULATED three-asset problem, not market data. The same numbers as Lab 1.
+GAMMA = Fraction(2)
+SIGMA = [
+    [Fraction(4, 100), Fraction(1, 100), Fraction(0)],
+    [Fraction(1, 100), Fraction(9, 100), Fraction(2, 100)],
+    [Fraction(0), Fraction(2, 100), Fraction(16, 100)],
+]
+MU = [Fraction(5, 100), Fraction(3, 100), Fraction(-2, 100)]
+N = 3
+
+
+def residuals(w: list[Fraction], budget: Fraction, lower: list[Fraction], upper: list[Fraction]) -&gt; dict[str, Fraction]:
+    """Primal, stationarity, dual and complementary-slackness residuals of a weight vector and its multipliers."""
+    primal = max([Fraction(0), abs(sum(w, Fraction(0)) - 1), *(-x for x in w), *(x - 1 for x in w)])
+    stationarity = [
+        GAMMA * sum((SIGMA[i][j] * w[j] for j in range(N)), Fraction(0)) - MU[i] + budget - lower[i] + upper[i]
+        for i in range(N)
+    ]
+    dual = max([Fraction(0), *(-x for x in lower), *(-x for x in upper)])
+    slackness = [abs(lower[i] * w[i]) for i in range(N)] + [abs(upper[i] * (w[i] - 1)) for i in range(N)]
+    return {
+        "primal": primal,
+        "stationarity": max(abs(s) for s in stationarity),
+        "dual": dual,
+        "complementary": max(slackness),
+    }
+
+
+def main() -&gt; None:
+    # The Lab 1 answer: weights (9/11, 2/11, 0), budget multiplier -21/1100, and a lower-bound multiplier of 9/1100
+    # on the third asset.
+    w = [Fraction(9, 11), Fraction(2, 11), Fraction(0)]
+    budget = Fraction(-21, 1100)
+    lower = [Fraction(0), Fraction(0), Fraction(9, 1100)]
+    upper = [Fraction(0), Fraction(0), Fraction(0)]
+    zero = [Fraction(0)] * N
+    report = residuals(w, budget, lower, upper)
+    print("check A, Lab 1 answer:", {k: str(v) for k, v in report.items()})
+
+    # Candidate B: the same weights with the sign of the bound multiplier reversed.
+    flipped = [Fraction(0), Fraction(0), -Fraction(9, 1100)]
+    report = residuals(w, budget, flipped, zero)
+    print("check B, multiplier sign reversed:", {k: str(v) for k, v in report.items()})
+
+    # Candidate C: a weight moved by 1/1000 from the second asset to the first, which keeps the budget.
+    moved = [Fraction(9, 11) + Fraction(1, 1000), Fraction(2, 11) - Fraction(1, 1000), Fraction(0)]
+    report = residuals(moved, budget, lower, upper)
+    print("check C, weights moved by 1/1000:", {k: str(v) for k, v in report.items()})
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">check A, Lab 1 answer: {'primal': '0', 'stationarity': '0', 'dual': '0', 'complementary': '0'}
+check B, multiplier sign reversed: {'primal': '0', 'stationarity': '9/550', 'dual': '9/1100', 'complementary': '0'}
+check C, weights moved by 1/1000: {'primal': '0', 'stationarity': '1/6250', 'dual': '0', 'complementary': '0'}</pre>
+          <p class="interpretation">Check A has all four residuals at zero, so the certificate of the answer is exact. Check B reverses the bound multiplier of 9/1100 to −9/1100: the dual residual becomes 9/1100, and the stationarity residual becomes 9/550, which is twice the multiplier, because the reversed multiplier changes the third weight's stationarity by twice its value. Check C keeps the budget, so the budget term is zero, but it moves the gradient, and the stationarity residual becomes 1/6250. The lab shows that each residual responds to the error it names, and it does not show that these three are the only errors an answer can make. The autograder's checks cover the other constraints.</p>
+        </section>
+      </section>
+
+      <section id="not-tested">
+        <h2 id="h-not-tested">What the suite does not test</h2>
+        <p>The suite runs on the problem your seed generates. It does not test the method your code uses, and it does not test the answer for any problem other than the cases it generates and the hand-worked cases it lists. The certificate shows that an answer is optimal for the problem in the case. No case reads a file, and every case carries the SIMULATED label, so no case describes a real portfolio.</p>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>A frontier.</strong> Solve the problem for a grid of risk-aversion values, and plot the expected return against the risk of each answer. Then relate the budget multiplier to the derivative of the optimal objective with respect to the budget level. The envelope argument, <a class="concept" data-concept="envelope-theorem" href="../../../concepts.html#envelope-theorem">the envelope theorem</a>, is the tool; state the sign convention you use, and check it numerically on two grid points.</li>
+          <li><strong>A cost of trading.</strong> Replace the turnover limit with a proportional cost per unit of trading, add it to the objective, and state the new multipliers. State which constraints and multipliers change.</li>
+          <li><strong>A sector with a second label.</strong> Let an asset belong to two sectors. State how the sector multipliers enter the stationarity residual, and say which of the certificate definitions must change.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <ol class="reading-list">
+          <li data-cite="boyd2004convex"></li>
+          <li data-cite="stokey1989recursive"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="index.html"><span class="dir">Module</span>M7 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M7 project · Constrained allocator · The autograder runs in your browser on a SIMULATED problem; nothing you write leaves it.</footer>
+</body>
+</html>
