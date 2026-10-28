@@ -308,6 +308,21 @@ def test_irr_zero_flow_keeps_its_place_in_the_time_index() -> None:
     )
 
 
+def test_irr_accepts_an_outlay_followed_only_by_zeros() -> None:
+    assert irr_roots([-100.0, 0.0]) == [] and irr_roots([-100.0, 0.0, 0.0]) == [], (
+        "only all-zero flows are refused: [-100, 0] is valid, and its NPV is -100 at every rate, so it has no root; "
+        "the outlay is not zero."
+    )
+
+
+def test_irr_accepts_an_inflow_before_an_outlay() -> None:
+    roots = irr_roots([100.0, -110.0])
+    assert len(roots) == 1 and abs(roots[0] - 0.1) <= 1e-7, (
+        "the IRR is the rate at which the NPV is zero for any flows, not only for an outlay first: "
+        "100 - 110 / (1 + r) is zero at r = 0.1."
+    )
+
+
 def test_irr_root_on_a_grid_sample_is_reported_once() -> None:
     # Grid sample k = 1000 of the window (x = 0.01, rate 99). The flows -x and +1 have NPV -x + x ** 1 in the discount
     # factor, zero at exactly that sample, so the root sits on a grid point and must be reported once, not twice.
@@ -522,6 +537,20 @@ def test_instance_real_rate_round_trips_to_the_nominal_rate() -> None:
 
 
 # ---------------------------------------------------------------- after-tax cash flows
+
+
+def test_inflation_just_above_minus_one_is_valid_in_the_project() -> None:
+    # Inputs: inflation is above -1. With inflation -0.999 each real flow is the nominal flow divided by 0.001 ** t.
+    project = with_(PROJECT, inflation=-0.999)
+    nominal = after_tax_cash_flows(project)
+    real = must_accept(
+        lambda: after_tax_cash_flows(project, real=True),
+        "an inflation of -0.999 is above -1 and valid in a project",
+    )
+    assert close(real[LIFE], nominal[LIFE] / 0.001**LIFE, rel=1e-9, absolute=1e-6), (
+        "with inflation -0.999 a real flow is the nominal flow divided by (1 + inflation) to the power t, "
+        "here 0.001 to the power t."
+    )
 
 
 def test_flow_vector_has_an_outlay_then_one_flow_per_year() -> None:

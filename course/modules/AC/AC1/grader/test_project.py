@@ -496,6 +496,18 @@ def test_a_large_amount_posts_at_its_full_value() -> None:
             ],
         ),
         (
+            "a line with a debit smaller than its credit, in an entry that balances",
+            [
+                {
+                    "date": "2024-01-02",
+                    "lines": [
+                        {"account": "cash", "debit": 3, "credit": 5},
+                        {"account": "common_stock", "debit": 2, "credit": 0},
+                    ],
+                }
+            ],
+        ),
+        (
             "a line with neither a debit nor a credit",
             [
                 {
@@ -793,6 +805,14 @@ def test_small_ledger_january_income_statement() -> None:
     _check_values(got, expected, "income statement", "2024-01-31")
 
 
+def test_an_overdrawn_cash_balance_is_reported_as_a_negative_amount() -> None:
+    # Cash credited 100 with no cash debit: the balance is debit minus credit, -100. Money is never adjusted, so the
+    # balance sheet reports -100 for cash and the assets still equal liabilities plus equity (both zero).
+    ledger = sol.post([_entry("2024-01-02", [("equipment", 100, 0), ("cash", 0, 100)])])
+    expected = {"cash": -100, "equipment": 100, "net_equipment": 100, "total_assets": 0}
+    _check_values(sol.balance_sheet(ledger, "2024-01-31"), expected, "balance sheet", "2024-01-31")
+
+
 # Entries dated 1 January and 31 December 2024: real dates that the posting rules accept, so they must post and count.
 YEAR_EDGE_LEDGER: list[dict[str, Any]] = [
     _entry("2024-01-01", [("cash", 300, 0), ("common_stock", 0, 300)]),
@@ -1066,6 +1086,7 @@ def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
         "2023-02-27",
         "2023-02-29",
         "2100-02-29",
+        "2000-02-28",
         "2024-13-31",
         "",
         " 2024-01-31",
