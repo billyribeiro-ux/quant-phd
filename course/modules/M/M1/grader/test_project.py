@@ -223,6 +223,13 @@ def test_perpetuity_factor_is_one_over_the_rate() -> None:
     )
 
 
+def test_perpetuity_factor_accepts_a_rate_of_one_or_more() -> None:
+    """The specification requires only r > 0 for the perpetuity, so a rate of 150 % is valid: 1 / 1.5."""
+    assert close(sol.perpetuity_factor(1.5), 1 / 1.5, 1e-12), (
+        "perpetuity_factor must be 1 / rate for every rate above zero, including rates of one or more"
+    )
+
+
 def test_perpetuity_factor_is_the_value_of_a_long_truncated_sum() -> None:
     """The sum of v^k up to N has the exact error v^N / r; N is chosen so that this error is below 1e-12."""
     r = PERP_RATE
@@ -295,6 +302,15 @@ def test_level_payment_zero_rate_is_the_loan_over_the_months() -> None:
     assert sol.level_payment_cents(100_000_000, 0, 12) == 8_333_333
     assert sol.level_payment_cents(100, 0.0, 7) == 14
     assert sol.level_payment_cents(PRINCIPAL, 0, MONTHS) == nearest(Fraction(PRINCIPAL, MONTHS))
+
+
+def test_level_payment_at_a_tiny_rate_is_exact() -> None:
+    """At an annual rate of 1e-7 the exact payment is 8,333,333.78 cents: the loan over the months, 8,333,333.33,
+    plus a correction of 0.45 cents from the interest. It rounds up to 8,333,334. A rate treated as zero below a
+    cutoff returns 8,333,333 and fails the nearest-cent rule."""
+    assert sol.level_payment_cents(100_000_000, 1e-7, 12) == 8_333_334, (
+        "a small non-zero rate still has interest: the payment must be the exact value, rounded to the nearest cent"
+    )
 
 
 def test_level_payment_tie_goes_up() -> None:

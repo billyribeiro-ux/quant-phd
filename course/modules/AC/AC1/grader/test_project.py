@@ -477,6 +477,30 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
                 }
             ],
         ),
+        (
+            "a negative credit with no negative debit",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": -5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an unbalanced entry with credits above debits",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 6},
+                    ],
+                }
+            ],
+        ),
     ],
 )
 def test_post_raises_a_value_error(condition: str, transactions: list[dict[str, Any]]) -> None:
