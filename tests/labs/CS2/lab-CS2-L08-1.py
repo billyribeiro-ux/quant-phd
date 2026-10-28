@@ -78,7 +78,7 @@ class Level:
 
 @dataclass
 class Counts:
-    """Operation counts. queue_steps counts entries the head passed; comparisons counts binary-search tests."""
+    """Operation counts. queue_steps counts entries the head passed. Binary-search tests go to Book.search_log."""
 
     orders_added: int = 0
     queue_steps: int = 0

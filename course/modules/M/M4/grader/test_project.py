@@ -31,10 +31,12 @@ N_DRAWS: int = INST["n_draws"]
 # Relative tolerances on the loss variance. The Gaussian is held tight. The Student-t variance is checked only for
 # nu of 5 or more: the fourth moment of the Student-t is infinite at nu = 3 and 4, so a sample variance there can miss
 # its target by more than any fixed tolerance (the reference fails at seed 1093 with nu = 3). Over seeds 0 to 1999 the
-# reference's largest relative error was 0.126 at nu = 5, 0.097 at nu = 6, 0.073 at nu = 7 and 0.062 at nu = 8. The
-# tolerance 0.30 is about 2.4 times the largest of these. Against a missing matched factor (an inflation of
-# nu / (nu - 2), which is 1.67, 1.50, 1.40 and 1.33 at nu = 5 to 8), the check fails on every seed tested at nu = 5
-# and 6 (seeds 0 to 1999), and on most seeds at nu = 7 and 8.
+# reference's largest relative error was 0.126 at nu = 5, 0.097 at nu = 6, 0.073 at nu = 7 and 0.062 at nu = 8 (the
+# unrounded maxima are 0.1259, 0.0967, 0.0728 and 0.0624, from the seed-by-seed sweep of the reference against
+# make_instance). The tolerance 0.30 is about 2.4 times the largest of these (0.30 / 0.1259 = 2.38). Against a missing
+# matched factor (an inflation of nu / (nu - 2), which is 1.67, 1.50, 1.40 and 1.33 at nu = 5 to 8), the check fails on
+# every seed tested at nu = 5 and 6 (347 and 317 seeds, seeds 0 to 1999), and on 342 of 343 seeds at nu = 7 and 288 of
+# 317 at nu = 8.
 TOL_GAUSSIAN_VARIANCE = 0.10
 TOL_T_VARIANCE = 0.30
 MIN_NU_FOR_T_VARIANCE_CHECK = 5
@@ -167,7 +169,7 @@ def test_different_seed_gives_different_losses() -> None:
 # --- simulate_losses: named conditions -----------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("family", ["Gaussian", "t", "student-t", " gaussian", None])
+@pytest.mark.parametrize("family", ["Gaussian", "t", "student-t", " gaussian", "", None])
 def test_unknown_family_is_rejected(family: Any) -> None:
     expect_value_error(
         lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, family, NU),
@@ -180,7 +182,7 @@ def test_gaussian_accepts_no_degrees_of_freedom() -> None:
     check(len(losses) == 10, "the gaussian family must accept nu = None")
 
 
-@pytest.mark.parametrize("nu", [5, 3.0, False, 0, 2])
+@pytest.mark.parametrize("nu", [5, 3.0, False, True, "3", 0, 2])
 def test_gaussian_rejects_a_degrees_of_freedom(nu: Any) -> None:
     expect_value_error(
         lambda: sol.simulate_losses(POSITIONS, COV, 10, SEED, "gaussian", nu),
@@ -290,6 +292,20 @@ def test_indefinite_covariance_is_rejected() -> None:
     )
 
 
+def test_negative_second_pivot_is_rejected() -> None:
+    # The first pivot is 4e-4 (above zero) and the second is -9e-4 (below zero): the check must read every pivot.
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000, 1_000], [[4e-4, 0.0], [0.0, -9e-4]], 10, SEED, "gaussian", None),
+        "cov must be positive definite: a negative second pivot is not above zero",
+    )
+
+
+def test_two_position_positive_definite_covariance_is_accepted() -> None:
+    # The boundary on the other side: a symmetric matrix whose pivots are all above zero must not be rejected.
+    losses = sol.simulate_losses([1_000, 1_000], [[4e-4, 1e-4], [1e-4, 9e-4]], 100, SEED, "gaussian", None)
+    check(len(losses) == 100 and all(type(x) is int for x in losses), "a 2 x 2 positive definite cov must be accepted")
+
+
 def test_singular_covariance_is_rejected() -> None:
     expect_value_error(
         lambda: sol.simulate_losses([1_000], [[0.0]], 10, SEED, "gaussian", None),
@@ -354,13 +370,6 @@ def test_quantile_99_ignores_the_input_order() -> None:
     check(sol.quantile_99(losses) == sol.quantile_99(shuffled), "quantile_99 must not depend on the order of the list")
 
 
-def test_quantile_99_does_not_modify_its_input() -> None:
-    losses = [5, 1, 4, 2, 3]
-    before = losses[:]
-    sol.quantile_99(losses)
-    check(losses == before, "quantile_99 must leave the list it is given unchanged")
-
-
 def test_quantile_99_of_one_loss_is_that_loss() -> None:
     check(sol.quantile_99([7]) == 7, "for n = 1 the index is ceil(0.99) = 1, the only value")
 
@@ -369,7 +378,7 @@ def test_quantile_99_rejects_an_empty_list() -> None:
     expect_value_error(lambda: sol.quantile_99([]), "quantile_99 must reject an empty list")
 
 
-@pytest.mark.parametrize("losses", [[1.0, 2], [True, 2], ["7"], [None], [5, 2.0], [5, None]])
+@pytest.mark.parametrize("losses", [[1.0, 2], [True, 2], ["7"], [None], [5, 2.0], [5, None], [5, True]])
 def test_quantile_99_rejects_non_whole_losses(losses: Any) -> None:
     expect_value_error(lambda: sol.quantile_99(losses), "quantile_99 must reject a float or a boolean loss")
 

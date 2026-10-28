@@ -5,9 +5,10 @@ The table has m = 64 buckets and no resizing. The bucket of a key is ((key * 265
 a multiplicative hash that is fixed in this file. One probe is one key comparison inside a chain. A successful
 search stops at the matching key, and an unsuccessful search compares the key with every key in its chain.
 
-The model values printed next to the measured ones are exact expectations under simple uniform hashing,
-which assumes that each key lands in a bucket chosen uniformly and independently of the other keys. This hash
-is not that random model, so the measured and model values can differ. The output prints both values.
+The model values printed next to the measured ones are exact averages over the random bucket assignments
+of simple uniform hashing, which assumes that each key lands in a bucket chosen uniformly, without regard
+to the buckets of the other keys. This hash is not that random model, so the measured and model values can
+differ. The output prints both values.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """M2 lab L21: the derivative of an implicitly defined function, against finite differences of its root.
 
 SIMULATED: the relation F(x, y) = y**3 + x * y - 1 = 0 is a test equation chosen for this lab. It is not market data.
-For each x in a fixed list the lab finds the root y(x) > 0 by Newton's method, which is not a closed form here. It then
+For each x in a fixed list the lab finds the root y(x) > 0 by Newton's method, not the cubic formula. It then
 compares the implicit derivative dy/dx = -F_x / F_y, evaluated at the root, with a central difference of the computed
 roots at step h = 1e-5. On this relation F_y = 3 y**2 + x is positive at every x > 0 used, so the hypothesis of the
 implicit-function theorem (F_y not zero at the point) holds at each listed point.

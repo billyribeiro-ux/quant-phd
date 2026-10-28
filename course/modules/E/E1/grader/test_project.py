@@ -14,8 +14,11 @@ property it checks and the idea to revisit; it never prints the expected value.
 
 from __future__ import annotations
 
+import ast
+import inspect
 import math
 import os
+import sys
 import warnings
 from collections.abc import Callable
 from fractions import Fraction
@@ -244,7 +247,20 @@ def test_tie_rounds_up_for_fee_and_volume() -> None:
     check(result["volume_trades"] == want["volume_trades"], "a volume that is an exact half trade must round up")
 
 
-UNKNOWN_STRUCTURES: tuple[Any, ...] = ("duopoly", "", "Monopoly", "perfect", " monopoly", "cournot ", None, 1)
+UNKNOWN_STRUCTURES: tuple[Any, ...] = (
+    "duopoly",
+    "",
+    "Monopoly",
+    "Cournot",
+    "Bertrand",
+    "perfect",
+    " monopoly",
+    "cournot ",
+    "bertrand ",
+    b"monopoly",
+    None,
+    1,
+)
 
 
 @pytest.mark.parametrize("name", UNKNOWN_STRUCTURES)
@@ -284,13 +300,47 @@ def test_smallest_valid_case_is_accepted(structure: str, a: int, b: int, c: int)
     )
 
 
-@pytest.mark.parametrize("args", [(120.0, 1, 20), (120, True, 20), (120, 1, 20.0)])
+@pytest.mark.parametrize("args", [(120.0, 1, 20), (120, True, 20), (120, 1, 20.0), ("120", 1, 20)])
 def test_non_integer_inputs_do_not_yield_float_money(args: tuple[Any, ...]) -> None:
     try:
         result = sol.outcome("monopoly", *args)
     except Exception:
         return
     check(all(type(v) is int for v in result.values()), "a non-integer input must not produce a float output")
+
+
+def test_value_below_a_half_rounds_down() -> None:
+    # Reference case: the Cournot welfare is 40000/9 cents, 4444 and 4/9, so its fraction is below one half.
+    exact_value = exact("cournot", 120, 1, 20)["welfare_cents"]
+    check(exact_value - math.floor(exact_value) < Fraction(1, 2), "the case must have a fraction below one half")
+    check(
+        sol.outcome("cournot", 120, 1, 20)["welfare_cents"] == math.floor(exact_value),
+        "a money value whose exact fraction is below one half must round down, not up",
+    )
+
+
+def test_value_above_a_half_rounds_up() -> None:
+    # Reference case: the Cournot deadweight loss is 5000/9 cents, 555 and 5/9, so its fraction is above one half.
+    exact_value = exact("cournot", 120, 1, 20)["deadweight_loss_cents"]
+    check(exact_value - math.floor(exact_value) > Fraction(1, 2), "the case must have a fraction above one half")
+    check(
+        sol.outcome("cournot", 120, 1, 20)["deadweight_loss_cents"] == math.floor(exact_value) + 1,
+        "a money value whose exact fraction is above one half must round up",
+    )
+
+
+def test_module_imports_only_the_standard_library() -> None:
+    tree = ast.parse(inspect.getsource(sol))
+    roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module is not None:
+            roots.add(node.module.split(".")[0])
+    check(
+        roots <= set(sys.stdlib_module_names),
+        "market_structure must import the standard library only, as the Constraints of the page state",
+    )
 
 
 def test_outcome_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:

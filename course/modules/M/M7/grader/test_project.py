@@ -426,6 +426,14 @@ def _sigma_negative_definite(case: dict[str, Any]) -> None:
     case["sigma"] = [[-0.01 if i == j else 0.0 for j in range(N)] for i in range(N)]
 
 
+def _sigma_indefinite(case: dict[str, Any]) -> None:
+    """Symmetric, with a positive diagonal, but the leading 2x2 block [[0.01, 0.02], [0.02, 0.01]] is indefinite."""
+    case["sigma"][0][0] = 0.01
+    case["sigma"][1][1] = 0.01
+    case["sigma"][0][1] = 0.02
+    case["sigma"][1][0] = 0.02
+
+
 def _sigma_asymmetric(case: dict[str, Any]) -> None:
     case["sigma"][0][1] = case["sigma"][1][0] + 0.0001
 
@@ -509,6 +517,11 @@ def _sector_label_below_range(case: dict[str, Any]) -> None:
 
 def _sector_without_assets(case: dict[str, Any]) -> None:
     case["sector"] = [0] * N
+
+
+def _sector_cap_without_assets(case: dict[str, Any]) -> None:
+    """One more cap than there are labels: the added sector has no asset, and the other sectors are unchanged."""
+    case["sector_caps"] = [*case["sector_caps"], 0.5]
 
 
 def _one_entry_short(case: dict[str, Any]) -> None:
@@ -606,6 +619,8 @@ def test_named_condition_boundary_is_accepted(
 OTHER_SIDE_REFUSED: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
     ("sigma-symmetric-other-sign", _sigma_asymmetric_other_sign),
     ("sigma-positive-definite-negative", _sigma_negative_definite),
+    ("sigma-positive-definite-indefinite", _sigma_indefinite),
+    ("every-sector-has-an-asset-extra-cap", _sector_cap_without_assets),
     ("start-sums-to-one-low", _start_sum_low),
     ("sector-label-below-range", _sector_label_below_range),
     ("w0-one-entry-too-many", _one_entry_too_many("w0")),

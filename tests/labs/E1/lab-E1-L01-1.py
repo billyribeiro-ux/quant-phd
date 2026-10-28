@@ -3,7 +3,7 @@
 Standard library only (fractions). No randomness and no network. Every number is an exact Fraction and nothing
 is rounded. The budget is p_x * x + p_y * y = m with all four inputs positive. For each case the lab takes
 STEPS = 60 equal steps along the budget line, from x = 0 to x = m / p_x, so grid point 30 is the midpoint of the
-line. It reports the grid point with the largest utility, the closed form x* = m / (2 p_x), y* = m / (2 p_y) and
+line. It reports the grid point with the largest utility, the closed form x_bar = m / (2 p_x), y_bar = m / (2 p_y) and
 the marginal rate of substitution y / x at the closed-form bundle, which is the ratio of the marginal utilities
 u_x = y and u_y = x. The check is finite: it tests these cases only. The proof that the closed form is the optimum
 for every price and income is on the page.
@@ -27,7 +27,7 @@ def budget_y(px: Fraction, py: Fraction, m: Fraction, x: Fraction) -> Fraction:
 
 
 def closed_form(px: Fraction, py: Fraction, m: Fraction) -> tuple[Fraction, Fraction]:
-    """The optimal bundle x* = m / (2 p_x) and y* = m / (2 p_y) for u = x * y."""
+    """The optimal bundle x_bar = m / (2 p_x) and y_bar = m / (2 p_y) for u = x * y."""
     return m / (2 * px), m / (2 * py)
 
 
@@ -63,10 +63,12 @@ def main() -> None:
         i, x_grid, u_grid = grid_optimum(px, py, m)
         y_grid = budget_y(px, py, m, x_grid)
         agrees = i == STEPS // 2 and x_grid == xs and y_grid == ys
-        print(f"case p_x={px}, p_y={py}, m={m}: closed form x*={xs}, y*={ys}, u*={us}")
+        print(f"case p_x={px}, p_y={py}, m={m}: closed form x_bar={xs}, y_bar={ys}, u*={us}")
         print(f"  grid maximiser: point {i}, x={x_grid}, y={y_grid}, u={u_grid}; equals closed form: {agrees}")
-        print(f"  budget exhausted at x*, y*: {px * xs + py * ys == m}")
-        print(f"  MRS y/x at x*, y*: {mrs(xs, ys)}; price ratio p_x/p_y: {px / py}; equal: {mrs(xs, ys) == px / py}")
+        print(f"  budget exhausted at x_bar, y_bar: {px * xs + py * ys == m}")
+        print(
+            f"  MRS y/x at x_bar, y_bar: {mrs(xs, ys)}; price ratio p_x/p_y: {px / py}; equal: {mrs(xs, ys) == px / py}"
+        )
     px, py, m = CASES[0]
     x_off = Fraction(20)
     y_off = budget_y(px, py, m, x_off)

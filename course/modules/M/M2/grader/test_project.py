@@ -268,6 +268,17 @@ def test_nan_step_raises_value_error() -> None:
         )
 
 
+def test_negative_infinite_step_raises_value_error() -> None:
+    # Negative infinity is below zero, so it is a negative step, however large its size: it is refused as -1e-3 is.
+    coeffs, x0 = INST["cubic"], INST["x0"]
+    for scheme in ("forward", "central"):
+        must_raise(
+            partial(sol.fd_derivative, lambda x: float(cubic(coeffs, x)), x0, -math.inf, scheme),
+            "a step of negative infinity must be refused with ValueError, as any negative step is "
+            "(hint: Lesson 13, a finite difference needs a positive step)",
+        )
+
+
 def test_large_positive_step_is_accepted() -> None:
     # Only a step that is not above zero is refused. A step above zero is accepted at any size, including 1 and 5.
     coeffs, x0 = INST["cubic"], INST["x0"]
@@ -317,6 +328,17 @@ def test_unknown_scheme_raises_value_error(scheme: str) -> None:
         lambda: sol.fd_derivative(lambda x: cubic(coeffs, x), x0, 1e-3, scheme),
         "a scheme outside forward and central must be refused with "
         "ValueError (hint: Lesson 13, the two schemes are forward and central)",
+    )
+
+
+@pytest.mark.parametrize("scheme", [None, 1])
+def test_scheme_that_is_not_a_name_raises_value_error(scheme: Any) -> None:
+    # A scheme other than "forward" or "central" is refused, whatever its type: None and an integer are not names.
+    coeffs, x0 = INST["cubic"], INST["x0"]
+    must_raise(
+        lambda: sol.fd_derivative(lambda x: cubic(coeffs, x), x0, 1e-3, scheme),
+        "a scheme that is not the name forward or central must be refused with ValueError "
+        "(hint: Lesson 13, the two schemes are forward and central)",
     )
 
 
@@ -435,8 +457,7 @@ def test_hessian_is_symmetric(inst: dict[str, Any]) -> None:
     scale = 1.0 + max(abs(got[0][1]), abs(got[1][0]))
     require(
         abs(got[0][1] - got[1][0]) <= 1e-6 * scale,
-        "the Hessian must be symmetric (Schwarz's theorem) (hint: "
-        "Lesson 19, mixed second derivatives do not depend on the order)",
+        "the Hessian must be symmetric (hint: Lesson 19, mixed second derivatives do not depend on the order)",
     )
 
 
@@ -488,9 +509,27 @@ def test_hessian_nan_step_raises_value_error() -> None:
     )
 
 
-def test_hessian_positive_step_is_accepted() -> None:
+def test_hessian_negative_infinite_step_raises_value_error() -> None:
     c, point = INST["surface"], INST["point"]
-    must_accept(lambda: sol.hessian_fd(lambda p: surface(c, p), point, 1e-4), "a positive step is in the specification")
+    must_raise(
+        lambda: sol.hessian_fd(lambda p: surface(c, p), point, -math.inf),
+        "a Hessian step of negative infinity is below zero and must raise (hint: Lesson 19, the Hessian needs a "
+        "positive step)",
+    )
+
+
+def test_hessian_positive_step_is_accepted() -> None:
+    # Steps from 1e-3 to 1 are accepted; the step is above zero in each, and the entries are finite floats.
+    c, point = INST["surface"], INST["point"]
+    for step in (1e-3, 1e-4, 1.0):
+        got = must_accept(
+            partial(sol.hessian_fd, lambda p: surface(c, p), point, step),
+            f"a Hessian step of {step} is above zero, so the specification accepts it",
+        )
+        require(
+            isinstance(got, list) and all(isinstance(v, float) and math.isfinite(v) for row in got for v in row),
+            "a positive Hessian step must return a finite float in every entry",
+        )
 
 
 # ---- bond price in integer cents: bond_price_cents ----
@@ -688,14 +727,31 @@ def test_yield_just_above_minus_one_is_accepted() -> None:
 
 
 def test_module_prints_nothing_and_warns_nothing() -> None:
+    # Every function, on every branch: both schemes, the constant and the non-constant case of ad_derivative, the price
+    # and the sensitivities, and each named refusal. Output to stdout and to stderr is captured in one buffer.
     buffer = io.StringIO()
+    coeffs, x0 = INST["cubic"], INST["x0"]
+    poly = partial(cubic, coeffs)
+    calls: list[Callable[[], object]] = [
+        lambda: sol.bond_price_cents(INST),
+        lambda: sol.sensitivities(INST),
+        lambda: sol.fd_derivative(lambda x: float(poly(x)), x0, 1e-3, "central"),
+        lambda: sol.fd_derivative(lambda x: float(poly(x)), x0, 1e-3, "forward"),
+        lambda: sol.hessian_fd(lambda p: surface(INST["surface"], p), INST["point"], 1e-4),
+        lambda: sol.ad_derivative(poly, x0),
+        lambda: sol.ad_derivative(lambda x: 5.0, x0),
+        lambda: sol.fd_derivative(lambda x: float(poly(x)), x0, 0.0, "central"),
+        lambda: sol.fd_derivative(lambda x: float(poly(x)), x0, 1e-3, "bogus"),
+        lambda: sol.hessian_fd(lambda p: surface(INST["surface"], p), INST["point"], 0.0),
+        lambda: sol.bond_price_cents(dict(INST, yield_bps=-10_000)),
+        lambda: sol.sensitivities(dict(INST, yield_bps=-10_000)),
+    ]
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        with contextlib.redirect_stdout(buffer):
-            sol.bond_price_cents(INST)
-            sol.sensitivities(INST)
-            sol.fd_derivative(lambda x: cubic(INST["cubic"], x), INST["x0"], 1e-3, "central")
-            sol.hessian_fd(lambda p: surface(INST["surface"], p), INST["point"], 1e-4)
-            sol.ad_derivative(lambda x: cubic(INST["cubic"], x), INST["x0"])
-    require(buffer.getvalue() == "", "the module must not print")
-    require(len(caught) == 0, "the module must not warn")
+        with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+            for call in calls:
+                # A refusal is expected in five of the calls; its message is discarded, and only output matters here.
+                with contextlib.suppress(ValueError):
+                    call()
+    require(buffer.getvalue() == "", "the module must not print, on any branch of any function")
+    require(len(caught) == 0, "the module must not warn, on any branch of any function")

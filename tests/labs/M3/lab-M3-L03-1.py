@@ -2,7 +2,7 @@
 
 SIMULATED: no. Every matrix is written out by hand and no random numbers are drawn.
 The exact checks use Python integers, so their printed counts and True values are exact.
-The floating-point checks use numpy.linalg.eig, numpy.linalg.det and numpy.linalg.matrix_rank.
+The floating-point checks use numpy.linalg.eig, numpy.linalg.eigvals, numpy.linalg.det and numpy.linalg.matrix_rank.
 They are compared with a tolerance of 1e-12. The lab prints verdicts, eigenvalues rounded to four
 decimals, and a rank, never a raw residual, because a raw residual depends on the machine. The lab supports
 the statements for these three matrices only. It is not a proof, and no proof on the page depends on it.

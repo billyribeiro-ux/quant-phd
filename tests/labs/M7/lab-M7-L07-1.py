@@ -1,7 +1,7 @@
 """M7 L07 lab 1: backward recursion for a finite-horizon toy problem, checked against brute-force enumeration.
 
 SIMULATED: a fixed toy problem with integer inputs. It is not market data and it uses no random draws. Wealth and
-consumption are whole cents (1 CU = 100 cents). Period rewards and the bequest are integers in utils, so every value is
+consumption are whole cents. Period rewards and the bequest are integers in utils, so every value is
 exact and no floating-point error enters.
 
 The problem has H = 4 periods, t = 0 to 3. The state at time t is wealth W in {0, 100, 200, 300, 400} cents. The

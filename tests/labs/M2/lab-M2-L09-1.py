@@ -2,11 +2,11 @@
 
 Part A takes f(x) = x^2 on [0, 1], which is nondecreasing, and the uniform partitions with n = 1, 2, 4, ..., 128
 subintervals. For a nondecreasing f the supremum on each subinterval is the value at its right endpoint and the
-infimum is the value at its left endpoint, so U_n = sum of f(i/n)/n and L_n = sum of f((i-1)/n)/n. The program
-checks in exact fractions that U_n - L_n = 1/n, that L_n <= 1/3 <= U_n, and that U_n - 1/3 = (3n+1)/(6n^2) and
-L_n - 1/3 = -(3n-1)/(6n^2). Part B takes a nonuniform partition with points (i/n)^2 and checks that U - L is at
-most the mesh times f(1) - f(0). Part C takes the same uniform partitions with midpoint tags and right-endpoint tags
-and checks |R - 1/3| <= 1/n for each Riemann sum R. Exact fractions throughout; standard library only; no
+infimum is the value at its left endpoint, so U_n = sum of f(i/n)/n and L_n = sum of f((i-1)/n)/n. The program checks
+in exact fractions that U_n - L_n = 1/n, that L_n <= 1/3 <= U_n, and that U_n - 1/3 = (3n+1)/(6n^2) and L_n - 1/3 =
+-(3n-1)/(6n^2). Part B takes a nonuniform partition with points (i/n)^2 and checks that U - L is at most the mesh
+times f(1) - f(0). Part C takes the uniform partitions with n = 8, 16 and 32, with midpoint tags and right-endpoint
+tags, and checks |R - 1/3| <= 1/n for each Riemann sum R. Exact fractions throughout; standard library only; no
 randomness and no network access.
 """
 

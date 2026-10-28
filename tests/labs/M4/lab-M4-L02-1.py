@@ -7,8 +7,8 @@ integers. Each variance is computed two ways, from the definition E[(X - mu)^2] 
 E[X^2] - mu^2, and the program checks that the two agree. It also checks the scale rule
 Var(2X) = 4 Var(X) on the die. Last, it draws seeded samples (seed 2026 for the die, seed 2027 for the
 loss) and prints their sample means and variances, and for the loss the number of losses and their total.
-A sample is one random run, so its printed values are estimates that a different seed would move; the exact
-values above them are not.
+A sample is one random run, so its printed values are estimates that depend on the seed; the exact
+values above them do not.
 """
 
 from __future__ import annotations

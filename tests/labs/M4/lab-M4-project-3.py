@@ -1,7 +1,8 @@
 """Rung 3 reference numbers: the closed-form values the report quotes, with no random draws.
 
 Standard library only. The inputs are the illustrative two-asset portfolio of Lab 1, a SIMULATED example and not market
-data. Every number here is a formula evaluated on unrounded values; the rounding is for display only. The sampled
+data. Every number here is a formula evaluated on unrounded values. The one value rounded in the code is the parametric
+99% loss, rounded once to whole cents with round(); every other number is rounded for display only. The sampled
 numbers of your own module depend on its random stream, so the report quotes these closed forms, and its sampled
 numbers with the seed it used.
 """

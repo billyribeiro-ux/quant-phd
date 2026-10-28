@@ -5,7 +5,8 @@ increasing on (-infinity, -1] and on [1, infinity), decreasing on [-1, 1], with 
 minimum at 1. The script uses exact rational numbers (fractions.Fraction) on the grid of x from -2 to 2 with step 1/4,
 which has 16 intervals. It checks three things: the sign of f' at each grid point against the predicted sign, the
 direction of f on each grid interval against the sign of f' at its midpoint, and the values f(-1) and f(1). A grid
-is a finite check, and the monotone intervals are established on the page by the mean value argument.
+is a finite check, and the monotone intervals are established on the page by the mean value argument,
+under Assumption 2.1.
 """
 
 from __future__ import annotations

@@ -399,10 +399,17 @@ def test_certified_error_exactly_at_tol_stops_the_first_sweep() -> None:
 
 
 def test_tolerance_just_below_the_first_certified_error_does_not_stop() -> None:
-    """The stop is not looser than the definition: a tolerance just below the first certified error does not stop."""
+    """The stop is not looser than the definition: a tolerance just below the solver's own first certified error does
+    not stop. The tolerance is read from the solver's certificate after one sweep, so any valid certified error is
+    accepted; the test does not assume which bound the solver uses."""
     p = {"beta": 0.5, "alpha": 0.5}
     grid = [0.75, 1.0]
-    out = sol.solve(p, grid, math.nextafter(0.5, 0.0), 1000)
+    first = sol.solve(p, grid, 1e-12, 1)
+    expect(
+        is_real(first["certified_error"]) and float(first["certified_error"]) > 0,
+        "after one sweep on this grid the certified error must be a positive real number",
+    )
+    out = sol.solve(p, grid, math.nextafter(float(first["certified_error"]), 0.0), 1000)
     expect(
         out["iterations"] >= 2,
         "a tolerance just below the first certified error must not stop the iteration after one sweep",

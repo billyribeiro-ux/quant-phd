@@ -1,0 +1,157 @@
+"""Round 3, M3-b: writes ledgers/M3/M3-b.json from the rows verified in this round (evidence in /tmp/M3-v/b3)."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[4]
+P = "course/modules/M/M3/"
+rows = [
+    ("M3b-L04-remark-1-7", "cross-refs", P + "L04.html lines 103, 272, 284, 478; cards.json", "PASS",
+     "Remark 1.7 appears 0 times in L04.html, L05.html, L06.html (grep -c). The rotation is Remark 1.6 (L04.html line 103) and is cited as Remark 1.6 at L04 lines 272, 284, 478. The only 'Remark 1.7' in cards.json is M3-c049 (L03), where L03.html line 101 defines Remark 1.7 as the rotation: consistent."),
+    ("M3b-L04-remark-2-7-gap", "2.4-mathematics", P + "L04.html Remark 2.7 (line 171); card M3-c073; Key results row 7", "PASS",
+     "Re-derived: N-I has rows (0,2), null space the line through (1,0); N-3I has rows (-2,2),(0,0), null space the line through (1,1). Unit eigenvectors have |<.,.>| = 1/sqrt2 = 0.7071067811865475 (recheck_numbers_b3.py output). Remark states the eigenspaces are the whole eigenspaces: correct."),
+    ("M3b-L05-partC-nonnegative", "2.5-labs", P + "L05.html Lab 1 hypothesis (line 177), interpretation (line 303), Key results (line 453); tests/labs/M3/lab-M3-L05-1.py part_c lines 250-267", "PASS",
+     "Code tests forms >= -TOL*norms (twin line 263) and prints 100000 of 100000; page says 'at least -1e-10 times the squared length' at lines 177, 453 and the printed output (line 299) matches a fresh run."),
+    ("M3b-L05-definition-order", "2.9-structure", P + "L05.html Definitions 1.3 (line 66), 1.4 (line 71); Props 1.5 (76), 1.6 (86); Ex 1.7 (96); Rem 1.8 (101); Thm 2.1 (108)", "PASS",
+     "Each term is defined before its first formal use: Gram matrix (Def 1.3) precedes Prop 1.5 and Remark 3.2; positive semidefinite (Def 1.4) precedes Prop 1.5, Thm 2.1. Why-it-matters (line 51) gives an informal preview only, not a formal use."),
+    ("M3b-gram-before-definition", "2.9-structure", P + "L04.html Section 1; L05.html why-it-matters (line 51) and Definition 1.3 (line 66)", "PASS",
+     "L04.html contains no 'Gram' (grep). L05 line 51 says 'The matrices B^T B are the standard examples' without the name; the name first appears at Definition 1.3 (line 66)."),
+    ("M3b-L06-lab-docstring-theorems", "2.5-labs", "tests/labs/M3/lab-M3-L06-1.py lines 1-14 (page lines 138-151); checks lines 161-175", "PASS",
+     "Docstring cites Theorems 2.2 and 2.3 and Proposition 2.4 for orthogonality, A = U S V^T, squared singular values = eigenvalues of A^T A, and sum of squares = squared Frobenius norm; the code computes exactly these five residuals (lines 170-174)."),
+    ("M3b-L06-lesson8-claim", "2.2-cross-refs", P + "L06.html Section 3 bullet 4 (line 238); L08.html lines 57, 82; L08.html line 293", "PASS",
+     "L06 line 238 says Lesson 8 eigendecomposes M = X~^T X~/(T-1). L08 line 57 defines M = X~^T X~/(T-1) and line 82 takes its spectral decomposition. grep finds no SVD computation in L08; L08 line 293 mentions singular vectors only as a Lesson 6 comparison."),
+    ("M3b-card-c112-only", "2.7-cards", P + "cards.json M3-c112 back; L06.html Misconceptions item 1 (lines 246-247)", "PASS",
+     "Card back matches the page: A = V Lambda V^T gives A^T A = V Lambda^2 V^T, and the nilpotent counterexample [[0,1],[0,0]] has A^T A = diag(0,1) (recomputed)."),
+    ("M3b-L06-remark-2-5-rotation", "2.4-mathematics", P + "L06.html Remark 2.5 (line 229); Misconception 3 (lines 253-256); cards M3-c108, M3-c114", "PASS",
+     "U = V = [[0,1],[1,0]] is orthogonal and symmetric, so U I_2 V^T = I_2 and its singular values are 1, 1. Fact 1.2 gives U I_2 U^T = I_2 for every orthogonal U (proof line 70)."),
+    ("M3b-L06-step5-columns", "2.4-mathematics", P + "L06.html Theorem 2.2 proof Step 4 (line 111), Step 5 (line 112)", "PASS",
+     "Step 4: Av_j = sigma_j u_j for j <= r and Av_j = 0 for j > r (from ||Av_j||^2 = lambda_j = 0). Step 5: column space = span{Av_j} = span(u_1..u_r), dimension r by orthonormality. Each step re-derived."),
+    ("M3b-card-c106-zeros", "2.7-cards", P + "cards.json M3-c106 back; L06.html Theorem 2.3 (line 117)", "PASS",
+     "Card text 'sigma_1^2, ..., sigma_k^2 followed by n - k zeros' matches Theorem 2.3 line 117 and the proof's diagonal of Sigma^T Sigma (line 122)."),
+    ("M3b-pin-and-scope", "scope", "git rev-parse HEAD; git diff --stat 1817191 aa3c26c", "PASS",
+     "Pin aa3c26c50db182f7ef6289eb66fb9a09f1a3ff0a (detached). Previous pin 1817191 (round 2 fragment pin). Delta touches L03, L04, L05, L06, L08, index.html, cards.json and the M3 project files; the L04-L06 twins (tests/labs/M3/lab-M3-L0{4,5,6}-1.py) are byte-identical across the delta. All L04-L06 rows were re-verified this round, none carried."),
+    ("M3b-check-pages", "3-commands", "tools/check_pages.py --unit M3; tools/check_pages.py --unit M3 exit 0", "PASS",
+     "Observed: 'check_pages M3: PASS', exit 0."),
+    ("M3b-check-dag", "DAG", "tools/check_dag.py --all", "PASS",
+     "Observed: 'check_dag M3: PASS' (full output /tmp/M3-v/b3/dag.out), exit 0. Concept links on L04-L06 are to L03 eigendecomposition, M1 mathematical-induction, and the lesson's own dfn ids."),
+    ("M3b-run-labs", "2.5-labs", "tools/run_labs.py --unit M3", "PASS",
+     "Observed: 'run_labs M3: PASS (12/12)'."),
+    ("M3b-page-smoke", "2.5-labs", "tools/page_smoke.py --unit M3 --pages L04 L05 L06", "PASS",
+     "Observed: 'page_smoke modules/M/M3/L06.html: PASS' and 'page_smoke M3: PASS'; lab timings 0.0 to 0.2 s (package preload numpy 0.2 s), under 10 s."),
+    ("M3b-twins-run", "2.5-labs", "tests/labs/M3/lab-M3-L04-1.py, lab-M3-L05-1.py, lab-M3-L06-1.py under .venv/bin/python -I -W error", "PASS",
+     "Each exits 0. Outputs saved to /tmp/M3-v/b3/L04.out, L05.out, L06.out; printed values equal the page's expected blocks (see scan_b3.out)."),
+    ("M3b-embedded-output-blocks", "2.5-labs", "ledgers/M3/scripts/M3-b-r3/scan_b3.py; course/modules/M/M3/L04.html, L05.html, L06.html pre.expected and code blocks", "PASS",
+     "scan_b3.out: 'L04: embedded output equals fresh run: True; embedded code equals twin: True'; same True for L05 and L06."),
+    ("M3b-ruff-mypy", "3-commands", "tests/labs/M3/ (ruff check, ruff format --check); mypy --no-incremental on the three twins", "PASS",
+     "ruff check: 'All checks passed' (exit 0); ruff format --check: exit 0; mypy: 'Success: no issues found in 3 source files'."),
+    ("M3b-pytest-labs", "3-commands", "pytest -q -k M3 tests/test_labs.py tests/test_run_labs.py", "PASS",
+     "Observed 12 dots, no failures (the summary line was not captured by tail; count of 12 matches run_labs 12/12)."),
+    ("M3b-refs", "2.1-citations", "tools/verify_refs.py --unit M3; tools/verify_refs.py --offline", "PASS",
+     "Observed: 'live re-verification of M3: 2 of 560 entries, 0 problems'; 'offline integrity: 560 entries, 0 problems'. L04-L06 cite no registry key; their References sections attribute no claim (see M3b-citation-scope)."),
+    ("M3b-L04-lab1-counts", "2.2-numbers", P + "L04.html Lab 1 hypothesis (line 176), interpretation (line 265), Key results row 8 (line 415)", "PASS",
+     "Printed 200 of 200 (four counts), 1200 pairs, 1200 of 1200, 0.7071 match a fresh run. 200 x C(4,2)=6 = 1200 recomputed. Results are C, named Lab 1 (seed 2604)."),
+    ("M3b-L05-lab-numbers", "2.2-numbers", P + "L05.html Lab 1 hypothesis (line 177), Problems E2 (line 402), E3 (line 409); lab twin", "PASS",
+     "Independent recount: 118 negative and 4 zero grid angles, minimum -1.0; closed form 1 + 2 sin 2t gives negatives on (105,165) and (285,345) degrees, 120 of 360 = one third. 118/360 = 0.32777... = 0.3278 (E2). Part A -2, -1.0000, 3.0000 reproduced; Part D eigenvalues 0, 1, 3 match Remark 3.2."),
+    ("M3b-L06-lab-digits", "2.2-numbers", P + "L06.html Lab 1 interpretation (line 224), Key results row 7 (line 377); cards.json M3-c110", "PASS",
+     "Unrounded seed-0 4x3 singular values 2.23349708, 0.92497160, 0.33482548 (recheck_numbers_b3.py) round to 2.2335, 0.9250, 0.3348; printed output matches. The planted rank-2 count of 2 is a seeded result (C)."),
+    ("M3b-L04-proofs", "2.4-mathematics", P + "L04.html Lemma 1.3 (line 84), Lemma 1.4 (94), Lemma 2.1 (116), Lemma 2.2 (126), Theorem 2.3 (135-141), Prop 2.4 (151), Cor 2.5 (161)", "PASS",
+     "Every step re-derived: Lemma 2.1 conjugation argument; Lemma 2.2 real/imaginary parts; Theorem 2.3 induction (W invariant since <q,Aw> = lambda<q,w> = 0; S symmetric; A b_i = sum_k S_ki b_k; orthonormal eigenbasis; Q^{-1} = Q^T by Lemma 1.4). Assumptions cited where used (F1, F2 in Lemma 2.2; F3, F4 in Theorem 2.3)."),
+    ("M3b-L04-F1-complex", "2.4-mathematics", P + "L04.html Assumptions F1-F4 (lines 56-59); " + P + "L03.html Assumption F1 (line 56)", "PASS",
+     "L03 F1 is stated for real square matrices; L04 line 59 states it for square complex matrices and says it is also assumed there. Used in Lemma 2.2 (line 126) for complex null vectors, as stated."),
+    ("M3b-L04-examples-problems", "2.4-mathematics", P + "L04.html Example 2.6 (line 166), Remark 2.7 (171), Problems M1-M3, P1-P3, E1-E3, R1-R3 (lines 305-396)", "PASS",
+     "Example 2.6: QLQ^T = [[2,1],[1,2]], x^TAx = 2 at (1,0) (recheck). M1: <v,w> = 0 and eigenvalues (7 +- sqrt5)/2 (recheck: 4.618034, 2.381966). M2: QLQ^T = [[2,3],[3,2]]. M3: x^TAx = 6 both directly and via y. P1-P3 proofs correct (P3 uses no symmetry, as stated). E1-E3 values match. R1: z = (1,-i) gives lambda = i. R2, R3 proofs correct."),
+    ("M3b-L05-proofs", "2.4-mathematics", P + "L05.html Remark 1.2 (62), Prop 1.5 (82), Prop 1.6 (92), Thm 2.1 (114-115), Thm 2.2 (125), Prop 2.3 (135), Prop 2.4 (145), Ex 2.5 (150), Ex 2.6 (155), Rem 2.7 (160), Rem 3.2 (172)", "PASS",
+     "Theorem 2.1 (=>) now takes a real eigenvector w from x or y (line 114), so the earlier gap is closed; Theorem 2.2 (=>) uses the same w (line 125). Prop 2.4 and Example 2.5 recomputed: B^TB = [[2,1],[1,2]]. Example 2.6 char. poly and eigenvalues 3, -1 recomputed. Remark 3.2 char. poly -lambda^3+4lambda^2-3lambda recomputed at lambda = 2 (2 = 2)."),
+    ("M3b-L05-problems", "2.4-mathematics", P + "L05.html Problems M1-M3 (lines 342-359), P1-P3 (370-384), E1-E3 (392-409), R1-R3 (418-435)", "PASS",
+     "M1 eigenvalues 1, 3 (numpy); M2 eigenvalues 0, 5 and x=(2,-1) gives 0 (recheck); M3 eigenvalues 2, 4 and x^TAx = 4 at (1,1). R1: O_pi = -I gives -B; O_t B = O_s B forces O_t = O_s since B invertible. E2 fraction 118/360 = 0.3278 correct. Each proof step checked."),
+    ("M3b-L06-proofs", "2.4-mathematics", P + "L06.html Theorem 2.3 proof line 122", "FAIL",
+     "Re-derived all of Fact 1.2, Lemma 1.3, Prop 2.1, Thm 2.2 Steps 1-5, Thm 2.3, Prop 2.4 and Remark 2.5. The defect is in the similarity step of Theorem 2.3's proof (line 122): similarity is defined as 'B = P^{-1}AP', but the chain that follows is written as det(xI - P^{-1}BP) = det(P^{-1}(xI - B)P) = det(xI - B), which is a true identity but about B and P^{-1}BP, not about A and B. The notation is inconsistent with the definition two sentences earlier, so the step as written does not prove the stated claim for the pair (A, B)."),
+    ("M3b-L06-problems", "2.4-mathematics", P + "L06.html Empirical E1 prompt, line 318", "FAIL",
+     "Mechanics M1-M3, Proof P1-P3, Empirical E2-E3, Research R1-R3 recomputed and correct. E1's prompt (line 318) asks students to explain 'why this does not contradict the claim that the singular values determine A'. Theorem 2.3 says A determines the singular values, not the reverse: A and -A have the same singular values but differ. The solution (line 320) states the correct direction, so the prompt reverses it."),
+    ("M3b-L04-L06-cards-pass", "2.7-cards", P + "cards.json M3-c063..c078 (L04), c079..c100 (L05), c101..c114 (L06)", "PASS",
+     "All 52 cards read against the current lesson text. Each card number appears in its lesson (for example 0.7071 in L04 line 264; 118 of 360 and one third in L05 line 303; 2.2335, 0.9250, 0.3348 in L06 line 221). No duplicate card ids or fronts (scan). Card M3-c073 says 'about 0.7071' next to the exact value 1/sqrt2, which is a decimal rendering, not a banned approximation."),
+    ("M3b-grades", "2.3-grades", P + "L04.html Key results (lines 408-415); L05.html Key results (lines 446-453); L06.html Key results (lines 371-377)", "PASS",
+     "T rows are proved on the page (Lemmas, Theorems, Props, Remarks with proofs, or Remark 2.7 and Remark 3.2 computed on the page). Lab-derived rows are C with basis naming Lab 1 (seed, tolerance, sample). The T rows that use F1-F4 carry 'under Assumptions F1 to F4' in the table."),
+    ("M3b-hours", "hours", P + "L04.html data-hours 12; L05.html 12; L06.html 11; index.html data-hours-lessons 105, data-hours-project 45", "PASS",
+     "Lesson hours L01..L09: 12+11+12+12+12+11+11+12+12 = 105 = hub data-hours-lessons; 105 + 45 = 150 = 'Tier F 150 hours'. Pace is not judged (architect ruling)."),
+    ("M3b-process-words", "2.9-structure", P + "L04.html, L05.html, L06.html visible text", "PASS",
+     "Scanned for build, builder, builds, round, verifier, REQUESTS, unit report: the only hit is L06 line 325, 'Lab 1 builds a 4 x 3 matrix', which describes the lab's code and is not a process word."),
+    ("M3b-citation-scope", "2.1-citations", P + "L04.html Section 8 (line 508); L05.html Section 9 (line 542); L06.html Section 8 (line 457)", "PASS",
+     "Each References section states no passage locator was read and that no claim is attributed to axler2024linear or strang2023introduction. L06 line 457 says no result is attributed to a source. No bibliographic data, coefficient or theorem number is taken from memory in these pages."),
+    ("M3b-xref-lessons", "2.2-cross-refs", P + "L04.html Remark 1.5 (line 99); L05.html Problems M1-M2 (lines 345, 352), Example 2.5 (line 150); L06.html Section 3 (line 238)", "PASS",
+     "L03.html line 96 Example 1.6 is [[4,1],[1,3]]; L03.html line 298 Problem M2 is [[1,2],[2,4]] with eigenvalues 0, 5 (recomputed). Cross-lesson numbering cited correctly."),
+    ("M3b-define-before-use-other", "2.9-structure", P + "L06.html Section 2 (line 85)", "PASS",
+     "'The column space of A is the span of its columns (Lesson 1)' is defined before Theorem 2.2 (line 101) uses it. Lesson 1 defines span (Definition 2.1) and the standard basis (Example 3.9), as cited."),
+    ("M3b-L06-lab-title-simulated", "2.5-labs", P + "L06.html Lab 1 heading (line 136); lab docstring line 140", "PASS",
+     "Heading reads 'Lab 1 · The SVD identities on seeded matrices (SIMULATED)'; docstring says 'SIMULATED: every matrix is generated here'."),
+    ("M3b-L04-quadratic-form-term", "2.9-structure", P + "L04.html Corollary 2.5 title (line 155), Problem M3 title (line 317)", "PASS",
+     "Round-2 FAIL fixed: grep for 'quadratic form' in L04.html returns 0 lines. The corollary and problem titles now read 'x^TAx in eigen-coordinates'."),
+    ("M3b-L05-real-eigenvector-gap", "2.4-mathematics", P + "L05.html Theorem 2.1 proof (=>) line 114; Theorem 2.2 proof (=>) line 125", "PASS",
+     "Round-2 FAIL fixed: the (=>) direction now takes an eigenvalue lambda with complex eigenvector v = x + iy, uses Lesson 4 Lemma 2.1 to get lambda real, and then a nonzero real eigenvector w = x or y. 0 <= w^T A w = lambda ||w||^2 is valid for real w. Theorem 2.2 uses the same w."),
+    ("M3b-L06-two-routes", "2.9-structure", P + "L06.html why-it-matters (line 52)", "PASS",
+     "Round-2 FAIL fixed: line 52 no longer refers to 'the two routes'. It says the lab 'checks the SVD identities on seeded matrices' and Lesson 8 applies the spectral theorem to data."),
+    ("M3b-r3-L05-assumption-scope", "2.9-structure", P + "L05.html why-it-matters (line 51)", "FAIL",
+     "The why-it-matters paragraph says 'Proposition 2.4 shows that every positive semidefinite matrix has the form B^T B'. Proposition 2.4 (line 140) is stated 'Assuming F1 to F4 of Lesson 4', and its proof uses Theorem 2.3 through Theorem 2.1. The summary drops that assumption, although Lesson 4 line 57 says a result that uses F1 to F4 must say so."),
+    ("M3b-r3-L06-assumption-scope", "2.9-structure", P + "L06.html why-it-matters (line 52), Lab 1 interpretation (line 224), Misconception 2 (line 251)", "FAIL",
+     "Line 52 says 'It exists for every real matrix'; line 224 says Theorem 2.2 'is proved above for every real matrix'; line 251 says 'It holds for every real m x n matrix, including the zero matrix'. Theorem 2.2 (line 99) is stated 'Assuming F1 to F4 of Lesson 4', and its Step 1 uses the spectral theorem. Each universal claim omits that hypothesis, which the page's own convention (Lesson 4 line 57) requires a result to state."),
+    ("M3b-r3-L06-independence-step", "2.4-mathematics", P + "L06.html Fact 1.2 proof (line 70), Lemma 1.3 proof (line 80)", "PASS",
+     "Both proofs use 'orthonormal vectors are linearly independent' without a citation. The fact is Lesson 4 Lemma 1.3 (L04.html line 84), an earlier lemma of the same unit, with the same one-line proof. Recorded as a citation omission, not a gap."),
+    ("M3b-r3-L04-whymatters-L08", "2.2-cross-refs", P + "L04.html why-it-matters (line 51)", "PASS",
+     "'Lesson 8 applies it to a symmetric matrix of centred data, so its principal directions are perpendicular' is a signpost that names Lesson 8, which defines principal directions (L08.html line 82). Not a use of an undefined term."),
+    ("M3b-r3-scope-words", "2.9-structure", "ledgers/M3/scripts/M3-b-r3/scan_b3.py; /tmp/M3-v/b3/scan_b3.out", "PASS",
+     "All scope-word hits (every, all, only, any, same) were read in context. Each universal claim has a proof or a computation behind it, or is scoped to a lab sample. The ellipsis in L06 quiz prompt 'are...' (line 402) is a cloze blank, not omitted content."),
+    ("M3b-r3-quiz-numbers", "2.4-mathematics", P + "L04.html quiz (lines 421-504); L05.html quiz (459-538); L06.html quiz (383-453)", "PASS",
+     "Numeric answers recomputed: L04 6, 0.7071 (tolerance 5e-5), 2; L05 1, -2, 3, 1; L06 5, 30, 2, 8. Multiple-choice keys match the lesson text; explanations cite the right proposition or remark."),
+]
+
+fragment = {
+    "unit": "M3",
+    "slice": "M3-b",
+    "round": 3,
+    "verifier": "independent verifier (Haiku), M3-b round 3",
+    "pin": "aa3c26c50db182f7ef6289eb66fb9a09f1a3ff0a",
+    "base": "1817191 (round 2 pin; delta 1817191..aa3c26c)",
+    "previous_ledger": "/tmp/fanout-frags/B-M3-b.round2.json",
+    "checkout": "/tmp/verifyB3-M3-b",
+    "scratch": "/tmp/M3-v/b3",
+    "verified_at": "2026-10-28T16:00:00+00:00",
+    "verdict": "FAIL",
+    "rows": [{"id": r[0], "check": r[1], "location": r[2], "status": r[3], "evidence": r[4],
+              **({"fix": FIXES[r[0]]} if r[3] != "PASS" else {})} for r in rows] if False else [],
+    "mutants": [],
+    "registry_flags": [],
+    "freshness_flags": [],
+    "notes": [
+        "Slice is lessons L04-L06 and their twins: no project grader, so tools/mutate_graders.py and run_graders were not run (architect ruling).",
+        "Lab twins were run with .venv/bin/python -I -W error; a system python3 run failed for lack of numpy and was not used.",
+        "Not checked: course/index.html and cards outside M3-c063..c114 beyond the grep for 'Remark 1.7'; L01-L03, L07-L09 and the project are other slices.",
+        "Not checked: no live fetch of any external source; the unit cites no locator from axler2024linear or strang2023introduction, so no source claim was tested.",
+        "Hours judged only by arithmetic against the hub split (architect ruling).",
+    ],
+}
+
+FIXES = {
+    "M3b-L06-proofs": "Rewrite line 122 with one letter convention: det(xI - B) = det(xI - P^{-1}AP) = det(P^{-1}(xI - A)P) = det(xI - A).",
+    "M3b-L06-problems": "Change the E1 prompt to ask why the sign flip does not contradict the claim that A determines its singular values (Theorem 2.3).",
+    "M3b-r3-L05-assumption-scope": "Write 'Proposition 2.4, under Assumptions F1 to F4 of Lesson 4, shows that every positive semidefinite matrix has the form B^T B'.",
+    "M3b-r3-L06-assumption-scope": "Add 'under Assumptions F1 to F4 of Lesson 4' to the three universal claims at lines 52, 224 and 251.",
+}
+for r in rows:
+    if r[3] != "PASS":
+        assert r[0] in FIXES, r[0]
+fragment["rows"] = [
+    {"id": r[0], "check": r[1], "location": r[2], "status": r[3], "evidence": r[4], **({"fix": FIXES[r[0]]} if r[3] != "PASS" else {})}
+    for r in rows
+]
+fragment["summary"] = {
+    "rows": len(rows),
+    "pass": sum(r[3] == "PASS" for r in rows),
+    "fail": sum(r[3] == "FAIL" for r in rows),
+    "unverifiable": sum(r[3] == "UNVERIFIABLE" for r in rows),
+    "fail_ids": [r[0] for r in rows if r[3] == "FAIL"],
+}
+out = ROOT / "ledgers/M3/M3-b.json"
+out.write_text(json.dumps(fragment, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print(json.dumps(fragment["summary"]))

@@ -2,7 +2,7 @@
 
 Part A checks the closed form f^(k)(x) = k! / (1 - x)^(k+1) against the recursion f^(j+1) = (j+1) f^(j) / (1 - x)
 that the quotient rule gives, at three rational points and for k = 0 to 8. Part B takes x = 3/10 and degrees
-n = 0 to 10, and checks that the error f(x) - T_n(x) equals x^(n+1) / (1 - x) exactly, where T_n(x) is the Taylor
+n = 0 to 10, and checks that the error f(x) - P_n(x) equals x^(n+1) / (1 - x) exactly, where P_n(x) is the Taylor
 polynomial of degree n at 0 (the sum of x^k for k = 0 to n, because f^(k)(0) = k!). Part C takes x = 2, outside
 the interval |x| < 1, and prints the same errors. Part D takes g(x) = x |x|. Its first derivative at 0 is computed
 from the definition; for x != 0 the page derives g'(x) = 2|x|, and the second derivative at 0 is tested through
@@ -72,20 +72,20 @@ def part_b() -> None:
         if previous_error is not None and error / previous_error != X_B:
             raise AssertionError(f"error ratio is not x at n = {n}")
         previous_error = error
-        print(f"part B: n = {n:2d}  T_n(x) = {float(t):.10f}  error = {float(error):.10f}")
+        print(f"part B: n = {n:2d}  P_n(x) = {float(t):.10f}  error = {float(error):.10f}")
     print("part B: error equals x^(n+1)/(1-x) exactly at every degree, and each error is x times the one before")
 
 
 def part_c() -> None:
     x = Fraction(2)
     fx = f(x)
-    print(f"part C: x = 2, f(x) = {fx}; the partial sums T_n(2) are 2^(n+1) - 1, printed below")
+    print(f"part C: x = 2, f(x) = {fx}; the partial sums P_n(2) are 2^(n+1) - 1, printed below")
     for n in range(N_MAX + 1):
         t = taylor_poly(x, n)
         error = fx - t
         if error != x ** (n + 1) / (1 - x):
             raise AssertionError(f"remainder identity fails at x = 2, n = {n}")
-        print(f"part C: n = {n:2d}  T_n(2) = {int(t):6d}  error = {int(error):6d}")
+        print(f"part C: n = {n:2d}  P_n(2) = {int(t):6d}  error = {int(error):6d}")
     print("part C: the error at n = 10 grows in absolute value, so the degree does not help at x = 2")
 
 

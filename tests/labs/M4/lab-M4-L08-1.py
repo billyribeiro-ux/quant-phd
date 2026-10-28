@@ -5,9 +5,10 @@ Standard library only (random). The mean is mu = (1, -2) and the factor is A = [
 target covariance is Sigma = A A^T = [[4, 2], [2, 2]]. Part A uses exact integer matrix arithmetic. It checks
 that A A^T equals Sigma, that B = A Q, with Q the rotation [[0, -1], [1, 0]], also has B B^T equal to Sigma,
 and that A^T A is a different matrix. Part B draws n = 20000 standard normal vectors Z (two random.gauss(0, 1)
-values per draw, seed 2026), forms X = mu + A Z and Y = mu + B Z from the same Z, and prints the sample means
-and the sample covariance matrices (divisor n - 1) beside the exact values. A sample is one random run, so its
-entries estimate the exact entries and are not equal to them.
+values per draw, seed 2026), forms X = mu + A Z and Y = mu + B Z from the same Z, and prints the sample mean of X
+beside mu, the sample covariance matrix of X (divisor n - 1) beside Sigma, the largest entry gaps of that matrix
+from Sigma and from A^T A, and the sample covariance matrix of Y with its largest entry gap from Sigma.
+A sample is one random run, so its entries estimate the exact entries and are not equal to them.
 """
 
 from __future__ import annotations

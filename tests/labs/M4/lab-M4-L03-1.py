@@ -8,7 +8,7 @@ moment formulas against a two-point Bernoulli law with p = 1/10, where the close
 squared skewness and (1 - 3pq) / (pq) for the kurtosis are derived on the lesson page, with q = 1 - p.
 Last, it draws 20000 seeded values (seed 2026) from the skewed law and prints the sample skewness and
 kurtosis, using the population form of each moment with divisor n. A sample is one random run. Its
-values are estimates that a different seed would move, and the exact values printed above them are not.
+values are estimates that depend on the seed, and the exact values printed above them do not.
 """
 
 from __future__ import annotations

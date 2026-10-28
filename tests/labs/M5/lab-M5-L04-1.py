@@ -43,7 +43,7 @@ def squared_distance(x: int, y: int) -> int:
     return (x - y) ** 2
 
 
-def axiom_failures[T](points: Sequence[T], dist: Callable[[T, T], Number], slack: Number) -> dict[str, int]:
+def axiom_failures[P](points: Sequence[P], dist: Callable[[P, P], Number], slack: Number) -> dict[str, int]:
     """Count, for each metric axiom, the sample tuples on which it fails.
 
     Nonnegativity and identity use pairs, symmetry uses pairs, and the triangle inequality uses triples
@@ -64,7 +64,7 @@ def axiom_failures[T](points: Sequence[T], dist: Callable[[T, T], Number], slack
     return failures
 
 
-def report[T](label: str, points: Sequence[T], dist: Callable[[T, T], Number], slack: Number) -> dict[str, int]:
+def report[P](label: str, points: Sequence[P], dist: Callable[[P, P], Number], slack: Number) -> dict[str, int]:
     """Print the number of pairs and triples checked, then the failure count for each axiom."""
     failures = axiom_failures(points, dist, slack)
     print(f"{label} points {len(points)} pairs {len(points) ** 2} triples {len(points) ** 3}")

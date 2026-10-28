@@ -1,15 +1,14 @@
 """M2 L08 lab 1: the Lagrange remainder of 1/(1 - x) at 0, checked at sampled points.
 
-For f(x) = 1/(1 - x) and x0 = 0, the Taylor polynomial of degree n is T_n(x) = sum of x^k for k = 0..n, and the
-remainder is R_n(x) = f(x) - T_n(x) = x^(n+1)/(1 - x) (Lesson 7, Proposition 2.3). Taylor's theorem with the
-Lagrange form (Theorem 2.1 of this lesson) says R_n(x) = f^(n+1)(xi) x^(n+1) / (n+1)!
-for some xi strictly between 0 and x.
-Here f^(n+1)(t) = (n+1)! / (1 - t)^(n+2), so the theorem asks for xi with (1 - xi)^(n+2) = 1 - x. The program
-computes that xi in closed form, xi = 1 - (1 - x)^(1/(n+2)), and checks two things at 19 x 7 = 133 sampled points
-(x = k/20 for k = 1..19; n = 0..6): that 0 < xi < x, and that the Lagrange form evaluated at xi equals the exact
-remainder. Part B checks the bound of Corollary 2.2 of this lesson on [0, 1/2]: |R_n(x)| <= 2^(n+2) x^(n+1), at every
-sampled x in that interval. Part C prints a few rows of the table. Standard library only; no randomness and no
-network access.
+For f(x) = 1/(1 - x) and x0 = 0, the Taylor polynomial of degree n is P_n(x) = sum of x^k for k = 0..n, and the
+remainder is R_n(x) = f(x) - P_n(x) = x^(n+1)/(1 - x) (Lesson 7, Proposition 2.3). Taylor's theorem with the Lagrange
+form (Theorem 2.1 of this lesson) says R_n(x) = f^(n+1)(xi) x^(n+1) / (n+1)! for some xi strictly between 0 and x.
+Here f^(n+1)(t) = (n+1)! / (1 - t)^(n+2), so the theorem asks for xi with (1 - xi)^(n+2) = 1 - x. The program computes
+that xi in closed form, xi = 1 - (1 - x)^(1/(n+2)), and checks two things at each of the 133 (x, n) pairs: x = k/20
+for k = 1..19 (19 values) and n = 0..6 (7 degrees), that 0 < xi < x, and that the Lagrange form evaluated at xi equals
+the exact remainder. Part B checks the bound of Corollary 2.2 of this lesson on [0, 1/2]: |R_n(x)| <= 2^(n+2) x^(n+1),
+at every sampled x in that interval. Part C prints a few rows of the table. Standard library only; no randomness and
+no network access.
 """
 
 from __future__ import annotations
@@ -51,8 +50,8 @@ def part_a() -> None:
             if not math.isclose(lagrange_form(x, n, xi), remainder_exact(x, n), rel_tol=1e-9):
                 raise AssertionError(f"Lagrange form differs from the exact remainder at x = {x}, n = {n}")
             checks += 1
-    print(f"part A: {checks} points (x = k/20, k = 1 to 19; n = 0 to 6): 0 < xi < x at every point")
-    print("part A: the Lagrange form at xi equals the exact remainder to relative error 1e-9 at every point")
+    print(f"part A: {checks} (x, n) pairs (x = k/20, k = 1 to 19; n = 0 to 6): 0 < xi < x at every pair")
+    print("part A: the Lagrange form at xi equals the exact remainder to relative error 1e-9 at every pair")
 
 
 def part_b() -> None:
@@ -65,7 +64,7 @@ def part_b() -> None:
             if not remainder_exact(x, n) <= bound:
                 raise AssertionError(f"Corollary bound fails at x = {x}, n = {n}")
             checks += 1
-    print(f"part B: the bound |R_n(x)| <= 2^(n+2) x^(n+1) holds at all {checks} points with 0 < x <= 1/2")
+    print(f"part B: the bound |R_n(x)| <= 2^(n+2) x^(n+1) holds at all {checks} (x, n) pairs with 0 < x <= 1/2")
 
 
 def part_c() -> None:

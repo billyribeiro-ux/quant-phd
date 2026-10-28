@@ -4,7 +4,7 @@ SIMULATED: the 12 observations and the response are generated here from a seeded
 are read. Units: the response and the fitted values are in the same arbitrary units; no unit is claimed.
 
 The design matrix A has full column rank (an intercept and two regressors). The lab checks, to the tolerances
-printed, the statements of Theorems 1.2, 1.3 and 2.2 and Remark 1.4: the projection matrix
+printed, the statements of Theorem 1.2, Theorem 2.2 and Remark 1.4: the projection matrix
 P = A (A^T A)^{-1} A^T is symmetric and idempotent, Py equals A beta where beta solves the normal equations
 A^T A beta = A^T y, the residual is orthogonal to every column of A, and the Pythagorean identity holds. The
 coefficients are also compared with NumPy's least-squares routine, used here only as an independent direct solver.

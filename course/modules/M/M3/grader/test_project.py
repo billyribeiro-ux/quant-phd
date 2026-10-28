@@ -366,6 +366,25 @@ def test_clip_repair_floor_raises_eigenvalues_below_it() -> None:
     assert worst <= 1e-9, "clip_repair must set every eigenvalue below the floor to the floor, then rescale"
 
 
+def test_clip_repair_negative_floor_keeps_eigenvalue_above_it() -> None:
+    """[[1, 1.3], [1.3, 1]] has eigenvalues 2.3 and -0.3. With floor -0.5, -0.3 is not below the floor, so nothing
+    changes and the repair returns the input (its diagonal is already 1)."""
+    m = [[1.0, 1.3], [1.3, 1.0]]
+    y = as_matrix(sol.clip_repair(m, floor=-0.5), 2)
+    worst = max(abs(y[i][j] - m[i][j]) for i in range(2) for j in range(2))
+    assert worst <= 1e-9, "clip_repair must leave an eigenvalue that lies above a negative floor unchanged"
+
+
+def test_clip_repair_negative_floor_raises_eigenvalue_below_it() -> None:
+    """[[1, 1.3], [1.3, 1]] has eigenvalues 2.3 and -0.3. With floor -0.2, -0.3 lies below the floor and is set to -0.2.
+    The rebuilt matrix has diagonal 1.05 and off-diagonal 1.25; rescaling by 1.05 gives off-diagonal 1.25 / 1.05."""
+    y = as_matrix(sol.clip_repair([[1.0, 1.3], [1.3, 1.0]], floor=-0.2), 2)
+    assert abs(y[0][1] - 1.25 / 1.05) <= 1e-9 and abs(y[1][0] - 1.25 / 1.05) <= 1e-9, (
+        "clip_repair must set an eigenvalue below a negative floor to the floor, then rescale"
+    )
+    assert abs(y[0][0] - 1.0) <= 1e-9 and abs(y[1][1] - 1.0) <= 1e-9, "clip_repair output must have unit diagonal"
+
+
 def test_clip_repair_floor_below_every_eigenvalue_changes_nothing() -> None:
     """Eigenvalues are set to the floor only when they are below it: with floor -0.5, which lies below every
     eigenvalue of a positive definite unit-diagonal matrix, the matrix comes back unchanged."""
@@ -572,6 +591,17 @@ def test_weights_accept_asymmetry_within_tolerance(i: int, j: int, sign: float) 
     base = [[1.0, 0.3], [0.3, 1.0]]
     near = symmetric_pair(base, i, j, sign * 1e-10)
     weights_sum_check(sol.comparison_weights(near, [0.1, 0.2]), 2)
+
+
+@pytest.mark.parametrize("sign", [1.0, -1.0])
+def test_weights_accept_asymmetry_exactly_the_tolerance(sign: float) -> None:
+    """The asymmetry rule refuses a pair that differs by MORE than 1e-9; a pair that differs by exactly 1e-9 is
+    accepted (0.0 and 1e-9 make the difference exactly the tolerance in floating point)."""
+    tie = [[1.0, 0.0], [sign * 1e-9, 1.0]]
+    must_not_raise(
+        lambda: sol.comparison_weights(tie, [0.1, 0.2]),
+        "comparison_weights on an entry pair that differs by exactly 1e-9",
+    )
 
 
 @pytest.mark.parametrize(("i", "j"), [(0, 1), (1, 0)], ids=["upper", "lower"])

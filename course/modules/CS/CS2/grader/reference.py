@@ -90,11 +90,12 @@ class RollingMinMax:
 
 
 class QuantileSketch:
-    """Deterministic rank-error sketch (Greenwald-Khanna style tuples).
+    """Deterministic rank-error sketch: a list of tuples (value, g, delta), with no published sketch cited.
 
-    Each tuple is (value, g, delta). With n values added, the tuples hold the stored values in sorted order,
-    the sum of the g values is n, and g + delta never exceeds floor(2 * epsilon * n) + 1. The exact rank of a
-    stored value lies between the running sum of g up to it and that sum plus its delta.
+    With n values added, the tuples hold the stored values in sorted order, the sum of the g values is n, and
+    g + delta never exceeds floor(2 * epsilon * n) + 1. For each stored value, some copy of it has an exact rank
+    between the running sum of g up to it and that sum plus its delta. The specification on the project page
+    states the guarantee.
     """
 
     def __init__(self, epsilon: float) -> None:

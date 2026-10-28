@@ -1,13 +1,13 @@
 """M2 L11 lab 1: integration by parts and substitution checked by midpoint quadrature.
 
 Part A checks the integration-by-parts identity for u(x) = x^2 and v'(x) = (1 - x)^3 on [0, 1], with the
-antiderivative v(x) = -(1 - x)^4 / 4, so that the identity reads
-int_0^1 x^2 (1 - x)^3 dx = [u v]_0^1 - int_0^1 2x v(x) dx. Part B checks the substitution identity with
-g(t) = t^3 + t on [0, 1] and f(x) = x^2: the integral of f over [g(0), g(1)] = [0, 2] equals the integral of
-f(g(t)) g'(t) over [0, 1]. Part C prints the same left side with the limits left unchanged, which gives a
-different value. Each integral is evaluated by the midpoint rule with N = 100000 subintervals, and each result is
-compared with the exact value from the page: 1/60 for part A and 8/3 for part B. Standard library only; no
-randomness and no network access.
+antiderivative v(x) = -(1 - x)^4 / 4, so that the identity reads int_0^1 x^2 (1 - x)^3 dx = [u v]_0^1 - int_0^1 2x
+v(x) dx. Part B checks the substitution identity with g(t) = t^3 + t on [0, 1] and f(x) = x^2: the integral of f over
+[g(0), g(1)] = [0, 2] equals the integral of f(g(t)) g'(t) over [0, 1]. Part C prints the integral of x^2 over [0, 1],
+the left side of Theorem 3.1 with the limits [g(0), g(1)] = [0, 2] replaced by [a, b] = [0, 1]; that value is
+different. Each integral is evaluated by the midpoint rule with N = 100000 subintervals, and each result is compared
+with the exact value from the page: 1/60 for part A and 8/3 for part B. Standard library only; no randomness and no
+network access.
 """
 
 from __future__ import annotations

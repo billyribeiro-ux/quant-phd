@@ -1,13 +1,14 @@
 """CS2 lab L04: comparison counts of two sorts, the comparison lower bound, and binary-search probes.
 
-SIMULATED inputs: Parts A and B use permutations of 0..n-1 drawn from a seeded generator (seed
-20261028); Parts C and D use sorted lists of integers that the code builds.
+Inputs. Part A uses SIMULATED permutations of 0..n-1 drawn from a seeded generator (seed 20261028).
+Part B uses every permutation of 0..n-1 for n = 2 to 7. Part C uses the integers n = 2 to 1000.
+Part D uses sorted lists of integers that the code builds.
 No market data, no network, standard library only. Every count is a number of key comparisons. No time is
 measured, so every run prints the same lines.
 
 Part A: comparisons of insertion sort and merge sort on seeded random permutations, and on sorted input.
-Part B: the worst case over every permutation of n = 2 to 7, checked against the lower bound
-ceil(log2 n!) for any comparison sort and the merge-sort bound n * ceil(log2 n).
+Part B: the worst case over every permutation of n = 2 to 7 for insertion sort and merge sort,
+compared with the lower bound ceil(log2 n!) and the merge-sort bound n * ceil(log2 n).
 Part C: the inequality log2(n!) >= (n/2) log2(n/2) for 2 <= n <= 1000, on floats with the margin printed.
 Part D: unsuccessful binary-search probes over all n + 1 gaps of a sorted list of n values, for every n from
 1 to 1000, compared with floor(log2 n) + 1, which equals n.bit_length().

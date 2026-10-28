@@ -10,7 +10,8 @@ Each test checks a property or a number that the specification on the project pa
 property it checks and never prints the expected value. The exact reference is Fraction arithmetic on the floats of
 the stream, so the tolerances (relative 1e-9, absolute floor 1e-9) are about the library and not about rounding in
 the reference. Tests that expect a ValueError do so only for the conditions the specification names. For every
-other invalid input the test accepts either an exception of any type or a correct answer, and nothing else.
+other invalid input the test accepts an exception of any type, or the correct answer where the page allows one, and
+nothing else.
 """
 
 from __future__ import annotations
@@ -481,6 +482,30 @@ def test_rolling_float_window_that_denotes_three_is_refused_or_correct() -> None
     refuse_or_correct(action, min(VALUES[3:6]), "a float window that denotes three")
 
 
+def test_rolling_bool_window_is_refused_or_correct() -> None:
+    def action() -> float:
+        wrong_type: Any = True  # a boolean window: True denotes the window 1
+        r = RollingMinMax(wrong_type)
+        for x in VALUES[:6]:
+            r.push(x)
+        smallest: float = r.minimum()
+        return smallest
+
+    refuse_or_correct(action, VALUES[5], "a boolean window")
+
+
+def test_rolling_padded_string_window_is_refused_or_correct() -> None:
+    def action() -> float:
+        wrong_type: Any = " 3 "  # a padded string: it denotes the window 3 only if it is parsed
+        r = RollingMinMax(wrong_type)
+        for x in VALUES[:6]:
+            r.push(x)
+        smallest: float = r.minimum()
+        return smallest
+
+    refuse_or_correct(action, min(VALUES[3:6]), "a padded string window")
+
+
 # ------------------------------------------------------------------ quantile sketch: named conditions
 
 
@@ -606,7 +631,9 @@ def test_sketch_guarantee_holds_on_sorted_streams(order: str) -> None:
 @pytest.mark.parametrize("eps", [0.05, 0.1, 0.2])
 @pytest.mark.parametrize("length", range(1, 9))
 def test_sketch_rank_guarantee_on_short_streams(length: int, eps: float) -> None:
-    """Short streams, where epsilon n is below one half: the slack is smaller than a single rank step."""
+    """Short streams of one to eight values. With epsilon 0.05 and 0.1 the slack epsilon n is below one rank at every
+    length here; with epsilon 0.2 it is below one up to length four, and at lengths five to eight the same two
+    inequalities are still checked."""
     stream = VALUES[:length]
     sketch = sketch_of(stream, eps)
     for q in PROBES:
