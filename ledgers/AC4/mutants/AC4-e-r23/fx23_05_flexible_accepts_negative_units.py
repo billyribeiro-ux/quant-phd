@@ -1,5 +1,5 @@
 # Student error: flexible_budget clamps a negative actual unit count to zero instead of raising ValueError.
-"""Reference solution for the AC4 budget and variance engine (budget_engine.py).
+"""Student-error mutant of the AC4 budget and variance engine (budget_engine.py): flexible_budget clamps a negative actual unit count to zero instead of raising ValueError.
 
 The grader copies this file to budget_engine.py in a scratch directory and runs the whole suite on it. It is not
 shipped to learners as an answer. Conventions (the same as the project page):
