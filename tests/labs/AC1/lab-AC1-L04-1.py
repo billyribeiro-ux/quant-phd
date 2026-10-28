@@ -1,4 +1,4 @@
-"""AC1 L04 lab 1: one SIMULATED transaction set, two recognition rules, two cash-flow presentations.
+"""AC1 L04 lab 1: one SIMULATED transaction set, two recognition rules, two cash-flow arrangements.
 
 SIMULATED: every transaction is generated from a seeded generator. No filing is read and no company is represented.
 Units: integer cents for every money amount. The lab prints no ratio.
