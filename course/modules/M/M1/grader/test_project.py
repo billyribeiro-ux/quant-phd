@@ -24,6 +24,7 @@ import os
 import sys
 import warnings
 from collections.abc import Callable
+from decimal import Decimal, localcontext
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -86,12 +87,40 @@ EXACT2 = exact_rows(INST2["principal_cents"], INST2["annual_bps"], INST2["months
 
 
 def must_raise(call: Callable[[], object], condition: str) -> None:
-    """Fail unless call() raises ValueError. The specification names ValueError for every invalid input."""
+    """Fail unless call() raises ValueError. Used only for the conditions the specification names with ValueError:
+    a non-finite number, a boolean where a number is meant, a float where a whole number is meant, and the ranges."""
     try:
         call()
     except ValueError:
         return
     pytest.fail(f"{condition}: the specification requires a ValueError, and none was raised.")
+
+
+def must_refuse(
+    call: Callable[[], object],
+    condition: str,
+    *,
+    rate_values: tuple[object, ...] = (),
+    count_values: tuple[object, ...] = (),
+) -> None:
+    """Fail unless call() raises an exception for an input of the wrong type.
+
+    The specification names ValueError for the invalid inputs it lists: a boolean, a float where a whole number is
+    meant, a non-finite number, a count that is not a whole number of periods, months or cents, and the ranges. A
+    count given as a string or None is "not a whole number", so it must raise ValueError. A rate or a growth rate
+    given as a string or None is not among the named conditions (the page names the sign and the finiteness of a
+    rate, not its type), so a TypeError from a correct implementation passes too.
+    """
+    counts_are_numbers = all(isinstance(value, (int, float)) for value in count_values)
+    rates_are_numbers = all(isinstance(value, (int, float)) for value in rate_values)
+    accepted: tuple[type[Exception], ...] = (
+        (ValueError, TypeError) if counts_are_numbers and not rates_are_numbers else (ValueError,)
+    )
+    try:
+        call()
+    except accepted:
+        return
+    pytest.fail(f"{condition}: the input must be refused with an exception, and none was raised.")
 
 
 def close(a: float, b: float, rel: float) -> bool:
@@ -187,6 +216,23 @@ def test_annuity_factor_zero_rate_is_the_number_of_periods() -> None:
     assert sol.annuity_factor(0.0, 12) == 12
 
 
+def test_annuity_factor_at_a_tiny_rate_is_not_taken_as_zero() -> None:
+    """A rate of 5e-10 is not zero, so the factor is the closed form at that rate, not the number of periods. With
+    100,000 periods the exact factor is 99,997.5 and a rate taken as zero returns 100,000, a relative error of 2.5e-5.
+    The exact value is computed in 80-digit decimal arithmetic from the rate as written. The tolerance is 1e-6, not
+    1e-9: the float closed form itself loses about 8e-8 relative here in the subtraction 1 - (1+r)^-n, as any float
+    implementation of it does, and 1e-6 sits between that loss and the error of a rate taken as zero."""
+    rate, periods = 5e-10, 100_000
+    with localcontext() as ctx:
+        ctx.prec = 80
+        exact_rate = Decimal(repr(rate))
+        exact = float((1 - (1 + exact_rate) ** (-periods)) / exact_rate)
+    got = sol.annuity_factor(rate, periods)
+    assert close(got, exact, 1e-6), (
+        "a rate of 5e-10 is not zero: the factor must be the closed form at that rate, not the number of periods"
+    )
+
+
 def test_annuity_factor_moves_the_right_way() -> None:
     """More periods raise the value of an annuity; a higher rate lowers it."""
     assert sol.annuity_factor(ANN_RATE, ANN_N + 1) > sol.annuity_factor(ANN_RATE, ANN_N)
@@ -244,7 +290,12 @@ def test_annuity_accepts_a_rate_just_above_minus_one() -> None:
     ],
 )
 def test_annuity_factor_rejects_the_wrong_types(rate: Any, periods: Any) -> None:
-    must_raise(lambda: sol.annuity_factor(rate, periods), "a rate or a period count of the wrong type")
+    must_refuse(
+        lambda: sol.annuity_factor(rate, periods),
+        "a rate or a period count of the wrong type",
+        rate_values=(rate,),
+        count_values=(periods,),
+    )
 
 
 @pytest.mark.parametrize(
@@ -266,7 +317,7 @@ def test_annuity_factor_rejects_the_wrong_types(rate: Any, periods: Any) -> None
 )
 def test_annuity_due_rejects_invalid_inputs(rate: Any, periods: Any, condition: str) -> None:
     """The due factor is the ordinary factor times (1 + r), so it must refuse exactly what the ordinary one refuses."""
-    must_raise(lambda: sol.annuity_due_factor(rate, periods), condition)
+    must_refuse(lambda: sol.annuity_due_factor(rate, periods), condition, rate_values=(rate,), count_values=(periods,))
 
 
 def test_perpetuity_factor_is_one_over_the_rate() -> None:
@@ -328,6 +379,13 @@ def test_growing_partial_sum_identity() -> None:
     for n in (1, 2, 10, 60):
         partial = sum(((1 + g) ** (k - 1)) / ((1 + r) ** k) for k in range(1, n + 1))
         assert close(partial, (1 - q**n) / (r - g), 1e-12), "the finite partial sum must equal (1 - q^N) / (r - g)"
+
+
+def test_growing_perpetuity_accepts_an_integer_zero_growth() -> None:
+    """Zero growth is valid whether it is given as the integer 0 or the float 0.0."""
+    assert close(sol.growing_perpetuity_factor(PERP_RATE, 0), sol.perpetuity_factor(PERP_RATE), 1e-12), (
+        "an integer zero growth is a valid growth: the growing perpetuity is the level perpetuity"
+    )
 
 
 def test_growing_perpetuity_with_zero_growth_is_the_perpetuity() -> None:
@@ -615,6 +673,11 @@ def test_perpetuity_rejects_a_zero_or_negative_rate() -> None:
     must_raise(lambda: sol.perpetuity_factor(-0.02), "a negative rate")
 
 
+def test_perpetuity_refuses_an_integer_zero_rate() -> None:
+    """The rate must be above zero, so the integer 0 is refused as the float 0.0 is."""
+    must_raise(lambda: sol.perpetuity_factor(0), "an integer zero rate: the value is not finite")
+
+
 def test_perpetuity_rejects_a_non_finite_rate() -> None:
     must_raise(lambda: sol.perpetuity_factor(math.nan), "a NaN rate")
 
@@ -631,7 +694,7 @@ def test_perpetuity_rejects_a_non_finite_rate() -> None:
     ],
 )
 def test_perpetuity_rejects_non_finite_and_wrong_type_rates(rate: Any, condition: str) -> None:
-    must_raise(lambda: sol.perpetuity_factor(rate), condition)
+    must_refuse(lambda: sol.perpetuity_factor(rate), condition, rate_values=(rate,))
 
 
 def test_perpetuity_accepts_a_tiny_positive_rate() -> None:
@@ -705,7 +768,7 @@ def test_growing_perpetuity_rejects_growth_below_minus_one() -> None:
     ],
 )
 def test_growing_perpetuity_rejects_wrong_types(rate: Any, growth: Any, condition: str) -> None:
-    must_raise(lambda: sol.growing_perpetuity_factor(rate, growth), condition)
+    must_refuse(lambda: sol.growing_perpetuity_factor(rate, growth), condition, rate_values=(rate, growth))
 
 
 def test_growing_perpetuity_accepts_growth_just_inside_both_bounds() -> None:
@@ -765,7 +828,12 @@ def test_growing_perpetuity_moves_the_right_way() -> None:
     ],
 )
 def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: Any) -> None:
-    must_raise(lambda: sol.level_payment_cents(principal, rate, months), "an invalid loan")
+    must_refuse(
+        lambda: sol.level_payment_cents(principal, rate, months),
+        "an invalid loan",
+        rate_values=(rate,),
+        count_values=(principal, months),
+    )
 
 
 @pytest.mark.parametrize(
@@ -791,6 +859,7 @@ def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: 
         (1000, 0.05, "12"),
         (1000, 0.05, None),
         (1000, math.nan, 12),
+        (1000, math.inf, 12),
         (1000, -math.inf, 12),
         (1000, -1e-12, 12),
         (1000, 0.05, -1),
@@ -799,7 +868,12 @@ def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: 
     ],
 )
 def test_schedule_rejects_invalid_loans(principal: Any, rate: Any, months: Any) -> None:
-    must_raise(lambda: sol.amortization_schedule(principal, rate, months), "an invalid loan")
+    must_refuse(
+        lambda: sol.amortization_schedule(principal, rate, months),
+        "an invalid loan",
+        rate_values=(rate,),
+        count_values=(principal, months),
+    )
 
 
 def test_invalid_input_message_names_the_condition() -> None:

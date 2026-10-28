@@ -447,15 +447,22 @@ def main() -> None:
         )
 
     print()
+    # Checks 1 to 4 as printed above. The investing and financing equalities of Proposition 3.1 are not checked here.
     articulated = all(
-        indirect[y]["operating"] == direct[y]
+        sheets[y]["total_assets"] == sheets[y]["total_liabilities_and_equity"]
+        and indirect[y]["operating"] == direct[y]
         and sheets[y - 1]["cash"] + sum(cash_flow_statement(ledger, y)[1][a] for a in ACTIVITIES[:3])
         == sheets[y]["cash"]
         and sheets[y]["retained_earnings"] - sheets[y - 1]["retained_earnings"]
         == income_statement(ledger, y)["net_income"] - ledger.net("dividends", year=y)
+        and sheets[y - 1]["equipment_at_cost"]
+        - sheets[y - 1]["accumulated_depreciation"]
+        + ledger.net("equipment", year=y)
+        - income_statement(ledger, y)["depreciation"]
+        == sheets[y]["equipment_at_cost"] - sheets[y]["accumulated_depreciation"]
         for y in YEARS
     )
-    print(f"all articulation identities hold in every year: {articulated}")
+    print(f"checks 1 to 4 hold in every year: {articulated}")
 
 
 main()

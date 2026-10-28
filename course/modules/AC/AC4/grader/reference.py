@@ -61,7 +61,7 @@ def _case(case: object) -> tuple[int, int, int, list[dict[str, Any]]]:
     fixed = _nonnegative(case["fixed_overhead_cents"], "fixed_overhead_cents")
     actual_inputs = _nonnegative(case["actual_inputs_used"], "actual_inputs_used")
     raw = case["products"]
-    if not isinstance(raw, list | tuple) or not raw:
+    if not isinstance(raw, list) or not raw:
         raise ValueError("the case needs at least one product")
     products: list[dict[str, Any]] = []
     seen: set[str] = set()

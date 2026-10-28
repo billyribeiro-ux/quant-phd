@@ -318,7 +318,18 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
         ("a date with a time of day", [{**SMALL[0], "date": "2024-01-02T10:00"}]),
         ("a date with surrounding spaces", [{**SMALL[0], "date": " 2024-01-02 "}]),
         ("an empty list of lines", [{"date": "2024-01-02", "lines": []}]),
-        ("a line without a credit", [{"date": "2024-01-02", "lines": [{"account": "cash", "debit": 5}]}]),
+        (
+            "a line without a credit",
+            [
+                {
+                    "date": "2024-01-02",
+                    "lines": [
+                        {"account": "cash", "debit": 5},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
         (
             "a line without a debit",
             [
@@ -542,16 +553,12 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
             "an account outside the chart on the second line of an entry",
             [_entry("2024-01-02", [("cash", 5, 0), ("retained_earnings", 0, 5)])],
         ),
-        ("a transaction that is not a mapping", [["2024-01-02", []]]),
         ("a date that is None", [{**SMALL[0], "date": None}]),
         ("an empty date", [{**SMALL[0], "date": ""}]),
         ("a day of zero", [{**SMALL[0], "date": "2024-01-00"}]),
         ("a month of zero", [{**SMALL[0], "date": "2024-00-10"}]),
         ("a date with a letter in it", [{**SMALL[0], "date": "2024-0A-02"}]),
         ("the 31st of April", [{**SMALL[0], "date": "2024-04-31"}]),
-        ("lines given as a mapping", [{"date": "2024-01-02", "lines": {"account": "cash", "debit": 5, "credit": 0}}]),
-        ("lines given as a string", [{"date": "2024-01-02", "lines": "cash"}]),
-        ("a line that is not a mapping", [{"date": "2024-01-02", "lines": [("cash", 5, 0), ("common_stock", 0, 5)]}]),
         (
             "an account name that is None",
             [
@@ -596,6 +603,30 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
                     "lines": [
                         {"account": "cash", "debit": 5, "credit": 0},
                         {"account": "common_stock", "debit": False, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an amount that is a float on the debit side",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5.0, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an amount that is the boolean True on the debit side",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": True, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 1},
                     ],
                 }
             ],

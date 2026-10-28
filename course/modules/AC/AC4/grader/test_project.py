@@ -21,6 +21,7 @@ import json
 import math
 import os
 import sys
+import types
 from collections.abc import Callable, Mapping
 from fractions import Fraction
 from pathlib import Path
@@ -340,7 +341,7 @@ def test_exact_half_cent_rounds_up() -> None:
         },
     ]
     case = with_products(rows, actual_inputs_used=0)
-    assert sol.flexible_budget(case, 1)["revenue_cents"] == 501, "a half cent rounds up, to 501."
+    assert sol.flexible_budget(case, 1)["revenue_cents"] == 501, "a half cent must round up, not down."
     assert oracle(case)["flex_revenue"] == 501, "the test oracle must round a half cent up."
     decomposition_matches(case)
 
@@ -407,7 +408,7 @@ def test_price_variance_is_unfavourable_when_every_price_falls() -> None:
     units = sum(r["actual_units"] for r in lowered["products"])
     got = sol.variance_decomposition(lowered)["sales_price"]
     assert got == -50 * units, (
-        "every price 50 cents below budget is an unfavourable price variance of 50 per unit sold."
+        "every price below budget is an unfavourable price variance, the shortfall for each unit sold."
     )
 
 
@@ -609,7 +610,7 @@ def test_flexed_amount_below_half_a_cent_rounds_down() -> None:
         },
     ]
     case = with_products(rows, actual_inputs_used=0)
-    assert sol.flexible_budget(case, 1)["revenue_cents"] == 0, "a third of a cent rounds down to 0 cents."
+    assert sol.flexible_budget(case, 1)["revenue_cents"] == 0, "a third of a cent must round down, not up."
     assert oracle(case)["flex_revenue"] == 0, "the test oracle must round a third of a cent down."
     decomposition_matches(case)
 
@@ -786,7 +787,8 @@ def test_negative_actual_units_argument_raises_value_error() -> None:
 
 
 def test_float_actual_units_argument_raises_value_error() -> None:
-    must_raise(lambda: sol.flexible_budget(CASE, 100.0), "a float unit count")
+    wrong_type: Any = 100.0  # a float is not a whole number, whatever its value
+    must_raise(lambda: sol.flexible_budget(CASE, wrong_type), "a float unit count")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
@@ -891,37 +893,73 @@ def test_negative_standard_inputs_raises_value_error(name: str) -> None:
 
 
 def test_non_mapping_case_raises_value_error() -> None:
-    must_raise(lambda: sol.master_budget([]), "a case that is a list")
+    not_a_case: Any = []
+    must_raise(lambda: sol.master_budget(not_a_case), "a case that is a list")
 
 
 # ---------------------------------------------------------------- one isolated refusal per condition
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
-@pytest.mark.parametrize("bad", ([], "case", None), ids=["list", "text", "none"])
+@pytest.mark.parametrize("bad", ([], "case", None, list(CASE.items())), ids=["list", "text", "none", "pairs"])
 def test_case_that_is_not_a_mapping_raises_value_error(name: str, bad: Any) -> None:
     must_raise(_call_for(name, bad), f"{name}: a case that is not a mapping")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
-@pytest.mark.parametrize("bad", ({r["name"]: r for r in PRODUCTS}, "Alpha"), ids=["mapping", "text"])
+def test_case_that_is_a_read_only_mapping_is_accepted(name: str) -> None:
+    # The page says "a mapping", so a read-only mapping that is not a dict must give the dict's results.
+    view = types.MappingProxyType(copy.deepcopy(CASE))
+    if name == "flexible_budget":
+        total = sum(r["actual_units"] for r in PRODUCTS)
+        assert sol.flexible_budget(view, total) == sol.flexible_budget(CASE, total), (
+            "flexible_budget: a case given as a read-only mapping must give the same result as the dict."
+        )
+    else:
+        assert getattr(sol, name)(view) == getattr(sol, name)(CASE), (
+            f"{name}: a case given as a read-only mapping must give the same result as the dict."
+        )
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize(
+    "bad", ({r["name"]: r for r in PRODUCTS}, "Alpha", tuple(copy.deepcopy(PRODUCTS))), ids=["mapping", "text", "tuple"]
+)
 def test_products_that_are_not_a_list_raise_value_error(name: str, bad: Any) -> None:
     must_raise(_call_for(name, fresh(products=bad)), f"{name}: products given as a {type(bad).__name__}, not a list")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
-def test_product_that_is_not_a_mapping_raises_value_error(name: str) -> None:
+@pytest.mark.parametrize("bad", (["Alpha"], 5, None), ids=["list", "number", "none"])
+def test_product_that_is_not_a_mapping_raises_value_error(name: str, bad: Any) -> None:
     rows: list[Any] = copy.deepcopy(PRODUCTS)
-    rows[0] = [rows[0]["name"]]
-    must_raise(_call_for(name, with_products(rows)), f"{name}: a product given as a list, not a mapping")
+    rows[0] = bad
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a product that is not a mapping")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
-@pytest.mark.parametrize("bad", (5, None), ids=["number", "none"])
+@pytest.mark.parametrize("bad", (5, None, True), ids=["number", "none", "boolean"])
 def test_product_name_that_is_not_text_raises_value_error(name: str, bad: Any) -> None:
     rows = copy.deepcopy(PRODUCTS)
     rows[0]["name"] = bad
     must_raise(_call_for(name, with_products(rows)), f"{name}: a product name that is not text")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize("field", ("input_price_cents", "fixed_overhead_cents", "actual_inputs_used"))
+def test_case_field_that_is_none_raises_value_error(name: str, field: str) -> None:
+    must_raise(_call_for(name, fresh(**{field: None})), f"{name}: {field} given as nothing, not a whole number")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize(
+    "field",
+    ("budget_units", "budget_price_cents", "standard_inputs_per_unit", "actual_units", "actual_price_cents"),
+)
+def test_product_field_that_is_none_raises_value_error(name: str, field: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0][field] = None
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a product's {field} given as nothing")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)

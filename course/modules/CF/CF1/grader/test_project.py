@@ -110,6 +110,20 @@ def test_npv_rejects_empty_flows() -> None:
     must_raise(lambda: npv(0.1, []), "an empty list of flows")
 
 
+def test_npv_keeps_a_zero_flow_in_its_time_index() -> None:
+    assert close(npv(0.1, [-100.0, 0.0, 121.0]), 0.0), (
+        "the sum runs over every t: a zero flow at t = 1 still takes its place, so -100 + 0 + 121 / 1.1 ** 2 is zero; "
+        "dropping the zero moves 121 to t = 1 and gives 10."
+    )
+
+
+def test_npv_keeps_a_leading_zero_flow_in_its_time_index() -> None:
+    assert close(npv(0.1, [0.0, 121.0]), 110.0), (
+        "a zero flow at t = 0 is discounted by the exponent 0 and the flow 121 at t = 1 is discounted by 1.1: "
+        "the NPV is 110."
+    )
+
+
 def test_npv_of_a_single_flow_is_that_flow() -> None:
     assert close(npv(0.5, [7.0]), 7.0), "a one-element list is valid: its NPV is its only flow, undiscounted at t = 0."
 
