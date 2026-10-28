@@ -57,8 +57,11 @@ def main() -> None:
 
     print()
     print("C. A forward quoted above its fair price: sell the forward, buy the asset with a loan")
-    net_today = SPOT_CENTS - SPOT_CENTS
-    print("net cash today, in cents (loan proceeds less the asset's cost):", net_today)
+    forward_today = 0  # a forward costs nothing at date 0 (Definition 1.1)
+    asset_today = -SPOT_CENTS  # the asset is bought at the spot price
+    loan_today = SPOT_CENTS  # the loan is taken for the same amount
+    print("date-0 cash legs, in cents (forward, asset, loan):", forward_today, asset_today, loan_today)
+    print("net cash today, in cents, zero by construction:", forward_today + asset_today + loan_today)
     gains = []
     for s in EXPIRY_STATES_CENTS:
         net = (QUOTE_CENTS - s) + (s - SPOT_CENTS * math.exp(RATE * TAU))

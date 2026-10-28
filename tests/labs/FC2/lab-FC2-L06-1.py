@@ -19,7 +19,7 @@ SPOT = Fraction(100)
 STRIKE = Fraction(100)
 UP = Fraction(3, 2)  # gross move on an up step
 DOWN = Fraction(1, 2)  # gross move on a down step
-RETURN = Fraction(5, 4)  # gross riskless return per period, R_f = 1 + r
+RETURN = Fraction(5, 4)  # gross riskless return per period, R_f = 1 + r_1 (r_1 is the one-period rate)
 
 
 def cents(amount: Fraction) -> int:
@@ -105,7 +105,12 @@ def main() -> None:
     ]
     for label, wealth_end, target in paths:
         print(f"  path {label}: terminal wealth {wealth_end} = payoff {target}: {wealth_end == target}")
-    self_financing = all(wealth_end == target for _, wealth_end, target in paths)
+    # Self-financing: the holdings chosen at each node cost exactly the wealth carried to that node.
+    rebalance_up_ok = shares_u * SPOT * UP + bond_u == wealth_up
+    rebalance_down_ok = shares_d * SPOT * DOWN + bond_d == wealth_down
+    self_financing = (
+        all(wealth_end == target for _, wealth_end, target in paths) and rebalance_up_ok and rebalance_down_ok
+    )
     matches_induction = wealth_up == value_after_up and wealth_down == value_after_down
     reproduced = self_financing and matches_induction
     print(f"  self-financing strategy reproduces every node value and every payoff: {reproduced}")

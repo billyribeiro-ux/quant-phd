@@ -10,8 +10,8 @@ The ambiguous urn holds k red balls, with k unknown and only known to lie in 30 
  2. Prospect value on changes from the reference point 0, with v(x) = x**(1/2) for gains and -2 * (-x)**(1/2) for
     losses (alpha = delta = 1/2, lambda = 2), at P(red) = 1/2. The gamble's value is inverted in closed form.
  3. Epstein-Zin over two dates: date 0 consumes W0; date 1 consumes final wealth. psi = 1/2, beta = 0.95, gamma = 2,
-    at P(red) = 1/2. The CE is the sure date-1 amount that gives the same date-0 value, found by bisection to a
-    tolerance of 1e-9 cents.
+    at P(red) = 1/2. The CE is the sure date-1 amount that gives the same date-0 value, found by 200 halvings of
+    a bracket of 17000 cents, which reaches floating-point resolution.
  4. Maxmin expected utility over the prior set (alpha = 1), and alpha-MEU with alpha = 1/2, which weights the lowest
     and highest expected utility over the prior set.
 
@@ -97,7 +97,8 @@ def prospect_inverse(v: float) -> float:
 
 
 def prospect_inverse_by_bisection(v: float) -> float:
-    """The same inverse by bisection on prospect_value over [-1000, 1000] CU, stopped at 1e-9 CU."""
+    """The same inverse by 200 halvings of prospect_value over [-1000, 1000] CU, which reaches
+    floating-point resolution."""
     lo, hi = -1000.0, 1000.0
     for _ in range(200):
         mid = (lo + hi) / 2
@@ -118,7 +119,8 @@ def ez_value(c0: float, date1: Sequence[tuple[float, float]], psi: float, beta: 
 
 
 def ez_certainty_equivalent(c0: float, date1: Sequence[tuple[float, float]], psi: float, beta: float) -> float:
-    """The sure date-1 amount c with ez_value(c0, [(c, 1)]) equal to ez_value(c0, date1), by bisection to 1e-9 cents."""
+    """The sure date-1 amount c with ez_value(c0, [(c, 1)]) equal to ez_value(c0, date1), by 200 halvings of
+    a bracket of 17000 cents, which reaches floating-point resolution."""
     target = ez_value(c0, date1, psi, beta)
     lo, hi = float(LOSS_CENTS - 1000), float(WIN_CENTS + 1000)
     for _ in range(200):

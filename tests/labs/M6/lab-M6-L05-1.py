@@ -3,13 +3,14 @@
 Inputs are a fixed formula, not data, and no random draws are used, so every run prints the same lines.
 Part A: the iterated integrals in closed form, from the antiderivatives in y and in x.
 Part B: the same two iterated integrals by quadrature (a midpoint rule on the outer variable, and a composite Simpson
-rule on the inner variable after the substitution t = s^2, which is y = s^2 in the first order and x = s^2 in the
-second), with the error against the closed form.
-Part C: the integral of the positive part of f over dyadic blocks Q_k that lie inside the set where f >= 0. The
-block integrals are equal, so their partial sums grow without bound.
+rule on the inner variable after the substitution y = s^2 (first order) or x = s^2 (second order)), with the error
+against the closed form.
+Part C: the closed-form integral of f over a dyadic block Q_k that lies inside the set where f >= 0, and the partial
+sums over six blocks. The closed form gives the same value for every block (the scaling in Proposition 3.2), so the
+partial sums grow in proportion to the number of blocks. Block 0 alone is checked by quadrature.
 
 The closed forms are exact up to floating-point rounding. The quadrature values are numerical approximations, and
-their error is printed. The lab does not decide integrability by quadrature; the page proves it from Part C.
+their error is printed. The lab does not decide integrability by quadrature; Proposition 3.2 proves it.
 """
 
 import math
@@ -42,7 +43,10 @@ def inner_over_x(y: float, m: int) -> float:
 
 
 def block_integral_closed(a: float) -> float:
-    """The integral of f over (a, 2a] x [0, a], from the inner antiderivative y/(x^2 + y^2)."""
+    """The integral of f over (a, 2a] x [0, a] for a > 0, by the substitution x = a t (Proposition 3.2).
+
+    The value arctan 2 - arctan 1 does not depend on a > 0. For a <= 0 no block is defined, and the value is 0.
+    """
     return math.atan(2.0) - math.atan(1.0) if a > 0 else 0.0
 
 

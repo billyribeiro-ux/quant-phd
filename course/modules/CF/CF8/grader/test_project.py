@@ -15,15 +15,20 @@ it checks and the idea to revisit; it never prints the expected value.
 
 from __future__ import annotations
 
+import ast
 import copy
 import json
 import math
 import os
+import sys
+import warnings
 from collections.abc import Callable
 from fractions import Fraction
+from pathlib import Path
 from typing import Any
 
 import pytest
+import treasury_forecast as learner  # type: ignore[import-not-found, unused-ignore]
 from instance import make_instance  # type: ignore[import-not-found, unused-ignore]
 from treasury_forecast import (  # type: ignore[import-not-found, unused-ignore]  # the learner's engine
     action_cash_impact,
@@ -537,21 +542,44 @@ FUNCTIONS: dict[str, Callable[[dict[str, Any]], object]] = {
 }
 
 
-@pytest.mark.parametrize("horizon", [12, 14], ids=["twelve-weeks", "fourteen-weeks"])
+@pytest.mark.parametrize("horizon", [0, 12, 14], ids=["zero-weeks", "twelve-weeks", "fourteen-weeks"])
 @pytest.mark.parametrize("name", list(FUNCTIONS), ids=list(FUNCTIONS))
 def test_a_horizon_other_than_13_weeks_raises_value_error(name: str, horizon: int) -> None:
     case = case_with(CASE, horizon_weeks=horizon)
     must_raise(lambda: FUNCTIONS[name](case), "horizon: the forecast covers the 13-week horizon only")
 
 
+@pytest.mark.parametrize("commitment", [-1, -1_000_000], ids=["minus-one-cent", "minus-ten-thousand-dollars"])
 @pytest.mark.parametrize("name", list(FUNCTIONS), ids=list(FUNCTIONS))
-def test_a_negative_revolver_commitment_raises_value_error(name: str) -> None:
-    case = case_with(CASE, revolver_commitment_cents=-1)
+def test_a_negative_revolver_commitment_raises_value_error(name: str, commitment: int) -> None:
+    case = case_with(CASE, revolver_commitment_cents=commitment)
     must_raise(lambda: FUNCTIONS[name](case), "commitment: the commitment must be non-negative")
 
 
-@pytest.mark.parametrize("bad", ["DSO", "dio", "", "dpo "], ids=["upper-case", "dio", "empty", "trailing-space"])
-def test_an_action_other_than_dso_or_dpo_raises_value_error(bad: str) -> None:
+@pytest.mark.parametrize("name", list(FUNCTIONS), ids=list(FUNCTIONS))
+def test_a_zero_commitment_is_valid_in_every_function(name: str) -> None:
+    case = case_with(CASE, revolver_commitment_cents=0, opening_drawn_cents=0)
+    try:
+        FUNCTIONS[name](case)
+    except ValueError:
+        pytest.fail("commitment: zero is a valid commitment, so no ValueError is allowed.")
+
+
+BAD_ACTIONS: list[Any] = ["DSO", "DPO", "dio", "", "dpo ", "dso ", None, 1]
+BAD_ACTION_IDS = [
+    "upper-case-dso",
+    "upper-case-dpo",
+    "dio",
+    "empty",
+    "trailing-space-dpo",
+    "trailing-space-dso",
+    "none",
+    "int",
+]
+
+
+@pytest.mark.parametrize("bad", BAD_ACTIONS, ids=BAD_ACTION_IDS)
+def test_an_action_other_than_dso_or_dpo_raises_value_error(bad: Any) -> None:
     must_raise(lambda: action_cash_impact(CASE, bad, 2), "action: the allowed actions are dso and dpo")
 
 
@@ -613,3 +641,150 @@ def test_the_answers_follow_the_inputs_not_a_fixed_table() -> None:
         pytest.fail("inputs: doubling every week's sales must change the forecast.")
     if forecast(changed) != oracle_path(changed, capped=True):
         pytest.fail("inputs: after a change to the sales, the forecast still follows the rules of the specification.")
+
+
+# ---------------------------------------------------------------- isolated boundaries and conditions
+
+
+def net_flow_case(net: list[int], threshold: int) -> dict[str, Any]:
+    """Cash-rich SIMULATED fixture with no draws: week w's net flow is net[w - 1]; purchases 300,000 a week, no lags."""
+    return {
+        "horizon_weeks": HORIZON,
+        "opening_cash_cents": 2_000_000,
+        "minimum_cash_cents": 100_000,
+        "revolver_commitment_cents": 1_000_000,
+        "opening_drawn_cents": 0,
+        "covenant_threshold_cents": threshold,
+        "collection_lag_days": 0,
+        "payment_lag_days": 0,
+        "weekly_sales_cents": [300_000 + x for x in net],
+        "weekly_purchases_cents": [300_000] * HORIZON,
+        "weekly_opex_cents": [0] * HORIZON,
+    }
+
+
+def test_a_draw_equal_to_the_availability_is_not_capped() -> None:
+    case = flat_case(opening_drawn=500_000, commitment=1_000_000)  # week 1 needs 500,000; availability is 500,000
+    row = forecast(case)[0]
+    if row["draw_cents"] != 500_000 or row["ending_cash_cents"] != 500_000:
+        pytest.fail(
+            "availability: when availability equals the need, the draw is the need and cash lands on the minimum."
+        )
+
+
+def test_an_opening_balance_equal_to_the_commitment_leaves_no_draw() -> None:
+    case = flat_case(opening_drawn=1_000_000, commitment=1_000_000)
+    rows = forecast(case)
+    if any(row["draw_cents"] != 0 for row in rows) or any(row["drawn_balance_cents"] != 1_000_000 for row in rows):
+        pytest.fail(
+            "availability: with the opening balance equal to the commitment there is no availability, so no draw."
+        )
+
+
+def test_pinch_is_the_smallest_headroom_when_every_headroom_is_positive() -> None:
+    case = net_flow_case([50_000, 20_000, -30_000, 40_000] + [0] * 9, threshold=0)
+    if covenant_pinch(case) != {"week": 3, "headroom_cents": 3_040_000}:
+        pytest.fail("pinch: with every headroom positive, the pinch is the week of the smallest positive headroom.")
+
+
+def test_pinch_is_the_smallest_headroom_when_every_headroom_is_negative() -> None:
+    case = net_flow_case([50_000, 20_000, -30_000, 40_000] + [0] * 9, threshold=4_000_000)
+    if covenant_pinch(case) != {"week": 3, "headroom_cents": -960_000}:
+        pytest.fail(
+            "pinch: with every headroom negative, the pinch is the most negative headroom, not the least negative."
+        )
+
+
+def test_pinch_breaks_a_middle_tie_toward_the_earliest_week() -> None:
+    case = net_flow_case([100_000, -50_000, 50_000, -50_000] + [50_000] * 9, threshold=0)
+    if covenant_pinch(case) != {"week": 2, "headroom_cents": 3_050_000}:
+        pytest.fail("pinch tie: the smallest headroom occurs in weeks 2 and 4; the earliest of them is the pinch.")
+
+
+def test_an_action_impact_rounds_half_up_to_the_cent() -> None:
+    if action_cash_impact(flat_case(sales=4, lag=1), "dso", 1) != 1:
+        pytest.fail("action rounding: the one sale moved in (4/7 of a cent) rounds half up to 1 cent.")
+    if action_cash_impact(flat_case(purchases=5, payment_lag=1), "dpo", 1) != 1:
+        pytest.fail("action rounding: the one purchase kept (5/7 of a cent) rounds half up to 1 cent.")
+
+
+@pytest.mark.parametrize("sevenths", [1, 2, 3, 4, 5, 6], ids=[f"{k}-sevenths" for k in range(1, 7)])
+def test_each_residue_of_a_cent_rounds_half_up(sevenths: int) -> None:
+    case = flat_case(sales=0, lag=1)
+    case["weekly_sales_cents"] = [sevenths, 0] + [0] * (HORIZON - 2)  # week 2 collects day 7's sale: sevenths/7 cent
+    want = 1 if sevenths > 3 else 0  # above one half of a cent rounds up; 3/7 is below one half
+    if forecast(case)[1]["receipts_cents"] != want:
+        pytest.fail("rounding: a receipt that is k/7 of a cent is rounded once, half up, to the nearest cent.")
+
+
+def test_dpo_lengthening_past_day_1_keeps_pre_horizon_purchases_at_the_week_1_rate() -> None:
+    case = case_with(CASE, payment_lag_days=50)
+    base = oracle_cumulative(case["weekly_purchases_cents"], 50)
+    new = oracle_cumulative(case["weekly_purchases_cents"], 50 + 60)
+    if action_cash_impact(case, "dpo", 60) != half_up(base - new):
+        pytest.fail("DPO: a lengthening whose window starts before day 1 keeps those purchases at the week 1 run-rate.")
+
+
+def test_no_function_prints_or_warns() -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        forecast(CASE)
+        revolver_plan(CASE)
+        covenant_pinch(CASE)
+        action_cash_impact(CASE, "dso", 2)
+        action_cash_impact(CASE, "dpo", 2)
+    if caught:
+        pytest.fail("pure functions: the specification says no function warns.")
+
+
+def test_no_function_writes_to_stdout_or_stderr(capsys: pytest.CaptureFixture[str]) -> None:
+    forecast(CASE)
+    revolver_plan(CASE)
+    covenant_pinch(CASE)
+    action_cash_impact(CASE, "dso", 2)
+    action_cash_impact(CASE, "dpo", 2)
+    captured = capsys.readouterr()
+    if captured.out or captured.err:
+        pytest.fail("pure functions: the specification says no function prints.")
+
+
+def test_returned_objects_are_fresh_and_later_calls_do_not_share_them() -> None:
+    first = forecast(CASE)
+    second = forecast(CASE)
+    if first is second or any(a is b for a, b in zip(first, second, strict=True)):
+        pytest.fail("fresh objects: each call returns new row objects, not objects another call returns.")
+    plan_a = revolver_plan(CASE)
+    plan_b = revolver_plan(CASE)
+    if plan_a is plan_b:
+        pytest.fail("fresh objects: each call returns a new dict.")
+    first[0]["receipts_cents"] = -1
+    plan_a["peak_drawn_cents"] = -1
+    if forecast(CASE) != oracle_path(CASE, capped=True) or revolver_plan(CASE)["peak_drawn_cents"] == -1:
+        pytest.fail("fresh objects: changing a returned value must not change what a later call returns.")
+
+
+def _learner_imports() -> list[str]:
+    """Every module name the learner's file imports, read from its source text (nothing is executed)."""
+    tree = ast.parse(Path(str(learner.__file__)).read_text(encoding="utf-8"))
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            names.append("." * node.level + (node.module or ""))
+    return names
+
+
+def test_the_engine_imports_only_the_python_standard_library() -> None:
+    for name in _learner_imports():
+        top = name.split(".")[0]
+        if not top or top not in sys.stdlib_module_names:
+            pytest.fail(f"stdlib: the engine uses the Python standard library only; '{name}' is not in it.")
+
+
+def test_the_engine_does_not_import_instance() -> None:
+    for name in _learner_imports():
+        if name.split(".")[0] == "instance":
+            pytest.fail(
+                "stdlib: the engine does not import instance.py; the case comes in through the function arguments."
+            )

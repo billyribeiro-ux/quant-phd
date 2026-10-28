@@ -6,7 +6,8 @@ five-year window. All rates are in percent per year.
 
 * GDP growth, annualised: 100 * ((Y_t / Y_(t-1)) ** 4 - 1), from the quarter-on-quarter change, compounded to a year.
 * Inflation, year on year: 100 * (P_t / P_(t-4) - 1), from the price index P.
-* Output gap: 100 * (ln Y_t minus the least-squares trend of ln Y over the window), in percent of trend.
+* Output gap, the log gap y_log of the conventions: 100 * (ln Y_t minus the least-squares trend of ln Y over the
+  window).
 * Cycle flag: "above trend and growing" when growth and the gap are both positive, "below trend and not growing" when
   both are zero or negative, and "mixed" otherwise.
 

@@ -190,15 +190,25 @@ def test_bond_periods_zero_is_refused() -> None:
     must_raise(lambda: bond_of({**INST, "periods": 0}).events(), "periods < 1")
 
 
+def test_bond_periods_minus_one_is_refused() -> None:
+    """The page names periods < 1 as a ValueError; a negative count is below 1 too."""
+    must_raise(lambda: bond_of({**INST, "periods": -1}).events(), "periods = -1")
+
+
 def test_bond_periods_one_is_accepted() -> None:
     """The boundary periods = 1 is valid and gives one event."""
-    rows = checked_events(must_accept(lambda: sol.Bond(10_000, 500, 1).events(), "periods = 1"), "Bond.events")  # type: ignore[arg-type]
+    rows = checked_events(must_accept(lambda: sol.Bond(10_000, 500, 1).events(), "periods = 1"), "Bond.events")
     assert len(rows) == 1, "periods = 1 must give exactly one event"
 
 
 def test_bond_face_zero_is_refused() -> None:
     """The page names face_cents <= 0 as a ValueError."""
     must_raise(lambda: sol.Bond(0, 500, 3).events(), "face_cents <= 0")
+
+
+def test_bond_face_minus_one_is_refused() -> None:
+    """The page names face_cents <= 0 as a ValueError; a negative face is refused too."""
+    must_raise(lambda: sol.Bond(-1, 500, 3).events(), "face_cents = -1")
 
 
 def test_bond_face_one_cent_is_accepted() -> None:
@@ -226,8 +236,8 @@ def test_bond_price_is_an_int_in_cents() -> None:
     checked_int(sol.bond_price_cents(bond_of(INST), INST["yield_bps"]), "bond_price_cents")
 
 
-def test_bond_price_matches_the_closed_form_on_both_cases() -> None:
-    """Sum of c * v**t plus F * v**n, with v = 1 + y, computed exactly and rounded once, on two cases."""
+def test_bond_price_matches_the_discounted_sum_on_both_cases() -> None:
+    """Each event discounted by (1 + y) ** -t, y = yield_bps / 10000, summed exactly and rounded once, on two cases."""
     for case in (INST, INST2):
         got = checked_int(sol.bond_price_cents(bond_of(case), case["yield_bps"]), "bond_price_cents")
         want = oracle_price(oracle_events(case["face_cents"], case["coupon_bps"], case["periods"]), case["yield_bps"])
@@ -266,6 +276,17 @@ def test_bond_price_hand_fixture_rounds_the_sum_once() -> None:
     Their exact present value is 10277.5091, which rounds once to 10278. The terms are 480.77, 462.28 and 9334.46
     before rounding; rounded one by one they give 481 + 462 + 9334 = 10277, so the two rules differ here."""
     assert sol.bond_price_cents(sol.Bond(10_000, 500, 3), 400) == 10_278
+
+
+def test_bond_price_exact_half_cent_rounds_away_from_zero() -> None:
+    """Hand fixture F: one cent of face, no coupon, one period, yield 10000 bps: the price is exactly 1/2 cent, which
+    rounds away from zero to 1 cent. Round-half-to-even, or a binary float, would give 0."""
+    assert sol.bond_price_cents(sol.Bond(1, 0, 1), 10_000) == 1
+
+
+def test_bond_price_exact_half_at_five_thousand_point_five_rounds_up() -> None:
+    """Hand fixture G: Bond(10001, 0, 1) at 10000 bps: the price is exactly 5000.5 cents, which rounds to 5001."""
+    assert sol.bond_price_cents(sol.Bond(10_001, 0, 1), 10_000) == 5_001
 
 
 def test_bond_price_falls_as_the_yield_rises() -> None:
@@ -331,6 +352,11 @@ def test_trade_quantity_zero_is_refused() -> None:
     must_raise(lambda: sol.CashTrade(0, 9_850, 1, 2).events(), "quantity < 1")
 
 
+def test_trade_quantity_minus_one_is_refused() -> None:
+    """The page names quantity < 1 as a ValueError; a negative quantity is refused too."""
+    must_raise(lambda: sol.CashTrade(-1, 9_850, 1, 2).events(), "quantity = -1")
+
+
 def test_trade_quantity_one_is_accepted() -> None:
     """The boundary quantity = 1 is valid."""
     assert checked_events(sol.CashTrade(1, 9_850, 1, 2).events(), "CashTrade.events") == [(2, -9_850)]
@@ -356,16 +382,26 @@ def test_trade_side_two_is_refused() -> None:
     must_raise(lambda: sol.CashTrade(10, 9_850, 2, 2).events(), "side = 2")
 
 
+def test_trade_side_minus_two_is_refused() -> None:
+    """The page names side not in {+1, -1} as a ValueError: -2 is neither, on the negative side."""
+    must_raise(lambda: sol.CashTrade(10, 9_850, -2, 2).events(), "side = -2")
+
+
 def test_trade_side_plus_and_minus_one_are_accepted() -> None:
     """Both allowed sides are accepted, and they give opposite signs."""
-    buy = checked_events(must_accept(lambda: sol.CashTrade(10, 9_850, 1, 2).events(), "side = +1"), "events")  # type: ignore[arg-type]
-    sell = checked_events(must_accept(lambda: sol.CashTrade(10, 9_850, -1, 2).events(), "side = -1"), "events")  # type: ignore[arg-type]
+    buy = checked_events(must_accept(lambda: sol.CashTrade(10, 9_850, 1, 2).events(), "side = +1"), "events")
+    sell = checked_events(must_accept(lambda: sol.CashTrade(10, 9_850, -1, 2).events(), "side = -1"), "events")
     assert buy[0][1] == -sell[0][1], "the buyer's and seller's cash flows are equal and opposite"
 
 
 def test_trade_settlement_day_zero_is_refused() -> None:
     """The page names settlement_day < 1 as a ValueError: periods are numbered from 1."""
     must_raise(lambda: sol.CashTrade(10, 9_850, 1, 0).events(), "settlement_day < 1")
+
+
+def test_trade_settlement_day_minus_one_is_refused() -> None:
+    """The page names settlement_day < 1 as a ValueError; a negative period is refused too."""
+    must_raise(lambda: sol.CashTrade(10, 9_850, 1, -1).events(), "settlement_day = -1")
 
 
 def test_trade_settlement_day_one_is_accepted() -> None:
@@ -394,6 +430,24 @@ def test_the_module_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:
     assert captured.out == "" and captured.err == "", "the module must not print to standard output or error"
 
 
+def test_refused_inputs_print_nothing_before_they_raise(capsys: pytest.CaptureFixture[str]) -> None:
+    """Each named refused input raises ValueError, and the module prints nothing on the way to the refusal."""
+    refusals: list[tuple[str, Callable[[], object]]] = [
+        ("periods < 1", lambda: bond_of({**INST, "periods": 0}).events()),
+        ("face_cents <= 0", lambda: sol.Bond(0, 500, 3).events()),
+        ("coupon_bps < 0", lambda: sol.Bond(10_000, -1, 2).events()),
+        ("yield_bps <= -10000", lambda: sol.bond_price_cents(bond_of(INST), -10_000)),
+        ("quantity < 1", lambda: sol.CashTrade(0, 9_850, 1, 2).events()),
+        ("price_cents < 0", lambda: sol.CashTrade(10, -1, 1, 2).events()),
+        ("side not in {+1, -1}", lambda: sol.CashTrade(10, 9_850, 0, 2).events()),
+        ("settlement_day < 1", lambda: sol.CashTrade(10, 9_850, 1, 0).events()),
+    ]
+    for condition, call in refusals:
+        must_raise(call, condition)
+        captured = capsys.readouterr()
+        assert captured.out == "" and captured.err == "", f"{condition}: a refused input must print nothing"
+
+
 def test_repeated_events_calls_agree() -> None:
     """events() is pure: two calls on one object give the same list."""
     bond = bond_of(INST)
@@ -414,7 +468,7 @@ def test_bool_periods_is_not_quietly_accepted_as_a_number() -> None:
     """A bool is not a whole number of periods. The page does not name this input, so any exception passes; a
     returned answer must still be made of ints."""
     try:
-        rows = sol.Bond(10_000, 500, True).events()  # type: ignore[arg-type]
+        rows = sol.Bond(10_000, 500, True).events()
     except Exception:
         return
     checked_events(rows, "Bond.events with a bool periods")

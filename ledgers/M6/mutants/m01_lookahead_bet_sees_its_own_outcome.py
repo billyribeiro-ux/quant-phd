@@ -99,7 +99,7 @@ def doubling_outcome(instance: dict[str, Any]) -> dict[str, int | Fraction]:
         raise ValueError("a stake larger than the capital is not allowed: the first stake must not exceed capital")
     if base <= 0:
         raise ValueError("the base stake must be a positive number of cents")
-    p = _win_probability(instance)
+    _win_probability(instance)
     bets = 0
     while base * 2 ** (bets + 1) <= capital + base:
         bets += 1

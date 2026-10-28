@@ -1,4 +1,4 @@
-"""Stopping not capped at the horizon: a cap above N is accepted, so the bounded optional-stopping hypothesis is dropped.
+"""Stopping not capped at the horizon: a cap above N is accepted, so the bounded optional-stopping hypothesis drops.
 
 Every probability is an exact Fraction. Every money amount is an integer number of cents, computed from an exact
 Fraction and rounded once, half up. The engine works on SIMULATED instances from instance.py and never prints.
@@ -37,7 +37,7 @@ def stopped_value_expectation(instance: dict[str, Any]) -> Fraction:
 
     The rule is bounded by the horizon N: a cap above N raises ValueError. The answer is exact.
     """
-    horizon = _horizon(instance)
+    _horizon(instance)
     level = int(instance["stop_level"])
     cap = int(instance["stop_cap"])
     p = _win_probability(instance)

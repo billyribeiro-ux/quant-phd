@@ -6,10 +6,10 @@ Runs identically in the browser (Pyodide) and locally:
 
 with your martingale_checks.py next to this file. Warnings are failures, as in the browser.
 
-Each test checks a property or an exact number. The expected numbers come from exact enumeration of every path or
-branch in this file, never from the engine. Money is compared as integer cents, after the specification's rule
-(rounded once, half up, from the exact value). A failing test names the property it checks and the idea to revisit.
-It never prints the expected value.
+Each test checks a property or an exact number. The expected numbers come from exact enumeration, from closed forms,
+or from values worked out by hand in this file, never from the engine. Money is compared as integer cents, after the
+specification's rule (rounded once, half up, from the exact value). A failing test names the property it checks and
+the idea to revisit. It never prints the expected value.
 """
 
 from __future__ import annotations
@@ -181,7 +181,7 @@ def test_fair_walk_bounded_stopping_keeps_expectation(inst: dict[str, Any]) -> N
     expect(
         value == 0,
         "optional stopping (bounded case): for the fair walk and a stopping time bounded by N, E[S_tau] must equal "
-        "S_0 = 0. Revisit the stopped-martingale identity in Lesson 10.",
+        "the starting value S_0 of the walk. Revisit the stopped-martingale identity in Lesson 10.",
     )
 
 
@@ -228,7 +228,10 @@ def test_cap_above_horizon_raises_value_error() -> None:
 def test_stopping_rule_that_never_fires_stops_at_its_cap() -> None:
     inst = with_(INST, stop_level=1000)
     value = must_accept(lambda: sol.stopped_value_expectation(inst), "a stopping rule that never fires")
-    expect(value == 0, "a stopping rule whose level is never reached must stop at the cap, and the fair walk gives 0")
+    expect(
+        value == enum_stopped(inst),
+        "a stopping rule whose level is never reached must stop at its cap: check the walk's value at the cap.",
+    )
 
 
 def test_horizon_zero_raises_value_error() -> None:
@@ -236,10 +239,30 @@ def test_horizon_zero_raises_value_error() -> None:
     must_raise(lambda: sol.stopped_value_expectation(inst), "a horizon N below 1")
 
 
+def test_horizon_minus_one_raises_value_error() -> None:
+    inst = with_(INST, horizon=-1, stop_cap=-1)
+    must_raise(lambda: sol.stopped_value_expectation(inst), "a horizon N below 1 (negative)")
+
+
+@pytest.mark.parametrize("level", [-2, -1, 2])
+@pytest.mark.parametrize("win", [HALF, CONTROL_WIN, Fraction(2, 3)])
+def test_stopping_level_both_directions_matches_enumeration(level: int, win: Fraction) -> None:
+    inst = with_(INST, stop_level=level, win_probability=win)
+    value = must_accept(lambda: sol.stopped_value_expectation(inst), "a stopping level on either side of the start")
+    expect(
+        value == enum_stopped(inst),
+        "the stopped expectation for a stopping level on either side of the start must match the exact enumeration. "
+        "Check the sign of the level and which step of the path it is compared with.",
+    )
+
+
 def test_horizon_one_is_accepted() -> None:
     inst = with_(INST, horizon=1, stop_cap=1, stop_level=1)
     value = must_accept(lambda: sol.stopped_value_expectation(inst), "a horizon of 1 step")
-    expect(value == 0, "with horizon 1 the walk stops after one step, and the fair walk's expectation is 0")
+    expect(
+        value == enum_stopped(inst),
+        "with horizon 1 the walk stops after one step: check the expectation against the one-step paths.",
+    )
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -278,27 +301,40 @@ def test_doob_last_time_is_counted() -> None:
     prob, _ = sol.doob_max_probability(INST, n)
     expect(
         prob == Fraction(2, 2**n),
-        "Doob's inequality: at level equal to the horizon, the maximum is reached only when every step has "
-        "the same sign, "
-        "so the probability is 2 over 2**N. The maximum must include time N.",
+        "Doob's inequality: at level equal to the horizon, count the paths that reach the level by time N. "
+        "The maximum must include time N.",
     )
 
 
-def test_doob_level_must_be_positive() -> None:
+def test_doob_level_zero_raises_value_error() -> None:
     must_raise(lambda: sol.doob_max_probability(INST, 0), "a level lambda that is not positive (zero)")
+
+
+def test_doob_level_negative_raises_value_error() -> None:
     must_raise(lambda: sol.doob_max_probability(INST, -1), "a level lambda that is not positive (negative)")
+
+
+def test_doob_level_one_is_accepted() -> None:
     must_accept(lambda: sol.doob_max_probability(INST, 1), "a level lambda of one step")
 
 
 def test_doob_horizon_one_edge_case() -> None:
     inst = with_(INST, horizon=1)
     prob, bound = must_accept(lambda: sol.doob_max_probability(inst, 1), "Doob's inequality with horizon 1")
-    expect(prob == 1 and bound == 1, "with horizon 1 and level 1, the probability and the bound are both 1")
+    expect(
+        prob == enum_doob(inst, 1)[0] and bound == enum_doob(inst, 1)[1],
+        "with horizon 1 and level 1, check the probability and the bound against the two one-step paths.",
+    )
 
 
 def test_doob_horizon_zero_raises_value_error() -> None:
     inst = with_(INST, horizon=0)
     must_raise(lambda: sol.doob_max_probability(inst, 1), "a horizon N below 1 in Doob's inequality")
+
+
+def test_doob_horizon_minus_one_raises_value_error() -> None:
+    inst = with_(INST, horizon=-1)
+    must_raise(lambda: sol.doob_max_probability(inst, 1), "a horizon N below 1 in Doob's inequality (negative)")
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -318,11 +354,11 @@ def test_doubling_bets_and_wealths_match_enumeration(inst: dict[str, Any]) -> No
     )
     expect(
         exact["wealth_on_win"] == {out["wealth_on_win_cents"]},
-        "doubling: the wealth after a win must be the capital plus the base stake, in cents",
+        "doubling: after a win, check what the winning bet returns to the wealth, in cents",
     )
     expect(
         exact["wealth_on_ruin"] == {out["wealth_on_ruin_cents"]},
-        "doubling: the wealth after ruin must be the capital less the losses, which sum to base times (2**J - 1)",
+        "doubling: after ruin, check the wealth against the total of the stakes lost on the placed bets, in cents",
     )
 
 
@@ -347,9 +383,8 @@ def test_fair_doubling_expected_wealth_is_the_capital(inst: dict[str, Any]) -> N
     out = sol.doubling_outcome(inst)
     expect(
         out["expected_final_wealth_cents"] == int(inst["capital_cents"]),
-        "doubling with a fair coin: the expected final wealth equals the capital, since the wealth is a "
-        "martingale and the "
-        "strategy is bounded. Revisit Proposition 10.7 in Lesson 10.",
+        "doubling with a fair coin: the expected final wealth follows from the martingale property of the wealth "
+        "and the boundedness of the strategy. Revisit Proposition 10.7 in Lesson 10.",
     )
 
 
@@ -386,10 +421,21 @@ def test_no_bet_exceeds_the_capital_and_wealth_stays_nonnegative(inst: dict[str,
         )
 
 
-def test_capital_must_be_positive() -> None:
+def test_capital_zero_raises_value_error() -> None:
     must_raise(lambda: sol.doubling_outcome(with_(INST, capital_cents=0, base_stake_cents=1)), "a capital of zero")
+
+
+def test_capital_negative_raises_value_error() -> None:
     must_raise(lambda: sol.doubling_outcome(with_(INST, capital_cents=-5, base_stake_cents=1)), "a negative capital")
-    must_accept(lambda: sol.doubling_outcome(with_(INST, capital_cents=1, base_stake_cents=1)), "a capital of 1 cent")
+
+
+def test_capital_one_cent_is_accepted() -> None:
+    inst = with_(INST, capital_cents=1, base_stake_cents=1)
+    out = must_accept(lambda: sol.doubling_outcome(inst), "a capital of 1 cent")
+    expect(
+        out["bets_allowed"] == enum_doubling(1, 1, HALF)["bets"],
+        "doubling with capital 1 cent: the number of bets allowed must match the exact enumeration",
+    )
 
 
 def test_stake_larger_than_capital_raises_value_error() -> None:
@@ -406,7 +452,17 @@ def test_capital_equal_to_first_stake_is_accepted() -> None:
     )
     expect(
         out["bets_allowed"] == 1 and out["ruin_probability"] == HALF,
-        "with capital equal to the first stake, exactly one bet is placed and the ruin probability is 1/2",
+        "with capital equal to the first stake, check how many bets fit the wealth on hand and the ruin probability "
+        "after them",
+    )
+
+
+def test_expectation_below_half_cent_rounds_down() -> None:
+    # Capital 1 cent, base 1 cent, win probability 1/5: the expectation is exactly 2/5 cent, which half up gives 0.
+    out = sol.doubling_outcome({**INST, "capital_cents": 1, "base_stake_cents": 1, "win_probability": Fraction(1, 5)})
+    expect(
+        out["expected_final_wealth_cents"] == 0,
+        "doubling: an expectation of 2/5 of a cent must round down to 0 cents under the half-up rule",
     )
 
 
@@ -416,7 +472,7 @@ def test_half_cent_expectation_rounds_up() -> None:
     out = sol.doubling_outcome({**INST, "capital_cents": 1, "base_stake_cents": 1, "win_probability": Fraction(1, 4)})
     expect(
         out["expected_final_wealth_cents"] == 1,
-        "doubling: an expectation of exactly one half cent must round up to one cent, half up",
+        "doubling: an expectation of exactly one half cent must follow the half-up rule, not the floor",
     )
 
 
@@ -429,9 +485,8 @@ def test_dyadic_mean_square_error_closed_form(n: int) -> None:
     value = sol.dyadic_martingale_error(INST, n)
     expect(
         value == Fraction(1, 12 * 4**n),
-        "dyadic martingale: E[(M_n - Y)^2] must equal 1 over 12 times 4 to the n, exactly. Revisit the cell "
-        "integral in "
-        "Proposition 12.8 of Lesson 12.",
+        "dyadic martingale: E[(M_n - Y)^2] must follow the closed form of Proposition 12.8 of Lesson 12, exactly. "
+        "Revisit the cell integral.",
     )
 
 
@@ -443,13 +498,31 @@ def test_dyadic_error_at_the_instance_level() -> None:
     )
 
 
+def test_dyadic_value_at_zero_uses_the_first_cell() -> None:
+    expect(
+        sol.dyadic_martingale_value(INST, 1, Fraction(0)) == Fraction(1, 4),
+        "x = 0 lies in the first cell, so the level-1 value is that cell's midpoint",
+    )
+
+
+def test_dyadic_value_just_below_a_cell_edge_stays_in_the_cell() -> None:
+    expect(
+        sol.dyadic_martingale_value(INST, 1, Fraction(1, 2) - Fraction(1, 1000)) == Fraction(1, 4),
+        "a point just below the edge 1/2 lies in the first cell, so the level-1 value is 1/4",
+    )
+
+
 def test_dyadic_value_is_the_cell_midpoint() -> None:
     expect(
-        sol.dyadic_martingale_value(INST, 1, Fraction(1, 10)) == Fraction(1, 4), "the level-1 value on [0, 1/2) is 1/4"
+        sol.dyadic_martingale_value(INST, 1, Fraction(1, 10)) == Fraction(1, 4),
+        "the level-1 value at a point of the first cell must be that cell's midpoint",
     )
     expect(sol.dyadic_martingale_value(INST, 1, Fraction(1, 2)) == Fraction(3, 4), "the cell [1/2, 1] starts at 1/2")
     expect(sol.dyadic_martingale_value(INST, 1, Fraction(1)) == Fraction(3, 4), "x = 1 lies in the last cell")
-    expect(sol.dyadic_martingale_value(INST, 2, Fraction(3, 10)) == Fraction(3, 8), "x = 3/10 lies in [1/4, 1/2)")
+    expect(
+        sol.dyadic_martingale_value(INST, 2, Fraction(3, 10)) == Fraction(3, 8),
+        "the level-2 value must be the midpoint of the level-2 cell that contains x",
+    )
 
 
 @pytest.mark.parametrize("n", list(range(0, 11)))
@@ -477,7 +550,7 @@ def test_dyadic_path_value_at_a_third() -> None:
 def test_dyadic_level_zero_is_the_mean() -> None:
     expect(
         sol.dyadic_martingale_value(INST, 0, Fraction(9, 10)) == HALF,
-        "dyadic martingale: at level 0 the value is the mean of Y, 1/2, at every point",
+        "dyadic martingale: at level 0 the value must be the mean of Y over [0, 1], at every point",
     )
 
 
@@ -498,4 +571,7 @@ def test_horizon_one_stopping_and_doob_agree_with_enumeration() -> None:
 def test_horizon_drives_the_enumeration_length() -> None:
     inst = with_(INST, horizon=10)
     prob, _ = sol.doob_max_probability(inst, 10)
-    expect(prob == Fraction(2, 2**10), "horizon 10: the probability at level 10 must be 2 over 2**10")
+    expect(
+        prob == Fraction(2, 2**10),
+        "horizon 10 at level 10: count the paths that reach the level and check the probability",
+    )

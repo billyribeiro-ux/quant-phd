@@ -2,11 +2,12 @@
 
 Inputs are two fixed finite measures, not data, and no random draws are used, so every run prints the same lines.
 A measure on a finite set is given by its weights on the points; the measure of an event A is the sum of the weights
-of its points. An event is a subset of the points, and it is written here as a bit mask.
+of its points. An event is a subset of the points, and it is written here as a bit mask. Points are numbered from 1
+in the text, so point 5 is index 4 in the code.
 
 Part A: the points carry mu and nu with mu > 0 everywhere. The density f = nu / mu reproduces nu on all 16 events.
-Part B: the fifth point carries mu = 0 and nu > 0. The event {point 4} then has nu > 0 and mu = 0, no density can
-reproduce nu on it, and exactly one of the 32 events fails the absolute-continuity test.
+Part B: the fifth point (point 5) carries mu = 0 and nu > 0. The event {point 5} then has nu > 0 and mu = 0, so no
+density can reproduce nu on it. Exactly one of the 32 events fails the absolute-continuity test.
 
 Part C: for a function g on the four points, the sum of g times nu equals the sum of g times the density times mu.
 Every weight, measure and density is a Fraction, so each equality test is exact. Nothing is rounded.
@@ -45,7 +46,7 @@ def part_a() -> None:
 
 
 def part_b() -> None:
-    """A five-point space with mu = 0 at point 4 and nu > 0 there: no density exists."""
+    """A five-point space with mu = 0 at point 5 (index 4) and nu > 0 there: no density exists."""
     mu = (Fraction(1, 4), Fraction(1, 4), Fraction(1, 4), Fraction(1, 4), Fraction(0))
     nu = (Fraction(1, 4), Fraction(1, 4), Fraction(1, 4), Fraction(1, 8), Fraction(1, 8))
     print("Part B: a point with mu = 0 and nu > 0")

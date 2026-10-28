@@ -105,7 +105,7 @@ def main() -> None:
         closed = symmetric_bid_single_unit("discriminatory", n, 7300)
         grid = max(range(CAP + 1), key=lambda b: first_price_payoff(n, 7300, b))
         print(f"n = {n}: bid {closed} | grid best bid {grid} | agree: {closed == grid}")
-    print("exact expected revenue as a share of the value cap (values uniform on [0, 1]):")
+    print("one unit, exact expected revenue as a share of the value cap (values uniform on [0, 1]):")
     for n in range(2, 6):
         first = Fraction(n - 1, n) * expected_order_statistic(n, 1)
         second = expected_order_statistic(n, 2)

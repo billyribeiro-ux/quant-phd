@@ -9,7 +9,7 @@ Part B: two price indices on two-good baskets, Laspeyres and Paasche, as exact f
 Part C: simple and log inflation from one index, the deflator identity for real and nominal growth, and the
 chain product of link ratios.
 
-Every index value is a Fraction. Floats appear only in the logarithm lines, which print six decimal places.
+Every index value is a Fraction. Floats appear only in the decimal companions, which print six decimal places.
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ def main() -> None:
     print(f"expenditure and income sides agree: {gdp_expenditure == gdp_income}")
     print(f"operating surplus as the balancing entry {surplus_residual} CU")
 
-    # Closed economy with the same C, I and G: no exports or imports, and a tax T.
+    # Closed economy with the same C, I and G: no exports or imports, and a tax of 230 CU.
     tax = 230
     closed_y = consumption + investment + government
     private_saving = closed_y - tax - consumption
@@ -112,7 +112,7 @@ def main() -> None:
     print(f"nominal growth {float(g_nominal):.6f}; real growth {float(g_real):.6f}; deflator inflation {float(pi):.6f}")
     print(f"(1 + nominal) equals (1 + real)(1 + inflation) exactly: {identity}")
 
-    # Simple and log growth: ln(1 + x) <= x for x >= 0, so x - ln(1 + x) is non-negative on the grid.
+    # Simple and log growth: ln(1 + x) <= x for x > -1, so x - ln(1 + x) is non-negative on the grid.
     grid = (Fraction(1, 100), Fraction(5, 100), Fraction(25, 100))
     gaps = [float(x) - math.log(1 + float(x)) for x in grid]
     print("x - ln(1 + x) at x = 0.01, 0.05, 0.25: " + ", ".join(f"{g:.6f}" for g in gaps))

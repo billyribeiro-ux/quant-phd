@@ -4,7 +4,7 @@ Standard library only. No randomness and no network: every profile of every game
 output is the same on every run. Games 1 to 3 have integer payoffs in abstract payoff units. The Cournot
 part has profits in integer cents. A profile is a pure-strategy Nash equilibrium when neither player can
 raise its own payoff by changing only its own action. The check compares each payoff with every
-alternative action of that player, so each printed set is exact for the game listed. The enumeration
+action of that player, the one played included, so each printed set is exact for the game listed. The enumeration
 covers only the listed games and the listed quantity grid; it says nothing about other games.
 """
 

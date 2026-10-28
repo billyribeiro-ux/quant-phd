@@ -78,7 +78,8 @@ def probability(event: Callable[[tuple[int, ...]], bool]) -> Fraction:
 
 
 def main() -> None:
-    """Print Parts A, B and C. Every line is an exact count, a Fraction printed to ten places, or a boolean."""
+    """Print Parts A, B and C. Every line is an exact count, a float printed to ten places (exact here, because every
+    probability is a dyadic fraction), or a boolean."""
     print("Part A: hitting time of level +1 by the fair walk, N = 8")
     all_known = True
     for k in range(N + 1):

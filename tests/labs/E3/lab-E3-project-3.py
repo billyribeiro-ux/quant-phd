@@ -1,14 +1,14 @@
 """Rung 3 reference case: the estimates and standard errors for one fixed questionnaire of twelve SIMULATED answers.
 
-Standard library only. The twelve answers were generated for this page from a stated participant (gamma 0.35,
-lambda 2.20, kappa 1.20) with a fixed seed, and they are printed here as data. The participant is not a real person,
-and the estimates below are the numbers your elicit.py must reproduce for this case (copy this file as
-run_case.py, then replace the estimate function with a call to your module; it must print the same lines).
+Standard library only. The twelve answers are fixed SIMULATED data, printed here as data; this file does not record how
+they were drawn, and the participant is not a real person. The estimates below are the numbers your elicit.py must
+reproduce for this case (copy this file as run_case.py, then replace the estimate function with a call to your module;
+it must print the same lines).
 
 Each answer is (pair_id, choice, prizes of A, probabilities of A, prizes of B, probabilities of B). Prizes are whole
 cents and probabilities are exact fractions, read with Fraction. The model is the prospect model of the
 specification: gamma in (0, 1), lambda > 0, kappa > 0. Standard errors come from the observed information, the
-negative Hessian of the log-likelihood in the coordinates (c, log lambda, log kappa), c = log(gamma / (1 - gamma)),
+negative Hessian of the log-likelihood in the coordinates (eta, log lambda, log kappa), eta = log(gamma / (1 - gamma)),
 inverted and carried to the parameters by the delta method.
 """
 
@@ -48,7 +48,7 @@ def certainty_equivalent(prizes: list[int], probs: list[str], gamma: float, lam:
 
 
 def log_likelihood(theta: list[float]) -> float:
-    """The logit log-likelihood at theta = (c, log lambda, log kappa); each answer contributes log P(chosen)."""
+    """The logit log-likelihood at theta = (eta, log lambda, log kappa); each answer contributes log P(chosen)."""
     gamma = 1.0 / (1.0 + math.exp(-theta[0]))
     lam, kappa = math.exp(theta[1]), math.exp(theta[2])
     total = 0.0

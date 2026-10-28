@@ -193,6 +193,15 @@ def test_symmetric_bid_refuses_n_below_two() -> None:
         )
 
 
+def test_symmetric_bid_refuses_n_below_two_under_uniform_too() -> None:
+    for n in (1, 0):
+        must_refuse(
+            partial(sol.symmetric_bid_single_unit, "uniform", n, 100),
+            "n below two in the symmetric bid under the uniform format",
+            names=r"\bn\b",
+        )
+
+
 def test_symmetric_bid_accepts_n_equal_to_two() -> None:
     for fmt in ("uniform", "discriminatory"):
         if not is_cents(valid(sol.symmetric_bid_single_unit, fmt, 2, 100)):
@@ -257,9 +266,19 @@ def test_zero_units_is_refused() -> None:
         must_refuse(call, "units below one", names=r"units")
 
 
+def test_negative_units_is_refused() -> None:
+    for call in unit_callers(-1):
+        must_refuse(call, "a negative unit count", names=r"units")
+
+
 def test_units_equal_to_bidder_count_is_refused() -> None:
     for call in unit_callers(N):
         must_refuse(call, "units equal to the bidder count", names=r"units")
+
+
+def test_units_above_bidder_count_is_refused() -> None:
+    for call in unit_callers(N + 1):
+        must_refuse(call, "units above the bidder count", names=r"units")
 
 
 def test_one_unit_is_accepted() -> None:
@@ -283,6 +302,14 @@ def test_negative_bid_is_refused() -> None:
     must_refuse(partial(sol.efficiency, VALUES, bad, UNITS), "a negative bid in efficiency", names=r"bid")
 
 
+def test_negative_bid_in_last_position_is_refused() -> None:
+    bad = [*BIDS[:-1], -1]
+    must_refuse(partial(sol.allocate, bad, UNITS), "a negative last bid in allocate", names=r"bid")
+    must_refuse(partial(sol.payments, "discriminatory", bad, UNITS), "a negative last bid in payments", names=r"bid")
+    must_refuse(partial(sol.revenue, "uniform", bad, UNITS), "a negative last bid in revenue", names=r"bid")
+    must_refuse(partial(sol.efficiency, VALUES, bad, UNITS), "a negative last bid in efficiency", names=r"bid")
+
+
 def test_zero_bid_is_accepted() -> None:
     zeros = [0] * N
     valid(sol.allocate, zeros, UNITS)
@@ -294,6 +321,11 @@ def test_zero_bid_is_accepted() -> None:
 def test_negative_value_is_refused_in_efficiency() -> None:
     bad = [-1, *VALUES[1:]]
     must_refuse(partial(sol.efficiency, bad, BIDS, UNITS), "a negative value in efficiency", names=r"value")
+
+
+def test_negative_value_in_last_position_is_refused_in_efficiency() -> None:
+    bad = [*VALUES[:-1], -1]
+    must_refuse(partial(sol.efficiency, bad, BIDS, UNITS), "a negative last value in efficiency", names=r"value")
 
 
 def test_zero_value_is_accepted_in_efficiency() -> None:

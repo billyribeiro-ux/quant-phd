@@ -2,8 +2,10 @@
 
 SIMULATED: every price is generated in this file from a formula. No price is observed or taken from a market.
 Units: prices, the spot and the strikes are integer cents; the strikes are 80, 90, 100, 110 and 120 USD (evenly spaced).
-D stands for the discount factor exp(-r tau). The lab sets D to the exact rational 9/10. Every check below is an
-identity or an inequality that holds for any D in (0, 1], so no rate is needed. Calls are
+D stands for the discount factor exp(-r tau). The lab sets D to the exact rational 9/10. The parity identity holds for
+every D by construction, and the convexity check holds for every D, because each call is a sum of two convex functions
+of the strike. The model-free bound checks hold only for D >= 1/40 on this grid: at D = 1/100 the call at 80 USD exceeds
+the spot. So the lab sets D = 9/10, where every check holds, and no rate is needed. Calls are
 C(K) = max(S - D K, 0) + max(A - K, 0) / 10 with S = A = 100 USD. The puts follow from parity, P = C - S + D K. Every
 price is an integer number of cents because each strike is a multiple of 10 USD.
 The lab first checks the set, then plants one parity violation and one convexity violation to show that each check

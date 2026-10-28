@@ -5,7 +5,8 @@ Inputs are illustrative, not data. A buyer has one of two values in integer cent
 trade q (a number from 0 to 1) and a payment t (in cents). A buyer of value v who reports r gets the utility
 v * q(r) - t(r), in cents. No random draws are used.
 
-Part A: three direct mechanisms and one infeasible menu. Every report of every type is enumerated. Each line
+Part A: two feasible direct mechanisms, one menu that fails individual rationality, and one menu that fails
+incentive compatibility. Every report of every type is enumerated. Each line
 prints a utility, and the last lines print whether the mechanism is incentive compatible and individually
 rational, and its expected revenue in whole cents (half up).
 Part B: a grid search over the allocation pairs (q_L, q_H) with 0 <= q_L <= q_H <= 1 in steps of 1/4. Each pair
@@ -69,7 +70,7 @@ def show(name: str, mechanism: dict[str, tuple[Fraction, int]]) -> None:
 
 
 def part_a() -> None:
-    """Part A: three feasible-looking menus and one menu that fails individual rationality."""
+    """Part A: two feasible menus, one that fails individual rationality, and one that fails incentive compatibility."""
     print("Part A: every report of every type, for four direct mechanisms")
     show("exclude_type_L", {"L": (Fraction(0), 0), "H": (Fraction(1), 10000)})
     show("pool_at_low_value", {"L": (Fraction(1), 6000), "H": (Fraction(1), 6000)})

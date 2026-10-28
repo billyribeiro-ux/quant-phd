@@ -1,10 +1,11 @@
 """CF8 lab L02: early-payment discounts, credit-term break-evens and supply-chain financing, on SIMULATED terms.
 
 SIMULATED: every term, balance, margin and rate below is an invented input for this lab. No company, supplier or
-financier is real, and the lab reads no data file and makes no network request. Money is in integer cents. The
-break-even margin and the NPV checks use fractions.Fraction and are exact. The compounded implied cost in Part A is
-computed in floating point and printed to two decimals. Part D draws its cases from a seeded random number generator.
-Standard library only.
+financier is real, and the lab reads no data file and makes no network request. Money is in dollars, not cents:
+Part B uses exact dollar Fractions, and each printed dollar amount is rounded half up to the cent for display only.
+The break-even margin and the NPV checks use fractions.Fraction and are exact. The compounded implied cost in Part A
+is computed in floating point and printed to two decimals. Part D draws its cases from a seeded random number
+generator. Standard library only.
 """
 
 from __future__ import annotations
@@ -52,7 +53,7 @@ def npv_extension(margin: Fraction, extra_margin_base: Fraction, extra_invest: F
 
 
 def break_even_margin(extra_revenue: Fraction, extra_invest: Fraction) -> Fraction:
-    """Break-even margin m* = r times the investment over the extra revenue (the closed form of Section 2)."""
+    """Break-even margin m* = r times the investment over the extra revenue (the closed form of Section 3)."""
     return RATE * extra_invest / extra_revenue
 
 

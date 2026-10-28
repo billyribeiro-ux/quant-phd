@@ -2,7 +2,7 @@
 
 For a European call with spot 100.00, strike K, r = 0.05 continuously compounded and
 tau = 1 year, the Black-Scholes price C(sigma) is strictly increasing in sigma (Lesson 8,
-Theorem 2.2), so the volatility that reproduces a quoted price is found by bisection.
+Lemma 2.1), so the volatility that reproduces a quoted price is found by bisection.
 The inputs are stated model parameters, not market data. Nothing is random and no file
 is read.
 
@@ -76,7 +76,10 @@ def implied_volatility(price: float, strike: float) -> tuple[float, int]:
         return bs_call(SPOT, strike, RATE, TAU, sigma) - price
 
     if not gap(LOW_SIGMA) < 0 <= gap(HIGH_SIGMA):
-        raise ValueError("price too close to the lower bound: the bisection bracket has no sign change")
+        raise ValueError(
+            f"the volatility bracket [{LOW_SIGMA}, {HIGH_SIGMA}] does not contain the root: "
+            "the price is too close to the lower bound or to the spot"
+        )
     low, high = LOW_SIGMA, HIGH_SIGMA
     halvings = 0
     while high - low > TOL:

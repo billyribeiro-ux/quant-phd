@@ -13,12 +13,15 @@ A failing check names the property it tests and the idea to revisit. It never pr
 
 from __future__ import annotations
 
+import ast
 import functools
 import json
 import math
 import os
+import sys
 from collections.abc import Callable
 from fractions import Fraction
+from pathlib import Path
 from typing import Any
 
 import elicit as sol
@@ -44,14 +47,15 @@ def expect(ok: bool, hint: str) -> None:
         pytest.fail(hint, pytrace=False)
 
 
-def must_raise(call: Callable[[], object], condition: str, *, contains: str | None = None) -> None:
-    """Fail unless call() raises ValueError (the named conditions of the specification), with a message naming it."""
+def must_raise(call: Callable[[], object], condition: str, *, contains: tuple[str, ...] = ()) -> None:
+    """Fail unless call() raises ValueError (the named conditions of the specification). Each text in ``contains`` must
+    appear in the message; the page quotes a message only where it names one."""
     __tracebackhide__ = True
     try:
         call()
     except ValueError as err:
-        if contains is not None:
-            expect(contains in str(err), f"{condition}: the ValueError message must name the condition")
+        for text in contains:
+            expect(text in str(err), f"{condition}: the ValueError message must contain the required text")
         return
     except Exception:  # any other exception type is a failure for a named condition
         pytest.fail(f"{condition}: the specification requires ValueError for this input", pytrace=False)
@@ -107,12 +111,12 @@ def oracle_crra(prizes: list[int], probs: list[Fraction], gamma: float, wealth: 
 
 def oracle_loglik(parsed: list[tuple[Any, ...]], gamma: float, lam: float, kappa: float) -> float:
     """The logit log-likelihood: each response contributes log P(chosen), where P(A) = 1/(1 + exp(-z)) and
-    z = kappa (CE_A - CE_B) / 10000 (cents to units of $100). The unchosen alternative's term is log(1 - P)."""
+    z = kappa (CE_A - CE_B) / 10000 (cents to units of $100). A response that chose B contributes log(1 - P(A))."""
     total = 0.0
     for pa, qa, pb, qb, choice in parsed:
         z = kappa * (oracle_prospect(pa, qa, gamma, lam) - oracle_prospect(pb, qb, gamma, lam)) / 10_000.0
-        p_a = 1.0 / (1.0 + math.exp(-z))
-        total += math.log(p_a) if choice == "A" else math.log(1.0 - p_a)
+        # log P(A) = -log(1 + exp(-z)) and log(1 - P(A)) = -log(1 + exp(z)): the stable forms, since 1 - P(A) cancels
+        total += -math.log1p(math.exp(-z)) if choice == "A" else -math.log1p(math.exp(z))
     return total
 
 
@@ -289,7 +293,7 @@ def test_model_name_must_be_crra_or_prospect() -> None:
         must_raise(
             lambda n=name: sol.certainty_equivalent_cents(n, pa, qa, {"gamma": 0.5, "lambda": 2.0}, WEALTH),  # type: ignore[misc]
             f"model {name!r} is not one of the allowed names",
-            contains="crra",
+            contains=("crra", "prospect"),
         )
 
 
@@ -310,21 +314,21 @@ def test_probabilities_must_be_nonnegative_and_sum_to_exactly_one() -> None:
             "prospect", [100, 500], [third, Fraction(2, 3) - Fraction(1, 1000)], {"gamma": 0.0, "lambda": 1.0}, WEALTH
         ),
         "probabilities that sum to one part in a thousand below 1",
-        contains="probabilities must sum to 1",
+        contains=("probabilities must sum to 1",),
     )
     must_raise(
         lambda: sol.certainty_equivalent_cents(
             "prospect", [100, 500], [third + Fraction(1, 1000), Fraction(2, 3)], {"gamma": 0.0, "lambda": 1.0}, WEALTH
         ),
         "probabilities that sum to one part in a thousand above 1",
-        contains="probabilities must sum to 1",
+        contains=("probabilities must sum to 1",),
     )
     must_raise(
         lambda: sol.certainty_equivalent_cents(
             "prospect", [100, 500], [Fraction(-1, 4), Fraction(5, 4)], {"gamma": 0.0, "lambda": 1.0}, WEALTH
         ),
         "a negative probability",
-        contains="probabilities must sum to 1",
+        contains=("probabilities must sum to 1",),
     )
 
 
@@ -336,19 +340,19 @@ def test_crra_requires_wealth_plus_every_prize_to_stay_positive() -> None:
     must_raise(
         lambda: sol.certainty_equivalent_cents("crra", [-1000], [Fraction(1)], {"gamma": 0.5}, 1000),
         "final wealth exactly zero",
-        contains="wealth plus prize must stay positive",
+        contains=("wealth plus prize must stay positive",),
     )
     must_raise(
         lambda: sol.certainty_equivalent_cents("crra", [-1001], [Fraction(1)], {"gamma": 0.5}, 1000),
         "final wealth below zero",
-        contains="wealth plus prize must stay positive",
+        contains=("wealth plus prize must stay positive",),
     )
     must_raise(
         lambda: sol.certainty_equivalent_cents(
             "crra", [100, -2000], [Fraction(1, 2), Fraction(1, 2)], {"gamma": 0.5}, 1000
         ),
         "one prize of a two-prize lottery takes final wealth below zero",
-        contains="wealth plus prize must stay positive",
+        contains=("wealth plus prize must stay positive",),
     )
     got_prospect = sol.certainty_equivalent_cents("prospect", [-5000], [Fraction(1)], {"gamma": 0.5, "lambda": 2.0}, 0)
     expect(got_prospect == -5000, "the prospect model must not use wealth, so a zero wealth is not an error")
@@ -382,8 +386,8 @@ def test_log_likelihood_matches_oracle_at_the_true_parameters() -> None:
 
 
 def test_log_likelihood_is_a_sum_of_log_probabilities() -> None:
-    """Each term is the log of a probability, so the total is at most zero. The unchosen alternative contributes
-    log(1 - P), which is the second term of the likelihood."""
+    """Each term is the log of a probability, so the total is at most zero. A response that chose B contributes
+    log(1 - P(A)), the log-probability of B."""
     got = sol.log_likelihood(RESPONSES, TRUE)
     expect(got <= 0.0, "a log-likelihood of choice probabilities cannot be positive")
     one_only = [RESPONSES[0] | {"choice": "A"}]
@@ -405,7 +409,7 @@ def test_log_likelihood_is_a_sum_of_log_probabilities() -> None:
     )
     expect(
         abs(sol.log_likelihood(other, TRUE) - math.log(1.0 - p_a)) <= 1e-9,
-        "a response that chose B must contribute log(1 - P(A)), the unchosen alternative's term",
+        "a response that chose B must contribute log(1 - P(A)), the log-probability of B",
     )
 
 
@@ -443,7 +447,7 @@ def test_reported_log_likelihood_is_the_likelihood_at_the_estimate() -> None:
 
 
 def test_score_is_zero_at_the_estimate() -> None:
-    """At an interior maximum the score is zero. Derivatives are taken in the coordinates c = log(gamma/(1-gamma)),
+    """At an interior maximum the score is zero. Derivatives are taken in the coordinates eta = log(gamma/(1-gamma)),
     log(lambda) and log(kappa), where the estimate is interior; the tolerance is 1e-4 relative to max(1, |loglik|)."""
     gamma, lam, kappa = est()["gamma_hat"], est()["lambda_hat"], est()["kappa_hat"]
     level = oracle_loglik(PARSED, gamma, lam, kappa)
@@ -455,12 +459,12 @@ def test_score_is_zero_at_the_estimate() -> None:
     d_gamma = (ll(gamma + scale, lam, kappa) - ll(gamma - scale, lam, kappa)) / (2 * scale)
     d_lambda = (ll(gamma, lam * (1 + scale), kappa) - ll(gamma, lam * (1 - scale), kappa)) / (2 * scale)
     d_kappa = (ll(gamma, lam, kappa * (1 + scale)) - ll(gamma, lam, kappa * (1 - scale))) / (2 * scale)
-    score_c = gamma * (1.0 - gamma) * d_gamma
+    score_eta = gamma * (1.0 - gamma) * d_gamma
     score_log_lambda = lam * d_lambda
     score_log_kappa = kappa * d_kappa
     bound = 1e-4 * max(1.0, abs(level))
     expect(
-        max(abs(score_c), abs(score_log_lambda), abs(score_log_kappa)) <= bound,
+        max(abs(score_eta), abs(score_log_lambda), abs(score_log_kappa)) <= bound,
         "the score is not zero at the estimate: the estimate is not a stationary point of the likelihood",
     )
 
@@ -480,9 +484,8 @@ def test_estimate_is_a_local_maximum() -> None:
 
 
 def test_estimate_recovers_the_true_parameters_within_five_standard_errors() -> None:
-    """Each estimate lies within five of its own standard errors of the parameter that generated the answers.
-    Five, not four: the Wald standard errors of a 200-question sample are not calibrated in the far tail (see the
-    report's limitations)."""
+    """Each estimate lies within five of its own standard errors of the parameter that generated the answers. Five is
+    this suite's tolerance, stated on the project page; it is not a claim about the coverage of the standard errors."""
     for name, key, se in (
         ("gamma", "gamma_hat", "se_gamma"),
         ("lambda", "lambda_hat", "se_lambda"),
@@ -511,7 +514,7 @@ def test_estimate_on_a_second_participant_is_also_a_maximum() -> None:
 
 def test_estimate_needs_responses() -> None:
     """Named condition: an empty set of responses cannot identify anything."""
-    must_raise(lambda: sol.estimate([]), "no responses", contains="identify")
+    must_raise(lambda: sol.estimate([]), "no responses")
 
 
 def test_estimate_needs_a_mixed_sign_lottery() -> None:
@@ -535,7 +538,7 @@ def test_estimate_needs_a_mixed_sign_lottery() -> None:
             "probs_b": ["1/2", "1/2"],
         },
     ]
-    must_raise(lambda: sol.estimate(pure), "responses with only pure-gain lotteries", contains="mixed-sign")
+    must_raise(lambda: sol.estimate(pure), "responses with only pure-gain lotteries")
     zero_loss = [
         {
             "pair_id": 0,
@@ -554,10 +557,191 @@ def test_estimate_needs_a_mixed_sign_lottery() -> None:
             "probs_b": ["1/2", "1/2"],
         },
     ]
-    must_raise(lambda: sol.estimate(zero_loss), "a loss with probability zero is not a loss", contains="mixed-sign")
+    must_raise(lambda: sol.estimate(zero_loss), "a loss with probability zero is not a loss")
     expect(
         mixed([-100, 300], [Fraction(1, 2), Fraction(1, 2)]), "a lottery with a loss of positive probability is mixed"
     )
     expect(
         not mixed([-100, 300], [Fraction(0), Fraction(1)]), "a loss of zero probability does not make a lottery mixed"
     )
+
+
+def test_estimate_refuses_probabilities_that_sum_below_one() -> None:
+    """Named condition, in a response: the probabilities of a lottery must sum to exactly 1. This response is otherwise
+    valid (mixed-sign, non-negative), and its probabilities sum to 999/1000."""
+    bad = [RESPONSES_BASE | {"probs_a": ["1/2", "499/1000"]}]
+    must_raise(
+        lambda: sol.estimate(bad),
+        "a response whose probabilities sum below one",
+        contains=("probabilities must sum to 1",),
+    )
+
+
+def test_estimate_refuses_probabilities_that_sum_above_one() -> None:
+    """Named condition, in a response: the sum is 1001/1000 here, otherwise valid. A check that looks at one side only
+    fails this test."""
+    bad = [RESPONSES_BASE | {"probs_a": ["1/2", "501/1000"]}]
+    must_raise(
+        lambda: sol.estimate(bad),
+        "a response whose probabilities sum above one",
+        contains=("probabilities must sum to 1",),
+    )
+
+
+def test_estimate_refuses_a_negative_probability_even_when_the_sum_is_one() -> None:
+    """Named condition, in a response: the probabilities -1/4 and 5/4 sum to exactly 1, so only the sign is wrong."""
+    bad = [RESPONSES_BASE | {"probs_a": ["-1/4", "5/4"]}]
+    must_raise(
+        lambda: sol.estimate(bad), "a response with a negative probability", contains=("probabilities must sum to 1",)
+    )
+
+
+def test_zero_probability_prize_contributes_nothing_to_the_likelihood() -> None:
+    """Allowed: a probability of exactly zero. A response whose loss has probability zero has the same likelihood as the
+    same response with that prize removed, so the zero-probability prize adds nothing."""
+    with_zero = [RESPONSES_BASE | {"probs_a": ["0", "1"]}]
+    without = [RESPONSES_BASE | {"prizes_a": [300], "probs_a": ["1"]}]
+    expect(
+        sol.log_likelihood(with_zero, TRUE) == sol.log_likelihood(without, TRUE),
+        "a prize of probability zero must not change the likelihood",
+    )
+
+
+RESPONSES_BASE: dict[str, Any] = {
+    "pair_id": 0,
+    "choice": "A",
+    "prizes_a": [-100, 300],
+    "probs_a": ["1/2", "1/2"],
+    "prizes_b": [200],
+    "probs_b": ["1"],
+}
+
+
+def test_prospect_gain_branch_is_the_power_inverse_without_a_loss_weight() -> None:
+    """Exact case at gamma = 1/2, lambda = 2. Gains: v(x) = sqrt(x). The lottery of 100 and 400, each with probability
+    1/2, has value (10 + 20) / 2 = 15, and the sure amount with value 15 is 15^2 = 225 cents. A loss weight in this
+    branch would give 225 / 2 instead."""
+    got = sol.certainty_equivalent_cents(
+        "prospect", [100, 400], [Fraction(1, 2), Fraction(1, 2)], {"gamma": 0.5, "lambda": 2.0}, WEALTH
+    )
+    expect(got == 225, "a lottery with a positive value is inverted by the power 1/(1 - gamma), with no loss weight")
+
+
+def test_prospect_loss_branch_divides_the_value_by_lambda() -> None:
+    """Exact case at gamma = 1/2, lambda = 2. Losses: v(x) = -2 sqrt(-x). The lottery of -100 and -400, each with
+    probability 1/2, has value (-20 - 40) / 2 = -30. The sure amount c with v(c) = -30 has sqrt(-c) = 15, so c = -225
+    cents. Without the division by lambda the answer would be -900."""
+    got = sol.certainty_equivalent_cents(
+        "prospect", [-100, -400], [Fraction(1, 2), Fraction(1, 2)], {"gamma": 0.5, "lambda": 2.0}, WEALTH
+    )
+    expect(got == -225, "a lottery with a negative value is inverted by -(-V/lambda)^(1/(1-gamma))")
+
+
+def test_choice_probability_points_toward_the_higher_certainty_equivalent() -> None:
+    """Sure 3000 cents for A against sure 0 for B, at the true parameters: z = kappa * 3000 / 10000 > 0, so P(A) > 1/2.
+    A response that chose A contributes more than log(1/2); one that chose B contributes less."""
+    a = [{"pair_id": 0, "choice": "A", "prizes_a": [3000], "probs_a": ["1"], "prizes_b": [0], "probs_b": ["1"]}]
+    b = [a[0] | {"choice": "B"}]
+    expect(
+        sol.log_likelihood(a, TRUE) > math.log(0.5),
+        "a choice of the alternative with the higher certainty equivalent must be more likely than one half",
+    )
+    expect(
+        sol.log_likelihood(b, TRUE) < math.log(0.5),
+        "a choice of the alternative with the lower certainty equivalent must be less likely than one half",
+    )
+
+
+def _invert3(m: list[list[float]]) -> list[list[float]]:
+    """Inverse of a 3 by 3 matrix by Gauss-Jordan elimination with partial pivoting (standard library only)."""
+    aug = [list(row) + [1.0 if i == j else 0.0 for j in range(3)] for i, row in enumerate(m)]
+    for col in range(3):
+        pivot = max(range(col, 3), key=lambda r: abs(aug[r][col]))
+        aug[col], aug[pivot] = aug[pivot], aug[col]
+        div = aug[col][col]
+        aug[col] = [x / div for x in aug[col]]
+        for r in range(3):
+            if r != col:
+                factor = aug[r][col]
+                aug[r] = [x - factor * y for x, y in zip(aug[r], aug[col], strict=True)]
+    return [row[3:] for row in aug]
+
+
+def _observed_information(theta: list[float]) -> list[list[float]]:
+    """Negative Hessian of the oracle log-likelihood in (eta, log lambda, log kappa), by central differences, step 1e-5.
+    The step is not smaller: for some questionnaires the second differences are sensitive to the step below 1e-5."""
+    h = 1e-5
+
+    def at(*moves: tuple[int, float]) -> float:
+        y = list(theta)
+        for idx, amount in moves:
+            y[idx] += amount
+        gamma = 1.0 / (1.0 + math.exp(-y[0]))
+        return oracle_loglik(PARSED, gamma, math.exp(y[1]), math.exp(y[2]))
+
+    f0 = at()
+    info = [[0.0] * 3 for _ in range(3)]
+    for i in range(3):
+        info[i][i] = -(at((i, h)) - 2.0 * f0 + at((i, -h))) / (h * h)
+        for j in range(i + 1, 3):
+            value = -(at((i, h), (j, h)) - at((i, h), (j, -h)) - at((i, -h), (j, h)) + at((i, -h), (j, -h))) / (
+                4.0 * h * h
+            )
+            info[i][j] = info[j][i] = value
+    return info
+
+
+def test_standard_errors_match_the_delta_method_oracle() -> None:
+    """The standard errors are the square roots of the diagonal of the inverse observed information in
+    (eta, log lambda, log kappa), carried to the parameters by the delta method: d gamma / d eta = gamma (1 - gamma),
+    d lambda / d log lambda = lambda, d kappa / d log kappa = kappa. The oracle recomputes this at the reported
+    estimate. The tolerance is 10% relative. For a poorly identified parameter the standard error is sensitive to
+    round-off in the finite-difference information (for seed 49 two correct engines differ by about 4% in se_lambda), so
+    a tighter tolerance would test the implementation's round-off. A missing or wrong delta factor (gamma (1 - gamma),
+    lambda or kappa, or a missing square root) changes a standard error by much more than 10%."""
+    gamma, lam, kappa = est()["gamma_hat"], est()["lambda_hat"], est()["kappa_hat"]
+    theta = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
+    cov = _invert3(_observed_information(theta))
+    want = {
+        "se_gamma": gamma * (1.0 - gamma) * math.sqrt(cov[0][0]),
+        "se_lambda": lam * math.sqrt(cov[1][1]),
+        "se_kappa": kappa * math.sqrt(cov[2][2]),
+    }
+    for key, value in want.items():
+        expect(
+            abs(est()[key] - value) <= 1e-1 * value,
+            "each standard error must be the delta-method value from the observed information at the estimate",
+        )
+
+
+NETWORK_MODULES = frozenset(
+    {"socket", "ssl", "http", "urllib", "ftplib", "smtplib", "xmlrpc", "requests", "httpx", "aiohttp", "urllib3"}
+)
+
+
+def test_engine_imports_only_the_standard_library_with_no_network_and_prints_nothing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The engine's imports are read from its source: each top-level module is in the standard library and none is a
+    network module. Then each function is called on valid input, and nothing may reach stdout or stderr."""
+    path = getattr(sol, "__file__", None)
+    expect(isinstance(path, str), "the engine must be a module file the suite can read")
+    tree = ast.parse(Path(str(path)).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            names = [node.module]
+        else:
+            names = []
+        for name in names:
+            top = name.split(".")[0]
+            expect(top in sys.stdlib_module_names, "elicit.py may import only the standard library")
+            expect(top not in NETWORK_MODULES, "elicit.py may not import a network module")
+    capsys.readouterr()
+    sol.certainty_equivalent_cents("crra", [100, -50], [Fraction(1, 2), Fraction(1, 2)], {"gamma": 0.5}, WEALTH)
+    sol.certainty_equivalent_cents("prospect", [100, -50], [Fraction(1, 2), Fraction(1, 2)], TRUE, WEALTH)
+    sol.log_likelihood(RESPONSES[:3], TRUE)
+    sol.estimate(RESPONSES)
+    captured = capsys.readouterr()
+    expect(captured.out == "" and captured.err == "", "no function may print to stdout or stderr")

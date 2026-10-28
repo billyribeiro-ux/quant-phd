@@ -4,12 +4,12 @@ The fair walk takes steps X_1, ..., X_N, each +1 or -1 with probability 1/2, and
 The sample space is the 2**N step sequences, each with weight 2**(-N). Every probability and expectation is an
 exact fractions.Fraction.
 
-Part A: for N from 1 to 12, the process X_k = |S_k| (k = 0, ..., N) is checked against the inequality
-P(max_{k<=N} X_k >= lambda) <= E[X_N] / lambda, for every lambda in the grid j/2 with j = 1, ..., 2(N+1). The lab
-also checks the intermediate line lambda * P(A) <= E[X_N 1_A] <= E[X_N], where A = {max_{k<=N} X_k >= lambda}. It
-prints the largest ratio lambda * P(A) / E[X_N] over the grid, the lambda where it is attained, and P(A) at that lambda.
+Part A: for N from 1 to 12, the process Z_k = |S_k| (k = 0, ..., N) is checked against the inequality
+P(max_{k<=N} Z_k >= lambda) <= E[Z_N] / lambda, for every lambda in the grid j/2 with j = 1, ..., 2(N+1). The lab
+also checks the intermediate line lambda * P(A) <= E[Z_N 1_A] <= E[Z_N], where A = {max_{k<=N} Z_k >= lambda}. It
+prints the largest ratio lambda * P(A) / E[Z_N] over the grid, the lambda where it is attained, and P(A) at that lambda.
 
-Part B: the one-step submartingale inequality E[X_{k+1} 1_B] >= E[X_k 1_B] is checked for N = 12 on every atom B of
+Part B: the one-step submartingale inequality E[Z_{k+1} 1_B] >= E[Z_k 1_B] is checked for N = 12 on every atom B of
 the first-k-steps partition. Each atom is a set of paths sharing their first k steps, and every event in that
 partition is a union of atoms, so the atom check covers all of them.
 
@@ -39,8 +39,8 @@ def partial_sums(path: tuple[int, ...]) -> list[int]:
 
 
 def part_a() -> None:
-    """Doob's inequality for X_k = |S_k| over the grid of lambda values, for each horizon N from 1 to 12."""
-    print("Part A: P(max_{k<=N} X_k >= lambda) <= E[X_N] / lambda for X_k = |S_k|")
+    """Doob's inequality for Z_k = |S_k| over the grid of lambda values, for each horizon N from 1 to 12."""
+    print("Part A: P(max_{k<=N} Z_k >= lambda) <= E[Z_N] / lambda for Z_k = |S_k|")
     for n in range(1, MAX_N + 1):
         weight = Fraction(1, 2**n)
         sample = paths(n)
@@ -63,12 +63,12 @@ def part_a() -> None:
             f"N {n} lambda_count {len(grid)} all_bounds_hold {all_hold} "
             f"largest_ratio {float(worst_ratio):.6f} at_lambda {worst_lambda} "
             f"probability_at_lambda {worst_prob} "
-            f"E_X_N {expected_last}"
+            f"E_Z_N {expected_last}"
         )
 
 
 def part_b() -> None:
-    """The one-step submartingale inequality for X_k = |S_k|, on every atom of the first-k-steps partition."""
+    """The one-step submartingale inequality for Z_k = |S_k|, on every atom of the first-k-steps partition."""
     print("Part B: one-step submartingale inequality on every atom, N = 12")
     sample = paths(MAX_N)
     every_atom_holds = True

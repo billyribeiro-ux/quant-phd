@@ -23,7 +23,7 @@ def _half_up(x: Fraction) -> int:
 
 def _check_df(df_ppm: int) -> None:
     if isinstance(df_ppm, bool) or not isinstance(df_ppm, int) or not DF_MIN <= df_ppm <= DF_MAX:
-        raise ValueError("df_ppm must lie in 1..1000000")
+        raise ValueError("df_ppm must lie in 1 to 1000000")
 
 
 def _check_strikes(strikes: list[int]) -> None:

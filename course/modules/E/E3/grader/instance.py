@@ -11,7 +11,8 @@ SIMULATED participant and a questionnaire, and then simulates that participant's
   probabilities that are positive and sum to 1 (denominators 4, 5, 10 and 20). A lottery is mixed (it has a gain and a
   loss, each with positive probability) or pure (all its prizes are gains);
 * the answers. The chosen alternative is drawn with ``random.Random(seed)`` from the logit probability
-  P(A) = 1 / (1 + exp(-kappa (CE_A - CE_B) / 100)), where CE is the prospect certainty equivalent in cents.
+  P(A) = 1 / (1 + exp(-kappa (CE_A - CE_B) / 10000)), where CE is the prospect certainty equivalent in cents, so the
+  difference is taken in units of $100.
 
 The instance is returned as JSON text (``responses_json``), which is the form the in-browser questionnaire exports.
 Probabilities are written as "numerator/denominator" strings, which ``Fraction`` reads back exactly.

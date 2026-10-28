@@ -3,7 +3,7 @@
 ``make_instance(seed)`` is deterministic and uses only the standard library. From the seed alone it draws one
 expiry's European option chain on six evenly spaced strikes, in integer cents:
 
-* a spot between 80.00 and 200.01, a discount factor to expiry in parts per million (0.930000 to 0.999000);
+* a spot between 80.00 and 200.00, a discount factor to expiry in parts per million (0.930000 to 0.999000);
 * call quotes that form an integer sequence convex in strike, and put quotes that make the parity residual of every
   strike at most half a cent, so a clean chain has no parity finding and no convexity finding;
 * a cost model: a fee of 0 to 40 cents per contract and a half-spread of 1 to 150 cents per leg;

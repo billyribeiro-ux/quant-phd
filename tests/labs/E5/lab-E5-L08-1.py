@@ -5,7 +5,7 @@ Standard library only (fractions). No randomness and no network, so every run pr
 Every input is an illustrative value chosen for the arithmetic, not an estimate: a marginal propensity to consume
 c = 3/5, autonomous consumption a = 20,000 cents, investment I = 15,000 cents, government spending G = 30,000 cents,
 and a change in spending of 10,000 cents (100 CU). The model is closed and holds prices and the interest rate fixed.
-Amounts are in whole cents; a stage can carry a fraction of a cent, and such amounts are printed as exact fractions.
+Amounts are in whole cents; a stage can carry a fraction of a cent. Part B rounds its gaps to six decimal places.
 
 Part A: the stages of spending. Stage k adds c^k times the change in spending. The running total after N stages equals
 the closed form dG (1 - c^N) / (1 - c), checked exactly for N = 1 to 30.
@@ -41,12 +41,12 @@ def closed_form(change: Fraction, marginal: Fraction, stages: int) -> Fraction:
 
 
 def equilibrium(autonomous: int, investment: int, government: int, marginal: Fraction, tax: int) -> Fraction:
-    """Output in cents where Y = a + c (Y - T) + I + G, solved exactly: (a - cT + I + G) / (1 - c)."""
+    """Output in cents where Y = a + c (Y - Tax) + I + G, solved exactly: (a - c Tax + I + G) / (1 - c)."""
     return (autonomous - marginal * tax + investment + government) / (1 - marginal)
 
 
 def main() -> None:
-    """Print Parts A to D in a fixed order. Each line is an exact fraction, an integer or a fixed string."""
+    """Print Parts A to D in a fixed order. Each line is an exact fraction, an integer, a string, or a six-place gap."""
     print(
         f"inputs: c {C} a {AUTONOMOUS} I {INVESTMENT} G {GOVERNMENT} dG {DELTA_G} dTax {DELTA_T} "
         f"multiplier {1 / (1 - C)}"

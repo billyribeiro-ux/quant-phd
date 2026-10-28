@@ -34,7 +34,10 @@ def autonomous_demand(g: Fraction, tax: Fraction = TAX) -> Fraction:
 
 
 def denominator(c: Fraction, b: Fraction, d: Fraction, h: Fraction) -> Fraction:
-    """The determinant magnitude D = h (1 - c) + b d of the IS-LM system, which is positive when b >= 0, d >= 0."""
+    """The determinant magnitude D = h (1 - c) + b d of the IS-LM system.
+
+    D is positive under A2: 0 < c < 1, h > 0, b >= 0, d >= 0.
+    """
     return h * (1 - c) + b * d
 
 

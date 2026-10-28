@@ -2,8 +2,9 @@
 
 SIMULATED: make_instance(seed) generates a stressed 13-week case for a manufacturer. The numbers are generated here
 and are not any company's data. Every seed gives a deterministic, valid case: positive minimum cash, a revolver
-commitment at least the opening drawn balance, a collection lag between 20 and 90 days and a payment lag between 20
-and 60 days. Money is whole cents; days are whole days; the horizon is 13 weeks of 7 days.
+commitment at least the opening drawn balance, a collection lag from 35 to 80 days and a payment lag from 25 to 50 days
+(the ranges of the specification on the project page). Money is whole cents; days are whole days; the horizon is 13
+weeks of 7 days.
 
 Standard library only. The payload is the case as a JSON string, with the keys the specification names.
 """

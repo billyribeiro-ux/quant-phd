@@ -2,13 +2,13 @@
 
 Standard library only: fractions.Fraction for every share and price comparison. No randomness and no network.
 Sellers hold one unit each. A seller is high quality (H) with population share alpha, and low quality (L)
-with share 1 - alpha. The buyer's value of a unit is W[H] = 12000 cents or W[L] = 6000 cents, and the seller's
-cost is C[H] = 10000 cents or C[L] = 4000 cents. The buyer cannot observe quality, so it pays the expected
+with share 1 - alpha. The buyer's value of a unit is VALUE[H] = 12000 cents or VALUE[L] = 6000 cents, and the seller's
+cost is COST[H] = 10000 cents or COST[L] = 4000 cents. The buyer cannot observe quality, so it pays the expected
 value of the units that are offered at the price p. A price p is market-consistent when p equals that
-expected value, taken over the sellers whose cost is at most p. Prices are integer cents from 0 to 15000,
-and every one is tested, so each printed price list is exact for the cent grid.
+expected value, taken over the sellers whose cost is at most p. Every whole-cent price from 0 to 15000 is
+tested, so each printed price list is exact for that grid.
 
-The full-information benchmark gives each seller's gain from trade as W - C for its own type, with no
+The full-information benchmark gives each seller's gain from trade as VALUE - COST for its own type, with no
 withholding. The lab prints the gains, the share of sellers who trade at each market-consistent price, and
 the gains lost to the withheld sellers, in cents per seller, for alpha = k/10 with k from 0 to 10.
 """

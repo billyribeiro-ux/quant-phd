@@ -1,13 +1,14 @@
 """Reference solution for the FC1 cash-instrument engine (instruments.py).
 
-The grader copies this file to instruments.py in a scratch directory and runs the whole suite on it. It is excluded
-from deployment and is not an answer shown to learners. Conventions, as the project page states them:
+The grader copies this file to instruments.py in a scratch directory and runs the whole suite on it. It is not an
+answer shown to learners; BLUEPRINT requires that deployment exclude it, and no file in this repository enforces that.
+Conventions, as the project page states them:
 
 * money is an int in cents; each output is computed from exact Fractions and rounded once, half away from zero
 * periods are whole numbers from 1; a bond pays its coupon in periods 1 to n and its face in period n
 * a per-period yield is yield_bps / 10000; an event in period t is discounted by (1 + y) ** -t
-* side +1 is the holder's long or receiving side and side -1 the short or paying side; a trade's cash flow to the
-  holder is -side * quantity * price_cents, so a buyer (side +1) pays
+* side +1 is the long holder, who buys and pays cash; side -1 is the short holder, who sells and receives cash; a
+  trade's cash flow to the holder is -side * quantity * price_cents
 """
 
 from __future__ import annotations

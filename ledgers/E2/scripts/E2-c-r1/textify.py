@@ -1,0 +1,10 @@
+import html, re, sys
+src = open(sys.argv[1], encoding="utf-8").read()
+src = re.sub(r"(?is)<script.*?</script>", "", src)
+src = re.sub(r"(?is)<style.*?</style>", "", src)
+src = re.sub(r"<(?=[\s0-9=(])", "&lt;", src)
+out = re.sub(r"(?i)<(br|/p|/li|/h[1-6]|/div|/tr|/section|/table|/pre)[^>]*>", "\n", src)
+out = re.sub(r"<[^>]+>", "", out)
+out = html.unescape(out)
+out = re.sub(r"\n\s*\n+", "\n", out)
+print(out)

@@ -156,7 +156,7 @@ def test_module_does_not_import_grader_files() -> None:
     __tracebackhide__ = True
     source = Path(sol.__file__).read_text(encoding="utf-8")
     grader_names = {"instance", "reference", "test_project"}
-    imported = set()
+    imported: set[str] = set()
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             imported.update(alias.name.split(".")[0] for alias in node.names)
@@ -274,6 +274,12 @@ def test_parity_gap_df_range_lower_boundary() -> None:
     assert isinstance(sol.parity_gap_cents(10, 0, 10, 10, 1), int), "df_ppm = 1 is inside the range"
 
 
+def test_parity_gap_rejects_a_negative_df() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError, match="df_ppm"):
+        sol.parity_gap_cents(10, 0, 10, 10, -1)
+
+
 def test_parity_gap_df_range_upper_boundary() -> None:
     __tracebackhide__ = True
     assert isinstance(sol.parity_gap_cents(10, 0, 10, 10, PPM), int), "df_ppm = 1000000 is inside the range"
@@ -345,6 +351,16 @@ def test_unequal_grid_no_false_positive() -> None:
     # same strikes, call 41 is below the chord value 42, so the strike is not a violation
     assert sol.convexity_violations([100, 110, 150], [50, 41, 10], PPM) == [], (
         "a call below the chord of its neighbours, weighted by distance, is not a violation"
+    )
+
+
+def test_convexity_matches_oracle_on_an_uneven_grid() -> None:
+    __tracebackhide__ = True
+    # strike 110 is flagged (chord 42, call 43); 150 is not (chord 32.6, call 10); 160 is flagged (chord 65/7, call 30)
+    strikes, calls = [100, 110, 150, 160, 220], [50, 43, 10, 30, 5]
+    got = sol.convexity_violations(strikes, calls, PPM)
+    assert got == oracle_convexity(strikes, calls) == [1, 3], (
+        "every interior strike on an uneven grid is checked against the chord weighted by distance"
     )
 
 
@@ -440,6 +456,20 @@ def test_strike_zero_is_rejected_by_scan_and_convexity() -> None:
         sol.convexity_violations([0, 1, 2], [5, 5, 5], PPM)
 
 
+def test_negative_strike_is_rejected_by_scan_and_convexity() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError, match="strictly increasing"):
+        sol.scan(hand_chain([-5, 1, 2], [5, 5, 5], [1, 1, 1]))
+    with pytest.raises(ValueError, match="strictly increasing"):
+        sol.convexity_violations([-5, 1, 2], [5, 5, 5], PPM)
+
+
+def test_equal_strikes_are_rejected_by_convexity() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError, match="strictly increasing"):
+        sol.convexity_violations([100, 100, 110], [5, 5, 4], PPM)
+
+
 def test_strike_one_cent_is_the_lowest_positive_strike_accepted() -> None:
     __tracebackhide__ = True
     assert sol.convexity_violations([1, 2, 3], [5, 5, 5], PPM) == [], "a strike of 1 cent is positive and valid"
@@ -465,16 +495,30 @@ def test_df_at_the_range_ends_is_accepted(good_df: int) -> None:
 
 def test_calls_shorter_than_strikes_is_rejected() -> None:
     __tracebackhide__ = True
-    with pytest.raises(ValueError, match="one quote per strike"):
+    with pytest.raises(ValueError):
         sol.scan(hand_chain([100, 110, 120], [5, 5], [1, 1, 1]))
-    with pytest.raises(ValueError, match="one quote per strike"):
+    with pytest.raises(ValueError):
         sol.convexity_violations([100, 110, 120], [5, 5], PPM)
 
 
 def test_puts_shorter_than_strikes_is_rejected() -> None:
     __tracebackhide__ = True
-    with pytest.raises(ValueError, match="one quote per strike"):
+    with pytest.raises(ValueError):
         sol.scan(hand_chain([100, 110, 120], [5, 5, 5], [1, 1]))
+
+
+def test_calls_longer_than_strikes_is_rejected() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError):
+        sol.scan(hand_chain([100, 110, 120], [5, 5, 5, 5], [1, 1, 1]))
+    with pytest.raises(ValueError):
+        sol.convexity_violations([100, 110, 120], [5, 5, 5, 5], PPM)
+
+
+def test_puts_longer_than_strikes_is_rejected() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError):
+        sol.scan(hand_chain([100, 110, 120], [5, 5, 5], [1, 1, 1, 1]))
 
 
 def test_lengths_equal_is_accepted() -> None:
@@ -641,6 +685,34 @@ def test_negative_half_cent_gross_rounds_once_up_in_magnitude() -> None:
     # gap = 6 - 0 - (10 - 1.5) = -2.5 exactly: the gross is the magnitude 2.5, rounded half up to 3
     chain = hand_chain([3], [6], [0], spot=10, df=500_000, fee=0, spread=0)
     assert rows_of(sol.scan(chain)) == [("parity", 3, 3, 3)], "the gross is the rounded magnitude of the gap"
+
+
+def test_parity_findings_come_in_strike_order() -> None:
+    __tracebackhide__ = True
+    # spot 100 and df 1: the gap is C - P - (100 - K) = 50, 10 and 70 at strikes 100, 110 and 120; no convexity finding
+    chain = hand_chain([100, 110, 120], [50, 5, 50], [0, 5, 0], spot=100, df=PPM, fee=0, spread=0)
+    assert rows_of(sol.scan(chain)) == [("parity", 100, 50, 50), ("parity", 110, 10, 10), ("parity", 120, 70, 70)], (
+        "parity findings are listed in increasing strike order"
+    )
+
+
+def test_convexity_findings_come_in_strike_order() -> None:
+    __tracebackhide__ = True
+    # two convexity violations, at 9500 (chord 1500, call 1700) and 10500 (chord 700, call 900); parity gaps are zero
+    chain = consistent_chain([9_000, 9_500, 10_000, 10_500, 11_000], 10_000, PPM, [2_000, 1_700, 1_000, 900, 400])
+    assert rows_of(sol.scan(chain)) == [("convexity", 9_500, 200, 110), ("convexity", 10_500, 200, 110)], (
+        "convexity findings are listed in increasing strike order"
+    )
+
+
+def test_convexity_half_cent_gross_rounds_once_up() -> None:
+    __tracebackhide__ = True
+    # chord at 10100 = (5001 + 2700) / 2 = 3850.5; the call 3851 is half a cent above it, so the gross is 1 cent
+    strikes, calls, puts = [10_000, 10_100, 10_200], [5_001, 3_851, 2_700], [5_001, 3_951, 2_900]
+    chain = hand_chain(strikes, calls, puts, spot=10_000, df=PPM, fee=0, spread=0)
+    assert rows_of(sol.scan(chain)) == [("convexity", 10_100, 1, 1)], (
+        "an exact half-cent convexity gross rounds up once"
+    )
 
 
 def test_findings_are_in_parity_then_convexity_order() -> None:

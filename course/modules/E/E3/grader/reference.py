@@ -165,7 +165,7 @@ def _logit_sum(parsed: list[Parsed], gamma: float, lam: float, kappa: float) -> 
 
 def log_likelihood(responses: list[dict[str, object]], params: dict[str, float]) -> float:
     """Log-likelihood of the logit choice model: the sum over responses of log P(chosen) (A: 1/(1+exp(-z)) with
-    z = kappa (CE_A - CE_B)); the unchosen alternative contributes log(1 - P), which is the second term."""
+    z = kappa (CE_A - CE_B) / 10000); a response that chose B contributes log(1 - P(A)) = -log(1 + exp(z))."""
     gamma = float(params["gamma"])
     lam = float(params["lambda"])
     kappa = float(params["kappa"])

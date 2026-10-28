@@ -4,8 +4,9 @@ Standard library only. Everything is exact: each probability and expectation is 
 enumeration or by a closed sum, and each money amount is an integer number of cents, rounded once, half up, from the
 exact value. The case is illustrative and is not a generated instance: a walk of horizon N = 6, a stopping rule
 tau = min(first time S = +1, 4), Doob's level 3, doubling with capital 100 cents and base stake 1 cent, the dyadic
-martingale for levels 0 to 10, and a biased control with win probability 1/3. Copy this file into report/run_report.py,
-then replace the enumerations with calls to your martingale_checks module. It must print the same lines.
+martingale for levels 0, 1, 2, 3 and 10, and a biased control with win probability 1/3. Copy this file into
+report/run_report.py, then replace the enumerations with calls to your martingale_checks module. It must print the same
+lines.
 """
 
 from __future__ import annotations

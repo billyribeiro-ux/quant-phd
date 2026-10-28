@@ -16,7 +16,8 @@ The default state is the window of 20 quarters that ends at the latest quarter, 
 * growth, the output gap and inflation as in rung 1;
 * inflation gap: inflation minus the target, 2.0 percent per year;
 * unemployment gap: the unemployment rate minus the natural rate of unemployment, 4.0 percent;
-* Taylor-rule value: i = r_n + pi + PHI_PI * (pi - target) + PHI_Y * gap, with r_n = 2.0 percent per year (the
+* Taylor-rule value: i = r_n + pi_yoy + PHI_PI * (pi_yoy - target) + PHI_Y * y_log, where pi_yoy is the year-on-year
+  inflation rate and y_log the log output gap of the conventions, and r_n = 2.0 percent per year (the
   natural real rate), PHI_PI = 0.5 and PHI_Y = 0.5 (stated assumptions, not estimates);
 * policy gap: the policy rate minus the Taylor-rule value;
 * term spread: the quarter average above.
@@ -112,7 +113,8 @@ def sign(value: float | Fraction) -> str:
 def read_quarter_spreads(file: Path) -> dict[str, tuple[Fraction, int]]:
     """Each quarter's average term spread (exact) and the number of days in it, from the H.15 snapshot.
 
-    The file's header must be date,tbill_3m,cmt_10y. A value that is not a decimal number raises ValueError.
+    The file's header must be date,tbill_3m,cmt_10y. A value that is not a decimal number raises ValueError. A day on
+    which either yield is blank is skipped, so each quarter averages only the days on which both are published.
     """
     totals: dict[str, Fraction] = {}
     days: dict[str, int] = {}
@@ -122,6 +124,8 @@ def read_quarter_spreads(file: Path) -> dict[str, tuple[Fraction, int]]:
             raise ValueError(f"unexpected header {header}")
         for line in handle:
             date, tbill, cmt = line.strip().split(",")
+            if tbill == "" or cmt == "":
+                continue
             label = f"{int(date[:4])} Q{(int(date[5:7]) - 1) // 3 + 1}"
             totals[label] = totals.get(label, Fraction(0)) + (Fraction(cmt) - Fraction(tbill))
             days[label] = days.get(label, 0) + 1

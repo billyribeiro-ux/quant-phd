@@ -1,8 +1,8 @@
 """E2 L05 lab 1: a two-type menu of quantity-transfer contracts, with incentive and participation constraints.
 
-Inputs are illustrative, not data. A seller offers a menu of two contracts (q_L, T_L) and (q_H, T_H) to a buyer who
+Inputs are illustrative, not data. A seller offers a menu of two contracts (q_L, m_L) and (q_H, m_H) to a buyer who
 is a low type with value 3,000 cents per unit with probability 3/4, or a high type with value 6,000 cents per unit
-with probability 1/4. The buyer's utility is theta * q - T, and the seller's cost of q units is q^2 / 2 cents
+with probability 1/4. The buyer's utility is theta * q - m, and the seller's cost of q units is q^2 / 2 cents
 (Assumption 2 on the page). Quantities are in units and money is in integer cents.
 
 Part A checks the four constraints at the menu that the page derives: the low type's participation constraint and
@@ -57,8 +57,8 @@ def main() -> None:
     u_high = THETA_HIGH * q_high - t_high
 
     print("Part A: the menu and its four constraints (cents)")
-    print(f"low contract: q_L = {q_low}, T_L = {t_low}")
-    print(f"high contract: q_H = {q_high}, T_H = {t_high}")
+    print(f"low contract: q_L = {q_low}, m_L = {t_low}")
+    print(f"high contract: q_H = {q_high}, m_H = {t_high}")
     print(f"low type utility, participation: {u_low} >= 0 holds: {u_low >= 0}")
     print(f"high type utility: {u_high}")
     print(f"high type deviation to the low contract: {THETA_HIGH * q_low - t_low}")

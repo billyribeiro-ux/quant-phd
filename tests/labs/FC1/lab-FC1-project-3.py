@@ -52,6 +52,12 @@ def main() -> None:
     print("rounding case, each term rounded first (not the rule):", term_by_term_price(rounding, 400))
     buy = (2, -10 * 9_850)
     print("fixture E trade event (buy 10 at 9850, settles in period 2):", buy)
+    exact_half = bond_events(1, 0, 1)
+    print("fixture F events (one cent of face, no coupon, one period):", exact_half)
+    print("fixture F price at 10000 bps (cents), exact value 1/2:", bond_price(exact_half, 10_000))
+    half_five_thousand = bond_events(10_001, 0, 1)
+    print("fixture G events (10001 cents of face, one period):", half_five_thousand)
+    print("fixture G price at 10000 bps (cents), exact value 5000.5:", bond_price(half_five_thousand, 10_000))
 
 
 main()
