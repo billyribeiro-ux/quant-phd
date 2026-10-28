@@ -1,0 +1,577 @@
+"""Acceptance suite for the AC4 project: the budget and variance engine (budget_engine.py).
+
+Runs identically in the browser (Pyodide) and locally:
+
+    QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
+
+with your budget_engine.py next to this file. Warnings are failures, as in the browser.
+
+Every expected value is computed here, from the case's own numbers, by the rules of the project specification. The
+oracle below is written independently of any solution: it uses exact fractions and states each rule once. A failure
+names the property it checks and the idea to revisit; it never prints the expected value.
+"""
+
+from __future__ import annotations
+
+import ast
+import contextlib
+import copy
+import io
+import json
+import math
+import os
+import sys
+from collections.abc import Callable, Mapping
+from fractions import Fraction
+from pathlib import Path
+from typing import Any
+
+import budget_engine as sol
+import pytest
+from instance import make_instance
+
+pytestmark = pytest.mark.filterwarnings("error")
+
+SEED = int(os.environ.get("QF_SEED", "0"))
+CASE: dict[str, Any] = json.loads(make_instance(SEED)["payload"])
+PRODUCTS: list[dict[str, Any]] = CASE["products"]
+FIXED: int = CASE["fixed_overhead_cents"]
+INPUT_PRICE: int = CASE["input_price_cents"]
+ACTUAL_INPUTS: int = CASE["actual_inputs_used"]
+FUNCTIONS: tuple[str, ...] = ("master_budget", "flexible_budget", "variance_decomposition")
+VARIANCES: tuple[str, ...] = ("sales_price", "sales_volume", "sales_mix", "efficiency")
+
+
+def fresh(**changes: Any) -> dict[str, Any]:
+    """A deep copy of the learner's case, with top-level fields replaced."""
+    case = copy.deepcopy(CASE)
+    case.update(changes)
+    return case
+
+
+def with_products(products: list[dict[str, Any]], **changes: Any) -> dict[str, Any]:
+    case = fresh(**changes)
+    case["products"] = products
+    return case
+
+
+def half_up(x: Fraction) -> int:
+    """The nearest whole cent, halves up, for a non-negative fraction."""
+    return math.floor(x + Fraction(1, 2))
+
+
+def oracle(case: Mapping[str, Any]) -> dict[str, Any]:
+    """Every expected value of the specification, from the case's numbers, in exact arithmetic."""
+    s = case["input_price_cents"]
+    fixed = case["fixed_overhead_cents"]
+    aq = case["actual_inputs_used"]
+    rows = case["products"]
+    budget_units = sum(r["budget_units"] for r in rows)
+    budget_revenue = sum(r["budget_units"] * r["budget_price_cents"] for r in rows)
+    budget_variable = sum(r["budget_units"] * r["standard_inputs_per_unit"] * s for r in rows)
+    master_profit = budget_revenue - budget_variable - fixed
+    actual_total = sum(r["actual_units"] for r in rows)
+    flex_rev_exact = Fraction(actual_total * budget_revenue, budget_units)
+    flex_var_exact = Fraction(actual_total * budget_variable, budget_units)
+    flex_profit = half_up(flex_rev_exact) - half_up(flex_var_exact) - fixed
+    flex_profit_exact = flex_rev_exact - flex_var_exact - fixed
+    actual_mix_margin = sum(
+        r["actual_units"] * (r["budget_price_cents"] - r["standard_inputs_per_unit"] * s) for r in rows
+    )
+    standard_for_actual = sum(r["standard_inputs_per_unit"] * r["actual_units"] for r in rows)
+    actual_profit = sum(r["actual_units"] * r["actual_price_cents"] for r in rows) - s * aq - fixed
+    price = sum((r["actual_price_cents"] - r["budget_price_cents"]) * r["actual_units"] for r in rows)
+    variances = {
+        "sales_price": price,
+        "sales_volume": flex_profit - master_profit,
+        "sales_mix": actual_mix_margin - fixed - flex_profit,
+        "efficiency": s * (standard_for_actual - aq),
+    }
+    return {
+        "master_profit": master_profit,
+        "budget_units": budget_units,
+        "budget_revenue": budget_revenue,
+        "budget_variable": budget_variable,
+        "flex_profit": flex_profit,
+        "flex_profit_exact": flex_profit_exact,
+        "flex_revenue": half_up(flex_rev_exact),
+        "flex_variable": half_up(flex_var_exact),
+        "exact_mix": (actual_mix_margin - fixed) - flex_profit_exact,
+        "variances": variances,
+        "total": actual_profit - master_profit,
+    }
+
+
+def must_raise(call: Callable[[], object], condition: str) -> None:
+    """Fail unless call() raises ValueError: the grader checks the exception type."""
+    try:
+        call()
+    except ValueError:
+        return
+    pytest.fail(f"{condition}: the specification requires a ValueError.")
+
+
+def decomposition_matches(case: Mapping[str, Any]) -> None:
+    expected = oracle(case)
+    got = sol.variance_decomposition(case)
+    assert set(got) == {*VARIANCES, "total"}, (
+        "variance_decomposition must return the keys sales_price, sales_volume, sales_mix, efficiency and total."
+    )
+    for key in VARIANCES:
+        assert got[key] == expected["variances"][key], (
+            f"{key}: check the rule that defines this variance in the specification."
+        )
+    assert got["total"] == expected["total"], "total: the total is the actual profit less the master budget profit."
+
+
+# ---------------------------------------------------------------- interface and instance
+
+
+def test_module_defines_the_three_functions() -> None:
+    for name in FUNCTIONS:
+        assert callable(getattr(sol, name, None)), f"budget_engine.py must define {name}."
+
+
+def test_signatures_match_the_contract() -> None:
+    import inspect
+
+    assert list(inspect.signature(sol.master_budget).parameters) == ["case"]
+    assert list(inspect.signature(sol.flexible_budget).parameters) == ["case", "actual_units"]
+    assert list(inspect.signature(sol.variance_decomposition).parameters) == ["case"]
+
+
+def test_instance_case_is_a_valid_case() -> None:
+    assert len(PRODUCTS) == 3
+    assert sum(r["budget_units"] for r in PRODUCTS) > 0
+    for row in PRODUCTS:
+        for field in (
+            "budget_units",
+            "budget_price_cents",
+            "standard_inputs_per_unit",
+            "actual_units",
+            "actual_price_cents",
+        ):
+            assert type(row[field]) is int, f"{field} must be a whole number."
+        assert row["actual_units"] >= 1 and row["budget_price_cents"] > row["standard_inputs_per_unit"] * INPUT_PRICE
+
+
+def test_instance_is_deterministic_and_labelled() -> None:
+    again = json.loads(make_instance(SEED)["payload"])
+    assert again == CASE, "make_instance must return the same case for the same seed."
+    assert "SIMULATED" in make_instance(SEED)["label"], "every instance is labelled SIMULATED."
+
+
+def test_only_standard_library_imports() -> None:
+    source = Path(sol.__file__).read_text(encoding="utf-8")
+    names = {a.name.split(".")[0] for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Import) for a in n.names}
+    names |= {
+        (n.module or "").split(".")[0]
+        for n in ast.walk(ast.parse(source))
+        if isinstance(n, ast.ImportFrom) and n.level == 0
+    }
+    outside = sorted(name for name in names if name and name not in sys.stdlib_module_names)
+    assert not outside, "budget_engine.py must use the standard library only."
+    assert "instance" not in names and "test_project" not in names, "budget_engine.py must not import a grader file."
+
+
+# ---------------------------------------------------------------- master budget
+
+
+@pytest.mark.parametrize("row", PRODUCTS, ids=lambda r: r["name"])
+def test_master_units_by_product(row: dict[str, Any]) -> None:
+    assert sol.master_budget(CASE)["units"][row["name"]] == row["budget_units"]
+
+
+@pytest.mark.parametrize("row", PRODUCTS, ids=lambda r: r["name"])
+def test_master_revenue_by_product(row: dict[str, Any]) -> None:
+    expected = row["budget_units"] * row["budget_price_cents"]
+    assert sol.master_budget(CASE)["revenue_cents"][row["name"]] == expected
+
+
+@pytest.mark.parametrize("row", PRODUCTS, ids=lambda r: r["name"])
+def test_master_variable_cost_by_product(row: dict[str, Any]) -> None:
+    expected = row["budget_units"] * row["standard_inputs_per_unit"] * INPUT_PRICE
+    assert sol.master_budget(CASE)["variable_cost_cents"][row["name"]] == expected
+
+
+def test_master_totals_and_profit() -> None:
+    got = sol.master_budget(CASE)
+    expected = oracle(CASE)
+    assert got["total_units"] == expected["budget_units"]
+    assert got["total_revenue_cents"] == expected["budget_revenue"]
+    assert got["total_variable_cost_cents"] == expected["budget_variable"]
+    assert got["fixed_cost_cents"] == FIXED
+    assert got["profit_cents"] == expected["master_profit"], (
+        "budgeted profit is revenue less variable cost less fixed overhead."
+    )
+
+
+def test_master_ignores_the_actual_period() -> None:
+    changed = copy.deepcopy(CASE)
+    for row in changed["products"]:
+        row["actual_units"] += 37
+        row["actual_price_cents"] += 11
+    changed["actual_inputs_used"] += 500
+    assert sol.master_budget(changed) == sol.master_budget(CASE), "the master budget is built from budget fields only."
+
+
+def test_master_returns_fresh_objects() -> None:
+    first = sol.master_budget(CASE)
+    second = sol.master_budget(CASE)
+    assert first == second and first is not second
+    first["units"].clear()
+    assert sol.master_budget(CASE)["units"], "a returned object must not share state with the next call."
+
+
+# ---------------------------------------------------------------- flexible budget
+
+
+def test_flexed_at_actual_total_matches_oracle() -> None:
+    total = sum(r["actual_units"] for r in PRODUCTS)
+    expected = oracle(CASE)
+    got = sol.flexible_budget(CASE, total)
+    assert got["units"] == total
+    assert got["revenue_cents"] == expected["flex_revenue"], "revenue flexes at the budgeted mix, to the nearest cent."
+    assert got["variable_cost_cents"] == expected["flex_variable"], "variable cost flexes at the budgeted mix."
+    assert got["fixed_cost_cents"] == FIXED
+    assert got["profit_cents"] == expected["flex_profit"]
+
+
+def test_flexed_at_budgeted_total_reproduces_the_master_budget() -> None:
+    budget_total = sum(r["budget_units"] for r in PRODUCTS)
+    flexed = sol.flexible_budget(CASE, budget_total)
+    master = sol.master_budget(CASE)
+    assert flexed["revenue_cents"] == master["total_revenue_cents"]
+    assert flexed["variable_cost_cents"] == master["total_variable_cost_cents"]
+    assert flexed["profit_cents"] == master["profit_cents"], (
+        "at the budgeted volume the flexed budget is the master budget."
+    )
+
+
+def test_flexed_profit_is_revenue_less_variable_less_fixed() -> None:
+    flexed = sol.flexible_budget(CASE, 777)
+    assert (
+        flexed["profit_cents"] == flexed["revenue_cents"] - flexed["variable_cost_cents"] - flexed["fixed_cost_cents"]
+    )
+
+
+def test_flexed_zero_units_leaves_only_fixed_overhead() -> None:
+    flexed = sol.flexible_budget(CASE, 0)
+    assert flexed["revenue_cents"] == 0 and flexed["variable_cost_cents"] == 0
+    assert flexed["profit_cents"] == -FIXED, "with no units the flexed profit is the fixed overhead, negative."
+
+
+def test_flexed_budget_returns_integer_cents() -> None:
+    flexed = sol.flexible_budget(CASE, 1234)
+    for key in ("revenue_cents", "variable_cost_cents", "fixed_cost_cents", "profit_cents"):
+        assert type(flexed[key]) is int, f"{key} must be whole cents (int), not a fraction or a float."
+
+
+@pytest.mark.parametrize("seed", range(50))
+def test_flexed_amounts_round_half_up_on_other_seeds(seed: int) -> None:
+    case = json.loads(make_instance(seed)["payload"])
+    total = sum(r["actual_units"] for r in case["products"])
+    expected = oracle(case)
+    got = sol.flexible_budget(case, total)
+    assert got["revenue_cents"] == expected["flex_revenue"]
+    assert got["variable_cost_cents"] == expected["flex_variable"]
+    assert got["profit_cents"] == expected["flex_profit"], (
+        "the flexed profit is the rounded revenue less the rounded variable cost, less fixed overhead."
+    )
+
+
+def test_exact_half_cent_rounds_up() -> None:
+    # Budgeted units: one at 1001 cents, one at 0 cents. At one unit in total, revenue is 1001 / 2 = 500.5 cents.
+    rows = [
+        {
+            "name": "Half",
+            "budget_units": 1,
+            "budget_price_cents": 1001,
+            "standard_inputs_per_unit": 0,
+            "actual_units": 1,
+            "actual_price_cents": 1001,
+        },
+        {
+            "name": "Zero",
+            "budget_units": 1,
+            "budget_price_cents": 0,
+            "standard_inputs_per_unit": 0,
+            "actual_units": 0,
+            "actual_price_cents": 0,
+        },
+    ]
+    case = with_products(rows, actual_inputs_used=0)
+    assert sol.flexible_budget(case, 1)["revenue_cents"] == 501, "a half cent rounds up, to 501."
+    assert oracle(case)["flex_revenue"] == 501
+    decomposition_matches(case)
+
+
+# ---------------------------------------------------------------- the four variances and the total
+
+
+def test_four_variances_and_total_match_oracle() -> None:
+    decomposition_matches(CASE)
+
+
+def test_reconciliation_is_exact() -> None:
+    got = sol.variance_decomposition(CASE)
+    parts = got["sales_price"] + got["sales_volume"] + got["sales_mix"] + got["efficiency"]
+    assert parts == got["total"], "the four variances must sum to the total profit variance with no residual."
+
+
+def test_variances_are_whole_cents() -> None:
+    got = sol.variance_decomposition(CASE)
+    for key in (*VARIANCES, "total"):
+        assert type(got[key]) is int, f"{key} must be an int in cents."
+
+
+def test_mix_is_within_one_cent_of_the_exact_fraction() -> None:
+    got = sol.variance_decomposition(CASE)
+    assert abs(Fraction(got["sales_mix"]) - oracle(CASE)["exact_mix"]) <= 1, (
+        "the flexed profit is taken to whole cents, so the mix can differ from the exact fraction by at most one cent."
+    )
+
+
+def test_price_variance_is_favourable_when_price_rises() -> None:
+    raised = copy.deepcopy(CASE)
+    raised["products"][0]["actual_price_cents"] += 100
+    before = sol.variance_decomposition(CASE)["sales_price"]
+    after = sol.variance_decomposition(raised)["sales_price"]
+    assert after - before == 100 * raised["products"][0]["actual_units"], (
+        "a price rise must move the price variance by its units."
+    )
+
+
+def test_price_variance_is_unfavourable_when_every_price_falls() -> None:
+    lowered = copy.deepcopy(CASE)
+    for row in lowered["products"]:
+        row["actual_price_cents"] = row["budget_price_cents"] - 50
+    units = sum(r["actual_units"] for r in lowered["products"])
+    got = sol.variance_decomposition(lowered)["sales_price"]
+    assert got == -50 * units, (
+        "every price 50 cents below budget is an unfavourable price variance of 50 per unit sold."
+    )
+
+
+def test_efficiency_is_positive_when_fewer_inputs_are_used() -> None:
+    saved = copy.deepcopy(CASE)
+    standard = sum(r["standard_inputs_per_unit"] * r["actual_units"] for r in saved["products"])
+    saved["actual_inputs_used"] = standard - 100
+    got = sol.variance_decomposition(saved)["efficiency"]
+    assert got == 100 * INPUT_PRICE, "using fewer inputs than the standard allows is favourable, so positive."
+
+
+def test_efficiency_is_negative_when_more_inputs_are_used() -> None:
+    wasted = copy.deepcopy(CASE)
+    standard = sum(r["standard_inputs_per_unit"] * r["actual_units"] for r in wasted["products"])
+    wasted["actual_inputs_used"] = standard + 100
+    assert sol.variance_decomposition(wasted)["efficiency"] == -100 * INPUT_PRICE
+
+
+def test_efficiency_is_zero_at_the_standard_quantity() -> None:
+    exact = copy.deepcopy(CASE)
+    exact["actual_inputs_used"] = sum(r["standard_inputs_per_unit"] * r["actual_units"] for r in exact["products"])
+    assert sol.variance_decomposition(exact)["efficiency"] == 0
+
+
+def test_all_variances_are_zero_when_actuals_equal_budget() -> None:
+    same = copy.deepcopy(CASE)
+    for row in same["products"]:
+        row["actual_units"] = row["budget_units"]
+        row["actual_price_cents"] = row["budget_price_cents"]
+    same["actual_inputs_used"] = sum(r["standard_inputs_per_unit"] * r["budget_units"] for r in same["products"])
+    got = sol.variance_decomposition(same)
+    assert got["sales_volume"] == 0 and got["sales_mix"] == 0 and got["efficiency"] == 0 and got["total"] == 0
+
+
+def test_mix_is_zero_when_the_actual_mix_equals_the_budgeted_mix() -> None:
+    scaled = copy.deepcopy(CASE)
+    for row in scaled["products"]:
+        row["actual_units"] = 2 * row["budget_units"]
+    scaled["actual_inputs_used"] = sum(r["standard_inputs_per_unit"] * r["actual_units"] for r in scaled["products"])
+    got = sol.variance_decomposition(scaled)
+    assert got["sales_mix"] == 0, "the same mix at a different total volume has no mix variance."
+    assert got["sales_volume"] == oracle(scaled)["variances"]["sales_volume"]
+
+
+def test_two_product_shift_to_lower_margin_is_unfavourable() -> None:
+    rows = copy.deepcopy(PRODUCTS[:2])
+    margins = [r["budget_price_cents"] - r["standard_inputs_per_unit"] * INPUT_PRICE for r in rows]
+    low = min(range(2), key=lambda i: margins[i])
+    for i, row in enumerate(rows):
+        row["actual_units"] = row["budget_units"] * (3 if i == low else 1)
+    case = with_products(rows, actual_inputs_used=sum(r["standard_inputs_per_unit"] * r["actual_units"] for r in rows))
+    got = sol.variance_decomposition(case)
+    assert got["sales_mix"] == oracle(case)["variances"]["sales_mix"]
+    assert got["sales_mix"] < 0, "with two products, volume moved to the lower budgeted margin is unfavourable."
+
+
+# ---------------------------------------------------------------- edge cases
+
+
+def test_single_product_has_no_mix_variance() -> None:
+    row = copy.deepcopy(PRODUCTS[0])
+    case = with_products([row], actual_inputs_used=max(0, row["standard_inputs_per_unit"] * row["actual_units"] - 40))
+    got = sol.variance_decomposition(case)
+    assert got["sales_mix"] == 0, "with one product the mix cannot change."
+    decomposition_matches(case)
+
+
+def test_zero_actual_units_everywhere() -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    for row in rows:
+        row["actual_units"] = 0
+    case = with_products(rows, actual_inputs_used=0)
+    got = sol.variance_decomposition(case)
+    assert got["sales_price"] == 0 and got["efficiency"] == 0 and got["sales_mix"] == 0
+    assert got["sales_volume"] == -FIXED - oracle(case)["master_profit"]
+    assert got["total"] == -FIXED - oracle(case)["master_profit"]
+
+
+def test_inputs_used_with_no_output() -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    for row in rows:
+        row["actual_units"] = 0
+    case = with_products(rows, actual_inputs_used=250)
+    assert sol.variance_decomposition(case)["efficiency"] == -250 * INPUT_PRICE, "inputs with no output are wasted."
+
+
+def test_product_with_no_budgeted_units() -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows.append(
+        {
+            "name": "Launch",
+            "budget_units": 0,
+            "budget_price_cents": 7_000,
+            "standard_inputs_per_unit": 3,
+            "actual_units": 120,
+            "actual_price_cents": 6_900,
+        }
+    )
+    case = with_products(rows, actual_inputs_used=CASE["actual_inputs_used"] + 360)
+    decomposition_matches(case)
+    assert sol.master_budget(case)["units"]["Launch"] == 0
+
+
+# ---------------------------------------------------------------- every seed of the grader
+
+
+@pytest.mark.parametrize("seed", range(50))
+def test_every_grader_seed_reconciles_exactly(seed: int) -> None:
+    case = json.loads(make_instance(seed)["payload"])
+    decomposition_matches(case)
+    got = sol.variance_decomposition(case)
+    assert sum(got[k] for k in VARIANCES) == got["total"], "reconciliation must hold on every instance, exactly."
+
+
+# ---------------------------------------------------------------- failure behaviour
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_missing_field_raises_value_error(name: str) -> None:
+    case = fresh()
+    del case["fixed_overhead_cents"]
+    call = (lambda: sol.flexible_budget(case, 10)) if name == "flexible_budget" else (lambda: getattr(sol, name)(case))
+    must_raise(call, "a case without fixed_overhead_cents")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_negative_units_raise_value_error(name: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0]["budget_units"] = -1
+    call = (
+        (lambda: sol.flexible_budget(with_products(rows), 10))
+        if name == "flexible_budget"
+        else (lambda: getattr(sol, name)(with_products(rows)))
+    )
+    must_raise(call, "a negative budgeted unit count")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_float_money_raises_value_error(name: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0]["budget_price_cents"] = float(rows[0]["budget_price_cents"])
+    call = (
+        (lambda: sol.flexible_budget(with_products(rows), 10))
+        if name == "flexible_budget"
+        else (lambda: getattr(sol, name)(with_products(rows)))
+    )
+    must_raise(call, "money given as a float")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_boolean_input_raises_value_error(name: str) -> None:
+    case = fresh(fixed_overhead_cents=True)
+    call = (lambda: sol.flexible_budget(case, 10)) if name == "flexible_budget" else (lambda: getattr(sol, name)(case))
+    must_raise(call, "a boolean where a whole number is required")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_zero_budgeted_units_raise_value_error(name: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    for row in rows:
+        row["budget_units"] = 0
+    call = (
+        (lambda: sol.flexible_budget(with_products(rows), 10))
+        if name == "flexible_budget"
+        else (lambda: getattr(sol, name)(with_products(rows)))
+    )
+    must_raise(call, "a budget with no budgeted units")
+
+
+def test_duplicate_product_names_raise_value_error() -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[1]["name"] = rows[0]["name"]
+    must_raise(lambda: sol.variance_decomposition(with_products(rows)), "two products with the same name")
+
+
+def test_empty_product_list_raises_value_error() -> None:
+    must_raise(lambda: sol.master_budget(with_products([])), "a case with no products")
+
+
+def test_negative_actual_units_argument_raises_value_error() -> None:
+    must_raise(lambda: sol.flexible_budget(CASE, -1), "a negative actual unit count")
+
+
+def test_float_actual_units_argument_raises_value_error() -> None:
+    must_raise(lambda: sol.flexible_budget(CASE, 100.0), "a float unit count")
+
+
+def test_negative_input_price_raises_value_error() -> None:
+    must_raise(lambda: sol.variance_decomposition(fresh(input_price_cents=-1)), "a negative input price")
+
+
+def test_non_mapping_case_raises_value_error() -> None:
+    must_raise(lambda: sol.master_budget([]), "a case that is a list")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------- purity and silence
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_functions_do_not_change_their_arguments(name: str) -> None:
+    case = fresh()
+    before = copy.deepcopy(case)
+    if name == "flexible_budget":
+        sol.flexible_budget(case, 900)
+    else:
+        getattr(sol, name)(case)
+    assert case == before, "a function must never change its argument."
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_functions_are_silent(name: str) -> None:
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+        if name == "flexible_budget":
+            sol.flexible_budget(CASE, 900)
+        else:
+            getattr(sol, name)(CASE)
+    assert buffer.getvalue() == "", "a function must not print."
+
+
+def test_results_do_not_depend_on_call_order() -> None:
+    first = sol.variance_decomposition(CASE)
+    sol.flexible_budget(CASE, 1)
+    sol.master_budget(CASE)
+    assert sol.variance_decomposition(CASE) == first

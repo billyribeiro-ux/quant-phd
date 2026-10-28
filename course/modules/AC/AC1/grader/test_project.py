@@ -1,0 +1,569 @@
+"""Acceptance suite for the AC1 project: the three statements from a transaction ledger (statements.py).
+
+Runs identically in the browser (Pyodide) and locally:
+
+    QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
+
+with your statements.py next to this file. Warnings are failures, as in the browser. The suite uses the standard
+library only.
+
+Each test checks a property or a number against the definitions in the project specification. Expected values come
+from this file's own oracle, which reads the seeded ledger directly, so the suite does not import any solution. A
+failure names the property it checks and never prints the expected value.
+"""
+
+from __future__ import annotations
+
+import calendar
+import copy
+import json
+import os
+from collections.abc import Callable
+from typing import Any
+
+import pytest
+import statements as sol
+from instance import make_instance
+
+pytestmark = pytest.mark.filterwarnings("error")
+
+SEED = int(os.environ.get("QF_SEED", "0"))
+INST = make_instance(SEED)
+TXS: list[dict[str, Any]] = json.loads(INST["payload"])
+MONTH_ENDS = [f"2024-{m:02d}-{calendar.monthrange(2024, m)[1]:02d}" for m in range(1, 13)]
+
+ACCOUNTS: dict[str, str] = {
+    "cash": "asset",
+    "accounts_receivable": "asset",
+    "inventory": "asset",
+    "equipment": "asset",
+    "accumulated_depreciation": "contra_asset",
+    "accounts_payable": "liability",
+    "long_term_debt": "liability",
+    "common_stock": "equity",
+    "dividends": "distribution",
+    "sales": "revenue",
+    "cost_of_goods_sold": "expense",
+    "operating_expenses": "expense",
+    "depreciation_expense": "expense",
+}
+BALANCE_SHEET_KEYS = (
+    "cash",
+    "accounts_receivable",
+    "inventory",
+    "equipment",
+    "accumulated_depreciation",
+    "net_equipment",
+    "total_assets",
+    "accounts_payable",
+    "long_term_debt",
+    "total_liabilities",
+    "common_stock",
+    "retained_earnings",
+    "total_equity",
+    "total_liabilities_and_equity",
+)
+INCOME_KEYS = (
+    "sales",
+    "cost_of_goods_sold",
+    "gross_profit",
+    "operating_expenses",
+    "depreciation_expense",
+    "net_income",
+)
+CASH_FLOW_KEYS = (
+    "net_income",
+    "depreciation",
+    "receivables",
+    "inventory",
+    "payables",
+    "cash_from_operations",
+    "capital_expenditure",
+    "cash_from_investing",
+    "net_borrowing",
+    "stock_issued",
+    "dividends_paid",
+    "cash_from_financing",
+    "net_change_in_cash",
+    "beginning_cash",
+    "ending_cash",
+)
+GAP_KEYS = ("balance_gap", "cash_gap", "retained_earnings_gap", "depreciation_gap")
+
+
+def must_raise(call: Callable[[], object], condition: str) -> None:
+    """Fail unless call() raises ValueError: the grader checks the exception type."""
+    try:
+        call()
+    except ValueError:
+        return
+    pytest.fail(f"{condition}: the specification requires a ValueError.")
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# The oracle: expected values from the seeded ledger, computed here from the entries alone.
+# ---------------------------------------------------------------------------------------------------------
+
+
+def _through(end: str) -> dict[str, int]:
+    """Debit minus credit for every account, over the entries dated on or before end."""
+    totals = dict.fromkeys(ACCOUNTS, 0)
+    for entry in TXS:
+        if entry["date"] <= end:
+            for line in entry["lines"]:
+                totals[line["account"]] += int(line["debit"]) - int(line["credit"])
+    return totals
+
+
+def _previous_month_end(end: str) -> str:
+    year, month = int(end[:4]), int(end[5:7])
+    if month == 1:
+        return "2023-12-31"
+    return f"{year}-{month - 1:02d}-{calendar.monthrange(year, month - 1)[1]:02d}"
+
+
+def _expected_balance_sheet(end: str) -> dict[str, int]:
+    bal = _through(end)
+    accumulated = -bal["accumulated_depreciation"]
+    net_equipment = bal["equipment"] - accumulated
+    assets = bal["cash"] + bal["accounts_receivable"] + bal["inventory"] + net_equipment
+    payables = -bal["accounts_payable"]
+    debt = -bal["long_term_debt"]
+    stock = -bal["common_stock"]
+    income = -(bal["sales"] + bal["cost_of_goods_sold"] + bal["operating_expenses"] + bal["depreciation_expense"])
+    retained = income - bal["dividends"]
+    liabilities = payables + debt
+    equity = stock + retained
+    return {
+        "cash": bal["cash"],
+        "accounts_receivable": bal["accounts_receivable"],
+        "inventory": bal["inventory"],
+        "equipment": bal["equipment"],
+        "accumulated_depreciation": accumulated,
+        "net_equipment": net_equipment,
+        "total_assets": assets,
+        "accounts_payable": payables,
+        "long_term_debt": debt,
+        "total_liabilities": liabilities,
+        "common_stock": stock,
+        "retained_earnings": retained,
+        "total_equity": equity,
+        "total_liabilities_and_equity": liabilities + equity,
+    }
+
+
+def _expected_flows(end: str) -> tuple[dict[str, int], dict[str, int]]:
+    """The change in every account over the month that ends on end, and the balances at the previous month end."""
+    now, before = _through(end), _through(_previous_month_end(end))
+    return {account: now[account] - before[account] for account in ACCOUNTS}, before
+
+
+def _expected_income(end: str) -> dict[str, int]:
+    flow, _ = _expected_flows(end)
+    sales = -flow["sales"]
+    gross = sales - flow["cost_of_goods_sold"]
+    net = gross - flow["operating_expenses"] - flow["depreciation_expense"]
+    return {
+        "sales": sales,
+        "cost_of_goods_sold": flow["cost_of_goods_sold"],
+        "gross_profit": gross,
+        "operating_expenses": flow["operating_expenses"],
+        "depreciation_expense": flow["depreciation_expense"],
+        "net_income": net,
+    }
+
+
+def _expected_cash_flow(end: str) -> dict[str, int]:
+    flow, before = _expected_flows(end)
+    now = _through(end)
+    net_income = _expected_income(end)["net_income"]
+    depreciation = flow["depreciation_expense"]
+    receivables = -flow["accounts_receivable"]
+    inventory = -flow["inventory"]
+    payables = -flow["accounts_payable"]
+    operations = net_income + depreciation + receivables + inventory + payables
+    capex = -flow["equipment"]
+    borrowing = -flow["long_term_debt"]
+    stock = -flow["common_stock"]
+    dividends = -flow["dividends"]
+    financing = borrowing + stock + dividends
+    beginning = before["cash"]
+    return {
+        "net_income": net_income,
+        "depreciation": depreciation,
+        "receivables": receivables,
+        "inventory": inventory,
+        "payables": payables,
+        "cash_from_operations": operations,
+        "capital_expenditure": capex,
+        "cash_from_investing": capex,
+        "net_borrowing": borrowing,
+        "stock_issued": stock,
+        "dividends_paid": dividends,
+        "cash_from_financing": financing,
+        "net_change_in_cash": operations + capex + financing,
+        "beginning_cash": beginning,
+        "ending_cash": now["cash"],
+    }
+
+
+def _cash_postings(start_exclusive: str, end: str) -> int:
+    """The cash the entries move in the window (start_exclusive, end], summed directly from the cash lines."""
+    total = 0
+    for entry in TXS:
+        if start_exclusive < entry["date"] <= end:
+            for line in entry["lines"]:
+                if line["account"] == "cash":
+                    total += int(line["debit"]) - int(line["credit"])
+    return total
+
+
+def _check_values(got: object, expected: dict[str, int], what: str, end: str) -> None:
+    assert isinstance(got, dict), f"the {what} must be a dict"
+    for key, value in expected.items():
+        if key not in got:
+            pytest.fail(f"the {what} for {end} has no '{key}' entry")
+        if type(got[key]) is not int:
+            pytest.fail(f"the {what} for {end}: '{key}' must be an integer number of cents")
+        if got[key] != value:
+            pytest.fail(f"the {what} for {end}: '{key}' does not follow the definition in the specification")
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# A small hand-built ledger with values worked out on paper, independent of the seed.
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def _entry(day: str, lines: list[tuple[str, int, int]]) -> dict[str, Any]:
+    return {"date": day, "lines": [{"account": a, "debit": d, "credit": c} for a, d, c in lines]}
+
+
+SMALL: list[dict[str, Any]] = [
+    _entry("2024-01-02", [("cash", 1000, 0), ("common_stock", 0, 1000)]),
+    _entry("2024-01-03", [("equipment", 400, 0), ("cash", 0, 400)]),
+    _entry("2024-01-04", [("inventory", 200, 0), ("accounts_payable", 0, 200)]),
+    _entry("2024-01-10", [("accounts_receivable", 300, 0), ("sales", 0, 300)]),
+    _entry("2024-01-15", [("cost_of_goods_sold", 120, 0), ("inventory", 0, 120)]),
+    _entry("2024-01-31", [("depreciation_expense", 50, 0), ("accumulated_depreciation", 0, 50)]),
+    _entry("2024-01-31", [("dividends", 40, 0), ("cash", 0, 40)]),
+]
+SMALL_JAN_BALANCE_SHEET = {
+    "cash": 560,
+    "accounts_receivable": 300,
+    "inventory": 80,
+    "equipment": 400,
+    "accumulated_depreciation": 50,
+    "net_equipment": 350,
+    "total_assets": 1290,
+    "accounts_payable": 200,
+    "long_term_debt": 0,
+    "total_liabilities": 200,
+    "common_stock": 1000,
+    "retained_earnings": 90,
+    "total_equity": 1090,
+    "total_liabilities_and_equity": 1290,
+}
+SMALL_JAN_CASH_FLOW = {
+    "net_income": 130,
+    "depreciation": 50,
+    "receivables": -300,
+    "inventory": -80,
+    "payables": 200,
+    "cash_from_operations": 0,
+    "capital_expenditure": -400,
+    "cash_from_investing": -400,
+    "net_borrowing": 0,
+    "stock_issued": 1000,
+    "dividends_paid": -40,
+    "cash_from_financing": 960,
+    "net_change_in_cash": 560,
+    "beginning_cash": 0,
+    "ending_cash": 560,
+}
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------------------------------------------
+
+
+def test_chart_of_accounts_is_the_specified_table() -> None:
+    assert sol.ACCOUNTS == ACCOUNTS, "ACCOUNTS must be the chart of accounts given in the starter, unchanged"
+
+
+def test_seeded_ledger_posts_without_error() -> None:
+    assert len(TXS) == 200, "the seeded instance must hold 200 transactions"
+    sol.post(TXS)
+
+
+def test_post_returns_a_ledger_that_the_functions_accept() -> None:
+    ledger = sol.post(SMALL)
+    sol.balance_sheet(ledger, "2024-01-31")
+
+
+@pytest.mark.parametrize(
+    ("condition", "transactions"),
+    [
+        ("a transaction without lines", [{"date": "2024-01-02"}]),
+        ("a transaction without a date", [{"lines": SMALL[0]["lines"]}]),
+        ("a date that is not in YYYY-MM-DD form", [{**SMALL[0], "date": "02/01/2024"}]),
+        ("a date that does not exist", [{**SMALL[0], "date": "2024-02-30"}]),
+        ("an empty list of lines", [{"date": "2024-01-02", "lines": []}]),
+        ("a line without a credit", [{"date": "2024-01-02", "lines": [{"account": "cash", "debit": 5}]}]),
+        (
+            "an account outside the chart",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "retained_earnings", "debit": 5, "credit": 0},
+                        {"account": "cash", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "a negative amount",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": -5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": -5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an amount that is not an integer",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5.0, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an amount that is a boolean",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": True, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 1},
+                    ],
+                }
+            ],
+        ),
+        (
+            "a line with a debit and a credit",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 5},
+                        {"account": "common_stock", "debit": 0, "credit": 0},
+                    ],
+                }
+            ],
+        ),
+        (
+            "a line with neither a debit nor a credit",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 0, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 0},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an unbalanced entry",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 6, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        ("a line that is not a mapping", [{**SMALL[0], "lines": ["cash"]}]),
+    ],
+)
+def test_post_raises_a_value_error(condition: str, transactions: list[dict[str, Any]]) -> None:
+    must_raise(lambda: sol.post(transactions), condition)
+
+
+def test_an_invalid_entry_among_valid_ones_still_raises() -> None:
+    bad = copy.deepcopy(TXS)
+    bad[len(bad) // 2]["lines"][0]["debit"] = int(bad[len(bad) // 2]["lines"][0]["debit"]) + 1
+    must_raise(lambda: sol.post(bad), "an unbalanced entry in the middle of a ledger")
+
+
+def test_post_does_not_change_its_argument() -> None:
+    before = copy.deepcopy(TXS)
+    sol.post(TXS)
+    assert before == TXS, "post must not change the transactions it is given"
+
+
+def test_post_twice_gives_the_same_statements() -> None:
+    first = sol.balance_sheet(sol.post(TXS), MONTH_ENDS[-1])
+    second = sol.balance_sheet(sol.post(TXS), MONTH_ENDS[-1])
+    assert first == second, "the same transactions must give the same statements"
+
+
+def test_small_ledger_january_balance_sheet() -> None:
+    _check_values(
+        sol.balance_sheet(sol.post(SMALL), "2024-01-31"), SMALL_JAN_BALANCE_SHEET, "balance sheet", "2024-01-31"
+    )
+
+
+def test_small_ledger_january_cash_flow() -> None:
+    got = sol.cash_flow_statement(sol.post(SMALL), "2024-01-31")
+    _check_values(got, SMALL_JAN_CASH_FLOW, "cash flow statement", "2024-01-31")
+
+
+def test_small_ledger_january_articulation_is_zero() -> None:
+    got = sol.articulation_check(sol.post(SMALL), "2024-01-31")
+    for key in GAP_KEYS:
+        assert got.get(key) == 0, f"the articulation gap '{key}' must be zero for a ledger that articulates"
+
+
+def test_a_month_before_any_entry_is_empty() -> None:
+    ledger = sol.post(TXS)
+    got = sol.balance_sheet(ledger, "2023-12-31")
+    _check_values(got, dict.fromkeys(BALANCE_SHEET_KEYS, 0), "balance sheet", "2023-12-31")
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_balance_sheet_matches_the_ledger(end: str) -> None:
+    got = sol.balance_sheet(sol.post(TXS), end)
+    _check_values(got, _expected_balance_sheet(end), "balance sheet", end)
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_income_statement_matches_the_ledger(end: str) -> None:
+    got = sol.income_statement(sol.post(TXS), end)
+    _check_values(got, _expected_income(end), "income statement", end)
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_cash_flow_statement_matches_the_ledger(end: str) -> None:
+    got = sol.cash_flow_statement(sol.post(TXS), end)
+    _check_values(got, _expected_cash_flow(end), "cash flow statement", end)
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_the_balance_sheet_balances(end: str) -> None:
+    got = sol.balance_sheet(sol.post(TXS), end)
+    assert got["total_assets"] == got["total_liabilities_and_equity"], (
+        f"the balance sheet at {end} does not balance: assets must equal liabilities plus equity"
+    )
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_cash_flow_ends_at_the_balance_sheet_cash(end: str) -> None:
+    ledger = sol.post(TXS)
+    cash = sol.balance_sheet(ledger, end)["cash"]
+    ending = sol.cash_flow_statement(ledger, end)["ending_cash"]
+    assert cash == ending, f"the cash flow statement for {end} must end at the balance sheet's cash"
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_net_change_in_cash_equals_the_cash_lines_of_the_month(end: str) -> None:
+    got = sol.cash_flow_statement(sol.post(TXS), end)
+    start = _previous_month_end(end)
+    moved = _cash_postings(start, end)
+    assert got["net_change_in_cash"] == moved, (
+        f"the net change in cash for {end} must equal the cash the month's entries move"
+    )
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_articulation_gaps_are_zero(end: str) -> None:
+    got = sol.articulation_check(sol.post(TXS), end)
+    for key in GAP_KEYS:
+        assert key in got, f"the articulation check has no '{key}' entry"
+        assert got[key] == 0, f"the articulation gap '{key}' at {end} must be zero"
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_retained_earnings_move_by_net_income_less_dividends(end: str) -> None:
+    ledger = sol.post(TXS)
+    now = sol.balance_sheet(ledger, end)["retained_earnings"]
+    before = sol.balance_sheet(ledger, _previous_month_end(end))["retained_earnings"]
+    net = sol.income_statement(ledger, end)["net_income"]
+    dividends = sol.cash_flow_statement(ledger, end)["dividends_paid"]
+    assert now - before == net + dividends, f"retained earnings at {end} must move by net income less dividends"
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_operating_cash_flow_is_net_income_plus_add_backs_and_working_capital(end: str) -> None:
+    got = sol.cash_flow_statement(sol.post(TXS), end)
+    expected = got["net_income"] + got["depreciation"] + got["receivables"] + got["inventory"] + got["payables"]
+    assert got["cash_from_operations"] == expected, (
+        f"operating cash flow for {end} must be net income plus the non-cash add-back and the working-capital changes"
+    )
+
+
+@pytest.mark.parametrize("end", MONTH_ENDS)
+def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
+    ledger = sol.post(TXS)
+    for name, got, keys in (
+        ("balance sheet", sol.balance_sheet(ledger, end), BALANCE_SHEET_KEYS),
+        ("income statement", sol.income_statement(ledger, end), INCOME_KEYS),
+        ("cash flow statement", sol.cash_flow_statement(ledger, end), CASH_FLOW_KEYS),
+    ):
+        assert isinstance(got, dict), f"the {name} must be a dict"
+        for key in keys:
+            assert key in got, f"the {name} for {end} has no '{key}' entry"
+            assert type(got[key]) is int, f"the {name} for {end}: '{key}' must be an integer number of cents"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda ledger, end: sol.balance_sheet(ledger, end),
+        lambda ledger, end: sol.income_statement(ledger, end),
+        lambda ledger, end: sol.cash_flow_statement(ledger, end),
+        lambda ledger, end: sol.articulation_check(ledger, end),
+    ],
+)
+@pytest.mark.parametrize(
+    "period_end",
+    ["2024-02-28", "2024-1-31", "2024-02-30", "31/01/2024", "2024-01-31T00:00", "2024-04-15"],
+)
+def test_period_end_must_be_a_month_end(call: Callable[[object, str], object], period_end: str) -> None:
+    ledger = sol.post(TXS)
+    must_raise(lambda: call(ledger, period_end), f"a period end of {period_end!r}")
+
+
+def test_a_leap_year_month_end_is_accepted() -> None:
+    ledger = sol.post(TXS)
+    sol.balance_sheet(ledger, "2024-02-29")
+    sol.cash_flow_statement(ledger, "2024-02-29")
+
+
+def test_the_statements_return_fresh_objects() -> None:
+    ledger = sol.post(TXS)
+    first = sol.balance_sheet(ledger, MONTH_ENDS[2])
+    first["cash"] = -999_999
+    second = sol.balance_sheet(ledger, MONTH_ENDS[2])
+    assert second is not first, "balance_sheet must return a new dict on each call"
+    assert second == _expected_balance_sheet(MONTH_ENDS[2]), "a change to a returned dict must not reach later calls"
+
+
+def test_the_functions_are_silent(capsys: pytest.CaptureFixture[str]) -> None:
+    ledger = sol.post(TXS)
+    sol.balance_sheet(ledger, MONTH_ENDS[5])
+    sol.income_statement(ledger, MONTH_ENDS[5])
+    sol.cash_flow_statement(ledger, MONTH_ENDS[5])
+    sol.articulation_check(ledger, MONTH_ENDS[5])
+    assert capsys.readouterr().out == "", "the functions must not print"
