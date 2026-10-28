@@ -482,6 +482,157 @@ def test_two_product_shift_to_lower_margin_is_unfavourable() -> None:
         assert got["sales_mix"] < 0, "with two products, volume moved to the lower budgeted margin is unfavourable."
 
 
+def test_two_product_shift_to_higher_margin_is_favourable() -> None:
+    # Explicit products, so the sign does not depend on the seed: margins 5400 and 8000 cents at 200 cents an input.
+    rows = [
+        {
+            "name": "Alpha",
+            "budget_units": 500,
+            "budget_price_cents": 6_000,
+            "standard_inputs_per_unit": 3,
+            "actual_units": 500,
+            "actual_price_cents": 6_000,
+        },
+        {
+            "name": "Beta",
+            "budget_units": 500,
+            "budget_price_cents": 9_000,
+            "standard_inputs_per_unit": 5,
+            "actual_units": 1_500,
+            "actual_price_cents": 9_000,
+        },
+    ]
+    case = with_products(rows, input_price_cents=200, actual_inputs_used=3 * 500 + 5 * 1_500)
+    got = sol.variance_decomposition(case)
+    assert got["sales_mix"] == oracle(case)["variances"]["sales_mix"], (
+        "sales_mix: must equal the oracle's mix variance for the shift to the higher margin."
+    )
+    assert got["sales_mix"] > 0, "volume moved to the higher budgeted margin is favourable, so the mix is positive."
+
+
+def test_three_products_with_equal_margins_have_no_mix_variance() -> None:
+    # Each budgeted margin is 1000 cents: price = 200 x standard + 1000. The actual units differ from the budget.
+    rows = [
+        {
+            "name": "Alpha",
+            "budget_units": 100,
+            "budget_price_cents": 1_400,
+            "standard_inputs_per_unit": 2,
+            "actual_units": 150,
+            "actual_price_cents": 1_400,
+        },
+        {
+            "name": "Beta",
+            "budget_units": 200,
+            "budget_price_cents": 1_600,
+            "standard_inputs_per_unit": 3,
+            "actual_units": 50,
+            "actual_price_cents": 1_600,
+        },
+        {
+            "name": "Gamma",
+            "budget_units": 300,
+            "budget_price_cents": 1_800,
+            "standard_inputs_per_unit": 4,
+            "actual_units": 400,
+            "actual_price_cents": 1_800,
+        },
+    ]
+    case = with_products(rows, input_price_cents=200, actual_inputs_used=2 * 150 + 3 * 50 + 4 * 400)
+    got = sol.variance_decomposition(case)
+    assert got["sales_mix"] == 0, "with equal budgeted margins no shift of units between products changes profit."
+    assert got["sales_mix"] == oracle(case)["variances"]["sales_mix"], "sales_mix: must equal the oracle's value."
+
+
+def test_price_change_on_an_unsold_product_has_no_price_variance() -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0]["actual_units"] = 0
+    rows[0]["actual_price_cents"] = rows[0]["budget_price_cents"] + 700
+    case = with_products(rows)
+    got = sol.variance_decomposition(case)["sales_price"]
+    assert got == sum((r["actual_price_cents"] - r["budget_price_cents"]) * r["actual_units"] for r in rows), (
+        "sales_price: a product with no actual units contributes nothing to the price variance."
+    )
+    decomposition_matches(case)
+
+
+def test_volume_variance_is_favourable_when_more_units_are_sold() -> None:
+    more = copy.deepcopy(CASE)
+    for row in more["products"]:
+        row["actual_units"] = 2 * row["budget_units"]
+    got = sol.variance_decomposition(more)["sales_volume"]
+    assert got == oracle(more)["variances"]["sales_volume"], "sales_volume: must equal the oracle's volume variance."
+    assert got > 0, "selling more units than budgeted, at the budgeted mix, is a favourable volume variance."
+
+
+def test_volume_variance_is_unfavourable_when_fewer_units_are_sold() -> None:
+    fewer = copy.deepcopy(CASE)
+    for row in fewer["products"]:
+        row["actual_units"] = row["budget_units"] // 2
+    got = sol.variance_decomposition(fewer)["sales_volume"]
+    assert got == oracle(fewer)["variances"]["sales_volume"], "sales_volume: must equal the oracle's volume variance."
+    assert got < 0, "selling fewer units than budgeted, at the budgeted mix, is an unfavourable volume variance."
+
+
+def test_one_budgeted_unit_in_total_is_a_valid_budget() -> None:
+    row = {
+        "name": "Only",
+        "budget_units": 1,
+        "budget_price_cents": 9_000,
+        "standard_inputs_per_unit": 2,
+        "actual_units": 1,
+        "actual_price_cents": 9_100,
+    }
+    case = with_products([row], actual_inputs_used=2)
+    assert sol.master_budget(case)["total_units"] == 1, "one budgeted unit in total is a valid budget, not an error."
+    decomposition_matches(case)
+
+
+def test_flexed_amount_below_half_a_cent_rounds_down() -> None:
+    # Budgeted revenue 3 cents over 9 budgeted units: one unit flexes to 1/3 of a cent, which rounds down to 0.
+    rows = [
+        {
+            "name": "Pen",
+            "budget_units": 3,
+            "budget_price_cents": 1,
+            "standard_inputs_per_unit": 0,
+            "actual_units": 1,
+            "actual_price_cents": 1,
+        },
+        {
+            "name": "Ink",
+            "budget_units": 6,
+            "budget_price_cents": 0,
+            "standard_inputs_per_unit": 0,
+            "actual_units": 0,
+            "actual_price_cents": 0,
+        },
+    ]
+    case = with_products(rows, actual_inputs_used=0)
+    assert sol.flexible_budget(case, 1)["revenue_cents"] == 0, "a third of a cent rounds down to 0 cents."
+    assert oracle(case)["flex_revenue"] == 0, "the test oracle must round a third of a cent down."
+    decomposition_matches(case)
+
+
+@pytest.mark.parametrize("field", ("input_price_cents", "fixed_overhead_cents", "actual_inputs_used"))
+def test_zero_case_amount_is_a_valid_case(field: str) -> None:
+    case = fresh(**{field: 0})
+    assert sol.master_budget(case)["profit_cents"] == oracle(case)["master_profit"], (
+        "master_budget: zero is a valid value for this case field."
+    )
+    decomposition_matches(case)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ("budget_price_cents", "standard_inputs_per_unit", "actual_price_cents", "actual_units"),
+)
+def test_zero_product_amount_is_a_valid_case(field: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0][field] = 0
+    decomposition_matches(with_products(rows))
+
+
 # ---------------------------------------------------------------- edge cases
 
 
@@ -635,7 +786,7 @@ def test_negative_actual_units_argument_raises_value_error() -> None:
 
 
 def test_float_actual_units_argument_raises_value_error() -> None:
-    must_raise(lambda: sol.flexible_budget(CASE, 100.0), "a float unit count")  # type: ignore[arg-type]
+    must_raise(lambda: sol.flexible_budget(CASE, 100.0), "a float unit count")
 
 
 @pytest.mark.parametrize("name", FUNCTIONS)
@@ -740,7 +891,60 @@ def test_negative_standard_inputs_raises_value_error(name: str) -> None:
 
 
 def test_non_mapping_case_raises_value_error() -> None:
-    must_raise(lambda: sol.master_budget([]), "a case that is a list")  # type: ignore[arg-type]
+    must_raise(lambda: sol.master_budget([]), "a case that is a list")
+
+
+# ---------------------------------------------------------------- one isolated refusal per condition
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize("bad", ([], "case", None), ids=["list", "text", "none"])
+def test_case_that_is_not_a_mapping_raises_value_error(name: str, bad: Any) -> None:
+    must_raise(_call_for(name, bad), f"{name}: a case that is not a mapping")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize("bad", ({r["name"]: r for r in PRODUCTS}, "Alpha"), ids=["mapping", "text"])
+def test_products_that_are_not_a_list_raise_value_error(name: str, bad: Any) -> None:
+    must_raise(_call_for(name, fresh(products=bad)), f"{name}: products given as a {type(bad).__name__}, not a list")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_product_that_is_not_a_mapping_raises_value_error(name: str) -> None:
+    rows: list[Any] = copy.deepcopy(PRODUCTS)
+    rows[0] = [rows[0]["name"]]
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a product given as a list, not a mapping")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize("bad", (5, None), ids=["number", "none"])
+def test_product_name_that_is_not_text_raises_value_error(name: str, bad: Any) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0]["name"] = bad
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a product name that is not text")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize("field", ("input_price_cents", "fixed_overhead_cents", "actual_inputs_used"))
+def test_case_number_given_as_text_raises_value_error(name: str, field: str) -> None:
+    case = fresh(**{field: str(CASE[field])})
+    must_raise(_call_for(name, case), f"{name}: {field} given as text, where a whole number is required")
+
+
+@pytest.mark.parametrize("name", FUNCTIONS)
+@pytest.mark.parametrize(
+    "field",
+    ("budget_units", "budget_price_cents", "standard_inputs_per_unit", "actual_units", "actual_price_cents"),
+)
+def test_product_number_given_as_text_raises_value_error(name: str, field: str) -> None:
+    rows = copy.deepcopy(PRODUCTS)
+    rows[0][field] = str(rows[0][field])
+    must_raise(_call_for(name, with_products(rows)), f"{name}: a product's {field} given as text")
+
+
+@pytest.mark.parametrize("bad", ("1500", None), ids=["text", "none"])
+def test_actual_units_argument_that_is_not_a_number_raises_value_error(bad: Any) -> None:
+    must_raise(lambda: sol.flexible_budget(CASE, bad), "flexible_budget: an actual unit count that is text or nothing")
 
 
 # ---------------------------------------------------------------- purity and silence

@@ -255,6 +255,25 @@ def test_irr_accepts_some_zero_flows_when_not_all_are_zero() -> None:
     )
 
 
+def test_irr_zero_flow_keeps_its_place_in_the_time_index() -> None:
+    roots = irr_roots([-100.0, 0.0, 110.0])
+    assert len(roots) == 1 and abs(roots[0] - (math.sqrt(1.1) - 1.0)) <= 1e-7, (
+        "a zero flow at t = 1 still counts in the time index: the NPV is -100 + 110 / (1 + r) ** 2, with root "
+        "sqrt(1.1) - 1; dropping the zero gives the root 0.1 of the flows -100 and 110 alone."
+    )
+
+
+def test_irr_root_on_a_grid_sample_is_reported_once() -> None:
+    # Grid sample k = 1000 of the window (x = 0.01, rate 99). The flows -x and +1 have NPV -x + x ** 1 in the discount
+    # factor, zero at exactly that sample, so the root sits on a grid point and must be reported once, not twice.
+    x = math.exp(math.log(1e-4) + (math.log(1e4) - math.log(1e-4)) * 1000 / 4000)
+    roots = irr_roots([-x, 1.0])
+    assert len(roots) == 1 and abs(roots[0] - (1.0 / x - 1.0)) <= 1e-7, (
+        "a root that falls exactly on a sample of the search grid is one root: report it once, from the sign change "
+        "around it."
+    )
+
+
 # ---------------------------------------------------------------- payback
 
 
@@ -314,6 +333,20 @@ def test_discounted_payback_is_never_shorter_than_simple_payback() -> None:
     flows = after_tax_cash_flows(PROJECT)
     simple, discounted = payback_period(flows), payback_period(flows, rate=RATE)
     assert discounted >= simple, "discounting shrinks later flows, so discounted payback cannot be shorter."
+
+
+def test_discounted_payback_is_infinite_when_only_the_undiscounted_flows_recover() -> None:
+    # Undiscounted, the flows recover the outlay in year 2 (cumulative 10). At 20 percent, the discounted flows are
+    # 41.67 and 41.67, cumulative -16.67: the outlay is never recovered, so the answer is math.inf.
+    assert payback_period([-100.0, 50.0, 60.0], rate=0.2) == math.inf, (
+        "discounted payback uses the discounted flows only: when they never recover the outlay the answer is math.inf, "
+        "even though the undiscounted flows recover it."
+    )
+
+
+@pytest.mark.parametrize("bad", [[], [-100.0]], ids=["empty", "outlay-only"])
+def test_payback_rejects_fewer_than_two_flows(bad: list[float]) -> None:
+    must_raise(lambda: payback_period(bad), "a payback request with fewer than two flows (an outlay and an inflow)")
 
 
 @pytest.mark.parametrize("bad", [[0.0, 10.0], [5.0, -10.0]], ids=["zero-outlay", "positive-first"])
@@ -520,6 +553,35 @@ def test_working_capital_share_of_zero_is_valid() -> None:
     )
 
 
+def test_tax_rate_just_below_zero_is_refused() -> None:
+    must_raise(lambda: after_tax_cash_flows(with_(PROJECT, tax_rate=-1e-9)), "a tax rate just below zero (-1e-9)")
+
+
+def test_working_capital_share_just_below_zero_is_refused() -> None:
+    must_raise(
+        lambda: after_tax_cash_flows(with_(PROJECT, nwc_share=-1e-9)), "a working-capital share just below zero (-1e-9)"
+    )
+
+
+def test_revenue_just_below_zero_is_refused() -> None:
+    must_raise(
+        lambda: after_tax_cash_flows(with_(PROJECT, revenue=[-1e-9, *PROJECT["revenue"][1:]])),
+        "a revenue just below zero (-1e-9 cents)",
+    )
+
+
+def test_real_flows_are_deflated_under_negative_inflation() -> None:
+    project = with_(PROJECT, inflation=-0.5)
+    nominal = after_tax_cash_flows(project)
+    real = after_tax_cash_flows(project, real=True)
+    assert real[0] == nominal[0], "the outlay at t = 0 is unchanged by deflation, whatever the sign of inflation."
+    for t in range(1, LIFE + 1):
+        assert close(real[t], nominal[t] / (1.0 + project["inflation"]) ** t), (
+            f"year {t}: with negative inflation a real flow is still the nominal flow divided by (1 + inflation) "
+            "to the power t; the sign of inflation must not switch deflation off."
+        )
+
+
 def test_boundary_tax_and_share_values_just_inside_the_range_are_valid() -> None:
     assert len(after_tax_cash_flows(with_(PROJECT, tax_rate=0.0))) == LIFE + 1, "a tax rate of zero is valid."
     assert len(after_tax_cash_flows(with_(PROJECT, tax_rate=0.999))) == LIFE + 1, "a tax rate below 1 is valid."
@@ -657,6 +719,21 @@ def test_monte_carlo_mean_is_the_affine_identity_on_the_same_draws() -> None:
 def test_monte_carlo_rejects_invalid_arguments(args: tuple[int, int, float], condition: str) -> None:
     n_draws, seed, volatility = args
     must_raise(lambda: npv_monte_carlo(PROJECT, RATE, n_draws, seed, volatility), condition)
+
+
+def test_monte_carlo_refuses_zero_draws() -> None:
+    must_raise(lambda: npv_monte_carlo(PROJECT, RATE, 0, SEED, 0.1), "zero draws: a request needs at least two")
+
+
+def test_monte_carlo_refuses_a_rate_at_or_below_minus_one() -> None:
+    must_raise(
+        lambda: npv_monte_carlo(PROJECT, -1.0, 3, SEED, 0.1),
+        "a rate of -1 in the Monte Carlo request (rate at or below -1)",
+    )
+
+
+def test_monte_carlo_refuses_a_volatility_just_below_zero() -> None:
+    must_raise(lambda: npv_monte_carlo(PROJECT, RATE, 3, SEED, -1e-12), "a volatility just below zero (-1e-12)")
 
 
 def test_engine_imports_only_the_standard_library() -> None:

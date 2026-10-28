@@ -222,6 +222,8 @@ def _cash_postings(start_exclusive: str, end: str) -> int:
 
 
 def _check_values(got: object, expected: dict[str, int], what: str, end: str) -> None:
+    # The expected dict is a local of this frame; hiding the frame keeps its values out of the traceback.
+    __tracebackhide__ = True
     assert isinstance(got, dict), f"the {what} must be a dict"
     for key, value in expected.items():
         if key not in got:
@@ -540,6 +542,71 @@ def test_post_returns_a_ledger_that_the_functions_accept() -> None:
             "an account outside the chart on the second line of an entry",
             [_entry("2024-01-02", [("cash", 5, 0), ("retained_earnings", 0, 5)])],
         ),
+        ("a transaction that is not a mapping", [["2024-01-02", []]]),
+        ("a date that is None", [{**SMALL[0], "date": None}]),
+        ("an empty date", [{**SMALL[0], "date": ""}]),
+        ("a day of zero", [{**SMALL[0], "date": "2024-01-00"}]),
+        ("a month of zero", [{**SMALL[0], "date": "2024-00-10"}]),
+        ("a date with a letter in it", [{**SMALL[0], "date": "2024-0A-02"}]),
+        ("the 31st of April", [{**SMALL[0], "date": "2024-04-31"}]),
+        ("lines given as a mapping", [{"date": "2024-01-02", "lines": {"account": "cash", "debit": 5, "credit": 0}}]),
+        ("lines given as a string", [{"date": "2024-01-02", "lines": "cash"}]),
+        ("a line that is not a mapping", [{"date": "2024-01-02", "lines": [("cash", 5, 0), ("common_stock", 0, 5)]}]),
+        (
+            "an account name that is None",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": None, "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an empty account name",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an amount that is None",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": None, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an amount that is the boolean False",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": False, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an entry that balances only with another entry",
+            [
+                {"date": "2024-01-02", "lines": [{"account": "cash", "debit": 5, "credit": 0}]},
+                {"date": "2024-01-03", "lines": [{"account": "common_stock", "debit": 0, "credit": 5}]},
+            ],
+        ),
     ],
 )
 def test_post_raises_a_value_error(condition: str, transactions: list[dict[str, Any]]) -> None:
@@ -595,6 +662,113 @@ def test_small_ledger_january_articulation_is_zero() -> None:
     got = sol.articulation_check(sol.post(SMALL), "2024-01-31")
     for key in GAP_KEYS:
         assert got.get(key) == 0, f"the articulation gap '{key}' must be zero for a ledger that articulates"
+
+
+def test_small_ledger_january_income_statement() -> None:
+    got = sol.income_statement(sol.post(SMALL), "2024-01-31")
+    expected = {
+        "sales": 300,
+        "cost_of_goods_sold": 120,
+        "gross_profit": 180,
+        "operating_expenses": 0,
+        "depreciation_expense": 50,
+        "net_income": 130,
+    }
+    _check_values(got, expected, "income statement", "2024-01-31")
+
+
+def test_a_one_cent_entry_posts_at_one_cent() -> None:
+    ledger = sol.post([_entry("2024-01-02", [("cash", 1, 0), ("common_stock", 0, 1)])])
+    expected = {"cash": 1, "common_stock": 1, "total_assets": 1, "total_liabilities_and_equity": 1}
+    _check_values(sol.balance_sheet(ledger, "2024-01-31"), expected, "balance sheet", "2024-01-31")
+
+
+def test_a_zero_on_the_debit_side_of_a_credit_line_posts() -> None:
+    ledger = sol.post([_entry("2024-01-02", [("cash", 5, 0), ("common_stock", 0, 5)])])
+    _check_values(
+        sol.balance_sheet(ledger, "2024-01-31"), {"cash": 5, "common_stock": 5}, "balance sheet", "2024-01-31"
+    )
+
+
+def test_an_entry_dated_on_the_period_end_is_in_that_balance() -> None:
+    ledger = sol.post([_entry("2024-01-31", [("cash", 7, 0), ("common_stock", 0, 7)])])
+    _check_values(
+        sol.balance_sheet(ledger, "2024-01-31"), {"cash": 7, "common_stock": 7}, "balance sheet", "2024-01-31"
+    )
+
+
+def test_an_entry_dated_the_day_after_the_period_end_is_not_in_that_balance() -> None:
+    ledger = sol.post([_entry("2024-02-01", [("cash", 7, 0), ("common_stock", 0, 7)])])
+    expected = {"cash": 0, "common_stock": 0, "total_assets": 0}
+    _check_values(sol.balance_sheet(ledger, "2024-01-31"), expected, "balance sheet", "2024-01-31")
+
+
+# A January sale of 100 (dated on the month end) and a February sale of 40 (dated on the first day of February).
+FLOW_LEDGER: list[dict[str, Any]] = [
+    _entry("2024-01-31", [("accounts_receivable", 100, 0), ("sales", 0, 100)]),
+    _entry("2024-02-01", [("accounts_receivable", 40, 0), ("sales", 0, 40)]),
+]
+
+
+def test_a_month_counts_only_the_entries_after_the_previous_month_end() -> None:
+    ledger = sol.post(FLOW_LEDGER)
+    feb = {"sales": 40, "gross_profit": 40, "net_income": 40}
+    _check_values(sol.income_statement(ledger, "2024-02-29"), feb, "income statement", "2024-02-29")
+    jan = {"sales": 100, "gross_profit": 100, "net_income": 100}
+    _check_values(sol.income_statement(ledger, "2024-01-31"), jan, "income statement", "2024-01-31")
+
+
+def test_borrowing_and_repayment_move_net_borrowing_in_both_directions() -> None:
+    ledger = sol.post(
+        [
+            _entry("2024-01-05", [("cash", 500, 0), ("long_term_debt", 0, 500)]),
+            _entry("2024-02-05", [("long_term_debt", 200, 0), ("cash", 0, 200)]),
+        ]
+    )
+    jan_flow = {"net_borrowing": 500, "cash_from_financing": 500, "beginning_cash": 0, "ending_cash": 500}
+    _check_values(sol.cash_flow_statement(ledger, "2024-01-31"), jan_flow, "cash flow statement", "2024-01-31")
+    feb_flow = {"net_borrowing": -200, "cash_from_financing": -200, "beginning_cash": 500, "ending_cash": 300}
+    _check_values(sol.cash_flow_statement(ledger, "2024-02-29"), feb_flow, "cash flow statement", "2024-02-29")
+    feb_balance = {"cash": 300, "long_term_debt": 300, "total_liabilities_and_equity": 300}
+    _check_values(sol.balance_sheet(ledger, "2024-02-29"), feb_balance, "balance sheet", "2024-02-29")
+
+
+def test_an_empty_list_of_transactions_gives_empty_statements() -> None:
+    ledger = sol.post([])
+    end = "2024-12-31"
+    _check_values(sol.balance_sheet(ledger, end), dict.fromkeys(BALANCE_SHEET_KEYS, 0), "balance sheet", end)
+    _check_values(sol.income_statement(ledger, end), dict.fromkeys(INCOME_KEYS, 0), "income statement", end)
+    _check_values(sol.cash_flow_statement(ledger, end), dict.fromkeys(CASH_FLOW_KEYS, 0), "cash flow statement", end)
+    got = sol.articulation_check(ledger, end)
+    for key in GAP_KEYS:
+        assert got.get(key) == 0, f"the articulation gap '{key}' must be zero for an empty ledger"
+
+
+def test_a_repeated_entry_is_posted_each_time() -> None:
+    ledger = sol.post([SMALL[0], SMALL[0]])
+    _check_values(
+        sol.balance_sheet(ledger, "2024-01-31"), {"cash": 2000, "common_stock": 2000}, "balance sheet", "2024-01-31"
+    )
+
+
+def test_the_order_of_the_transactions_does_not_change_the_statements() -> None:
+    ledger = sol.post(list(reversed(SMALL)))
+    _check_values(sol.balance_sheet(ledger, "2024-01-31"), SMALL_JAN_BALANCE_SHEET, "balance sheet", "2024-01-31")
+    _check_values(
+        sol.cash_flow_statement(ledger, "2024-01-31"), SMALL_JAN_CASH_FLOW, "cash flow statement", "2024-01-31"
+    )
+
+
+def test_two_entries_on_one_date_both_count() -> None:
+    ledger = sol.post(
+        [
+            _entry("2024-01-31", [("cash", 10, 0), ("common_stock", 0, 10)]),
+            _entry("2024-01-31", [("cash", 20, 0), ("common_stock", 0, 20)]),
+        ]
+    )
+    _check_values(
+        sol.balance_sheet(ledger, "2024-01-31"), {"cash": 30, "common_stock": 30}, "balance sheet", "2024-01-31"
+    )
 
 
 # Worked on paper. Cash is 1,000 less 100 paid, so the balance sheet shows cash of 900. The cash flow statement sees
@@ -741,6 +915,13 @@ def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
         "2024-04-15",
         "2024-01-30",
         "2024-04-31",
+        "2024-03-01",
+        "2024-03-30",
+        "2024-06-29",
+        "2024-12-30",
+        "2023-02-27",
+        "",
+        " 2024-01-31",
     ],
 )
 def test_period_end_must_be_a_month_end(call: Callable[[object, str], object], period_end: str) -> None:
@@ -748,10 +929,10 @@ def test_period_end_must_be_a_month_end(call: Callable[[object, str], object], p
     must_raise(lambda: call(ledger, period_end), f"a period end of {period_end!r}")
 
 
-def test_a_period_end_that_is_not_a_string_is_rejected() -> None:
+@pytest.mark.parametrize("bad_end", [20240131, None, True])
+def test_a_period_end_that_is_not_a_string_is_rejected(bad_end: Any) -> None:
     ledger = sol.post(TXS)
-    bad_end: Any = 20240131
-    condition = "a period end that is not a string"
+    condition = f"a period end of {bad_end!r} that is not a string"
     must_raise(lambda: sol.balance_sheet(ledger, bad_end), condition)
     must_raise(lambda: sol.income_statement(ledger, bad_end), condition)
     must_raise(lambda: sol.cash_flow_statement(ledger, bad_end), condition)

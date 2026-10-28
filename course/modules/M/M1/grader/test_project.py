@@ -218,7 +218,8 @@ def test_annuity_due_zero_periods_is_zero() -> None:
 
 def test_annuity_accepts_a_rate_just_above_minus_one() -> None:
     """The lower boundary is open: -1 is refused (tested above) and -0.999 is valid. v = 1000, so the three-period sum
-    is 1000 + 10^6 + 10^9 = 1001001000, and the closed form (1 - 10^-9) / (-0.999) gives the same value."""
+    is 1000 + 10^6 + 10^9 = 1001001000, and the closed form (1 - (1+r)^-3) / r = (1 - 10^9) / (-0.999) gives the same
+    value."""
     assert close(sol.annuity_factor(-0.999, 3), 1_001_001_000.0, 1e-9), (
         "a rate above -1 is valid: the factor must be the sum of discount factors at that rate"
     )
@@ -229,7 +230,18 @@ def test_annuity_accepts_a_rate_just_above_minus_one() -> None:
 
 @pytest.mark.parametrize(
     ("rate", "periods"),
-    [("0.05", 5), (None, 5), (0.05, "5"), (0.05, None), (0.05, [5])],
+    [
+        ("0.05", 5),
+        (None, 5),
+        (0.05, "5"),
+        (0.05, None),
+        (0.05, [5]),
+        ("", 5),
+        (" 0.05", 5),
+        (0.05, " 5"),
+        (0.05, []),
+        (0.05, False),
+    ],
 )
 def test_annuity_factor_rejects_the_wrong_types(rate: Any, periods: Any) -> None:
     must_raise(lambda: sol.annuity_factor(rate, periods), "a rate or a period count of the wrong type")
@@ -245,6 +257,11 @@ def test_annuity_factor_rejects_the_wrong_types(rate: Any, periods: Any) -> None
         (-1.0, 5, "a rate of -1 for the due annuity, with periods"),
         ("0.05", 5, "a rate given as a string for the due annuity"),
         (None, 5, "a rate of None for the due annuity"),
+        (ANN_RATE, None, "periods given as None for the due annuity"),
+        (ANN_RATE, False, "periods given as a bool (False) for the due annuity"),
+        (-1.0, 0, "a rate of -1 for the due annuity with zero periods"),
+        (math.inf, 5, "an infinite rate for the due annuity"),
+        (-math.inf, 5, "a rate of minus infinity for the due annuity"),
     ],
 )
 def test_annuity_due_rejects_invalid_inputs(rate: Any, periods: Any, condition: str) -> None:
@@ -371,6 +388,20 @@ def test_level_payment_accepts_a_term_above_360_months() -> None:
     assert len(rows) == 480 and rows[-1][0] == 480 and rows[-1][5] == 0, (
         "a 480-month schedule must have 480 rows and close to exactly zero in the last one"
     )
+
+
+def test_level_payment_and_schedule_accept_a_term_of_1200_months() -> None:
+    """The term has no upper limit, so a 1200-month loan of 100,000 cents at 3.84 % is valid. Its monthly rate is
+    0.0032 = 2/625, whose denominator is odd, so no interest amount is a half cent; the level payment is 327 cents.
+    The schedule must equal the exact schedule row for row, with 1200 rows and an exactly zero last balance."""
+    assert sol.level_payment_cents(100_000, 0.0384, 1200) == 327, (
+        "the term has no upper limit: a 1200-month loan is valid and its payment is the exact value"
+    )
+    rows = schedule(100_000, 0.0384, 1200)
+    assert len(rows) == 1200 and rows[-1][0] == 1200 and rows[-1][5] == 0, (
+        "a 1200-month schedule must have 1200 rows and close to exactly zero in the last one"
+    )
+    assert rows == exact_rows(100_000, 384, 1200), "the 1200-month schedule disagrees with the exact schedule"
 
 
 def test_level_payment_tie_goes_up() -> None:
@@ -594,6 +625,8 @@ def test_perpetuity_rejects_a_non_finite_rate() -> None:
         (math.inf, "an infinite rate"),
         (-math.inf, "a rate of minus infinity"),
         ("0.05", "a rate given as a string"),
+        (" 0.05", "a padded rate given as a string"),
+        ("", "an empty rate string"),
         (None, "a rate of None"),
     ],
 )
@@ -615,12 +648,16 @@ def test_perpetuity_accepts_a_tiny_positive_rate() -> None:
         (lambda: sol.annuity_factor(False, 5), "a boolean (False) rate for the annuity"),
         (lambda: sol.annuity_due_factor(True, 5), "a boolean rate for the annuity due"),
         (lambda: sol.perpetuity_factor(True), "a boolean rate for the perpetuity"),
+        (lambda: sol.perpetuity_factor(False), "a boolean (False) rate for the perpetuity"),
         (lambda: sol.growing_perpetuity_factor(True, 0.01), "a boolean rate for the growing perpetuity"),
         (lambda: sol.growing_perpetuity_factor(0.05, True), "a boolean growth rate"),
+        (lambda: sol.growing_perpetuity_factor(0.05, False), "a boolean (False) growth rate"),
         (lambda: sol.level_payment_cents(1000, True, 12), "a boolean annual rate for the level payment"),
         (lambda: sol.level_payment_cents(True, 0.05, 12), "a boolean principal for the level payment"),
+        (lambda: sol.level_payment_cents(1000, 0.05, False), "a boolean term for the level payment"),
         (lambda: sol.amortization_schedule(1000, True, 12), "a boolean annual rate for the schedule"),
         (lambda: sol.amortization_schedule(True, 0.05, 12), "a boolean principal for the schedule"),
+        (lambda: sol.amortization_schedule(1000, 0.05, False), "a boolean term for the schedule"),
     ],
 )
 def test_booleans_are_rejected_where_a_number_is_meant(call: Callable[[], object], condition: str) -> None:
@@ -661,6 +698,8 @@ def test_growing_perpetuity_rejects_growth_below_minus_one() -> None:
     [
         ("0.05", 0.02, "a rate given as a string"),
         (0.05, "0.02", "a growth rate given as a string"),
+        (" 0.05", 0.02, "a padded rate given as a string"),
+        (0.05, " 0.02", "a padded growth rate given as a string"),
         (None, 0.02, "a rate of None"),
         (0.05, None, "a growth rate of None"),
     ],
@@ -709,7 +748,15 @@ def test_growing_perpetuity_moves_the_right_way() -> None:
         (1000, 0.05, -3),
         (1000, 0.05, 12.0),
         (1000, 0.05, True),
+        (1000, 0.05, False),
+        (1000, 0.05, 12.5),
+        (1000, 0.05, -1),
+        (-1, 0.05, 12),
+        (1000, -1e-12, 12),
+        (1000, -math.inf, 12),
+        (False, 0.05, 12),
         ("1000", 0.05, 12),
+        (" 1000", 0.05, 12),
         (None, 0.05, 12),
         (1000, "0.05", 12),
         (1000, None, 12),
@@ -734,14 +781,21 @@ def test_level_payment_rejects_invalid_loans(principal: Any, rate: Any, months: 
         (1000, 0.05, -3),
         (1000, 0.05, 2.0),
         (1000, 0.05, True),
+        (1000, 0.05, False),
+        (1000, 0.05, 12.5),
         ("1000", 0.05, 12),
+        (" 1000", 0.05, 12),
         (None, 0.05, 12),
         (1000, "0.05", 12),
         (1000, None, 12),
         (1000, 0.05, "12"),
         (1000, 0.05, None),
         (1000, math.nan, 12),
+        (1000, -math.inf, 12),
+        (1000, -1e-12, 12),
         (1000, 0.05, -1),
+        (-1, 0.05, 12),
+        (False, 0.05, 12),
     ],
 )
 def test_schedule_rejects_invalid_loans(principal: Any, rate: Any, months: Any) -> None:
@@ -751,6 +805,95 @@ def test_schedule_rejects_invalid_loans(principal: Any, rate: Any, months: Any) 
 def test_invalid_input_message_names_the_condition() -> None:
     with pytest.raises(ValueError, match=r"\S"):
         sol.perpetuity_factor(0.0)
+
+
+# --- isolated boundary checks: one condition per test, in both directions where an inequality is involved
+
+
+def test_annuity_factor_refuses_rate_of_minus_one_even_with_zero_periods() -> None:
+    """The rate check applies whatever the number of periods: at -1 the factor is refused even when there are none."""
+    must_raise(lambda: sol.annuity_factor(-1.0, 0), "a rate of -1 with zero periods: the rate check still applies")
+    must_raise(lambda: sol.annuity_due_factor(-1.0, 0), "a rate of -1 with zero periods for the due annuity")
+
+
+def test_annuity_factor_accepts_rate_just_above_minus_one_with_zero_periods() -> None:
+    """The other side of the boundary: at -0.999 with zero periods the factor is the float 0."""
+    zero = sol.annuity_factor(-0.999, 0)
+    assert isinstance(zero, float) and zero == 0.0, "a rate above -1 with zero periods gives the float 0"
+
+
+def test_annuity_factor_refuses_a_non_finite_rate_even_with_zero_periods() -> None:
+    must_raise(lambda: sol.annuity_factor(math.nan, 0), "a NaN rate with zero periods")
+    must_raise(lambda: sol.annuity_factor(math.inf, 0), "an infinite rate with zero periods")
+    must_raise(lambda: sol.annuity_factor(-math.inf, 5), "a rate of minus infinity")
+
+
+def test_annuity_factor_zero_rate_with_zero_periods_is_float_zero() -> None:
+    zero = sol.annuity_factor(0, 0)
+    assert isinstance(zero, float) and zero == 0.0, "annuity_factor(0, 0) must be the float 0.0"
+    due = sol.annuity_due_factor(0, 0)
+    assert isinstance(due, float) and due == 0.0, "annuity_due_factor(0, 0) must be the float 0.0"
+
+
+def test_annuity_factor_one_period_is_one_discounted_payment() -> None:
+    """With one period the factor is the single discount factor v = 1/(1+r), and at a zero rate it is 1."""
+    assert close(sol.annuity_factor(ANN_RATE, 1), 1 / (1 + ANN_RATE), 1e-12), "one period is one discounted payment"
+    assert sol.annuity_factor(0, 1) == 1.0, "one period at a zero rate is a factor of 1"
+
+
+def test_perpetuity_refuses_a_rate_just_below_zero() -> None:
+    must_raise(lambda: sol.perpetuity_factor(-1e-12), "a rate of -1e-12: the rate must be above zero")
+
+
+def test_perpetuity_value_moves_the_right_way() -> None:
+    """A higher rate lowers the value of a perpetuity: 1/0.05 = 20 and 1/0.06 is about 16.7."""
+    assert sol.perpetuity_factor(0.05) > sol.perpetuity_factor(0.06), "a higher rate must lower the perpetuity"
+
+
+def test_growing_perpetuity_refuses_growth_just_above_the_rate() -> None:
+    must_raise(lambda: sol.growing_perpetuity_factor(0.05, 0.0501), "growth 0.0501 just above a rate of 0.05")
+
+
+def test_growing_perpetuity_refuses_a_nan_rate() -> None:
+    must_raise(lambda: sol.growing_perpetuity_factor(math.nan, 0.01), "a NaN rate")
+
+
+def test_growing_perpetuity_refuses_minus_infinite_growth() -> None:
+    must_raise(lambda: sol.growing_perpetuity_factor(0.05, -math.inf), "growth of minus infinity")
+
+
+def test_growing_perpetuity_refuses_a_rate_just_below_zero() -> None:
+    must_raise(lambda: sol.growing_perpetuity_factor(-1e-12, -0.5), "a rate of -1e-12 with any growth")
+
+
+def test_growing_perpetuity_accepts_a_tiny_positive_rate() -> None:
+    """The other side: a rate of 1e-12 is valid with growth -0.5, and the value is 1 / (rate - growth)."""
+    assert close(sol.growing_perpetuity_factor(1e-12, -0.5), 1 / (1e-12 + 0.5), 1e-12), (
+        "a positive rate of 1e-12 is valid: the value is 1 / (rate - growth)"
+    )
+
+
+def test_level_payment_accepts_a_one_cent_loan_over_one_month() -> None:
+    """One cent over one month: at a zero rate the payment is 1 cent, and at 5 % it is 1 cent plus a fraction that
+    rounds down, so it is 1 cent in both cases."""
+    assert sol.level_payment_cents(1, 0, 1) == 1, "a one-cent loan over one month at a zero rate is one cent"
+    assert sol.level_payment_cents(1, 0.05, 1) == 1, "a one-cent loan over one month at 5 % is one cent"
+
+
+def test_level_payment_rounds_a_below_half_cent_down() -> None:
+    """499 cents over 1000 months at a zero rate is 0.499 cents a month: it rounds down to 0 (a ceiling gives 1)."""
+    assert sol.level_payment_cents(499, 0, 1000) == 0, "a payment below half a cent must round down to zero cents"
+
+
+def test_level_payment_rejects_a_principal_of_minus_one() -> None:
+    must_raise(lambda: sol.level_payment_cents(-1, 0.05, 12), "a principal of -1 cent")
+    must_raise(lambda: sol.amortization_schedule(-1, 0.05, 12), "a principal of -1 cent for the schedule")
+
+
+def test_term_of_one_month_is_accepted_at_a_nonzero_rate() -> None:
+    """The lower boundary of the term is one month, valid at a non-zero rate too: one row that clears."""
+    rows = schedule(10_000, 0.12, 1)
+    assert rows == [(1, 10_000, 100, 10_000, 10_100, 0)], "a one-month loan pays its balance plus one month of interest"
 
 
 # --- purity and imports

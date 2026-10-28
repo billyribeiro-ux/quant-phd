@@ -441,7 +441,7 @@ def main() -> None:
         dividends = ledger.net("dividends", year=year)
         without_deduction = opening_re + income
         print(
-            f"{year}: retained earnings with no dividend deduction would be {money(without_deduction)}, "
+            f"{year}: retained earnings with this year's dividend not deducted would be {money(without_deduction)}, "
             f"balance sheet {money(closing_re)}; the gap {money(without_deduction - closing_re)} equals dividends: "
             f"{without_deduction - closing_re == dividends}"
         )
