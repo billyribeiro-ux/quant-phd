@@ -403,7 +403,11 @@ def test_payback_rejects_fewer_than_two_flows(bad: list[float]) -> None:
     must_raise(lambda: payback_period(bad), "a payback request with fewer than two flows (an outlay and an inflow)")
 
 
-@pytest.mark.parametrize("bad", [[0.0, 10.0], [5.0, -10.0]], ids=["zero-outlay", "positive-first"])
+@pytest.mark.parametrize(
+    "bad",
+    [[0.0, 10.0], [5.0, -10.0], [1e-9, 10.0]],
+    ids=["zero-outlay", "positive-first", "positive-first-just-above-zero"],
+)
 def test_payback_rejects_a_first_flow_that_is_not_an_outlay(bad: list[float]) -> None:
     must_raise(lambda: payback_period(bad), "a first flow that is not negative")
 
@@ -610,6 +614,11 @@ def test_real_flows_at_the_real_rate_equal_nominal_flows_at_the_nominal_rate() -
             {"cash_costs": [float("inf"), *PROJECT["cash_costs"][1:]]}, "a cash cost that is not finite", id="cost-inf"
         ),
         pytest.param({"inflation": -1.0}, "inflation of -100 percent", id="inflation-minus-one"),
+        pytest.param(
+            {"inflation": -1.0 - 1e-9},
+            "inflation just below -100 percent (-1 minus 1e-9)",
+            id="inflation-just-below-minus-one",
+        ),
         pytest.param({"inflation": -1.5}, "inflation below -100 percent", id="inflation-below-minus-one"),
         pytest.param({"capex": True}, "a capex given as a boolean, not a number of cents", id="capex-bool"),
         pytest.param({"capex": "900000"}, "a capex given as text, not a number of cents", id="capex-text"),
@@ -647,6 +656,21 @@ def test_missing_field_raises_a_named_error(field: str) -> None:
 def test_zero_revenue_and_zero_costs_are_valid_inputs() -> None:
     flows = after_tax_cash_flows(with_(PROJECT, revenue=[0.0] * LIFE, cash_costs=[0.0] * LIFE))
     assert len(flows) == LIFE + 1, "zero is a non-negative revenue and a non-negative cost: both are valid."
+
+
+def test_zero_revenue_alone_is_valid() -> None:
+    flows = after_tax_cash_flows(with_(PROJECT, revenue=[0.0] * LIFE))
+    assert len(flows) == LIFE + 1, "a revenue of zero in every year is a non-negative revenue: it is valid."
+
+
+def test_zero_cash_costs_alone_are_valid() -> None:
+    flows = after_tax_cash_flows(with_(PROJECT, cash_costs=[0.0] * LIFE))
+    assert len(flows) == LIFE + 1, "a cash cost of zero in every year is a non-negative cost: it is valid."
+
+
+def test_tax_rate_of_zero_alone_is_valid() -> None:
+    flows = after_tax_cash_flows(with_(PROJECT, tax_rate=0.0))
+    assert len(flows) == LIFE + 1, "a tax rate of zero is valid: the lower bound on the tax rate is inclusive."
 
 
 def test_capex_of_one_cent_is_a_valid_project() -> None:

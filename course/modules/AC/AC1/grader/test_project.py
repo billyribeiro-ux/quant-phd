@@ -325,6 +325,7 @@ def test_a_large_amount_posts_at_its_full_value() -> None:
         ("a date in the ISO week form", [{**SMALL[0], "date": "2024-W01-1"}]),
         ("a date with a time of day", [{**SMALL[0], "date": "2024-01-02T10:00"}]),
         ("a date with surrounding spaces", [{**SMALL[0], "date": " 2024-01-02 "}]),
+        ("a date with slashes in the form YYYY/MM/DD", [{**SMALL[0], "date": "2024/01/02"}]),
         ("an empty list of lines", [{"date": "2024-01-02", "lines": []}]),
         (
             "a line without a credit",
@@ -435,6 +436,30 @@ def test_a_large_amount_posts_at_its_full_value() -> None:
             ],
         ),
         (
+            "an amount that is the boolean False on the credit side of a debit line",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": False},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "an account that is a number rather than a name",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": 5, "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
             "an amount that is a float on the credit side",
             [
                 {
@@ -454,6 +479,18 @@ def test_a_large_amount_posts_at_its_full_value() -> None:
                     "lines": [
                         {"account": "cash", "debit": 5, "credit": 5},
                         {"account": "common_stock", "debit": 5, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
+            "a line with a debit and a credit of unequal sizes, in an entry that balances",
+            [
+                {
+                    "date": "2024-01-02",
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 3},
+                        {"account": "sales", "debit": 0, "credit": 2},
                     ],
                 }
             ],
@@ -965,6 +1002,7 @@ def test_articulation_gaps_are_zero(end: str) -> None:
     got = sol.articulation_check(sol.post(TXS), end)
     for key in GAP_KEYS:
         assert key in got, f"the articulation check has no '{key}' entry"
+        assert type(got[key]) is int, f"the articulation gap '{key}' at {end} must be an integer number of cents"
         assert got[key] == 0, f"the articulation gap '{key}' at {end} must be zero"
 
 
@@ -1031,6 +1069,7 @@ def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
         "2024-13-31",
         "",
         " 2024-01-31",
+        "2024-01-31 ",
     ],
 )
 def test_period_end_must_be_a_month_end(call: Callable[[object, str], object], period_end: str) -> None:
@@ -1091,11 +1130,34 @@ def test_a_century_year_follows_the_400_year_rule() -> None:
         lambda ledger, end: sol.articulation_check(ledger, end),
     ],
 )
-def test_every_function_accepts_a_century_month_end(call: Callable[[object, str], object]) -> None:
-    # 2000-02-29 and 2100-02-28 are month ends, so every function accepts them (see the Constraints on the page).
-    ledger = sol.post(SMALL)
-    for end in ("2000-02-29", "2100-02-28"):
-        assert isinstance(call(ledger, end), dict), f"a period end of {end} is a month end and must be accepted"
+@pytest.mark.parametrize("end", ["2000-02-29", "2100-02-28", "2000-03-31", "2100-03-31"])
+def test_every_function_accepts_a_century_month_end(call: Callable[[object, str], object], end: str) -> None:
+    # 2000-02-29, 2100-02-28, 2000-03-31 and 2100-03-31 are month ends, so every function accepts them (Constraints).
+    assert isinstance(call(sol.post(SMALL), end), dict), f"a period end of {end} is a month end and must be accepted"
+
+
+@pytest.mark.parametrize(("previous_end", "month_end"), [("2000-02-29", "2000-03-31"), ("2100-02-28", "2100-03-31")])
+def test_a_month_after_a_century_february_counts_only_its_own_entries(previous_end: str, month_end: str) -> None:
+    # The February entry is dated on the previous month end, so it is in the February flow and not in the March flow.
+    year = previous_end[:4]
+    ledger = sol.post(
+        [
+            _entry(previous_end, [("accounts_receivable", 3, 0), ("sales", 0, 3)]),
+            _entry(f"{year}-03-01", [("accounts_receivable", 7, 0), ("sales", 0, 7)]),
+        ]
+    )
+    _check_values(
+        sol.income_statement(ledger, previous_end), {"sales": 3, "net_income": 3}, "income statement", previous_end
+    )
+    _check_values(sol.income_statement(ledger, month_end), {"sales": 7, "net_income": 7}, "income statement", month_end)
+
+
+def test_an_entry_dated_on_a_thirty_day_month_end_posts() -> None:
+    # 2024-04-30 is the last day of a 30-day month, a real date that the posting rule accepts.
+    ledger = sol.post([_entry("2024-04-30", [("cash", 9, 0), ("common_stock", 0, 9)])])
+    _check_values(
+        sol.balance_sheet(ledger, "2024-04-30"), {"cash": 9, "common_stock": 9}, "balance sheet", "2024-04-30"
+    )
 
 
 def test_a_non_leap_year_february_end_is_accepted() -> None:

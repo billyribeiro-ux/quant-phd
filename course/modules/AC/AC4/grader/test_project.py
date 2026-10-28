@@ -1064,6 +1064,12 @@ LATER_PRODUCT_CONDITIONS: dict[str, Callable[[list[Any], int], None]] = {
     "empty name": lambda rows, i: rows[i].__setitem__("name", ""),
     "name that is a number": lambda rows, i: rows[i].__setitem__("name", 5),
     "product that is a list": lambda rows, i: rows.__setitem__(i, ["Alpha"]),
+    "float actual units": lambda rows, i: rows[i].__setitem__("actual_units", float(rows[i]["actual_units"])),
+    "negative budget price": lambda rows, i: rows[i].__setitem__("budget_price_cents", -1),
+    "boolean actual price": lambda rows, i: rows[i].__setitem__("actual_price_cents", True),
+    "missing budget units": lambda rows, i: rows[i].pop("budget_units"),
+    "negative standard inputs": lambda rows, i: rows[i].__setitem__("standard_inputs_per_unit", -1),
+    "none actual units": lambda rows, i: rows[i].__setitem__("actual_units", None),
 }
 
 

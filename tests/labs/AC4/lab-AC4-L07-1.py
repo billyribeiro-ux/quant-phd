@@ -74,6 +74,11 @@ def firm_surplus(c: Case) -> int:
     return c.q * (c.r_net - c.v) - displaced(c) * (c.p_m - c.v)
 
 
+# Hand-built boundary pair: the worked case of the page (v = 40, p_m = 60, K = 10,000, E = 8,000, q = 5,000
+# units, so D = 3,000) with r = 52 SCU. Then t_min = t_max = 52 SCU and the firm-wide surplus is exactly 0.
+BOUNDARY = Case(case_id=0, v=4000, p_m=6000, capacity=10000, external=8000, q=5000, r_net=5200)
+
+
 def generate(seed: int, n: int) -> list[Case]:
     """Generate n SIMULATED cases from a seeded generator."""
     rng = random.Random(seed)
@@ -96,8 +101,9 @@ def show(x: Fraction) -> str:
 
 
 def main() -> None:
-    cases = generate(SEED, N_CASES)
-    print(f"SIMULATED divisions (seed {SEED}): {N_CASES} cases; money in cents, quantities in units")
+    cases = [*generate(SEED, N_CASES), BOUNDARY]
+    print(f"SIMULATED divisions (seed {SEED}): {N_CASES} generated cases and 1 hand-built boundary case;")
+    print("money in cents, quantities in units")
     print("case  v      p_m    K      E      q      D     t_min     t_max     status")
     for c in cases[:6]:
         status = "no transfer (q > K)"
@@ -121,6 +127,11 @@ def main() -> None:
     print(f"cases with q <= K and an empty range: {len(empty)}")
     print(f"cases with a feasible range: {len(feasible)}")
     print(f"  of which capacity binds (D > 0): {len(binding)}")
+    b = BOUNDARY
+    print(
+        f"boundary case (hand-built): t_min {show(t_min(b))}, t_max {show(t_max(b))}, "
+        f"firm-wide surplus {firm_surplus(b)} cents"
+    )
 
     checks = 0
     for c in fits:

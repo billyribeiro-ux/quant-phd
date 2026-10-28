@@ -103,7 +103,8 @@ def main() -> None:
     for t, q in enumerate(quarters):
         print(
             f"q{t} revenue {revenue[t]} ni_rule_a {ni_a[t]} ni_rule_b {ni_b[t]} "
-            f"cash_change {cash_change[t]} prepaid_balance_b {prepaid_balance_b[t]} interest {q.interest}"
+            f"cash_change {cash_change[t]} prepaid_balance_b {prepaid_balance_b[t]} interest {q.interest} "
+            f"prepaid_paid {q.prepaid_paid}"
         )
 
     # Identity 1: the cash balance does not depend on the recognition rule.
