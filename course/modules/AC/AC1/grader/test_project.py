@@ -702,6 +702,18 @@ def test_a_large_amount_posts_at_its_full_value() -> None:
             ],
         ),
         (
+            "an amount that is a float zero on the debit side",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0.0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
             "an entry that balances only with another entry",
             [
                 {"date": "2024-01-02", "lines": [{"account": "cash", "debit": 5, "credit": 0}]},
@@ -1079,6 +1091,10 @@ def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
         "2024-04-15",
         "2024-01-30",
         "2024-04-31",
+        "2024-02-01",
+        "2024-12-01",
+        "2024-00-31",
+        "2024-01-00",
         "2024-03-01",
         "2024-03-30",
         "2024-06-29",
@@ -1189,6 +1205,21 @@ def test_a_non_leap_year_february_end_is_accepted() -> None:
         "balance sheet",
         "2023-02-28",
     )
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda ledger, end: sol.balance_sheet(ledger, end),
+        lambda ledger, end: sol.income_statement(ledger, end),
+        lambda ledger, end: sol.cash_flow_statement(ledger, end),
+        lambda ledger, end: sol.articulation_check(ledger, end),
+    ],
+)
+@pytest.mark.parametrize("end", ["2024-02-29", "2023-02-28", "2024-04-30"])
+def test_every_function_accepts_a_month_end_of_a_real_length(call: Callable[[object, str], object], end: str) -> None:
+    # 2024-02-29 (leap year), 2023-02-28 (common year) and 2024-04-30 (a 30-day month) are month ends (Constraints).
+    assert isinstance(call(sol.post(SMALL), end), dict), f"a period end of {end} is a month end and must be accepted"
 
 
 def test_the_statements_return_fresh_objects() -> None:
