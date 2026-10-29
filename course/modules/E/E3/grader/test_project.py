@@ -577,6 +577,54 @@ def test_estimate_needs_a_mixed_sign_lottery() -> None:
     )
 
 
+# Twelve pairs whose A lotteries are pure (one sure amount each) and whose B lotteries each mix a gain and a loss.
+B_SIDE_SURE_A: list[int] = [700, 1900, 0, 2600, -300, 1500, 900, 2100, -600, 1100, 400, 1800]
+B_SIDE_CHOICES: list[str] = ["A", "B", "B", "A", "B", "A", "A", "B", "A", "A", "B", "B"]
+B_SIDE_LOTTERIES: list[tuple[list[int], list[str]]] = [
+    ([2000, -1500], ["1/2", "1/2"]),
+    ([3000, -2500], ["2/5", "3/5"]),
+    ([1500, -1000], ["3/4", "1/4"]),
+    ([4000, -3000], ["1/3", "2/3"]),
+    ([2500, -4000], ["1/2", "1/2"]),
+    ([1000, -500], ["4/5", "1/5"]),
+    ([3500, -2000], ["1/4", "3/4"]),
+    ([800, -1200], ["1/2", "1/2"]),
+    ([5000, -3000], ["3/10", "7/10"]),
+    ([2200, -2800], ["3/5", "2/5"]),
+    ([1200, -600], ["1/2", "1/2"]),
+    ([4500, -5000], ["2/3", "1/3"]),
+]
+
+
+def test_estimate_accepts_a_mixed_lottery_on_the_b_side_alone() -> None:
+    """Named condition: the set is refused only when no response has a lottery that mixes a gain and a loss, each with
+    positive probability. Here every A lottery is pure but every B lottery mixes, so the condition is not met: the
+    estimate must return the seven named fields as finite floats, and must not refuse the set for want of a mix."""
+    responses: list[dict[str, object]] = [
+        {
+            "pair_id": i,
+            "choice": B_SIDE_CHOICES[i],
+            "prizes_a": [B_SIDE_SURE_A[i]],
+            "probs_a": ["1"],
+            "prizes_b": B_SIDE_LOTTERIES[i][0],
+            "probs_b": B_SIDE_LOTTERIES[i][1],
+        }
+        for i in range(len(B_SIDE_CHOICES))
+    ]
+    try:
+        result = sol.estimate(responses)
+    except ValueError:
+        expect(False, "a set with a mixed B lottery must not be refused for want of a mixed-sign lottery")
+    expect(
+        set(result) == {"gamma_hat", "lambda_hat", "kappa_hat", "se_gamma", "se_lambda", "se_kappa", "log_likelihood"},
+        "estimate must return exactly the seven named fields",
+    )
+    expect(
+        all(isinstance(v, float) and math.isfinite(v) for v in result.values()),
+        "a set with a mixed B lottery is valid: every field must be a finite float",
+    )
+
+
 def test_estimate_refuses_probabilities_that_sum_below_one() -> None:
     """Named condition, in a response: the probabilities of a lottery must sum to exactly 1. This response is otherwise
     valid (mixed-sign, non-negative), and its probabilities sum to 999/1000."""
@@ -705,8 +753,9 @@ def test_standard_errors_match_the_delta_method_oracle() -> None:
     (eta, log lambda, log kappa), carried to the parameters by the delta method: d gamma / d eta = gamma (1 - gamma),
     d lambda / d log lambda = lambda, d kappa / d log kappa = kappa. The oracle recomputes this at the reported
     estimate. The tolerance is 10% relative. For a poorly identified parameter the standard error is sensitive to
-    round-off in the finite-difference information (for seed 49 two correct engines differ by about 4% in se_lambda), so
-    a tighter tolerance would test the implementation's round-off. A missing or wrong delta factor (gamma (1 - gamma),
+    round-off in the finite-difference information (for seed 49 the standard error of lambda changes by about 1% with
+    the evaluation order of the same log-likelihood, and by about 12% between steps 1e-5 and 1e-6 at the optimum), so a
+    tighter tolerance would test the implementation's round-off. A missing or wrong delta factor (gamma (1 - gamma),
     lambda or kappa, or a missing square root) changes a standard error by much more than 10%."""
     gamma, lam, kappa = est()["gamma_hat"], est()["lambda_hat"], est()["kappa_hat"]
     theta = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]

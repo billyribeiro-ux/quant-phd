@@ -78,7 +78,7 @@ def part_b(y0: Fraction, i0: Fraction) -> None:
     """Print the fiscal multiplier from two exact shifts in G, and the closed form h/D."""
     print("Part B: fiscal multiplier")
     crossing = 1 / (1 - C)
-    print(f"keynesian_cross_multiplier {crossing}")
+    print(f"goods_market_benchmark {crossing}")
     for g_new in (Fraction(11, 10), Fraction(2)):
         y1, i1 = equilibrium(g_new, MBAR_BASE)
         multiplier = (y1 - y0) / (g_new - G_BASE)

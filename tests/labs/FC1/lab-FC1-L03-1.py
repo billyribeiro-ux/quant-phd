@@ -2,8 +2,8 @@
 
 Standard library only; no network. The customer order flow is generated from a fixed seed, so it is SIMULATED
 and every run prints the same numbers. Quotes are ask = mid + HALF and bid = mid - HALF, with mid and HALF in
-whole cents, so the quoted spread is 2 * HALF cents and every amount below is an exact integer. Each check is an
-exact integer identity, not a tolerance test. Part A and Part B check the identity of Proposition 2.3 and Corollary 2.4.
+whole cents, so the quoted spread is 2 * HALF cents and every amount below is an exact integer. Each check is exact
+integer arithmetic, not a tolerance test. Part A and Part B check the identity of Proposition 2.3 and Corollary 2.4.
 Part C enumerates the asks of the two-dealer tick game of Proposition 3.2 on a finite grid.
 """
 

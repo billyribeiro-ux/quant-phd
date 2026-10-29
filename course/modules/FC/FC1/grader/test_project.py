@@ -15,6 +15,7 @@ and it never prints an expected value.
 
 from __future__ import annotations
 
+import functools
 import math
 import os
 import warnings
@@ -86,6 +87,8 @@ def must_accept(call: Callable[[], object], condition: str) -> object:
     __tracebackhide__ = True
     try:
         return call()
+    except NotImplementedError:
+        raise
     except Exception:
         pytest.fail(f"{condition}: the page allows this input, and the call raised an exception.")
 
@@ -235,8 +238,8 @@ def test_bond_zero_coupon_boundary_is_accepted() -> None:
 
 
 def test_bond_with_twelve_periods_is_valid_and_silent() -> None:
-    """The page names only periods < 1 as refused, so a 12-period bond is valid: it gives one event per period, and
-    neither events() nor bond_price_cents() warns on it."""
+    """The page refuses periods below 1 and names no upper limit, so a 12-period bond is valid: it gives one event per
+    period, and neither events() nor bond_price_cents() warns on it."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         bond = sol.Bond(10_000, 500, 12)
@@ -300,7 +303,7 @@ def test_bond_price_hand_fixture_rounds_the_sum_once() -> None:
 
 def test_bond_price_exact_half_cent_rounds_away_from_zero() -> None:
     """Hand fixture F: one cent of face, no coupon, one period, yield 10000 bps: the price is exactly 1/2 cent, which
-    rounds away from zero to 1 cent. Round-half-to-even, or a binary float, would give 0."""
+    rounds away from zero to 1 cent. Round-half-to-even (Python round()) or truncation gives 0."""
     assert sol.bond_price_cents(sol.Bond(1, 0, 1), 10_000) == 1
 
 
@@ -383,7 +386,7 @@ def test_trade_quantity_one_is_accepted() -> None:
 
 
 def test_trade_quantity_of_501_is_accepted() -> None:
-    """The page names quantity less than 1 as the refused quantity, so 501 units is a valid trade with one settlement
+    """The page refuses quantity below 1 and names no upper limit, so 501 units is a valid trade with one settlement
     event: 501 units at 9850 cents each, bought in period 2."""
     rows = checked_events(
         must_accept(lambda: sol.CashTrade(501, 9_850, 1, 2).events(), "quantity = 501"), "CashTrade.events"
@@ -510,3 +513,29 @@ def test_bool_periods_is_not_quietly_accepted_as_a_number() -> None:
     except Exception:
         return
     checked_events(rows, "Bond.events with a bool periods")
+
+
+def _named_when_unimplemented(test: Callable[..., None]) -> Callable[..., None]:
+    """Turn the student module's NotImplementedError into a failure that names the property, with no traceback."""
+
+    @functools.wraps(test)
+    def run(*args: object, **kwargs: object) -> None:
+        try:
+            test(*args, **kwargs)
+        except NotImplementedError as missing:
+            name = str(missing)
+        else:
+            return
+        # Failing outside the except block keeps the NotImplementedError out of the report, so no traceback shows.
+        summary = (test.__doc__ or test.__name__).strip().splitlines()[0]
+        pytest.fail(
+            f"{summary} The student module has no implementation for {name} yet; write it in instruments.py.",
+            pytrace=False,
+        )
+
+    return run
+
+
+for _name, _value in list(globals().items()):
+    if _name.startswith("test_") and callable(_value):
+        globals()[_name] = _named_when_unimplemented(_value)

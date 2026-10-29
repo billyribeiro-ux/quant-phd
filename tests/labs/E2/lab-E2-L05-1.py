@@ -5,11 +5,11 @@ is a low type with value 3,000 cents per unit with probability 3/4, or a high ty
 with probability 1/4. The buyer's utility is theta * q - m, and the seller's cost of q units is q^2 / 2 cents
 (Assumption 2 on the page). Quantities are in units and money is in integer cents.
 
-Part A checks the four constraints at the menu that the page derives: the low type's participation constraint and
-the high type's incentive constraint bind, and the other two hold. Part B enumerates the low type's quantity on
-the integer grid 0..6000 with the high type's quantity fixed at its first-best value, and finds the profit
-maximizer. Part C enumerates the high type's quantity on the grid 0..12000 in steps of 1000 with the low type's
-quantity fixed at the menu value. Part D prints the first-best profit and the gap to the menu profit.
+Part A prints the four constraints at the menu that the page derives, with an explicit participation check for the
+low type only; the high type's utility and the two incentive slacks are printed as values. Part B enumerates the
+low type's quantity on the integer grid 0..6000 with the high type's quantity fixed at its first-best value, and
+finds the profit maximizer. Part C enumerates the high type's quantity on the grid 0..12000 in steps of 1000 with the
+low type's quantity fixed at the menu value. Part D prints the first-best profit and the gap to the menu profit.
 
 Profit is computed as exact Fractions and rounded once, half up, to whole cents for printing.
 No random draws are used, so every run prints the same lines.

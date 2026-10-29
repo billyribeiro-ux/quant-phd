@@ -73,7 +73,11 @@ def usd(cents: int) -> str:
 
 
 def cumulative(weekly: list[int], lag: int) -> Fraction:
-    """Cents that flow by day 91 when each day's amount falls lag days later; sales from day -300 onwards."""
+    """Cents of the sales of days -300 to 91 - lag, each sale collected lag days after its day.
+
+    The sum starts at day -300, so it is not the total flow by day 91. Two calls that differ only in lag share the
+    same start, and their difference is the flow in the days between the two lags.
+    """
     return sum((daily(weekly, k) for k in range(-300, 92 - lag)), Fraction(0))
 
 

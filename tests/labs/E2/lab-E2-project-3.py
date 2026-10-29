@@ -1,8 +1,8 @@
 """Rung 3 check: the reference engine on a reference case, and the exact single-unit checks.
 
-Standard library only. Model: n bidders with independent private values, each uniform on the cent grid [0, 10000],
-risk neutral, each wanting one unit. The bids and values of the reference case are typed in for this check. They are
-illustrative, not generated and not data.
+Standard library only. Model: n bidders with independent private values, each uniform on [0, 10000] cents, a
+continuous model as in Assumption 2 of the project page. Each bidder is risk neutral and wants one unit. The bids and
+values of the reference case are typed in for this check. They are illustrative, not generated and not data.
 
 Copy this file into run_report.py beside auction_sim.py, then replace the calls to these functions with calls
 to auction_sim.

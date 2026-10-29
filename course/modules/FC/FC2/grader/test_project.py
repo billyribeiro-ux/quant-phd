@@ -270,6 +270,14 @@ def test_parity_negative_tie_of_one_half_goes_toward_plus_infinity() -> None:
     assert sol.parity_gap_cents(5, 0, 5, 3, 500_000) == 2, "an exact tie of 1.5 cents must round up to 2"
 
 
+def test_parity_exact_tie_at_a_non_dyadic_discount_factor() -> None:
+    __tracebackhide__ = True
+    # df = 0.58 is not exact in binary floating point: gap = 0 - 0 - (0 - 25 * 0.58) = 14.5 exactly, rounds up
+    assert sol.parity_gap_cents(0, 0, 0, 25, 580_000) == 15, "an exact tie of 14.5 cents must round up to 15"
+    # gap = 0 - 29 - (0 - 14.5) = -14.5 exactly: the tie goes toward plus infinity, to -14
+    assert sol.parity_gap_cents(0, 29, 0, 25, 580_000) == -14, "an exact tie of -14.5 cents must round toward +infinity"
+
+
 def test_parity_gap_df_range_lower_boundary() -> None:
     __tracebackhide__ = True
     with pytest.raises(ValueError, match="df_ppm"):
@@ -700,6 +708,22 @@ def test_half_cent_gross_rounds_once_up() -> None:
     # gap = 11 - 0 - (10 - 1.5) = 2.5 exactly: the gross is 3 cents, rounded once (not truncated to 2)
     chain = hand_chain([3], [11], [0], spot=10, df=500_000, fee=0, spread=0)
     assert rows_of(sol.scan(chain)) == [("parity", 3, 3, 3)], "an exact half-cent gross rounds up once"
+
+
+def test_half_cent_tie_at_a_non_dyadic_discount_factor_rounds_once_up() -> None:
+    __tracebackhide__ = True
+    # df = 0.58: gap = 0 - 0 - (0 - 25 * 0.58) = 14.5 exactly, so the gross is 15 cents (a float computation gives 14)
+    chain = hand_chain([25], [0], [0], spot=0, df=580_000, fee=0, spread=0)
+    assert rows_of(sol.scan(chain)) == [("parity", 25, 15, 15)], "an exact 14.5-cent gross at df 0.58 rounds up to 15"
+
+
+def test_convexity_half_cent_tie_rounds_once_up_at_any_discount_factor() -> None:
+    __tracebackhide__ = True
+    # the chord at 110 is (50 + 51) / 2 = 50.5 and the call is 53: the violation is exactly 2.5 cents, rounded up to 3.
+    # Convexity uses no discounting, so df = 0.95 must not change the gross.
+    chain = hand_chain([100, 110, 120], [50, 53, 51], [0, 0, 0], spot=0, df=950_000, fee=0, spread=0)
+    convexity = [row for row in rows_of(sol.scan(chain)) if row[0] == "convexity"]
+    assert convexity == [("convexity", 110, 3, 3)], "an exact 2.5-cent convexity violation rounds up once to 3"
 
 
 def test_negative_half_cent_gross_rounds_once_up_in_magnitude() -> None:

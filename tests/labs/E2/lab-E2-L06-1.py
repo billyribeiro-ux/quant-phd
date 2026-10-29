@@ -1,4 +1,4 @@
-"""E2 L06 lab 1: a two-action effort problem with a linear contract under limited liability.
+"""E2 L06 lab 1: a two-action effort problem with an affine contract under limited liability.
 
 Inputs are illustrative, not data. The output is X = 1,000,000 cents (10,000 CU) on success and 0 on failure.
 Success has probability 3/4 under high effort and 1/4 under low effort. High effort costs 100,000 cents (1,000 CU)
@@ -9,7 +9,8 @@ alpha on failure and alpha + beta * X on success.
 Part A prints five illustrative shares from the grid of 101 shares 0.00 to 1.00 in steps of 0.01. Each row uses
 alpha = 0 (limited liability, Assumption 3 on the page) and gives the agent's utility under each action, the action
 the agent takes (high effort on a tie), and the principal's expected profit in cents.
-Part B searches all 101 grid shares for the best one, and prints its profit beside the first-best profit.
+Part B searches all 101 grid shares for the best one, and prints its profit beside the first-best profit and the
+agency cost (first best minus best profit).
 Part C: risk neutrality without limited liability. For three shares, alpha is set to the value that makes the
 participation constraint bind, which can be negative, and the profit is printed. It equals the first-best profit.
 

@@ -1,0 +1,10 @@
+import re, html, sys, pathlib
+src = pathlib.Path(sys.argv[1]); dst = pathlib.Path(sys.argv[2])
+s = src.read_text(encoding="utf-8")
+s = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", s, flags=re.S)
+s = re.sub(r"<br\s*/?>|</p>|</li>|</tr>|</h\d>|</div>", "\n", s)
+s = re.sub(r"<[^>]+>", " ", s)
+s = html.unescape(s)
+s = re.sub(r"[ \t]+", " ", s)
+s = re.sub(r"\n\s*\n+", "\n", s)
+dst.write_text(s, encoding="utf-8")

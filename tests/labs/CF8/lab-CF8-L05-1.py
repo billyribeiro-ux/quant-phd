@@ -47,7 +47,8 @@ def shortfall_years(minima: list[int], buffer: int) -> int:
 
 
 def nearest_rank(sorted_values: list[int], numerator: int, denominator: int) -> int:
-    """The nearest-rank quantile numerator/denominator of sorted values: the value at position ceil(qN), from 1."""
+    """The nearest-rank quantile at level q = numerator/denominator of sorted values: the value at position
+    ceil(q n), counted from 1, where n is the number of values."""
     n = len(sorted_values)
     rank = -((-numerator * n) // denominator)
     return sorted_values[rank - 1]
