@@ -1,0 +1,18 @@
+import numpy as np, math
+A = np.array([[2.,1],[1,2]]); Q = np.array([[1,1],[1,-1]])/np.sqrt(2); L = np.diag([3.,1])
+print("L04 Ex2.6 QLQt=A", np.allclose(Q@L@Q.T, A), "y", Q.T@np.array([1.,0]))
+N = np.array([[1.,2],[0,3]]); w,V = np.linalg.eig(N); print("N eig", sorted(w), "|ip|", abs(V[:,0]@V[:,1]), 1/np.sqrt(2))
+print("L04 M2", Q@np.diag([5.,-1])@Q.T)
+print("L05 Ex2.5 B^TB", (lambda B: B.T@B)(np.diag([np.sqrt(3),1])@Q.T))
+print("L05 Ex2.5 B", np.diag([np.sqrt(3),1])@Q.T)
+G = np.array([[1,0,1],[0,1,1],[1,1,2.]]); print("L05 R3.2 eig", np.linalg.eigvalsh(G))
+ts = np.arange(360)*2*np.pi/360; vals = np.cos(ts)**2 + 4*np.cos(ts)*np.sin(ts) + np.sin(ts)**2
+print("L05 B: neg", int(np.sum(vals < -1e-10)), "zero", int(np.sum(np.abs(vals) <= 1e-10)), "min", round(vals.min(),4), "check 1+2sin2t", np.allclose(vals, 1+2*np.sin(2*ts)))
+print("L05 E2 interior 106..164 + 286..344:", len(range(106,165))+len(range(286,345)), round(118/360,4))
+Ga = np.array([[1,0,1],[0,1,1]]).T @ np.array([[1,0,1],[0,1,1]]); print("L05 P2/M3 fine", np.linalg.eigvalsh(np.array([[3,-1],[-1,3.]])))
+s0 = np.linalg.svd(np.random.default_rng(0).normal(size=(4,3)), compute_uv=False); print("L06 seed0 sv", np.round(s0,4))
+print("L06 E3 (3 4): sv", np.linalg.svd(np.array([[3.,4]]), compute_uv=False), "L06 Frob", np.sum(np.array([[1.,2],[3,4]])**2))
+print("L06 M2 sv", np.linalg.svd(np.array([[1.,1],[0,0]]), compute_uv=False), np.sqrt(2))
+print("L06 R2 wide: eig of A^TA for random 2x4 ->", np.round(np.linalg.eigvalsh(np.random.default_rng(1).normal(size=(2,4)).T @ np.random.default_rng(1).normal(size=(2,4))),3))
+R=np.array([[0.,-1],[1,0]]); z=np.array([1,-1j]); print("L04 R1", R@z, 1j*z, np.conj(z)@R@z)
+print("L04 M1", (1+(-1+5**.5)/2*(-1-5**.5)/2), np.linalg.eigvalsh(np.array([[4.,1],[1,3]])))

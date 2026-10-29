@@ -1,0 +1,102 @@
+"""Write the round-10 M2 slice-b fragment. Run with: python3 -I <this file> <checkout-root>."""
+
+import json
+import sys
+
+root = sys.argv[1]
+CARRY = "Carried from round 9 (course/modules/M/M2/L07.html, L08.html, L10.html and tests/labs/M2 byte-identical since the previous pin b6865c7; not in git diff --name-only):"
+
+rows = [
+    {"id": "LAB-L07", "check": "2.5 labs", "location": "course/modules/M/M2/L07.html lab section; tests/labs/M2/lab-M2-L07-1.py",
+     "status": "PASS", "evidence": "run_labs.py --unit M2: PASS (27/27); twin run as python -I -W error exit 0, stderr 0 bytes; expected block equals output; mypy --no-incremental and ruff clean on the twin."},
+    {"id": "LAB-L08", "check": "2.5 labs", "location": "course/modules/M/M2/L08.html lab section; tests/labs/M2/lab-M2-L08-1.py",
+     "status": "PASS", "evidence": "run_labs M2 PASS (27/27); twin python -I -W error exit 0, stderr 0 bytes; output matches expected block."},
+    {"id": "LAB-L09", "check": "2.5 labs", "location": "course/modules/M/M2/L09.html lab section; tests/labs/M2/lab-M2-L09-1.py",
+     "status": "PASS", "evidence": "run_labs M2 PASS (27/27); twin exit 0, stderr 0 bytes; part B prints mesh 0.19000000, U-L 0.15933400 (recomputed exact Fraction 0.159334), bound 0.19."},
+    {"id": "LAB-L10", "check": "2.5 labs", "location": "course/modules/M/M2/L10.html lab section; tests/labs/M2/lab-M2-L10-1.py",
+     "status": "PASS", "evidence": "run_labs M2 PASS (27/27); twin exit 0, stderr 0 bytes; expected block equals output."},
+    {"id": "LAB-L11", "check": "2.5 labs", "location": "course/modules/M/M2/L11.html lab section; tests/labs/M2/lab-M2-L11-1.py",
+     "status": "PASS", "evidence": "run_labs M2 PASS (27/27); twin exit 0, stderr 0 bytes; expected block equals output. Docstring lists exact-value comparisons for parts A and B only; part C also compares with 1/3 (not false, noted)."},
+    {"id": "LAB-L12", "check": "2.5 labs", "location": "course/modules/M/M2/L12.html lab section; tests/labs/M2/lab-M2-L12-1.py",
+     "status": "PASS", "evidence": "run_labs M2 PASS (27/27); twin exit 0, stderr 0 bytes; expected block equals output; hypothesis paragraph edit (line 101) touches prose only, code byte-identical."},
+    {"id": "NUM-L07", "check": "numbers in prose vs unrounded values", "location": "course/modules/M/M2/L07.html lines 204-205, 271-279, 282-288, 157 (POINTS_A), 46",
+     "status": "PASS", "evidence": CARRY + " prose figures 9/70, 0.0000025307, -2048, 16, 96 and 27 checks re-matched to lab expected block (part B n=10 error 0.0000025307; part C -2048; part A 27 checks)."},
+    {"id": "NUM-L08", "check": "numbers in prose vs unrounded values", "location": "course/modules/M/M2/L08.html lines 165-169, 185-195, 208, lab part C table",
+     "status": "PASS", "evidence": CARRY + " 133 pairs = 19 x 7 and 70 pairs = 10 x 7 match lab expected block; R_1(0.9)=8.1 and xi=0.535841 (1-0.1^(1/3)) match part C table."},
+    {"id": "NUM-L09", "check": "numbers in prose vs unrounded values", "location": "course/modules/M/M2/L09.html lines 137, 166-169, 202-210, 215-221, 88-93 (Remark 1.4), 264-266 (Section 4), 276, 349, 356, 363",
+     "status": "PASS", "evidence": "Re-derived with own Fraction script: U_128-1/3=385/98304 (=0.00391602), U_128=0.33724976, L_128=0.32943726; U_8-1/3=25/384=0.06510417; 1/(12*16^2)=0.00032552; E3: n=50 bound 151/15000=0.010067, n=51 bound 154/15606=0.009868; part B mesh 19/100 and U-L 0.159334. Lines 52 and 449 changed this round and re-read; all figures agree."},
+    {"id": "NUM-L10", "check": "numbers in prose vs unrounded values", "location": "course/modules/M/M2/L10.html line ~347 (Problem L10-E3 solution), lines 370-372",
+     "status": "PASS", "evidence": CARRY + " values re-matched to the L10 expected block (part A n=256 L/U and -1 in between; part B 3/(4n); part C 0.59171598)."},
+    {"id": "NUM-L11", "check": "numbers in prose vs unrounded values", "location": "course/modules/M/M2/L11.html lines 126-134 (Ex 3.2, 3.3), 297-330 (E1, E2, E3, quiz), Lab part A/B expected blocks",
+     "status": "PASS", "evidence": "Re-derived: x^2(1-x)^3 integral 1/60 via 1/2*(1/30); E1 2/(3N^2) with N=816 gives 1.0012e-6 (fails), N=817 gives 9.988e-7 (passes); Ex 3.2 expansion 3t^8+7t^6+5t^4+t^2 gives 8/3; Ex 3.3 2t+2t^3 gives 3/2; M1 7/3 and M3 1/20 re-expanded; lab expected output matches run."},
+    {"id": "NUM-L12", "check": "numbers in prose vs unrounded values", "location": "course/modules/M/M2/L12.html lines 164, 186, 190, 192-194, 296-330 (P1, E1-E3)",
+     "status": "PASS", "evidence": "Re-derived: H_16384-1=9.28130671 (ln 16384 + gamma + 1/(2N) check), gap 2.28130671; truncation errors 1/b, 1/(2b^2); E2 b=10^6; M2 0.99; M3 1/8; quiz 0.125 and 0.3333333 correct."},
+    {"id": "MATH-L07", "check": "proofs and grades", "location": "course/modules/M/M2/L07.html Prop 1.4, Lemma 1.6, Prop 2.3, Lemma 3.1, Thm 3.2, ...",
+     "status": "PASS", "evidence": CARRY + " grades and proofs unchanged; lab-linked results re-checked against expected block."},
+    {"id": "MATH-L08", "check": "proofs and grades", "location": "course/modules/M/M2/L08.html Lemma 1.1, Thm 1.2, Thm 2.1 proof, Cor 2.2, Ex 2.3, ...",
+     "status": "PASS", "evidence": CARRY + " grades and proofs unchanged; xi = 1-(1-x)^(1/(n+2)) matches lab table."},
+    {"id": "MATH-L09", "check": "proofs and grades", "location": "course/modules/M/M2/L09.html Lemmas 1.1-1.2, Def 1.3, Thm 2.2 proof, Cor 2.3, Ex 3.2, Problems M1-M3, P1-P3, R1-R3",
+     "status": "PASS", "evidence": "Full re-read this round. Lemma 1.1 refinement, Lemma 1.2, Def 1.3, Thm 2.2 (telescoping, n > (b-a)|f(b)-f(a)|/eps), Cor 2.3, Ex 3.2 (U_n-L_n=1/n, U_n-1/3=(3n+1)/(6n^2), 1/3-L_n=(3n-1)/(6n^2)), Lemma 3.1 induction algebra, R1-R3 re-derived. Locator note only: Misconception 2 says 'the bracket in Lemma 1.2' where the integral bracket is Definition 1.3; not a false claim."},
+    {"id": "MATH-L10", "check": "proofs and grades", "location": "course/modules/M/M2/L10.html Thm 2.1 proof, Ex 2.2, Cor 3.1 (lines ~80-100), Problem L10-E3",
+     "status": "PASS", "evidence": CARRY + " grades and proofs unchanged. L10 Theorem 1.2 (MVT as used) matches L06 Theorem 2.3 cited locator."},
+    {"id": "MATH-L11", "check": "proofs and grades", "location": "course/modules/M/M2/L11.html Example 3.3 integrability (line 134), Lemma 1.1, Cor 1.2, Thm 2.1 proof (lines 84-99), Thm 3.1 (lines 109-125), Problems M1-M3, P1-P3, R1-R3",
+     "status": "PASS", "evidence": "Full re-read. Thm 2.1 proof: F=uv, F'=u'v+uv', Lemma 1.1 gives integrability of the sum, Lesson 10 Thm 2.1 applies. Thm 3.1 proof: H=F o g, H(b)-H(a)=F(g(b))-F(g(a)), limits g(a),g(b) on x-side. Ex 2.2 = 1/60, Ex 2.3 boundary term 1, Ex 3.2 8/3, Ex 3.3 3/2 all re-derived. R1 induction step I(m,n+1)=((n+1)/(m+1))I(m+1,n) verified. Corollary 1.2 cites Lesson 10 Cor 3.1 proof, which does show x^k nondecreasing (L10 line 103)."},
+    {"id": "MATH-L12", "check": "proofs and grades", "location": "course/modules/M/M2/L12.html Lemma 2.1 proof (lines ~140-146 of the page body), Thm 2.2 proof, Lemma 3.1-3.2, Thm 3.3, Problem L12-P1, R1-R3",
+     "status": "PASS", "evidence": "Full re-read. Thm 2.2: w=(p-1)x^(p-1), F=-1/w, F'=x^(-p) (w'=(p-1)^2 x^(p-2), w^2=(p-1)^2 x^(2p-2)), F(b)-F(1)=(1-b^(1-p))/(p-1). Lemma 3.2 lower sum = H_N-1. Thm 3.3 uses Remark 1.2 along b_m=2^m. R3 bound 1+1/(p-1) re-derived. Hypothesis Assumption 2.2 stated in R3."},
+    {"id": "PROSE-L09-monotone", "check": "prose claims", "location": "course/modules/M/M2/L09.html Remark 1.4 (lines ~45-47, 88-93) and quiz explain line 449 (changed)",
+     "status": "PASS", "evidence": "Remark 1.4 line 91: 'The integrability results proved on this page are for monotone functions only (monotone functions are defined in Section 2)'. Only Theorem 2.2 proves integrability; Lemmas 1.1-1.2 concern bounded f. Quiz explain line 449 matches Remark 1.4. Why-it-matters line 52: mesh defined at line 56 (Section 1), Corollary 2.3 at line 114."},
+    {"id": "ASSUME-L12-monotone-convergence", "check": "named assumptions", "location": "course/modules/M/M2/L12.html why-it-matters (line 52), Problem L12-R3 (lines 359-365), Key results row (line 380), References (line 445)",
+     "status": "PASS", "evidence": "Line 362 names Assumption 2.2 (monotone convergence property) and states it; R3 says 'assuming Assumption 2.2, they converge'. Line 52 'Assumptions 2.1 (Lesson 6) and 2.2 (stated where used)' matches. Not used elsewhere without the label."},
+    {"id": "SCOPE-L12-integer-exponents", "check": "scope words", "location": "course/modules/M/M2/L12.html Section 4 bullet 2 (line 241), Remark 3.4 (line 234), Misconception 3 (line 259), card M2-c180",
+     "status": "PASS", "evidence": "Line 241: 'This lesson does not treat p <= 0 ... Non-integer powers need real exponents ... no claim is made'. Line 234 and 259 agree. Card M2-c180 front and back match (changed front only). Theorem 2.2 and Lemma 2.1 are stated for integers only."},
+    {"id": "NOTATION-L07-L12", "check": "notation vs notation/notation.json", "location": "course/modules/M/M2/L07-L12.html math spans; notation/notation.json",
+     "status": "PASS", "evidence": "Scanned every TeX command in math spans of L07-L12 (python regex). Commands used: mathcal (local P_n only), xi (local Lagrange point), Delta/delta/varepsilon (local), R (only as \\R macro in L11), sup/inf/max/min, bigl/bigr. Registry macros \\R and \\N used as registered. No registered symbol (T, Phi, gamma_3, gamma_4, R^ast, R_f, Q) takes another meaning in these pages. notation/notation.json unchanged since previous pin."},
+    {"id": "DAG-L07-L12", "check": "DAG and concept links", "location": "tools/check_dag.py --unit M2; concept links in L07-L12",
+     "status": "PASS", "evidence": "check_dag.py --unit M2: PASS. L09 concept 'definite-integral' defined at line 86 (dfn) and linked from L10-L12 after prerequisite closure. L11 'Lesson 9 Lemma 1.1' and L12 'Lesson 9 Def 1.3' are result citations, not concept links."},
+    {"id": "SMOKE-L07-L12", "check": "page_smoke", "location": "tools/page_smoke.py --unit M2 --pages L07 L08 L09 L10 L11 L12 (run alone)",
+     "status": "PASS", "evidence": "page_smoke.py --unit M2 --pages L07 L08 L09 L10 L11 L12: each page PASS, final line 'page_smoke M2: PASS'."},
+    {"id": "STRUCT-L07-L12", "check": "headers, misconceptions, problem tiers", "location": "course/modules/M/M2/L07-L12 html headers and sections",
+     "status": "PASS", "evidence": "check_pages.py --unit M2: PASS (section order, counts, page contract). Read L09, L11, L12 fully: sections 1-9, three misconceptions each, problem tiers (mechanics/proof/empirical/research) present; quiz data-cards=cards.json."},
+    {"id": "GRADE-L07-L12", "check": "data-grade markers", "location": "data-grade markers in L07-L12 bodies",
+     "status": "PASS", "evidence": "check_pages.py --unit M2: PASS (claims: valid grade, citations, locators). Grades in L09/L11/L12 claim blocks read directly: Lemma/Thm/Cor T, lab-linked results C with basis Lab 1."},
+    {"id": "CROSSREF-L07-L12", "check": "lesson and theorem citations", "location": "lesson-number and theorem-number citations in L07-L12",
+     "status": "PASS", "evidence": "Every citation in the re-read pages resolves: L09 Lemma 1.1, Def 1.3, Thm 2.2, Cor 2.3, Remark 1.4, Lesson 11 Lemma 1.1; L11 Cor 1.2, Thm 2.1, Thm 3.1, Lesson 9 Lemma 1.1 and Thm 2.2, Lesson 10 Thm 2.1 and Cor 3.1, Problem L11-R1; L12 Remark 1.2, Lemma 2.1, Lemma 3.1, Lemma 3.2, Thm 3.3, Problem R2, R3, M2, M3, E2; L10 Thm 1.2 as used cites Lesson 6 Thm 2.3 (L06 line 87). L01 Problem M3 (used by L09 Example 3.2) is c_n=(-1)^n/n -> 0, which gives 1/n -> 0."},
+    {"id": "BANNED-L07-L12", "check": "BUILDER_RULES 1.3-1.4 phrase list and filler", "location": "L07-L12 bodies",
+     "status": "PASS", "evidence": "check_pages.py --unit M2: PASS (banned strings in visible prose outside code and math). Read changed sentences in L09 line 52, 449, L11 lines 126, 245, L12 line 101: no banned phrase or process word."},
+    {"id": "CARDS-L07-L12", "check": "cards.json for L07-L12", "location": "course/modules/M/M2/cards.json: 106 cards with lesson L07..L12 (L07 22, L08 18, L09 18, L10 16, L11 16, L12 16)",
+     "status": "PASS", "evidence": "Dumped and read all 106 slice cards (ledgers/M2/scripts/M2-b-r10/cards_out.txt). No duplicate id or front; every C card has basis; changed cards c163 (L11, now matches page line 245), c180 (L12 Section 4) and new c388 (L10, matches page line 62-63 and Lesson 6 Thm 2.3) agree with current text; card numbers appear in their lessons. 11 definition cards carry no grade key, which BUILDER_RULES 7 does not require for non-graded facts."},
+    {"id": "CLAIM-L11-each-application-checks", "check": "claims about what the worked examples check", "location": "course/modules/M/M2/L11.html line 245 (Misconception 3); quiz L11q7 (lines 417-424); card M2-c163",
+     "status": "PASS", "evidence": "Line 245 now reads: 'The worked examples check it, using polynomials on [0, b] with b > 0 (Corollary 1.2).' Round-9 FAIL clause (monotone functions, Lesson 9 Thm 2.2) is removed from both the page and card M2-c163. Only Examples 2.2 and 2.3 (lines 96-104) apply Thm 2.1, and both integrands are polynomials on [0,1] (checked: u'v=-x(1-x)^4/2, uv'=x^2(1-x)^3; u'v=x, uv'=x). Example 3.3 is substitution, not integration by parts, and is not claimed here. Quiz L11q7 consistent."},
+]
+
+frag = {
+    "unit": "M2",
+    "slice": "b",
+    "round": 10,
+    "verifier": "independent Haiku verifier, M2 slice b (L07-L12 and lab twins), round 10; fresh context",
+    "pin": "e8b10b8110923bd88c3b4bd0e36e1571be3e6725",
+    "base": "b6865c7d10020e31b9858a49edf751f4b814c031 (round-9 pin, fragment B-M2-b.round9.json)",
+    "checkout": root,
+    "scratch": root + "/ledgers/M2/scripts/M2-b-r10",
+    "verified_at": "2026-10-29T00:00:00Z",
+    "verdict": "PASS",
+    "rows": rows,
+    "mutants": [],
+    "registry_flags": [],
+    "freshness_flags": [],
+    "notes": [
+        "Delta b6865c7..e8b10b8 touching the slice: L09.html (lines 52, 449), L11.html (lines 126, 245), L12.html (line 101), cards.json (c163, c180, c388 added). L07, L08, L10 html and every tests/labs/M2 twin, notation/, tools/ and BUILDER_RULES.md are byte-identical to the previous pin (git diff --name-only).",
+        "Lab twins are demonstrations; no grader mutants apply (ruling). Mutants list empty by design for a lesson slice.",
+        "Carried rows (NUM-L07, NUM-L08, NUM-L10, MATH-L07, MATH-L08, MATH-L10) carry round-9 evidence on byte-identical subjects, per the carry rule. All other rows were re-verified this round.",
+        "Ran: check_pages --unit M2 PASS; check_dag --unit M2 PASS; check_projects --unit M2 PASS; run_labs --unit M2 PASS (27/27); page_smoke --pages L07..L12 PASS (alone); ruff check and ruff format --check on the six M2 twins clean; mypy --no-incremental on the six twins: no issues; twins under python -I -W error exit 0 with empty stderr; verify_refs --offline: 560 entries, 0 problems; pytest tests/test_run_labs.py tests/test_page_checks.py tests/test_docs_figures.py: all pass; pytest tests/test_labs.py -k M2: pass.",
+        "Out of slice (not a row of this slice): pytest tests/test_labs.py without -k fails 11 cases for E3 labs (lab-E3-L01-1 ... lab-E3-project-3: 'missing twin tests/labs/E3/...'). M2 twins are not affected.",
+        "Not checked: a fresh full re-read of L07, L08, L10 bodies (carried by byte-identity); tools/ledger.py merge (only the fragment was validated); no browser visual check beyond page_smoke.",
+        "Observations, not findings: L09 line 280 says 'the bracket in Lemma 1.2' where the integral bracket is Definition 1.3; L11 lab docstring lists exact-value checks for parts A and B only; card id gaps (c164, c250, c290, c344, c356, c366, c369, c374, c377, c378) and cards.json not id-ordered (c388 appended).",
+    ],
+    "summary": "M2-b round 10 on pin e8b10b8: 30 rows, 30 PASS, 0 FAIL. Round-9 FAILs CLAIM-L11-each-application-checks and CARDS-L07-L12 are fixed on the page (L11 line 245) and card M2-c163; new card M2-c388 (L10) verified. Verdict PASS.",
+}
+out = root + "/ledgers/M2/M2-b.json"
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump(frag, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+print("wrote", out, len(rows), "rows")

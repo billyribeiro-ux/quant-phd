@@ -1,0 +1,136 @@
+import json, re, pathlib
+mut_out = pathlib.Path("ledgers/M3/scripts/M3-d-r10/mutate_all2.out").read_text(encoding="utf-8").splitlines()
+killed, survivors = [], []
+for line in mut_out:
+    m = re.match(r"(KILLED|SURVIVED) (\S+?)\.py: (.*) -> (.*)$", line)
+    if not m:
+        continue
+    status, name, desc, killer = m.groups()
+    if status == "KILLED":
+        killed.append({"id": name, "description": desc, "killed_by": killer.strip()})
+    else:
+        survivors.append({"id": name, "description": desc, "killed_by": None,
+                          "ruling": "PASS, not blocking" })
+mutants = killed + survivors
+P = "PASS"
+def row(i, check, loc, status, ev):
+    return {"id": i, "check": check, "location": loc, "status": status, "evidence": ev}
+rows = [
+ row("M3-d-R01", "Lab 1 (project rung 1): twin output equals page expected block; page code equals twin",
+     "course/modules/M/M3/project.html section#lab-M3-project-1 (lines 55-139); tests/labs/M3/lab-M3-project-1.py",
+     P, "Carried from round 9 (project.html lines 55-139 and the lab-M3-project-1 twin byte-identical since the round-9 pin b6865c7; the delta hunks are at lines 231, 246 and 636 only): run_labs --unit M3 -> 'run_labs M3: PASS (12/12)' (scripts/M3-d-r10/run_labs.out, exit 0); twin run alone 'python -I -W error' exit 0, stderr 0 bytes; expected block (8 lines) equals twin stdout line for line (checked by script)."),
+ row("M3-d-R02", "Lab 2 (completion): blanks at Step 3 and Step 5; completed twin output equals page block",
+     "course/modules/M/M3/project.html section#lab-M3-project-2 (lines 141-222); tests/labs/M3/lab-M3-project-2.py",
+     P, "Carried from round 9 (lines 141-222 and twin byte-identical since b6865c7): run_labs M3 12/12 this round; the twin 'lab-M3-project-2' runs in that gate. Note: the page block is the completed output; blanks ___ are present on the page as designed (Lab 2 is the completion problem)."),
+ row("M3-d-R03", "Lab 3 printed numbers (eigenvalue, distances, gap, entry difference, diagonal deviations, PSD verdicts, determinant, weights)",
+     "course/modules/M/M3/project.html section#lab-M3-project-3 expected block (lines 460-468); tests/labs/M3/lab-M3-project-3.py",
+     P, "Carried from round 9 (Lab 3 section lines 287-470 and its twin byte-identical since b6865c7). Re-run this round: twin alone 'python -I -W error' exit 0, stderr 0 bytes; the 9 expected lines match twin stdout (scripts/M3-d-r10/twin3.out). Round-9 independent numpy-free recomputation (scripts/M3-d-r9/numbers_r9.py) stands: min eigenvalue -0.142113, det C -0.261600, weights 1.778929 -1.096718 -0.255613 0.573402, clip distance 0.176573, projection distance 0.175003."),
+ row("M3-d-R04", "Lab 3 hypothesis sentence (smallest eigenvalue negative; projection nearer by a positive distance)",
+     "course/modules/M/M3/project.html Lab 3 p.hypothesis (line 289)", P,
+     "Carried from round 9 (line 289 byte-identical). Re-checked: the printed values (-0.142113 negative; 0.001570 gap positive; both diagonal deviations 0.000000 i.e. below 5e-7; determinant -0.261600 nonzero) support the sentence."),
+ row("M3-d-R05", "Lab 1 and Lab 2 interpretation prose numbers",
+     "course/modules/M/M3/project.html p.interpretation after Lab 1 (line 138) and after Lab 2 (line 221)", P,
+     "Carried from round 9 (lines 138 and 221 byte-identical): 1.096064, 1.104409, 1.074824 match Lab 1 'rebuilt diagonal'; 0.636095, -0.382551, 0.469578 match 'repaired row'; 0.000000 deviation; Lab 2 values 1.060165, 1.075224, 1.068322 match its output (run_labs 12/12)."),
+ row("M3-d-R06", "Lab 3 interpretation prose (distance gap, entry gap, sign pattern, A4 hypothesis, Sigma invertibility)",
+     "course/modules/M/M3/project.html line 469 (p.interpretation after Lab 3)", P,
+     "Carried from round 9 (line 469 byte-identical). Re-derived: 0.176573 - 0.175003 = 0.001570; 0.011516 printed as 'largest absolute entry difference'; 1.778929 - 1.096718 - 0.255613 + 0.573402 = 1.000000; det Sigma = (v1 v2 v3 v4)^2 det C nonzero; A4 hypothesis (negative eigenvalue, floor 0) stated. The page says the rescaled Y and Sigma are not established by Lab 3 (correctly hedged)."),
+ row("M3-d-R07", "Spec constants: 150 tests; PSD tolerances -1e-9 (clipping) and -1e-8 (projection); ValueError conditions",
+     "course/modules/M/M3/project.html section#spec (lines 233-247); grader/test_project.py lines 386, 466, 237-247 of page",
+     P, "Re-verified this round: pytest --collect-only in a scratch workspace (scripts/M3-d-r10/ws, QF_SEED=0) prints 'test_project.py: 150'; test_clip_repair_is_positive_semidefinite asserts min_eig >= -1e-9 (test_project.py line 386); test_projection_repair_is_a_valid_repair asserts unit diagonal to 1e-8, symmetry to 1e-9 and PSD to -1e-8 (lines 460-466); the four ValueError conditions match the page (line 247). Line 233 names is_psd(matrix, tol=1e-10), matching reference.py line 'def is_psd(matrix, tol: float = 1e-10)'."),
+ row("M3-d-R08", "Convention and appendix math: A1 (clipping PSD), A2 (rescaling unit diagonal, now with q = D^(-1/2) z), A3 (two-asset weights), A4 (singular clipped matrix)",
+     "course/modules/M/M3/project.html section#spec Conventions (lines 242-247); Appendix A (line 637, A2 at line 636)", P,
+     "Re-derived this round on the changed text. A1: z^T X z = sum max(l_i,f)(V^T z)_i^2 >= 0 for f >= 0. A2 (changed: w renamed q, which removes a clash with the weights symbol w): z^T Y z = q^T X q with q = D^(-1/2) z, Y_ii = X_ii/(sqrt(d_i))^2 = 1; correct. A3: det Sigma = a^2 b^2 (1 - rho^2) > 0; inverse entries b^2/det, a^2/det, -rho ab/det give Sigma^{-1} iota = (det)^{-1}(b(b-rho a), a(a-rho b)); sum a^2+b^2-2 rho ab = (a-b)^2+2ab(1-rho) > 0; scaling by c cancels; checked symbolically. A4: X u_i = V Lambda_0 e_i = 0; z = D^(1/2) u_i gives Yz = 0; Sigma S^{-1} z = S Y z = 0. All steps follow."),
+ row("M3-d-R09", "Rubric: five criteria, four levels; official scores of Exemplars A and B agree with their annotations",
+     "course/modules/M/M3/project.html table#rubric (line 492, C1 row), exemplar-a (data-scores 2,2,2,1,2; line 504), exemplar-b (data-scores 4,4,4,3,3; line 569)", P,
+     "Re-read this round. C1 level-3 cell permits 'the verdict and deviation Lab 3 prints, or ... the one A1 proves (exact, with no tolerance)'; Exemplar B C1 level 4 (line 602) and level 3 (line 601) annotations are consistent with the cells; Exemplar A C1 level 2 (line 538) states a verdict without tolerance, consistent with level 2. Unchanged rubric text."),
+ row("M3-d-R10", "Exemplar A and B numbers are printed values of Lab 3 with their units",
+     "course/modules/M/M3/project.html exemplar-a and exemplar-b passages (lines 504-646)", P,
+     "Re-read in full this round. Every number in Exemplar B: 0.176573, 0.175003, 0.001570, 0.011516, deviations 0.000000 (below 5e-7), -0.142113, weights 1.778929 -1.096718 -0.255613 0.573402 sum 1.000000, 1e-10/1e-8/1e-9 tolerances: all printed by Lab 3 (lines 460-468) or stated tolerances. Exemplar A: weights rounded 1.78, -1.10, -0.26, 0.57 sum to 0.99 as stated (line 546). The one changed passage (appendix A2, line 636) contains no number."),
+ row("M3-d-R11", "Hours: time-budget table sums to the project hours; data-hours-project matches",
+     "course/modules/M/M3/project.html table#hours (lines 258-264), data-hours-project=45 (line 33)", P,
+     "Re-read: 2+3+14+8+12+6 = 45; total row says 45; hub split: data-hours-project=45 on main (line 33). Table lines unchanged in this delta."),
+ row("M3-d-R12", "Reference solution passes the suite on 50 seeds",
+     "course/modules/M/M3/grader/reference.py; tools/run_graders.py --unit M3 --seeds 0-49", P,
+     "run_graders M3 this round: 'run_graders M3: PASS (reference 50/50 seeds, slowest 0.3 s)' (scripts/M3-d-r10/run_graders.out, exit 0). Grader files byte-identical since b6865c7."),
+ row("M3-d-R13", "Stopping-rule survivor r6d_m04: is it a violation of a stated behaviour?",
+     "ledgers/M3/mutants/r6d_m04_projection_stops_on_gap_only.py; course/modules/M/M3/project.html line 622", P,
+     "Measured this round (scripts/M3-d-r10/cmp_r6.py): over 200 random unit-diagonal 3-5 matrices the mutant differs from the reference by at most 2.8e-11 entrywise and its smallest eigenvalue is at least -6.5e-11, inside the stated -1e-8 PSD and 1e-8 diagonal tolerances. Page line 622 says 'The suite checks the result, not the stopping rule, which is an implementation choice', so no stated behaviour is violated. Not a grader defect under the rulings."),
+ row("M3-d-R14", "Six alternative correct implementations pass 50 seeds",
+     "ledgers/M3/alternatives/alt1..alt6 (copied as covariance_doctor.py into scripts/M3-d-r10/ws)", P,
+     "Run this round: each of alt1_numpy_eigh_engine, alt2_dykstra_other_stop_rule, alt3_numpy_solve_and_eigvalsh, alt4_jacobi_other_cutoffs, alt5_cholesky_bisection_min, alt6_numpy_linalg_engine passes test_project.py with QF_SEED 0..49, -W error, --assert=plain. No seed failed (no 'fail seed' line printed)."),
+ row("M3-d-R15", "Mutants: every existing mutant is killed or ruled; new student-error mutants added",
+     "ledgers/M3/mutants (100 files); scripts/M3-d-r10/mutate_all2.out", P,
+     "Run this round: 'mutate_graders M3: FAIL (98/100 killed)'. Survivors r6d_m04 (R13: PASS, within tolerance) and r9d_m02 (returns the last PSD projection; measured diagonal deviation max 9.1e-11 over 300 random inputs, inside the 1e-8 test tolerance, so PASS and non-blocking). New mutants written this round: r10d_m01 (off-diagonal covariance unscaled by volatilities), r10d_m02 (rescale by own diagonal only), r10d_m03 (normalise by volatility sum): all three KILLED by test_lab3_reference_numbers_are_matched or test_clip_repair_has_unit_diagonal_and_is_symmetric. One candidate (Dykstra with unit-correction never updated) was EQUIVALENT: affine-subspace alternating projections give the same nearest point; moved out of the mutant set to scripts/M3-d-r10/equivalent_r10d_m03_dykstra_no_unit_correction.py (it is a correct algorithm, not a student error)."),
+ row("M3-d-R16", "Docstrings and spec for comparison_weights and projection; weight formula consistent with the reference",
+     "course/modules/M/M3/grader/reference.py comparison_weights docstring; project.html line 246 (weights bullet, changed) and line 233", P,
+     "The changed bullet now defines iota and gives w = Sigma^{-1} iota / (iota^T Sigma^{-1} iota), i.e. the reference's 'solution of (S C S) x = 1, normalised to sum to one' (comparison_weights docstring) because x is proportional to Sigma^{-1} iota. The sum-to-1 and negative-weight statements match the Lab 3 numbers. The reference's ValueError conditions match the page's four conditions."),
+ row("M3-d-R17", "Grader tests on the page's 'what the suite checks' claims (fixed ValueError assertion, PSD independent check)",
+     "course/modules/M/M3/grader/test_project.py lines 319-326 (and lines 241-245 for the diag(3,-2,5) example)", P,
+     "Carried from round 9 (grader/test_project.py byte-identical since b6865c7). Re-run this round: 150/150 pass on the reference under -W error; the diag(3, -2, 5) example of page line 242 is in test_min_eigenvalue_is_smallest_of_diagonal (lines 241-244, expects -2)."),
+ row("M3-d-R18", "Notation: symbols on the changed page (iota, Sigma, S, C, q, D, Lambda, V, f, w) defined in place and consistent with notation/notation.json",
+     "course/modules/M/M3/project.html lines 242-247 (definitions), 586, 637; notation/notation.json (macros list has no iota)", P,
+     "Round-9 FAIL cleared: \\boldsymbol{\\iota} is now defined in place at line 246 ('let iota be the vector of k ones') and that is its first use on the page (grep: lines 246, 586, 637 only). notation.json 'about' says only program-wide symbols are registered and that conventionally local letters are defined in each lesson where used, so an in-place local definition satisfies the registry. The A2 proof now uses q instead of w, removing a clash with the weights symbol w (the w of line 246). No symbol is used before its definition on the page."),
+ row("M3-d-R19", "DAG and concept links from the page: L03, L04, L05 anchors and prerequisite closure",
+     "course/modules/M/M3/project.html lines 53, 243; tools/check_dag.py --all", P,
+     "Anchors exist: L05.html#def-positive-semidefinite-matrix, L04.html#def-spectral-theorem, L03.html#def-eigendecomposition (one match each). tools/check_dag.py --all: M3 PASS (scripts/M3-d-r10/check_dag.out). The page uses no concept from outside the M3 prerequisite closure (M1, P0.1) beyond the linked lessons."),
+ row("M3-d-R20", "Gates for this slice's pages: check_pages, check_dag, check_projects, page_smoke",
+     "tools/check_pages.py, check_dag.py, check_projects.py --all; tools/page_smoke.py --unit M3 --pages course/modules/M/M3/project.html", P,
+     "Run this round: check_pages M3 PASS, check_dag M3 PASS, check_projects M3 PASS (scripts/M3-d-r10/*.out, exit 0); page_smoke M3 PASS (scripts/M3-d-r10/page_smoke.out, exit 0). ruff check and ruff format --check PASS on the grader directory and the three project twins."),
+ row("M3-d-R21", "cards.json: structure, unique ids, lesson names, cites, every lesson has cards",
+     "course/modules/M/M3/cards.json (181 cards)", P,
+     "Run this round: 181 cards (round-9 pin had 180; the delta adds M3-c181); no duplicate ids; no duplicate fronts; every card has front, back, id, lesson; lessons L01-L09 all present (counts L01 24, L02 20, L03 22, L04 16, L05 26, L06 15, L07 17, L08 17, L09 24)."),
+ row("M3-d-R22", "The 21 cards changed in round 9 are unchanged since that pin",
+     "course/modules/M/M3/cards.json (cards M3-c014, c117-c121, c123, c130, c134-c137, c141, c144, c151, c154-c...)", P,
+     "Carried from round 9 (those cards byte-identical since b6865c7): a per-card JSON comparison of the round-9 cards.json and the current file shows exactly 7 changed cards (M3-c094, c101, c104, c133, c142, c153, c160) and one added card (M3-c181); all round-9 changed cards are unchanged in this delta and are carried."),
+ row("M3-d-R23", "Grade C cards carry a basis or cite; grade rules",
+     "course/modules/M/M3/cards.json (38 grade-C cards)", P,
+     "Re-counted: 38 grade C, each with a basis (C-card keys: grade, basis present); the one new card M3-c181 is T and cites Example 3.6 in its text. check_pages.py cards checks pass for M3."),
+ row("M3-d-R24", "Lesson hunks cited by changed cards (L06, L08, L09) agree with the card text",
+     "course/modules/M/M3/L06.html lines 59-61, 88-90; L08.html lines 82, 140-146; L09.html lines 115-122, 177-180, 491", P,
+     "Read this round: M3-c101 = L06 Definition 1.1 (orthogonal matrix, columns orthonormal, Q^TQ = I); M3-c104 = L06 Proposition 2.1 and its proof (eigenvalue lambda = ||Az||^2/||z||^2 for complex z); M3-c133 and c142 = L08 Definitions 1.3 and 3.1 (with the new 'Assuming F1 to F4' prefix); M3-c153 = L09 Definition 3.1; M3-c160 = L09 Example 3.6 (A_0 = [[1.1,1.1],[1.1,1.1]], squared distance 0.04 at line 180); M3-c181 = L09 line 491 (rescaled output squared distance 0.08). Each changed card matches its cited statement. The four unchanged cards that cite statements now carrying the F1-F4 assumption are FAIL in M3-d-R29."),
+ row("M3-d-R25", "Reading section and references: attribution only to confirmed locators; registry integrity",
+     "course/modules/M/M3/project.html section#reading (lines 664-671); references/references.json; tools/verify_refs.py --offline", P,
+     "Run this round: 'offline integrity: 560 entries, 0 problems' (verify_refs --offline). The reading section states that no passage locator is confirmed and attributes no statement to Axler or Strang; references.json byte-identical since b6865c7."),
+ row("M3-d-R26", "Lede and conventions: definitions before use; conventions binding",
+     "course/modules/M/M3/project.html line 37 (lede); Conventions section lines 240-250", P,
+     "Re-read: unit diagonal, PSD, Frobenius, clipping, weights, four ValueError conditions and precision are defined before the spec uses them. Line 246 defines Sigma, iota and the weight formula before use at 586 and 637."),
+ row("M3-d-R27", "Lab 3 expected block equals the twin output and the page's stated numbers",
+     "course/modules/M/M3/project.html line 464 (expected block); tests/labs/M3/lab-M3-project-3.py line 155", P,
+     "Run alone (python -I -W error): exit 0, stderr 0 bytes; expected block lines equal the twin stdout (script comparison, 9 of 9 lines)."),
+ row("M3-d-R28", "Rubric row C1 and exemplar B level annotations (changed passage is the appendix only)",
+     "course/modules/M/M3/project.html rubric row C1 (line 492, levels 3 and 2); Exemplar B lines 597, 601-602; data-scores line 569", P,
+     "Re-read: the C1 cells are unchanged; exemplar B's C1 passage (line 597) and its level-3 and level-4 annotations (601-602) state the A1 and A2 hypotheses that the appendix proves (A2 hypothesis: positive diagonal, now stated with q at line 636)."),
+ row("M3-d-R29", "Cards carry the hypotheses of the lesson result they cite (rule 10): cards citing statements that the current lesson states under 'Assuming F1 to F4 of Lesson 4'",
+     "course/modules/M/M3/cards.json: M3-c143 (Theorem 2.1, L08 line 100-101), M3-c145 (Theorem 2.1), M3-c161 (Proposition 3.3(a), L09 line 139), M3-c165 (Proposition 3.2(a), L09 line 123)",
+     "FAIL",
+     "L08 Theorem 2.1 (line 101) and L09 Propositions 3.2 (line 123) and 3.3 (line 139) now begin 'Assuming F1 to F4 of Lesson 4'. Cards M3-c154, c155, c156 and c157 and the other cards citing these results carry the assumption, but M3-c143 ('Theorem 2.1 uses only the matrix M'), M3-c145 (grade C, 'Theorem 2.1'), M3-c161 (grade C, 'the value Proposition 3.3(a) predicts') and M3-c165 ('The clipped matrix is positive semidefinite (Proposition 3.2(a))') do not. Fix: prefix each back with 'Assuming F1 to F4 of Lesson 4,' (or drop the citation where the claim is not that result)."),
+ row("M3-d-R30", "New and changed cards agree with the current lesson text and carry hypotheses where needed",
+     "course/modules/M/M3/cards.json: M3-c094, c101, c104, c133, c142, c153, c160, c181", P,
+     "c094: Lab 1 Part A prints 'diagonal entries of [[1, 2], [2, 1]] are both positive: True' (L05 line 292) and Example 1.7 gives the diagonal entries positive and the form -2 at (1,-1); card matches. c101: Definition 1.1 (L06 line 59-61). c104: Proposition 2.1 (L06 line 88-94) is grade T with its proof, and the eigenvalue quotient is in the proof; card matches. c133, c142: Definitions 1.3 and 3.1 of L08 carry 'Assuming F1 to F4'; the cards carry it. c153: L09 Definition 3.1 carries it; card carries it. c160: A_0 = [[1.1,1.1],[1.1,1.1]] and squared distance 0.04 (L09 lines 179-180); numbers recomputed: A - A_0 = [[-0.1,0.1],[0.1,-0.1]], squared sum 0.04. c181: A - R = [[0,0.2],[0.2,0]], squared sum 0.08 (L09 line 491); numbers recomputed. Every number on these cards appears in its lesson (0.04, 0.08, 1.1, 1.2, True, -2)."),
+ row("M3-d-R31", "Hours and project-slice prose not changed in this delta: no fresh defect",
+     "course/modules/M/M3/project.html lines 33-35, 258-264, 469", P,
+     "Checked: lines 33-35 (eyebrow '45 hours') and the hours table match the hub figure (R11); line 469 interpretation still matches Lab 3 output (R06)."),
+]
+frag = {
+ "unit": "M3", "slice": "d", "round": 10,
+ "verifier": "independent verifier (Claude Haiku 5.5), unit M3 slice d, round 10",
+ "pin": "e8b10b8110923bd88c3b4bd0e36e1571be3e6725",
+ "base": "round-9 fragment /Users/billyribeiro/.fanout/frags/B-M3-d.round9.json (pin b6865c7d10020e31b9858a49edf751f4b814c031)",
+ "checkout": "/Users/billyribeiro/.fanout/wt/verifyB10-M3-d",
+ "scratch": "ledgers/M3/scripts/M3-d-r10/",
+ "verified_at": "2026-10-29T12:00:00+00:00",
+ "verdict": "FAIL",
+ "rows": rows,
+ "mutants": mutants,
+ "registry_flags": [],
+ "freshness_flags": [
+   "project.html changed since round 9 at lines 231 (Inputs wording), 246 (weights bullet: iota defined), 636 (A2 proof: w renamed q). Lab 1-3 sections, rubric, exemplars A and B (except appendix A2) and the Reading section are byte-identical.",
+   "cards.json changed: 7 cards changed and card M3-c181 added (180 -> 181 cards).",
+   "Lesson pages L01, L02, L07, L08, L09 and L index changed in this delta (outside slice d); their cited hunks were read where cards cite them (R24, R29). Their non-card prose is not in slice d."
+ ],
+ "notes": "Round-10 delta e8b10b8 vs b6865c7 in this slice: project.html (3 hunks) and cards.json (7 changed, 1 added). Grader, reference, starter, instance and the twins lab-M3-project-1/2/3 are byte-identical, so their rows are carried with fresh gate runs. FAIL is R29 only: four cards (M3-c143, c145, c161, c165) cite results that the current lessons state under 'Assuming F1 to F4 of Lesson 4' but do not carry that assumption (rule 10). R18 (round-9 FAIL, iota undefined) is cleared: iota is defined in place at project.html line 246 before its first use. Mutants: 100 files, 98 killed; survivors r6d_m04 and r9d_m02 are within tolerance (R13, R15) and ruled PASS. An equivalent Dykstra variant was excluded from the mutant set (scripts/M3-d-r10/equivalent_r10d_m03_dykstra_no_unit_correction.py). Not checked: mypy --no-incremental (no Python file in the slice changed; grader is outside the mypy scope per round 9); full pytest suite (only tests/test_labs.py -k M3 was run: 12 passed in the M3 selection); verify_refs live (offline only); the 150 grader tests were run on the reference and the six alternatives, not line-by-line for all 760 lines of test_project.py (only the lines cited in the rows); the 38 grade-less cards were checked for structure, not each against its lesson line (no changed hunk touches them).",
+ "summary": "M3 slice d round 10: 31 rows, 30 PASS, 1 FAIL (M3-d-R29: four cards omit the F1-F4 hypothesis that their cited lesson result now carries). Mutants: 100, 98 killed, 2 survivors ruled PASS within tolerance. Gates run and PASS: check_pages, check_dag, check_projects, run_labs M3 12/12, run_graders M3 50 seeds, page_smoke project, ruff, lab-3 twin block match, verify_refs offline, pytest tests/test_labs.py -k M3, six alternatives over 50 seeds, collect-only 150 tests."
+}
+out = pathlib.Path("ledgers/M3/M3-d.json")
+out.write_text(json.dumps(frag, indent=1, ensure_ascii=False), encoding="utf-8")
+print("wrote", out, len(rows), "rows", len(mutants), "mutants")
