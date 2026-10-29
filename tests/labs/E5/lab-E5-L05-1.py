@@ -7,8 +7,9 @@ The model (Assumptions A1 to A3 of Lesson 5): AD is Y = a - eta P with a, eta > 
 Y = Ybar + nu (P - Pe) with nu > 0; potential output Ybar = 1000 index points; expected price level Pe = 1.
 
 Part A: the short-run equilibrium price and output at a = 1160, and the residual of both equations.
-Part B: a demand shift of +30 in a, the new equilibrium, and the exact changes beside the formulas
-nu/(eta+nu) for output and 1/(eta+nu) for the price level.
+Part B: a demand shift of +30 in a, the new equilibrium, and the exact changes beside their formulas: the price
+change 30/(eta+nu) and the output change 30 nu/(eta+nu). It also prints the output share nu/(eta+nu) and the
+price change per unit of a, 1/(eta+nu).
 Part C: the long-run equilibrium, where expected prices equal the actual price, before and after the shift.
 Part D: the output share nu/(eta+nu) and the price change for five slopes nu of the short-run AS curve.
 

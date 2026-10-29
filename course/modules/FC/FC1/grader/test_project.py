@@ -462,13 +462,22 @@ def test_trade_amount_is_an_int_in_cents() -> None:
 
 
 def test_the_module_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:
-    """No function prints: the captured standard output and error are empty after a full run."""
-    bond = bond_of(INST)
-    sol.bond_price_cents(bond, INST["yield_bps"])
-    bond.events()
-    trade_of(INST).events()
-    captured = capsys.readouterr()
-    assert captured.out == "" and captured.err == "", "the module must not print to standard output or error"
+    """No function prints on a valid input: the captured standard output and error are empty after each run, on the
+    learner's case and on the valid boundary inputs (negative yield, zero coupon, sell side, twelve periods)."""
+    runs: list[tuple[str, Callable[[], object]]] = [
+        ("the seeded case", lambda: sol.bond_price_cents(bond_of(INST), INST["yield_bps"])),
+        ("the seeded case's events", lambda: bond_of(INST).events()),
+        ("the seeded case's trade", lambda: trade_of(INST).events()),
+        ("yield_bps = -9999", lambda: sol.bond_price_cents(sol.Bond(10_000, 500, 3), -9_999)),
+        ("yield_bps = -5000", lambda: sol.bond_price_cents(sol.Bond(10_000, 500, 3), -5_000)),
+        ("coupon_bps = 0", lambda: sol.Bond(10_000, 0, 2).events()),
+        ("side = -1", lambda: sol.CashTrade(10, 9_850, -1, 2).events()),
+        ("periods = 12", lambda: sol.Bond(10_000, 500, 12).events()),
+    ]
+    for label, call in runs:
+        call()
+        captured = capsys.readouterr()
+        assert captured.out == "" and captured.err == "", f"{label}: a valid input must print nothing"
 
 
 def test_refused_inputs_print_nothing_before_they_raise(capsys: pytest.CaptureFixture[str]) -> None:

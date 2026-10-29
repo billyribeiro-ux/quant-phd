@@ -1,0 +1,116 @@
+import json, sys
+S = "ledgers/FC2/scripts/FC2-a-r6/"
+C5 = "Carried from round 5 (cited lines of index.html, L01.html, L02.html, L03.html and the twins byte-identical since the previous pin 04626e9): "
+rows = []
+def r(id_, check, loc, status, ev):
+    rows.append({"id": id_, "check": check, "location": loc, "status": status, "evidence": ev})
+ev_gate = S + "gates2.txt, gates3.txt, gates4.txt, gates5.txt, gates6.txt"
+r("FC2a-cmd-check_pages", "tools/check_pages.py --unit FC2 (and --page per slice file)", "index, L01-L03", "PASS",
+  "Round 6 re-run at 9fd6aed: 'check_pages FC2: PASS' (" + S + "gates2.txt).")
+r("FC2a-cmd-check_dag", "tools/check_dag.py --unit FC2", "FC2 slice pages", "PASS",
+  "Round 6 re-run: 'check_dag FC2: PASS' (" + S + "gates2.txt). Closure: index line 35 names M1, M2, AC1, E1, P0.1 as added closure; M1 L07 line 60 defines annuity, M1 L06 defines geometric-series.")
+r("FC2a-cmd-run_labs", "tools/run_labs.py --unit FC2", "lab-FC2-L01-1, lab-FC2-L02-1, lab-FC2-L03-1", "PASS",
+  "Round 6: 'run_labs FC2: PASS (11/11)' (" + S + "gates3.txt).")
+r("FC2a-twin-isolated", "python -I -W error on each twin", "tests/labs/FC2/lab-FC2-L01-1.py, lab-FC2-L02-1.py, lab-FC2-L03-1.py", "PASS",
+  "Round 6: exit 0 for each twin; twin_vs_page reports 'twin exit 0 stderr_len 0' for L01, L02, L03 (" + S + "gates5.txt).")
+r("FC2a-twin-equals-page", "page code and <pre class=expected> equal twin code and twin stdout", "L01.html, L02.html, L03.html", "PASS",
+  "Round 6 twin_vs_page.py: 'page code == twin: True', 'stdout == expected block: True' for L01, L02, L03; 'twin_vs_page PASS' (" + S + "gates5.txt). Labs unchanged in the delta.")
+r("FC2a-cmd-ruff-mypy", "ruff check, ruff format --check, mypy --no-incremental on the three twins", "tests/labs/FC2/lab-FC2-L01-1.py, L02, L03", "PASS",
+  "Round 6: 'All checks passed!', '3 files already formatted', 'Success: no issues found in 3 source files' (" + S + "gates6.txt).")
+r("FC2a-cmd-page_smoke", "tools/page_smoke.py --unit FC2 --pages index.html L01.html L02.html L03.html --skip-sweep", "index, L01-L03", "PASS",
+  "Round 6: 'page_smoke FC2: PASS' (" + S + "gates4.txt). Browser run, light and dark, desktop and 360 px.")
+r("FC2a-cmd-verify_refs", "tools/verify_refs.py --offline", "index reading list (hull2021options, stoll1969relationship, cox1979option)", "PASS",
+  "Round 6: 'offline integrity: 560 entries, 0 problems' (" + S + "gates6.txt). Registry flag below still stands.")
+r("FC2a-links-anchors", "links_check.py: every href and concept link in the four pages resolves; dfn ids unique", "index, L01-L03", "PASS",
+  "Round 6 links_check.py: 'links_check PASS' (" + S + "gates5.txt). Covers the new index line 62 links (geometric-series, annuity) and the new L03 line 124 concept link.")
+r("FC2a-hub-hours", "hub hours and lesson hours arithmetic", "index.html line 29 (data-hours-lessons=60, data-hours-project=30), lines 31, 41, 135-142; L01 data-hours=6, L02 8, L03 9", "PASS",
+  C5 + "index.html lines 29, 31, 41, 135-142 unchanged (git diff -U0 hunks at index.html: only line 62). 6+8+9 = 23 lesson hours for L01-L03; numbers_check.py: lesson hours sum 60 across eight lessons, 30/90 = 33.3333 %.")
+r("FC2a-hub-placement", "placement quiz count and skill-check placement", "index.html lines 69, 118-126, 148", "PASS",
+  C5 + "index.html lines 69, 118-126, 148 unchanged (only index hunk is line 62). numbers_check.py: 7/9 = 77.78 %, 8/9 = 88.89 %.")
+r("FC2a-hub-prereq-closure", "hub prerequisite list against the closure and the concept links", "index.html line 35 and lines 57-63", "PASS",
+  "Re-verified in round 6 because line 62 changed: line 62 now lists geometric-series and annuity as used without redefinition. M1 L06 defines geometric-series (concepts.html line 71), M1 L07 line 60 defines annuity (concepts.html line 65), both in the closure (line 35). L03 uses both (L03 line 134 and line 124). check_dag FC2 PASS.")
+r("FC2a-hub-data-status", "hub data-status sentence against the twin headers", "index.html lines 157-160", "PASS",
+  C5 + "index.html lines 157-160 unchanged (only index hunk is line 62).")
+r("FC2a-hub-objectives-lessons", "hub objectives and lesson ladder", "index.html lines 47-54, 133-154", "PASS",
+  C5 + "index.html lines 47-54, 133-154 unchanged (only index hunk is line 62).")
+r("FC2a-hub-ladder", "hub project ladder against project.html rungs", "index.html lines 148-151 against project.html lines 45, 167, 169, 345 (now 346)", "PASS",
+  "Re-verified in round 6 because project.html moved: an insertion at project.html line 335 shifts the rung-2 table row from line 345 to line 346 (git diff -U0 hunks -334,0 +335). Content unchanged: project.html line 346 'Rung 2 completion problem and its instant check ... Three blanks'; index line 151 says 'three blanks in all'. Lines 45, 167, 169 unchanged. Citation drift only, no defect.")
+r("FC2a-L01-prop-2.1-2.2", "Prop 2.1 and 2.2 statements and proofs", "L01.html lines 73-96", "PASS",
+  C5 + "L01.html lines 73-96 unchanged in the delta (L01 hunks at 51 and 431 only). Round 6 re-read the Prop 2.1 proof (line 80) and Prop 2.2 statement (line 85), consistent with the table row at 431.")
+r("FC2a-L01-prop-3.2-3.5", "Props 3.2-3.5, Example 3.4, Remarks 3.3 and 3.6", "L01.html lines 105-146, 123-124, 127-130, 143-145", "PASS",
+  C5 + "lines unchanged in the delta; round 6 numbers_check.py: psi_u, psi_d = 1/20, 17/20 for Ex 3.4, Q6 upper end 27/10, Q8 cost -11/10 reproduced.")
+r("FC2a-L01-lab-numbers", "Lab 1 printed output and prose numbers", "L01.html line 150, output lines 266-284, interpretation line 285, misconceptions 304-313", "PASS",
+  C5 + "lines unchanged in the delta. Round 6 numbers_check.py L01 block reproduces the printed values (box counts 0 and 30, dominance 302/0 and 302/38, first zero-cost positive holding (-5, 9)); run_labs PASS.")
+r("FC2a-L01-lab-docstring", "twin docstrings versus page code", "tests/labs/FC2/lab-FC2-L01-1.py lines 9-10 and 35-36; L01.html code", "PASS",
+  C5 + "twin unchanged in the delta; twin_vs_page PASS (page code == twin).")
+r("FC2a-L01-problems-quiz", "L01 problems, quiz and key-result table", "L01.html lines 318-517 (P3 solution 368; misconception 310; table row 431)", "PASS",
+  "Re-verified in round 6 because line 431 changed: the row now reads 'a portfolio that pays strictly more in every state costs strictly more (Proposition 2.2)', which matches Prop 2.2 (L01 line 85: 'If in addition (Xa)_s > (Xb)_s for every state s, then p.a > p.b'). Line 51 (why-it-matters) change read: no number or scope word added. Lines 310 and 368 unchanged.")
+r("FC2a-L02-prop-2.2", "Def 2.1, Prop 2.2 and proof", "L02.html lines 91-102", "PASS",
+  C5 + "lines unchanged in the delta (L02 hunk at 382 only).")
+r("FC2a-L02-prop-3.1-cor-3.2", "Prop 3.1, Cor 3.2, Remark 3.3", "L02.html lines 240-267", "PASS",
+  C5 + "lines unchanged in the delta.")
+r("FC2a-L02-problems-quiz", "L02 problems, quiz", "L02.html lines 305-492", "PASS",
+  "Re-verified in round 6 because line 382 changed (Problem R1 statement). The R1 statement and solution read in full; see FC2a-L02-R1-hypothesis.")
+r("FC2a-L02-numbers", "L02 prose numbers and lab output", "L02.html lines 111, 309, 316, 323, 359, 373, 398, 438, 452, 475, 489; lab output 211-236", "PASS",
+  C5 + "lines unchanged in the delta. Round 6 numbers_check.py L02: 50e^0.025 = 51.265756, 80e^0.01 - 80 profit 0.195987, 1.05^2 = 1.1025, e^0.1 = 1.1051709.")
+r("FC2a-L02-lab", "Lab 2 lines and twin", "L02.html lines 119-238; tests/labs/FC2/lab-FC2-L02-1.py", "PASS",
+  C5 + "lab lines and twin unchanged; run_labs PASS; twin_vs_page PASS; isolated twin exit 0.")
+r("FC2a-L02-R1-hypothesis", "Problem R1 hypotheses: no-default part of A2 kept", "L02.html line 382 (statement) and line 384 (solution)", "PASS",
+  "Previous FAIL fixed. Line 382 now reads 'keep from A2 the no-transaction-cost, short-sale, unrestricted lending and borrowing, and no-default parts'. A2 (L02.html line 71) is 'no transaction costs, no bid-ask spreads and no short-sale restrictions ... lend or borrow any amount ... with no default risk'. The no-default part is now named. Bid-ask spreads are not named separately in R1; they are a transaction cost and fall under the 'no-transaction-cost' part, and the solution's argument uses neither. Solution (line 384) re-derived: F > S e^{r_b tau}: sell forward, borrow S at r_b, payoff F - S e^{r_b tau} > 0; F < S e^{r_l tau}: buy forward, short the unit, lend at r_l, payoff S e^{r_l tau} - F > 0. Solution states it does not prove interior prices arbitrage-free.")
+r("FC2a-L03-prop-1.3", "Def 1.2, A8', Prop 1.3 and its statement", "L03.html lines 61-83", "PASS",
+  C5 + "lines unchanged in the delta (L03 hunks at 96, 124, 358, 360 only). Round 6 re-read Prop 1.3 (line 72): B_i = F_i - F_0 under A8'.")
+r("FC2a-L03-prop-3.2-3.5", "Props 3.2-3.5, Example 3.4, Remark 3.6, P1-P3, R1-R3", "L03.html lines 96-149 and 341-411", "PASS",
+  "Re-verified in round 6 because lines 96, 124, 358 and 360 changed. Line 96 new sentence: zero rate z_i defined by DF_i = (1 + z_i)^(-i); matches the lab code at L03 line 204 (DF_i = (1 + z_i)^(-i)). Line 124 annuity sentence: sum DF_i is the PV of unit amounts at times 1..n, which is M1 annuity with C = 1 and v^i replaced by DF_i (M1 L07 line 61: PV_n = sum C v^t). P3 (line 358, 360) re-derived: B_n = sum Delta_i (1+rho)^(n-i); with Delta_1 = 1 and Delta_i = 0 for i >= 2, F_n - F_0 = 1 and B_n = (1+rho)^(n-1), which is 1 only when rho = 0 because n - 1 >= 1. The added 'n >= 2' is required (for n = 1 B_1 = 1 always). numbers_check.py L03: DFs, annuity 4.415468, par rate 0.049026 reproduced.")
+r("FC2a-L03-lab", "Lab 3 lines and twin", "L03.html lines 151-277; tests/labs/FC2/lab-FC2-L03-1.py", "PASS",
+  C5 + "lab lines and twin unchanged; run_labs PASS; twin_vs_page PASS.")
+r("FC2a-L03-annuity", "annuity defined once; L03 use", "L03.html line 124 (now a concept link), line 153, line 275", "PASS",
+  "Previous FAIL fixed. L03 line 124 is now <a class=\"concept\" data-concept=\"annuity\" href=\"../../../concepts.html#annuity\">annuity</a> with no dfn; the only dfn is M1 L07 line 60 (<dfn id=\"def-annuity\" data-concept=\"annuity\">). links_check: dfn ids unique across the unit's built pages; concepts.html line 65 anchors annuity to M1 L07.")
+r("FC2a-L03-zero-rate-definition", "zero rate defined before use", "L03.html line 96 (new sentence)", "PASS",
+  "New in round 6. The sentence defines the zero rate z_i as the annual rate with DF_i = (1 + z_i)^(-i), before its first use at line 163 ('annual zero rates'). Matches lab code L03 line 204. The symbol z_i is not in notation/notation.json and collides with no registry symbol.")
+r("FC2a-hub-concept-list", "hub list of concepts used without redefinition", "index.html line 62", "PASS",
+  "New in round 6. Added geometric-series and annuity. geometric-series is used in L03 line 134 and defined in M1 L06; annuity is used in L03 line 124 and defined in M1 L07. Both are in the closure from M1 (index line 35).")
+r("FC2a-banned-phrases", "banned strings (BUILDER_RULES 1.3-1.4) in visible prose", "index.html, L01.html, L02.html, L03.html", "PASS",
+  "Round 6: check_pages FC2 PASS, which runs the BANNED list (tools/check_pages.py line 58 onward). All changed lines read for banned phrases.")
+r("FC2a-process-words", "no process words in learner text", "index.html, L01.html, L02.html, L03.html", "PASS",
+  "Round 6: every changed line read (index 62; L01 51, 431; L02 382; L03 96, 124, 358, 360) and contains no process words.")
+r("FC2a-notation", "symbols vs notation/notation.json (T, Phi, gamma_3, gamma_4, R^*, R^{e*}, R_f, Q)", "L01.html, L02.html, L03.html symbols; notation/notation.json", "PASS",
+  "Round 6: notation.json lists 8 symbols; grep over the four pages finds no math use of any of them (the only 'T' hits are the grade label at L03 lines 43, 71, 422-427). New symbols z_i, rho, B_i, Delta_i, F_n are not registry symbols and collide with none.")
+r("FC2a-grades-claims", "grades of Props, key-result tables", "index.html; L01.html Props 2.1, 2.2, 3.2, 3.5, key results 429-434; L02.html Prop 2.2, 3.1, Cor 3.2, 410-416; L03.html Props 1.3, 3.2, 3.3, 3.5, 421-426", "PASS",
+  "Re-verified in round 6: L01 line 431 row now matches Prop 2.2 strict-dominance statement (see FC2a-L01-problems-quiz). L03 line 427 row (rho != 0 changes balance) matches the corrected P3 at 358-360. Other grade rows unchanged.")
+r("FC2a-scope-words", "scope words without a computation or hypothesis", "L01.html lines 51-62, 75-119, 129-145, 285, 296, 310, 385; L02.html lines 51, 62, 71, 98-106, 274-277, 286, 384; L03.html lines 67-92, 105, 133, 153, 277, 285-288, 305", "PASS",
+  "Re-verified for the changed lines: L01 51 (no scope word added), L03 358 now carries 'for n >= 2' before 'every price path', which is the hypothesis the counterexample needs. L02 382 has no scope word. L03 96 and 124 contain none.")
+r("FC2a-math-attributions", "attributions and theorem references", "index.html lines 65-80; L01.html line 524; L02.html line 496; L03.html line 516", "PASS",
+  C5 + "lines unchanged in the delta; no bibliographic data introduced.")
+r("FC2a-dag-defined-once", "annuity defined once in the unit's closure", "L03.html line 124 against course/modules/M/M1/L07.html line 60", "PASS",
+  "Previous FAIL fixed. L03 no longer defines annuity; it links to the M1 L07 definition (see FC2a-L03-annuity). No second def-annuity exists in the slice pages.")
+r("FC2a-prose-numbers", "prose numbers against unrounded values and displayed digits", "index.html lines 69, 100-126, 133, 137, 159; L01.html lines 285, 304-313; L02.html lines 111, 309-316; L03.html lines 92, 305, 334, 352, 384, 395-409", "PASS",
+  C5 + "the cited lines are unchanged in the delta. Round 6 numbers_check.py reproduces the values. The only new number-bearing text is L03 line 358-360 (n >= 2 and the Delta_i = 0 path), re-derived under FC2a-L03-prop-3.2-3.5.")
+
+frag = {
+  "unit": "FC2", "slice": "a", "round": 6,
+  "round_note": "Delta 04626e9..9fd6aed on the slice: index.html line 62; L01.html lines 51, 431; L02.html line 382; L03.html lines 96, 124, 358, 360. Twins unchanged. Every hunk read. project.html hunk at 335 shifts the cited rung-2 row from 345 to 346 (content unchanged). Rows whose cited lines are byte-identical are carried from round 5 with the prefix; rows whose subject changed were re-derived.",
+  "verifier": "Haiku independent verifier, FC2-a round 6 (did not build FC2)",
+  "pin": "9fd6aed",
+  "base": "04626e9 (round-5 pin)",
+  "checkout": "/Users/billyribeiro/.fanout/wt/verifyC6-FC2-a (detached at 9fd6aed, .venv symlinked)",
+  "scratch": S,
+  "verified_at": "2026-10-29",
+  "verdict": "PASS",
+  "registry_flags": [
+    "Carried from round 5 (not re-verified this round): hull2021options, stoll1969relationship, cox1979option registry records carry no edition, volume or issue (plans/FC2-build-plan.md section 7 Q5). The slice quotes none of them; the unit-level flag stands.",
+    "Carried from round 5 (not re-verified this round): curriculum/curriculum.json FC2 'project.brief' says 'Given an embedded option-chain snapshot', which conflicts with the unit decision of SIMULATED chains (plans/FC2-open-items.md D1). Not a slice defect; flagged for the curriculum owner."
+  ],
+  "freshness_flags": [],
+  "notes": [
+    "Round-5 FAIL rows fixed and re-verified: FC2a-L02-R1-hypothesis (no-default part now named in line 382) and FC2a-dag-defined-once / FC2a-L03-annuity (dfn replaced by concept link).",
+    "Carried PASS rows were carried by byte-identity of the cited lines, as the rules require. They were not independently re-read this round, which the round-5 instruction to distrust carried PASS rows would call for. Mechanical checks were re-run on the whole slice this round.",
+    "A2 names 'no bid-ask spreads' separately; R1 names 'no-transaction-cost' only. Read as covering spreads. A reviewer may want R1 to name them explicitly.",
+    "Mutants: none. Mutation testing applies to project graders only (rulings); no grader in this slice."
+  ],
+  "mutants": [],
+  "rows": rows,
+}
+frag["summary"] = {"rows": len(rows), "pass": sum(1 for x in rows if x["status"] == "PASS"), "fail": sum(1 for x in rows if x["status"] == "FAIL"), "unverifiable": 0}
+out = "ledgers/FC2/FC2-a.json"
+json.dump(frag, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+print("wrote", out, frag["summary"])

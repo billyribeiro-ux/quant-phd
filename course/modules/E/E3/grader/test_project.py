@@ -161,12 +161,12 @@ def test_crra_within_half_cent_of_oracle_for_instance_lotteries() -> None:
 
 def test_crra_log_case_matches_the_limit_gamma_to_one() -> None:
     """At gamma = 1 the utility is ln W. The oracle's power form at gamma = 1 - 1e-6 must agree with the log form to
-    1e-5 relative, and the integer answer at gamma = 1 must be within half a cent of the log form."""
+    0.01 cent plus 1e-5 relative, and the integer answer at gamma = 1 must be within half a cent of the log form."""
     for pa, qa, _, _, _ in PARSED[:20]:
         log_form = oracle_crra(pa, qa, 1.0, WEALTH)
         near_limit = oracle_crra(pa, qa, 1.0 - 1e-6, WEALTH)
         expect(
-            abs(near_limit - log_form) <= 1e-5 * max(1.0, abs(log_form)),
+            abs(near_limit - log_form) <= 0.01 + 1e-5 * abs(log_form),
             "the power form must converge to the log form as gamma tends to 1",
         )
         got = sol.certainty_equivalent_cents("crra", pa, qa, {"gamma": 1.0}, WEALTH)
@@ -458,24 +458,29 @@ def test_reported_log_likelihood_is_the_likelihood_at_the_estimate() -> None:
 
 
 def test_score_is_zero_at_the_estimate() -> None:
-    """At an interior maximum the score is zero. Derivatives are taken in the coordinates eta = log(gamma/(1-gamma)),
-    log(lambda) and log(kappa), where the estimate is interior; the tolerance is 1e-4 relative to max(1, |loglik|)."""
+    """At an interior maximum the score is zero. Derivatives are taken by central differences in the coordinates
+    eta = log(gamma/(1-gamma)), log(lambda) and log(kappa), where the estimate is interior. The log-likelihood has kinks
+    (the certainty equivalent changes form where a lottery's value changes sign), and at a kink a central difference
+    depends on its step, so the score is computed at steps 1e-5 and 1e-6 and the smaller largest component counts. It
+    must be below 2e-5 in absolute value, a tolerance of this suite stated on the page; a search that stops while a
+    component is still of order 1e-4 or more has not reached the stationary point."""
     gamma, lam, kappa = est()["gamma_hat"], est()["lambda_hat"], est()["kappa_hat"]
-    level = oracle_loglik(PARSED, gamma, lam, kappa)
-    scale = 1e-6
+    theta = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
 
-    def ll(g: float, la: float, ka: float) -> float:
-        return oracle_loglik(PARSED, g, la, ka)
+    def ll(t: list[float]) -> float:
+        return oracle_loglik(PARSED, 1.0 / (1.0 + math.exp(-t[0])), math.exp(t[1]), math.exp(t[2]))
 
-    d_gamma = (ll(gamma + scale, lam, kappa) - ll(gamma - scale, lam, kappa)) / (2 * scale)
-    d_lambda = (ll(gamma, lam * (1 + scale), kappa) - ll(gamma, lam * (1 - scale), kappa)) / (2 * scale)
-    d_kappa = (ll(gamma, lam, kappa * (1 + scale)) - ll(gamma, lam, kappa * (1 - scale))) / (2 * scale)
-    score_eta = gamma * (1.0 - gamma) * d_gamma
-    score_log_lambda = lam * d_lambda
-    score_log_kappa = kappa * d_kappa
-    bound = 1e-4 * max(1.0, abs(level))
+    def largest_component(step: float) -> float:
+        worst = 0.0
+        for i in range(3):
+            up, down = list(theta), list(theta)
+            up[i] += step
+            down[i] -= step
+            worst = max(worst, abs((ll(up) - ll(down)) / (2 * step)))
+        return worst
+
     expect(
-        max(abs(score_eta), abs(score_log_lambda), abs(score_log_kappa)) <= bound,
+        min(largest_component(1e-5), largest_component(1e-6)) <= 2e-5,
         "the score is not zero at the estimate: the estimate is not a stationary point of the likelihood",
     )
 

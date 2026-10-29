@@ -1,4 +1,4 @@
-"""Rung 2 completed solution: the payments of a k-unit auction in both formats, in integer cents."""
+"""Rung 2 completion problem: the payments of a k-unit auction in both formats, in integer cents."""
 
 
 def payments(format_name: str, bids: list[int], units: int) -> list[int]:

@@ -15,7 +15,7 @@ quantities, printed with six decimal places and labelled as unrounded.
 
 Part A: at eps = 1, the certainty equivalent and the premium in cents, and the exact premium beside the approximation.
 Part B: the ratio of the exact premium to eps^2 at five scales, beside the limit 0.5 r_A(w) Var(X).
-Part C: for the linear utility, the premium is zero at every scale.
+Part C: for the linear utility, the premium is zero at each of three scales.
 """
 
 from __future__ import annotations
@@ -143,13 +143,13 @@ def main() -> None:
     shrinking = all(later < earlier for earlier, later in itertools.pairwise(gaps))
     print(f"gaps_shrink_as_eps_falls {shrinking}")
 
-    print("Part C: the linear utility has zero premium at every scale")
+    print("Part C: the linear utility has zero premium at three scales")
     zero = True
     for eps in (1.0, 0.5, 0.1):
         premium = WEALTH - certainty_equivalent(LINEAR, eps)
         zero = zero and half_up_cents(premium) == 0
         print(f"eps {eps} linear_premium_cents {half_up_cents(premium)} linear_r_A {LINEAR.arrow_pratt(WEALTH):.6f}")
-    print(f"linear_premium_zero_at_all_scales {zero}")
+    print(f"linear_premium_zero_at_three_scales {zero}")
 
 
 main()
