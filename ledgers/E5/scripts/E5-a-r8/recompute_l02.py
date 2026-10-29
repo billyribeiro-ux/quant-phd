@@ -1,0 +1,15 @@
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("l02", sys.argv[1])
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+A, K, L, Y = m.simulate_economy(2026, 40)[:4] if len(m.simulate_economy(2026, 40)) == 4 else m.simulate_economy(2026, 40)
+dk = m.log_growth(K)
+mean_dk = sum(dk[1:]) / len(dk[1:]) if len(dk) == 41 else sum(dk) / len(dk)
+print("len", len(K), "mean dlnK (as log_growth list mean)", repr(mean_dk))
+for label, lst in (("dlnK over t=1..H", dk[1:]), ("dlnK all", dk)):
+    print(label, len(lst), repr(sum(lst)/len(lst)))
+mu = sum(dk[1:]) / len(dk[1:])
+print("alpha 0.3 capital term", 0.3 * mu, round(0.3 * mu, 6))
+print("alpha 0.4 from unrounded", 0.4 * mu, round(0.4 * mu, 6))
+print("alpha 0.4 from rounded 0.035557", 0.4 * 0.035557, round(0.4 * 0.035557, 6))
+print("printed 0.010667/0.3", 0.010667 / 0.3, round(0.010667 / 0.3, 6))

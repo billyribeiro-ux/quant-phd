@@ -130,7 +130,7 @@ def test_bond_has_one_event_per_period_numbered_one_to_n() -> None:
     assert [p for p, _ in rows] == list(range(1, INST["periods"] + 1)), "periods must run 1..periods, one event each"
 
 
-def test_bond_coupon_is_face_times_coupon_rate_rounded_half_up() -> None:
+def test_bond_coupon_is_face_times_coupon_rate_rounded_half_away() -> None:
     """Every coupon except the last equals face * coupon_bps / 10000, rounded to the nearest cent, halves away."""
     rows = checked_events(bond_of(INST).events(), "Bond.events")
     expected = oracle_events(INST["face_cents"], INST["coupon_bps"], INST["periods"])

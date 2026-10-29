@@ -786,6 +786,86 @@ def test_standard_errors_match_the_delta_method_oracle() -> None:
     )
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Dominance verdicts on the instrument's pairs. The oracle is written here; no verdict is fixed in advance.
+# Each verdict comes from a distribution-function test and from the ranking of expected utilities over a finite grid.
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+def _support(pa: list[int], pb: list[int]) -> list[Fraction]:
+    """The distinct prize values of the two lotteries, in order. Each distribution function changes only at these."""
+    return sorted({Fraction(x) for x in [*pa, *pb]})
+
+
+def _mass_at_most(prizes: list[int], probs: list[Fraction], t: Fraction) -> Fraction:
+    """P(X <= t), exact: the distribution function at t."""
+    return sum((p for x, p in zip(prizes, probs, strict=True) if Fraction(x) <= t), Fraction(0))
+
+
+def _shortfall(prizes: list[int], probs: list[Fraction], t: Fraction) -> Fraction:
+    """E(t - X)^+, exact: the integrated distribution function at t."""
+    return sum((p * (t - x) for x, p in zip(prizes, probs, strict=True) if Fraction(x) < t), Fraction(0))
+
+
+def _eu(prizes: list[int], probs: list[Fraction], u: Callable[[Fraction], Fraction]) -> Fraction:
+    """Expected utility of a lottery, exact, for a utility given on the prize values."""
+    return sum((p * u(Fraction(x)) for x, p in zip(prizes, probs, strict=True)), Fraction(0))
+
+
+def _step(t: Fraction) -> Callable[[Fraction], Fraction]:
+    """Utility 1{x > t}: nondecreasing, so every first-order ranking is tested against it."""
+    return lambda x: Fraction(1) if x > t else Fraction(0)
+
+
+def _ramp(t: Fraction) -> Callable[[Fraction], Fraction]:
+    """Utility min(x - t, 0): concave and nondecreasing, so every second-order ranking is tested against it."""
+    return lambda x: min(x - t, Fraction(0))
+
+
+def _rank(diffs: list[Fraction]) -> str:
+    """The verdict from the differences E u(A) - E u(B) over a grid of utilities: "A" when every difference is >= 0,
+    "B" when every difference is <= 0, "equal" when both hold, otherwise "none"."""
+    a_ahead = all(d >= 0 for d in diffs)
+    b_ahead = all(d <= 0 for d in diffs)
+    if a_ahead and b_ahead:
+        return "equal"
+    if a_ahead:
+        return "A"
+    if b_ahead:
+        return "B"
+    return "none"
+
+
+def test_first_order_verdicts_on_the_instrument_pairs_match_expected_utility_over_a_grid() -> None:
+    """For every pair, A dominates B in the first order when F_A(t) <= F_B(t) at every prize value t. That verdict must
+    equal the ranking of expected utilities over the step utilities 1{x > t} at the same t, since a step utility is
+    the probability of exceeding t."""
+    for pa, qa, pb, qb, _ in PARSED:
+        ts = _support(pa, pb)
+        cdf_verdict = _rank([_mass_at_most(pb, qb, t) - _mass_at_most(pa, qa, t) for t in ts])
+        eu_verdict = _rank([_eu(pa, qa, _step(t)) - _eu(pb, qb, _step(t)) for t in ts])
+        expect(
+            cdf_verdict == eu_verdict,
+            "the first-order verdict from the distribution functions must match the expected-utility ranking over "
+            "the step utilities; revisit which way the inequality between F_A and F_B points",
+        )
+
+
+def test_second_order_verdicts_on_the_instrument_pairs_match_expected_utility_over_a_grid() -> None:
+    """For every pair, A dominates B in the second order when E(t - A)^+ <= E(t - B)^+ at every prize value t. That
+    verdict must equal the ranking of expected utilities over the ramp utilities min(x - t, 0) at the same t. At the
+    largest prize the ramp gives the mean, so the expected prizes are compared as well."""
+    for pa, qa, pb, qb, _ in PARSED:
+        ts = _support(pa, pb)
+        integrated_verdict = _rank([_shortfall(pb, qb, t) - _shortfall(pa, qa, t) for t in ts])
+        eu_verdict = _rank([_eu(pa, qa, _ramp(t)) - _eu(pb, qb, _ramp(t)) for t in ts])
+        expect(
+            integrated_verdict == eu_verdict,
+            "the second-order verdict from the integrated distribution functions must match the expected-utility "
+            "ranking over the concave utilities; revisit which way the integrated functions compare",
+        )
+
+
 NETWORK_MODULES = frozenset(
     {"socket", "ssl", "http", "urllib", "ftplib", "smtplib", "xmlrpc", "requests", "httpx", "aiohttp", "urllib3"}
 )

@@ -5,7 +5,7 @@ for every n beyond 1/x, so f_n(x) tends to 0 on (0, 1]. Part B: the contribution
 to the lower bound that any dominating function must satisfy, and the partial sums of those contributions.
 Part C: the grouping bound sum of 1/k for k from 2 to 2^m is at least m/2, checked exactly for m from 1 to 10.
 
-Every value is an exact Fraction, except the one line that is labelled rounded. Standard library only. Nothing is
+Every value is an exact Fraction, except the two lines that are labelled rounded. Standard library only. Nothing is
 random, and nothing is read from a file. The lab checks finitely many n and x only; the page states the general
 argument, which covers all n and all x.
 """

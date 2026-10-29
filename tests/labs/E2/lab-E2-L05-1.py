@@ -56,7 +56,7 @@ def main() -> None:
     u_low = THETA_LOW * q_low - t_low
     u_high = THETA_HIGH * q_high - t_high
 
-    print("Part A: the menu and its four constraints (cents)")
+    print("Part A: the menu, the low type's participation check and the incentive slacks (cents)")
     print(f"low contract: q_L = {q_low}, m_L = {t_low}")
     print(f"high contract: q_H = {q_high}, m_H = {t_high}")
     print(f"low type utility, participation: {u_low} >= 0 holds: {u_low >= 0}")
