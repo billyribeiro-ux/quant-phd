@@ -1,4 +1,4 @@
-"""Rung 2 completed solution: the log-likelihood contribution of one logit choice, from its two certainty equivalents.
+"""Rung 2: the log-likelihood contribution of one logit choice, from its two certainty equivalents.
 
 Standard library only. The certainty equivalents are in cents and are unrounded floats; the logit uses them directly.
 """

@@ -133,3 +133,11 @@ Scope: `course/modules/E/E3/project.html`, `course/modules/E/E3/grader/`, `tests
 7. **Gates run by Builder E.** `tools/run_graders.py --unit E3 --seeds 0-49`: PASS (reference 50/50, slowest 1.1 s).
    `tools/check_projects.py --unit E3`: PASS. `tools/run_labs.py --unit E3 --page project`: PASS (3/3).
    `tools/page_smoke.py --unit E3 --pages project L04`: PASS (both pages; in-browser grader 26 of 26 in 1.8 s).
+
+## Architect ruling (batch 3, round 9): plan 6.5 items 6, 7, 9
+
+The project specification defines no dominance function and no Epstein-Zin model, so `reference.py` has no code path
+that those mutants could alter. Items 6 (FOSD inequality reversed), 7 (SOSD on CDFs) and 9 (Epstein-Zin exponent swap)
+are therefore not applicable and are dropped. The FOSD and SOSD behaviour is tested through the specified
+`certainty_equivalent_cents` ordering (two witness pairs, FOSD and SOSD, in `test_project.py`). Adding a dominance
+interface to the specification would be a scope change and is not made.

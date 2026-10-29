@@ -518,7 +518,9 @@ def test_estimate_recovers_the_true_parameters_within_four_standard_errors_on_47
 
 
 def test_estimate_on_a_second_participant_is_also_a_maximum() -> None:
-    """A second SIMULATED participant (another seed): the same two properties hold on it."""
+    """A second SIMULATED participant (another seed, INST2): the reported likelihood is the likelihood at the estimate,
+    the standard errors are positive and finite, and no move of one parameter by 0.1 percent in either direction
+    raises the likelihood (the same local-maximum check as test_estimate_is_a_local_maximum)."""
     parsed2 = [parse(r) for r in json.loads(str(INST2["responses_json"]))]
     est2 = sol.estimate(json.loads(str(INST2["responses_json"])))
     gamma, lam, kappa = est2["gamma_hat"], est2["lambda_hat"], est2["kappa_hat"]
@@ -529,7 +531,14 @@ def test_estimate_on_a_second_participant_is_also_a_maximum() -> None:
     )
     for key in ("se_gamma", "se_lambda", "se_kappa"):
         expect(est2[key] > 0.0 and math.isfinite(est2[key]), "standard errors must be positive and finite")
-    expect(oracle_loglik(parsed2, gamma * 1.001, lam, kappa) <= here + 1e-9, "the second estimate is not a maximum")
+    for step in (1e-3, -1e-3):
+        moved = [
+            oracle_loglik(parsed2, gamma * (1 + step), lam, kappa),
+            oracle_loglik(parsed2, gamma, lam * (1 + step), kappa),
+            oracle_loglik(parsed2, gamma, lam, kappa * (1 + step)),
+        ]
+        for value in moved:
+            expect(value <= here + 1e-9, "the second estimate is not a maximum: a nearby parameter does better")
 
 
 def test_estimate_needs_responses() -> None:
@@ -836,11 +845,69 @@ def _rank(diffs: list[Fraction]) -> str:
     return "none"
 
 
-def test_first_order_verdicts_on_the_instrument_pairs_match_expected_utility_over_a_grid() -> None:
-    """For every pair, A dominates B in the first order when F_A(t) <= F_B(t) at every prize value t. That verdict must
-    equal the ranking of expected utilities over the step utilities 1{x > t} at the same t, since a step utility is
-    the probability of exceeding t."""
-    for pa, qa, pb, qb, _ in PARSED:
+HALF = Fraction(1, 2)
+DOMINANCE_SLACK = (
+    1  # an exact dominance gives CE_A >= CE_B and the nearest-cent rule is monotone, so only a float value
+)
+# that lands on a half cent can flip a comparison, by one cent
+FIRST_ORDER_MODELS: list[tuple[str, dict[str, float]]] = [
+    ("crra", {"gamma": 0.0}),
+    ("crra", {"gamma": 0.5}),
+    ("prospect", TRUE),
+]  # every model whose utility is increasing
+SECOND_ORDER_MODELS: list[tuple[str, dict[str, float]]] = [
+    ("crra", {"gamma": 0.0}),
+    ("crra", {"gamma": 0.5}),
+]  # every model whose utility is concave and increasing (the prospect value is not concave below zero)
+# Witness pairs, so that each dominance order is exercised whatever the seed's instrument holds.
+# FOSD: A is B with every prize raised by 100 cents, so F_A <= F_B everywhere (A dominates in the first order).
+FOSD_WITNESS = ([600, -100], [HALF, HALF], [500, -200], [HALF, HALF], "")
+# SOSD: A is the sure amount 0, and B is a fair gamble on -1000 and 1000 cents, so A dominates in the second order.
+SOSD_WITNESS = ([0], [Fraction(1)], [1000, -1000], [HALF, HALF], "")
+
+
+def _first_order_verdict(pair: tuple[list[int], list[Fraction], list[int], list[Fraction], str]) -> str:
+    """The first-order verdict of a pair from its distribution functions, over the prize values of both lotteries."""
+    pa, qa, pb, qb, _ = pair
+    return _rank([_mass_at_most(pb, qb, t) - _mass_at_most(pa, qa, t) for t in _support(pa, pb)])
+
+
+def _second_order_verdict(pair: tuple[list[int], list[Fraction], list[int], list[Fraction], str]) -> str:
+    """The second-order verdict of a pair from its integrated distribution functions."""
+    pa, qa, pb, qb, _ = pair
+    return _rank([_shortfall(pb, qb, t) - _shortfall(pa, qa, t) for t in _support(pa, pb)])
+
+
+def _engine_respects(
+    verdict: str,
+    a: tuple[list[int], list[Fraction]],
+    b: tuple[list[int], list[Fraction]],
+    models: list[tuple[str, dict[str, float]]],
+) -> None:
+    """The engine's certainty equivalents must order the pair as the verdict does, under every listed model."""
+    for model, params in models:
+        ca = sol.certainty_equivalent_cents(model, a[0], a[1], params, WEALTH)
+        cb = sol.certainty_equivalent_cents(model, b[0], b[1], params, WEALTH)
+        if verdict == "A":
+            ordered = ca >= cb - DOMINANCE_SLACK
+        elif verdict == "B":
+            ordered = cb >= ca - DOMINANCE_SLACK
+        elif verdict == "equal":
+            ordered = abs(ca - cb) <= DOMINANCE_SLACK
+        else:
+            ordered = True
+        expect(
+            ordered,
+            "the certainty equivalents must order a pair as its distribution functions do: if A dominates B, the "
+            "engine's value of A cannot fall below its value of B; revisit how each lottery's value is formed",
+        )
+
+
+def test_first_order_dominance_is_respected_by_the_engine_on_the_instrument_pairs() -> None:
+    """For every pair, A dominates B in the first order when F_A(t) <= F_B(t) at every prize value t. The oracle's
+    verdict must equal the ranking of expected utilities over the step utilities 1{x > t}, and the engine's certainty
+    equivalents must order the pair the same way under each increasing-utility model. The witness pair must be A."""
+    for pa, qa, pb, qb, _ in [*PARSED, FOSD_WITNESS]:
         ts = _support(pa, pb)
         cdf_verdict = _rank([_mass_at_most(pb, qb, t) - _mass_at_most(pa, qa, t) for t in ts])
         eu_verdict = _rank([_eu(pa, qa, _step(t)) - _eu(pb, qb, _step(t)) for t in ts])
@@ -849,13 +916,15 @@ def test_first_order_verdicts_on_the_instrument_pairs_match_expected_utility_ove
             "the first-order verdict from the distribution functions must match the expected-utility ranking over "
             "the step utilities; revisit which way the inequality between F_A and F_B points",
         )
+        _engine_respects(cdf_verdict, (pa, qa), (pb, qb), FIRST_ORDER_MODELS)
+    expect(_first_order_verdict(FOSD_WITNESS) == "A", "the witness pair must dominate in the first order")
 
 
-def test_second_order_verdicts_on_the_instrument_pairs_match_expected_utility_over_a_grid() -> None:
-    """For every pair, A dominates B in the second order when E(t - A)^+ <= E(t - B)^+ at every prize value t. That
-    verdict must equal the ranking of expected utilities over the ramp utilities min(x - t, 0) at the same t. At the
-    largest prize the ramp gives the mean, so the expected prizes are compared as well."""
-    for pa, qa, pb, qb, _ in PARSED:
+def test_second_order_dominance_is_respected_by_the_engine_on_the_instrument_pairs() -> None:
+    """For every pair, A dominates B in the second order when E(t - A)^+ <= E(t - B)^+ at every prize value t. The
+    oracle's verdict must equal the ranking of expected utilities over the ramp utilities min(x - t, 0), and the
+    engine's certainty equivalents must order the pair the same way under each concave model. The witness must be A."""
+    for pa, qa, pb, qb, _ in [*PARSED, SOSD_WITNESS]:
         ts = _support(pa, pb)
         integrated_verdict = _rank([_shortfall(pb, qb, t) - _shortfall(pa, qa, t) for t in ts])
         eu_verdict = _rank([_eu(pa, qa, _ramp(t)) - _eu(pb, qb, _ramp(t)) for t in ts])
@@ -864,10 +933,33 @@ def test_second_order_verdicts_on_the_instrument_pairs_match_expected_utility_ov
             "the second-order verdict from the integrated distribution functions must match the expected-utility "
             "ranking over the concave utilities; revisit which way the integrated functions compare",
         )
+        _engine_respects(integrated_verdict, (pa, qa), (pb, qb), SECOND_ORDER_MODELS)
+    expect(_second_order_verdict(SOSD_WITNESS) == "A", "the witness pair must dominate in the second order")
 
 
+# Standard-library modules that open sockets or network connections, and the third-party clients the page names.
 NETWORK_MODULES = frozenset(
-    {"socket", "ssl", "http", "urllib", "ftplib", "smtplib", "xmlrpc", "requests", "httpx", "aiohttp", "urllib3"}
+    {
+        "socket",
+        "socketserver",
+        "ssl",
+        "asyncio",
+        "http",
+        "urllib",
+        "ftplib",
+        "smtplib",
+        "imaplib",
+        "poplib",
+        "nntplib",
+        "telnetlib",
+        "webbrowser",
+        "wsgiref",
+        "xmlrpc",
+        "requests",
+        "httpx",
+        "aiohttp",
+        "urllib3",
+    }
 )
 
 

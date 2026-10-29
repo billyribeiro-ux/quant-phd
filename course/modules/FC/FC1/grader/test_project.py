@@ -506,9 +506,11 @@ def test_refused_inputs_print_nothing_before_they_raise(capsys: pytest.CaptureFi
 
 
 def test_repeated_events_calls_agree() -> None:
-    """events() is pure: two calls on one object give the same list."""
+    """events() is pure: two calls on one object give the same list, for the bond and for the trade."""
     bond = bond_of(INST)
     assert checked_events(bond.events(), "Bond.events") == checked_events(bond.events(), "Bond.events")
+    trade = trade_of(INST)
+    assert checked_events(trade.events(), "CashTrade.events") == checked_events(trade.events(), "CashTrade.events")
 
 
 def test_non_whole_face_is_refused_or_gives_ints() -> None:
