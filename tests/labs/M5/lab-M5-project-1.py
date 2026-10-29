@@ -76,7 +76,9 @@ def main() -> None:
         if small:
             break
     print("value after the last sweep:", [f"{x:.6f}" for x in values])
-    print(f"actual error {sup_distance(values, reference):.9f} <= certified error {certified:.9f}")
+    actual = sup_distance(values, reference)
+    relation = "<=" if actual <= certified else ">"
+    print(f"actual error {actual:.9f} {relation} certified error {certified:.9f}")
 
 
 main()

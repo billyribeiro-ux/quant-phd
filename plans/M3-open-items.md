@@ -152,3 +152,5 @@ Scope: `course/modules/M/M3/cards.json` (167 cards, ids `M3-c001` to `M3-c167`).
 - No new REFERENCE_REQUEST from the cards. Cards cite no registry key. `cite` is omitted on every card, because no locator for `axler2024linear` or `strang2023introduction` has been read (L01 to L09 say so in their References sections).
 - The alternating-projection method (L09, Method 2) is named but has no registry key. This is the plan's REFERENCE_REQUEST R1 (Higham 2002). The cards describe it only as the lesson's own procedure, with no attribution.
 - GLOSSARY_REQUESTS: none new from the cards. The plain terms in plan Q4 are defined in the lesson text. Rank has two definitions (see above).
+
+- `\boldsymbol{\iota}` (the all-ones vector) is used on project.html (weights bullet, Lab 3 setup, Appendix A3 and A4). It is not registered and is not a program-wide symbol; project.html defines it at its first use (the weights bullet), and L08 line 137 defines it locally. Request registration or confirm the local definition.

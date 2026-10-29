@@ -454,6 +454,37 @@ def test_tolerance_just_below_the_first_certified_error_does_not_stop() -> None:
     )
 
 
+def test_stop_uses_the_largest_absolute_change_over_the_grid() -> None:
+    """The stop is the first sweep whose certified error, beta / (1 - beta) times the sup-norm change, is at most tol.
+
+    On this fixed instance the change at the last grid point alone certifies tol one sweep before the sup-norm change
+    does. The expected stopping sweep is computed here, by the test's own loop over the whole grid."""
+    p = {"beta": 0.8535397019795181, "alpha": 0.3276562928132905}
+    grid = [0.23, 0.24, 0.98, 1.46]
+    tol = 1.0119307470200622e-11
+    factor = p["beta"] / (1 - p["beta"])
+    values = [0.0] * len(grid)
+    stop = 0
+    for sweep in range(1, 401):
+        new = ref_sweep(p["beta"], p["alpha"], grid, values)
+        change = max(abs(a - b) for a, b in zip(new, values, strict=False))
+        values = new
+        if factor * change <= tol:
+            stop = sweep
+            break
+    expect(stop > 0, "test setup: the test's own iteration must certify tol within 400 sweeps on this instance")
+    out = sol.solve(p, grid, tol, 400)
+    expect(
+        out["iterations"] == stop,
+        "the iteration must stop at the first sweep whose certified error, from the largest absolute change over every "
+        "grid point, is at most tol: measuring the change at one grid point stops too early",
+    )
+    expect(
+        out["converged"] is True,
+        "at the sup-norm stopping sweep the certificate is at most tol: converged must be True",
+    )
+
+
 def test_one_point_grid_is_accepted() -> None:
     """A grid with one point is non-empty and strictly increasing, so the page does not name it as invalid."""
     out = sol.solve({"beta": 0.9, "alpha": 0.5}, [0.5], 1e-6, 5)
