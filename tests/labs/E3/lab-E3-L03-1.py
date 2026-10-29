@@ -107,7 +107,10 @@ def main() -> None:
             worst_rel = max(worst_rel, abs(scaled_ce / (k * ces[g]) - 1.0))
             if abs(to_cents(scaled_ce) - k * to_cents(ces[g])) > (k + 1) / 2:
                 cents_ok = False
-    print(f"homogeneity CE(kx) = k CE(x) for k in 2, 3, 10 and every gamma, unrounded: {worst_rel <= 1e-12}")
+    print(
+        f"homogeneity CE(kx) = k CE(x) for k in 2, 3, 10 on the lab grid of gamma values, "
+        f"unrounded: {worst_rel <= 1e-12}"
+    )
     print(f"cents bound |round(CE(kx)) - k round(CE(x))| <= (k + 1) / 2 holds on this grid: {cents_ok}")
 
 

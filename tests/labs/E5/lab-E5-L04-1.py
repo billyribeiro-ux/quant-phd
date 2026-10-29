@@ -112,7 +112,8 @@ def part_d() -> None:
 
 
 def main() -> None:
-    """Print Parts A to D. Values are exact Fractions; decimals print to ten places, and checks print True or False."""
+    """Print Parts A to D. Values are exact Fractions; decimals print to ten places, checks print True or False,
+    and the exact residuals print 0."""
     y0, i0 = part_a()
     part_b(y0, i0)
     part_c(y0, i0)

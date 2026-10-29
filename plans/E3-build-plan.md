@@ -389,7 +389,7 @@ Five criteria, each with four observable levels (level 4 down to level 1). Each 
 5. **Evidence.** Every empirical claim is graded with a registry key and a locator actually read. Level 4: every claim
    carries grade and key; no locator is invented.
 
-**Exemplars** at two levels: `exemplar-a` (`data-level="2"`) and `exemplar-b` (`data-level="4"`), fully written memos on a
+**Exemplars** at two levels: `exemplar-a` (`data-level="2"`) and `exemplar-b` (`data-level="4"`), excerpts of memos, not full reports on a
 SIMULATED participant, each annotated with the descriptors it meets or misses, with `data-scores` and `data-criterion` as in
 M1 (`course/modules/M/M1/project.html` lines 341–352, 405–476). Self-assessment form `section.rubric-self` with
 `data-rubric="rubric" data-exemplars="exemplar-a exemplar-b"`. The page shows where the student's scores diverge from the exemplar scores.

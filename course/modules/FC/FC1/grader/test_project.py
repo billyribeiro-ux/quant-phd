@@ -262,6 +262,15 @@ def test_bond_price_with_thirteen_to_fifteen_periods_uses_every_period() -> None
         assert got == 10_000, f"{periods} periods at 500 bps: the coupon equals the yield, so the exact price is par"
 
 
+def test_bond_coupon_above_one_hundred_percent_is_accepted() -> None:
+    """The page refuses only a negative coupon_bps and names no upper limit, so a coupon of 15000 bps (150 %) is
+    valid: Bond(10000, 15000, 1) has one event, (1, 15000 + 10000)."""
+    rows = checked_events(
+        must_accept(lambda: sol.Bond(10_000, 15_000, 1).events(), "coupon_bps = 15000"), "Bond.events"
+    )
+    assert rows == [(1, 25_000)], "a coupon of 150 % of face is paid in the one period, with the face"
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # bond_price_cents: present value at a per-period yield
 # ---------------------------------------------------------------------------------------------------------------
@@ -323,6 +332,13 @@ def test_bond_price_exact_half_cent_rounds_away_from_zero() -> None:
 def test_bond_price_exact_half_at_five_thousand_point_five_rounds_up() -> None:
     """Hand fixture G: Bond(10001, 0, 1) at 10000 bps: the price is exactly 5000.5 cents, which rounds to 5001."""
     assert sol.bond_price_cents(sol.Bond(10_001, 0, 1), 10_000) == 5_001
+
+
+def test_bond_price_exact_half_cent_at_496_bps_is_exact_not_float() -> None:
+    """Bond(1704285, 179, 1) at 496 bps: the coupon is 30506.7015 cents, rounded to 30507, so the one event is
+    (1, 1734792). Its exact present value is 1734792 / 1.0496 = 3305625 / 2 = 1652812.5 cents, an exact half that
+    rounds away from zero to 1652813. Discounting in binary floats gives 1652812.4999999998, which rounds to 1652812."""
+    assert sol.bond_price_cents(sol.Bond(1_704_285, 179, 1), 496) == 1_652_813
 
 
 def test_bond_price_falls_as_the_yield_rises() -> None:
@@ -405,6 +421,15 @@ def test_trade_quantity_of_501_is_accepted() -> None:
         must_accept(lambda: sol.CashTrade(501, 9_850, 1, 2).events(), "quantity = 501"), "CashTrade.events"
     )
     assert rows == [(2, -501 * 9_850)], "501 units bought at the price settle in period 2 for quantity times price"
+
+
+def test_trade_quantity_of_1001_is_accepted() -> None:
+    """The page refuses quantity below 1 and names no upper limit, so 1001 units is a valid trade: one settlement
+    event in period 2, the buyer paying 1001 times 9850 cents."""
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(1_001, 9_850, 1, 2).events(), "quantity = 1001"), "CashTrade.events"
+    )
+    assert rows == [(2, -1_001 * 9_850)], "1001 units bought at the price settle in period 2 for quantity times price"
 
 
 def test_trade_price_negative_is_refused() -> None:
