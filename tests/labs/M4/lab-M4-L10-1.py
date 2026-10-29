@@ -58,8 +58,9 @@ def t3_cdf(x: float) -> float:
 
 
 def t3_tail_one_sided(x: float) -> float:
-    """P(V > x) for x > 0, as arctan(1/y) minus y/(1+y^2) over pi with y = x/sqrt 3,
-    which avoids subtracting two nearly equal arctangents for large x."""
+    """P(V > x) for x > 0, as arctan(1/y) minus y/(1+y^2) over pi with y = x/sqrt 3.
+    Both subtracted terms are near 1/y for large x, so at x = 1000 the difference is about
+    2e-6 times each term and about six significant digits are lost; the printed values are unaffected."""
     y = x / SQRT3
     return (math.atan(1.0 / y) - y / (1.0 + y * y)) / math.pi
 

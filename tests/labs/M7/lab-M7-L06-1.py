@@ -12,8 +12,8 @@ Sigma is symmetric positive definite. For a risk-aversion parameter gamma > 0 th
 and the second case adds w >= 0. Every number is a fractions.Fraction, so each equality printed as True is exact.
 
 Part A: no sign constraint. The KKT system [[gamma Sigma, 1], [1', 0]] [w; lambda] = [mu; 1] is solved exactly, and the
-result is compared with the closed form w = (a - lambda b)/gamma, where a = Sigma^{-1} mu, b = Sigma^{-1} 1 and
-lambda = (1'a - gamma)/(1'b).
+result is compared with the closed form w = (y - lambda z)/gamma, where y = Sigma^{-1} mu, z = Sigma^{-1} 1 and
+lambda = (1'y - gamma)/(1'z).
 
 Part B: with w >= 0. Each set S of assets fixed at zero gives a reduced equality problem on the other
 assets. The 15 sets that leave at least one asset free are enumerated; the set that fixes all four at zero
@@ -114,12 +114,12 @@ def equality_frontier_point(
 
 
 def closed_form(sigma: list[list[Fraction]], mu: list[Fraction], gamma: Fraction) -> list[Fraction]:
-    """The same minimiser from the closed form (a - lambda b)/gamma, with a = Sigma^{-1} mu and b = Sigma^{-1} 1."""
+    """The same minimiser from the closed form (y - lambda z)/gamma, with y = Sigma^{-1} mu and z = Sigma^{-1} 1."""
     ones = [Fraction(1)] * N_ASSETS
-    a = solve(sigma, mu)
-    b = solve(sigma, ones)
-    lam = (sum(a, Fraction(0)) - gamma) / sum(b, Fraction(0))
-    return [(a[i] - lam * b[i]) / gamma for i in range(N_ASSETS)]
+    y = solve(sigma, mu)
+    z = solve(sigma, ones)
+    lam = (sum(y, Fraction(0)) - gamma) / sum(z, Fraction(0))
+    return [(y[i] - lam * z[i]) / gamma for i in range(N_ASSETS)]
 
 
 def risk(sigma: list[list[Fraction]], w: list[Fraction]) -> Fraction:
@@ -156,7 +156,7 @@ def nonnegative_candidates(
 def main() -> None:
     """Print the simulated inputs, both frontiers, the monotonicity and inequality checks, and the turnover check."""
     _m, mu, sigma = simulate_inputs()
-    print("lab M7 L06 1, SIMULATED inputs from a fixed seed, one period, no random draws")
+    print("lab M7 L06 1, SIMULATED inputs from a fixed seed by an integer recurrence (no library RNG), one period")
     print("mu " + " ".join(str(v) for v in mu))
     print("sigma_diagonal " + " ".join(str(sigma[i][i]) for i in range(N_ASSETS)))
     print(f"sigma_symmetric {all(sigma[i][j] == sigma[j][i] for i in range(N_ASSETS) for j in range(N_ASSETS))}")

@@ -165,9 +165,10 @@ def test_same_seed_gives_the_same_losses() -> None:
         check(first == second, "the same seed must give the same losses (determinism)")
 
 
-def test_different_seed_gives_different_losses() -> None:
-    first = sol.simulate_losses(POSITIONS, COV, 500, SEED, "gaussian", None)
-    other = sol.simulate_losses(POSITIONS, COV, 500, SEED + 1, "gaussian", None)
+@pytest.mark.parametrize("family, nu", [("gaussian", None), ("student_t", NU)])
+def test_different_seed_gives_different_losses(family: str, nu: int | None) -> None:
+    first = sol.simulate_losses(POSITIONS, COV, 500, SEED, family, nu)
+    other = sol.simulate_losses(POSITIONS, COV, 500, SEED + 1, family, nu)
     check(first != other, "a different seed must give different draws")
 
 
