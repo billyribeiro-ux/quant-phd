@@ -707,7 +707,7 @@ def test_expectation_exactly_half_a_cent_above_a_cent_rounds_up_not_to_even() ->
     out = sol.doubling_outcome({**INST, "capital_cents": 2, "base_stake_cents": 1, "win_probability": Fraction(3, 4)})
     expect(
         out["expected_final_wealth_cents"] == 3,
-        "doubling: an expectation of exactly 5/2 cents must round half up, to 3 cents, not to the even neighbour",
+        "doubling: an expectation of exactly 5/2 cents must round half up, not to the even neighbour",
     )
 
 

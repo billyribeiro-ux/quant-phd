@@ -1,12 +1,12 @@
 """Rung 2 completed solution: the term spread and the output gap of the latest quarter, on a SIMULATED path.
 
 Standard library only. Every series here is SIMULATED: the macro path is the path of the rung 1 worked example
-(seed 2026, 2020 Q4 to 2026 Q3), and the two yields are drawn from a seeded generator (seed 2027) around the policy
-rate. The yields are not the embedded snapshot read in rung 3. All rates are in percent per year.
+(seed 2026, 2020 Q4 to 2026 Q3), and the 24 quarterly pairs of yields are drawn from a seeded generator (seed 2027)
+around the policy rate. The yields are not the embedded snapshot read in rung 3. All rates are in percent per year.
 
 * Term spread, in percentage points: the 10-year constant-maturity yield minus the 3-month bill rate, both in
-  percent per year, for the latest quarter. This lab has one SIMULATED pair of quarterly yields, so no mean of daily
-  spreads is taken here.
+  percent per year, for the latest quarter. This lab draws 24 SIMULATED quarterly pairs of yields and reads the latest
+  one, so no mean of daily spreads is taken here.
 * Output gap, the log gap y_log of the conventions: 100 * (ln Y_t minus the fitted trend at t), where the trend is the
   least-squares line in ln Y over the window of WINDOW quarters that ends at t, read at the window's last quarter.
 * Growth and inflation: as in the rung 1 worked example.

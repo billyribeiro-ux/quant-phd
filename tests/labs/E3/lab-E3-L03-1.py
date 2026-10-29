@@ -1,10 +1,10 @@
 """E3 lab L03: the CRRA certainty equivalent in integer cents, checked on one fixed lottery.
 
 The lottery is fixed in the code: three final-wealth outcomes in cents, with exact probabilities 1/4, 1/2 and 1/4.
-No random numbers are drawn, and no data is read, so nothing here is SIMULATED. Standard library only (math and
-fractions), no network. Exact values use fractions.Fraction. The power forms are floating-point, so their checks use
-stated tolerances. A certainty equivalent is a money amount: it is computed once as a float and rounded to whole
-cents by floor(value + 1/2), which rounds halves up. Both the unrounded float and the rounded cents are printed.
+No random numbers are drawn, and no data is read, so nothing here is SIMULATED. Standard library only (itertools,
+math and fractions), no network. Exact values use fractions.Fraction. The power forms are floating-point, so their
+checks use stated tolerances. A certainty equivalent is a money amount: it is computed once as a float and rounded to
+whole cents by floor(value + 1/2), which rounds halves up. Both the unrounded float and the rounded cents are printed.
 """
 
 from __future__ import annotations

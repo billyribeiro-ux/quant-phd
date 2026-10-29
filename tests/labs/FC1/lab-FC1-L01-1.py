@@ -57,7 +57,7 @@ def main() -> None:
     print(f"limit in cents: {cents_half_up(INITIAL_DEPOSIT * limit)}")
 
     print()
-    print("B. Balance sheet after stage n: reserves plus loans equal deposits, in every stage")
+    print("B. Balance sheet at each stage: reserves plus loans equal the deposits received at that stage")
     balanced = True
     reserves_total = Fraction(0)
     loans_total = Fraction(0)

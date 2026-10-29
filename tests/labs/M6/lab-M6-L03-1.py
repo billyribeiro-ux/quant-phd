@@ -61,7 +61,7 @@ def main() -> None:
         (third_quarter - Fraction(1, 2), Fraction(1)),
         (Fraction(1) - third_quarter, Fraction(3)),
     ]
-    print(f"same function with the value at the point 1/2 set to 5: integral = {simple_integral(moved_point)}")
+    print(f"step function plus a point at 1/2 of value 5 (length 0): integral = {simple_integral(moved_point)}")
 
     print("Part B (numerical, 10 decimals): dyadic lower sums of x^2 on [0, 1]")
     values: list[float] = []

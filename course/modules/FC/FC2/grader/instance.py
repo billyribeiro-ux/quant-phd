@@ -12,7 +12,9 @@ expiry's European option chain on six evenly spaced strikes, in integer cents:
 
 The planted violation's exact gross amount is stored, so a test can state it. A draw is rejected, and the next draw
 taken, when any exact parity gap or second difference has a fractional part of one half. Such a value has no unique
-nearest cent under the contract's rule, so it would not be a fair test of a correct implementation.
+nearest cent under the contract's rule, so it would not be a fair test of a correct implementation. A draw is also
+rejected when any quote breaks the model-free bounds of Lesson 5, Theorem 2.2, so no generated chain contains a quote
+that the lessons define as a violation.
 
 Nothing here is a real quote, a real rate or market data.
 """
@@ -39,6 +41,22 @@ def _is_half_cent(x: Fraction) -> bool:
     """True when x is exactly an odd multiple of one half, the tie the contract's rule decides by convention."""
     doubled = 2 * x
     return doubled.denominator == 1 and doubled.numerator % 2 == 1
+
+
+def _within_bounds(spot: int, strikes: list[int], calls: list[int], puts: list[int], df: int) -> bool:
+    """True when every quote lies inside the model-free bounds of Lesson 5, Theorem 2.2, up to half a cent.
+
+    The bounds are 0 <= C <= S, C >= max(S - K df, 0), 0 <= P <= K df and P >= max(K df - S, 0). A quote outside them
+    is a violation that no model is needed to see, so a chain that has one is not a valid SIMULATED chain.
+    """
+    half = Fraction(1, 2)
+    for strike, call, put in zip(strikes, calls, puts, strict=True):
+        discounted = Fraction(strike * df, PPM)
+        if call > spot + half or call < max(spot - discounted, Fraction(0)) - half:
+            return False
+        if put < -half or put > discounted + half or put < max(discounted - spot, Fraction(0)) - half:
+            return False
+    return True
 
 
 def _parity_gap(call: int, put: int, spot: int, strike: int, df: int) -> Fraction:
@@ -88,6 +106,8 @@ def _draw(rng: random.Random) -> dict[str, Any] | None:
     seconds = [_second_difference(strikes, calls, j) for j in range(1, N_STRIKES - 1)]
     if any(_is_half_cent(g) for g in gaps) or any(_is_half_cent(s) for s in seconds):
         return None
+    if not _within_bounds(spot, strikes, calls, puts, df):
+        return None
     if kind == "parity":
         amount = _half_up(abs(gaps[index]))
     elif kind == "convexity":
@@ -111,7 +131,7 @@ def _draw(rng: random.Random) -> dict[str, Any] | None:
 
 
 def make_instance(seed: int) -> dict[str, Any]:
-    """A deterministic SIMULATED chain for ``seed``. Every instance is valid under the project contract."""
+    """A deterministic SIMULATED chain for ``seed``. Every quote satisfies the Theorem 2.2 bounds up to half a cent."""
     for attempt in range(1_000):
         rng = random.Random(1_000_003 * int(seed) + 7_919 * attempt + 101)
         inst = _draw(rng)

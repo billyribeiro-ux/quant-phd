@@ -4,8 +4,9 @@ Standard library only; no network. Prices are whole cents. The order flow is gen
 SIMULATED and every run prints the same numbers. Two fixtures are worked by hand in the lesson and are printed first.
 The matching follows the lesson's rules: a fill is at the resting order's price, the best price is taken first, and
 ties go to the earlier arrival. A market order keeps no residual, so its unfilled shares are cancelled. A stop order
-waits until a trade price reaches its stop price, and then it becomes a market order. Every event is checked for an
-uncrossed book and for share conservation, submitted = resting + 2 * traded + cancelled, which is exact in integers.
+waits until a trade price reaches its stop price, checked once the arriving order has finished matching, and then it
+becomes a market order. Every event is checked for an uncrossed book and for share conservation,
+submitted = resting + 2 * traded + cancelled, which is exact in integers.
 """
 
 from __future__ import annotations

@@ -21,7 +21,8 @@ def forecast(case: Mapping[str, Any]) -> list[dict[str, int]]:
 
 
 def revolver_plan(case: Mapping[str, Any]) -> dict[str, int]:
-    """Peak drawn balance, required commitment (the uncapped peak draw) and the largest shortfall below minimum cash."""
+    """Peak drawn balance, required commitment (the largest drawn balance on the uncapped path, opening balance
+    included) and the largest shortfall below minimum cash."""
     raise NotImplementedError("revolver_plan")
 
 

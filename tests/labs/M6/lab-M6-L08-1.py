@@ -73,11 +73,13 @@ def nested(paths: list[tuple[int, ...]]) -> bool:
 def main() -> None:
     """Print the filtration check, then the level-by-level martingale check for the fair and the biased walk."""
     paths = list(product((1, -1), repeat=N))
+    print("Part A: the natural filtration is nested, and the fair measure has total mass 1")
     print(f"paths {len(paths)} steps {N}")
     print(f"filtration_nested {nested(paths)}")
     total_mass = sum((path_probability(q, FAIR) for q in paths), Fraction(0))
     print(f"total_mass_fair {total_mass}")
 
+    print("Part B: the cell test of Proposition 2.2 at every level, for the fair and the biased walk")
     for label, p in (("fair", FAIR), ("biased", BIASED)):
         print(f"Walk {label} with p = {p}")
         cells_agreeing = 0

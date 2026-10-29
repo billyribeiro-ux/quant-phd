@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 import os
+import warnings
 from collections.abc import Callable
 from fractions import Fraction
 from typing import Any
@@ -216,6 +217,13 @@ def test_bond_face_one_cent_is_accepted() -> None:
     assert checked_events(sol.Bond(1, 0, 1).events(), "Bond.events") == [(1, 1)]
 
 
+def test_bond_face_of_ten_million_units_is_accepted() -> None:
+    """The page names face_cents not positive as refused, so a face of 10**9 cents is valid. Hand check: its coupon
+    is 500 bps of the face, 5 * 10**7 cents, and the one event adds the face to that coupon."""
+    rows = checked_events(must_accept(lambda: sol.Bond(10**9, 500, 1).events(), "face_cents = 10**9"), "Bond.events")
+    assert rows == [(1, 10**9 + 5 * 10**7)], "a one-period bond pays its coupon and its face in that one event"
+
+
 def test_bond_negative_coupon_is_refused() -> None:
     """The page names coupon_bps < 0 as a ValueError."""
     must_raise(lambda: sol.Bond(10_000, -1, 2).events(), "coupon_bps < 0")
@@ -224,6 +232,18 @@ def test_bond_negative_coupon_is_refused() -> None:
 def test_bond_zero_coupon_boundary_is_accepted() -> None:
     """The boundary coupon_bps = 0 is valid (a zero-coupon bond)."""
     must_accept(lambda: sol.Bond(10_000, 0, 2).events(), "coupon_bps = 0")
+
+
+def test_bond_with_twelve_periods_is_valid_and_silent() -> None:
+    """The page names only periods < 1 as refused, so a 12-period bond is valid: it gives one event per period, and
+    neither events() nor bond_price_cents() warns on it."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        bond = sol.Bond(10_000, 500, 12)
+        rows = checked_events(bond.events(), "Bond.events")
+        checked_int(sol.bond_price_cents(bond, 400), "bond_price_cents")
+    assert [p for p, _ in rows] == list(range(1, 13)), "a 12-period bond must have one event per period 1..12"
+    assert caught == [], "a valid input must not warn"
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -362,6 +382,15 @@ def test_trade_quantity_one_is_accepted() -> None:
     assert checked_events(sol.CashTrade(1, 9_850, 1, 2).events(), "CashTrade.events") == [(2, -9_850)]
 
 
+def test_trade_quantity_of_501_is_accepted() -> None:
+    """The page names quantity less than 1 as the refused quantity, so 501 units is a valid trade with one settlement
+    event: 501 units at 9850 cents each, bought in period 2."""
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(501, 9_850, 1, 2).events(), "quantity = 501"), "CashTrade.events"
+    )
+    assert rows == [(2, -501 * 9_850)], "501 units bought at the price settle in period 2 for quantity times price"
+
+
 def test_trade_price_negative_is_refused() -> None:
     """The page names price_cents < 0 as a ValueError."""
     must_raise(lambda: sol.CashTrade(10, -1, 1, 2).events(), "price_cents < 0")
@@ -407,6 +436,15 @@ def test_trade_settlement_day_minus_one_is_refused() -> None:
 def test_trade_settlement_day_one_is_accepted() -> None:
     """The boundary settlement_day = 1 is valid and settles in period 1."""
     assert checked_events(sol.CashTrade(10, 9_850, 1, 1).events(), "CashTrade.events") == [(1, -98_500)]
+
+
+def test_trade_settlement_day_of_100_is_accepted() -> None:
+    """The page names settlement_day less than 1 as refused, so a trade settling in period 100 is valid: its one event
+    is in period 100."""
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(10, 9_850, 1, 100).events(), "settlement_day = 100"), "CashTrade.events"
+    )
+    assert rows == [(100, -98_500)], "a trade has its one event in its settlement period"
 
 
 def test_trade_amount_is_an_int_in_cents() -> None:

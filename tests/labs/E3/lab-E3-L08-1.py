@@ -13,10 +13,10 @@ The ambiguous urn holds k red balls, with k unknown and only known to lie in 30 
  3. Epstein-Zin over two dates: date 0 consumes W0; date 1 consumes final wealth. psi = 1/2, beta = 0.95, gamma = 2,
     at P(red) = 1/2. The CE is the sure date-1 amount that gives the same date-0 value, found by 200 halvings of
     a bracket of 17000 cents, which reaches floating-point resolution.
- 4. Maxmin expected utility over the prior set (alpha = 1), and alpha-MEU with alpha = 1/2, which weights the lowest
+ 4. Maxmin expected utility over the prior set (tau = 1), and alpha-MEU with tau = 1/2, which weights the lowest
     and highest expected utility over the prior set.
 
-Part A prints the four CEs, the alpha-MEU value at alpha = 1/2, the prospect closed form against bisection, and
+Part A prints the four CEs, the alpha-MEU value at tau = 1/2, the prospect closed form against bisection, and
 the ambiguity-aversion check. Part B checks the Epstein-Zin CE against the CRRA CE for three values of psi and two of
 beta. Part C is an Ellsberg-type two-urn check: a known urn (30 red of 90) against an ambiguous urn whose red count is
 any of 0 to 90, under the CRRA utility u(W) = -1/W. Part D checks that a one-element prior set gives expected
@@ -56,13 +56,13 @@ def ce_single_prior(p: Fraction) -> Fraction:
     return 1 / (p / WIN_CENTS + (1 - p) / LOSS_CENTS)
 
 
-def alpha_meu_ce(priors: Sequence[Fraction], alpha: Fraction) -> Fraction:
-    """CE in cents of alpha-MEU: V = alpha * min_P E_P u + (1 - alpha) * max_P E_P u, then CE = u^{-1}(V).
+def alpha_meu_ce(priors: Sequence[Fraction], tau: Fraction) -> Fraction:
+    """CE in cents of alpha-MEU: V = tau * min_P E_P u + (1 - tau) * max_P E_P u, then CE = u^{-1}(V).
 
-    With u(W) = -1/W and inv(P) = E_P[1/W], V = -(alpha * max inv + (1 - alpha) * min inv), so CE = 1/(alpha * max inv
-    + (1 - alpha) * min inv). alpha = 1 is maxmin expected utility."""
+    With u(W) = -1/W and inv(P) = E_P[1/W], V = -(tau * max inv + (1 - tau) * min inv), so CE = 1/(tau * max inv
+    + (1 - tau) * min inv). tau = 1 is maxmin expected utility."""
     invs = [ce_inv(p) for p in priors]
-    return 1 / (alpha * max(invs) + (1 - alpha) * min(invs))
+    return 1 / (tau * max(invs) + (1 - tau) * min(invs))
 
 
 def ce_inv(p: Fraction) -> Fraction:
@@ -163,12 +163,12 @@ def part_a() -> None:
     worst = min(PRIOR_SET, key=ce_single_prior)
     maxmin = alpha_meu_ce(PRIOR_SET, Fraction(1))
     print(
-        f"part A: maxmin, alpha = 1: worst prior is P(red) = {worst}; CE = {float(maxmin):.4f} cents, "
+        f"part A: maxmin, tau = 1: worst prior is P(red) = {worst}; CE = {float(maxmin):.4f} cents, "
         f"whole cents = {half_up(maxmin)}"
     )
     mix = alpha_meu_ce(PRIOR_SET, Fraction(1, 2))
-    print(f"part A: alpha-MEU, alpha = 1/2: CE = {float(mix):.4f} cents, whole cents = {half_up(mix)}")
-    print(f"part A: alpha-MEU at alpha = 1/2 equals the EU CE here = {mix == eu}")
+    print(f"part A: alpha-MEU, tau = 1/2: CE = {float(mix):.4f} cents, whole cents = {half_up(mix)}")
+    print(f"part A: alpha-MEU at tau = 1/2 equals the EU CE here = {mix == eu}")
     print(f"part A: ambiguity aversion holds (maxmin CE <= CE at the average prior) = {maxmin <= eu}")
 
 
@@ -216,7 +216,7 @@ def part_d() -> None:
     eu = ce_single_prior(p_bar)
     print(f"part D: singleton prior {{1/2}}: maxmin CE equals EU CE = {alpha_meu_ce(singleton, Fraction(1)) == eu}")
     print(
-        f"part D: singleton prior {{1/2}}: alpha-MEU with alpha = 1/2 equals EU CE = "
+        f"part D: singleton prior {{1/2}}: alpha-MEU with tau = 1/2 equals EU CE = "
         f"{alpha_meu_ce(singleton, Fraction(1, 2)) == eu}"
     )
 

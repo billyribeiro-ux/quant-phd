@@ -11,7 +11,6 @@ covers only the listed games and the listed quantity grid; it says nothing about
 from __future__ import annotations
 
 from collections.abc import Sequence
-from fractions import Fraction
 
 Payoffs = dict[tuple[int, int], tuple[int, int]]
 
@@ -76,7 +75,7 @@ def main() -> None:
     }
     games = [
         ("1 prisoner's dilemma", ["C", "D"], ["C", "D"], prisoners),
-        ("2 matching pennies", ["H", "T"], ["H", "T"], pennies),
+        ("2 matching pennies", ["Heads", "Tails"], ["Heads", "Tails"], pennies),
         ("3 coordination on three actions", ["a", "b", "c"], ["a", "b", "c"], coordination),
     ]
     for label, rows, cols, payoff in games:
@@ -91,8 +90,6 @@ def main() -> None:
     print(f"cournot equilibria on the grid, ties allowed: {found}")
     print(f"profit in cents at each: {[(cournot_profit(a, b), cournot_profit(b, a)) for a, b in found]}")
     print(f"cournot equilibria on the grid, strict best responses: {cournot_equilibria(grid, strict=True)}")
-    closed = Fraction(100 - 10, 3)
-    print(f"continuous symmetric quantity (a - c) / 3 with a = 100, c = 10: {closed}")
 
 
 main()

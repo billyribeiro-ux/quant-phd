@@ -76,16 +76,16 @@ def part_a() -> None:
         f"part A: on {GRID_POINTS} equally spaced probabilities: nondecreasing = {nondecreasing}, in [0, 1] = {in_unit}"
     )
     closed_gap = max(abs(omega(p) - math.sqrt(p) / (1 + 2 * math.sqrt(p * (1 - p)))) for p in grid)
-    print(
-        f"part A: closed form sqrt(p) / (1 + 2 sqrt(p (1 - p))) agrees with the formula, largest gap {closed_gap:.2e}"
-    )
+    agrees = "agrees with" if closed_gap < 1e-12 else "differs from"
+    print(f"part A: closed form sqrt(p) / (1 + 2 sqrt(p (1 - p))) {agrees} the formula, largest gap {closed_gap:.2e}")
     interior = grid[1:-1]
     above = [omega(p) > p for p in interior]
     changes = sum(1 for a, b in itertools.pairwise(above) if a != b)
-    last_above = max(p for p in interior if omega(p) > p)
+    above_points = [p for p in interior if omega(p) > p]
+    last_text = "none" if not above_points else f"{max(above_points):.3f}"
     print(
         f"part A: interior grid points: sign changes of omega(p) - p = {changes}; last point with omega(p) > p = "
-        f"{last_above:.3f}"
+        f"{last_text}"
     )
 
 

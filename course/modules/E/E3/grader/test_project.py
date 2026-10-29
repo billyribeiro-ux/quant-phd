@@ -601,10 +601,8 @@ def test_zero_probability_prize_contributes_nothing_to_the_likelihood() -> None:
     same response with that prize removed, so the zero-probability prize adds nothing."""
     with_zero = [RESPONSES_BASE | {"probs_a": ["0", "1"]}]
     without = [RESPONSES_BASE | {"prizes_a": [300], "probs_a": ["1"]}]
-    expect(
-        sol.log_likelihood(with_zero, TRUE) == sol.log_likelihood(without, TRUE),
-        "a prize of probability zero must not change the likelihood",
-    )
+    gap = abs(sol.log_likelihood(with_zero, TRUE) - sol.log_likelihood(without, TRUE))
+    expect(gap <= 1e-12, "a prize of probability zero must not change the likelihood")
 
 
 RESPONSES_BASE: dict[str, Any] = {

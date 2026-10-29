@@ -19,6 +19,7 @@ import copy
 import itertools
 import math
 import os
+import re
 import sys
 from fractions import Fraction
 from pathlib import Path
@@ -35,7 +36,9 @@ INST: dict[str, Any] = make_instance(SEED)
 INST2: dict[str, Any] = make_instance(SEED + 7_919)  # a second chain: a fixed answer for one seed must match this too
 PPM = 1_000_000
 FINDING_KEYS = {"kind", "strike_cents", "gross_cents", "net_cents", "explanation"}
-ASSUMPTION_LABEL = "P1"
+# The labels each kind of finding depends on, as the specification states them (the conventions, P1 to P6).
+PARITY_LABELS = ("P1", "P2", "P3", "P4", "P6")
+CONVEXITY_LABELS = ("P1", "P2", "P5", "P6")
 
 
 def chain_of(inst: dict[str, Any]) -> dict[str, Any]:
@@ -581,7 +584,9 @@ def test_scan_explanations_are_nonempty_and_name_the_rule() -> None:
             assert isinstance(text, str) and text.strip(), "each finding needs an explanation"
             rule = "parity" if record["kind"] == "parity" else "convex"
             assert rule in text, "the explanation names the rule that the finding breaks"
-            assert ASSUMPTION_LABEL in text, "the explanation names the assumption it depends on"
+            labels = PARITY_LABELS if record["kind"] == "parity" else CONVEXITY_LABELS
+            for label in labels:
+                assert re.search(rf"\b{label}\b", text), "the explanation names each assumption its kind depends on"
 
 
 def test_scan_matches_exhaustive_oracle_seed() -> None:
@@ -659,6 +664,23 @@ def test_finding_with_net_one_cent_is_returned() -> None:
     __tracebackhide__ = True
     chain = hand_chain([100], [46], [0], spot=100, df=PPM, fee=10, spread=5)
     assert rows_of(sol.scan(chain)) == [("parity", 100, 46, 1)], "a net amount of one cent is positive and returned"
+
+
+def test_convexity_finding_with_net_exactly_zero_is_not_returned() -> None:
+    __tracebackhide__ = True
+    # chord at 110 = 30, call 75: chord less call = -45, gross 45 = 3 legs x (fee 10 + half-spread 5), net 0.
+    # Parity is exact at every strike (put = call - spot + strike), so only the convexity finding is in play.
+    chain = hand_chain([100, 110, 120], [50, 75, 10], [50, 85, 30], spot=100, df=PPM, fee=10, spread=5)
+    assert sol.scan(chain) == [], "a convexity finding whose net amount is exactly zero is not returned"
+
+
+def test_convexity_finding_with_net_one_cent_is_returned() -> None:
+    __tracebackhide__ = True
+    # the same chain with the middle call at 76: chord less call = -46, gross 46, net 1, and parity is still exact
+    chain = hand_chain([100, 110, 120], [50, 76, 10], [50, 86, 30], spot=100, df=PPM, fee=10, spread=5)
+    assert rows_of(sol.scan(chain)) == [("convexity", 110, 46, 1)], (
+        "a convexity finding whose net amount is one cent is positive and returned"
+    )
 
 
 def test_negative_parity_gap_is_reported_with_positive_gross() -> None:
@@ -747,6 +769,25 @@ def test_zero_rate_parity_matches_on_the_seeded_chain() -> None:
 def test_instance_is_labelled_simulated() -> None:
     __tracebackhide__ = True
     assert INST["label"] == "SIMULATED" and INST2["label"] == "SIMULATED", "every instance is labelled SIMULATED"
+
+
+def test_generated_chains_satisfy_the_model_free_bounds_of_theorem_2_2() -> None:
+    __tracebackhide__ = True
+    half = Fraction(1, 2)
+    for seed in range(50):
+        inst = make_instance(seed)
+        spot, df = inst["spot_cents"], inst["df_ppm"]
+        for strike, call, put in zip(inst["strikes_cents"], inst["call_cents"], inst["put_cents"], strict=True):
+            discounted = Fraction(strike * df, PPM)
+            assert call <= spot + half, "a call is at most the spot"
+            assert call >= max(spot - discounted, Fraction(0)) - half, (
+                "a call is at least the spot less the discounted strike"
+            )
+            assert put >= -half, "a put is not negative"
+            assert put <= discounted + half, "a put is at most the discounted strike"
+            assert put >= max(discounted - spot, Fraction(0)) - half, (
+                "a put is at least the discounted strike less the spot"
+            )
 
 
 def test_instance_chains_are_valid_under_the_contract() -> None:
