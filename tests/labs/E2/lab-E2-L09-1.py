@@ -9,7 +9,7 @@ Rules, as the lab implements them. The winners are the k highest bids, and a tie
 Under the uniform-price format each winner pays the (k+1)-th highest bid. Under the discriminatory format each
 winner pays its own bid. Revenue is the total paid. The value of the winners is the sum of the values of the
 winning bidders, and efficiency is that value divided by the sum of the k highest values (the ratio is
-undefined when that sum is 0, and Part A's profile has a positive sum).
+not defined when that sum is not positive; Part A's profile has a positive sum, so the lab does not evaluate that case).
 
 Part A: one fixed profile, with the allocation, both payment rules, both revenues and the efficiency.
 Part B: every bid profile with bids in {0, 1, 2, 3} for the four bidders, which is 256 profiles, with k = 2.

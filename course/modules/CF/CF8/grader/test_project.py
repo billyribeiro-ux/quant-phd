@@ -565,7 +565,7 @@ def test_a_zero_commitment_is_valid_in_every_function(name: str) -> None:
         pytest.fail("commitment: zero is a valid commitment, so no ValueError is allowed.")
 
 
-BAD_ACTIONS: list[Any] = ["DSO", "DPO", "dio", "", "dpo ", "dso ", None, 1]
+BAD_ACTIONS: list[Any] = ["DSO", "DPO", "dio", "", "dpo ", "dso ", None, 1, True]
 BAD_ACTION_IDS = [
     "upper-case-dso",
     "upper-case-dpo",
@@ -575,6 +575,7 @@ BAD_ACTION_IDS = [
     "trailing-space-dso",
     "none",
     "int",
+    "bool-true",
 ]
 
 

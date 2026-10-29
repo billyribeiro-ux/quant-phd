@@ -1,9 +1,10 @@
 """E3 L08 lab 1: certainty equivalents of one gamble under four preference models, and a two-urn check.
 
-Money is in integer cents (100 cents = 1 CU). Initial wealth is W0 = 100000 cents (1000 CU). The gamble is a bet on
+Inputs are integer cents (100 cents = 1 CU). Initial wealth is W0 = 100000 cents (1000 CU). The gamble is a bet on
 one ball drawn from an urn of 90 balls: final wealth is 110000 cents (a gain of 10000 cents) if the ball is red and
 95000 cents (a loss of 5000 cents) otherwise. A certainty equivalent (CE) is the sure final wealth, in cents, that
-the model ranks equal to the gamble. Each CE is rounded once, half up, to a whole cent.
+the model ranks equal to the gamble. Part A rounds each of the four model CEs once, half up, to a whole cent; Parts B
+and C print unrounded values.
 
 The ambiguous urn holds k red balls, with k unknown and only known to lie in 30 to 60 (the prior set). Four models:
  1. Expected utility with CRRA utility u(W) = -1/W (gamma = 2), at P(red) = 1/2, the average of the prior set.
@@ -18,8 +19,8 @@ The ambiguous urn holds k red balls, with k unknown and only known to lie in 30 
 Part A prints the four CEs, the alpha-MEU value at alpha = 1/2, the prospect closed form against bisection, and
 the ambiguity-aversion check. Part B checks the Epstein-Zin CE against the CRRA CE for three values of psi and two of
 beta. Part C is an Ellsberg-type two-urn check: a known urn (30 red of 90) against an ambiguous urn whose red count is
-any of 0 to 90. Part D checks that a one-element prior set gives expected utility. Standard library only; no
-randomness and no network access.
+any of 0 to 90, under the CRRA utility u(W) = -1/W. Part D checks that a one-element prior set gives expected
+utility. Standard library only; no randomness and no network access.
 """
 
 from __future__ import annotations
@@ -110,12 +111,12 @@ def prospect_inverse_by_bisection(v: float) -> float:
 
 
 def ez_value(c0: float, date1: Sequence[tuple[float, float]], psi: float, beta: float) -> float:
-    """Two-date Epstein-Zin value V0 = [(1 - beta) c0**rho + beta * (E[c1**(1 - gamma)])**(rho / (1 - gamma))]**(1/rho),
-    with rho = 1 - 1/psi, gamma = GAMMA and the terminal value V1 = c1. The sure amount is a one-point distribution."""
-    rho = 1.0 - 1.0 / psi
+    """Two-date Epstein-Zin value V0 = [(1 - beta) c0**a + beta * (E[c1**(1 - gamma)])**(a / (1 - gamma))]**(1/a),
+    with a = 1 - 1/psi, gamma = GAMMA and the terminal value V1 = c1. The sure amount is a one-point distribution."""
+    a = 1.0 - 1.0 / psi
     expectation = sum(p * c1 ** (1.0 - GAMMA) for c1, p in date1)
-    inner = (1.0 - beta) * c0**rho + beta * expectation ** (rho / (1.0 - GAMMA))
-    return float(inner ** (1.0 / rho))
+    inner = (1.0 - beta) * c0**a + beta * expectation ** (a / (1.0 - GAMMA))
+    return float(inner ** (1.0 / a))
 
 
 def ez_certainty_equivalent(c0: float, date1: Sequence[tuple[float, float]], psi: float, beta: float) -> float:
@@ -199,7 +200,8 @@ def part_c() -> None:
     known_black = ce_bet(black_known)
     amb_red = min(ce_bet(p) for p in FULL_PRIOR_SET)
     amb_black = min(ce_bet(1 - p) for p in FULL_PRIOR_SET)
-    print("part C: bet pays 10000 cents on a win and 0 otherwise; wealth is 100000 or 110000 cents")
+    print("part C: CRRA utility u(W) = -1/W; the bet pays 10000 cents on a win and 0 otherwise")
+    print("part C: wealth is 100000 or 110000 cents")
     print(f"part C: known urn (30 red of 90): red CE = {float(known_red):.4f}, black CE = {float(known_black):.4f}")
     print(
         f"part C: ambiguous urn (red count 0 to 90): maxmin red CE = {float(amb_red):.4f}, "

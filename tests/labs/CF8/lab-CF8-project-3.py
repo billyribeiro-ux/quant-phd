@@ -1,7 +1,7 @@
 """CF8 project lab 3 (rung 3, reference run): the outcome table of a second SIMULATED case, to check your engine.
 
 SIMULATED: a case written here for teaching. It is not any company's data. Money is in whole cents on input; the
-printed values are dollars or days, to two decimals. Standard library only, no randomness, no network.
+printed values are dollars to two decimals. Standard library only, no randomness, no network.
 
 Run treasury_forecast.py on exactly this case (the dict CASE below, with the same keys) and compare the printed
 lines with your engine's output, after dividing money by 100. A line that differs is a defect in one of the two. The

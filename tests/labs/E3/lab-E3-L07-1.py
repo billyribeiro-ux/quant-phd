@@ -11,8 +11,8 @@ last grid point with omega(p) > p.
 Part B: two finite lotteries on gains, A and B. The distribution-function test of first-order dominance (the
 test of Lesson 4) shows that B dominates A: its distribution function is at or below A's at every outcome,
 with strict inequality somewhere.
-Part C: the non-cumulative weighted value V(L) = sum over outcomes of omega(p_i) * v(x_i), with v(x) = x**alpha
-for gains, at alpha = 1 and alpha = 0.5. It prints V(A) and V(B) and which lottery is ranked higher.
+Part C: the non-cumulative weighted value Gamma(L) = sum over outcomes of omega(p_i) * v(x_i), with v(x) = x**alpha
+for gains, at alpha = 1 and alpha = 0.5. It prints Gamma(A) and Gamma(B) and which lottery is ranked higher.
 Part D: a finite family of nondecreasing utilities (power functions and step functions). For each one it checks
 whether the expected utility of B is at least that of A, prints any utility that ranks A above B, and prints the count.
 
@@ -105,7 +105,7 @@ def part_c() -> None:
         va = weighted_value(LOTTERY_A, alpha)
         vb = weighted_value(LOTTERY_B, alpha)
         ranked = "A above B" if va > vb else "B at or above A"
-        print(f"part C: alpha = {alpha:g}  V(A) = {va:.4f}  V(B) = {vb:.4f}  weighted ranking: {ranked}")
+        print(f"part C: alpha = {alpha:g}  Gamma(A) = {va:.4f}  Gamma(B) = {vb:.4f}  weighted ranking: {ranked}")
 
 
 def power_utility(a: float) -> Callable[[float], float]:

@@ -1,4 +1,5 @@
-"""CF8 L05 lab 1: a seeded simulation of one year of net cash flow, and how often a cash buffer runs short. SIMULATED.
+"""CF8 L05 lab 1: a seeded simulation of 2000 years of twelve monthly net cash flows, and how often a cash buffer
+runs short. SIMULATED.
 
 SIMULATED: every monthly net cash flow in this lab is drawn from the seeded generator written in this file. No company,
 filing or market series is read, and the flows are not a forecast for any firm.

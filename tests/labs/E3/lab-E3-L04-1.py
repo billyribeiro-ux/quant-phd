@@ -232,6 +232,8 @@ def main() -> None:
         fosd_agree += fv == fe
         if fv == "X dominates Y":
             integrated_ok = integrated_ok and all(integrated_cdf(px, t) <= integrated_cdf(py, t) for t in SUPPORT)
+        elif fv == "Y dominates X":
+            integrated_ok = integrated_ok and all(integrated_cdf(py, t) <= integrated_cdf(px, t) for t in SUPPORT)
         line = f"pair {n:02d} ({kind}): FOSD {fv}; expected-utility agrees: {fv == fe}"
         if mean(px) == mean(py):
             sv = sosd_cdf_verdict(px, py)
@@ -244,7 +246,10 @@ def main() -> None:
 
     print(f"FOSD verdicts over the 24 pairs: {dict(sorted(fosd_counts.items()))}")
     print(f"FOSD CDF verdict and expected-utility verdict agree on {fosd_agree} of {len(pairs)} pairs")
-    print(f"FOSD-dominated pairs also satisfy I_X <= I_Y at every support point: {integrated_ok}")
+    print(
+        "FOSD-ranked pairs also satisfy the integrated order in the same direction at every support point: "
+        f"{integrated_ok}"
+    )
     print(f"equal-mean pairs: {sosd_total}; SOSD verdicts: {dict(sorted(sosd_counts.items()))}")
     print(
         f"SOSD integrated verdict and expected-utility verdict agree on {sosd_agree} of {sosd_total} equal-mean pairs"

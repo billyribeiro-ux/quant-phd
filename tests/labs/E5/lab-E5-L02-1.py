@@ -6,7 +6,7 @@ embedded in this program yet, so the lesson's curriculum lab runs on this genera
 
 The economy has output Y_t = A_t * K_t**ALPHA * L_t**(1 - ALPHA) for periods t = 0 to HORIZON, with capital share
 ALPHA = 0.3. Output is computed from the levels. The growth of Y is then measured from the Y levels, and the three-term
-growth-accounting identity is checked against the generated growth of A, K and L.
+growth-accounting identity is checked against the generated growth of A.
 
 Logs are natural logs. Growth rates are log growth, ln x_t - ln x_(t-1), unless a line says simple. Each printed number
 is shown to six decimal places; the comparisons use the unrounded floats.
@@ -88,7 +88,7 @@ def main() -> None:
     share_labour = labour_term / mean_y
     share_residual = mean_residual / mean_y
     print(
-        f"shares of average Y growth: capital {share_capital:.6f}, labour {share_labour:.6f}, "
+        f"shares of average log growth of Y: capital {share_capital:.6f}, labour {share_labour:.6f}, "
         f"residual {share_residual:.6f}"
     )
     print(f"the three shares sum to 1: {abs(share_capital + share_labour + share_residual - 1.0) < 1e-12}")

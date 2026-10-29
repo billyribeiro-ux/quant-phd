@@ -17,6 +17,7 @@ from __future__ import annotations
 import itertools
 import math
 import os
+import warnings
 from collections.abc import Callable
 from fractions import Fraction
 from typing import Any
@@ -206,8 +207,8 @@ def test_control_walk_breaks_the_identity(inst: dict[str, Any]) -> None:
     )
     expect(
         value != 0,
-        "the control walk is not a martingale, so its stopped expectation must differ from S_0 = 0. A fixed fair coin "
-        "would make the control pass the identity.",
+        "the control walk is not a martingale, so its stopped expectation must differ from the starting value of the "
+        "walk. A fixed fair coin would make the control pass the identity.",
     )
 
 
@@ -244,7 +245,7 @@ def test_horizon_minus_one_raises_value_error() -> None:
     must_raise(lambda: sol.stopped_value_expectation(inst), "a horizon N below 1 (negative)")
 
 
-@pytest.mark.parametrize("level", [-2, -1, 2])
+@pytest.mark.parametrize("level", [-2, -1, 0, 1, 2])
 @pytest.mark.parametrize("win", [HALF, CONTROL_WIN, Fraction(2, 3)])
 def test_stopping_level_both_directions_matches_enumeration(level: int, win: Fraction) -> None:
     inst = with_(INST, stop_level=level, win_probability=win)
@@ -462,7 +463,7 @@ def test_expectation_below_half_cent_rounds_down() -> None:
     out = sol.doubling_outcome({**INST, "capital_cents": 1, "base_stake_cents": 1, "win_probability": Fraction(1, 5)})
     expect(
         out["expected_final_wealth_cents"] == 0,
-        "doubling: an expectation of 2/5 of a cent must round down to 0 cents under the half-up rule",
+        "doubling: an expectation below half a cent must round down under the half-up rule, not up",
     )
 
 
@@ -508,7 +509,7 @@ def test_dyadic_value_at_zero_uses_the_first_cell() -> None:
 def test_dyadic_value_just_below_a_cell_edge_stays_in_the_cell() -> None:
     expect(
         sol.dyadic_martingale_value(INST, 1, Fraction(1, 2) - Fraction(1, 1000)) == Fraction(1, 4),
-        "a point just below the edge 1/2 lies in the first cell, so the level-1 value is 1/4",
+        "a point just below a cell edge lies in the cell on its left, so the value is that cell's midpoint",
     )
 
 
@@ -517,7 +518,10 @@ def test_dyadic_value_is_the_cell_midpoint() -> None:
         sol.dyadic_martingale_value(INST, 1, Fraction(1, 10)) == Fraction(1, 4),
         "the level-1 value at a point of the first cell must be that cell's midpoint",
     )
-    expect(sol.dyadic_martingale_value(INST, 1, Fraction(1, 2)) == Fraction(3, 4), "the cell [1/2, 1] starts at 1/2")
+    expect(
+        sol.dyadic_martingale_value(INST, 1, Fraction(1, 2)) == Fraction(3, 4),
+        "a cell contains its left edge, so the value at an edge is the midpoint of the cell that starts there",
+    )
     expect(sol.dyadic_martingale_value(INST, 1, Fraction(1)) == Fraction(3, 4), "x = 1 lies in the last cell")
     expect(
         sol.dyadic_martingale_value(INST, 2, Fraction(3, 10)) == Fraction(3, 8),
@@ -575,3 +579,213 @@ def test_horizon_drives_the_enumeration_length() -> None:
         prob == Fraction(2, 2**10),
         "horizon 10 at level 10: count the paths that reach the level and check the probability",
     )
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Boundary classes. Each test names one condition from the specification and fails only for that condition.
+
+
+@pytest.mark.parametrize("win", [HALF, CONTROL_WIN, Fraction(2, 3)])
+def test_stopping_cap_of_one_step_matches_enumeration(win: Fraction) -> None:
+    inst = with_(INST, stop_cap=1, win_probability=win)
+    value = must_accept(lambda: sol.stopped_value_expectation(inst), "a stopping cap of one step")
+    expect(
+        value == enum_stopped(inst),
+        "a stopping rule with cap 1 stops after its first step, at the first time the level is reached or at time 1.",
+    )
+
+
+@pytest.mark.parametrize("win", [CONTROL_WIN, Fraction(2, 3)])
+def test_cap_equal_to_horizon_matches_enumeration_for_biased_walk(win: Fraction) -> None:
+    inst = with_(INST, stop_cap=INST["horizon"], win_probability=win)
+    value = must_accept(lambda: sol.stopped_value_expectation(inst), "a stopping rule bounded by N, biased walk")
+    expect(value == enum_stopped(inst), "a stopping time equal to the horizon N must be handled exactly")
+
+
+@pytest.mark.parametrize("win", [CONTROL_WIN, Fraction(2, 3)])
+def test_level_equal_to_start_is_first_checked_after_a_step(win: Fraction) -> None:
+    inst = with_(INST, stop_level=0, win_probability=win)
+    value = must_accept(lambda: sol.stopped_value_expectation(inst), "a stopping level equal to the start")
+    expect(
+        value == enum_stopped(inst),
+        "a stopping level equal to the starting value is first checked at time 1, after the first step, not at time 0.",
+    )
+
+
+def test_doob_uses_the_fair_walk_whatever_the_instance_win_probability() -> None:
+    biased = control(INST)
+    for lam in range(1, int(INST["horizon"]) + 1):
+        prob, bound = sol.doob_max_probability(biased, lam)
+        exact_prob, exact_bound = enum_doob(INST, lam)
+        expect(
+            prob == exact_prob and bound == exact_bound,
+            "Doob's inequality is stated for the fair walk X_k = |S_k|: its values must not use the instance's win "
+            "probability.",
+        )
+
+
+def test_doob_probability_and_bound_are_exact_fractions() -> None:
+    prob, bound = sol.doob_max_probability(INST, 1)
+    expect(
+        type(prob) is Fraction and type(bound) is Fraction,
+        "Doob's inequality: the probability and the bound are both exact fractions.Fraction values",
+    )
+
+
+def test_stopped_expectation_is_an_exact_fraction() -> None:
+    value = sol.stopped_value_expectation(INST)
+    expect(type(value) is Fraction, "optional stopping: E[S_tau] is returned as an exact fractions.Fraction")
+
+
+@pytest.mark.parametrize("capital", [62, 63, 64, 1, 2])
+def test_max_stake_is_the_largest_stake_placed(capital: int) -> None:
+    out = sol.doubling_outcome(with_(INST, capital_cents=capital, base_stake_cents=1))
+    bets = enum_doubling(capital, 1, HALF)["bets"]
+    expect(
+        out["max_stake_cents"] == 2 ** (bets - 1),
+        "doubling: max_stake_cents is the largest stake placed, which is the stake of the last bet that is placed",
+    )
+
+
+def test_bet_count_changes_exactly_where_the_stake_stops_fitting() -> None:
+    for capital in range(1, 41):
+        out = sol.doubling_outcome(with_(INST, capital_cents=capital, base_stake_cents=1))
+        expect(
+            out["bets_allowed"] == enum_doubling(capital, 1, HALF)["bets"],
+            "doubling: the number of bets placed changes only when the next stake stops fitting the wealth on hand. "
+            "Check the condition that a stake must not exceed the wealth on hand.",
+        )
+
+
+@pytest.mark.parametrize("win", [CONTROL_WIN, HALF, Fraction(2, 3)])
+def test_doubling_every_small_capital_and_base_matches_enumeration(win: Fraction) -> None:
+    for base in (1, 2, 3):
+        for capital in range(base, 41):
+            inst = with_(INST, capital_cents=capital, base_stake_cents=base, win_probability=win)
+            out = sol.doubling_outcome(inst)
+            exact = enum_doubling(capital, base, win)
+            expect(
+                out["bets_allowed"] == exact["bets"]
+                and out["win_probability"] == exact["win"]
+                and out["ruin_probability"] == exact["ruin"]
+                and exact["wealth_on_win"] == {out["wealth_on_win_cents"]}
+                and exact["wealth_on_ruin"] == {out["wealth_on_ruin_cents"]}
+                and out["max_stake_cents"] == base * 2 ** (exact["bets"] - 1)
+                and out["expected_final_wealth_cents"] == nearest_cent(exact["expected"]),
+                "doubling: for a small capital and base, the bets, probabilities, wealths, largest stake and rounded "
+                "expectation must all match the exact enumeration",
+            )
+
+
+def test_base_one_cent_below_the_capital_is_accepted() -> None:
+    inst = with_(INST, capital_cents=10, base_stake_cents=9)
+    out = must_accept(lambda: sol.doubling_outcome(inst), "a base stake one cent below the capital")
+    expect(
+        out["bets_allowed"] == enum_doubling(10, 9, HALF)["bets"],
+        "doubling with base 9 and capital 10: the number of bets allowed must match the exact enumeration",
+    )
+
+
+def test_base_one_cent_above_the_capital_raises_value_error() -> None:
+    must_raise(
+        lambda: sol.doubling_outcome(with_(INST, capital_cents=1, base_stake_cents=2)),
+        "a base stake one cent above a positive capital",
+    )
+
+
+@pytest.mark.parametrize("capital", [0, -1])
+def test_capital_of_zero_or_less_raises_whatever_the_base(capital: int) -> None:
+    must_raise(
+        lambda: sol.doubling_outcome(with_(INST, capital_cents=capital, base_stake_cents=capital)),
+        "a capital of zero or less, with a base stake equal to it",
+    )
+
+
+def test_expectation_exactly_half_a_cent_above_a_cent_rounds_up_not_to_even() -> None:
+    # Capital 2 cents, base 1 cent, win probability 3/4: one placed bet. A win leaves 3 cents with probability 3/4 and
+    # a loss leaves 1 cent with probability 1/4, so E = 5/2 cents. Half up gives 3 cents; rounding half to even gives 2.
+    out = sol.doubling_outcome({**INST, "capital_cents": 2, "base_stake_cents": 1, "win_probability": Fraction(3, 4)})
+    expect(
+        out["expected_final_wealth_cents"] == 3,
+        "doubling: an expectation of exactly 5/2 cents must round half up, to 3 cents, not to the even neighbour",
+    )
+
+
+def test_expectation_is_rounded_once_not_after_the_probability() -> None:
+    # Capital 1 cent, base 1 cent: E = 2p cents. For p = 1/4 - 1/10**7 the exact value is 0.4999998 cents, which half
+    # up gives as 0 cents. Rounding p to six decimals first gives 0.25 and then 0.5 cents, which gives 1 cent.
+    p = Fraction(1, 4) - Fraction(1, 10**7)
+    out = sol.doubling_outcome({**INST, "capital_cents": 1, "base_stake_cents": 1, "win_probability": p})
+    expect(
+        out["expected_final_wealth_cents"] == 0,
+        "doubling: the expectation is rounded once, half up, from the exact value, "
+        "not after the probability is rounded",
+    )
+
+
+def test_expectation_is_rounded_from_the_exact_value_not_a_float() -> None:
+    # Capital 1 cent, base 1 cent: E = 2p cents. For p = 1/4 - 1/2**60 the exact value is 1/2 - 2**-59 cents, which
+    # half up gives as 0 cents. Converting to a float first rounds the value to exactly 1/2, which gives 1 cent.
+    p = Fraction(1, 4) - Fraction(1, 2**60)
+    out = sol.doubling_outcome({**INST, "capital_cents": 1, "base_stake_cents": 1, "win_probability": p})
+    expect(
+        out["expected_final_wealth_cents"] == 0,
+        "doubling: the expectation is computed from the exact value and rounded once, half up, so a float must not be "
+        "used on the way",
+    )
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 4, 5, 6])
+def test_dyadic_value_at_each_cell_left_edge_takes_the_cell_to_the_right(n: int) -> None:
+    cells = 2**n
+    for j in range(cells):
+        expect(
+            sol.dyadic_martingale_value(INST, n, Fraction(j, cells)) == Fraction(2 * j + 1, 2 * cells),
+            "dyadic martingale: cells are half-open, so a point on the left edge of a cell belongs to that cell, and "
+            "its value is that cell's midpoint",
+        )
+
+
+@pytest.mark.parametrize("n", [1, 2, 3, 4, 5, 6])
+def test_dyadic_value_just_below_each_cell_edge_stays_in_the_cell_on_the_left(n: int) -> None:
+    cells = 2**n
+    for j in range(1, cells):
+        x = Fraction(j, cells) - Fraction(1, 10**6)
+        expect(
+            sol.dyadic_martingale_value(INST, n, x) == Fraction(2 * (j - 1) + 1, 2 * cells),
+            "dyadic martingale: a point just below a cell edge lies in the cell on its left, so the value is that "
+            "cell's midpoint",
+        )
+
+
+@pytest.mark.parametrize("n", [1, 10])
+def test_dyadic_value_at_one_is_in_the_closed_last_cell(n: int) -> None:
+    cells = 2**n
+    expect(
+        sol.dyadic_martingale_value(INST, n, Fraction(1)) == Fraction(2 * cells - 1, 2 * cells),
+        "dyadic martingale: the last cell is closed at 1, so x = 1 takes that cell's midpoint",
+    )
+
+
+def test_no_function_prints_or_warns(capsys: pytest.CaptureFixture[str]) -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sol.stopped_value_expectation(INST)
+        sol.doob_max_probability(INST, 1)
+        sol.doubling_outcome(INST)
+        sol.dyadic_martingale_error(INST, 2)
+        sol.dyadic_martingale_value(INST, 2, Fraction(1, 3))
+    captured = capsys.readouterr()
+    expect(captured.out == "" and captured.err == "", "no function may print: the engine returns values only")
+    expect(not caught, "no function may warn: the engine must run without a warning")
+
+
+def test_money_fields_are_integers_of_cents() -> None:
+    for candidate in (INST, control(INST)):
+        out = sol.doubling_outcome(candidate)
+        for key in ("wealth_on_win_cents", "wealth_on_ruin_cents", "max_stake_cents", "expected_final_wealth_cents"):
+            expect(
+                type(out[key]) is int,
+                "every money amount is an integer number of cents: the doubling outcome must return int values for its "
+                "cent fields",
+            )

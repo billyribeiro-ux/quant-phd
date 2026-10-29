@@ -1,7 +1,7 @@
 """CF8 project lab 1 (rung 1, worked example): a 13-week forecast with a revolver on a SIMULATED stressed case.
 
 SIMULATED: a manufacturer case written here for teaching. It is not any company's data. Money is in whole cents; the
-printed values are dollars to two decimals, and rates are cents per day. Standard library only, no randomness, no
+printed values, daily rates included, are dollars to two decimals. Standard library only, no randomness, no
 network. The rules are those of the specification on the project page:
 
 * a week has seven days, and a day's sales are collected collection_lag days after the sale;
@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 from fractions import Fraction
 
-COLLECTION_LAG = 45  # days: the collection lag, which is the DSO of the steady business
+COLLECTION_LAG = 45  # days: the collection lag, the days of sales a steady business holds as receivables
 PAYMENT_LAG = 30  # days
 SALES = [1_000_000] * 3 + [800_000] * 10  # cents of sales in weeks 1 to 13: a slowdown from week 4
 PURCHASES = [700_000] * 13  # cents of purchases in weeks 1 to 13
