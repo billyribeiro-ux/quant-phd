@@ -33,7 +33,7 @@ from instance import make_instance
 pytestmark = pytest.mark.filterwarnings("error")
 
 SEED = int(os.environ.get("QF_SEED", "0"))
-TOL = 1e-8  # every residual of the page is compared with this tolerance
+TOL = 1e-8  # the tolerance for feasibility, stationarity and complementary slackness; agreement uses 1e-9
 FIELDS = ("gamma", "mu", "sigma", "w0", "lower", "upper", "sector", "sector_caps", "turnover_limit")
 CERTIFICATE_KEYS = ("primal_residual", "stationarity_residual", "dual_residual", "complementary_slackness")
 PRISTINE: dict[str, Any] = json.loads(make_instance(SEED)["payload"])
@@ -373,8 +373,9 @@ def test_certificate_residuals_are_within_tolerance() -> None:
 def test_no_feasible_comparator_beats_the_solution(y_weight: float) -> None:
     """Each comparator is a convex mix of the solution and the starting portfolio, so it is feasible.
 
-    y_weight is the share of the starting portfolio in the mix. Each mix lies strictly between the answer and the
-    starting portfolio, so none of the comparators is the answer itself.
+    y_weight is the share of the starting portfolio in the mix. Each mix lies between the answer and the starting
+    portfolio. When the answer is the starting portfolio (the reference gives that answer on seeds 162, 163, 182 and
+    267, among seeds 0 to 299), every mix equals the answer, and the check holds with equality.
     """
     w = weights_of(seed_output())
     y = [(1 - y_weight) * w[i] + y_weight * PRISTINE["w0"][i] for i in range(N)]
@@ -630,7 +631,7 @@ def test_named_condition_boundary_is_accepted(
 
 
 def _gamma_just_below_zero(case: dict[str, Any]) -> None:
-    """Gamma one-millionth below zero: not positive, so refused (the boundary of the sign, from the other side)."""
+    """Gamma one-trillionth below zero: not positive, so refused (the boundary of the sign, from the other side)."""
     case["gamma"] = -0.000000000001
 
 

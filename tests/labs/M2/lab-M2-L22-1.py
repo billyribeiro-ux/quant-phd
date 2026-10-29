@@ -5,9 +5,10 @@ Part A: maximize f(x, a) = a * ln(1 + x) - x over x in [0, 10], for a in {1.5, 2
 and the value function is V(a) = a ln a - (a - 1), so V'(a) = ln a. The lab finds x_hat by golden-section search, then
 compares a central difference of V (step 1e-4) with ln a and with the partial derivative f_a(x_hat, a) = ln(1 + x_hat).
 Part B: maximize x * y subject to x + y = a. The constraint is absorbed by substituting y = a - x, which leaves the
-unconstrained problem F(x, a) = x * (a - x). The value is V(a) = a**2 / 4, so V'(a) = a / 2. The lab compares the
-central difference of V with a / 2, and it prints the naive partial derivative of x * y with respect to a at fixed x
-and y, which is 0, to show why the constraint cannot be ignored.
+problem of maximizing F(x, a) = x * (a - x) over x in [0, a], which keeps x and y nonnegative.
+The value is V(a) = a**2 / 4, so V'(a) = a / 2. The lab compares the central difference of V with a / 2, and it
+prints the naive partial derivative of x * y with respect to a at fixed x and y, which is 0, to show why the
+constraint cannot be ignored.
 Standard library only; no randomness and no network access.
 """
 
