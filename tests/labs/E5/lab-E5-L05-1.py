@@ -1,7 +1,8 @@
 """E5 L05 lab 1: the linear AD-AS equilibrium, a demand shift traced exactly, and the long-run price level.
 
 Inputs are illustrative model units, not data. Output is in index points, the price level is an index with
-expected price level 1 at the base date, and every value is an exact fraction. Nothing is random.
+expected price level 1 at the base date, and every value is computed as an exact fraction and printed rounded (see the
+rounding rule). Nothing is random.
 
 The model (Assumptions A1 to A3 of Lesson 5): AD is Y = a - eta P with a, eta > 0; short-run AS is
 Y = Ybar + nu (P - Pe) with nu > 0; potential output Ybar = 1000 index points; expected price level Pe = 1.

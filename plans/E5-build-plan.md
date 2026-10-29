@@ -125,7 +125,7 @@ Ordering check (no lesson links a later definition; `check_dag.py` checks linked
 - L03 uses L02 (`growth-accounting`, `total-factor-productivity`) and M2 `implicit-function-theorem`, `derivative`.
 - L04 uses E1 `comparative-statics` and `competitive-equilibrium` (for market-clearing language) and L03 for the capital
   stock only in prose.
-- L05 uses L04 (`is-lm-model`) for the aggregate-demand curve.
+- L05 uses L04 (`is-lm-model`) only in Remark 1.2 (why the linear form is an assumption). Its demand curve is the linear form A1, not a derivation from IS-LM (deviation recorded in `plans/E5-open-items.md`, Slice b).
 - L06 uses L05 (`ad-as-model`) for the output side of the curve and E1 `price-elasticity` only in prose.
 - L07 uses L06 (`phillips-curve`) for the inflation gap, and L04 for the output gap.
 - L08 uses L04 (`is-lm-model`) and L07 (`policy-rate`) for the monetary offset.
@@ -219,7 +219,7 @@ Registered symbols that E5 must not give a different meaning (`notation/notation
 | `R_f` | gross riskless return (AP1) | Not used. Nominal policy rate is `i`; real rate is `r`. |
 | `\Phi`, `\Phi^{-1}` | standard normal CDF (M4) | Not used. |
 | `\gamma_3`, `\gamma_4` | skewness, kurtosis (M4) | Not used. Plain `\gamma` is free but is not used either. |
-| `\E` (macro) | expectation operator | Use the macro for expected inflation and expectations. Do not write `E` for expectation in plain text. |
+| `\E` (macro) | expectation operator | Use the macro for the expectation operator applied to a random quantity. Expected inflation is not written with it: L06 writes `\pi^{e}_t` (decision in `plans/E5-open-items.md`, Slice b). Do not write `E` for expectation in plain text. |
 | `\R` (macro) | real numbers | Standard. |
 
 Local symbols (allowed; `notation.json` `about`: letters conventionally local are defined per lesson): `Y` output,
@@ -229,7 +229,7 @@ rate, `u` unemployment rate, `\pi` inflation, `i` nominal interest rate, `r` rea
 Each is defined on the lesson where it first appears and never redefined. A symbol with a registered meaning above is not
 reused with another meaning in any lesson or the project.
 
-NOTATION_REQUESTS: none. The plan uses only local symbols and the registered `\E` and `\R` macros.
+NOTATION_REQUESTS: none. The plan uses only local symbols and the registered `\R` macro. Expected inflation is `\pi^{e}_t`, a local symbol; the registered `\E` (expectation operator) is not used for it (decision in `plans/E5-open-items.md`, Slice b).
 
 ---
 
@@ -256,12 +256,13 @@ For each lesson the builder writes the §2.2 structure (BUILDER_RULES §4.2). Ma
   statistic (the measurement of cycles, i.e. filters and volatility, is outside the closure, §4 DAG D2); the IS and LM
   relations, solved exactly for a linear specification; `hicks1937mr` cited at paper level for the IS-LM construction (grade B
   or C, with the counter-evidence named, see §7 REFERENCE_REQUESTS on the IS-LM critique if needed).
-- **L05** `ad-as-model`: the aggregate-demand curve from IS-LM, the aggregate-supply curve (short run and long run), and
-  equilibrium; one demand shock traced exactly (T for the linear case).
+- **L05** `ad-as-model`: the linear aggregate-demand curve A1 (taken as the model; not derived from IS-LM, with the
+  Remark 1.2 caveat that IS-LM demand is affine in 1/P, not linear in P), the aggregate-supply curve (short run and long
+  run), and equilibrium; one demand shock traced exactly (T for the linear case).
 - **L06** `phillips-curve`, `natural-rate-of-unemployment`: the Phillips curve in its expectations-augmented form
   (stated as a model, no empirical claim without counter-evidence), and the natural rate as the unemployment rate at
   which inflation does not change (T in the model). `phelps1968money` cited at paper level for the expectations-augmented
-  construction. Expected inflation is written with the `\E` macro and defined in prose (no concept link, DAG D1).
+  construction. Expected inflation is written `\pi^{e}_t` and defined in prose (no concept link, DAG D1); the `\E` macro is not used (decision in `plans/E5-open-items.md`, Slice b).
 - **L07** `policy-rate`, `taylor-rule`: the policy-rate reaction function `i_t = r^{n} + \pi_t + \phi_\pi(\pi_t - \bar\pi) +
   \phi_y y_t`, with `\bar\pi` the inflation target with the parameter restrictions stated (T for the rule as defined; no empirical value of \phi_\pi or \phi_y
   is typed). The rule as a description of practice is grade C at most. `taylor1993discretion` is registry-verified but

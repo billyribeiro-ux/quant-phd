@@ -419,6 +419,16 @@ def test_trade_side_minus_two_is_refused() -> None:
     must_raise(lambda: sol.CashTrade(10, 9_850, -2, 2).events(), "side = -2")
 
 
+def test_trade_side_three_is_refused() -> None:
+    """The page names side not in {+1, -1} as a ValueError: 3 is neither, on the far positive side."""
+    must_raise(lambda: sol.CashTrade(10, 9_850, 3, 2).events(), "side = 3")
+
+
+def test_trade_side_minus_three_is_refused() -> None:
+    """The page names side not in {+1, -1} as a ValueError: -3 is neither, on the far negative side."""
+    must_raise(lambda: sol.CashTrade(10, 9_850, -3, 2).events(), "side = -3")
+
+
 def test_trade_side_plus_and_minus_one_are_accepted() -> None:
     """Both allowed sides are accepted, and they give opposite signs."""
     buy = checked_events(must_accept(lambda: sol.CashTrade(10, 9_850, 1, 2).events(), "side = +1"), "events")

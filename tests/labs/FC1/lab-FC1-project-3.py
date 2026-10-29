@@ -1,6 +1,7 @@
-"""Rung 3 check: the hand-computed fixtures and the rounding case the autograder checks, in exact arithmetic.
+"""Rung 3 check: the hand-computed fixtures and the rounding case on the project page, in exact arithmetic.
 
-Standard library only. The values printed here are the ones the autograder's fixtures expect from your instruments.py.
+Standard library only. The values printed here are the hand-computed values stated on the project page. The autograder
+checks some of them, and the note after Lab 3 on the page says which.
 """
 
 from fractions import Fraction

@@ -108,3 +108,31 @@ because both are closed-form checks (plan §2.2).
 4. L08 holds the policy rate and prices fixed. It does not compute the multiplier under an interest-rate rule or in
    IS–LM (Remark 2.5). It does not compute the multiplier with imports or with a time path.
 5. L08 has no empirical estimate of any fiscal multiplier. The page says so and grades nothing as B or C.
+
+## Slice b (L04-L06): round-10 decisions (fixer, 2026-10-29)
+
+### Decision 1: expected inflation in L06 is `\pi^{e}_t`, not the registered `\E` macro
+- Options checked: `notation/notation.json` registers `\E` as `\mathbb{E}` with the meaning "expectation operator". Expected
+  inflation is a forecast value fixed by the rule in A3 (L06 §1 says the model has no random variables), so writing it
+  with `\E` would apply the expectation operator to a non-random quantity.
+- Chosen: L06 writes `\pi^{e}_t` (32 uses, 0 uses of `\E`). `\pi^{e}_t` is a local symbol, defined in L06 §1 before A1.
+- Plan updated to match: `plans/E5-build-plan.md` notation table row for `\E`, the NOTATION_REQUESTS line, and the L06
+  row of §3. No NOTATION_REQUESTS is needed because no new macro is registered.
+
+### Decision 2: L05 demand curve is the linear form A1, not a derivation from IS-LM
+- Lesson state: L05.html Remark 1.2 says the lesson does not derive its demand curve from IS-LM and takes A1 as the model.
+  The IS-LM output is affine in `1/P` (L04 Proposition 3.2 with `\bar m = M/P`), so it is not linear in `P` unless `b = 0`.
+- Chosen: the plan follows the lesson. `plans/E5-build-plan.md` §3 L05 row and the §2.2 cross-reference now say the
+  demand curve is A1, with the Remark 1.2 caveat. The plan's earlier wording ("the aggregate-demand curve from IS-LM")
+  is withdrawn.
+- Status: this is a deviation from the planner's recommendation. The architect has not ratified it (plan §12 says the
+  architect decisions are pending). It stays open until the architect confirms or reverses it.
+
+### Decision 3: L04 cross-reference
+- L04.html why-it-matters paragraph (line 52): "unique equilibrium (Definition 3.1 below)" becomes "(Proposition 3.2 below)". Uniqueness is
+  stated in Proposition 3.2; Definition 3.1 defines the equilibrium and `D`.
+
+### Lab docstring wording (fixer, round 10)
+- The docstrings of `lab-E5-L04-1`, `lab-E5-L05-1` and `lab-E5-L06-1` said every value is an exact fraction. The labs also
+  print decimals rounded to six or ten places and print `True` or `False` checks. The docstrings now say so. The printed
+  output is unchanged; the pages were re-embedded with `tools/embed_labs.py --refresh`.
