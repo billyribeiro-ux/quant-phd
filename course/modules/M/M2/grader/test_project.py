@@ -22,7 +22,7 @@ import io
 import math
 import os
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from fractions import Fraction
 from functools import partial
 from typing import Any
@@ -46,6 +46,16 @@ def require(condition: bool, message: str) -> None:
     __tracebackhide__ = True
     if not condition:
         pytest.fail(message)
+
+
+@pytest.fixture(autouse=True)
+def _test_run_prints_nothing() -> Iterator[None]:
+    """Every test runs with stdout and stderr captured; a test during which the module printed fails at teardown."""
+    __tracebackhide__ = True
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+        yield
+    require(buffer.getvalue() == "", "the module must not print, on any branch of any function")
 
 
 def close(a: float, b: float, rel: float, absolute: float = 0.0) -> bool:
@@ -211,7 +221,7 @@ def test_central_error_is_at_least_of_order_h_squared(inst: dict[str, Any]) -> N
     ratio = error(1e-2) / error(5e-3)
     require(
         ratio >= 3.8,
-        "the central error must fall at least four-fold when its step halves: order "
+        "the central error must fall by the factor that order h squared gives when its step halves: order "
         "at least h squared (hint: Lesson 13, the central error is of order h squared)",
     )
 
@@ -798,17 +808,21 @@ def test_yield_just_above_minus_one_is_accepted() -> None:
 
 
 def test_module_prints_nothing_and_warns_nothing() -> None:
-    # The five named functions, each on a branch the other tests reach: both schemes, the constant and the non-constant
-    # case of ad_derivative, the price and the sensitivities, and each named refusal. Output to stdout and stderr is
-    # captured.
+    # The five named functions, each on a branch the other tests reach: both schemes, a step above a thousand, the
+    # constant and the non-constant case of ad_derivative, the price and the sensitivities at a positive and at a
+    # negative yield above -1, and each named refusal. Output to stdout and stderr is captured.
     buffer = io.StringIO()
     coeffs, x0 = INST["cubic"], INST["x0"]
     poly = partial(cubic, coeffs)
     calls: list[Callable[[], object]] = [
         lambda: sol.bond_price_cents(INST),
         lambda: sol.sensitivities(INST),
+        lambda: sol.bond_price_cents(dict(INST, yield_bps=-5_000)),
+        lambda: sol.sensitivities(dict(INST, yield_bps=-5_000)),
         lambda: sol.fd_derivative(lambda x: float(poly(x)), x0, 1e-3, "central"),
         lambda: sol.fd_derivative(lambda x: float(poly(x)), x0, 1e-3, "forward"),
+        lambda: sol.fd_derivative(lambda x: float(poly(x)), x0, 1e6, "central"),
+        lambda: sol.fd_derivative(lambda x: float(poly(x)), x0, 1e6, "forward"),
         lambda: sol.hessian_fd(lambda p: surface(INST["surface"], p), INST["point"], 1e-4),
         lambda: sol.ad_derivative(poly, x0),
         lambda: sol.ad_derivative(lambda x: 5.0, x0),

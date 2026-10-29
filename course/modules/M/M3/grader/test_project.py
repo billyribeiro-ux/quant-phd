@@ -549,6 +549,15 @@ def test_projection_repair_one_by_one_is_one() -> None:
     assert abs(y[0][0] - 1.0) <= 1e-12, "the one-by-one repair of [[1]] is [[1]]"
 
 
+def test_projection_repair_has_unit_diagonal_after_one_iteration() -> None:
+    """The output has unit diagonal for any max_iter, including one, when the iteration has not converged."""
+    for inst in (INST, INST2):
+        y = as_matrix(sol.projection_repair(inst["corr"], max_iter=1), inst["k"])
+        assert all(abs(y[i][i] - 1.0) <= 1e-8 for i in range(inst["k"])), (
+            "projection_repair output must have unit diagonal to 1e-8 whatever max_iter is"
+        )
+
+
 # --- comparison_weights
 
 
