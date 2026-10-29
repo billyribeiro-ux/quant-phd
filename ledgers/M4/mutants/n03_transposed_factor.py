@@ -1,5 +1,7 @@
 # Verifier round-2 student-error mutant. The returns use the transpose of the Cholesky factor, so the simulated covariance is L^T L, not L L^T.
-"""Reference solution for the M4 project: tail_risk.py, the tail-risk simulator. All inputs are SIMULATED.
+"""The returns use the transpose of the Cholesky factor, so the simulated covariance is L^T L, not L L^T.
+
+Mutant of the M4 reference (tail_risk.py, the tail-risk simulator). All inputs are SIMULATED.
 
 Standard library only. Every function validates its inputs and raises ValueError for the conditions named in
 project.html, Rung 3 · Specification. Losses are integer cents, rounded once with round() at the output.

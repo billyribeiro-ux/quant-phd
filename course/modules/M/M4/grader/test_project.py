@@ -40,6 +40,12 @@ N_DRAWS: int = INST["n_draws"]
 TOL_GAUSSIAN_VARIANCE = 0.10
 TOL_T_VARIANCE = 0.30
 MIN_NU_FOR_T_VARIANCE_CHECK = 5
+# The Student-t cross term: two assets with correlation 0.8, 100,000 draws, nu of 5. The reference's largest relative
+# error over seeds 0 to 49 is 0.024. A matched factor applied to one asset only, or one chi-square variable per asset,
+# moves the cross term by about 8 % and 15 % (measured at seeds 0 to 9). The tolerance 0.05 lies between them.
+CROSS_TERM_NU = 5
+CROSS_TERM_DRAWS = 100_000
+TOL_CROSS_TERM = 0.05
 
 
 def check(condition: bool, message: str) -> None:
@@ -155,6 +161,22 @@ def test_student_t_loss_variance_matches_matched_covariance() -> None:
     check(
         relative_error(sample_variance(losses), target) <= TOL_T_VARIANCE,
         "the student_t losses' variance must match w' Sigma w: the Student-t draws need the matched factor",
+    )
+
+
+def test_student_t_cross_term_matches_matched_covariance() -> None:
+    # Positions (w1, w2) and (w1, -w2) with the same seed share their draws, so the difference of their sample
+    # variances is 4 w1 w2 Cov(R1, R2) for the returns. The Conventions give R = sqrt((nu - 2) / W) L Z for every asset,
+    # with one W per draw, so Cov(R1, R2) = Sigma_12. Whole-cent rounding is negligible at 10^6 cents.
+    w1, w2 = 1_000_000, 1_000_000
+    cov = [[4e-4, 4.8e-4], [4.8e-4, 9e-4]]
+    target = 4.0 * w1 * w2 * cov[0][1]
+    plus = sol.simulate_losses([w1, w2], cov, CROSS_TERM_DRAWS, SEED, "student_t", CROSS_TERM_NU)
+    minus = sol.simulate_losses([w1, -w2], cov, CROSS_TERM_DRAWS, SEED, "student_t", CROSS_TERM_NU)
+    measured = sample_variance(plus) - sample_variance(minus)
+    check(
+        relative_error(measured, target) <= TOL_CROSS_TERM,
+        "the student_t returns must share the matched factor across the assets of a draw: check each asset's return",
     )
 
 

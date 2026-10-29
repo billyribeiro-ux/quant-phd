@@ -865,6 +865,26 @@ def test_sketch_rank_target_is_exact_where_a_float_target_is_one_short() -> None
         pytest.fail("the guarantee's second inequality fails at q = 0.1 on the stream 1 to 20 with epsilon 0.05.")
 
 
+def test_sketch_rank_target_keeps_seven_decimal_q() -> None:
+    """Fixed witness, the same for every seed: q = 0.2500004, n = 20, epsilon = 0.05 on the stream 1 to 20.
+
+    qn is 5.000008, so the exact rank target is 5. A q rounded to six decimal places is 0.25, which gives a target of
+    4; the answer 4 has four values at or below it, one short of qn - epsilon n = 4.000008. Both inequalities are
+    checked with Fraction.
+    """
+    stream = [float(k) for k in range(1, 21)]
+    q = 0.2500004
+    v = sketch_of(stream, 0.05).quantile(q)
+    below = sum(1 for x in stream if x < v)
+    at_or_below = sum(1 for x in stream if x <= v)
+    qn = Fraction(q) * len(stream)
+    slack = Fraction(0.05) * len(stream)
+    if not (below <= qn + slack):
+        pytest.fail("the guarantee's first inequality fails at q = 0.2500004 on the stream 1 to 20 with epsilon 0.05.")
+    if not (at_or_below >= qn - slack):
+        pytest.fail("the guarantee's second inequality fails at q = 0.2500004 on the stream 1 to 20 with epsilon 0.05.")
+
+
 def test_instances_hold_their_own_state() -> None:
     first = WelfordAccumulator()
     second = WelfordAccumulator()

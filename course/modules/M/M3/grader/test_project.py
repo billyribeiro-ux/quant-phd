@@ -518,7 +518,7 @@ def test_lab3_reference_numbers_are_matched() -> None:
         ("distance of clipping from the input", frob(clip, LAB3_CORR), 0.176573, 1e-6),
         ("distance of the projection from the input", frob(proj, LAB3_CORR), 0.175003, 1e-5),
         (
-            "largest entry difference, projection minus clipping",
+            "largest absolute entry difference between the two repairs",
             max(abs(proj[i][j] - clip[i][j]) for i in range(n) for j in range(n)),
             0.011516,
             1e-5,

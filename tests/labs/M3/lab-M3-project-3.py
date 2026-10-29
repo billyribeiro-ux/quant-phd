@@ -152,7 +152,7 @@ def main() -> None:
     print("distance from the input, projection:", f"{dist_proj:.6f}")
     print("distance saved by projection over clipping:", f"{dist_clip - dist_proj:.6f}")
     print(
-        "largest entry difference, projection minus clipping:",
+        "largest absolute entry difference between the two repairs:",
         f"{max(abs(proj[i][j] - clip[i][j]) for i in range(n) for j in range(n)):.6f}",
     )
     print(

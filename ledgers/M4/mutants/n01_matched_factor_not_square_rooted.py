@@ -1,5 +1,7 @@
 # Verifier round-2 student-error mutant. The matched factor enters the Student-t scale without its square root: scale = matched * sqrt(nu / W).
-"""Reference solution for the M4 project: tail_risk.py, the tail-risk simulator. All inputs are SIMULATED.
+"""The Student-t scale is matched * sqrt(nu / W): the matched factor is not square-rooted.
+
+Mutant of the M4 reference (tail_risk.py, the tail-risk simulator). All inputs are SIMULATED.
 
 Standard library only. Every function validates its inputs and raises ValueError for the conditions named in
 project.html, Rung 3 · Specification. Losses are integer cents, rounded once with round() at the output.
