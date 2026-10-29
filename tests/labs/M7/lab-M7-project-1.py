@@ -1,7 +1,8 @@
 """Rung 1 worked example: a three-asset allocation with long-only bounds, solved in exact arithmetic step by step.
 
 SIMULATED three-asset problem, not market data. The objective is (gamma / 2) w' Sigma w - mu' w with gamma = 2, so the
-quadratic term is w' Sigma w. The constraints are that the weights sum to one and that each weight lies in [0, 1].
+quadratic term is w' Sigma w. The constraints are that the weights sum to one and that each weight is at least
+zero. The code imposes no upper limit on a weight; the largest weight at the answer is below one, and step 5 prints it.
 Every input is an exact decimal read as a Fraction, so the printed values are exact, except the approximation in step 7.
 """
 
@@ -79,7 +80,7 @@ def main() -> None:
         residual[j] -= lam[c]
     print("step 4 stationarity residuals:", [str(r) for r in residual])
 
-    # Step 5. Primal feasibility. Why: the weights must sum to one and each must be in [0, 1].
+    # Step 5. Primal feasibility. Why: the weights must sum to one; the smallest and largest weight are printed.
     print("step 5 budget gap:", str(sum(w) - 1))
     print("step 5 smallest weight:", str(min(w)), "largest weight:", str(max(w)))
 

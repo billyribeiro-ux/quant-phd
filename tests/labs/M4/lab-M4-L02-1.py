@@ -1,6 +1,6 @@
 """M4 lab L02: expectation and variance of two finite laws, computed exactly, then a seeded sample check.
 
-Standard library only (fractions, random). The two laws are stated tables, not data: a fair six-sided
+Standard library only (fractions, math, random). The two laws are stated tables, not data: a fair six-sided
 die (values 1 to 6, each with probability 1/6) and a two-point loss in integer cents (a loss of 250000
 cents with probability 1/20, and no loss otherwise). Expectations and variances are exact rationals or
 integers. Each variance is computed two ways, from the definition E[(X - mu)^2] and from the shortcut

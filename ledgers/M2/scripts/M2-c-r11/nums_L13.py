@@ -1,0 +1,18 @@
+import math
+d=2.0**-52; e=math.e
+print("R1 h*", 2*math.sqrt(1e-3/e))
+print("E3 3d/e", 3*d/e, "cuberoot", (3*d/e)**(1/3))
+print("L13 pred fwd h*", 2*math.sqrt(d/e), "central", (3*d/e)**(1/3))
+print("2sqrt(M d)", 2*math.sqrt(e*d))
+print("E2 2d/h", 2*d/1e-8, 2*d/1e-9, "trunc", 0.5e-9*e, 0.5e-8*e, "ratio", (2*d/1e-9)/(0.5e-9*e))
+print("R3 e*2^-53/1e-8", e*2.0**-53/1e-8, "2^-53/1e-8", 2.0**-53/1e-8)
+def fwd(h): return abs((math.exp(1+h)-math.exp(1))/h - e)
+def cen(h): return abs((math.exp(1+h)-math.exp(1-h))/(2*h) - e)
+print("fwd 1e-8", fwd(1e-8), "1e-9", fwd(1e-9), "ratio", fwd(1e-9)/fwd(1e-8))
+print("cen 1e-5", repr(cen(1e-5)), "cen 1e-7", repr(cen(1e-7)), "diff", abs(cen(1e-5)-cen(1e-7)))
+print("fwd/cen 1e-2", fwd(1e-2)/cen(1e-2), "from printed", 1.364e-2/4.530e-5)
+print("fwd ratio 1e-2/1e-3", fwd(1e-2)/fwd(1e-3), "cen ratio", cen(1e-2)/cen(1e-3))
+print("Ex2.3 fwd bounds", 0.005*e, 0.005*math.exp(1.01), "cen", 1e-4/6*math.exp(0.99), 1e-4/6*math.exp(1.01))
+print("ratio bounds fwd", 10*math.exp(-0.001), 10*math.exp(0.01), "cen", 100*math.exp(-0.011), 100*math.exp(0.011))
+print("M1 ... 2d/h at 1e-2 check ok")
+print("P E2 fwd err 1e-9 printed vs bound", 2.154e-7, 2*d/1e-9+0.5e-9*e*math.exp(0.001))

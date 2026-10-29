@@ -1,6 +1,6 @@
 """M4 lab L01: a finite discrete law, its CDF and its quantile function, computed exactly.
 
-Standard library only (fractions). No randomness and no network: every probability and every
+Standard library only (fractions, itertools, collections.abc). No randomness and no network: every probability and every
 value of F and Q is an exact rational or an integer, so the output is the same on every run.
 The law is a stated table, not data. The quantile function is Q(p) = inf{x : F(x) >= p} for
 0 < p <= 1. On a finite law F changes only at support points, so Q(p) is the least support

@@ -678,10 +678,10 @@ def test_weights_refuse_twice_tolerance_asymmetry_at_large_entries(i: int, j: in
 
 
 @pytest.mark.parametrize("position", [0, 1, 2], ids=["first", "middle", "last"])
-@pytest.mark.parametrize("bad", [0.0, -0.05], ids=["zero", "negative"])
+@pytest.mark.parametrize("bad", [0.0, -0.05, float("nan")], ids=["zero", "negative", "not-a-number"])
 def test_weights_refuse_volatility_at_or_below_zero(bad: float, position: int) -> None:
-    """A volatility of exactly zero, or a negative one, is refused in any position: the rule is a volatility
-    strictly greater than zero. The other volatilities are valid and the lengths agree."""
+    """A volatility of exactly zero, a negative one, or NaN is refused in any position: the rule is a volatility
+    strictly greater than zero, and NaN is not. The other volatilities are valid and the lengths agree."""
     corr = [[1.0, 0.2, 0.1], [0.2, 1.0, 0.0], [0.1, 0.0, 1.0]]
     vols = [0.1, 0.2, 0.3]
     vols[position] = bad

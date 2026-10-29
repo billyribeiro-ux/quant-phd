@@ -1,4 +1,4 @@
-"""CS2 project lab 2 (rung 2, completion): one step of Welford's update, on a SIMULATED stream.
+"""CS2 project lab 2 (rung 2, completion): Welford's update applied to eight values of a SIMULATED stream.
 
 SIMULATED: eight integers near a common offset of 1,000,000, written out here. They are not market data.
 Standard library only, no randomness, no network. Each blank in the page is one expression of the update: the

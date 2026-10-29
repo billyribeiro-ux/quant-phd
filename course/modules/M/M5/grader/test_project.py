@@ -286,6 +286,29 @@ def test_converged_means_certified_within_tolerance(which: int) -> None:
 
 
 @pytest.mark.parametrize("which", [0, 1])
+def test_converged_is_true_when_the_budget_ends_on_the_certifying_sweep(which: int) -> None:
+    """With max_iter equal to the sweeps the solver needs to certify tol, the last allowed sweep certifies tol, so
+    converged is True: budget exhaustion alone does not make a result unconverged."""
+    inst = INSTANCES[which]
+    full = sol.solve(params_of(inst), inst["grid"], inst["tol"], MAX_SWEEPS)
+    expect(full["converged"] is True, "the instance tolerance must be reachable within the sweep budget")
+    needed = full["iterations"]
+    out = sol.solve(params_of(inst), inst["grid"], inst["tol"], needed)
+    expect(
+        out["iterations"] == needed,
+        "with max_iter equal to the sweeps needed, the solver must make exactly that many sweeps",
+    )
+    expect(
+        float(out["certified_error"]) <= inst["tol"],
+        "the last allowed sweep certifies tol, so certified_error must be at most tol",
+    )
+    expect(
+        out["converged"] is True,
+        "converged must be True when the last allowed sweep certifies tol, even though the budget is exhausted",
+    )
+
+
+@pytest.mark.parametrize("which", [0, 1])
 @pytest.mark.parametrize("sweeps", [1, 2, 3])
 def test_certified_error_is_beta_over_one_minus_beta_times_the_last_change(which: int, sweeps: int) -> None:
     """After n sweeps from zero, certified_error is beta / (1 - beta) times the sup-norm change of the last sweep.

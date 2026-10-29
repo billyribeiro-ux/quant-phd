@@ -38,7 +38,7 @@ FIELDS = ("gamma", "mu", "sigma", "w0", "lower", "upper", "sector", "sector_caps
 CERTIFICATE_KEYS = ("primal_residual", "stationarity_residual", "dual_residual", "complementary_slackness")
 PRISTINE: dict[str, Any] = json.loads(make_instance(SEED)["payload"])
 N: int = len(PRISTINE["mu"])
-K: int = len(PRISTINE["sector_caps"])
+Z: int = len(PRISTINE["sector_caps"])
 
 
 def case_copy(**changes: Any) -> dict[str, Any]:
@@ -312,7 +312,7 @@ def test_box_is_met_for_every_asset() -> None:
 
 def test_sector_caps_are_met_for_every_sector() -> None:
     w = weights_of(seed_output())
-    for k in range(K):
+    for k in range(Z):
         assert sector_sum(PRISTINE, w, k) <= PRISTINE["sector_caps"][k] + TOL, (
             f"sector cap: sector {k} exceeds its cap."
         )
@@ -517,7 +517,7 @@ def _lower_equal_upper(case: dict[str, Any]) -> None:
 
 
 def _sector_label_out_of_range(case: dict[str, Any]) -> None:
-    case["sector"][0] = K
+    case["sector"][0] = Z
 
 
 def _sector_label_below_range(case: dict[str, Any]) -> None:
@@ -654,8 +654,8 @@ def _lower_above_upper_last_asset(case: dict[str, Any]) -> None:
 
 
 def _cap_below_start_last_sector(case: dict[str, Any]) -> None:
-    """Every sector cap is checked, not only the one of asset 0: the cap of sector K-1 lies 2e-9 below its start."""
-    k = K - 1
+    """Every sector cap is checked, not only the one of asset 0: the cap of sector Z-1 lies 2e-9 below its start."""
+    k = Z - 1
     in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
     case["sector_caps"][k] = in_sector - 0.000000002
 
@@ -666,7 +666,7 @@ def _sigma_asymmetric_last_pair(case: dict[str, Any]) -> None:
 
 
 def _sector_label_out_of_range_last_asset(case: dict[str, Any]) -> None:
-    case["sector"][N - 1] = K
+    case["sector"][N - 1] = Z
 
 
 def _start_above_upper_last_asset(case: dict[str, Any]) -> None:
@@ -927,7 +927,7 @@ def test_bounds_equal_at_the_start_are_accepted_at_every_position(pos: int) -> N
 
 
 @pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
-@pytest.mark.parametrize("label", [K, -1], ids=["label-K", "label-minus-one"])
+@pytest.mark.parametrize("label", [Z, -1], ids=["label-Z", "label-minus-one"])
 def test_sector_label_out_of_range_is_refused_at_every_position(pos: int, label: int) -> None:
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
     case = case_copy()

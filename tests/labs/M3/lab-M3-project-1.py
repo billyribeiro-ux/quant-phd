@@ -49,7 +49,7 @@ def main() -> None:
     # Step 2. Eigenvalues and orthonormal eigenvectors. The eigenvalues of a symmetric matrix are real.
     values, vectors = jacobi_eigen(corr)
     print("eigenvalues, sorted:", " ".join(f"{x:.6f}" for x in sorted(values)))
-    # Step 3. The PSD check: every eigenvalue must be at least -tol. Here tol = 1e-10.
+    # Step 3. The positive semidefinite check: every eigenvalue must be at least -tol. Here tol = 1e-10.
     smallest = min(values)
     print("smallest eigenvalue:", f"{smallest:.6f}", "| positive semidefinite at tol 1e-10:", smallest >= -1e-10)
     # Step 4. Clipping: each eigenvalue below the floor 0 becomes 0; the matrix is rebuilt from the same eigenvectors.
@@ -62,7 +62,7 @@ def main() -> None:
     repaired = [[rebuilt[i][j] / math.sqrt(d[i] * d[j]) for j in range(n)] for i in range(n)]
     for row in repaired:
         print("repaired row:", " ".join(f"{x:.6f}" for x in row))
-    # Step 6. Checks on the repaired matrix: the largest deviation of its diagonal from 1, and its own PSD check.
+    # Step 6. Checks on the repaired matrix: the largest diagonal deviation from 1, and its positive semidefinite check.
     deviation = max(abs(repaired[i][i] - 1.0) for i in range(n))
     new_values, _ = jacobi_eigen(repaired)
     print("largest deviation of the diagonal from 1:", f"{deviation:.6f}")

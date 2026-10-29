@@ -2,11 +2,12 @@
 
 SIMULATED three-asset problem, not market data. The residuals are the four of the project page, restricted to the
 budget and the bounds 0 <= w_i <= 1 of this example (the example has no sector caps and no turnover constraint). The
-primal, stationarity and dual residuals are the largest violation among the constraints they cover. The
-complementary-slackness residual is not a violation: it is the largest absolute product of a multiplier and its
-constraint. So an optimal answer, with its multipliers, has all four residuals at zero in exact arithmetic.
-The three candidates are: the answer of Lab 1; the same answer with the sign of its bound multiplier reversed; and the
-same answer with a weight moved by 1/1000 between the first two assets, which keeps the budget.
+primal and dual residuals are the largest violation among the constraints they cover, and the stationarity residual is
+the largest absolute stationarity expression. The complementary-slackness residual is not a violation: it is the
+largest absolute product of a multiplier and its constraint. So an optimal answer, with its multipliers, has all four
+residuals at zero in exact arithmetic. The three candidates are: the answer of Lab 1; the same answer with the sign of
+its bound multiplier reversed; and the same answer with a weight moved by 1/1000 between the first two assets, which
+keeps the budget.
 """
 
 from fractions import Fraction

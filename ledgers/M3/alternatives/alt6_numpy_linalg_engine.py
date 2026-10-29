@@ -69,7 +69,7 @@ def comparison_weights(corr: Sequence[Sequence[float]], vols: Sequence[float]) -
     n = c.shape[0]
     if len(vols) != n:
         raise ValueError("the volatilities must have one entry per row of the correlation matrix")
-    if any(float(v) <= 0.0 for v in vols):
+    if not all(float(v) > 0.0 for v in vols):
         raise ValueError("every volatility must be strictly positive")
     d = np.array([float(v) for v in vols])
     sigma = d[:, None] * c * d[None, :]

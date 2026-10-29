@@ -134,7 +134,7 @@ def comparison_weights(corr: list[list[float]], vols: list[float]) -> list[float
     n = len(c)
     if len(vols) != n:
         raise ValueError("the volatilities must have one entry per row of the correlation matrix")
-    if any(float(v) <= 0.0 for v in vols):
+    if not all(float(v) > 0.0 for v in vols):
         raise ValueError("every volatility must be strictly positive")
     sigma = [[float(vols[i]) * c[i][j] * float(vols[j]) for j in range(n)] for i in range(n)]
     aug = [[*sigma[i], 1.0] for i in range(n)]
