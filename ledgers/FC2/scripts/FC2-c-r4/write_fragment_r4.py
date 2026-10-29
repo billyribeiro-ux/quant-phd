@@ -1,0 +1,140 @@
+"""Writes ledgers/FC2/FC2-c.json (round 4). Rows keep round-3 ids; evidence cites outputs under ledgers/FC2/scripts/FC2-c-r4/out/."""
+import datetime
+import json
+
+O = "ledgers/FC2/scripts/FC2-c-r4/out"
+S = "course/modules/FC/FC2/L07.html"
+T = "course/modules/FC/FC2/L08.html"
+rows = []
+
+
+def row(i, check, loc, ev, status="PASS", fix=None):
+    r = {"id": i, "check": check, "location": loc, "status": status, "evidence": ev}
+    if status != "PASS":
+        r["fix"] = fix
+    rows.append(r)
+
+
+row("FC2c-r3-01", "2.4-assumptions", f"{S} lines 55, 86-96, 278 (A7, Definition 1.3, A8); {T} lines 55, 273",
+    "Round-4 re-read: Definition 1.3 now ends 'Assumption A8 below takes this formula to be the call value of the model under A7'; "
+    "A8 is a numbered block ('Assumption A8 (Closed form)') stating the formula is 'a premise of this lesson and is not proved here'. "
+    "Section 4 says 'The formula is stated as A8 and used, not derived.' Every result using the formula states A8 (Prop 1.4 line 96; key-results row line 362). "
+    "Numbered assumption satisfies defect class (9). Round-3 FAIL resolved.")
+row("FC2c-r3-02", "2.4-mathematics", f"{S} key-results table (section 7) row 'The tree's parameters satisfy...' vs Lemma 2.2 (lines 125-126)",
+    "Key-results row now reads 'For r > 0 and sigma > 0, ... if and only if h < sigma^2/r^2', matching Lemma 2.2 'Let r > 0 and sigma > 0'. Proof re-derived: d<R since -sigma sqrt h < rh; R<u iff r sqrt h < sigma iff h < sigma^2/r^2 (r>0). Round-3 FAIL resolved.")
+row("FC2c-r3-03", "2.5-labs-prose", f"{S} line ~154 (lab heading), Section 3 interpretation line ~157",
+    "Heading now 'Lab 1 · Binomial prices against the Black–Scholes value'; interpretation says the lab 'does not show that the error tends to zero'. Lab docstring (twin lines 1-15) says 'does not prove that the binomial price converges'. No convergence claim remains. Round-3 FAIL resolved.")
+row("FC2c-r3-04", "2.2-numbers-units", f"{T} solution to R2 (line ~342)",
+    "Now reads '0.0267 volatility points (one volatility point is 0.01 of volatility)'. Re-derived: 0.01/37.52 = 0.00026652 = 0.0267 points (script recheck_L07_L08_r4.py; out/recheck_L07_L08_r4.out). Unrounded vega 37.524035 gives 0.00026650 -> 0.000266 as written. Round-3 FAIL resolved.")
+row("FC2c-r3-05", "2.4-mathematics", f"{T} key-results bisection row (line 358) vs Proposition 3.2 (section 3)",
+    "Row now carries the bracket condition 'C(sigma_lo) < C* <= C(sigma_hi), C* in (L,S) and width W > tau_tol' and 'after ceil(log2(W/tau_tol)) halvings', matching Proposition 3.2 'when W > tau_tol'. Round-3 FAIL resolved.")
+row("FC2c-r3-06", "2.1-citations", f"{S} references (line ~440); {T} references (line ~395)",
+    "Both state 'This lesson cites no registry key'; grep -c 'data-cite\\|cite=' over both pages = 0. Command: .venv/bin/python tools/verify_refs.py --offline -> 'offline integrity: 560 entries, 0 problems' (out/verify_refs_offline.out).")
+row("FC2c-r3-07", "2.5-labs", "tests/labs/FC2/lab-FC2-L07-1.py; page lab-FC2-L07-1",
+    "tools/run_labs.py --unit FC2 --page L07 -> 'run_labs FC2: PASS (1/1)', exit 0 (out/run_labs_L07.out). Twin under python -I -W error: exit 0 (out/twin_L07.out). Page code equals twin byte for byte modulo the trailing newline (out/page_twin_eq_r4.out, check_page_twin_r4.py). Expected block matches printed output (run_labs).")
+row("FC2c-r3-08", "2.5-labs", "tests/labs/FC2/lab-FC2-L08-1.py; page lab-FC2-L08-1",
+    "tools/run_labs.py --unit FC2 --page L08 -> 'run_labs FC2: PASS (1/1)', exit 0 (out/run_labs_L08.out). Twin under python -I -W error exit 0 (out/twin_L08.out): nine rows, abs_error 1.73e-11 / 5.73e-12 / 1.74e-11, 37 halvings each. Page code equals twin (out/page_twin_eq_r4.out).")
+row("FC2c-r3-09", "2.5-labs", "tests/labs/FC2/lab-FC2-L07-1.py, lab-FC2-L08-1.py (imports)",
+    "Both twins import only 'math' (and __future__ annotations); no random, no socket, no file open (read of both sources). Both deterministic; the lab run times are 0.0 s in page_smoke (out/page_smoke_L07_L08.out).")
+row("FC2c-r3-10", "2.5-labs", "tests/labs/FC2/lab-FC2-L07-1.py, lab-FC2-L08-1.py",
+    "ruff check on both twins: 'All checks passed!' (out/ruff_check.out); ruff format --check: '2 files already formatted' (out/ruff_format.out); mypy --no-incremental on both twins: 'Success: no issues found in 2 source files' (out/mypy.out).")
+row("FC2c-r3-11", "2.9-smoke", f"{S}, {T}",
+    "tools/page_smoke.py --unit FC2 --pages L07 L08 -> 'page_smoke modules/FC/FC2/L07.html: PASS', 'page_smoke modules/FC/FC2/L08.html: PASS', 'page_smoke FC2: PASS', exit 0 (out/page_smoke_L07_L08.out).")
+row("FC2c-r3-12", "2.9-hours", f"{S} eyebrow '8 study hours'; {T} eyebrow '6 study hours'; index.html data-hours-lessons=60",
+    "tools/check_pages.py --unit FC2 -> 'check_pages FC2: PASS' (out/check_pages.out). data-hours of L01..L08 = 8,6,7,9,8,8,6,8 = 60, equal to the hub's data-hours-lessons=\"60\" (grep). L07 and L08 hours agree with their data-hours attributes.")
+row("FC2c-r3-13", "2.9-DAG", f"{S} meta-row links (9); {T} meta-row links (5)",
+    "tools/check_dag.py --unit FC2 -> 'check_dag FC2: PASS' (out/check_dag.out). Every concept link targets a prerequisite-closure unit (M1, M2, M4, L04-L06 of FC2) or a defined anchor. No link to a concept outside the closure (grep of href/data-concept).")
+row("FC2c-r3-14", "2.9-banned", f"{S}, {T}",
+    "Case-insensitive grep for TODO, TBD, lorem, 'for brevity', 'details omitted', 'beyond the scope', 'left as an exercise', 'you can add more', 'it is important to note', 'studies show', 'experts agree', 'well known', 'obviously', 'clearly', ellipsis, 'it can be shown', 'builder', 'verifier', 'draft', 'placeholder', 'pending': no hits (out/banned_grep_r4.out; its only matches are 'rounded'/'unrounded' from the 'round' token).")
+row("FC2c-r3-15", "2.9-scope-words", f"{S}, {T} (every, all, only, same, any, always, never)",
+    "Read in context: 'every node' and 'every strike' restate A6 and A7 as definitions; 'every other row has a nonzero error' and 'every row within tolerance' are checked against the printed table (out/run_labs_L08.out, run_labs_L07.out); 'only' in L07 Section 4 and L08 Section 4/R1 ('the only price function this lesson covers', 'for the A7 formula only') restrict scope correctly.")
+row("FC2c-r3-16", "2.2-numbers", f"{S} Section 3, misconceptions M1, problems M2, E1, E2, quiz explanations; {T} M1, E1, E2",
+    "ledgers/FC2/scripts/FC2-c-r4/recheck_L07_L08_r4.py (out/recheck_L07_L08_r4.out): C = 10.450583572 (1045.058 cents); Ke^-r = 95.1229425; P = 5.573526022 (557.35 cents); unrounded tree errors 171.17, -91.01, 35.54, -19.72, 7.04, -3.99, -2.00, -1.00, -0.4998 cents (E2 values reproduced); 200 steps -0.9992 cents (E1); 120e^-0.05 = 114.1475; C(K=120,sig=0.10) = 46.2497 cents; L = 4.877058; 0.01/37.5240 = 0.00026650. All match the page to the printed digits.")
+row("FC2c-r3-17", "2.2-numbers", f"{S} M3 and E3 (line ~300-336); quiz; {T} M3",
+    "recheck script: u4=1.1051709, d4=0.9048374, R4=1.0125785 (1.012578 to six places), q4=0.5378084, sigma^2/r^2=16.0 (page 0.25<16); n=1: u1=1.2214028, d1=0.8187308 (page 0.818731), R1=1.0512711, q1=0.5774932 (page 0.577493), V1=12.1622850 (1216 cents, 12.1623 page). M3 k=36 width 1.455e-10 > 1e-10, k=37 width 7.28e-11, log2(1e11)=36.54 (out).")
+row("FC2c-r3-18", "2.5-labs-expected", f"{T} Lab 1 expected block and E1",
+    "run_labs (out/run_labs_L08.out) passes the expected block at tolerance 1e-6; twin output (out/twin_L08.out) reproduces the nine rows exactly; largest error 1.74e-11 = 0.174 of tolerance (E1 arithmetic).")
+row("FC2c-r3-19", "2.2-numbers", f"{T} E3 solution (price 0.50 at strike 120)",
+    "ledgers/FC2/scripts/FC2-c-r4/check_page_twin_r4.py (out/check_page_twin_r4.out): twin implied_volatility(0.50, 120) -> sigma 0.10207696, halvings 37. Page says 0.102077. Lower bound at K=120 is 0 (114.1475 > 100). Accepted, as E3 states.")
+row("FC2c-r3-20", "2.5-labs-prose", f"{T} Section 3 paragraph after Proposition 3.2 ('too close to the spot')",
+    "check_page_twin_r4.py probe: price 99.99999 at K=100 -> ValueError 'the volatility bracket [1e-06, 10.0] does not contain the root: the price is too close to the lower bound or to the spot' (C(10)=99.9999440858 < price); price 99.99 accepted (sigma 7.76903448, 37 halvings). Prose matches the code.")
+row("FC2c-r3-21", "2.4-mathematics", f"{S} Lemma 1.1 and 1.2 and proofs",
+    "Lemma 1.1: substitute t = sqrt2 s gives Phi(x) = (1/sqrt pi) int_{-inf}^{x/sqrt2} e^{-s^2} ds; the half line integral is sqrt(pi)/2 (1+erf y); the stated identity follows. Numerically Phi(x)+Phi(-x)-1 = 0.0 at 0, 0.35, 1.7, 3.0 (out/recheck_L07_L08_r4.out). Lemma 1.2 proof uses phi even and total mass 1: re-derived.")
+row("FC2c-r3-22", "2.4-mathematics", f"{S} Proposition 1.4 (line 96) and proof; L05 line 64 (parity under A1-A5)",
+    "Parity under A1-A5 cited from L05 (line 64: 'Under A1, A2, A3, A4 and A5, C - P = S - e^{-r tau} K'). Second equality re-derived: C - S + K e^-r = -S(1-Phi d1) + K e^-r (1-Phi d2) = K e^-r Phi(-d2) - S Phi(-d1). Numeric: put via parity 5.573526022256971 = put via direct formula 5.573526022256971 (out/recheck_L07_L08_r4.out).")
+row("FC2c-r3-23", "2.4-mathematics", f"{S} Proposition 1.5 and proof; R2 (alt inputs)",
+    "d1 = (ln(S/K) + r tau)/(sigma sqrt tau) + sigma sqrt tau/2 re-derived; the R2 inputs tau=4, sigma=0.1, r=0.0125 give sigma sqrt tau = 0.2 and r tau = 0.05; C = 10.450583572185565 (out/recheck_L07_L08_r4.out) equal to the Lab 1 value.")
+row("FC2c-r3-24", "2.4-mathematics", f"{S} Lemma 2.2 (lines 125-126) and proof, Definition 2.1",
+    "Re-derived both inequalities; checked numerically: h = 0.25 and sigma^2/r^2 = 16 (out), and for n=400 h=0.0025 < 16. The iff direction: R<u iff r sqrt h < sigma iff h < sigma^2/r^2 for r>0 (squaring is an equivalence since both sides are positive).")
+row("FC2c-r3-25", "2.4-mathematics", f"{S} Theorem 2.3 and proof; L06 Theorem 3.3 and Definition 3.2",
+    "ledgers/FC2/scripts/FC2-c-r4/extra_checks_r4.py (out/extra_checks_r4.out): the binomial sum of Theorem 2.3 equals the backward-induction tree (Definition 3.2 analogue) to max abs diff 4.3e-13 over n in {1,2,5,10,25,50,100,200,400}. L06 Theorem 3.3 hypotheses A1,A2,A3,A5,A6,A6' are met by Lemma 2.2 and Definition 2.1 (A6 is 0<d<R_f<u, L06 line 64; A6' L06 line 315).")
+row("FC2c-r3-26", "2.4-mathematics", f"{T} Lemma 2.1 and proof",
+    "Re-derived: d1-d2 = s, d1+d2 = 2a/s, (d1^2-d2^2)/2 = a, so S phi(d1) = K e^-r phi(d2); dC/dsigma = S phi(d1) sqrt tau. Finite-difference vega (central, h=1e-6) vs S phi(d1) sqrt tau: sigma 0.05 23.592271 vs 23.592271; 0.2 37.524035 vs 37.524035; 0.4 37.841983 vs 37.841983; 1.0 34.294385 vs 34.294385 (out/extra_checks_r4.out).")
+row("FC2c-r3-27", "2.4-mathematics", f"{T} Lemma 2.2 and proof",
+    "Three cases (a>0, a<0, a=0) re-derived. Numerically C(K=100, sigma=1e-6) = 4.877057550 (= L) and C(sigma=1e4) = 100.0 (= S) (out/recheck_L07_L08_r4.out); K=120 gives C(1e-6)=0 and C(1e7)=100.")
+row("FC2c-r3-28", "2.4-mathematics", f"{T} Theorem 2.3 and proof",
+    "Mathematical argument re-derived: strict monotonicity (Lemma 2.1) gives L < C(sigma) < S via C(sigma/2) < C(sigma) with limit L and C(2 sigma) < S with limit S; intermediate value theorem on [sigma_1, sigma_2]; uniqueness from strict monotonicity. Floating-point observation (out/monotone_grid_r4.out): double-precision C(sigma) plateaus at L for sigma below about 0.007, which is evaluation precision and not a claim the page makes.")
+row("FC2c-r3-29", "2.4-mathematics", f"{T} Definition 3.1, Proposition 3.2 and proof",
+    "Invariant sigma_lo < sigma* <= sigma_hi preserved (monotonicity); width after k steps W/2^k; first k with W/2^k <= tau_tol is ceil(log2(W/tau_tol)) when W > tau_tol (36.54 -> 37 here); midpoint within half the width. Twin loop 'while high - low > TOL' and 'if gap(middle) < 0: low = middle' match Definition 3.1 (read of twin lines).")
+row("FC2c-r3-30", "2.4-hypotheses", f"{T} Section 1 (L = max(S - Ke^-r tau, 0)), cites Lesson 5 bound; L05 Theorem 2.2(b)",
+    "L05 Theorem 2.2 is stated under A1-A5 and (N). Round-4 read of its proof: part (b) uses only A3 and the payoff identity (K - S_tau)^+ >= 0, not (N) (L05 lines 84-100). So L08's citation under A1-A5, A7, A8 supplies every hypothesis that part (b) uses. Numerics L(K=100) = 4.877058, L(K=120) = 0.")
+row("FC2c-r3-31", "2.4-notation", f"{S}, {T} symbols vs notation/notation.json",
+    "notation.json symbols: T (sample size), Phi and Phi^-1 (M4), gamma_3, gamma_4, R^ast, R^{e ast}, R_f, Q. Symbols used in L07/L08: Phi (M4 meaning, standard normal CDF: consistent). T is not used as a symbol (maturity is tau, as the page says). R_f is not used in either page (grep); the gross return is written R^{(n)}, which is not a registry symbol. No collisions. Also check: 'L', 'W', 'V', 'P', 'C', 'e_n', 'phi', 'erf' are not registry symbols.")
+row("FC2c-r3-32", "2.9-process-words", f"{S}, {T}",
+    "grep for builder, verifier, round, draft, pending, placeholder, TODO returned no learner-text hits (out/banned_grep_r4.out; the 'round' hits are 'rounded'). 'Lab 1' and 'Problem' are learner-facing headings.")
+row("FC2c-r3-33", "2.7-quiz", f"{S} quiz items 1-10; {T} quiz items 1-10",
+    "Each data-correct option re-checked: L07 r (q1); d2 = 0.15 (q2); 557 cents (q3); 1 - Phi(x) (q4); u1 1.2214 (q5); h < sigma^2/r^2 (q6); 1216 cents (q7); 0 cents at 400 steps (q8); convergence not established (q9); 1045 cents (q10). L08 exactly one (q1); L=4.8771 (q2); 4.90 (q3); 37 (q4); positive (q5); 37.52 (q6); bounds check (q7); L=0 at K=120 (q8); not all one common volatility (q9); 1.74e-11 within tolerance (q10). All match the page and the outputs.")
+row("FC2c-r3-34", "2.9-structure", f"{S} lesson-nav; {T} lesson-nav",
+    "L07: Previous -> L06.html, Next -> L08.html. L08: Previous -> L07.html, Next -> project.html. check_pages FC2 PASS (out/check_pages.out).")
+row("FC2c-r3-35", "2.8-data-figures", f"{S}, {T} (no data-files, no svg)",
+    "grep -c 'data-files\\|<svg' over both pages = 0. Both labs state 'model values; no data are read'. No dataset, figure or SIMULATED label is required.")
+row("FC2c-r3-36", "2.6-mutation", "tests/labs/FC2/lab-FC2-L07-1.py, lab-FC2-L08-1.py",
+    "Mutation testing applies to project graders only (verifier ruling). No mutant is listed for this slice. Lab twins are demonstrations; a mutated lab exiting 0 is not a finding unless a lesson sentence claims the lab checks that property (checked: L08 'the lab checks the inversion' is met by the round-trip errors).")
+row("FC2c-r3-37", "2.5-tests", "tests/test_labs.py, tests/test_run_labs.py, tests/test_page_checks.py (-k 'FC2 or L07 or L08 or run_labs or labs')",
+    "'.venv/bin/pytest tests/test_labs.py tests/test_run_labs.py tests/test_page_checks.py -q -k \"FC2 or L07 or L08 or run_labs or labs\"' -> 209 tests passed (dots, 100%), exit 0 (out/pytest_subset.out). Also check_projects --unit FC2 -> PASS (out/check_projects.out).")
+row("FC2c-r3-38", "2.9-DAG-prose", f"{S}, {T} plain-prose concepts",
+    "Plain-prose terms outside the closure: 'vega' (option-greeks, DV1, plan §0.2 'Not used'; architect default permits plain prose with no link and no dfn; no link, no data-concept); 'bisection' (bracketing-root-finder, M8; plan §0.2 'Bisection described in plain words'); 'lognormal' (plain dfn, unregistered, plan Q12 accepted); 'volatility' (unregistered). American option is FC2 (L04) and in closure. No outside-closure link (grep). PASS under the architect default; the plan's 'Not used' row for option-greeks is noted as a planning inconsistency for the architect, not a page defect.")
+
+row("FC2c-r4-01", "2.4-hypotheses", f"{T} Section 1 'Assumptions A1 to A5, A7 and A8 of Lesson 7 are in force'",
+    "Round-4 delta (ccfdf4c..b276325): L08 now lists A8 in force. Checked every use: parity (L07 Prop 1.4 cites L05 Thm 1.2 under A1-A5, which is satisfied); lower bound L (L05 Thm 2.2(b), see r3-30); Theorem 2.3 needs only the formula's properties (Lemmas 2.1-2.2). No result on this page depends on (N).")
+row("FC2c-r4-02", "2.4-assumption-numbering", f"{S} A8 cross-references (lines 51, 55, 86, 90-96, 143, 278, 362); {T} lines 55, 273, 357",
+    "grep -n 'A8' over both pages: every A8 reference points to Definition 1.3 / Assumption A8 of Lesson 7 or to A8 use in Proposition 1.4 and the key-results rows. No dangling assumption label. L07 Section 1 lists 'A7 and A8 below' before their definitions, which is a forward reference inside the lesson.")
+row("FC2c-r4-03", "2.4-assumptions-summary", f"{S} Section 1 paragraph listing A1-A5 (line ~55)",
+    "Summaries are partial: A2 is given as 'no transaction costs, and lending and borrowing at the riskless rate', omitting the bid-ask and short-sale clauses of L02 A2 (L02 line ~70). The omitted clauses are not used by any L07 result, so the summary is incomplete, not false. PASS with note.")
+row("FC2c-r4-04", "2.5-labs-docstring", f"tests/labs/FC2/lab-FC2-L08-1.py implied_volatility docstring",
+    "Docstring says the function 'Raises ValueError when the price is not strictly between the lower bound and the spot price.' The code also raises ValueError when the bracket does not contain the root (documented on page line ~121). The docstring is incomplete, not false. PASS with note.")
+
+frag = {
+    "unit": "FC2",
+    "slice": "FC2-c",
+    "round": 4,
+    "verifier": "Claude Haiku 5.5, independent verifier for FC2-c, round 4 (did not build FC2). Read L07.html and L08.html in full and both twins in full. Round-3 rows re-verified from scratch because L07.html and L08.html changed between ccfdf4c and b276325.",
+    "pin": "b276325f68b3032945c96810d651dcd39588b830",
+    "base": "ccfdf4c18f5ae9d86e6fe1ca9141382fd6055f83 (round-3 pin). Delta read in full: git diff ccfdf4c b276325 -- course/modules/FC/FC2/L07.html course/modules/FC/FC2/L08.html (both hunks). The twins tests/labs/FC2/lab-FC2-L07-1.py and lab-FC2-L08-1.py are byte-identical between ccfdf4c and b276325 (git diff --quiet empty), and were re-run this round anyway.",
+    "checkout": "/Users/billyribeiro/.fanout/wt/verifyC4-FC2-c",
+    "scratch": "ledgers/FC2/scripts/FC2-c-r4/ (scripts and out/ are kept in the checkout)",
+    "verified_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
+    "verdict": "PASS",
+    "rows": rows,
+    "mutants": [],
+    "registry_flags": [],
+    "freshness_flags": [],
+    "notes": (
+        "Commands run on the pin (outputs in ledgers/FC2/scripts/FC2-c-r4/out/): run_labs --unit FC2 --page L07 and --page L08 (PASS); "
+        "twins under python -I -W error (exit 0); check_pages --unit FC2 (PASS); check_dag --unit FC2 (PASS); check_projects --unit FC2 (PASS); "
+        "page_smoke --unit FC2 --pages L07 L08 (PASS); verify_refs --offline (560 entries, 0 problems); ruff check and ruff format --check and mypy --no-incremental on both twins (clean); "
+        "pytest subset -k 'FC2 or L07 or L08 or run_labs or labs' (exit 0). Re-derivations: recheck_L07_L08_r4.py, check_page_twin_r4.py, extra_checks_r4.py, write_fragment_r4.py. "
+        "Not checked: verify_refs live run (no registry key is cited by these pages; not attempted); cards.json rows (outside slice c); the whole-unit page_smoke, hub and project pages (other slices); mutate_graders (grader only, not in slice c); "
+        "the lab twins' SIMULATED label (no data read, so not required). Planning inconsistency reported for the architect, not a page defect: plan §0.2 lists option-greeks as 'Not used', but L08 uses the word 'vega' in plain prose (architect default permits this)."
+    ),
+    "summary": "FC2-c round 4: verdict PASS. 42 rows: 38 round-3 ids re-verified (all PASS; round-3 FAILs r3-01..05 resolved by the round-4 edits) plus 4 new round-4 rows (r4-01..04, all PASS with notes). All numerical claims in L07 and L08 re-derived and match; both twins pass run_labs, -I -W error, ruff, mypy and page_smoke.",
+}
+problems = []
+for r in rows:
+    if r["status"] != "PASS" and not r.get("fix"):
+        problems.append(r["id"])
+assert not problems
+with open("ledgers/FC2/FC2-c.json", "w", encoding="utf-8") as fh:
+    json.dump(frag, fh, ensure_ascii=False, indent=2)
+    fh.write("\n")
+print("rows", len(rows), "PASS", sum(r["status"] == "PASS" for r in rows))

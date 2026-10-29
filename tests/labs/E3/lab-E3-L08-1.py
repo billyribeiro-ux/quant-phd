@@ -3,8 +3,8 @@
 Inputs are integer cents (100 cents = 1 CU). Initial wealth is W0 = 100000 cents (1000 CU). The gamble is a bet on
 one ball drawn from an urn of 90 balls: final wealth is 110000 cents (a gain of 10000 cents) if the ball is red and
 95000 cents (a loss of 5000 cents) otherwise. A certainty equivalent (CE) is the sure final wealth, in cents, that
-the model ranks equal to the gamble. Part A rounds each of the four model CEs once, half up, to a whole cent; Parts B
-and C print unrounded values.
+the model ranks equal to the gamble. Part A prints each of the four model CEs at four decimals and rounds it once, half
+up, to a whole cent; Parts B and C print at fixed decimals and round nothing to a whole cent.
 
 The ambiguous urn holds k red balls, with k unknown and only known to lie in 30 to 60 (the prior set). Four models:
  1. Expected utility with CRRA utility u(W) = -1/W (gamma = 2), at P(red) = 1/2, the average of the prior set.

@@ -12,9 +12,9 @@ buffer B is the share of years with M < -B. The lab uses the same draws for ever
 identical years. It checks that the frequency does not rise with the buffer, and it finds the buffer that covers 95
 percent of the years.
 
-Units: money is an integer number of cents. A frequency is a share of years. A quantile uses the nearest-rank rule: the
-q-quantile of N sorted values is the value at position ceil(qN), counted from 1. The standard error of a frequency p
-over N years is sqrt(p(1 - p)/N), which assumes that the years are independent draws.
+Units: money is an integer number of cents. A frequency is a share of years. A quantile uses the nearest-rank
+rule: the q-quantile of N_Y sorted values is the value at position ceil(q N_Y), counted from 1. The standard error of
+a frequency p over N_Y years is sqrt(p(1 - p)/N_Y), which assumes that the years are independent draws.
 """
 
 from __future__ import annotations

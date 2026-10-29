@@ -7,7 +7,7 @@ payoffs are fractions.Fraction, so every printed value is exact. Standard librar
 Conventions: a portfolio is a pair (bond units, stock units). Its cost is the sum of holdings times prices at date 0.
 Its payoff in a state is the sum of holdings times that asset's payoff in that state, at date 1. An arbitrage
 opportunity is a portfolio whose cost is at most zero, whose payoff is at least zero in both states, and which is
-not the zero portfolio: its cost is strictly negative or its payoff is strictly positive in some state.
+not free of profit: its cost is strictly negative or its payoff is strictly positive in some state.
 """
 
 from __future__ import annotations
@@ -32,7 +32,8 @@ def cost_of(holding: Holding, prices: list[Fraction]) -> Fraction:
 
 
 def is_arbitrage(holding: Holding, prices: list[Fraction], payoffs: list[list[Fraction]]) -> bool:
-    """True when the cost is at most zero, the payoff is at least zero in every state, and the portfolio is not zero."""
+    """True when the cost is at most zero, the payoff is at least zero in every state, and the portfolio is not
+    free of profit: its cost is strictly negative or its payoff is strictly positive in some state."""
     cost = cost_of(holding, prices)
     pay = payoff_of(holding, payoffs)
     if cost > 0 or any(x < 0 for x in pay):

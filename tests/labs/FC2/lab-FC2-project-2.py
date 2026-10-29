@@ -1,7 +1,7 @@
 """Rung 2 completion problem: the rung 1 scan with its parity-gap line and its cost-netting lines left blank.
 
-This twin is the completed solution, so it runs as written. Standard library only. The chain is SIMULATED and is
-not a market quote. Money is integer cents, rounded once from exact Fractions, a tie going toward plus infinity.
+Standard library only. The chain is SIMULATED and is not a market quote.
+Money is integer cents, rounded once from exact Fractions, a tie going toward plus infinity.
 """
 
 from __future__ import annotations

@@ -78,7 +78,7 @@ def main() -> None:
     print(f"best share on the grid: {float(best):.2f}, agent takes {best_action} effort")
     print(f"principal profit at the best share, in cents: {cents(principal_profit(best))}")
     print(f"first-best profit, in cents: {cents(FIRST_BEST)}")
-    print(f"agency loss, first best minus best share, in cents: {cents(FIRST_BEST - principal_profit(best))}")
+    print(f"agency cost, first best minus best share, in cents: {cents(FIRST_BEST - principal_profit(best))}")
     print(f"low-effort profit at share 0.00, in cents: {cents(principal_profit(Fraction(0)))}")
 
     print("Part C: risk neutral agent, alpha may be negative (no limited liability)")

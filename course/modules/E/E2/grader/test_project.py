@@ -312,9 +312,12 @@ def test_negative_bid_in_last_position_is_refused() -> None:
 
 def test_zero_bid_is_accepted() -> None:
     zeros = [0] * N
-    valid(sol.allocate, zeros, UNITS)
-    valid(sol.payments, "uniform", zeros, UNITS)
-    valid(sol.revenue, "discriminatory", zeros, UNITS)
+    if valid(sol.allocate, zeros, UNITS) != [True] * UNITS + [False] * (N - UNITS):
+        pytest.fail("a zero bid is valid and ranks like any other bid; a tie at zero goes to the lower index")
+    if valid(sol.payments, "uniform", zeros, UNITS) != [0] * N:
+        pytest.fail("with every bid at zero, the uniform clearing bid is zero, so every payment is zero")
+    if valid(sol.revenue, "discriminatory", zeros, UNITS) != 0:
+        pytest.fail("with every bid at zero, the winners pay their own bids of zero, so revenue is zero")
     valid(sol.efficiency, VALUES, zeros, UNITS)
 
 

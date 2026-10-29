@@ -1,7 +1,9 @@
 """E3 lab L04: first- and second-order stochastic dominance on finite-support lotteries, checked by utilities.
 
 SIMULATED: 24 pairs of lotteries on one support of five wealth levels, in cents, are drawn with random.Random(SEED).
-Each lottery places 12 balls on the five levels uniformly at random, so its probabilities are multiples of 1/12.
+Each first lottery places 12 balls on the five levels uniformly at random, so its probabilities are multiples of 1/12.
+The second lottery is a shifted copy (one ball moved up, so still multiples of 1/12), a fresh draw, or a mean-matched
+lottery (match_mean), whose probabilities are multiples of 1/48.
 Three named pairs are fixed in the code and are not SIMULATED. Every integrated distribution function and every
 dominance verdict from the distribution functions is exact (fractions.Fraction). The expected utilities of the CRRA
 utilities are floating-point, and their differences are compared with a tolerance of 1e-12. Standard library only,

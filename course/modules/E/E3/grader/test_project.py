@@ -298,8 +298,8 @@ def test_model_name_must_be_crra_or_prospect() -> None:
 
 
 def test_probabilities_must_be_nonnegative_and_sum_to_exactly_one() -> None:
-    """Boundary cases: a probability of exactly zero is allowed; a sum one part in a thousand off is not; a negative
-    probability is not."""
+    """Boundary cases: a probability of exactly zero is allowed; a sum one part in a thousand off is not; a sum one
+    part in ten trillion above 1 is not (the test is exact, not a tolerance); a negative probability is not."""
     got_zero = sol.certainty_equivalent_cents(
         "prospect", [100, 500], [Fraction(0), Fraction(1)], {"gamma": 0.0, "lambda": 1.0}, WEALTH
     )
@@ -328,6 +328,17 @@ def test_probabilities_must_be_nonnegative_and_sum_to_exactly_one() -> None:
             "prospect", [100, 500], [Fraction(-1, 4), Fraction(5, 4)], {"gamma": 0.0, "lambda": 1.0}, WEALTH
         ),
         "a negative probability",
+        contains=("probabilities must sum to 1",),
+    )
+    must_raise(
+        lambda: sol.certainty_equivalent_cents(
+            "prospect",
+            [100, 500],
+            [Fraction(1, 2), Fraction(1, 2) + Fraction(1, 10**13)],
+            {"gamma": 0.0, "lambda": 1.0},
+            WEALTH,
+        ),
+        "probabilities that sum to one part in ten trillion above 1",
         contains=("probabilities must sum to 1",),
     )
 
