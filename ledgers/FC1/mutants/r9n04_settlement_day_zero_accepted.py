@@ -1,4 +1,6 @@
-"""Reference solution for the FC1 cash-instrument engine (instruments.py).
+"""Student error: CashTrade accepts settlement_day = 0 (the trade date), because its check is day < 0 instead of day < 1.
+
+Reference solution for the FC1 cash-instrument engine (instruments.py).
 
 The grader copies this file to instruments.py in a scratch directory and runs the whole suite on it. It is not an
 answer shown to learners; BLUEPRINT requires that deployment exclude it, and no file in this repository enforces that.

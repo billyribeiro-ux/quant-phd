@@ -141,3 +141,9 @@ that those mutants could alter. Items 6 (FOSD inequality reversed), 7 (SOSD on C
 are therefore not applicable and are dropped. The FOSD and SOSD behaviour is tested through the specified
 `certainty_equivalent_cents` ordering (two witness pairs, FOSD and SOSD, in `test_project.py`). Adding a dominance
 interface to the specification would be a scope change and is not made.
+
+## Architect ruling (batch 3, round 13): project exemplars are excerpts
+
+The two rubric exemplars on the project page are excerpts of memos (103 and 375 words), not full reports of 350 to
+800 words, and the page says so. The build plan wording is amended to match. Full-length exemplars are not required:
+their purpose is to calibrate the rubric levels, and the rubric text itself states the full-report length.

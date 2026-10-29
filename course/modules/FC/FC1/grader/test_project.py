@@ -189,6 +189,15 @@ def test_bond_half_cent_on_a_one_cent_face_rounds_up_not_to_zero() -> None:
     assert checked_events(sol.Bond(1, 5_000, 1).events(), "Bond.events") == [(1, 2)]
 
 
+def test_bond_coupon_is_exact_for_a_face_too_large_for_floats() -> None:
+    """Hand check: a face of 10**17 + 4999 cents at 1 bps has the coupon (10**17 + 4999) / 10000 = 10**13 + 0.4999
+    cents, which rounds down to 10**13. A binary float cannot hold this face, so the coupon must come from exact
+    fractions; the one event adds the face to that coupon."""
+    face = 10**17 + 4999
+    rows = checked_events(must_accept(lambda: sol.Bond(face, 1, 1).events(), "face above 2**53"), "Bond.events")
+    assert rows == [(1, face + 10**13)], "the coupon of a face above 2**53 must be computed from exact fractions"
+
+
 def test_bond_periods_zero_is_refused() -> None:
     """The page names periods < 1 as a ValueError: a bond with no coupon period is not a bond."""
     must_raise(lambda: bond_of({**INST, "periods": 0}).events(), "periods < 1")
@@ -341,6 +350,13 @@ def test_bond_price_exact_half_cent_at_496_bps_is_exact_not_float() -> None:
     assert sol.bond_price_cents(sol.Bond(1_704_285, 179, 1), 496) == 1_652_813
 
 
+def test_bond_price_exact_half_cent_at_400_bps_uses_the_exact_yield() -> None:
+    """Hand check: Bond(13, 0, 1) at 400 bps has the one event (1, 13) and exact present value 13 / 1.04 = 25/2 cents,
+    an exact half that rounds away from zero to 13. The yield 0.04 is exactly 1/25 as a Fraction but not as a binary
+    float, and the float yield misses this case."""
+    assert sol.bond_price_cents(sol.Bond(13, 0, 1), 400) == 13
+
+
 def test_bond_price_falls_as_the_yield_rises() -> None:
     """Discounting harder gives a lower price: for a bond with positive cash flows, a higher yield lowers the price."""
     low = sol.bond_price_cents(bond_of(INST), 100)
@@ -430,6 +446,16 @@ def test_trade_quantity_of_1001_is_accepted() -> None:
         must_accept(lambda: sol.CashTrade(1_001, 9_850, 1, 2).events(), "quantity = 1001"), "CashTrade.events"
     )
     assert rows == [(2, -1_001 * 9_850)], "1001 units bought at the price settle in period 2 for quantity times price"
+
+
+def test_trade_cash_flow_is_exact_above_two_to_the_fifty_three() -> None:
+    """Hand check: 2**40 + 1 units at 9851 cents is (2**40 + 1) * 9851 = 10831289045231227 cents, an odd integer above
+    2**53, which a binary float cannot hold exactly. The settlement event is that amount, negative for a buyer."""
+    quantity = 2**40 + 1
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(quantity, 9_851, 1, 2).events(), "quantity = 2**40 + 1"), "CashTrade.events"
+    )
+    assert rows == [(2, -(quantity * 9_851))], "the cash flow of a product above 2**53 must be an exact integer"
 
 
 def test_trade_price_negative_is_refused() -> None:

@@ -1,4 +1,6 @@
-"""Reference solution for the FC1 cash-instrument engine (instruments.py).
+"""Student error: the coupon is truncated by floor division (face * coupon_bps // 10000), not rounded to the nearest cent with halves away from zero.
+
+Reference solution for the FC1 cash-instrument engine (instruments.py).
 
 The grader copies this file to instruments.py in a scratch directory and runs the whole suite on it. It is not an
 answer shown to learners; BLUEPRINT requires that deployment exclude it, and no file in this repository enforces that.

@@ -1,4 +1,6 @@
-"""Reference solution for the FC1 cash-instrument engine (instruments.py).
+"""Student error: bond_price_cents refuses only yield_bps below -10000, so the yield -10000 (1 + y = 0) gets past the ValueError check and fails later in the division.
+
+Reference solution for the FC1 cash-instrument engine (instruments.py).
 
 The grader copies this file to instruments.py in a scratch directory and runs the whole suite on it. It is not an
 answer shown to learners; BLUEPRINT requires that deployment exclude it, and no file in this repository enforces that.
