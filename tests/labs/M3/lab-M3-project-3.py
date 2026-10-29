@@ -70,7 +70,7 @@ def clip_repair(a: Matrix) -> Matrix:
 
 
 def projection_repair(a: Matrix, tol: float = 1e-10, max_iter: int = 500) -> Matrix:
-    """Dykstra's alternating projections between the positive semidefinite and the unit-diagonal matrices."""
+    """Alternating projections, with correction terms, between the positive semidefinite and unit-diagonal matrices."""
     n = len(a)
     x = [row[:] for row in a]
     corr_s = [[0.0] * n for _ in range(n)]

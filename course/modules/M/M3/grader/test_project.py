@@ -558,6 +558,17 @@ def test_projection_repair_has_unit_diagonal_after_one_iteration() -> None:
         )
 
 
+def test_projection_repair_honours_max_iter() -> None:
+    """One iteration does not converge on these instances, so max_iter=1 must differ from the default run."""
+    for inst in (INST, INST2):
+        one = as_matrix(sol.projection_repair(inst["corr"], max_iter=1), inst["k"])
+        full = as_matrix(sol.projection_repair(inst["corr"]), inst["k"])
+        gap = max(abs(one[i][j] - full[i][j]) for i in range(inst["k"]) for j in range(inst["k"]))
+        assert gap > 1e-6, (
+            "projection_repair must use its max_iter argument: one iteration must differ from the default run"
+        )
+
+
 # --- comparison_weights
 
 
