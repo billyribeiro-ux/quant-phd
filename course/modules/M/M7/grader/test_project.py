@@ -369,9 +369,13 @@ def test_certificate_residuals_are_within_tolerance() -> None:
         )
 
 
-@pytest.mark.parametrize("y_weight", [0.0, 0.25, 0.75], ids=["start", "quarter", "three-quarter"])
+@pytest.mark.parametrize("y_weight", [0.25, 0.5, 0.75], ids=["quarter", "half", "three-quarter"])
 def test_no_feasible_comparator_beats_the_solution(y_weight: float) -> None:
-    """Each comparator is a convex mix of the solution and the starting portfolio, so it is feasible."""
+    """Each comparator is a convex mix of the solution and the starting portfolio, so it is feasible.
+
+    y_weight is the share of the starting portfolio in the mix. Each mix lies strictly between the answer and the
+    starting portfolio, so none of the comparators is the answer itself.
+    """
     w = weights_of(seed_output())
     y = [(1 - y_weight) * w[i] + y_weight * PRISTINE["w0"][i] for i in range(N)]
     assert objective(PRISTINE, w) <= objective(PRISTINE, y) + 1e-9, (
@@ -395,6 +399,11 @@ def test_hand_case_matches_its_worked_answer(name: str) -> None:
             f"{name}: weight {i} differs from the worked answer; re-derive the stationarity equation for this case."
         )
     assert_kkt(case, out)
+    recomputed = recomputed_certificate(case, got, multipliers_of(out))
+    for key in CERTIFICATE_KEYS:
+        assert abs(float(out["certificate"][key]) - recomputed[key]) <= 1e-9, (
+            f"{name}: certificate field {key} does not match the residual recomputed from your weights and multipliers."
+        )
 
 
 # ---------------------------------------------------------------------------------------------------------------------

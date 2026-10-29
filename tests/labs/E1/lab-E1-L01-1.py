@@ -1,7 +1,7 @@
 """E1 lab L01: the consumer optimum for u(x, y) = x * y on the budget line, against the closed form.
 
 Standard library only (fractions). No randomness and no network. Every number is an exact Fraction and nothing
-is rounded. The budget is p_x * x + p_y * y = m with all four inputs positive. For each case the lab takes
+is rounded. The budget is p_x * x + p_y * y = m with p_x, p_y and m all positive. For each case the lab takes
 STEPS = 60 equal steps along the budget line, from x = 0 to x = m / p_x, so grid point 30 is the midpoint of the
 line. It reports the grid point with the largest utility, the closed form x_bar = m / (2 p_x), y_bar = m / (2 p_y) and
 the marginal rate of substitution y / x at the closed-form bundle, which is the ratio of the marginal utilities

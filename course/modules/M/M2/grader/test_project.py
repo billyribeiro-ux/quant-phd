@@ -281,14 +281,27 @@ def test_negative_infinite_step_raises_value_error() -> None:
 
 def test_large_positive_step_is_accepted() -> None:
     # Only a step that is not above zero is refused. A large step above zero is accepted: the suite draws 1, 5 and 1e6.
+    # The forward estimate is fixed by the page, so at each large step its value must be the forward quotient at that
+    # step, not the quotient at some other step. The central estimate is only required to be a finite float here.
     coeffs, x0 = INST["cubic"], INST["x0"]
+
+    def f(x: float) -> float:
+        return float(cubic(coeffs, x))
+
     for h in (1.0, 5.0, 1e6):
         for scheme in ("forward", "central"):
             value = must_accept(
-                partial(sol.fd_derivative, lambda x: float(cubic(coeffs, x)), x0, h, scheme),
+                partial(sol.fd_derivative, f, x0, h, scheme),
                 f"a step of {h} is above zero, so the specification accepts it",
             )
             require(isinstance(value, float) and math.isfinite(value), "a positive step must return a finite float")
+        forward_want = (f(x0 + h) - f(x0)) / h
+        forward_got = sol.fd_derivative(f, x0, h, "forward")
+        require(
+            close(forward_got, forward_want, 1e-9),
+            "at a large positive step the forward estimate must be the forward quotient (f(x+h) - f(x)) / h at that "
+            "step (hint: Lesson 13, the step is not capped)",
+        )
 
 
 def test_positive_step_is_accepted() -> None:
@@ -531,17 +544,44 @@ def test_hessian_negative_infinite_step_raises_value_error() -> None:
 
 
 def test_hessian_positive_step_is_accepted() -> None:
-    # Steps from 1e-4 to 1 are accepted; the step is above zero in each, and the entries are finite floats.
-    c, point = INST["surface"], INST["point"]
+    # Steps from 1e-4 to 1 are accepted, and the entries are finite floats. At steps 1e-3 and 1 each entry must also be
+    # the page's formula at that step: the diagonal second difference over h^2 and the mixed difference over 4h^2. The
+    # function is not a polynomial, so a silently changed step shows in the entries.
+    point = INST["point"]
+    u0, v0 = point
+
+    def g(p: list[float]) -> float:
+        return math.sin(p[0]) * math.cos(p[1])
+
+    def at(du: float, dv: float) -> float:
+        return g([u0 + du, v0 + dv])
+
     for step in (1e-4, 1e-3, 1.0):
         got = must_accept(
-            partial(sol.hessian_fd, lambda p: surface(c, p), point, step),
+            partial(sol.hessian_fd, g, point, step),
             f"a Hessian step of {step} is above zero, so the specification accepts it",
         )
         require(
             isinstance(got, list) and all(isinstance(v, float) and math.isfinite(v) for row in got for v in row),
             "a positive Hessian step must return a finite float in every entry",
         )
+        if step == 1e-4:
+            continue
+        h = step
+        centre = at(0.0, 0.0)
+        want_uu = (at(h, 0.0) - 2 * centre + at(-h, 0.0)) / (h * h)
+        want_vv = (at(0.0, h) - 2 * centre + at(0.0, -h)) / (h * h)
+        want_uv = (at(h, h) - at(h, -h) - at(-h, h) + at(-h, -h)) / (4 * h * h)
+        want = [[want_uu, want_uv], [want_uv, want_vv]]
+        rows: Any = got  # must_accept returns an object; the require above has checked that it is a list of float rows
+        for i in range(2):
+            for j in range(2):
+                tolerance = 1e-9 * max(1.0, abs(want[i][j])) + 1e-12 / (h * h)
+                require(
+                    abs(rows[i][j] - want[i][j]) <= tolerance,
+                    "at a positive Hessian step each entry must be the second difference over h^2 (diagonal) or the "
+                    "mixed difference over 4h^2 (off-diagonal) at that step (hint: Lesson 19, the step is not capped)",
+                )
 
 
 # ---- bond price in integer cents: bond_price_cents ----
@@ -758,8 +798,9 @@ def test_yield_just_above_minus_one_is_accepted() -> None:
 
 
 def test_module_prints_nothing_and_warns_nothing() -> None:
-    # Every function, on each branch the other tests reach: both schemes, the constant and the non-constant case of
-    # ad_derivative, the price and the sensitivities, and each named refusal. Output to stdout and stderr is captured.
+    # The five named functions, each on a branch the other tests reach: both schemes, the constant and the non-constant
+    # case of ad_derivative, the price and the sensitivities, and each named refusal. Output to stdout and stderr is
+    # captured.
     buffer = io.StringIO()
     coeffs, x0 = INST["cubic"], INST["x0"]
     poly = partial(cubic, coeffs)

@@ -1,6 +1,6 @@
 """M5 L07 lab 1: Banach iteration for cos on [0, 1], the sampled contraction ratio, and a map with no fixed point.
 
-Part A iterates x_{n+1} = cos(x_n) from x_0 = 0 and checks the error |x_n - x*| against the a priori bound of
+Part A iterates x_{n+1} = cos(x_n) from x_0 = 0 and checks the error |x_n - xbar| against the a priori bound of
 Theorem 2.1, beta**n * d(x_0, x_1) / (1 - beta), with beta = sin(1) and d(x_0, x_1) = 1. Part B samples the
 difference quotient |cos x - cos y| / |x - y| over all pairs of a grid on [0, 1] and checks that no pair exceeds
 sin(1), which is sup |f'| on [0, 1] by Example 3.3. Part C applies the same sampling to f(x) = sqrt(x*x + 1) on
@@ -33,7 +33,7 @@ def part_a() -> None:
     """Check the a priori error bound for the Banach iteration of cos from x_0 = 0."""
     xstar = cos_fixed_point()
     d01 = abs(0.0 - math.cos(0.0))  # d(x_0, x_1) = |0 - 1| = 1
-    print(f"part A: modulus beta = sin(1) = {BETA:.6f}; fixed point x* = {xstar:.6f}")
+    print(f"part A: modulus beta = sin(1) = {BETA:.6f}; fixed point xbar = {xstar:.6f}")
     x = 0.0
     for n in range(31):
         err = abs(x - xstar)

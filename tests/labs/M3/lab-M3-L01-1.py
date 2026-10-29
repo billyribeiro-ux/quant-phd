@@ -4,8 +4,8 @@ Claims checked, on seeded integer vectors with entries from -3 to 3:
   (a) a list of k vectors is linearly independent exactly when the matrix having them as columns has
       rank k, where rank is the number of pivots that Gauss-Jordan elimination finds (Proposition 3.5
       of Lesson 1); the lab uses this rank test as its independence test;
-  (b) on the seeded lists, every list of more than n vectors in R^n is dependent (Corollary 3.6 of
-      Lesson 1 proves this for every list);
+  (b) on the seeded lists, the 4-vector lists in R^3 and the 5-vector lists in R^4 are all dependent
+      (Corollary 3.6 of Lesson 1 proves this for every list of more than n vectors in R^n);
   (c) for v4 = 2 v1 - v2 + v3 in R^4, the number of four-vector lists with rank 3 equals the number of
       independent triples v1, v2, v3 over the seeded draws (the lab compares the two counts);
   (d) x lies in the span of e1 and e2 in R^3 exactly when its third coordinate is 0 (Example 2.3

@@ -319,13 +319,15 @@ def test_smallest_positive_b_is_accepted(structure: str) -> None:
     )
 
 
-@pytest.mark.parametrize("args", [(120.0, 1, 20), (120, True, 20), (120, 1, 20.0), ("120", 1, 20)])
-def test_non_integer_inputs_do_not_yield_float_money(args: tuple[Any, ...]) -> None:
-    try:
-        result = sol.outcome("monopoly", *args)
-    except Exception:
-        return
-    check(all(type(v) is int for v in result.values()), "a non-integer input must not produce a float output")
+@pytest.mark.parametrize("structure", STRUCTURES)
+def test_large_exact_inputs_round_from_exact_values(structure: str) -> None:
+    # a = 15000000000000002 makes the Cournot volume 10^16 + 2/3, which rounds to 10^16 + 1. A float computation loses
+    # the fraction at this size, so every output must come from the exact value.
+    a, b, c = 15000000000000002, 1, 1
+    check(
+        sol.outcome(structure, a, b, c) == expected(structure, a, b, c),
+        f"large exact inputs for {structure} must round from the exact fractions, not from floating-point values",
+    )
 
 
 def test_value_below_a_half_rounds_down() -> None:

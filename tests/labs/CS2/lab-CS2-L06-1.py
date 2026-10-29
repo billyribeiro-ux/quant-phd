@@ -204,7 +204,7 @@ def part_d() -> None:
     print(f"vertices {n} edges {edges} reached_from_0 {reached}")
     print(f"enqueues {reached} dequeues {len(order)} each_vertex_enqueued_once {len(set(order)) == len(order)}")
     print(f"adjacency_entries_inspected {inspections} equals_sum_of_degrees_of_reached {inspections == degree_sum}")
-    print(f"matrix_row_reads_for_same_search {reached * n}")
+    print(f"matrix_row_reads_for_same_search {len(order) * n}")
     print(f"list_work_enqueues_plus_inspections {reached + inspections}")
 
 

@@ -74,6 +74,16 @@ def value_b(a: float) -> float:
     return x_star * (a - x_star)
 
 
+def reduced_objective(x: float) -> Callable[[float], float]:
+    """The map a -> x * (a - x) with the choice x held fixed; its derivative in a is x."""
+    return lambda a: x * (a - x)
+
+
+def frozen_product(x: float, y: float) -> Callable[[float], float]:
+    """The map a -> x * y with x and y held fixed; the product has no a in it, so its derivative in a is zero."""
+    return lambda a: x * y
+
+
 def central_difference(v: Callable[[float], float], a: float, h: float) -> float:
     """The central difference (v(a + h) - v(a - h)) / (2 h). The step h must be positive."""
     if h <= 0.0:
@@ -96,8 +106,11 @@ def main() -> None:
     for a in PARAMETERS_B:
         x_star = maximizer_b(a)
         fd = central_difference(value_b, a, STEP)
-        reduced_partial = x_star
-        naive_partial = 0.0  # x * y has no a in it, so at fixed x and y its partial in a is zero
+        # Reduced objective F(x, a) = x * (a - x) with x held at its optimum: its partial in a is computed, not typed.
+        reduced_partial = central_difference(reduced_objective(x_star), a, STEP)
+        # Naive partial: x and y are frozen at their optimum values, and x * y is then a constant in a, so the
+        # central difference of that frozen product is computed as zero.
+        naive_partial = central_difference(frozen_product(x_star, a - x_star), a, STEP)
         print(
             f"a = {a:<4} x_hat = {x_star:.8f} V' central difference {fd:.8f} a/2 {a / 2.0:.8f} "
             f"reduced F_a(x_hat, a) {reduced_partial:.8f} naive partial of x*y in a {naive_partial:.8f} "

@@ -129,7 +129,7 @@ def projection_repair(matrix: list[list[float]], tol: float = 1e-10, max_iter: i
 
 
 def comparison_weights(corr: list[list[float]], vols: list[float]) -> list[float]:
-    """Weights proportional to the solution of (D C D) x = 1, normalised to sum to one; D = diag(vols)."""
+    """Weights proportional to the solution of (S C S) x = 1, normalised to sum to one; S = diag(vols)."""
     c = _as_matrix(corr)
     n = len(c)
     if len(vols) != n:

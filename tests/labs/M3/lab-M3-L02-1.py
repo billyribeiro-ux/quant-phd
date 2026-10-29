@@ -1,16 +1,17 @@
 """M3 L02 lab 1: the matrix of a linear map in a new basis, and the change-of-basis identity.
 
-For 50 seeded pairs (A, C) of 3 by 3 integer matrices and a seeded invertible 3 by 3 integer matrix S
+For 50 seeded pairs (A, M) of 3 by 3 integer matrices and a seeded invertible 3 by 3 integer matrix P
 whose columns form a basis of R^3, the lab checks:
-  (a) the matrix of x -> A x in the basis of the columns of S, built column by column from coordinates
-      (the coordinates y_j solve S y_j = A s_j, by elimination), equals S^-1 A S exactly (Theorem 4.1
-      of Lesson 2);
-  (b) the matrix of the composition x -> C (A x) in that basis equals the product of the matrix of
-      x -> C x and the matrix of x -> A x, both taken in that basis (Proposition 3.1 of Lesson 2);
-  (c) a floating-point evaluation of S^-1 A S agrees with the exact matrix to within 1e-12, measured
+  (a) the matrix of x -> A x in the basis of the columns of P, built column by column from coordinates
+      (the coordinates y_j solve P y_j = A p_j, where p_j is column j of P, by elimination), equals
+      P^-1 A P exactly (Theorem 4.1 of Lesson 2);
+  (b) the matrix of the composition x -> M (A x) in that basis equals the product of the matrix of
+      x -> M x and the matrix of x -> A x, both taken in that basis (Proposition 3.1 of Lesson 2);
+  (c) a floating-point evaluation of P^-1 A P agrees with the exact matrix to within 1e-12, measured
       relative to max(1, |entry|) for each entry.
 Checks (a) and (b) use fractions.Fraction, so they involve no rounding. Check (c) uses floats only.
-Candidate matrices S that are singular are rejected and redrawn; the count of rejections is printed.
+Candidate matrices P that are singular (they have no inverse) are rejected and redrawn; the count of
+rejections is printed.
 Draws come from a linear congruential generator with fixed constants, so the output is the same on
 every run. The lab checks the listed pairs only. Standard library only.
 """
@@ -153,12 +154,12 @@ def main() -> None:
         float_ok += within
         if pair == 0:
             first_basis_matrix = formula
-    print(f"pairs (A, C) and invertible S tested: {PAIRS}")
-    print(f"singular draws of S rejected before an invertible S was found: {rejected}")
-    print(f"coordinates of A s_j equal S^-1 A S in {coordinates_ok} of {PAIRS} pairs")
+    print(f"pairs (A, M) and invertible P tested: {PAIRS}")
+    print(f"singular draws of P rejected before an invertible P was found: {rejected}")
+    print(f"coordinates of A p_j equal P^-1 A P in {coordinates_ok} of {PAIRS} pairs")
     print(f"composition matrix equals the product of matrices in {composition_ok} of {PAIRS} pairs")
-    print(f"float evaluation of S^-1 A S within 1e-12 of the exact matrix in {float_ok} of {PAIRS} pairs")
-    print("first pair, matrix of A in the basis of S, row by row:")
+    print(f"float evaluation of P^-1 A P within 1e-12 of the exact matrix in {float_ok} of {PAIRS} pairs")
+    print("first pair, matrix of A in the basis of P, row by row:")
     for row in first_basis_matrix:
         print(" ".join(str(x) for x in row))
 

@@ -9,7 +9,7 @@ It is an illustrative input, not an estimate from data. The lab does not estimat
 claim that it describes any market.
 
 The problem is: minimize f(w) = (1/2) w' Sigma w over w in R^3, subject to 1' w = 1. The lab
-1. builds Sigma = A' A + I from a 3 x 3 integer matrix A (so Sigma is symmetric and positive definite);
+1. forms Sigma = A' A + I from a 3 x 3 integer matrix A (so Sigma is symmetric and positive definite);
 2. solves Sigma u = 1 by exact Gaussian elimination, sets lambda = 1 / (1' u) and w = lambda u;
 3. checks that the budget holds exactly, that the gradient Sigma w equals lambda times the constraint normal 1
    exactly, and that f(w + t d) - f(w) equals (1/2) t^2 d' Sigma d for six directions d with 1' d = 0 and six

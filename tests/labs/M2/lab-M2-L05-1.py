@@ -3,9 +3,9 @@
 Standard library only. No randomness and no network. The three functions are p(x) = (x^2 + 1)(x^3), the quotient
 q(x) = (x^2 + 1)/(x + 2) and the composite c(x) = (x^2 + 1)^3. For each one, the script prints the derivative from the
 rule of this lesson (the analytic value) and the central difference (f(x + h) - f(x - h))/(2h) with h = 10^-4, with
-the absolute difference between them. The central difference has error of order h^2 under Assumption 1.4
-of the page (assumed there, not proved), and at this step
-each printed absolute difference is below 1e-6 (the table gives the three values). The agreement is a numerical
+the absolute difference between them, printed to three significant digits. Assuming Assumption 1.4, the central
+difference has error of order h^2. That assumption is stated on the page and not proved there. At this step each
+printed absolute difference is below 1e-6 (the table gives the three values). The agreement is a numerical
 check at one point and step, not a proof of the rules; the proofs are on the page.
 """
 
@@ -62,7 +62,7 @@ def main() -> None:
     for name, f, df in cases:
         analytic = df(X)
         numeric = central(f, X, H)
-        print(f"{name}, {analytic:.9f}, {numeric:.9f}, {abs(analytic - numeric):.3e}")
+        print(f"{name}, {analytic:.9f}, {numeric:.9f}, {abs(analytic - numeric):.2e}")
 
 
 main()

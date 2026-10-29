@@ -91,7 +91,7 @@ def projection_repair(a: Matrix, tol: float = 1e-10, max_iter: int = 500) -> Mat
 
 
 def comparison_weights(corr: Matrix, vols: list[float]) -> list[float]:
-    """Weights proportional to Sigma^(-1) 1, with Sigma = D C D and D = diag(vols), normalised to sum to 1."""
+    """Weights proportional to Sigma^(-1) 1, with Sigma = S C S and S = diag(vols), normalised to sum to 1."""
     n = len(corr)
     sigma = [[vols[i] * corr[i][j] * vols[j] for j in range(n)] for i in range(n)]
     aug = [[*sigma[i], 1.0] for i in range(n)]

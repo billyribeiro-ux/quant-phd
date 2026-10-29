@@ -409,6 +409,37 @@ def test_one_position_with_positive_variance_is_accepted() -> None:
     check(len(losses) == 100 and all(type(x) is int for x in losses), "a positive 1 x 1 covariance must be accepted")
 
 
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_one_position_with_a_tiny_positive_variance_is_accepted(family: str, nu: int | None) -> None:
+    # A variance of 1e-14 is positive, so the one-position portfolio is valid: a pivot check with an absolute
+    # tolerance above 1e-14 would wrongly reject it.
+    losses = sol.simulate_losses([1_000_000], [[1e-14]], 100, SEED, family, nu)
+    check(
+        len(losses) == 100 and all(type(x) is int for x in losses),
+        "a one-position covariance with a tiny positive variance must be accepted",
+    )
+
+
+def test_one_position_with_a_tiny_positive_variance_has_the_right_loss_variance() -> None:
+    # Position 10^13 cents and variance 1e-14: the loss has variance (10^13)^2 x 1e-14 = 10^12 cents squared, a sd of
+    # 10^6 cents, so rounding to the whole cent does not move the sample variance.
+    losses = sol.simulate_losses([10**13], [[1e-14]], 20_000, SEED, "gaussian", None)
+    check(
+        relative_error(sample_variance(losses), 1e12) <= TOL_GAUSSIAN_VARIANCE,
+        "the loss variance of a one-position portfolio must be w' Sigma w, also for a tiny positive variance",
+    )
+
+
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_two_positions_with_tiny_positive_covariance_are_accepted(family: str, nu: int | None) -> None:
+    # Symmetric, with both pivots (1e-14 and about 9e-14) positive: a valid input that must not be rejected.
+    losses = sol.simulate_losses([1_000, 1_000], [[1e-14, 1e-15], [1e-15, 9e-14]], 100, SEED, family, nu)
+    check(
+        len(losses) == 100 and all(type(x) is int for x in losses),
+        "a 2 x 2 positive definite covariance with entries of order 1e-14 must be accepted",
+    )
+
+
 # --- quantile_99 -----------------------------------------------------------------------------------------------------
 
 

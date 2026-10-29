@@ -58,7 +58,8 @@ def t3_cdf(x: float) -> float:
 
 
 def t3_tail_one_sided(x: float) -> float:
-    """P(V > x) for x > 0, written so that the leading terms of the two arctangents cancel without loss."""
+    """P(V > x) for x > 0, as arctan(1/y) minus y/(1+y^2) over pi with y = x/sqrt 3,
+    which avoids subtracting two nearly equal arctangents for large x."""
     y = x / SQRT3
     return (math.atan(1.0 / y) - y / (1.0 + y * y)) / math.pi
 
