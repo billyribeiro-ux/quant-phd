@@ -109,7 +109,7 @@ def projection_repair(matrix: list[list[float]], tol: float = 1e-10, max_iter: i
     x = a
     corr_s = [[0.0] * n for _ in range(n)]
     corr_u = [[0.0] * n for _ in range(n)]
-    for _ in range(max(max_iter, 5000)):
+    for _ in range(max_iter):
         y = _psd_projection([[x[i][j] + corr_s[i][j] for j in range(n)] for i in range(n)])
         corr_s = [[x[i][j] + corr_s[i][j] - y[i][j] for j in range(n)] for i in range(n)]
         new_x = [[y[i][j] + corr_u[i][j] for j in range(n)] for i in range(n)]
