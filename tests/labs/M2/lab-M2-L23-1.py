@@ -3,9 +3,11 @@
 SIMULATED: the bond is a generated specification, not a quoted security. Face value 100000 cents, an annual coupon of
 5 percent of face (5000 cents a year), ten annual coupons, and the face repaid with the last coupon. Yield compounds
 annually, so the price at yield y is P(y) = sum over t = 1..10 of c_t / (1 + y)**t, with c_t the cash flow in cents.
-The price, its derivatives and its Taylor expansions are exact rational arithmetic (Fraction) on the float yields, so no
-rounding enters before the price is reported. Only the reported price is an integer number of cents: the unrounded price
-rounded to the nearest cent with halves to even, which is Fraction's round(). Floats appear only in the
+The price and its Taylor polynomials are exact rational arithmetic (Fraction) on the float yields, so no rounding enters
+before the price is reported. The two sensitivities P'(y0) and P''(y0) are floats: each is the
+exact rational value rounded once to the nearest double, so its relative error is at most 2**-53, and the Taylor
+polynomials use these float sensitivities as exact rationals. Only the reported price is an integer number of cents: the
+unrounded price rounded to the nearest cent with halves to even, which is Fraction's round(). Floats also appear in the
 central-difference checks and in the printed values.
 Part A checks the closed-form first and second derivatives of P against central differences. Part B expands P about
 the base yield 4 percent, and prints the errors of the first-order and the second-order expansions at steps of
@@ -47,16 +49,17 @@ def price(y: float) -> Fraction:
     return sum((Fraction(cash_flow_cents(t)) / v**t for t in range(1, YEARS + 1)), Fraction(0))
 
 
-def price_first_derivative(y: float) -> Fraction:
-    """P'(y) = minus the sum over t of t c_t (1 + y)**(-t - 1), in cents per unit of yield, exact."""
+def price_first_derivative(y: float) -> float:
+    """P'(y) = minus the sum over t of t c_t (1 + y)**(-t - 1), in cents per unit of yield, rounded once to a float."""
     v = growth_factor(y)
-    return -sum((Fraction(t * cash_flow_cents(t)) / v ** (t + 1) for t in range(1, YEARS + 1)), Fraction(0))
+    return float(-sum((Fraction(t * cash_flow_cents(t)) / v ** (t + 1) for t in range(1, YEARS + 1)), Fraction(0)))
 
 
-def price_second_derivative(y: float) -> Fraction:
-    """P''(y) = the sum over t of t (t + 1) c_t (1 + y)**(-t - 2), in cents per unit of yield squared, exact."""
+def price_second_derivative(y: float) -> float:
+    """P''(y) = the sum over t of t (t + 1) c_t (1 + y)**(-t - 2), in cents per unit of yield squared, as a float."""
     v = growth_factor(y)
-    return sum((Fraction(t * (t + 1) * cash_flow_cents(t)) / v ** (t + 2) for t in range(1, YEARS + 1)), Fraction(0))
+    exact = sum((Fraction(t * (t + 1) * cash_flow_cents(t)) / v ** (t + 2) for t in range(1, YEARS + 1)), Fraction(0))
+    return float(exact)
 
 
 def price_cents(y: float) -> int:
@@ -65,13 +68,13 @@ def price_cents(y: float) -> int:
 
 
 def taylor_first(y0: float, dy: float) -> Fraction:
-    """First-order Taylor polynomial of P about y0, evaluated at y0 + dy, exact for the float shift dy."""
-    return price(y0) + price_first_derivative(y0) * Fraction(dy)
+    """First-order Taylor polynomial of P about y0, at y0 + dy: exact for the float shift dy and float sensitivity."""
+    return price(y0) + Fraction(price_first_derivative(y0)) * Fraction(dy)
 
 
 def taylor_second(y0: float, dy: float) -> Fraction:
-    """Second-order Taylor polynomial of P about y0, evaluated at y0 + dy, exact for the float shift dy."""
-    return taylor_first(y0, dy) + Fraction(1, 2) * price_second_derivative(y0) * Fraction(dy) ** 2
+    """Second-order Taylor polynomial of P about y0, at y0 + dy: exact for the float shift dy and sensitivities."""
+    return taylor_first(y0, dy) + Fraction(1, 2) * Fraction(price_second_derivative(y0)) * Fraction(dy) ** 2
 
 
 def central_difference(fun: Callable[[float], float], y: float, h: float) -> float:
@@ -87,10 +90,10 @@ def main() -> None:
     print(f"base yield {y0:.2%}; unrounded price {float(price(y0)):.6f} cents")
     print(f"integer price in cents: {price_cents(y0)}")
 
-    p1 = float(price_first_derivative(y0))
-    p2 = float(price_second_derivative(y0))
+    p1 = price_first_derivative(y0)
+    p2 = price_second_derivative(y0)
     fd1 = central_difference(lambda y: float(price(y)), y0, 1e-5)
-    fd2 = central_difference(lambda y: float(price_first_derivative(y)), y0, 1e-4)
+    fd2 = central_difference(price_first_derivative, y0, 1e-4)
     print(f"P'(y0) closed form {p1:.6f}, central difference {fd1:.6f}, difference {abs(p1 - fd1):.1e}")
     print(f"P''(y0) closed form {p2:.6f}, central difference {fd2:.6f}, difference {abs(p2 - fd2):.1e}")
 

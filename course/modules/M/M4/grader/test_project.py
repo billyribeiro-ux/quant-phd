@@ -276,7 +276,12 @@ def test_loss_is_rounded_once_for_the_portfolio_not_per_position() -> None:
 
 
 def test_no_function_prints(capsys: pytest.CaptureFixture[str]) -> None:
-    sol.matched_scale(5)
+    # Every function runs at the sizes the instances use: the instance's own draw count for both families, and every
+    # nu of 3 to 8, so a print that shows only on long runs or at one nu is caught as well.
+    for nu in range(3, 9):
+        sol.matched_scale(nu)
+    sol.simulate_losses(POSITIONS, COV, N_DRAWS, SEED, "gaussian", None)
+    sol.simulate_losses(POSITIONS, COV, N_DRAWS, SEED, "student_t", NU)
     sol.simulate_losses(POSITIONS, COV, 50, SEED, "gaussian", None)
     sol.simulate_losses(POSITIONS, COV, 50, SEED, "student_t", 5)
     sol.quantile_99([3, 1, 2])

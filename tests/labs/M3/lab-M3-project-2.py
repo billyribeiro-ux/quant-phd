@@ -1,4 +1,4 @@
-"""Rung 2 completion problem, completed solution: the same clipping repair on a second hand-set matrix."""
+"""Rung 2 completion problem: the clipping repair on a second matrix. The page has ___ blanks; this twin is complete."""
 
 import math
 

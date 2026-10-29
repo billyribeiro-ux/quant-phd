@@ -400,6 +400,24 @@ def test_successor_just_above_the_resources_is_infeasible() -> None:
     )
 
 
+def test_saving_above_the_current_capital_is_feasible_within_resources() -> None:
+    """A saving k' above the current capital k is feasible whenever k' <= k**alpha: the rule is the resources
+    test alone, not k' <= k. From k = 0.25 with alpha = 0.5 the resources are 0.5, so k' = 0.4 is feasible and
+    the operator must take it: sqrt(0.5 - 0.4) + 0.9 * 10 = 9.316228, not the value 0.5 of k' = 0.25 alone."""
+    p = {"beta": 0.9, "alpha": 0.5}
+    grid = [0.25, 0.4, 1.0]
+    got = sol.bellman_operator(p, grid, [0.0, 10.0, 0.0])
+    expect(
+        isinstance(got, (list, tuple)) and len(got) == 3,
+        "bellman_operator must return one value per grid point",
+    )
+    expect(
+        close(float(got[0]), 9.316228, 1e-6),
+        "a saving above the current capital k is feasible when k' <= k**alpha: the operator must take the feasible "
+        "successor 0.4 at k = 0.25, which the resources 0.25**0.5 = 0.5 allow",
+    )
+
+
 @pytest.mark.parametrize("which", [0, 1])
 def test_the_first_sweep_starts_from_zero_and_is_synchronous(which: int) -> None:
     """solve starts from V0 = 0; one sweep of max_iter = 1 returns B(0), computed from the whole zero vector."""

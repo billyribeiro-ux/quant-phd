@@ -93,9 +93,11 @@
 SIMULATED: the bond is a generated specification, not a quoted security. Face value 100000 cents, an annual coupon of
 5 percent of face (5000 cents a year), ten annual coupons, and the face repaid with the last coupon. Yield compounds
 annually, so the price at yield y is P(y) = sum over t = 1..10 of c_t / (1 + y)**t, with c_t the cash flow in cents.
-The price, its derivatives and its Taylor expansions are exact rational arithmetic (Fraction) on the float yields, so no
-rounding enters before the price is reported. Only the reported price is an integer number of cents: the unrounded price
-rounded to the nearest cent with halves to even, which is Fraction's round(). Floats appear only in the
+The price and its Taylor polynomials are exact rational arithmetic (Fraction) on the float yields, so no rounding enters
+before the price is reported. The two sensitivities P'(y0) and P''(y0) are floats: each is the
+exact rational value rounded once to the nearest double, so its relative error is at most 2**-53, and the Taylor
+polynomials use these float sensitivities as exact rationals. Only the reported price is an integer number of cents: the
+unrounded price rounded to the nearest cent with halves to even, which is Fraction's round(). Floats also appear in the
 central-difference checks and in the printed values.
 Part A checks the closed-form first and second derivatives of P against central differences. Part B expands P about
 the base yield 4 percent, and prints the errors of the first-order and the second-order expansions at steps of
@@ -137,16 +139,17 @@ def price(y: float) -&gt; Fraction:
     return sum((Fraction(cash_flow_cents(t)) / v**t for t in range(1, YEARS + 1)), Fraction(0))
 
 
-def price_first_derivative(y: float) -&gt; Fraction:
-    """P'(y) = minus the sum over t of t c_t (1 + y)**(-t - 1), in cents per unit of yield, exact."""
+def price_first_derivative(y: float) -&gt; float:
+    """P'(y) = minus the sum over t of t c_t (1 + y)**(-t - 1), in cents per unit of yield, rounded once to a float."""
     v = growth_factor(y)
-    return -sum((Fraction(t * cash_flow_cents(t)) / v ** (t + 1) for t in range(1, YEARS + 1)), Fraction(0))
+    return float(-sum((Fraction(t * cash_flow_cents(t)) / v ** (t + 1) for t in range(1, YEARS + 1)), Fraction(0)))
 
 
-def price_second_derivative(y: float) -&gt; Fraction:
-    """P''(y) = the sum over t of t (t + 1) c_t (1 + y)**(-t - 2), in cents per unit of yield squared, exact."""
+def price_second_derivative(y: float) -&gt; float:
+    """P''(y) = the sum over t of t (t + 1) c_t (1 + y)**(-t - 2), in cents per unit of yield squared, as a float."""
     v = growth_factor(y)
-    return sum((Fraction(t * (t + 1) * cash_flow_cents(t)) / v ** (t + 2) for t in range(1, YEARS + 1)), Fraction(0))
+    exact = sum((Fraction(t * (t + 1) * cash_flow_cents(t)) / v ** (t + 2) for t in range(1, YEARS + 1)), Fraction(0))
+    return float(exact)
 
 
 def price_cents(y: float) -&gt; int:
@@ -155,13 +158,13 @@ def price_cents(y: float) -&gt; int:
 
 
 def taylor_first(y0: float, dy: float) -&gt; Fraction:
-    """First-order Taylor polynomial of P about y0, evaluated at y0 + dy, exact for the float shift dy."""
-    return price(y0) + price_first_derivative(y0) * Fraction(dy)
+    """First-order Taylor polynomial of P about y0, at y0 + dy: exact for the float shift dy and float sensitivity."""
+    return price(y0) + Fraction(price_first_derivative(y0)) * Fraction(dy)
 
 
 def taylor_second(y0: float, dy: float) -&gt; Fraction:
-    """Second-order Taylor polynomial of P about y0, evaluated at y0 + dy, exact for the float shift dy."""
-    return taylor_first(y0, dy) + Fraction(1, 2) * price_second_derivative(y0) * Fraction(dy) ** 2
+    """Second-order Taylor polynomial of P about y0, at y0 + dy: exact for the float shift dy and sensitivities."""
+    return taylor_first(y0, dy) + Fraction(1, 2) * Fraction(price_second_derivative(y0)) * Fraction(dy) ** 2
 
 
 def central_difference(fun: Callable[[float], float], y: float, h: float) -&gt; float:
@@ -177,10 +180,10 @@ def main() -&gt; None:
     print(f"base yield {y0:.2%}; unrounded price {float(price(y0)):.6f} cents")
     print(f"integer price in cents: {price_cents(y0)}")
 
-    p1 = float(price_first_derivative(y0))
-    p2 = float(price_second_derivative(y0))
+    p1 = price_first_derivative(y0)
+    p2 = price_second_derivative(y0)
     fd1 = central_difference(lambda y: float(price(y)), y0, 1e-5)
-    fd2 = central_difference(lambda y: float(price_first_derivative(y)), y0, 1e-4)
+    fd2 = central_difference(price_first_derivative, y0, 1e-4)
     print(f"P'(y0) closed form {p1:.6f}, central difference {fd1:.6f}, difference {abs(p1 - fd1):.1e}")
     print(f"P''(y0) closed form {p2:.6f}, central difference {fd2:.6f}, difference {abs(p2 - fd2):.1e}")
 
@@ -219,14 +222,14 @@ shift dy = 0.005   first-order error  1.027970e+02 second-order error -1.911100e
 shift dy = 0.0025  first-order error  2.593632e+01 second-order error -2.407040e-01 ratios 3.9634 7.9396
 yield shift +0.01: exact price 100000 cents, second-order expansion 100015 cents, difference -15 cents
 yield shift -0.01: exact price 117060 cents, second-order expansion 117044 cents, difference 16 cents</pre>
-        <p class="interpretation">The unrounded price at 4 percent is 108110.895779 cents, which rounds to the integer 108111 cents. The closed-form \(P'(y_0)\) and \(P''(y_0)\) agree with central differences to 1.6e-03 cents per unit yield and to 1.9 cents per unit yield squared, which are small against 851466.74 and 8376648.51 in the same units. The printed ratios of errors are 3.9279 and 3.9634 for the first-order expansion, and 7.8807 and 7.9396 for the second-order expansion, approaching 4 and 8 as the shift halves. Each ratio is the error at the larger shift divided by the error at the next smaller shift (lab code: previous error over current error). The printed differences between the price and the second-order expansion, both rounded to whole cents in the output (the price line is labelled "exact price"), are \(-15\) at the shift \(+0.01\) and \(+16\) at \(-0.01\), so the second-order expansion is off by 15 and 16 cents at these two shifts, against exact prices of 100000 cents at \(+0.01\) and 117060 cents at \(-0.01\). The lab does not establish any accuracy beyond these two shifts. The preview numbers 7.875864 and 77.482001 are printed only, and this lesson does not define them. The price, its derivatives and the Taylor terms are exact rational numbers in this lab, and the central differences are float checks. The lab uses the same SIMULATED bond throughout and tests no other specification.</p>
+        <p class="interpretation">The unrounded price at 4 percent is 108110.895779 cents, which rounds to the integer 108111 cents. The closed-form \(P'(y_0)\) and \(P''(y_0)\) agree with central differences to 1.6e-03 cents per unit yield and to 1.9 cents per unit yield squared, which are small against 851466.74 and 8376648.51 in the same units. The printed ratios of errors are 3.9279 and 3.9634 for the first-order expansion, and 7.8807 and 7.9396 for the second-order expansion, approaching 4 and 8 as the shift halves. Each ratio is the error at the larger shift divided by the error at the next smaller shift (lab code: previous error over current error). The printed differences between the price and the second-order expansion, both rounded to whole cents in the output (the price line is labelled "exact price"), are \(-15\) at the shift \(+0.01\) and \(+16\) at \(-0.01\), so the second-order expansion is off by 15 and 16 cents at these two shifts, against exact prices of 100000 cents at \(+0.01\) and 117060 cents at \(-0.01\). The lab does not establish any accuracy beyond these two shifts. The preview numbers 7.875864 and 77.482001 are printed only, and this lesson does not define them. The price and the Taylor polynomials are exact rational numbers in this lab, the two sensitivities are floats (each rounded once to the nearest double), and the central differences are float checks. The lab uses the same SIMULATED bond throughout and tests no other specification.</p>
       </section>
 
       <h2 id="s3"><span class="section-number">3</span>The Taylor expansion and its remainder</h2>
 
       <div class="block theorem">
         <span class="block-title claim" data-grade="T">Theorem 3.1 <span class="name">(the second-order expansion of the price)</span></span>
-        <p>Let \(y_0 > -1\) and \(\Delta\) be such that \(y_0 + \Delta > -1\). Put \(\mathcal{P}_1(\Delta) = P(y_0) + P'(y_0)\Delta\) and \(\mathcal{P}_2(\Delta) = \mathcal{P}_1(\Delta) + \tfrac12 P''(y_0)\Delta^2\). Then \(P(y_0+\Delta) = \mathcal{P}_2(\Delta) + R(\Delta)\) with \(|R(\Delta)| \le \tfrac16 M|\Delta|^3\), where \(M\) is the maximum of \(|P'''|\) on the closed interval between \(y_0\) and \(y_0 + \Delta\).</p>
+        <p>Assuming Assumption 2.1 of Lesson L06 (the extreme value theorem), let \(y_0 > -1\) and \(\Delta\) be such that \(y_0 + \Delta > -1\). Put \(\mathcal{P}_1(\Delta) = P(y_0) + P'(y_0)\Delta\) and \(\mathcal{P}_2(\Delta) = \mathcal{P}_1(\Delta) + \tfrac12 P''(y_0)\Delta^2\). Then \(P(y_0+\Delta) = \mathcal{P}_2(\Delta) + R(\Delta)\) with \(|R(\Delta)| \le \tfrac16 M|\Delta|^3\), where \(M\) is the maximum of \(|P'''|\) on the closed interval between \(y_0\) and \(y_0 + \Delta\).</p>
       </div>
 
       <div class="block proof">
@@ -236,7 +239,7 @@ yield shift -0.01: exact price 117060 cents, second-order expansion 117044 cents
 
       <div class="block proposition">
         <span class="block-title claim" data-grade="T">Proposition 3.2 <span class="name">(the sign of the remainder)</span></span>
-        <p>Let \(y_0 > -1\). If every \(c_t > 0\), then \(R(\Delta)\) has the sign of \(-\Delta\) for every \(\Delta \ne 0\) with \(y_0 + \Delta > -1\), where \(R\) is the remainder of Theorem 3.1. In particular \(R(\Delta) < 0\) for \(\Delta > 0\), and \(R(\Delta) > 0\) for \(\Delta < 0\).</p>
+        <p>Assuming Assumption 2.1 of Lesson L06 (the extreme value theorem), let \(y_0 > -1\). If every \(c_t > 0\), then \(R(\Delta)\) has the sign of \(-\Delta\) for every \(\Delta \ne 0\) with \(y_0 + \Delta > -1\), where \(R\) is the remainder of Theorem 3.1. In particular \(R(\Delta) < 0\) for \(\Delta > 0\), and \(R(\Delta) > 0\) for \(\Delta < 0\).</p>
       </div>
 
       <div class="block proof">
@@ -246,7 +249,7 @@ yield shift -0.01: exact price 117060 cents, second-order expansion 117044 cents
 
       <div class="block proposition">
         <span class="block-title claim" data-grade="T">Proposition 3.3 <span class="name">(the first-order expansion lies below the price)</span></span>
-        <p>Let \(y_0 > -1\). If every \(c_t > 0\), then \(P(y_0 + \Delta) - \mathcal{P}_1(\Delta) \ge 0\) for every \(\Delta\) with \(y_0 + \Delta > -1\).</p>
+        <p>Assuming Assumption 2.1 of Lesson L06 (the extreme value theorem), let \(y_0 > -1\). If every \(c_t > 0\), then \(P(y_0 + \Delta) - \mathcal{P}_1(\Delta) \ge 0\) for every \(\Delta\) with \(y_0 + \Delta > -1\).</p>
       </div>
 
       <div class="block proof">
@@ -256,7 +259,7 @@ yield shift -0.01: exact price 117060 cents, second-order expansion 117044 cents
 
       <div class="block remark">
         <span class="block-title">Remark 3.4 <span class="name">(what the expansion does not give)</span></span>
-        <p>Theorem 3.1 bounds the error by a constant times \(|\Delta|^3\), where the constant depends on the third derivative over the whole interval between the two yields. The bound holds for a large shift too, but the interval is then wide, \(M\) is taken over it, and this page computes no value of that bound. Proposition 3.3 is an inequality for every shift, and it does not give the size of the error.</p>
+        <p>Assuming Assumption 2.1 of Lesson L06 (the extreme value theorem), Theorem 3.1 bounds the error by a constant times \(|\Delta|^3\), where the constant depends on the third derivative over the whole interval between the two yields. The bound holds for a large shift too, but the interval is then wide, \(M\) is taken over it, and this page computes no value of that bound. Proposition 3.3 is an inequality for every shift, and it does not give the size of the error.</p>
       </div>
 
       <section class="canon-breaks" id="canon-breaks">
@@ -264,7 +267,7 @@ yield shift -0.01: exact price 117060 cents, second-order expansion 117044 cents
         <p>The expansion is a statement about one bond with fixed cash flows. It assumes the cash flows do not depend on the yield. A bond with a call or prepayment option can have cash flows that depend on the yield, and the derivatives of Proposition 2.1 assume fixed cash flows, so they do not apply to such a bond as written.</p>
         <ul>
           <li><strong>The price is a sum of powers of \((1+y)\), not a linear function of \(y\).</strong> Proposition 3.3 shows that the tangent line, the graph of the first-order polynomial \(\mathcal{P}_1\) of Theorem 3.1, never lies above the price for a bond with positive cash flows, so a linear approximation never overstates the price at any shift.</li>
-          <li><strong>Money is rounded once, at the end.</strong> The price, its derivatives and the Taylor terms are exact rational numbers, computed from the float yields with Fraction, so no rounding happens inside the calculation. The price is rounded to an integer number of cents once, at the last step, with halves to even. Lab 1 rounds only the printed price and the printed expansion to whole cents; its central differences are float checks, and they are printed only as checks.</li>
+          <li><strong>Money is rounded once, at the end.</strong> The price and the Taylor polynomials are exact rational numbers, computed from the float yields with Fraction, so no rounding happens inside the price calculation. The two sensitivities P'(y0) and P''(y0) are floats, each rounded once to the nearest double, so its relative error is at most 2 to the power of minus 53; the Taylor terms are exact given these floats. The price is rounded to an integer number of cents once, at the last step, with halves to even. Lab 1 rounds only the printed price and the printed expansion to whole cents; its central differences are float checks, and they are printed only as checks.</li>
           <li><strong>The preview ratios are named, not defined.</strong> The lab prints \(-P'/P\) and \(P''/P\). This lesson does not define the terms they are named after, and no claim about their use is made here.</li>
         </ul>
       </section>
@@ -361,7 +364,7 @@ yield shift -0.01: exact price 117060 cents, second-order expansion 117044 cents
             <span class="problem-title">E3 · The price in cents (Lab 1)</span>
             <p>Lab 1 prints, at the yield 0.05 (the base yield plus the shift 0.01), a price of 100000 cents and the second-order expansion there rounded to 100015 cents. Explain why the expansion is rounded to an integer for the comparison, and state which quantity is money.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>The price is money, and money is reported as an integer number of cents. The lab's price line is the unrounded price rounded to the cent, which is 100000 at this yield because Proposition 2.2 gives exactly face there. The expansion is an approximation of that money amount, and it is rounded to the nearest cent so that the printed comparison is in whole cents. The derivatives are sensitivities in cents per unit of yield; the lab keeps them as exact rationals too, so the money path contains no float.</p>
+              <p>The price is money, and money is reported as an integer number of cents. The lab's price line is the unrounded price rounded to the cent, which is 100000 at this yield because Proposition 2.2 gives exactly face there. The expansion is an approximation of that money amount, and it is rounded to the nearest cent so that the printed comparison is in whole cents. The derivatives are sensitivities in cents per unit of yield, and the lab keeps them as floats, each rounded once to the nearest double. The price itself is an exact rational, so the money amount contains no float; the expansion is built from the float sensitivities.</p>
             </details>
           </div>
         </div>
@@ -372,14 +375,14 @@ yield shift -0.01: exact price 117060 cents, second-order expansion 117044 cents
             <span class="problem-title">R1 · The yield as a function of the price</span>
             <p>Let \(P_0\) be a fixed price, and let \(G(P_0, y) = P(y) - P_0\). Use Lesson L21 to find \(dy/dP_0\), and state its sign for this bond.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>\(G_{P_0} = -1\) and \(G_y = P'(y)\), so, assuming Assumption 1.3 of Lesson L21, Theorem 2.1 of Lesson L21 gives \(dy/dP_0 = -G_{P_0}/G_y = 1/P'(y)\). Since \(P'(y) < 0\) by Proposition 2.1, \(dy/dP_0 < 0\): a higher price goes with a lower yield. This uses the implicit-function result of L21, under its intermediate value assumption, for the local statement, and the sign follows from Proposition 2.1.</p>
+              <p>\(G_{P_0} = -1\) and \(G_y = P'(y)\), so, assuming Assumption 1.3 and Assumption 2.1 of Lesson L06 (as in Lesson L21), Theorem 2.1 of Lesson L21 gives \(dy/dP_0 = -G_{P_0}/G_y = 1/P'(y)\). Since \(P'(y) < 0\) by Proposition 2.1, \(dy/dP_0 < 0\): a higher price goes with a lower yield. This uses the implicit-function result of L21, under its intermediate value assumption, for the local statement, and the sign follows from Proposition 2.1.</p>
             </details>
           </div>
           <div class="problem" id="res-2">
             <span class="problem-title">R2 · A larger shift</span>
             <p>Explain what Theorem 3.1 and Proposition 3.2 give, and do not give, for a shift of \(+0.5\) in yield, and state which quantity would have to be bounded to get a numerical bound for that shift.</p>
             <details class="solution"><summary>Solution</summary>
-              <p>Theorem 3.1 does apply to a shift of \(0.5\), because the expansion is valid for any shift with \(y_0 + \Delta > -1\). But its bound is \(\tfrac16 M|\Delta|^3\), with \(M\) the maximum of \(|P'''|\) over the wider interval between \(y_0\) and \(y_0 + 0.5\), and this page does not compute that \(M\). Proposition 3.2 gives only the sign of the remainder, not its size. So the quantity to bound is \(M\) over that interval, which can be computed from the closed form of \(P'''\) but is not computed on this page.</p>
+              <p>Assuming Assumption 2.1 of Lesson L06 (the extreme value theorem), Theorem 3.1 does apply to a shift of \(0.5\), because the expansion is valid for any shift with \(y_0 + \Delta > -1\). But its bound is \(\tfrac16 M|\Delta|^3\), with \(M\) the maximum of \(|P'''|\) over the wider interval between \(y_0\) and \(y_0 + 0.5\), and this page does not compute that \(M\). Proposition 3.2 gives only the sign of the remainder, not its size. So the quantity to bound is \(M\) over that interval, which can be computed from the closed form of \(P'''\) but is not computed on this page.</p>
             </details>
           </div>
           <div class="problem" id="res-3">
@@ -400,8 +403,8 @@ yield shift -0.01: exact price 117060 cents, second-order expansion 117044 cents
             <tbody>
               <tr><td>Closed forms for \(P'\) and \(P''\), with \(P' < 0\) and \(P'' > 0\) when all cash flows are positive (Proposition 2.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2</td></tr>
               <tr><td>At a yield equal to the coupon rate, the price equals the face value (Proposition 2.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2 from the geometric series</td></tr>
-              <tr><td>The second-order expansion has remainder bounded by \(\tfrac16 M|\Delta|^3\) (Theorem 3.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3 from Lesson L08</td></tr>
-              <tr><td>The sign of the remainder is the sign of \(-\Delta\) when all cash flows are positive (Proposition 3.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3</td></tr>
+              <tr><td>Assuming Assumption 2.1 of Lesson L06 (the extreme value theorem), the second-order expansion has remainder bounded by \(\tfrac16 M|\Delta|^3\) (Theorem 3.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3 from Lesson L08</td></tr>
+              <tr><td>Assuming Assumption 2.1 of Lesson L06 (the extreme value theorem), the sign of the remainder is the sign of \(-\Delta\) when all cash flows are positive (Proposition 3.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3</td></tr>
               <tr><td>When every cash flow is positive, the first-order error is non-negative for every shift (Proposition 3.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3</td></tr>
             </tbody>
           </table>
@@ -481,7 +484,7 @@ yield shift -0.01: exact price 117060 cents, second-order expansion 117044 cents
 
       <section class="references" id="references">
         <h2 id="s9"><span class="section-number">9</span>References</h2>
-        <p>The curriculum names Spivak, <em>Calculus</em> (registry key <code>spivak2008calculus</code>) and Hubbard and Hubbard (registry key <code>hubbard2015vector</code>) as sources for this unit. No locator from either has been confirmed, so no statement on this page is attributed to them. The Lagrange form of Taylor's theorem used in Theorem 3.1 is taken from Lesson L08, which proves it.</p>
+        <p>The curriculum names Spivak, <em>Calculus</em> (registry key <code>spivak2008calculus</code>) and Hubbard and Hubbard (registry key <code>hubbard2015vector</code>) as sources for this unit. No locator from either has been confirmed, so no statement on this page is attributed to them. The Lagrange form of Taylor's theorem used in Theorem 3.1 is taken from Lesson L08, which proves it under its Assumption 1.1, the extreme value theorem that Lesson L06 names as its Assumption 2.1; that assumption is not proved on this page.</p>
         <ol data-references></ol>
       </section>
 
