@@ -15,7 +15,7 @@ def main() -> None:
     winners = sorted(ranked[:units])
     print("winners (bidder indices):", winners)
     # Step 3. Uniform price: every winner pays the (units + 1)-th highest bid, the highest losing bid.
-    # Counting from 0, that bid is ranked[units].
+    # Counting from 0, that bid is bids[ranked[units]]: ranked[units] is the index of the bidder who holds it.
     uniform_price = bids[ranked[units]]
     uniform = [uniform_price if i in winners else 0 for i in range(n)]
     # Step 4. Discriminatory: each winner pays its own bid. A loser pays nothing in either format.

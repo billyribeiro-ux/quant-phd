@@ -1,15 +1,18 @@
 """CF8 lab L02: early-payment discounts, credit-term break-evens and supply-chain financing, on SIMULATED terms.
 
 SIMULATED: every term, balance, margin and rate below is an invented input for this lab. No company, supplier or
-financier is real, and the lab reads no data file and makes no network request. Money is in dollars, not cents:
-Part B uses exact dollar Fractions, and each printed dollar amount is rounded half up to the cent for display only.
-The break-even margin and the NPV checks use fractions.Fraction and are exact. The compounded implied cost in Part A
-is computed in floating point and printed to two decimals. Part D draws its cases from a seeded random number
-generator. Standard library only.
+financier is real, and the lab reads no data file and makes no network request. Money is in integer cents: each
+revenue and receivable is an int number of cents, and NPVs are exact Fractions of cents. The one rounding step is the
+investment in receivables, a day-count ratio that is rounded half up to whole cents in extension_investment. Each
+printed dollar amount is a cent count divided by 100 and rounded half up to the cent for display only. The break-even
+margin and the NPV checks use fractions.Fraction and are exact. The compounded implied cost in Part A is computed in
+floating point and printed to two decimals. Part D draws its cases from a seeded random number generator. Standard
+library only.
 """
 
 from __future__ import annotations
 
+import math
 import random
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
@@ -25,9 +28,9 @@ def pct_text(value: Fraction) -> str:
     return str(quotient.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) + "%"
 
 
-def dollars_text(value: Fraction) -> str:
-    """A dollar amount shown to two decimals, rounded half up for display only; the exact value is kept elsewhere."""
-    quotient = Decimal(value.numerator) / Decimal(value.denominator)
+def dollars_text(cents: Fraction) -> str:
+    """An amount in cents shown in dollars to two decimals, rounded half up for display only."""
+    quotient = Decimal(cents.numerator) / Decimal(cents.denominator) / 100
     return str(quotient.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
@@ -45,23 +48,24 @@ def implied_compound_cost(discount: Fraction, days_early: int, days_late: int) -
     return power - 1.0
 
 
-def npv_extension(margin: Fraction, extra_margin_base: Fraction, extra_invest: Fraction, years: int) -> Fraction:
-    """NPV at RATE of an extension: pay the investment now, earn margin times the extra revenue each year, get the
-    investment back at year n. The extra revenue is extra_margin_base; the investment is extra_invest."""
+def npv_extension(margin: Fraction, extra_margin_base: int, extra_invest: int, years: int) -> Fraction:
+    """NPV at RATE of an extension, in cents: pay the investment now, earn margin times the extra revenue each year,
+    get the investment back at year n. The extra revenue is extra_margin_base; the investment is extra_invest."""
     annuity = sum((1 / (1 + RATE)) ** t for t in range(1, years + 1))
-    return -extra_invest + margin * extra_margin_base * annuity + extra_invest / (1 + RATE) ** years
+    return -Fraction(extra_invest) + margin * extra_margin_base * annuity + Fraction(extra_invest) / (1 + RATE) ** years
 
 
-def break_even_margin(extra_revenue: Fraction, extra_invest: Fraction) -> Fraction:
+def break_even_margin(extra_revenue: int, extra_invest: int) -> Fraction:
     """Break-even margin m* = r times the investment over the extra revenue (the closed form of Section 3)."""
     return RATE * extra_invest / extra_revenue
 
 
-def extension_investment(revenue: Fraction, days_old: int, days_new: int, extra_revenue: Fraction) -> Fraction:
-    """Extra receivables from the new terms: (revenue + extra revenue) times the new days, less the old balance."""
-    new_balance = (revenue + extra_revenue) * days_new / DAYS_PER_YEAR
-    old_balance = revenue * days_old / DAYS_PER_YEAR
-    return new_balance - old_balance
+def extension_investment(revenue: int, days_old: int, days_new: int, extra_revenue: int) -> int:
+    """Extra receivables from the new terms in whole cents: (revenue + extra revenue) times the new days, less the old
+    balance, rounded half up to the cent once."""
+    new_balance = Fraction(revenue + extra_revenue) * days_new / DAYS_PER_YEAR
+    old_balance = Fraction(revenue) * days_old / DAYS_PER_YEAR
+    return math.floor((new_balance - old_balance) + Fraction(1, 2))
 
 
 def main() -> None:
@@ -88,14 +92,14 @@ def main() -> None:
 
     print()
     print("B. Credit-term extension: break-even margin m*, equal to r times the investment over the extra revenue")
-    revenue = Fraction(12_000_000)
+    revenue = 1_200_000_000
     days_old, days_new = 30, 45
-    extra_revenue = Fraction(1_500_000)
+    extra_revenue = 150_000_000
     years = 5
     invest = extension_investment(revenue, days_old, days_new, extra_revenue)
-    print(f"revenue before the extension, in dollars: {dollars_text(revenue)}")
-    print(f"extra revenue from the extension, in dollars: {dollars_text(extra_revenue)}")
-    print(f"investment in receivables, in dollars, to the cent: {dollars_text(invest)}")
+    print(f"revenue before the extension, in dollars: {dollars_text(Fraction(revenue))}")
+    print(f"extra revenue from the extension, in dollars: {dollars_text(Fraction(extra_revenue))}")
+    print(f"investment in receivables, in dollars, to the cent: {dollars_text(Fraction(invest))}")
     m_star = break_even_margin(extra_revenue, invest)
     print(f"break-even margin m*, as a share of extra revenue: {pct_text(m_star)}")
     print(f"NPV at m* over {years} years, exact value: {npv_extension(m_star, extra_revenue, invest, years)}")
@@ -123,10 +127,10 @@ def main() -> None:
     zeros = 0
     accepted_at_ten = 0
     for _ in range(200):
-        base = Fraction(rng.randint(2_000_000, 40_000_000))
+        base = 100 * rng.randint(2_000_000, 40_000_000)
         old_days = rng.randint(20, 40)
         new_days = old_days + rng.randint(5, 30)
-        extra = Fraction(rng.randint(100_000, 5_000_000))
+        extra = 100 * rng.randint(100_000, 5_000_000)
         term = rng.randint(1, 8)
         inv = extension_investment(base, old_days, new_days, extra)
         m = break_even_margin(extra, inv)

@@ -499,18 +499,22 @@ def test_estimate_is_a_local_maximum() -> None:
             expect(value <= here + 1e-9, "a nearby parameter has a higher likelihood: the estimate is not the maximum")
 
 
-def test_estimate_recovers_the_true_parameters_within_five_standard_errors() -> None:
-    """Each estimate lies within five of its own standard errors of the parameter that generated the answers. Five is
-    this suite's tolerance, stated on the project page; it is not a claim about the coverage of the standard errors."""
-    for name, key, se in (
-        ("gamma", "gamma_hat", "se_gamma"),
-        ("lambda", "lambda_hat", "se_lambda"),
-        ("kappa", "kappa_hat", "se_kappa"),
-    ):
-        expect(
-            abs(est()[key] - TRUE[name]) <= 5.0 * est()[se],
-            f"the estimate of {name} is more than five standard errors from the true value: check the likelihood",
-        )
+def test_estimate_recovers_the_true_parameters_within_four_standard_errors_on_47_of_50_seeds() -> None:
+    """On seeds 0 to 49, each estimate lies within four of its own standard errors of the parameter that generated the
+    answers, for every parameter, on at least 47 seeds. Four and 47 are this suite's threshold, the recommendation of
+    plan section 10 Q12, stated on the project page; they are not a claim about the coverage of the standard errors."""
+    within = 0
+    for seed in range(50):
+        inst = make_instance(seed)
+        resp = json.loads(str(inst["responses_json"]))
+        fit = sol.estimate(resp)
+        truth = {"gamma": float(inst["gamma"]), "lambda": float(inst["lambda"]), "kappa": float(inst["kappa"])}
+        if all(abs(fit[name + "_hat"] - truth[name]) <= 4.0 * fit["se_" + name] for name in truth):
+            within += 1
+    expect(
+        within >= 47,
+        "too many seeds have an estimate more than four standard errors from the true value: check the likelihood",
+    )
 
 
 def test_estimate_on_a_second_participant_is_also_a_maximum() -> None:
@@ -729,10 +733,10 @@ def _invert3(m: list[list[float]]) -> list[list[float]]:
     return [row[3:] for row in aug]
 
 
-def _observed_information(theta: list[float]) -> list[list[float]]:
-    """Negative Hessian of the oracle log-likelihood in (eta, log lambda, log kappa), by central differences, step 1e-5.
-    The step is not smaller: for some questionnaires the second differences are sensitive to the step below 1e-5."""
-    h = 1e-5
+def _observed_information(theta: list[float], h: float) -> list[list[float]]:
+    """Negative Hessian of the oracle log-likelihood in (eta, log lambda, log kappa), by central differences.
+
+    The step h is the one the caller chooses."""
 
     def at(*moves: tuple[int, float]) -> float:
         y = list(theta)
@@ -757,24 +761,29 @@ def test_standard_errors_match_the_delta_method_oracle() -> None:
     """The standard errors are the square roots of the diagonal of the inverse observed information in
     (eta, log lambda, log kappa), carried to the parameters by the delta method: d gamma / d eta = gamma (1 - gamma),
     d lambda / d log lambda = lambda, d kappa / d log kappa = kappa. The oracle recomputes this at the reported
-    estimate. The tolerance is 10% relative. For a poorly identified parameter the standard error is sensitive to
-    round-off in the finite-difference information (for seed 49 the standard error of lambda changes by about 1% with
-    the evaluation order of the same log-likelihood, and by about 12% between steps 1e-5 and 1e-6 at the optimum), so a
-    tighter tolerance would test the implementation's round-off. A missing or wrong delta factor (gamma (1 - gamma),
-    lambda or kappa, or a missing square root) changes a standard error by much more than 10%."""
+    estimate by central differences at step 1e-5 or at step 1e-6, and each standard error must match one of the two
+    within 10% relative, as the score check accepts either step. The two steps are needed because the finite-difference
+    information depends on the step for a weakly identified parameter: for seed 49 the standard error of lambda is
+    135.05 at step 1e-5 and 97.67 at step 1e-6 (-27.7%), and of gamma 0.09474 and 0.07983 (-15.7%), while the
+    evaluation order of the same log-likelihood alone moves the standard error of lambda by about 1.3%. A missing or
+    wrong delta factor (gamma (1 - gamma), lambda or kappa, or a missing square root) changes a standard error by much
+    more than 10% at either step."""
     gamma, lam, kappa = est()["gamma_hat"], est()["lambda_hat"], est()["kappa_hat"]
     theta = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
-    cov = _invert3(_observed_information(theta))
-    want = {
-        "se_gamma": gamma * (1.0 - gamma) * math.sqrt(cov[0][0]),
-        "se_lambda": lam * math.sqrt(cov[1][1]),
-        "se_kappa": kappa * math.sqrt(cov[2][2]),
-    }
-    for key, value in want.items():
-        expect(
-            abs(est()[key] - value) <= 1e-1 * value,
-            "each standard error must be the delta-method value from the observed information at the estimate",
-        )
+    matched = False
+    for h in (1e-5, 1e-6):
+        cov = _invert3(_observed_information(theta, h))
+        want = {
+            "se_gamma": gamma * (1.0 - gamma) * math.sqrt(cov[0][0]),
+            "se_lambda": lam * math.sqrt(cov[1][1]),
+            "se_kappa": kappa * math.sqrt(cov[2][2]),
+        }
+        if all(abs(est()[key] - value) <= 1e-1 * value for key, value in want.items()):
+            matched = True
+    expect(
+        matched,
+        "each standard error must be the delta-method value from the observed information at the estimate",
+    )
 
 
 NETWORK_MODULES = frozenset(

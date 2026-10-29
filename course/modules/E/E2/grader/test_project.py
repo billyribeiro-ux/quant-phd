@@ -181,7 +181,7 @@ def test_uniform_symmetric_bid_is_the_value() -> None:
 def test_symmetric_bid_zero_value_is_zero() -> None:
     for fmt in ("uniform", "discriminatory"):
         if valid(sol.symmetric_bid_single_unit, fmt, 2, 0) != 0:
-            pytest.fail("a bidder whose value is zero bids zero under either rule")
+            pytest.fail("a bidder whose value is zero bids nothing above zero under either rule")
 
 
 def test_symmetric_bid_refuses_n_below_two() -> None:
@@ -220,7 +220,7 @@ def test_symmetric_bid_refuses_negative_value() -> None:
 def test_symmetric_bid_accepts_zero_value() -> None:
     for fmt in ("uniform", "discriminatory"):
         if not is_cents(valid(sol.symmetric_bid_single_unit, fmt, 3, 0)):
-            pytest.fail("a value of zero cents is a valid input; the bid is zero")
+            pytest.fail("a value of zero cents is a valid input, and its bid must be an integer cent amount")
 
 
 # ---- format ----------------------------------------------------------------------------------------------------------
@@ -315,9 +315,9 @@ def test_zero_bid_is_accepted() -> None:
     if valid(sol.allocate, zeros, UNITS) != [True] * UNITS + [False] * (N - UNITS):
         pytest.fail("a zero bid is valid and ranks like any other bid; a tie at zero goes to the lower index")
     if valid(sol.payments, "uniform", zeros, UNITS) != [0] * N:
-        pytest.fail("with every bid at zero, the uniform clearing bid is zero, so every payment is zero")
+        pytest.fail("with every bid at zero, the uniform payments are all set by the clearing bid")
     if valid(sol.revenue, "discriminatory", zeros, UNITS) != 0:
-        pytest.fail("with every bid at zero, the winners pay their own bids of zero, so revenue is zero")
+        pytest.fail("with every bid at zero, the winners pay their own bids, so revenue is the sum of the winning bids")
     valid(sol.efficiency, VALUES, zeros, UNITS)
 
 
@@ -334,7 +334,7 @@ def test_negative_value_in_last_position_is_refused_in_efficiency() -> None:
 def test_zero_value_is_accepted_in_efficiency() -> None:
     zeros = [0] * N
     if valid(sol.efficiency, zeros, BIDS, UNITS) != (0, 0):
-        pytest.fail("with every value at zero cents, both entries of the efficiency pair are zero")
+        pytest.fail("with every value at zero cents, both entries of the efficiency pair must match")
 
 
 # ---- allocation ------------------------------------------------------------------------------------------------------
@@ -371,11 +371,11 @@ def test_two_bidder_case_by_hand() -> None:
     if valid(sol.allocate, [5, 3], 1) != [True, False]:
         pytest.fail("with two bidders and one unit, the higher bidder wins")
     if valid(sol.payments, "uniform", [5, 3], 1) != [3, 0]:
-        pytest.fail("the uniform winner pays the second bid, 3 cents here")
+        pytest.fail("the uniform winner pays the second bid, not its own bid")
     if valid(sol.payments, "discriminatory", [5, 3], 1) != [5, 0]:
-        pytest.fail("the discriminatory winner pays its own bid, 5 cents here")
+        pytest.fail("the discriminatory winner pays its own bid, not the second bid")
     if valid(sol.efficiency, [10, 4], [5, 3], 1) != (10, 10):
-        pytest.fail("the winner of the higher bid holds the higher value here, so efficiency is 10 of 10")
+        pytest.fail("the higher bidder holds the higher value here, so the two efficiency entries are equal")
 
 
 # ---- payments --------------------------------------------------------------------------------------------------------
@@ -398,7 +398,7 @@ def test_discriminatory_winners_pay_their_own_bid() -> None:
         if valid(sol.payments, "discriminatory", bids, units) != oracle_payments("discriminatory", bids, units):
             pytest.fail("under discriminatory pricing each winner pays its own bid; revisit the payment rule")
     if valid(sol.payments, "discriminatory", [9, 6, 4], 2) != [9, 6, 0]:
-        pytest.fail("with two units, the two winners pay their own bids of 9 and 6")
+        pytest.fail("with two units, each winner pays its own bid, not the losing bid")
 
 
 def test_losers_pay_zero_under_both_formats() -> None:
@@ -412,9 +412,9 @@ def test_losers_pay_zero_under_both_formats() -> None:
 
 def test_tie_at_the_clearing_rank_is_priced_as_the_rank_says() -> None:
     if valid(sol.payments, "uniform", [7, 7, 3], 1) != [7, 0, 0]:
-        pytest.fail("with a tie for first, the lower index wins and pays the tied second bid, 7 cents")
+        pytest.fail("with a tie for first, the lower index wins and pays the highest losing bid, which is the tied bid")
     if valid(sol.payments, "discriminatory", [7, 7, 3], 1) != [7, 0, 0]:
-        pytest.fail("with a tie for first, the lower index wins and pays its own bid, 7 cents")
+        pytest.fail("with a tie for first, the lower index wins and pays its own bid under the discriminatory rule")
 
 
 def test_payments_are_integer_cents() -> None:
@@ -453,7 +453,7 @@ def test_efficiency_uses_values_of_the_winners() -> None:
         if valid(sol.efficiency, values, bids, units) != oracle_efficiency(values, bids, units):
             pytest.fail("efficiency is the value of the winners, read from values rather than bids; revisit the pair")
     if valid(sol.efficiency, [1, 2, 3], [3, 2, 1], 1) != (1, 3):
-        pytest.fail("the winner holds value 1 here, and the best attainable is value 3; read values, not bids")
+        pytest.fail("the winner's value is read from values, not bids; the best is the sum of the top values")
 
 
 def test_truthful_bids_attain_the_best_value() -> None:
