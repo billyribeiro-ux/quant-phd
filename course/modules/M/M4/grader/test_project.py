@@ -42,7 +42,7 @@ TOL_T_VARIANCE = 0.30
 MIN_NU_FOR_T_VARIANCE_CHECK = 5
 # The Student-t cross term: two assets with correlation 0.8, 100,000 draws, nu of 5. The reference's largest relative
 # error over seeds 0 to 49 is 0.024. A matched factor applied to one asset only, or one chi-square variable per asset,
-# moves the cross term by about 8 % and 15 % (measured at seeds 0 to 9). The tolerance 0.05 lies between them.
+# moves the cross term by about 29 % and 15 % (measured at seeds 0 to 9). The tolerance 0.05 lies between them.
 CROSS_TERM_NU = 5
 CROSS_TERM_DRAWS = 100_000
 TOL_CROSS_TERM = 0.05

@@ -1,0 +1,128 @@
+import json, sys
+sys.path.insert(0, "tools")
+from datetime import datetime, timezone
+import pathlib
+S = "ledgers/M5/scripts/M5-d-r12"
+CARRY11 = "Carried from round 11 (course/modules/M/M5/grader/instance.py, starter.py, tests/labs/M5/*.py and reference.py byte-identical since the round-11 pin f42f432; git diff f42f432..ff38842 touches only project.html, grader/test_project.py and cards.json in M5): "
+rows = [
+ ("M5-d-R01","project page rubric ladder, grading mode, time budget and hours (BUILDER_RULES 5)","course/modules/M/M5/project.html; tools/check_projects.py","PASS",
+  f"Fresh on ff38842: `tools/check_projects.py --unit M5` -> 'check_projects M5: PASS', exit 0 ({S}/check_projects.out)."),
+ ("M5-d-R02","page contract, banned strings, claims registry and DAG for the unit's pages","course/modules/M/M5/*.html; tools/check_pages.py; tools/check_dag.py",
+  "PASS",f"Fresh: check_pages M5 PASS, check_dag M5 PASS, page_smoke M5 PASS (all 10 lessons, project, index, concepts, review; in-browser grader 'All 96 tests pass') ({S}/pages_dag_smoke.out)."),
+ ("M5-d-R03","project.html prose: whole page re-read line by line (lines 1-522)","course/modules/M/M5/project.html:1-522","PASS",
+  "Completed this round: lines 1-522 read in full. Every numeric claim was checked against the lab output (see R04, R07-R09) or recomputed (R36 notes; contraction ratio, certified errors, a priori count 242, residual bound). Every named cross-reference was checked: index.html#placement (index.html:69), Definition 1.2 (L07), Example 2.3 (L08:132), Example 3.3 (L10:146), Problem E2 (L08:365), M1 Lesson 6 Theorem 2.2 (M1/L06.html:97), hub hours 104 + 26 = 130 (index.html:29-31). No prose claim without a locator was found. Notation: only \\R and registered macros are used (notation/notation.json macros)."),
+ ("M5-d-R04","project labs 1-3: twin runs under python -I -W error; page code equals twin; expected block equals output","tests/labs/M5/lab-M5-project-{1,2,3}.py; course/modules/M/M5/project.html:140-155, :159-218, :287-388",
+  "PASS",f"Fresh: `python -I -W error` exit 0 for all three twins ({S}/lab-M5-project-{{1,2,3}}.out). Page block 1 and block 3 code identical to twin; block 2 identical except the two blanks `___` (ratio, certified). Expected blocks equal outputs exactly (scratch {S}/expected_vs_out.py: True, True, True). run_labs M5 PASS (13/13) ({S}/run_labs.out)."),
+ ("M5-d-R05","project grader reference, starter and instance: determinism, 50 seeds, lint and types","course/modules/M/M5/grader/{reference,starter,instance,test_project}.py","PASS",
+  f"Fresh: run_graders M5 'PASS (reference 50/50 seeds, slowest 0.3 s)' ({S}/run_graders.out); ruff check and ruff format --check on grader and lab twins clean ({S}/ruff.out); mypy --no-incremental on reference/starter/instance: no issues ({S}/mypy.out); strict mypy on test_project.py with its imports in the scratch dir: 'Success: no issues found in 3 source files' ({S}/mypy_test_scratch.out). The project mypy gate (pyproject files = tools, tests) does not cover grader/, so the grader mypy was run separately; the bare-run import errors in ({S}/mypy_test.out) are path resolution only."),
+ ("M5-d-R06","page test count equals the real collect-only count","course/modules/M/M5/project.html:235 ('runs 96 checks'); course/modules/M/M5/grader/test_project.py","PASS",
+  f"Fresh: `pytest --collect-only -q test_project.py` in scratch -> '96' ({S}/collect.out); page :235 says 96; in-browser grader page_smoke 'All 96 tests pass'."),
+ ("M5-d-R07","project.html:57 numbers and the Lab 1 expected block: recomputed values","course/modules/M/M5/project.html:57, :140-155, :159-217","PASS",
+  f"Fresh: twin-1 output equals block 1 (sweep 1 change 0.826569, certified 7.439119, stop 146, actual 0.000000950). Unrounded recomputation ({S}/unrounded.py): sweep-1 change 0.8265687852 -> certified 7.439119067; stop 146, change 1.0550208e-7, certified 9.4951874e-7; actual 9.4951778e-7; ratio check 0.409581 <= 0.743912."),
+ ("M5-d-R08","project.html:161 contraction ratio and Lab 2 expected block","course/modules/M/M5/project.html:161, :198-218","PASS",
+  f"Fresh: unrounded lab-2 ratio sup|BV-BW|/sup|V-W| for V=0, W=(0.1,0.2,0.3) = 0.3000000000000001 (prints 0.300000; <= beta). Sweeps 146, certified 9.495187e-7 (prints 9.495e-07), last change 1.055020e-7 (prints 1.055e-07). Matches the page line 161 hypothesis and line 219 '9.495187e-7' ({S}/unrounded.py)."),
+ ("M5-d-R09","project.html Lab 3 numbers: 236 sweeps, cert 9.226e-11, a priori 242","course/modules/M/M5/project.html:289, :389, :466","PASS",
+  f"Fresh: twin-3 output: 'smallest gap ... 0.021829', 'sweeps: 236 | last change: 1.025e-11 | certified error: 9.226e-11', 'a priori count: 242 ... True', 'residual: 9.226e-12 ... True', 'largest observed contraction ratio over 200 pairs: 0.900000 ... True' ({S}/lab-M5-project-3.out). Expected block equals output. a priori count re-derived: beta^242*sqrt(2.7^0.3)/0.1 = 9.7e-11 <= 1e-10 and beta^241 gives > 1e-10."),
+ ("M5-d-R10", "Exemplar B Setting names all five C1 items (utility on c >= 0) so its C1 level-4 score is supportable","course/modules/M/M5/project.html:452-472","PASS",
+  CARRY11 + "project.html:452-472 (Exemplar B Setting, C1 annotation) unchanged in the delta; Setting names grid and sup norm, feasibility k' <= k^0.3, utility sqrt(k^0.3-k') on consumption >= 0, beta and alpha in (0,1), V0 = 0 and the fixed point on the grid; C1 level-4 descriptor at :407 matches. Official scoring at :452 '4,4,4,4,4,3' and annotations agree."),
+ ("M5-d-R11","time budget 26 h of 130 h; lesson hours 6x10 + 4x11 = 104","course/modules/M/M5/project.html:33, :256-264; course/modules/M/M5/index.html:29-31, :131","PASS",
+  "Fresh: project hours table 1+2+8+7+3+5 = 26 (project.html:258-264); 26/130 = 20.0 %; index.html:29 data-hours-lessons=104, :31 130 hours; lesson pages data-hours: L01-L06 = 10, L07-L10 = 11 -> 60+44 = 104."),
+ ("M5-d-R12","project.html conventions match reference.py (params, tolerance, budget, synchronous sweep, stop rule); 120 s limit","course/modules/M/M5/project.html:231-248; course/modules/M/M5/grader/reference.py:81-128; course/assets/js/python.js:4","PASS",
+  "Fresh: :231 params dict and solve returns four keys == reference.solve return keys; :244 synchronous sweep == _sweep applied to the whole vector; :246 stop rule == reference loop break (certified <= tol) and converged = certified <= tol; :247 a priori count definition == test a_priori_sweeps; :248 named invalid inputs == reference _real/_params/_grid/_budget/_tolerance/_values; python.js TIMEOUT_MS = 120000 == '120 seconds'."),
+ ("M5-d-R13","grader docstring claim: change at the last grid point alone certifies tol one sweep before the sup-norm change","course/modules/M/M5/grader/test_project.py:498-502 (test_stop_uses_the_largest_absolute_change_over_the_grid)","PASS",
+  f"Fresh: recomputation ({S}/r13_check.py): sup-norm stopping sweep 170; last-point-only stopping sweep 169. Claim 'one sweep before' holds. Test function text identical to f42f432 (AST compare)."),
+ ("M5-d-R14","grader instance.py and starter.py: lint, types, 50-seed run","course/modules/M/M5/grader/instance.py, starter.py","PASS",
+  CARRY11 + "instance.py and starter.py are not in the delta; run_graders 50/50 and mypy re-run fresh (R05)."),
+ ("M5-d-R15","alternative correct implementations pass; spec-violating ones fail for stated spec reasons","ledgers/M5/alternatives/alt1..alt6","PASS",
+  f"Fresh: alt3, alt4, alt5, alt6 (new, bisect + range loop + 1/((1-beta)/beta) factor) pass all 96 tests on seeds 0, 99, 4242, 12345 ({S}/alternatives_r12.out). alt1 (in-place Gauss-Seidel sweep) and alt2 (residual stop) fail on test_stop_uses_the_largest_absolute_change_over_the_grid; both violate the synchronous-sweep convention (project.html:244) and the certified-error definition (:245), so they are spec-consistent failures, not over-constraint."),
+ ("M5-d-R16","all existing grader mutants killed (round-10 survivor v10_03 closed)","ledgers/M5/mutants/*.py; course/modules/M/M5/grader/test_project.py","PASS",
+  f"Fresh: tools/mutate_graders.py --unit M5 -> 'mutate_graders M5: PASS (112/112 killed)' ({S}/mutate_M5_r12.out); this includes all 103 m-mutants, v10_01..03, v11_01..03 and the three new round-12 mutants."),
+ ("M5-d-R17","Lab 1 expected block line '<=' matches the printed line","course/modules/M/M5/project.html:133-136, :154-155; tests/labs/M5/lab-M5-project-1.py:79-82","PASS",
+  "Fresh: twin-1 prints 'actual error 0.000000950 <= certified error 0.000000950' (relation computed as actual <= certified, lab line 137); page line 155 identical."),
+ ("M5-d-R18","DAG and concept closure for the project page","course/modules/M/M5/project.html; tools/check_dag.py","PASS",
+  "Fresh: check_dag M5 PASS. New concept use: M1 geometric series via M1 Lesson 6 Theorem 2.2 (M1/L06.html:97, 'closed form of the finite geometric series'), named in project.html:501 as prerequisite reading (it is in the M5 prerequisite chain, index.html:35, :63)."),
+ ("M5-d-R19","stretch items and reading block (:491-510) prose","course/modules/M/M5/project.html:491-510","PASS",
+  "Fresh: reading paragraph changed in the delta (:502) and checked: Lessons 1, 2, 4, 7 of M5 and M1 Lesson 6 exist; 'no passage locator has been checked' is an honest statement and no passage is attributed. Stretch items reference the synchronous and in-place sweeps (:244) consistently."),
+ ("M5-d-R20","no process words in learner-facing project prose; check_projects","course/modules/M/M5/project.html; grader/*.py; tests/labs/M5/lab-M5-project-*.py","PASS",
+  "Fresh: regex scan for verifier|builder|round|slice|fragment|ledger|checkout|audit|TODO|FIXME|placeholder|pending over project.html, cards.json, grader/*.py and project lab twins: only 'rounding' / 'Unrounded' / 'round' in numeric prose matched (project.html:219, :389, :466; cards.json:506, :1475, :1500). No process words. check_projects M5 PASS."),
+ ("M5-d-R21","cards.json: count, duplicates, grade and basis consistency","course/modules/M/M5/cards.json","PASS",
+  "Fresh: 230 cards (previous 212 + 18 new M5-c217..c234); no duplicate ids; no duplicate fronts (case-insensitive); every grade in {C,T}; 161 cards with grade and basis, 69 definition cards without grade/basis (as before). Grade tallies: T 105, C 56, no grade 69 (sum 230)."),
+ ("M5-d-R22","closed-set definition cards agree with L04 Section 2","course/modules/M/M5/cards.json (M5-c051, M5-c215); course/modules/M/M5/L04.html:238-256",
+  "PASS", CARRY11 + "card objects M5-c051 and M5-c215 identical to f42f432 (JSON object compare); L04.html unchanged."),
+ ("M5-d-R23","C-grade cards cite a lab part that prints the number","course/modules/M/M5/cards.json (c117, c180, c191, c213-c215)","PASS",
+  CARRY11 + "those card objects not in the f42f432..ff38842 changed set (JSON object compare); their lab parts are byte-identical twins whose fresh outputs are in " + S + "/lab-M5-L*-1.out."),
+ ("M5-d-R24","every changed card agrees with the current lesson text","course/modules/M/M5/cards.json (15 cards changed in the delta: c032, c047, c048, c066, c082, c083, c098, c118, c130, c136, c137, c138, c155, c170, c207; 18 new c217..c234)","PASS",
+  f"Fresh, card by card against fresh lab output ({S}/lab-M5-L02..L10 .out) and lesson text: c032 ('All 200 of 200') L02 lab line 2; c047 (7 points, k=-3..3) L03; c048 (29) L03 and E3 (L03.html:426); c066 (15625 triples, 25 points) L04; c082 (1 for orders 1,2,5,10,50) L05; c083 (n=10; (1/2)^10=1/1024 < 1/1000 < 1/512) L05; c098 (index 55, [3/128,7/256]) L06; c118 (0.739085) L07; c130 and c226 (Example 2.3 V*=(1/2)/(1-beta), |BV-BW|=beta|V-W| exact; L08.html:132-137); c136 (5.000000), c137 (0.900000), c138 (5.176097; Problem E2 L08.html:365-370), c155 (278), c207 (equal to ten decimals), c170 and c233 (right and left sums (n+1)(4n-1)/(6n^2), (4n^2-3n-1)/(6n^2); verified algebraically and at n=2 by hand; Example 3.3 L10.html:146-148), c234 (|S-2/3| <= 1/n: (3n-1)/(6n^2) and (3n+1)/(6n^2) both <= 1/n), c217 (1/2 at N=1), c218 (7 of 7), c219 (381/200 first failing grid point, k=-19), c220 (0 triangle failures, Part A), c221 (1/2 to 1/2^50), c222 (equals_half_power True), c223 (tail_values_in_their_interval True), c224 (error <= bound n=0..30 line), c225 (Definition 1.2, L07.html:66-68), c227 (257), c228 (no ratio above beta by more than 1e-12), c229 (0.25), c230 (9.512e-13 L09 reference), c231 (0.25 at every grid point), c232 (cert_within_tol True at 1e-2, 1e-4, 1e-6). Recomputed c205 (unchanged) too, see R36."),
+ ("M5-d-R25","unchanged C-grade cards c114, c115, c120, c135, c160 agree with lab output","course/modules/M/M5/cards.json","PASS",
+  CARRY11 + "those card objects not in the changed set; lab twins byte-identical; fresh outputs in " + S + "/lab-M5-L*.out."),
+ ("M5-d-R26","c117 and c180 carry grade C with a basis naming the lab part","course/modules/M/M5/cards.json (M5-c117, M5-c180)","PASS",
+  CARRY11 + "card objects not in the changed set (JSON object compare)."),
+ ("M5-d-R27","M5-c056 matches L04 Prop 1.7 and its hypothesis","course/modules/M/M5/cards.json (M5-c056); L04.html Prop 1.7","PASS",
+  CARRY11 + "card object M5-c056 and L04.html unchanged."),
+ ("M5-d-R28","M5-c143 states Lemma 1.2 of L09 with its hypotheses and matches L08 Theorem 2.2(a)","course/modules/M/M5/cards.json (M5-c143); L09.html Lemma 1.2; L08.html Theorem 2.2","PASS",
+  CARRY11 + "card object M5-c143 and both lesson pages unchanged."),
+ ("M5-d-R29","notation: registered symbols used with their registered meaning only","course/modules/M/M5/project.html; notation/notation.json","PASS",
+  "Fresh: notation/notation.json registers T, \\Phi, \\gamma_3, \\gamma_4, R^\\ast, R^{e\\ast}, R_f, \\mathbb{Q} and the macros \\R, \\E, \\Prob, etc. The project page uses \\R (registered) and local symbols (beta, alpha, k, V, W, B, u, m, n, tol, S, P, U), which notation.json says are defined per lesson or locally. No registered symbol is used with another meaning. Notation for B (\\mathcal{B}) is local to M5."),
+ ("M5-d-R30","DAG claims for cards and project prose","course/modules/M/M5/project.html; cards.json; tools/check_dag.py","PASS",
+  "Fresh: check_dag M5 PASS; new cards reference only M5 lessons L02-L10 and M5 definitions/examples present in those lessons (see R24)."),
+ ("M5-d-R31","every stated behaviour of converged is killed by the grader (project.html:246 'converged is True exactly when certified_error is at most tol')","course/modules/M/M5/grader/test_project.py:289-311, :367-386; course/modules/M/M5/project.html:246; ledgers/M5/mutants/v11_03_converged_means_budget_not_exhausted.py","PASS",
+  f"Round-11 FAIL closed. New test test_converged_is_true_when_the_budget_ends_on_the_certifying_sweep kills v11_03: mutate_graders output 'KILLED v11_03 ... -> test_converged_is_true_when_the_budget_ends_on_the_certifying_sweep[0]' ({S}/mutate_M5_r12.out). Test asserts converged is True when max_iter equals the sweeps needed, which the page line 246 states."),
+ ("M5-d-R32","new student-error mutants v11_01 and v11_02 are killed","ledgers/M5/mutants/v11_01_utility_uses_capital_not_output.py; ledgers/M5/mutants/v11_02_operator_returns_the_best_successor_not_the_value.py","PASS",
+  f"Fresh: both KILLED in the round-12 mutate_graders run ({S}/mutate_M5_r12.out)."),
+ ("M5-d-R33","new test test_saving_above_the_current_capital_is_feasible_within_resources has correct arithmetic","course/modules/M/M5/grader/test_project.py:426-443","PASS",
+  "Carried from round 11 (test function text identical to f42f432 by AST compare; test_project.py otherwise changed only by the new round-12 test): the test kills v10_03 (mutate run KILLED) and its reference-only run passes on seeds 0, 99, 4242, 12345."),
+ ("M5-d-R34","new card M5-c216 (N has no upper bound) agrees with L01 and carries a basis","course/modules/M/M5/cards.json (M5-c216); course/modules/M/M5/L01.html:67, :254-262","PASS",
+  CARRY11 + "card object M5-c216 and L01.html unchanged."),
+ ("M5-d-F01","mutant m64 (change measured at the last point only) is killed","ledgers/M5/mutants/m64_change_measured_at_the_last_point_only.py","PASS",
+  f"Fresh: KILLED in the round-12 mutate_graders run ({S}/mutate_M5_r12.out)."),
+ ("M5-d-F02","lab 3 instance and a priori count 242","course/modules/M/M5/project.html:229, :289; tests/labs/M5/lab-M5-project-3.py","PASS",
+  "Fresh: instance beta 0.9, alpha 0.3, ten points 0.45..2.70, tol 1e-10 (page :229, :289) match twin-3 constants; printed 'a priori count: 242' (R09)."),
+ ("M5-d-F03","cards grade tallies","course/modules/M/M5/cards.json","PASS",
+  "Fresh: 230 cards, grade tallies T 105, C 56, no grade 69 (definition cards). Sum 230 matches the card count."),
+ ("M5-d-R35","new round-12 student-error mutants killed; mutant set complete","ledgers/M5/mutants/v12_01_stop_test_uses_beta_times_change.py; v12_02_continuation_read_in_reverse_order.py; v12_03_value_returned_is_beta_times_the_iterate.py","PASS",
+  f"Three new student-error mutants written by the verifier, each a one-line change to the reference: v12_01 stop test compares beta*change with tol (drops the 1/(1-beta) factor); v12_02 continuation values read in reverse grid order; v12_03 solve returns beta times the iterate as value. Pytest against each: 4+4+4 failures (tests named in {S}/mutate_M5_r12.out and this run). Full set: mutate_graders M5 -> 112/112 killed."),
+ ("M5-d-R36","card M5-c205 (unrounded contraction ratio 0.9 + 5.6e-16, about five ulps) recomputed outside the lab","course/modules/M/M5/cards.json (M5-c205); tests/labs/M5/lab-M5-L08-1.py:81-95","PASS",
+  f"Recomputed with the lab's own bellman and seed 20261028 over 2000 pairs ({S}/c205_recompute.py): worst ratio 0.9000000000000006, minus beta = 5.55e-16 = 5.0 ulps of 0.9; 47 pairs above beta; check passes at 1e-12. Card value 0.9 + 5.6e-16 and 'about five units in the last place' confirmed."),
+]
+rows_out = []
+for rid, check, loc, status, ev in rows:
+    rows_out.append({"id": rid, "check": check, "location": loc, "status": status, "evidence": ev})
+mutants = [
+ {"name": "v11_03_converged_means_budget_not_exhausted.py", "description": "converged = iterations < budget instead of certified_error <= tol (round-11 survivor)", "killed_by": "test_converged_is_true_when_the_budget_ends_on_the_certifying_sweep[0]"},
+ {"name": "v12_01_stop_test_uses_beta_times_change.py", "description": "stop test compares beta*change with tol, dropping the 1/(1-beta) factor", "killed_by": "test_converged_is_true_when_the_budget_ends_on_the_certifying_sweep[0]; test_tolerance_just_below_the_first_certified_error_does_not_stop; test_stop_uses_the_largest_absolute_change_over_the_grid; test_converged_means_certified_within_tolerance"},
+ {"name": "v12_02_continuation_read_in_reverse_order.py", "description": "continuation values read in reverse grid order", "killed_by": "test_certified_error_is_beta_over_one_minus_beta_times_the_last_change[3-1]; test_successor_exactly_at_the_resources_is_feasible; test_successor_just_above_the_resources_is_infeasible; test_stop_uses_the_largest_absolute_change_over_the_grid"},
+ {"name": "v12_03_value_returned_is_beta_times_the_iterate.py", "description": "solve returns beta times the iterate as value", "killed_by": "test_converged_means_certified_within_tolerance[0]; test_converged_means_certified_within_tolerance[1]; test_the_first_sweep_starts_from_zero_and_is_synchronous[0]; test_the_first_sweep_starts_from_zero_and_is_synchronous[1]"},
+ {"name": "existing m01..m103 + v10_01..v10_03 + v11_01, v11_02 (109 mutants)", "description": "previous mutant set, unchanged", "killed_by": "109/109 killed in the round-12 run (mutate_graders M5 total 112/112 with the three new ones)"},
+]
+frag = {
+ "unit": "M5", "slice": "d", "round": 12,
+ "verifier": "Haiku independent verifier (round 12), no build context",
+ "pin": "ff388424d9d056b7a57868dab5ae7f7cdeef60f6",
+ "base": "e8b10b8110923bd88c3b4bd0e36e1571be3e6725",
+ "checkout": "/Users/billyribeiro/.fanout/wt/verifyB12-M5-d",
+ "scratch": "/Users/billyribeiro/.fanout/wt/verifyB12-M5-d/ledgers/M5/scripts/M5-d-r12",
+ "verified_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+ "verdict": "PASS" if all(r["status"] == "PASS" for r in rows_out) else "FAIL",
+ "rows": rows_out,
+ "mutants": mutants,
+ "registry_flags": [],
+ "freshness_flags": [],
+ "notes": [
+  "Delta since the round-11 pin f42f432: project.html (lines 153/156, 216/219 interpretation prose; :235 count 96; :502 reading paragraph); grader/test_project.py (+1 parametrized test, 2 cases); cards.json (15 cards reworded, 18 new c217..c234, 230 total). Labs, reference.py, starter.py, instance.py byte-identical.",
+  "Round-11 FAIL rows closed: R03 (full page re-read completed, lines 1-522) and R31 (v11_03 now killed by the new test).",
+  "alt1 (in-place sweep) and alt2 (residual stop) fail the grader: both violate the synchronous-sweep convention and the certified-error definition on the page, so they are spec-consistent failures, not over-constraint.",
+  "The page's in-browser flags (-W error, --assert=plain) were exercised with the local pytest command, not in the browser itself."
+ ],
+ "summary": "Slice d round 12: verdict and counts are in the rows. 36 rows; see verdict. Mutants: 112 total (109 prior incl. v11_03 now killed, plus 3 new round-12 student-error mutants), 112 killed. Alternatives: 6 correct alternatives tested; alt3..alt6 pass; alt1, alt2 fail on the spec-stated synchronous and certified-error conventions.",
+ "what_not_checked": [
+  "Browser rendering of the grader panel, the rubric form and the saved-draft store were not exercised (no browser run); only the shared test file, the JS source (grader.js, rubric.js, labs.js, python.js) was read.",
+  "tests/test_labs.py for lab-E3-* fails in this worktree with 'missing twin' (E3 twins absent from the checkout); these are outside M5 and were not investigated. M5 cases pass (test_labs -k M5: 13 passed).",
+  "verify_refs ran offline only (560 entries, 0 problems); no live run was performed.",
+  "Lesson prose on L02-L10 was read only for the lines cited by cards and by project.html; L01-L10 pages themselves are other slices.",
+  "Exemplar scores are the page's own judgement; they were checked for internal consistency (data-scores vs verdict vs annotations), not re-scored as a learner would."
+ ]
+}
+out = pathlib.Path("ledgers/M5/M5-d.json")
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(json.dumps(frag, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print("wrote", out, frag["verdict"], len(rows_out))

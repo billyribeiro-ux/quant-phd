@@ -1,10 +1,9 @@
-"""projection_repair stops when the gap alone is at most tol, and ignores the step, so it can stop before the iterate has settled.
+"""projection_repair stops when the gap alone is at most tol, ignoring the step, before the iterate settles.
 
 Mutant of the reference. Not shipped to learners.
 
 Pure Python, standard library only. Eigenvalues come from cyclic Jacobi rotations; the Frobenius-nearest repair is
-Dykstra's alternating projections between the positive semidefinite matrices and the unit-diagonal matrices.
-"""
+Dykstra's alternating projections between the positive semidefinite matrices and the unit-diagonal matrices."""
 
 from __future__ import annotations
 
@@ -123,7 +122,6 @@ def projection_repair(matrix: list[list[float]], tol: float = 1e-10, max_iter: i
             new_x[i][i] = 1.0
         corr_u = [[y[i][j] + corr_u[i][j] - new_x[i][j] for j in range(n)] for i in range(n)]
         gap = _frobenius(new_x, y)
-        step = _frobenius(new_x, x)
         x = new_x
         if gap <= tol:
             break
@@ -131,12 +129,12 @@ def projection_repair(matrix: list[list[float]], tol: float = 1e-10, max_iter: i
 
 
 def comparison_weights(corr: list[list[float]], vols: list[float]) -> list[float]:
-    """Weights proportional to the solution of (D C D) x = 1, normalised to sum to one; D = diag(vols)."""
+    """Weights proportional to the solution of (S C S) x = 1, normalised to sum to one; S = diag(vols)."""
     c = _as_matrix(corr)
     n = len(c)
     if len(vols) != n:
         raise ValueError("the volatilities must have one entry per row of the correlation matrix")
-    if any(float(v) <= 0.0 for v in vols):
+    if not all(float(v) > 0.0 for v in vols):
         raise ValueError("every volatility must be strictly positive")
     sigma = [[float(vols[i]) * c[i][j] * float(vols[j]) for j in range(n)] for i in range(n)]
     aug = [[*sigma[i], 1.0] for i in range(n)]

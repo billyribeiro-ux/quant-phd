@@ -6,8 +6,9 @@ annually, so the price at yield y is P(y) = sum over t = 1..10 of c_t / (1 + y)*
 The price and its Taylor polynomials are exact rational arithmetic (Fraction) on the float yields, so no rounding enters
 before the price is reported. The two sensitivities P'(y0) and P''(y0) are floats: each is the
 exact rational value rounded once to the nearest double, so its relative error is at most 2**-53, and the Taylor
-polynomials use these float sensitivities as exact rationals. Only the reported price is an integer number of cents: the
-unrounded price rounded to the nearest cent with halves to even, which is Fraction's round(). Floats also appear in the
+polynomials use these float sensitivities as exact rationals. Only the reported price and the reported expansion are
+integer numbers of cents: each is the unrounded value rounded to the nearest cent with halves to even, which is
+Fraction's round(). Floats also appear in the
 central-difference checks and in the printed values.
 Part A checks the closed-form first and second derivatives of P against central differences. Part B expands P about
 the base yield 4 percent, and prints the errors of the first-order and the second-order expansions at steps of

@@ -1,7 +1,8 @@
 """Rung 3 check: the certificate of the project, computed for three candidate answers to the worked example of Lab 1.
 
 SIMULATED three-asset problem, not market data. The residuals are the four of the project page, restricted to the
-budget and the bounds 0 <= w_i <= 1 of this example (the example has no sector caps and no turnover constraint). The
+budget and the lower bounds 0 <= w_i of this example, plus the check w_i <= 1 that the budget and
+those bounds imply (the example has no sector caps and no turnover constraint). The
 primal and dual residuals are the largest violation among the constraints they cover, and the stationarity residual is
 the largest absolute stationarity expression. The complementary-slackness residual is not a violation: it is the
 largest absolute product of a multiplier and its constraint. So an optimal answer, with its multipliers, has all four

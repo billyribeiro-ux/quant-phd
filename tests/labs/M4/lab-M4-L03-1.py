@@ -1,14 +1,14 @@
 """M4 lab L03: standardized third and fourth moments, computed exactly, then a seeded sample check.
 
-Standard library only (fractions, math, random). The skewed law is a stated table: values 0, 1, 2 and 10 with
-probabilities 1/2, 1/4, 1/8 and 1/8. Its central moments m_k = E[(X - mu)^k] are exact rationals. The
-standardized skewness is E[Z^3] with Z = (X - mu)/sigma, which equals m3 / m2^(3/2); its square is the
-exact rational m3^2 / m2^3, and the kurtosis E[Z^4] equals m4 / m2^2 exactly. The program checks the
-moment formulas against a two-point Bernoulli law with p = 1/10, where the closed forms (1 - 2p)^2 / (pq) for the
-squared skewness and (1 - 3pq) / (pq) for the kurtosis are derived on the lesson page, with q = 1 - p.
-Last, it draws 20000 seeded values (seed 2026) from the skewed law and prints the sample skewness and
-kurtosis, using the population form of each moment with divisor n. A sample is one random run. Its
-values are estimates that depend on the seed, and the exact values printed above them do not.
+Standard library only (fractions, math, random, collections.abc). The skewed law is a stated table: values 0, 1, 2 and
+10 with probabilities 1/2, 1/4, 1/8 and 1/8. Its central moments m_k = E[(X - mu)^k] are exact rationals. The
+standardized skewness is E[Z^3] with Z = (X - mu)/sigma, which equals m3 / m2^(3/2); its square is the exact rational
+m3^2 / m2^3, and the kurtosis E[Z^4] equals m4 / m2^2 exactly. The program checks the moment formulas against a
+two-point Bernoulli law with p = 1/10, where the closed forms (1 - 2p)^2 / (pq) for the squared skewness and (1 - 3pq)
+/ (pq) for the kurtosis are derived on the lesson page, with q = 1 - p. Last, it draws 20000 seeded values (seed 2026)
+from the skewed law and prints the sample skewness and kurtosis, using the population form of each moment with divisor
+n. A sample is one random run. Its values are estimates that depend on the seed, and the exact values printed above
+them do not.
 """
 
 from __future__ import annotations

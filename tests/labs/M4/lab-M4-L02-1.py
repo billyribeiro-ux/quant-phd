@@ -1,14 +1,13 @@
 """M4 lab L02: expectation and variance of two finite laws, computed exactly, then a seeded sample check.
 
-Standard library only (fractions, math, random). The two laws are stated tables, not data: a fair six-sided
-die (values 1 to 6, each with probability 1/6) and a two-point loss in integer cents (a loss of 250000
-cents with probability 1/20, and no loss otherwise). Expectations and variances are exact rationals or
-integers. Each variance is computed two ways, from the definition E[(X - mu)^2] and from the shortcut
-E[X^2] - mu^2, and the program checks that the two agree. It also checks the scale rule
-Var(2X) = 4 Var(X) on the die. Last, it draws seeded samples (seed 2026 for the die, seed 2027 for the
-loss) and prints their sample means and variances, and for the loss the number of losses and their total.
-A sample is one random run, so its printed values are estimates that depend on the seed; the exact
-values above them do not.
+Standard library only (fractions, math, random, collections.abc). The two laws are stated tables, not data: a fair
+six-sided die (values 1 to 6, each with probability 1/6) and a two-point loss in integer cents (a loss of 250000 cents
+with probability 1/20, and no loss otherwise). Expectations and variances are exact rationals or integers. Each
+variance is computed two ways, from the definition E[(X - mu)^2] and from the shortcut E[X^2] - mu^2, and the program
+checks that the two agree. It also checks the scale rule Var(2X) = 4 Var(X) on the die. Last, it draws seeded samples
+(seed 2026 for the die, seed 2027 for the loss) and prints their sample means and variances, and for the loss the
+number of losses and their total. A sample is one random run, so its printed values are estimates that depend on the
+seed; the exact values above them do not.
 """
 
 from __future__ import annotations

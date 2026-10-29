@@ -1,4 +1,4 @@
-"""projection_repair stops as soon as the step is at most tol, ignoring the gap to the positive semidefinite projection."""
+"""projection_repair stops as soon as the step is at most tol, ignoring the gap to the PSD projection."""
 
 from __future__ import annotations
 
@@ -116,7 +116,6 @@ def projection_repair(matrix: list[list[float]], tol: float = 1e-10, max_iter: i
         for i in range(n):
             new_x[i][i] = 1.0
         corr_u = [[y[i][j] + corr_u[i][j] - new_x[i][j] for j in range(n)] for i in range(n)]
-        gap = _frobenius(new_x, y)
         step = _frobenius(new_x, x)
         x = new_x
         if step <= tol:
@@ -130,7 +129,7 @@ def comparison_weights(corr: list[list[float]], vols: list[float]) -> list[float
     n = len(c)
     if len(vols) != n:
         raise ValueError("the volatilities must have one entry per row of the correlation matrix")
-    if any(float(v) <= 0.0 for v in vols):
+    if not all(float(v) > 0.0 for v in vols):
         raise ValueError("every volatility must be strictly positive")
     sigma = [[float(vols[i]) * c[i][j] * float(vols[j]) for j in range(n)] for i in range(n)]
     aug = [[*sigma[i], 1.0] for i in range(n)]
