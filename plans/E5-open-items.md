@@ -136,3 +136,12 @@ because both are closed-form checks (plan §2.2).
 - The docstrings of `lab-E5-L04-1`, `lab-E5-L05-1` and `lab-E5-L06-1` said every value is an exact fraction. The labs also
   print decimals rounded to six or ten places and print `True` or `False` checks. The docstrings now say so. The printed
   output is unchanged; the pages were re-embedded with `tools/embed_labs.py --refresh`.
+
+## Architect rulings (batch 3, round 11)
+
+- **Decision 2 ratified.** L05 takes the aggregate-demand curve as the linear form A1 and says on the page that it does
+  not derive it from IS-LM (Remark 1.2 states the caveat). The build plan is corrected to match the lesson; a derivation
+  from IS-LM is out of scope for this module and is not required.
+- **Expected inflation is `\pi^{e}_t`.** It is a non-random forecast under A3, so the expectation operator `\E` does not
+  apply to it. `\pi^{e}_t` is an unregistered, lesson-local symbol with no registry conflict. The plan is corrected to
+  match L06.

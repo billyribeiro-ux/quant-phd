@@ -249,6 +249,19 @@ def test_bond_with_twelve_periods_is_valid_and_silent() -> None:
     assert caught == [], "a valid input must not warn"
 
 
+def test_bond_price_with_thirteen_to_fifteen_periods_uses_every_period() -> None:
+    """The page discounts an event in period t by (1 + y) ** -t with no upper limit on t. For 13 to 15 periods at a
+    non-zero yield, bond_price_cents must equal the exact Fraction sum of every event discounted by (1 + y) ** -t,
+    rounded once. Bond(10000, 500, n) at 500 bps is exactly at par, so its exact sum is 10000 cents
+    for each n tested here."""
+    for periods in (13, 14, 15):
+        bond = sol.Bond(10_000, 500, periods)
+        got = checked_int(sol.bond_price_cents(bond, 500), "bond_price_cents")
+        want = oracle_price(oracle_events(10_000, 500, periods), 500)
+        assert got == want, f"{periods} periods: each event must be discounted by (1 + y) ** -t for its own period t"
+        assert got == 10_000, f"{periods} periods at 500 bps: the coupon equals the yield, so the exact price is par"
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # bond_price_cents: present value at a per-period yield
 # ---------------------------------------------------------------------------------------------------------------
