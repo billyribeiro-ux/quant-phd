@@ -10,7 +10,8 @@ Claims checked, each on the inputs named in the code:
    symmetrised Gaussian noise, each raw entry with standard deviation 0.35; unit diagonal; size 5), the
    non-PSD matrices are repaired two ways. Clip-and-rescale gives R. Alternating projections (clip at zero,
    set the diagonal to one, repeat until the change is below 1e-12, at most 500 steps) gives W. The lab counts
-   how often W is a correlation matrix to within 1e-8, and how often ||A - W||_F is strictly less than ||A - R||_F.
+   how often W passes is_correlation (symmetric and unit diagonal to 1e-12, smallest eigenvalue at least -1e-8),
+   and how often ||A - W||_F is strictly less than ||A - R||_F.
 
 Scope: the counts describe these 40 matrices and nothing more. The lab does not show that R or W is the
 nearest correlation matrix to any input. It shows only that R is not nearest for each instance where W is
@@ -127,7 +128,10 @@ def main() -> None:
         if not first:
             first = f"first non-PSD matrix (index {index}): ||A - R||_F = {d_rescale:.6f}, ||A - W||_F = {d_alt:.6f}"
     print(f"seeded {SIZE}x{SIZE} matrices: {N_MATRICES}; not PSD (smallest eigenvalue below -1e-9): {nonpsd}")
-    print(f"alternating-projection output is a correlation matrix to within 1e-8: {feasible} of {nonpsd}")
+    print(
+        "alternating-projection output passes is_correlation "
+        f"(symmetric and unit diagonal to 1e-12, smallest eigenvalue at least -1e-8): {feasible} of {nonpsd}"
+    )
     print(f"alternating-projection output strictly closer to A than R: {closer} of {nonpsd}")
     print(first)
 

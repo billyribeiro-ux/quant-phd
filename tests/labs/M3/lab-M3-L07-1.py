@@ -3,7 +3,8 @@
 SIMULATED: the 12 observations and the response are generated here from a seeded generator (seed 7). No data
 are read. Units: the response and the fitted values are in the same arbitrary units; no unit is claimed.
 
-The design matrix A has full column rank (an intercept and two regressors). The lab checks, to the tolerances
+The design matrix A has an intercept and two regressors. The lab does not check its rank; it reports the rank of
+A^T A only for the duplicated design. The lab checks, to the tolerances
 printed, the statements of Theorem 1.2, Theorem 2.2 and Remark 1.4: the projection matrix
 P = A (A^T A)^{-1} A^T is symmetric and idempotent, Py equals A beta where beta solves the normal equations
 A^T A beta = A^T y, the residual is orthogonal to every column of A, and the Pythagorean identity holds. The
