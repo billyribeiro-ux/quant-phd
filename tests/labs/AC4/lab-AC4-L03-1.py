@@ -7,7 +7,7 @@ volumes are units or machine hours. Standard library only.
 Rule the lab tests: a cost is relevant to a decision when it is a future cash flow that differs between the
 alternatives. A sunk cost is the same under both alternatives, and so is any allocated common cost that stays
 after one alternative is chosen. The lab prints the decision under the relevant-cost method and under the full-cost
-method, changes the sunk and allocated inputs, and checks that the relevant-cost difference does not move.
+method, changes the sunk and allocated inputs, and prints whether the relevant-cost difference and the decision move.
 """
 
 from __future__ import annotations

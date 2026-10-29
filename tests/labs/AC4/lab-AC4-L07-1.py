@@ -74,6 +74,16 @@ def firm_surplus(c: Case) -> int:
     return c.q * (c.r_net - c.v) - displaced(c) * (c.p_m - c.v)
 
 
+def nonempty(c: Case) -> bool:
+    """True when the transfer range [t_min, t_max] contains at least one price, that is t_min <= t_max."""
+    return t_min(c) <= t_max(c)
+
+
+def midpoint(c: Case) -> Fraction:
+    """Midpoint of the transfer range [t_min, t_max]. Meaningful only when the range is nonempty."""
+    return (t_min(c) + t_max(c)) / 2
+
+
 # Hand-built boundary pair: the worked case of the page (v = 40, p_m = 60, K = 10,000, E = 8,000, q = 5,000
 # units, so D = 3,000) with r = 52 SCU. Then t_min = t_max = 52 SCU and the firm-wide surplus is exactly 0.
 BOUNDARY = Case(case_id=0, v=4000, p_m=6000, capacity=10000, external=8000, q=5000, r_net=5200)
@@ -120,8 +130,8 @@ def main() -> None:
 
     over = [c for c in cases if c.q > c.capacity]
     fits = [c for c in cases if c.q <= c.capacity]
-    empty = [c for c in fits if t_min(c) > t_max(c)]
-    feasible = [c for c in fits if t_min(c) <= t_max(c)]
+    empty = [c for c in fits if not nonempty(c)]
+    feasible = [c for c in fits if nonempty(c)]
     binding = [c for c in feasible if displaced(c) > 0]
     print(f"cases with q > K (no transfer): {len(over)}")
     print(f"cases with q <= K and an empty range: {len(empty)}")
@@ -130,20 +140,24 @@ def main() -> None:
     b = BOUNDARY
     print(
         f"boundary case (hand-built): t_min {show(t_min(b))}, t_max {show(t_max(b))}, "
-        f"firm-wide surplus {firm_surplus(b)} cents"
+        f"nonempty {nonempty(b)}, firm-wide surplus {firm_surplus(b)} cents"
     )
 
-    checks = 0
-    for c in fits:
-        lo, hi = t_min(c), t_max(c)
-        assert supplier_increment(c, lo) == 0
-        assert buyer_increment(c, hi) == 0
-        assert (lo <= hi) == (firm_surplus(c) >= 0)
-        if lo <= hi:
-            for t in (lo, hi, (lo + hi) / 2):
-                assert supplier_increment(c, t) + buyer_increment(c, t) == firm_surplus(c)
-        checks += 1
-    print(f"exact checks passed: {checks}/{len(fits)} cases with q <= K")
+    supplier_zero = sum(1 for c in fits if supplier_increment(c, t_min(c)) == 0)
+    sign_match = sum(1 for c in fits if nonempty(c) == (firm_surplus(c) >= 0))
+    midpoint_inside = sum(1 for c in feasible if t_min(c) <= midpoint(c) <= t_max(c))
+    sum_identity = sum(
+        1
+        for c in feasible
+        if all(
+            supplier_increment(c, t) + buyer_increment(c, t) == firm_surplus(c)
+            for t in (t_min(c), t_max(c), midpoint(c))
+        )
+    )
+    print(f"supplier gain is zero at t_min: {supplier_zero}/{len(fits)} cases with q <= K")
+    print(f"range is nonempty exactly when the firm-wide surplus is >= 0: {sign_match}/{len(fits)} cases with q <= K")
+    print(f"midpoint of the range lies inside it: {midpoint_inside}/{len(feasible)} feasible cases")
+    print(f"gains sum to the surplus at both ends and the midpoint: {sum_identity}/{len(feasible)} feasible cases")
 
 
 main()

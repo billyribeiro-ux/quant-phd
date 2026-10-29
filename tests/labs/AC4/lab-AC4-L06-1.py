@@ -25,7 +25,7 @@ cost, where s_i is standard kilograms per unit and pi the material price.
     sales mix variance     M  = sum_i CM_i * (q_a,i - Q_a * m_i)
     efficiency variance    E  = -pi * sum_i (kg_a,i - s_i * q_a,i)
 
-The four sum to the total contribution variance T = C_a - C_b. The code checks this identity and
+The four sum to the total contribution variance Delta C = C_a - C_b. The code checks this identity and
 raises ValueError if the residual is not zero.
 """
 
@@ -70,13 +70,18 @@ def contribution_per_unit(p: Product) -> int:
     return p.price_budget - p.std_kg * MATERIAL_PRICE
 
 
+def sales_price_by_product(products: tuple[Product, ...]) -> dict[str, int]:
+    """Sales price variance of each product, (p_a,i - p_b,i) * q_a,i, in cents, keyed by product name."""
+    return {p.name: (p.price_actual - p.price_budget) * p.units_actual for p in products}
+
+
 def decompose(products: tuple[Product, ...]) -> dict[str, int]:
     """The four variances and the total contribution variance, in cents. Raises ValueError if they do not reconcile."""
     q_b = sum(p.units_budget for p in products)
     q_a = sum(p.units_actual for p in products)
     cm_bar = Fraction(sum(contribution_per_unit(p) * p.units_budget for p in products), q_b)
 
-    sales_price = sum((p.price_actual - p.price_budget) * p.units_actual for p in products)
+    sales_price = sum(sales_price_by_product(products).values())
     volume = Fraction(q_a - q_b) * cm_bar
     mix = sum(
         (Fraction(contribution_per_unit(p)) * (p.units_actual - Fraction(q_a * p.units_budget, q_b)) for p in products),
@@ -109,6 +114,8 @@ def main() -> None:
     print(f"actual_contribution {result['actual_contribution']}")
     print(f"total_contribution_variance {result['total']}")
     print(f"sales_price_variance {result['sales_price']}")
+    for name, value in sales_price_by_product(PRODUCTS).items():
+        print(f"sales_price_variance_{name} {value}")
     print(f"sales_volume_variance {result['sales_volume']}")
     print(f"sales_mix_variance {result['sales_mix']}")
     print(f"efficiency_variance {result['efficiency']}")

@@ -496,6 +496,18 @@ def test_a_large_amount_posts_at_its_full_value() -> None:
             ],
         ),
         (
+            "a line with a debit smaller than its credit, in an entry that balances",
+            [
+                {
+                    "date": "2024-01-02",
+                    "lines": [
+                        {"account": "cash", "debit": 3, "credit": 5},
+                        {"account": "common_stock", "debit": 2, "credit": 0},
+                    ],
+                }
+            ],
+        ),
+        (
             "a line with neither a debit nor a credit",
             [
                 {
@@ -690,6 +702,18 @@ def test_a_large_amount_posts_at_its_full_value() -> None:
             ],
         ),
         (
+            "an amount that is a float zero on the debit side",
+            [
+                {
+                    **SMALL[0],
+                    "lines": [
+                        {"account": "cash", "debit": 5, "credit": 0},
+                        {"account": "common_stock", "debit": 0.0, "credit": 5},
+                    ],
+                }
+            ],
+        ),
+        (
             "an entry that balances only with another entry",
             [
                 {"date": "2024-01-02", "lines": [{"account": "cash", "debit": 5, "credit": 0}]},
@@ -791,6 +815,14 @@ def test_small_ledger_january_income_statement() -> None:
         "net_income": 130,
     }
     _check_values(got, expected, "income statement", "2024-01-31")
+
+
+def test_an_overdrawn_cash_balance_is_reported_as_a_negative_amount() -> None:
+    # Cash credited 100 with no cash debit: the balance is debit minus credit, -100. Money is never adjusted, so the
+    # balance sheet reports -100 for cash and the assets still equal liabilities plus equity (both zero).
+    ledger = sol.post([_entry("2024-01-02", [("equipment", 100, 0), ("cash", 0, 100)])])
+    expected = {"cash": -100, "equipment": 100, "net_equipment": 100, "total_assets": 0}
+    _check_values(sol.balance_sheet(ledger, "2024-01-31"), expected, "balance sheet", "2024-01-31")
 
 
 # Entries dated 1 January and 31 December 2024: real dates that the posting rules accept, so they must post and count.
@@ -1059,6 +1091,10 @@ def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
         "2024-04-15",
         "2024-01-30",
         "2024-04-31",
+        "2024-02-01",
+        "2024-12-01",
+        "2024-00-31",
+        "2024-01-00",
         "2024-03-01",
         "2024-03-30",
         "2024-06-29",
@@ -1066,6 +1102,7 @@ def test_statements_hold_integer_cents_and_the_required_keys(end: str) -> None:
         "2023-02-27",
         "2023-02-29",
         "2100-02-29",
+        "2000-02-28",
         "2024-13-31",
         "",
         " 2024-01-31",
@@ -1168,6 +1205,21 @@ def test_a_non_leap_year_february_end_is_accepted() -> None:
         "balance sheet",
         "2023-02-28",
     )
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda ledger, end: sol.balance_sheet(ledger, end),
+        lambda ledger, end: sol.income_statement(ledger, end),
+        lambda ledger, end: sol.cash_flow_statement(ledger, end),
+        lambda ledger, end: sol.articulation_check(ledger, end),
+    ],
+)
+@pytest.mark.parametrize("end", ["2024-02-29", "2023-02-28", "2024-04-30"])
+def test_every_function_accepts_a_month_end_of_a_real_length(call: Callable[[object, str], object], end: str) -> None:
+    # 2024-02-29 (leap year), 2023-02-28 (common year) and 2024-04-30 (a 30-day month) are month ends (Constraints).
+    assert isinstance(call(sol.post(SMALL), end), dict), f"a period end of {end} is a month end and must be accepted"
 
 
 def test_the_statements_return_fresh_objects() -> None:

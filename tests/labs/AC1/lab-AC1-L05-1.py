@@ -161,6 +161,10 @@ def main() -> None:
             f"upfront_percent {upfront_percent} max_contract_liability_cents {max(balance)} "
             f"max_contract_asset_cents {-min(balance)} months_with_contract_asset {sum(1 for b in balance if b < 0)}"
         )
+        print(
+            f"upfront_percent {upfront_percent} contract_asset_months "
+            f"{[m for m in range(MONTHS + 1) if balance[m] < 0]}"
+        )
 
     # Convention 2: the same allocation with every over-time obligation recognized in month 12.
     revenue_2 = revenue_schedule(contract, allocation, over_time_as_end=True)

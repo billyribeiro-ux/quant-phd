@@ -7,7 +7,7 @@ rounding can hide a reconciliation error. Standard library only.
 
 Two methods are compared on the same overhead pool of 100,000.00 CU. Volume-based costing spreads the pool by one
 volume driver (direct labour hours). Activity-based costing (two stages) first assigns each activity pool to products by
-its own driver, then divides by product volume. The lab checks that each method allocates the whole pool, and prints
+its own driver, then divides by product volume. The lab prints whether each method allocates the whole pool, and prints
 the cross-subsidy between the two products.
 """
 
@@ -149,6 +149,11 @@ def main() -> None:
     for p in products:
         print(f"  {p.name}: overhead {fmt(sens[p.name])}, per unit {fmt(sens[p.name] // p.units)}")
     print(f"  allocated total: {fmt(sum(sens.values()))}, equals pool: {sum(sens.values()) == pool_total}")
+    try:
+        exact_rate(100_000, 3, "demonstration rate")
+        print("Uneven pool (100000 cents over 3 driver units): accepted")
+    except ValueError:
+        print("Uneven pool (100000 cents over 3 driver units): refused")
 
 
 main()
