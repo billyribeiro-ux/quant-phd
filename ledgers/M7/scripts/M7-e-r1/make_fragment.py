@@ -1,0 +1,267 @@
+"""Write ledgers/M7/M7-e.json (round 1) from the per-card verification notes of slice e."""
+import json
+import subprocess
+from datetime import datetime, timezone
+
+CARDS = {c["id"]: c for c in json.load(open("course/modules/M/M7/cards.json", encoding="utf-8"))}
+TXT = "/tmp/m7e/{}.txt"
+
+# id: (lesson, text-line range, note)  -- note states what was compared; PASS unless listed in FAILS
+ROWS = {
+"M7-c001": ("L01","23-24","Def 1.1 convex set: lambda in [0,1], segment in S; wording matches"),
+"M7-c002": ("L01","34-37","Def 2.1 convex function; 'convexity relative to a stated set S' matches line 37"),
+"M7-c003": ("L01","26","Example 1.2 disk: triangle-inequality chain and bound 1 match"),
+"M7-c004": ("L01","28-31","Prop 1.3 intersections, nonempty family, proof line 31 match"),
+"M7-c005": ("L01","41-44","Prop 2.3 sublevel set; hypotheses S convex, f convex on S, c real match"),
+"M7-c006": ("L01","47-55","Lemma 3.1 gap identity, symmetric Q, every real lambda; symmetry use matches"),
+"M7-c007": ("L01","56-57","Example 3.2a: gradient 2Qx, constant Hessian 2Q match"),
+"M7-c008": ("L01","60-70","Prop 3.2 (i),(ii) equivalent; (iii) under Assumption 1 (line 69) match"),
+"M7-c009": ("L01","73","Example 3.3: eigenvalues of Q1 are 3 and 1 (eigenvectors (1,1),(1,-1)) match"),
+"M7-c010": ("L01","73,291,205,188","FAIL-GRADE: gap -1/2 matches Lemma 3.1 (quiz line 291, recomputed exactly) but midpoint 3/2 and chord 1 appear only as Lab 1 printed output (line 188, misconception line 205) on a T-graded card"),
+"M7-c011": ("L01","46,250-253","Symmetry needed for y'Qx = x'Qy (line 53); R1 cited correctly"),
+"M7-c012": ("L01","182-185,194","C card: 3125 cases, 2573 pass, 552 fail (3125-2573) match lab lines 185 and 194; grid-only scope matches"),
+"M7-c013": ("L01","35-36,188,321","FAIL-GRADE: refutation logic matches Def 2.1 (line 36), but midpoint 3/2 and chord 1 are Lab 1 printed output (line 188) on a T-graded card"),
+"M7-c014": ("L01","25-27,202-203","Misconception 1: circle and disk; 'segment stays in set' test matches"),
+"M7-c015": ("L01","73,204-205,232-235","Misconception 2: diagonal entries positive but eigenvalue -1; P3 cited; matches"),
+"M7-c016": ("L01","185,206-207","Misconception 3: 2573 of 3125 pass, 552 fail (line 185) match; C grade consistent"),
+"M7-c165": ("L01","73","Example 3.3: eigenvalues of Q2 are 3 and -1 match"),
+"M7-c177": ("L01","27,202-203","Misconception: circle midpoint (1/2,1/2) has squared norm 1/2 != 1 (line 27) match"),
+"M7-c178": ("L01","186-187,194,240","C card: 184 negative ordered pairs (line 186), 3x184=552 (line 187, E1 line 240) match"),
+"M7-c179": ("L01","73,268","Q1 convex under Assumption 1 via eigenvalues 3,1 and Prop 3.2(iii) match"),
+"M7-c180": ("L01","73,232-235,288","Q2 not convex; eigenvalue -1 refutes without Assumption 1 (P3, which uses only Lemma 3.1) matches"),
+"M7-c184": ("L01","38-39","Example 2.2 |x| convex; not differentiable at 0 (line 39) match"),
+"M7-c017": ("L02","26-28","Def 2.1 Lagrange multiplier; sign convention grad f = lambda grad h match"),
+"M7-c018": ("L02","29-33","Thm 2.2 hypotheses (U open, C^1, regular, minimiser on feasible set) and conclusion match"),
+"M7-c019": ("L02","43","Example 2.5: feasible set forces x >= 0, f = x >= 0 = f(0,0) match"),
+"M7-c020": ("L02","45","Example 2.6: feasible (0,-y), f = -y^3 < 0 = f(0,0), witness (0,-1) match"),
+"M7-c021": ("L02","46-49","Prop 2.4 uniqueness of multiplier under grad h != 0; proof uses it match"),
+"M7-c022": ("L02","54-57,59-65","Prop 3.2: u, s, lambda, w*, Sigma w* = lambda 1, hypotheses (no sign condition) match"),
+"M7-c023": ("L02","63-65","Prop 3.2(d): linear term vanishes, increase (1/2)d'Sigma d matches"),
+"M7-c024": ("L02","66-69","Prop 3.3 A'A+I symmetric PD for every real square A match"),
+"M7-c025": ("L02","226-228","P3: f(w*) = lambda/2 = 1/(2s), via w*'Sigma w* = lambda match"),
+"M7-c026": ("L02","209-211","Problem M2: lambda 2/3, w* (2/3,1/3), gradient (2/3)1, min 1/3 match (2/3 rendered as tfrac23)"),
+"M7-c027": ("L02","174-178","Lab 1 A entries (line 174) and Sigma rows (176-178) match; SIMULATED label line 76"),
+"M7-c028": ("L02","179","Lab 1 lambda = 177/55 (line 179) matches; SIMULATED"),
+"M7-c029": ("L02","181,187,193,244-246","Lab w3 = -9/55 < 0 (line 181); no sign constraint; Lesson 3 pointer matches"),
+"M7-c030": ("L02","71,83,185-186,235-237","Lab 36 of 36 identity and non-negativity (lines 185-186), six directions and six steps (lab lines 134,159); not all-direction claim matches"),
+"M7-c031": ("L02","195-196","Misconception: f=x^2+y^2 on x+y=1, minimiser (1/2,1/2), grad (1,1)=1*grad h match"),
+"M7-c032": ("L02","197-198,43-45","Misconception: Lagrange condition necessary not sufficient (Example 2.6) matches"),
+"M7-c033": ("L02","199-200,42-43","Misconception: Theorem 2.2 needs grad h != 0; Example 2.5 matches"),
+"M7-c168": ("L02","184,239-241","Lab f(w) = 177/110 (line 184) equals lambda/2 (E3 line 241) match"),
+"M7-c169": ("L02","182-183,55-56","Lab budget exact True and residual all exact zero (lines 182-183); Prop 3.2 (b),(c) match"),
+"M7-c176": ("L02","40-41","Remark 2.3: feasible curve per tangent direction; minimality rules out decrease match"),
+"M7-c181": ("L02","181","Lab weights (47/55,17/55,-9/55) match line 181; SIMULATED"),
+"M7-c185": ("L02","51","Section 3 positive definiteness definition; stronger than non-negativity match"),
+"M7-c036": ("L03","24","Def 1.1 feasible set F (all g_i <= 0 and h_j = 0) matches"),
+"M7-c037": ("L03","24","Def 1.1 active when g_i = 0, slack when g_i < 0 match"),
+"M7-c038": ("L03","26-30","Def 1.2 KKT point (K1)-(K4) with stationarity, feasibility, dual feasibility, complementary slackness match"),
+"M7-c039": ("L03","32-33","Remark 1.3 (K4) says at least one zero; slack => zero multiplier; active may be zero match"),
+"M7-c040": ("L03","34-36","Lemma 1.4 gradient inequality and zero-gradient minimiser match"),
+"M7-c041": ("L03","40-42","Lemma 1.5 q convex for every c; gradient Sigma w - c match"),
+"M7-c042": ("L03","47-48,55","Thm 2.1 hypotheses (f, g_i convex differentiable; h_j affine) and conclusion; Remark 2.2 match"),
+"M7-c043": ("L03","56-57","Example 2.3: x^3 at 0 is KKT but not minimiser; f(-1/2) = -1/8 > -1/2 match"),
+"M7-c044": ("L03","59-61","Example 3.1: F = {0}, grad g1(0) = 0 so (K1) reads 1 = 0; Slater fails match"),
+"M7-c046": ("L03","66-67","Example 4.1: w*=(1,0), nu=-1/2, lambda=(0,3/10), p*=-1/2 recomputed match"),
+"M7-c047": ("L03","68-69","Example 4.2: w*=(1/2,1/2), nu=-1/2, lambda=0, value -1/4 recomputed match"),
+"M7-c048": ("L03","196-197","Remark 4.3: w=(14/15,-11/30), sum 17/30 recomputed match"),
+"M7-c049": ("L03","175-189","C card: all four residuals exact zero at both candidates (lab lines 175-189) match"),
+"M7-c050": ("L03","193-194,71","C card: stationarity (-1/2,1/2) and dual residual 3/10 (lines 193-194) recomputed match"),
+"M7-c051": ("L03","204-206,47-49","Misconception 1: KKT not sufficient without convexity; Example 2.3 matches"),
+"M7-c052": ("L03","207-208","Misconception 2: w1>=0 slack with g1=-1 and zero multiplier; not every constraint binds match"),
+"M7-c053": ("L03","209-210,196-197","Misconception 3: unconstrained point violates budget and w2 >= 0 match"),
+"M7-c160": ("L03","26","Definition 1.2 Lagrangian L = f + sum lambda g + sum nu h matches"),
+"M7-c161": ("L03","31","KKT residual definition (line 31) matches"),
+"M7-c173": ("L03","181,191,273","C card: grid minima -1/2 at w1=1 and -1/4 at w1=1/2 on 101 points (lab lines 181,191) match; not a proof"),
+"M7-c187": ("L03","24","Def 1.1 optimal: x* in F and f(x*) <= f(x) on F match"),
+"M7-c056": ("L04","25","Def 1.1 dual function g = inf L and dual feasibility match"),
+"M7-c057": ("L04","26-31","Prop 1.2 dual concave where finite; proof uses no convexity match"),
+"M7-c058": ("L04","33-37","Prop 1.3 weak duality; no convexity assumption; hypotheses match"),
+"M7-c059": ("L04","39-41","Prop 1.4 finite non-empty grids bound the gap; finiteness role (P2 line 199) match"),
+"M7-c060": ("L04","44-45,227-229","Remark 1.5 and R3: grid gap 7/300 recomputed exactly (g(0,-3/5)=g(0,-7/10)=-157/300, p*=-1/2); PASS, R3 is a page derivation"),
+"M7-c061": ("L04","47-52","Prop 2.1 zero gap at KKT point under convex data; attained optima match"),
+"M7-c062": ("L04","53-56","Example 2.2: r=(2,1), r'Sigma^-1 r = 2, g = -1/2 = f(1,0) recomputed match"),
+"M7-c063": ("L04","144-146,57-58","C card: 1331 dual, 21 primal, 27951 pairs (lab lines 144-146) recomputed; exact fractions match"),
+"M7-c064": ("L04","187-190,152","g(0,0) = -199/300 recomputed (mu'Sigma^-1 mu = 199/150); M3 line 190 derives it; about -0.6633 matches"),
+"M7-c065": ("L04","156-157","Def 3.1 Slater point and Slater condition match"),
+"M7-c067": ("L04","159-160","Remark 3.3: (1/2,1/2) Slater point, g = -1/2, budget exact match"),
+"M7-c068": ("L04","161-162","Example 3.4: p*=d*=0, g(0)=-inf, g(lambda)=-1/(4 lambda) not attained match"),
+"M7-c069": ("L04","170-171,187-190","Misconception 1: dual -199/300 is 49/300 below p*=-1/2 recomputed; basis names Lab 1 but M3 on the page derives it; PASS"),
+"M7-c070": ("L04","172-173","Misconception 2: dual problem maximises g (Prop 1.3) match"),
+"M7-c071": ("L04","174-175","Misconception 3: exact arithmetic and Prop 1.4 with 1.3 match"),
+"M7-c170": ("L04","147-150,238","C card: largest grid dual -1/2 at one point, smallest primal -1/2 at (1,0), grid gap 0 (lab lines 147-150) match"),
+"M7-c073": ("L05","25-27","Def 1.1 QP data, Q symmetric, feasible set; equality-only case match"),
+"M7-c074": ("L05","29","Remark 1.2 only the symmetric part of Q matters match"),
+"M7-c075": ("L05","31-33","Lemma 1.3 expansion f(x+d) and gradient Qx+c, Hessian Q match"),
+"M7-c076": ("L05","37-39","Lemma 1.4 tangent plane below f for PSD Q match"),
+"M7-c077": ("L05","43-46","Prop 2.1 KKT matrix nonsingular for PD Q and full row rank; proof match"),
+"M7-c078": ("L05","47-48","Remark 2.2: two equal rows of A make rows 3 and 4 of K coincide, det 0 match"),
+"M7-c079": ("L05","49-51","Thm 2.3 unique minimiser over {Ax=b}; K(x,lambda)=(-c,b) match"),
+"M7-c080": ("L05","53-54","Remark 2.4 completed square (2x1+x2/2)^2+(11/4)(x2+4x3/11)^2+(18/11)x3^2 recomputed match"),
+"M7-c081": ("L05","62-65","Thm 3.1 KKT sufficiency for PSD Q with mu >= 0 and complementary slackness match"),
+"M7-c082": ("L05","66-67","Remark 3.2: mu=-1, f(0)=0 > f(1)=-1/2 match"),
+"M7-c083": ("L05","68-69","Def 3.3 S-candidate and Theorem 2.3 identification match"),
+"M7-c084": ("L05","70-73","Prop 3.4 midpoint identity and at most one minimiser match"),
+"M7-c085": ("L05","74-75","Remark 3.5 Part B feasible set convex; Q PD via (x1+x2)^2+x1^2+x2^2 match"),
+"M7-c086": ("L05","76-77","Example 3.6: xbar=(3/2,0), mubar=(0,5/2), f=-9/4 recomputed exactly match"),
+"M7-c087": ("L05","240,242-243,259","C card: Part A x=(13/19,3/19,3/19), residual maxima 0 (lab lines 240, 242-243) recomputed exactly"),
+"M7-c088": ("L05","244,305","C card: 551/722 = 0.7631578947 (lab line 244; E1 line 305) recomputed exactly; 817/722 - 266/722 match"),
+"M7-c089": ("L05","247-255,259","C card: only {2} passes both tests, x=(3/2,0), f=-9/4 (lab lines 247-255) recomputed independently"),
+"M7-c090": ("L05","68-69,88-91","Def 3.3 2^p candidate sets; four for p=2 (lab lines 248-251) match"),
+"M7-c091": ("L05","267-268","Misconception: Q=diag(1,-1), f(0,t)=-t^2/2 no minimiser match"),
+"M7-c092": ("L05","269-270,66-67","Misconception: stationarity alone does not certify; Remark 3.2 match"),
+"M7-c093": ("L05","271-272,241","C card: gradient -A'lambda, lambda=(-36/19,11/19) recomputed (Qx+c = (36,25,47)/19 = -A'lambda) match"),
+"M7-c166": ("L05","53-54","Remark 2.4: Av=0, feasible line, linear term vanishes match"),
+"M7-c171": ("L05","239,259,313","C card: KKT determinant 19 (lab line 239) recomputed exactly; nonsingular per Prop 2.1 match"),
+"M7-c172": ("L05","256-258,259","C card: 1089 grid points, 0 below -9/4 (lab lines 256-258) recomputed exactly"),
+"M7-c182": ("L05","241,240","C card: multipliers (-36/19,11/19) (lab line 241) recomputed exactly"),
+"M7-c097": ("L06","23,25","Def 1.1 f_gamma = (gamma/2)w'Sigma w - mu'w; risk term not identified with a risk measure match"),
+"M7-c098": ("L06","27","Def 1.2 mean-variance problem is QP with Q=gamma Sigma, c=-mu, A=1', b=1 match"),
+"M7-c099": ("L06","23","Section 1: mu and Sigma are given inputs, not estimated match"),
+"M7-c100": ("L06","29-33","Thm 1.3 closed form w=(y-lambda z)/gamma, lambda=(1'y-gamma)/(1'z) re-derived match"),
+"M7-c101": ("L06","35","Remark 1.4 Sigma = M'M/16 + I/10 gives x'Sigma x = ||Mx||^2/16 + ||x||^2/10 match"),
+"M7-c102": ("L06","39-43","Prop 2.1 V and R nonincreasing in gamma for minimiser over any set match (direction checked)"),
+"M7-c103": ("L06","47-49","Prop 2.3 F+ contained in F0 gives inf over F+ >= inf over F0 match"),
+"M7-c104": ("L06","52","Def 3.1 linear constraints, box, sector, nonnegativity match"),
+"M7-c105": ("L06","54","Def 3.2 turnover sum |w_i - w0_i| <= tau match"),
+"M7-c106": ("L06","56","Remark 3.3 absolute value is two linear inequalities match"),
+"M7-c107": ("L06","62","Remark 3.5 PSD Hessian on w block, zero on t block match"),
+"M7-c108": ("L06","241,275","C card: mu=(7/100,1/20,3/25,1/50) (lab line 241) recomputed exactly; SIMULATED"),
+"M7-c109": ("L06","242,275","C card: diagonal 49/40,27/20,103/80,103/80 (lab line 242) recomputed exactly"),
+"M7-c110": ("L06","245-246,275","C card: gamma=1 return 0.113798, risk 0.123809, weights (lab lines 245-246) recomputed"),
+"M7-c111": ("L06","246,248,250,252,254","C card: weight on A4 negative at all five gamma (lab lines 246-254) recomputed"),
+"M7-c112": ("L06","256-268,275","C card: zero set {A4} at each gamma (lab lines 256-268) recomputed"),
+"M7-c113": ("L06","253,268,325","C card: 0.820002 and 1.392257; exact difference 0.5722548315 recomputed (E2 line 325) match"),
+"M7-c114": ("L06","272,329","C card: turnover 0.5588607333 exact, 0.558861 printed, 0.558860 from six-place weights (E3 line 329) recomputed"),
+"M7-c115": ("L06","283-284,245,253","Misconception: return falls with gamma, 0.113798 -> 0.106241 (lab lines 245, 253) match; Prop 2.1"),
+"M7-c116": ("L06","285-286,246,257","Misconception: all four weights change at gamma=1 (lab lines 246, 257) match"),
+"M7-c117": ("L06","287-288,58-60,274","Misconception and Prop 3.4: auxiliary variables; Part D checks (lab lines 273-274) match"),
+"M7-c118": ("L06","29,245-254,275","C card: closed form = KKT solve exactly at each gamma (lab Part A True, lines 245-254) match"),
+"M7-c163": ("L06","58","Prop 3.4 no sign assumption on w, w0, tau match"),
+"M7-c164": ("L06","45","Remark 2.2 Prop 2.1 proof uses only minimisation over F' match"),
+"M7-c167": ("L06","310-312,33","P2 and Thm 1.3 proof: 1'z = z'Sigma z > 0 match"),
+"M7-c174": ("L06","256,259,262,265,268","C card: candidates_passing 1 at each of five gamma (lab lines 256-268) match"),
+"M7-c188": ("L06","39-43,345-346","Prop 2.1 return nonincreasing for 0 < gamma2 < gamma1 match"),
+"M7-c121": ("L07","25","Def 1.1 data: finite S, A(s), f, r, B match"),
+"M7-c122": ("L07","27-31","Def 1.2 plan, J_t(p), V_t(s), optimal match"),
+"M7-c123": ("L07","33","Remark 1.3 A(s)=(0,1), value supremum 1, not attained match"),
+"M7-c124": ("L07","35","Def 1.4 continuation of plan from time k match"),
+"M7-c125": ("L07","39-41,44-53","Thm 2.1 backward recursion V_H=B and max formula; downward induction match"),
+"M7-c126": ("L07","55-62","Thm 2.2 continuations of optimal plan optimal match"),
+"M7-c127": ("L07","64-70","Thm 2.3 (i),(ii) characterisation match"),
+"M7-c128": ("L07","72-74","Cor 2.4 maximising forward gives optimal plan match"),
+"M7-c129": ("L07","219","Remark 2.5: V_0(x)=1 by b; (a,c) earns 0; continuation (c) optimal match"),
+"M7-c130": ("L07","198-202","C card: V_t(400) = 240,220,200,130,4 (lab lines 198-202) recomputed by my own recursion"),
+"M7-c131": ("L07","204-205,76","C card: recursion matches brute force at 4 times x 5 wealth = 20 pairs (lab lines 204-205) match"),
+"M7-c132": ("L07","204,271-272","C card: 70 feasible sequences = C(8,4), recomputed by enumeration"),
+"M7-c133": ("L07","207-210","C card: optimal consumption 100 x4, path 400..0, total 240, tails optimal (lab lines 207-210) match"),
+"M7-c134": ("L07","211-216","C card: greedy 400,0,0,0 total 130, tails optimal from t=1,2,3, greedy_plan_optimal False match"),
+"M7-c135": ("L07","226-227,211-212","Misconception 1: largest period reward is not best first step; greedy total 130 vs 240 match"),
+"M7-c136": ("L07","228-229,219","Misconception 2: optimal continuations do not make plan optimal (Remark 2.5, lab greedy) match"),
+"M7-c137": ("L07","230-231,198,201","Misconception 3: V_0(400)=240, V_3(400)=130 (lab lines 198, 201) match; V depends on time left"),
+"M7-c142": ("L08","24-29","Def 1.1 discounted total with beta^(k-t) and beta^(H-t) B(s_H) match"),
+"M7-c143": ("L08","31-35","Def 1.2 Bellman system U_H=B, U_t = max{r + beta U_{t+1}} match"),
+"M7-c144": ("L08","36-43","Thm 1.3 value function solves Bellman equation for beta >= 0 match"),
+"M7-c145": ("L08","44-51","Thm 1.4 uniqueness given terminal condition match"),
+"M7-c146": ("L08","52-53,251-253","Remark 1.5 with B=0: (U0,U1)=(1,0); P3 lines 251-253 match"),
+"M7-c147": ("L08","56-61","Def 2.1 Bellman operator G and value iteration U^{n+1}=G U^n match"),
+"M7-c148": ("L08","62-65","Lemma 2.2 time shift with terminal reward C match"),
+"M7-c149": ("L08","66-69","Prop 2.3 iterate U^n equals n-period value with terminal reward U^0 match"),
+"M7-c150": ("L08","204-211,212","C card: iterate equals V_(H-n) for n=0..6 (lab line 211, text 212) match"),
+"M7-c151": ("L08","187,73","C card: V_0(0)=13.948890 (lab line 187) recomputed by my own value iteration"),
+"M7-c152": ("L08","194-200,212","C card: tied_pairs 0 (lab line 200); states 0,1 run at every t (lines 194-199) match"),
+"M7-c153": ("L08","202,212,264-266","C card: 378 = 3*(2^6+...+2^1) = 3*126 recomputed match"),
+"M7-c154": ("L08","205-210,262","C card: changes 6.0,3.6,2.74,2.466,2.2194,1.99746 recomputed; ratio 0.9 from n=3 recomputed"),
+"M7-c155": ("L08","220-221","Misconception 1: U^1 = 1 + U^0 depends on U^0 (Prop 2.3) match"),
+"M7-c156": ("L08","222-223,52-53","Misconception 2: Remark 1.5 equation alone does not determine value; Thm 1.4 match"),
+"M7-c157": ("L08","224-225,194-199","Misconception 3: policy s2 repair t=0..3, run t=4,5 (lab lines 194-199) match"),
+"M7-c162": ("L08","70-71,277-279","Remark 2.4 and R3: changes alone do not bound distance to limit match"),
+"M7-c175": ("L08","203,212","C card: recursion matches brute force at 6 times x 3 states = 18 pairs (lab line 203) match"),
+"M7-c186": ("L08","217","Section 3: beta=-1 example V_0=1, U_0=0, (V_0,V_1,V_2) not a solution recomputed match"),
+}
+FAILS = {
+"M7-c010": "Move the midpoint value 3/2 and chord value 1 to a C card with basis 'Lab 1 output, Q2 at x=(1,0), y=(0,1), weight 1/2' (or derive them on the page); keep the gap -1/2 as T via Lemma 3.1.",
+"M7-c013": "Regrade to C with basis 'Lab 1 output (midpoint value 3/2, chord 1)', or split the card: keep the refutation logic as T and move the printed numbers to a C card.",
+}
+assert set(ROWS) == set(CARDS), (set(CARDS) - set(ROWS), set(ROWS) - set(CARDS))
+rows = []
+for cid in sorted(CARDS):
+    c = CARDS[cid]
+    lesson, rng, note = ROWS[cid]
+    status = "FAIL" if cid in FAILS else "PASS"
+    row = {
+        "id": "E-" + cid[-4:],
+        "check": "card-vs-lesson: front, back, grade, basis, hypotheses, numbers, duplicates, process words",
+        "location": f"course/modules/M/M7/cards.json ({cid}, lesson {c['lesson']}, grade {c['grade']}); course/modules/M/M7/{lesson}.html text lines {rng} (extract {TXT.format(lesson)})",
+        "status": status,
+        "evidence": note + ". Card read in full; numbers re-derived in ledgers/M7/scripts/M7-e-r1/verify_numbers.py and verify_l05.py.",
+    }
+    if status == "FAIL":
+        row["fix"] = FAILS[cid]
+    rows.append(row)
+
+def srow(rid, check, location, status, evidence, fix=None):
+    r = {"id": rid, "check": check, "location": location, "status": status, "evidence": evidence}
+    if status != "PASS":
+        r["fix"] = fix
+    return r
+
+scan = "ledgers/M7/scripts/M7-e-r1/scan_cards.out"
+rows_slice = [
+    srow("E-S01", "gate: check_pages", "tools/check_pages.py --unit M7; cards.json",
+         "PASS", "Re-run: .venv/bin/python tools/check_pages.py --unit M7 -> 'check_pages M7: PASS' (exit 0). check_cards: ids unique, front/back present, lessons exist, non-T cards have basis, every lesson has cards."),
+    srow("E-S02", "gate: check_dag", "tools/check_dag.py --unit M7", "PASS",
+         "Re-run: .venv/bin/python tools/check_dag.py --unit M7 -> 'check_dag M7: PASS' (exit 0). No card names a concept outside the M7 prerequisite closure."),
+    srow("E-S03", "gate: check_projects", "tools/check_projects.py --unit M7", "PASS",
+         "Re-run: .venv/bin/python tools/check_projects.py --unit M7 -> 'check_projects M7: PASS' (exit 0)."),
+    srow("E-S04", "gate: run_labs", "tools/run_labs.py --unit M7; tests/labs/M7/*.py", "PASS",
+         "Re-run: .venv/bin/python tools/run_labs.py --unit M7 -> 'run_labs M7: PASS (11/11)'. Each twin run alone with python -I -W error exits 0 (run output compared with the numbers the cards cite)."),
+    srow("E-S05", "schema: ids, lessons, grades, basis", f"cards.json; scan output {scan}", "PASS",
+         "169 cards, unique ids, all fields present, lessons L01 22, L02 22, L03 21, L04 16, L05 25, L06 27, L07 17, L08 19. 48 C cards all carry basis; 121 T cards carry none; no cite fields. Id gaps (c034, c035, c045, c054, c055, c066, c072, c094-c096, c119, c120, c138-c141, c158, c159, c183) are not referenced by any lesson or card and I did not find a lesson claim that needs them; they are recorded, not treated as defects. Every lesson keeps cards, and every Definition and misconception I found has a card."),
+    srow("E-S06", "duplicates", f"cards.json; scan output {scan}", "PASS",
+         "No exact duplicate front or back. Near-duplicate fronts (SequenceMatcher ratio > 0.75, 11 pairs, e.g. c046/c047, c087/c182, c133/c134, c009/c165) were each read: they ask different questions about different objects or instances."),
+    srow("E-S07", "process words in learner text", f"cards.json front/back/basis; scan output {scan}", "PASS",
+         "Regex over verif, builder, fragment, round, ledger, agent, reviewer, pending, todo, draft, placeholder, audit, gate, sweep, mutant, slice, verdict: no hits."),
+    srow("E-S08", "numbers appear in lesson", f"cards.json numbers vs L01-L08 text; scan output {scan}", "PASS",
+         "Every numeric token in every card occurs in its lesson (or elsewhere in the unit). The only verbatim miss, 2/3 in c026, is the lesson's \\tfrac23 rendering. Rounding checked: c113 0.5722548 (exact 0.5722548315), c114 0.5588607 (exact 0.5588607333), c088 0.7631578947 (exact 551/722)."),
+    srow("E-S09", "notation vs notation/notation.json", "notation/notation.json (8 registered symbols); cards.json", "PASS",
+         "Registered program-wide symbols T, Phi, gamma_3, gamma_4, R^*, R^{e*}, R_f, \\mathbb{Q} do not occur in any card. Local letters (mu, gamma, beta, Sigma, Q, H, V, U, R(gamma)) are defined in each lesson and never take a registered meaning in the cards."),
+    srow("E-S10", "references", "tools/verify_refs.py --offline", "PASS",
+         "Re-run: .venv/bin/python tools/verify_refs.py --offline -> 'offline integrity: 560 entries, 0 problems'. No card carries a cite, so no card cites a registry key."),
+    srow("E-S11", "grade honesty (rule 9): T cards with lab-read numbers", "cards.json T cards mentioning Lab 1: c013, c060, c069, c085, c090, c099, c101, c117",
+         "FAIL", "c013 and c010 (see their rows) give lab-printed numbers on T cards. c060 (7/300) and c069 (-199/300) were recomputed and are derived on the page (Problem R3, Problem M3), so T is correct for them; c085, c090, c099, c101, c117 cite the lab only for descriptions or counts derivable on the page.",
+         "Regrade c010 and c013 to C naming Lab 1 (or move their printed numbers to a C card); the other rows need no change."),
+]
+mutants = []
+now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+verdict = "FAIL" if any(r["status"] != "PASS" for r in rows + rows_slice) else "PASS"
+pin = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+frag = {
+    "unit": "M7",
+    "slice": "e",
+    "round": 1,
+    "verifier": "Claude Haiku 5.5, independent verifier for M7-e, round 1 (did not build M7; re-read all 169 cards against L01-L08 line by line)",
+    "pin": pin,
+    "base": "none (round 1, first independent verification of slice e)",
+    "checkout": "/Users/billyribeiro/.fanout/wt/verifyD1-M7-e",
+    "scratch": "/tmp/m7e",
+    "verified_at": now,
+    "verdict": verdict,
+    "rows": rows + rows_slice,
+    "mutants": mutants,
+    "registry_flags": [],
+    "freshness_flags": [],
+    "notes": (
+        "Slice e is cards.json only (169 cards). Read every card against its lesson's text (rendered extracts in /tmp/m7e); "
+        "numbers recomputed with exact Fractions in ledgers/M7/scripts/M7-e-r1/verify_numbers.py and verify_l05.py; "
+        "structure, duplicates, process words, numbers-in-lesson and notation scanned in scan_cards.py (scan_cards.out). "
+        "No mutants: the slice has no grader or code; cards.json has no executable behaviour beyond check_pages, which passes. "
+        "Not checked: a rendered browser view of the cards (no card is rendered on a page in this slice); ruff, mypy and pytest (no code in the slice changed; no test reads cards.json); "
+        "page_smoke (lesson HTML unchanged in this slice); the grader and project slices, which belong to other fragments. "
+        "Coverage: every Definition, Theorem, Proposition, Lemma and misconception I found in the lessons has at least one card; I did not enumerate every Example or Problem."
+    ),
+    "summary": f"M7-e round 1: {len(rows)} card rows, {sum(r['status']=='PASS' for r in rows)} PASS, {sum(r['status']=='FAIL' for r in rows)} FAIL; {len(rows_slice)} slice rows, {sum(r['status']=='FAIL' for r in rows_slice)} FAIL (E-S11). Verdict FAIL on rule 9 (T cards carrying lab-printed numbers: M7-c010, M7-c013). No content error, numeric error, duplicate, process word or notation conflict found in any of the 169 cards.",
+}
+with open("ledgers/M7/M7-e.json", "w", encoding="utf-8") as fh:
+    json.dump(frag, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
+print("rows", len(frag["rows"]), "verdict", verdict)

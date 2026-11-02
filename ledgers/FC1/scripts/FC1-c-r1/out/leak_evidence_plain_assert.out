@@ -1,0 +1,113 @@
+......................F..F...FF................................F....     [100%]
+=================================== FAILURES ===================================
+______ test_bond_price_with_thirteen_to_fifteen_periods_uses_every_period ______
+
+    def test_bond_price_with_thirteen_to_fifteen_periods_uses_every_period() -> None:
+        """The page discounts an event in period t by (1 + y) ** -t with no upper limit on t. For 13 to 15 periods at a
+        non-zero yield, bond_price_cents must equal the exact Fraction sum of every event discounted by (1 + y) ** -t,
+        rounded once. Bond(10000, 500, n) at 500 bps is exactly at par, so its exact sum is 10000 cents
+        for each n tested here."""
+        for periods in (13, 14, 15):
+            bond = sol.Bond(10_000, 500, periods)
+            got = checked_int(sol.bond_price_cents(bond, 500), "bond_price_cents")
+            want = oracle_price(oracle_events(10_000, 500, periods), 500)
+>           assert got == want, f"{periods} periods: each event must be discounted by (1 + y) ** -t for its own period t"
+                   ^^^^^^^^^^^
+E           AssertionError: 13 periods: each event must be discounted by (1 + y) ** -t for its own period t
+
+test_project.py:270: AssertionError
+___________ test_bond_price_matches_the_discounted_sum_on_both_cases ___________
+
+    def test_bond_price_matches_the_discounted_sum_on_both_cases() -> None:
+        """Each event discounted by (1 + y) ** -t, y = yield_bps / 10000, summed exactly and rounded once, on two cases."""
+        for case in (INST, INST2):
+            got = checked_int(sol.bond_price_cents(bond_of(case), case["yield_bps"]), "bond_price_cents")
+            want = oracle_price(oracle_events(case["face_cents"], case["coupon_bps"], case["periods"]), case["yield_bps"])
+>           assert got == want, "the price is the sum of each event discounted by (1 + y) ** -t, rounded once"
+                   ^^^^^^^^^^^
+E           AssertionError: the price is the sum of each event discounted by (1 + y) ** -t, rounded once
+
+test_project.py:298: AssertionError
+_______________ test_bond_price_is_rounded_once_not_term_by_term _______________
+
+    def test_bond_price_is_rounded_once_not_term_by_term() -> None:
+        """The exact sum is rounded once. Rounding each discounted term and then adding gives a different answer here."""
+        case = ROUNDING_CASE
+        events = oracle_events(case["face_cents"], case["coupon_bps"], case["periods"])
+        y = Fraction(case["yield_bps"], 10_000)
+        per_term = sum(half_away(Fraction(a) / (1 + y) ** t) for t, a in events)
+        got = checked_int(sol.bond_price_cents(bond_of(case), case["yield_bps"]), "bond_price_cents")
+>       assert got == oracle_price(events, case["yield_bps"]), "round the exact sum once, after all terms are added"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: round the exact sum once, after all terms are added
+
+test_project.py:324: AssertionError
+_______________ test_bond_price_hand_fixture_rounds_the_sum_once _______________
+
+    def test_bond_price_hand_fixture_rounds_the_sum_once() -> None:
+        """Hand fixture: face 10000, 500 bps, three periods, 400 bps yield. The events are (1, 500), (2, 500), (3, 10500).
+        Their exact present value is 10277.5091, which rounds once to 10278. The terms are 480.77, 462.28 and 9334.46
+        before rounding; rounded one by one they give 481 + 462 + 9334 = 10277, so the two rules differ here."""
+>       assert sol.bond_price_cents(sol.Bond(10_000, 500, 3), 400) == 10_278
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError
+
+test_project.py:332: AssertionError
+________________________ test_the_module_prints_nothing ________________________
+
+capsys = <_pytest.capture.CaptureFixture object at 0x10aeb3620>
+
+    def test_the_module_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:
+        """No function prints on a valid input: the captured standard output and error are empty after each run, on the
+        learner's case and on the valid boundary inputs (negative yield, zero yield, zero coupon, zero price, sell side,
+        quantity 1, settlement period 1, one cent of face, one period, twelve periods)."""
+        runs: list[tuple[str, Callable[[], object]]] = [
+            ("the seeded case", lambda: sol.bond_price_cents(bond_of(INST), INST["yield_bps"])),
+            ("the seeded case's events", lambda: bond_of(INST).events()),
+            ("the seeded case's trade", lambda: trade_of(INST).events()),
+            ("yield_bps = -9999", lambda: sol.bond_price_cents(sol.Bond(10_000, 500, 3), -9_999)),
+            ("yield_bps = -5000", lambda: sol.bond_price_cents(sol.Bond(10_000, 500, 3), -5_000)),
+            ("yield_bps = 0", lambda: sol.bond_price_cents(sol.Bond(10_000, 500, 3), 0)),
+            ("coupon_bps = 0", lambda: sol.Bond(10_000, 0, 2).events()),
+            ("price_cents = 0", lambda: sol.CashTrade(10, 0, 1, 2).events()),
+            ("side = -1", lambda: sol.CashTrade(10, 9_850, -1, 2).events()),
+            ("quantity = 1", lambda: sol.CashTrade(1, 9_850, 1, 2).events()),
+            ("settlement_day = 1", lambda: sol.CashTrade(10, 9_850, 1, 1).events()),
+            ("face_cents = 1", lambda: sol.Bond(1, 500, 3).events()),
+            ("periods = 1", lambda: sol.Bond(10_000, 500, 1).events()),
+            ("periods = 12", lambda: sol.Bond(10_000, 500, 12).events()),
+        ]
+        for label, call in runs:
+>           call()
+
+test_project.py:559: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+test_project.py:547: in <lambda>
+    ("yield_bps = -5000", lambda: sol.bond_price_cents(sol.Bond(10_000, 500, 3), -5_000)),
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+instruments.py:58: in bond_price_cents
+    total += Fraction(amount) / (1 + y * period)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/Users/billyribeiro/.local/share/mise/installs/python/3.14.8/lib/python3.14/fractions.py:699: in forward
+    return monomorphic_operator(a, b)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+a = Fraction(500, 1), b = Fraction(0, 1)
+
+    def _div(a, b):
+        """a / b"""
+        # Same as _mul(), with inversed b.
+        nb, db = b._numerator, b._denominator
+        if nb == 0:
+>           raise ZeroDivisionError('Fraction(%s, 0)' % db)
+E           ZeroDivisionError: Fraction(1, 0)
+
+/Users/billyribeiro/.local/share/mise/installs/python/3.14.8/lib/python3.14/fractions.py:847: ZeroDivisionError
+=========================== short test summary info ============================
+FAILED test_project.py::test_bond_price_with_thirteen_to_fifteen_periods_uses_every_period
+FAILED test_project.py::test_bond_price_matches_the_discounted_sum_on_both_cases
+FAILED test_project.py::test_bond_price_is_rounded_once_not_term_by_term - As...
+FAILED test_project.py::test_bond_price_hand_fixture_rounds_the_sum_once - As...
+FAILED test_project.py::test_the_module_prints_nothing - ZeroDivisionError: F...
+5 failed, 63 passed in 0.07s
