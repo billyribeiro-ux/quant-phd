@@ -180,6 +180,96 @@ def test_student_t_cross_term_matches_matched_covariance() -> None:
     )
 
 
+def test_student_t_mean_absolute_loss_matches_the_matched_scale() -> None:
+    # For one position w with variance sigma^2, the loss is -w R with R = sqrt((nu - 2) / nu) sigma T_nu, where T_nu
+    # is a Student-t variable. So E|loss| = w sigma sqrt((nu - 2) / nu) E|T_nu| for every nu of 3 to 8. This is
+    # checked at nu = 3 and 4 too, where the variance is not checked: a matched factor left out there inflates
+    # E|loss| by sqrt(nu / (nu - 2)), about 1.73 at nu = 3, far outside the 5 % tolerance over 20,000 draws.
+    w = 1_000_000
+    sigma = math.sqrt(4e-4)
+    for nu in range(3, 9):
+        target = w * sigma * math.sqrt((nu - 2) / nu) * _mean_abs_t(nu)
+        losses = sol.simulate_losses([w], [[4e-4]], 20_000, SEED, "student_t", nu)
+        measured = sum(abs(x) for x in losses) / len(losses)
+        check(
+            relative_error(measured, target) <= 0.05,
+            "the student_t mean absolute loss must match the matched scale: check the factor (nu - 2) / nu",
+        )
+
+
+def _mean_abs_t(nu: int) -> float:
+    """E|T| for a Student-t variable with nu > 1 degrees of freedom, from the Gamma function."""
+    return 2.0 * math.sqrt(nu) * math.gamma((nu + 1) / 2) / (math.sqrt(math.pi) * (nu - 1) * math.gamma(nu / 2))
+
+
+def test_student_t_draws_do_not_share_chi_square() -> None:
+    # Each Student-t draw has its own chi-square variable (Conventions item 5). Then the pairs of draws (2k, 2k + 1) and
+    # (2k + 1, 2k + 2) are each independent, and P(both |loss| above the median) is 1/4 for each pair. The test accepts
+    # 1/4 within five standard errors, for both pairings, over 40,000 draws at nu = 3. A chi-square variable shared by
+    # alternate draws makes one pairing dependent and moves its share away from 1/4.
+    n = 40_000
+    losses = sol.simulate_losses([1_000_000], [[4e-4]], n, SEED, "student_t", 3)
+    magnitudes = [abs(x) for x in losses]
+    median = sorted(magnitudes)[n // 2]
+    above = [m > median for m in magnitudes]
+    standard_error = math.sqrt(0.25 * 0.75 / (n // 2))
+    for offset in (0, 1):
+        pairs = [(above[i], above[i + 1]) for i in range(offset, n - 1, 2)]
+        share = sum(a and b for a, b in pairs) / len(pairs)
+        check(
+            abs(share - 0.25) <= 5 * standard_error,
+            "each student_t draw must have its own chi-square variable: draws must not share one across pairs",
+        )
+
+
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_a_short_position_is_valid_and_reverses_its_loss(family: str, nu: int | None) -> None:
+    # A negative position is a short position, and it is valid input (the Conditions). The loss is linear in the
+    # positions and round() is symmetric about zero, so flipping every sign flips every loss exactly, for any seed.
+    cov = [[4e-4, 1e-4], [1e-4, 9e-4]]
+    long_pair = sol.simulate_losses([1_000, 2_000], cov, 300, SEED, family, nu)
+    mixed = sol.simulate_losses([1_000, -2_000], cov, 300, SEED, family, nu)
+    flipped = sol.simulate_losses([-1_000, -2_000], cov, 300, SEED, family, nu)
+    mixed_flipped = sol.simulate_losses([-1_000, 2_000], cov, 300, SEED, family, nu)
+    check(
+        flipped == [-x for x in long_pair],
+        "negating every position must negate every loss: a negative position is a valid short position",
+    )
+    check(
+        mixed_flipped == [-x for x in mixed],
+        "a short position must reverse its own contribution to the loss, with the other positions unchanged",
+    )
+
+
+def _lower_factor(cov: list[list[float]]) -> list[list[float]]:
+    """The lower-triangular L with L L^T = cov, computed row by row, for the instance's positive definite covariance."""
+    n = len(cov)
+    factor = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1):
+            inner = sum(factor[i][k] * factor[j][k] for k in range(j))
+            factor[i][j] = math.sqrt(cov[i][i] - inner) if i == j else (cov[i][j] - inner) / factor[j][j]
+    return factor
+
+
+def test_gaussian_stream_is_frozen_and_the_loss_is_minus_the_weighted_return() -> None:
+    # Conventions item 5 fixes the Gaussian stream: draw d takes its n normals z in position order from
+    # random.Random(seed).gauss(0, 1), and the loss is -sum_i w_i (L z)_i, rounded once. The unrounded loss is
+    # recomputed here from the same stream, so each reported loss lies within half a cent of it. The loss with the
+    # opposite sign lies about twice the weighted return away, so it fails.
+    n = len(POSITIONS)
+    losses = sol.simulate_losses(POSITIONS, COV, 3, SEED, "gaussian", None)
+    rng = random.Random(SEED)
+    factor = _lower_factor(COV)
+    for loss in losses:
+        z = [rng.gauss(0.0, 1.0) for _ in range(n)]
+        unrounded = -sum(POSITIONS[i] * sum(factor[i][k] * z[k] for k in range(i + 1)) for i in range(n))
+        check(
+            abs(loss - unrounded) <= 0.5 + 1e-6,
+            "the gaussian losses must be -sum_i w_i (L z)_i from the frozen stream: check the sign and normal order",
+        )
+
+
 def test_same_seed_gives_the_same_losses() -> None:
     for family, nu in (("gaussian", None), ("student_t", NU)):
         first = sol.simulate_losses(POSITIONS, COV, 500, SEED, family, nu)

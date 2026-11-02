@@ -48,20 +48,6 @@ def _cholesky(cov: Sequence[Sequence[float]], n: int) -> list[list[float]]:
     return factor
 
 
-def _normals(rng: random.Random, n: int) -> list[float]:
-    """n standard normals by the Marsaglia polar method, rejecting points outside the unit disc."""
-    out: list[float] = []
-    while len(out) < n:
-        x = 2.0 * rng.random() - 1.0
-        y = 2.0 * rng.random() - 1.0
-        s = x * x + y * y
-        if 0.0 < s < 1.0:
-            factor = math.sqrt(-2.0 * math.log(s) / s)
-            out.append(x * factor)
-            out.append(y * factor)
-    return out[:n]
-
-
 def simulate_losses(
     position_cents: list[int],
     cov: list[list[float]],
@@ -73,7 +59,8 @@ def simulate_losses(
     """One portfolio loss per draw, in integer cents: loss = -sum_i w_i r_i with w_i the position in cents.
 
     The returns are r = sqrt(s) L Z for the Gaussian family (s = 1) and r = sqrt(s nu / W) L Z for the Student-t
-    family, where Z is standard normal, W is chi-square with nu degrees of freedom, s = (nu - 2) / nu, and L L^T = cov.
+    family, where Z is standard normal, W is chi-square with nu degrees of freedom, s = (nu - 2) / nu, and
+    L L^T = cov.
     """
     if not isinstance(position_cents, list) or not position_cents or any(not _whole(w) for w in position_cents):
         raise ValueError("position_cents must be a non-empty list of whole numbers of cents")
@@ -92,16 +79,16 @@ def simulate_losses(
     rng = random.Random(seed)
     losses: list[int] = []
     for _ in range(n_draws):
-        z = _normals(rng, n)
+        z = [rng.gauss(0.0, 1.0) for _ in range(n)]
         scale = 1.0
         if student and nu is not None:
             chi_square = rng.gammavariate(nu / 2, 2.0)
             scale = math.sqrt(matched * nu / chi_square)
-        total = 0.0
+        parts = []
         for i in range(n):
             ret = scale * sum(factor[i][k] * z[k] for k in range(i + 1))
-            total += position_cents[i] * ret
-        losses.append(round(-total))
+            parts.append(position_cents[i] * ret)
+        losses.append(round(-math.fsum(parts)))
     return losses
 
 

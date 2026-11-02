@@ -1,7 +1,9 @@
-"""Reference solution for the M3 project, covariance_doctor.py. Not shipped to learners.
+"""projection_repair never stops early: its stop test ends in "and False", so every call runs the full max_iter budget.
+
+Mutant of the reference. Not shipped to learners.
 
 Pure Python, standard library only. Eigenvalues come from cyclic Jacobi rotations; the Frobenius-nearest repair is
-Dykstra's alternating projections between the positive semidefinite matrices and the unit-diagonal matrices.
+Alternating projections, with correction terms, between the positive semidefinite and the unit-diagonal matrices.
 """
 
 from __future__ import annotations
@@ -107,7 +109,7 @@ def clip_repair(matrix: list[list[float]], floor: float = 0.0) -> list[list[floa
 
 
 def projection_repair(matrix: list[list[float]], tol: float = 1e-10, max_iter: int = 500) -> list[list[float]]:
-    """Dykstra's alternating projections onto the positive semidefinite and the unit-diagonal matrices."""
+    """Alternating projections, with correction terms, onto the positive semidefinite and the unit-diagonal matrices."""
     a = _as_matrix(matrix)
     n = len(a)
     x = a

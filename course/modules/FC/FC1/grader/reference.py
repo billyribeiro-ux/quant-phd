@@ -7,7 +7,7 @@ Conventions, as the project page states them:
 * money is an int in cents; each output is computed from exact Fractions and rounded once, half away from zero
 * periods are whole numbers from 1; a bond pays its coupon in periods 1 to n and its face in period n
 * a per-period yield is yield_bps / 10000; an event in period t is discounted by (1 + y) ** -t
-* side +1 is the long holder, who buys and pays cash; side -1 is the short holder, who sells and receives cash; a
+* side +1 is the buyer, who pays cash; side -1 is the seller, who receives cash; a
   trade's cash flow to the holder is -side * quantity * price_cents
 """
 

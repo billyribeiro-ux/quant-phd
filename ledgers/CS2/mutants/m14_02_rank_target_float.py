@@ -1,4 +1,4 @@
-"""Reference solution for the CS2 streaming statistics library (streamstats.py).
+"""Quantile computes the rank target in floats (q times n minus float epsilon times n), so it can fall one rank short.
 
 Standard library only. Values are floats in the caller's unit; counts and window lengths are ints; the
 quantile sketch's epsilon and q are floats in [0, 1] (epsilon strictly inside (0, 1)). Nothing here prints,

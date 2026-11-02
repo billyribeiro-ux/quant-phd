@@ -1,4 +1,4 @@
-"""estimate reports the transformed coordinate eta = log(gamma/(1-gamma)) as gamma_hat instead of gamma."""
+"""estimate reports the transformed coordinate zeta = log(gamma/(1-gamma)) as gamma_hat instead of gamma."""
 
 from __future__ import annotations
 

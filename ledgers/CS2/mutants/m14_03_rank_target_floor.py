@@ -1,4 +1,4 @@
-"""Reference solution for the CS2 streaming statistics library (streamstats.py).
+"""Quantile takes the floor of qn minus epsilon n as the rank target, not the ceiling, so it can answer one rank early.
 
 Standard library only. Values are floats in the caller's unit; counts and window lengths are ints; the
 quantile sketch's epsilon and q are floats in [0, 1] (epsilon strictly inside (0, 1)). Nothing here prints,

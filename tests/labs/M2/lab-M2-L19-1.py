@@ -2,8 +2,9 @@
 
 SIMULATED: the function f(x, y) = exp(x) * y + x * y**2 is a test function chosen for this lab. It is not
 market data and it models no security.
-Part A checks the closed-form gradient and Hessian of f against central differences, and reports the
-symmetry of the finite-difference Hessian. Part B measures the error of the first-order and the second-order
+Part A prints the closed-form gradient and Hessian of f at the base point, the largest difference between
+that Hessian and its central-difference approximation, and the asymmetry of the central-difference Hessian.
+Part B measures the error of the first-order and the second-order
 Taylor expansions of f along one fixed unit direction, at step sizes s, s/2, s/4 and s/8, and prints the ratio
 of successive errors. Standard library only; no randomness and no network access.
 """

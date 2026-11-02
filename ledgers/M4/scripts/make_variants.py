@@ -25,36 +25,6 @@ REFERENCE = ROOT / "course/modules/M/M4/grader/reference.py"
 SCRIPTS = Path(__file__).resolve().parent
 MUTANTS = ROOT / "ledgers/M4/mutants"
 
-NORMALS_BOX_MULLER = '''def _normals(rng: random.Random, n: int) -> list[float]:
-    """n standard normals by the Box-Muller transform of pairs of uniforms."""
-    out: list[float] = []
-    while len(out) < n:
-        u1 = 1.0 - rng.random()
-        u2 = rng.random()
-        radius = math.sqrt(-2.0 * math.log(u1))
-        out.append(radius * math.cos(2.0 * math.pi * u2))
-        out.append(radius * math.sin(2.0 * math.pi * u2))
-    return out[:n]
-
-
-def simulate_losses('''
-
-NORMALS_POLAR = '''def _normals(rng: random.Random, n: int) -> list[float]:
-    """n standard normals by the Marsaglia polar method, rejecting points outside the unit disc."""
-    out: list[float] = []
-    while len(out) < n:
-        x = 2.0 * rng.random() - 1.0
-        y = 2.0 * rng.random() - 1.0
-        s = x * x + y * y
-        if 0.0 < s < 1.0:
-            factor = math.sqrt(-2.0 * math.log(s) / s)
-            out.append(x * factor)
-            out.append(y * factor)
-    return out[:n]
-
-
-def simulate_losses('''
-
 CHOLESKY_COLUMNS = """    factor = [[0.0] * n for _ in range(n)]
     for j in range(n):
         pivot = cov[j][j] - sum(factor[j][k] ** 2 for k in range(j))
@@ -71,15 +41,19 @@ ALTERNATIVES: list[tuple[str, list[tuple[str, str]]]] = [
     (
         "alt_1",
         [
-            ("def simulate_losses(", NORMALS_BOX_MULLER),
-            ("z = [rng.gauss(0.0, 1.0) for _ in range(n)]", "z = _normals(rng, n)"),
+            (
+                "ret = scale * sum(factor[i][k] * z[k] for k in range(i + 1))",
+                "ret = scale * sum(factor[i][k] * z[k] for k in range(n))",
+            ),
         ],
     ),
     (
         "alt_2",
         [
-            ("def simulate_losses(", NORMALS_POLAR),
-            ("z = [rng.gauss(0.0, 1.0) for _ in range(n)]", "z = _normals(rng, n)"),
+            (
+                "        total = 0.0\n        for i in range(n):\n            ret = scale * sum(factor[i][k] * z[k] for k in range(i + 1))\n            total += position_cents[i] * ret\n        losses.append(round(-total))",  # noqa: E501
+                "        parts = []\n        for i in range(n):\n            ret = scale * sum(factor[i][k] * z[k] for k in range(i + 1))\n            parts.append(position_cents[i] * ret)\n        losses.append(round(-math.fsum(parts)))",  # noqa: E501
+            ),
         ],
     ),
     (

@@ -597,6 +597,42 @@ def test_scan_explanations_are_nonempty_and_name_the_rule() -> None:
                 assert re.search(rf"\b{label}\b", text), "the explanation names each assumption its kind depends on"
 
 
+def test_parity_explanation_states_the_trade_for_the_sign_of_the_gap() -> None:
+    __tracebackhide__ = True
+    # Two hand chains fix both signs of the gap; the seeded chains add more strikes of whichever signs they carry.
+    cases = [
+        chain_of(INST),
+        chain_of(INST2),
+        hand_chain([9_000], [1_500], [0], spot=10_000),  # gap +500 cents: the call is rich
+        hand_chain([9_000], [500], [0], spot=10_000),  # gap -500 cents: the call is cheap
+    ]
+    signs_seen: set[str] = set()
+    for chain in cases:
+        for record in sol.scan(chain):
+            if record["kind"] != "parity":
+                continue
+            k = chain["strikes_cents"].index(record["strike_cents"])
+            gap = oracle_gap(
+                chain["call_cents"][k],
+                chain["put_cents"][k],
+                chain["spot_cents"],
+                record["strike_cents"],
+                chain["df_ppm"],
+            )
+            text = record["explanation"]
+            if gap > 0:
+                signs_seen.add("positive")
+                assert re.search(r"\bsell\w*\s+the\s+call\b", text), (
+                    "a positive gap (the call is rich) must explain the trade that sells the call"
+                )
+            elif gap < 0:
+                signs_seen.add("negative")
+                assert re.search(r"\bbuy\w*\s+the\s+call\b", text), (
+                    "a negative gap (the call is cheap) must explain the trade that buys the call"
+                )
+    assert signs_seen == {"positive", "negative"}, "both signs of the parity gap must be exercised"
+
+
 def test_scan_matches_exhaustive_oracle_seed() -> None:
     __tracebackhide__ = True
     assert rows_of(sol.scan(chain_of(INST))) == oracle_findings(chain_of(INST)), (

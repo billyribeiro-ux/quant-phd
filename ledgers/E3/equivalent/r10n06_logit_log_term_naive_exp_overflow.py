@@ -1,6 +1,7 @@
-# Student-error mutant (verifier E3-d, round 10). The logit terms use log(1 + exp(t)) directly instead of the stable form. Large |z| overflows; the page states no numerical-stability requirement, so this survivor is informational.
-# Single-change copy of the reference solution.
-"""Reference solution for the E3 project: elicit.py, the preference-elicitation engine.
+# Single-change copy of the reference solution, ruled not to violate the specification (see README.md in this directory).
+"""Logit log term computed as log(1 + exp(t)) without the stable form, so it overflows for large |z|.
+
+Reference solution for the E3 project: elicit.py, the preference-elicitation engine.
 
 This is the full solution. It is excluded from deployment (BLUEPRINT section 7); it exists so that the suite can be
 checked against a passing implementation on seeds 0 to 49. Standard library only.
@@ -149,7 +150,7 @@ def _mixed(prizes: list[int], probs: list[Fraction]) -> bool:
 
 
 def _log1pexp(t: float) -> float:
-    """log(1 + exp(t)), stable for large |t|."""
+    """log(1 + exp(t)) computed directly, without the stable form: math.exp overflows for t above about 709."""
     return math.log(1.0 + math.exp(t))
 
 

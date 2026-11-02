@@ -299,7 +299,8 @@ def test_model_name_must_be_crra_or_prospect() -> None:
 
 def test_probabilities_must_be_nonnegative_and_sum_to_exactly_one() -> None:
     """Boundary cases: a probability of exactly zero is allowed; a sum one part in a thousand off is not; a sum one
-    part in ten trillion above 1 is not (the test is exact, not a tolerance); a negative probability is not."""
+    part in ten trillion above 1 is not (the test is exact, not a tolerance); a sum one part in 10**17 above 1, which
+    float addition cannot see, is not; a negative probability is not."""
     got_zero = sol.certainty_equivalent_cents(
         "prospect", [100, 500], [Fraction(0), Fraction(1)], {"gamma": 0.0, "lambda": 1.0}, WEALTH
     )
@@ -339,6 +340,17 @@ def test_probabilities_must_be_nonnegative_and_sum_to_exactly_one() -> None:
             WEALTH,
         ),
         "probabilities that sum to one part in ten trillion above 1",
+        contains=("probabilities must sum to 1",),
+    )
+    must_raise(
+        lambda: sol.certainty_equivalent_cents(
+            "prospect",
+            [100, 500],
+            [Fraction(1, 2), Fraction(1, 2) + Fraction(1, 10**17)],
+            {"gamma": 0.0, "lambda": 1.0},
+            WEALTH,
+        ),
+        "probabilities that sum to one part in 10**17 above 1, below float resolution",
         contains=("probabilities must sum to 1",),
     )
 
@@ -459,11 +471,11 @@ def test_reported_log_likelihood_is_the_likelihood_at_the_estimate() -> None:
 
 def test_score_is_zero_at_the_estimate() -> None:
     """At an interior maximum the score is zero. Derivatives are taken by central differences in the coordinates
-    eta = log(gamma/(1-gamma)), log(lambda) and log(kappa), where the estimate is interior. The log-likelihood has kinks
-    (the certainty equivalent changes form where a lottery's value changes sign), and at a kink a central difference
-    depends on its step, so the score is computed at steps 1e-5 and 1e-6 and the smaller largest component counts. It
-    must be below 2e-5 in absolute value, a tolerance of this suite stated on the page; a search that stops while a
-    component is still of order 1e-4 or more has not reached the stationary point."""
+    zeta = log(gamma/(1-gamma)), log(lambda) and log(kappa), where the estimate is interior. The log-likelihood has
+    kinks (the certainty equivalent changes form where a lottery's value changes sign), and at a kink a central
+    difference depends on its step, so the score is computed at steps 1e-5 and 1e-6 and the smaller largest component
+    counts. It must be below 2e-5 in absolute value, a tolerance of this suite stated on the page; a search that stops
+    while a component is still of order 1e-4 or more has not reached the stationary point."""
     gamma, lam, kappa = est()["gamma_hat"], est()["lambda_hat"], est()["kappa_hat"]
     theta = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
 
@@ -501,8 +513,8 @@ def test_estimate_is_a_local_maximum() -> None:
 
 def test_estimate_recovers_the_true_parameters_within_four_standard_errors_on_47_of_50_seeds() -> None:
     """On seeds 0 to 49, each estimate lies within four of its own standard errors of the parameter that generated the
-    answers, for every parameter, on at least 47 seeds. Four and 47 are this suite's threshold, the recommendation of
-    plan section 10 Q12, stated on the project page; they are not a claim about the coverage of the standard errors."""
+    answers, for every parameter, on at least 47 seeds. Four and 47 are a threshold of this suite, stated on the
+    project page; they are not a claim about the coverage of the standard errors."""
     within = 0
     for seed in range(50):
         inst = make_instance(seed)
@@ -666,6 +678,17 @@ def test_estimate_refuses_probabilities_that_sum_above_one() -> None:
     )
 
 
+def test_estimate_refuses_a_sum_above_one_below_float_resolution() -> None:
+    """Named condition, in a response: the probabilities must sum to exactly 1. Here the sum is 1 + 1/10**17, which
+    float addition rounds to 1.0, so only an exact sum rejects it."""
+    bad = [RESPONSES_BASE | {"probs_a": ["1/2", "50000000000000001/100000000000000000"]}]
+    must_raise(
+        lambda: sol.estimate(bad),
+        "a response whose probabilities sum above one by less than float resolution",
+        contains=("probabilities must sum to 1",),
+    )
+
+
 def test_estimate_refuses_a_negative_probability_even_when_the_sum_is_one() -> None:
     """Named condition, in a response: the probabilities -1/4 and 5/4 sum to exactly 1, so only the sign is wrong."""
     bad = [RESPONSES_BASE | {"probs_a": ["-1/4", "5/4"]}]
@@ -744,7 +767,7 @@ def _invert3(m: list[list[float]]) -> list[list[float]]:
 
 
 def _observed_information(theta: list[float], h: float) -> list[list[float]]:
-    """Negative Hessian of the oracle log-likelihood in (eta, log lambda, log kappa), by central differences.
+    """Negative Hessian of the oracle log-likelihood in (zeta, log lambda, log kappa), by central differences.
 
     The step h is the one the caller chooses."""
 
@@ -769,7 +792,7 @@ def _observed_information(theta: list[float], h: float) -> list[list[float]]:
 
 def test_standard_errors_match_the_delta_method_oracle() -> None:
     """The standard errors are the square roots of the diagonal of the inverse observed information in
-    (eta, log lambda, log kappa), carried to the parameters by the delta method: d gamma / d eta = gamma (1 - gamma),
+    (zeta, log lambda, log kappa), carried to the parameters by the delta method: d gamma / d zeta = gamma (1 - gamma),
     d lambda / d log lambda = lambda, d kappa / d log kappa = kappa. The oracle recomputes this at the reported
     estimate by central differences at step 1e-5 or at step 1e-6, and each standard error must match one of the two
     within 10% relative, as the score check accepts either step. The two steps are needed because the finite-difference

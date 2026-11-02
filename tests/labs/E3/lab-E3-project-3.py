@@ -8,8 +8,8 @@ it must print the same lines).
 Each answer is (pair_id, choice, prizes of A, probabilities of A, prizes of B, probabilities of B). Prizes are whole
 cents and probabilities are exact fractions, read with Fraction. The model is the prospect model of the
 specification: gamma in (0, 1), lambda > 0, kappa > 0. Standard errors come from the observed information, the
-negative Hessian of the log-likelihood in the coordinates (eta, log lambda, log kappa), eta = log(gamma / (1 - gamma)),
-inverted and carried to the parameters by the delta method.
+negative Hessian of the log-likelihood in the coordinates (zeta, log lambda, log kappa),
+zeta = log(gamma / (1 - gamma)), inverted and carried to the parameters by the delta method.
 """
 
 import math
@@ -48,7 +48,7 @@ def certainty_equivalent(prizes: list[int], probs: list[str], gamma: float, lam:
 
 
 def log_likelihood(theta: list[float]) -> float:
-    """The logit log-likelihood at theta = (eta, log lambda, log kappa); each answer contributes log P(chosen)."""
+    """The logit log-likelihood at theta = (zeta, log lambda, log kappa); each answer contributes log P(chosen)."""
     gamma = 1.0 / (1.0 + math.exp(-theta[0]))
     lam, kappa = math.exp(theta[1]), math.exp(theta[2])
     total = 0.0
