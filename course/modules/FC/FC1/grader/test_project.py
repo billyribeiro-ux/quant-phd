@@ -315,6 +315,20 @@ def test_bond_schedule_longer_than_twenty_periods_is_complete() -> None:
     )
 
 
+def test_bond_schedule_of_forty_periods_is_complete_and_discounted_by_its_own_period() -> None:
+    """The page gives every period 1..periods a coupon, discounts an event in period t by (1 + y) ** -t, and names no
+    upper limit on periods. A 40-period bond must have one event per period 1..40, with the face in period 40, and its
+    price at 400 bps must be the exact sum of all 40 events, each discounted by its own period, rounded once."""
+    __tracebackhide__ = True
+    bond = sol.Bond(10_000, 500, 40)
+    rows = checked_events(bond.events(), "Bond.events")
+    assert rows == oracle_events(10_000, 500, 40), "every period 1..40 must carry its coupon, and the face the last one"
+    got = checked_int(sol.bond_price_cents(bond, 400), "bond_price_cents")
+    assert got == oracle_price(oracle_events(10_000, 500, 40), 400), (
+        "all 40 events must be discounted by (1 + y) ** -t for their own periods, and the sum rounded once"
+    )
+
+
 def test_bond_coupon_above_one_hundred_percent_is_accepted() -> None:
     """The page refuses only a negative coupon_bps and names no upper limit, so a coupon of 15000 bps (150 %) is
     valid: Bond(10000, 15000, 1) has one event, (1, 15000 + 10000)."""
@@ -416,15 +430,15 @@ def test_bond_price_exact_half_cent_at_496_bps_is_exact_not_float() -> None:
 
 def test_bond_price_exact_half_above_ten_significant_digits_is_exact() -> None:
     """Exact halves of prices with more than ten significant digits. Bond(10**10 + 1, 0, 1) at 10000 bps has the one
-    event (1, 10**10 + 1) and exact present value 5000000000.5 cents, which rounds away from zero to 5000000001.
-    Bond(10**12 + 1, 0, 1) gives 500000000000.5, which rounds to 500000000001. A decimal context of ten significant
-    digits drops the half before the final rounding."""
+    event (1, 10**10 + 1) and exact present value 5000000000.5 cents (eleven significant digits), which rounds away
+    from zero to 5000000001. Bond(10**12 + 1, 0, 1) gives 500000000000.5 cents (thirteen significant digits), which
+    rounds to 500000000001. A decimal context of ten significant digits drops the half before the final rounding."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(10**10 + 1, 0, 1), 10_000) == 5_000_000_001, (
-        "an exact half cent of an eleven-digit price must round away from zero, with no digits lost"
+        "an exact half cent of an eleven-significant-digit price must round away from zero, with no digits lost"
     )
     assert sol.bond_price_cents(sol.Bond(10**12 + 1, 0, 1), 10_000) == 500_000_000_001, (
-        "an exact half cent of a thirteen-digit price must round away from zero, with no digits lost"
+        "an exact half cent of a thirteen-significant-digit price must round away from zero, with no digits lost"
     )
 
 

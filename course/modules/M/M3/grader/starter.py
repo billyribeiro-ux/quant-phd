@@ -28,7 +28,11 @@ def clip_repair(matrix: list[list[float]], floor: float = 0.0) -> list[list[floa
 
 
 def projection_repair(matrix: list[list[float]], tol: float = 1e-10, max_iter: int = 500) -> list[list[float]]:
-    """An approximation of the Frobenius-nearest symmetric positive semidefinite matrix with unit diagonal."""
+    """An approximation of the Frobenius-nearest symmetric positive semidefinite matrix with unit diagonal.
+
+    At most max_iter alternating steps, each defined in the conventions of project.html; tol is the stopping
+    tolerance, and the stopping rule is yours to choose.
+    """
     raise NotImplementedError("projection_repair is not written yet")
 
 

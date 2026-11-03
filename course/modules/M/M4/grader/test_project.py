@@ -206,7 +206,8 @@ def test_student_t_draws_do_not_share_chi_square() -> None:
     # Each Student-t draw has its own chi-square variable (Conventions item 5). Then the pairs of draws (2k, 2k + 1) and
     # (2k + 1, 2k + 2) are each independent, and P(both |loss| above the median) is 1/4 for each pair. The test accepts
     # 1/4 within five standard errors, for both pairings, over 40,000 draws at nu = 3. A chi-square variable shared by
-    # alternate draws makes one pairing dependent and moves its share away from 1/4.
+    # draws 2k and 2k + 1 makes the offset-0 pairs dependent and moves their share away from 1/4. One shared by draws 2k
+    # and 2k + 2 leaves every consecutive pair independent, so this check does not see it.
     n = 40_000
     losses = sol.simulate_losses([1_000_000], [[4e-4]], n, SEED, "student_t", 3)
     magnitudes = [abs(x) for x in losses]

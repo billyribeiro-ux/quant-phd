@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import covariance_doctor as sol
+import numpy as np
 import pytest
 from instance import make_instance
 
@@ -244,7 +245,7 @@ def test_min_eigenvalue_matches_planted_spectrum(inst: dict[str, Any]) -> None:
 def test_min_eigenvalue_is_smallest_of_diagonal() -> None:
     """For a diagonal matrix the eigenvalues are the diagonal entries: the smallest is -2 here, not the largest 5."""
     value = as_number(sol.min_eigenvalue([[3.0, 0.0, 0.0], [0.0, -2.0, 0.0], [0.0, 0.0, 5.0]]))
-    assert abs(value + 2.0) <= 1e-12, "min_eigenvalue of diag(3, -2, 5) must be -2"
+    assert abs(value + 2.0) <= 1e-12, "min_eigenvalue must return the smallest eigenvalue of diag(3, -2, 5)"
 
 
 def test_min_eigenvalue_one_by_one() -> None:
@@ -261,7 +262,7 @@ def test_min_eigenvalue_repeated_eigenvalue() -> None:
 def test_min_eigenvalue_all_negative_spectrum() -> None:
     """-2 times the identity has every eigenvalue equal to -2: the smallest is -2, not 0 and not a positive value."""
     value = as_number(sol.min_eigenvalue([[-2.0, 0.0, 0.0], [0.0, -2.0, 0.0], [0.0, 0.0, -2.0]]))
-    assert abs(value + 2.0) <= 1e-12, "min_eigenvalue of -2 times the identity must be -2"
+    assert abs(value + 2.0) <= 1e-12, "min_eigenvalue must return the one eigenvalue of a multiple of the identity"
 
 
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["seed", "second_seed"])
@@ -325,7 +326,7 @@ def test_is_psd_accepts_eigenvalue_exactly_at_minus_tol() -> None:
     depend on the rounding of an approximate eigenvalue routine at the boundary."""
     a = [[-0.5, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     lam = as_number(sol.min_eigenvalue(a))
-    assert abs(lam + 0.5) <= 1e-12, "min_eigenvalue of diag(-0.5, 1, 1) must be -0.5"
+    assert abs(lam + 0.5) <= 1e-12, "min_eigenvalue must return the smallest eigenvalue of diag(-0.5, 1, 1)"
     assert sol.is_psd(a, tol=-lam) is True, "is_psd must accept a smallest eigenvalue exactly equal to -tol"
 
 
@@ -393,7 +394,7 @@ def test_clip_repair_two_by_two_clips_to_rank_one() -> None:
     """[[1, 1.2], [1.2, 1]] has eigenvalues 2.2 and -0.2. Clipping sets -0.2 to 0; rescaling gives off-diagonal 1."""
     y = as_matrix(sol.clip_repair([[1.0, 1.2], [1.2, 1.0]]), 2)
     assert abs(y[0][1] - 1.0) <= 1e-9 and abs(y[1][0] - 1.0) <= 1e-9, (
-        "clipping the negative eigenvalue of this two-by-two matrix must give off-diagonal 1 after rescaling"
+        "clip_repair must rescale the two-by-two clipped matrix, off-diagonal entries included"
     )
 
 
@@ -406,7 +407,14 @@ def test_clip_repair_leaves_positive_definite_unit_matrix_unchanged() -> None:
 
 def test_clip_repair_one_by_one_is_one() -> None:
     y = as_matrix(sol.clip_repair([[1.0]]), 1)
-    assert abs(y[0][0] - 1.0) <= 1e-12, "the one-by-one repair of [[1]] is [[1]]"
+    assert abs(y[0][0] - 1.0) <= 1e-12, "clip_repair must return a one-by-one matrix with unit diagonal"
+
+
+def test_clip_repair_rescales_a_positive_definite_matrix_whose_diagonal_is_not_one() -> None:
+    """[[1.0004, 0.3], [0.3, 1]] has no negative eigenvalue, so clipping leaves it as it is; the rescaling must still
+    bring its diagonal to 1, and a routine that skips the rescaling when the diagonal is near 1 fails here."""
+    y = as_matrix(sol.clip_repair([[1.0004, 0.3], [0.3, 1.0]]), 2)
+    assert all(abs(y[i][i] - 1.0) <= 1e-9 for i in range(2)), "clip_repair must rescale its output to unit diagonal"
 
 
 def test_clip_repair_with_positive_floor_is_positive_semidefinite() -> None:
@@ -541,15 +549,17 @@ def test_projection_repair_leaves_positive_definite_unit_matrix_unchanged() -> N
         assert worst <= 1e-8, "projection_repair must return a positive semidefinite unit-diagonal matrix unchanged"
 
 
-def test_projection_repair_two_by_two_nearest_has_correlation_one() -> None:
+def test_projection_repair_two_by_two_input_outside_the_psd_set() -> None:
     """Among unit-diagonal positive semidefinite 2x2 matrices, |rho| <= 1; the one nearest to rho = 1.2 has rho = 1."""
     y = as_matrix(sol.projection_repair([[1.0, 1.2], [1.2, 1.0]]), 2)
-    assert abs(y[0][1] - 1.0) <= 1e-6, "projection_repair of [[1, 1.2], [1.2, 1]] must have off-diagonal 1"
+    assert abs(y[0][1] - 1.0) <= 1e-6, (
+        "projection_repair must return the nearest positive semidefinite unit-diagonal matrix to this two-by-two input"
+    )
 
 
 def test_projection_repair_one_by_one_is_one() -> None:
     y = as_matrix(sol.projection_repair([[1.0]]), 1)
-    assert abs(y[0][0] - 1.0) <= 1e-12, "the one-by-one repair of [[1]] is [[1]]"
+    assert abs(y[0][0] - 1.0) <= 1e-12, "projection_repair must return a one-by-one matrix with unit diagonal"
 
 
 def test_projection_repair_has_unit_diagonal_after_one_iteration() -> None:
@@ -570,6 +580,42 @@ def test_projection_repair_honours_max_iter() -> None:
         assert gap > 1e-6, (
             "projection_repair must use its max_iter argument: one iteration must differ from the default run"
         )
+
+
+def _psd_part(m: np.ndarray) -> np.ndarray:
+    """The matrix with its negative eigenvalues set to zero, by NumPy's eigendecomposition (the test's own check)."""
+    values, vectors = np.linalg.eigh(m)
+    rebuilt: np.ndarray = (vectors * np.maximum(values, 0.0)) @ vectors.T
+    return rebuilt
+
+
+def _alternating_iterate(a: np.ndarray, steps: int) -> np.ndarray:
+    """The iterate after exactly `steps` alternating steps, from the update that project.html defines, with no
+    early stop: project onto the PSD matrices, then onto the unit-diagonal matrices, each step carrying its
+    correction terms."""
+    n = a.shape[0]
+    x = a.copy()
+    corr_s = np.zeros((n, n))
+    corr_u = np.zeros((n, n))
+    for _ in range(steps):
+        y = _psd_part(x + corr_s)
+        corr_s = x + corr_s - y
+        new_x = y + corr_u
+        np.fill_diagonal(new_x, 1.0)
+        corr_u = y + corr_u - new_x
+        x = new_x
+    return x
+
+
+@pytest.mark.parametrize("inst", [INST, INST2], ids=["seed", "second_seed"])
+@pytest.mark.parametrize("steps", [1, 2, 3])
+def test_projection_repair_runs_exactly_max_iter_steps(inst: dict[str, Any], steps: int) -> None:
+    """With tol=0 the iteration never stops early, so max_iter=m must return the iterate after exactly m steps; a
+    routine that runs one step more returns a different matrix on these instances."""
+    expected = _alternating_iterate(np.array(inst["corr"], dtype=float), steps)
+    got = np.array(as_matrix(sol.projection_repair(inst["corr"], tol=0.0, max_iter=steps), inst["k"]))
+    worst = float(np.max(np.abs(got - expected)))
+    assert worst <= 1e-7, "projection_repair must return the iterate after exactly max_iter alternating steps"
 
 
 # --- comparison_weights

@@ -33,6 +33,7 @@ pytestmark = pytest.mark.filterwarnings("error")
 SEED = int(os.environ.get("QF_SEED", "0"))
 INST = make_instance(SEED)
 INST2 = make_instance(SEED + 7_919)  # a second participant, so a fixed answer for one seed must also match another
+LOW_KAPPA = make_instance(30)  # fixed, with kappa below 1, in every seed window: a clamp of kappa_hat must fail
 TRUE = {"gamma": float(INST["gamma"]), "lambda": float(INST["lambda"]), "kappa": float(INST["kappa"])}
 WEALTH: int = int(INST["wealth_cents"])
 RESPONSES: list[dict[str, Any]] = json.loads(str(INST["responses_json"]))
@@ -427,11 +428,11 @@ def test_log_likelihood_is_a_sum_of_log_probabilities() -> None:
         )
     )
     expect(
-        abs(sol.log_likelihood(one_only, TRUE) - math.log(p_a)) <= 1e-9,
+        abs(sol.log_likelihood(one_only, TRUE) - math.log(p_a)) <= 1e-9 * max(1.0, abs(math.log(p_a))),
         "a response that chose A must contribute the log of the choice probability P(A)",
     )
     expect(
-        abs(sol.log_likelihood(other, TRUE) - math.log(1.0 - p_a)) <= 1e-9,
+        abs(sol.log_likelihood(other, TRUE) - math.log(1.0 - p_a)) <= 1e-9 * max(1.0, abs(math.log(1.0 - p_a))),
         "a response that chose B must contribute log(1 - P(A)), the log-probability of B",
     )
 
@@ -582,28 +583,30 @@ def test_estimate_recovers_the_true_parameters_within_four_standard_errors_on_47
 
 
 def test_estimate_on_a_second_participant_is_also_a_maximum() -> None:
-    """A second SIMULATED participant (another seed, INST2): the reported likelihood is the likelihood at the estimate,
-    the standard errors are positive and finite, and no move of gamma or kappa by 0.1 percent in either direction
-    raises the likelihood. Lambda is not moved in this check: the score condition of
+    """A second SIMULATED participant (another seed, INST2), and the fixed participant LOW_KAPPA, whose precision is
+    below 1 so that the reported kappa is the one a clamp would change: the reported likelihood is the likelihood at
+    the estimate, the standard errors are positive and finite, and no move of gamma or kappa by 0.1 percent in either
+    direction raises the likelihood. Lambda is not moved in this check: the score condition of
     test_score_is_zero_at_the_estimate is the check the page states for lambda, and the first participant's check moves
     all three parameters."""
-    parsed2 = [parse(r) for r in json.loads(str(INST2["responses_json"]))]
-    est2 = sol.estimate(json.loads(str(INST2["responses_json"])))
-    gamma, lam, kappa = est2["gamma_hat"], est2["lambda_hat"], est2["kappa_hat"]
-    here = oracle_loglik(parsed2, gamma, lam, kappa)
-    expect(
-        abs(est2["log_likelihood"] - here) <= 1e-7 * max(1.0, abs(here)),
-        "the reported likelihood on the second participant is not at its estimate",
-    )
-    for key in ("se_gamma", "se_lambda", "se_kappa"):
-        expect(est2[key] > 0.0 and math.isfinite(est2[key]), "standard errors must be positive and finite")
-    for step in (1e-3, -1e-3):
-        moved = [
-            oracle_loglik(parsed2, gamma * (1 + step), lam, kappa),
-            oracle_loglik(parsed2, gamma, lam, kappa * (1 + step)),
-        ]
-        for value in moved:
-            expect(value <= here + 1e-9, "the second estimate is not a maximum: a nearby parameter does better")
+    for participant in (INST2, LOW_KAPPA):
+        parsed2 = [parse(r) for r in json.loads(str(participant["responses_json"]))]
+        est2 = sol.estimate(json.loads(str(participant["responses_json"])))
+        gamma, lam, kappa = est2["gamma_hat"], est2["lambda_hat"], est2["kappa_hat"]
+        here = oracle_loglik(parsed2, gamma, lam, kappa)
+        expect(
+            abs(est2["log_likelihood"] - here) <= 1e-7 * max(1.0, abs(here)),
+            "the reported likelihood on the second participant is not at its estimate",
+        )
+        for key in ("se_gamma", "se_lambda", "se_kappa"):
+            expect(est2[key] > 0.0 and math.isfinite(est2[key]), "standard errors must be positive and finite")
+        for step in (1e-3, -1e-3):
+            moved = [
+                oracle_loglik(parsed2, gamma * (1 + step), lam, kappa),
+                oracle_loglik(parsed2, gamma, lam, kappa * (1 + step)),
+            ]
+            for value in moved:
+                expect(value <= here + 1e-9, "the second estimate is not a maximum: a nearby parameter does better")
 
 
 def test_estimate_needs_responses() -> None:

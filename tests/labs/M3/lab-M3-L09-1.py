@@ -14,9 +14,9 @@ Claims checked, each on the inputs named in the code:
    and how often W passes it and ||A - W||_F is strictly less than ||A - R||_F.
 
 Scope: the counts describe these 40 matrices and nothing more. The lab does not show that R or W is the
-nearest correlation matrix to any input. It shows that R is not the nearest correlation matrix to A in each
-instance where W passes is_correlation and is strictly closer to A than R, and it prints how many instances
-those are.
+nearest correlation matrix to any input. It shows, to the tolerance of is_correlation, that R is not the nearest
+correlation matrix to A in each instance where W passes is_correlation and is strictly closer to A than R, and it
+prints how many instances those are.
 Standard library and NumPy only. Fixed seed, no network access.
 """
 

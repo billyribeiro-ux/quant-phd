@@ -1,4 +1,4 @@
-"""Rung 2 completed solution: the matched factor of a Student-t draw and the index of the 99% loss.
+"""Rung 2 completion problem: the matched factor of a Student-t draw and the index of the 99% loss.
 
 Standard library only. The two functions are the completion problem's blanks. The inputs are whole numbers; no data
 is read. Every printed value is exact, or a float printed to six decimals.

@@ -220,7 +220,7 @@ def hand_case(**fields: Any) -> dict[str, Any]:
 
 
 HAND_CASES: dict[str, tuple[dict[str, Any], list[float]]] = {
-    # Budget only: stationarity w - mu + nu 1 = 0 gives w = mu + 0.3 on this grid, so w = (0.6, 0.4).
+    # Budget only: stationarity w - mu + nu = 0 with the budget fixing nu = -0.3 gives w = mu + 0.3, so w = (0.6, 0.4).
     "budget only": (hand_case(mu=[0.3, 0.1], w0=[0.5, 0.5]), [0.6, 0.4]),
     # With no turnover allowed, the only feasible point is the starting portfolio.
     "zero turnover": (hand_case(mu=[0.3, 0.1], w0=[0.5, 0.5], turnover_limit=0.0), [0.5, 0.5]),
@@ -345,7 +345,7 @@ def test_stationarity_holds_in_the_weights() -> None:
 def test_stationarity_holds_in_the_turnover_auxiliaries() -> None:
     _, rt = stationarity(PRISTINE, weights_of(seed_output()), multipliers_of(seed_output()))
     assert max(abs(v) for v in rt) <= TOL, (
-        "stationarity fails in the auxiliaries: the total multiplier must equal the plus and minus "
+        "stationarity fails in the auxiliaries: the total multiplier must equal the sum of the plus and minus "
         "multipliers of each t_i."
     )
 
@@ -378,8 +378,8 @@ def test_no_feasible_comparator_beats_the_solution(y_weight: float) -> None:
     """Each comparator is a convex mix of the solution and the starting portfolio, so it is feasible.
 
     y_weight is the share of the starting portfolio in the mix. Each mix lies between the answer and the starting
-    portfolio. When the answer is the starting portfolio (the reference gives that answer on seeds 162, 163, 182 and
-    267, among seeds 0 to 299), every mix equals the answer, and the check holds with equality.
+    portfolio. When the answer equals the starting portfolio, every mix equals the answer, and the check holds with
+    equality.
     """
     w = weights_of(seed_output())
     y = [(1 - y_weight) * w[i] + y_weight * PRISTINE["w0"][i] for i in range(N)]

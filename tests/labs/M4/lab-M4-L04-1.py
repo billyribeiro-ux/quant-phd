@@ -7,7 +7,7 @@ Part A: two joint tables on X in {0, 1, 2} and Y in {0, 1}. The first is a produ
 construction. The second is a dependent table. For each, the test P(X=x, Y=y) = P(X=x) P(Y=y) is applied to every
 cell, and the verdict is printed with the cell (0, 0).
 Part B: X uniform on {-1, 0, 1} and Y = X squared. Prints E[X], E[Y], E[XY], the covariance E[XY] - E[X] E[Y], and
-the cell (0, 0) against the product of its marginals.
+the cell (0, 0) against the product of its marginals, then the cell-by-cell independence verdict.
 Part C: conditional expectations E[X | Y = y] for the dependent table of Part A, the unconditional E[X], the
 total-expectation sum over y of E[X | Y = y] P(Y = y), and a check that a product table gives E[X | Y = y] = E[X].
 """

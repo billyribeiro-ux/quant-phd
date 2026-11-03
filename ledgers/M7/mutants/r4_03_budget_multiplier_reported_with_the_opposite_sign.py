@@ -1,4 +1,4 @@
-"""Student error x3-04: the dual residual is reported as the negative of the smallest inequality multiplier, without the floor at zero.
+"""Student error r4-03: the budget multiplier is reported with the opposite sign, as if the budget were written one minus the sum.
 
 Mutant of grader/reference.py: one change, as the first line states.
 """
@@ -279,7 +279,7 @@ def _certificate(problem: Problem, sol: dict[str, Any]) -> dict[str, float]:
         *sol["minus"],
         sol["kappa"],
     ]
-    dual = -min(mult_ineq)
+    dual = max(Fraction(0), -min(mult_ineq))
     complementary = max(
         abs(m * g)
         for m, g in zip(
@@ -314,7 +314,7 @@ def allocate(instance: dict[str, Any]) -> dict[str, Any]:
     problem = _parse(instance)
     sol = _solve(problem)
     multipliers = {
-        "budget": float(sol["budget"]),
+        "budget": -float(sol["budget"]),
         "lower": [float(v) for v in sol["lower"]],
         "upper": [float(v) for v in sol["upper"]],
         "sector": [float(v) for v in sol["sector"]],
