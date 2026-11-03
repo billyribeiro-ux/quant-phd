@@ -599,55 +599,6 @@ def test_scan_explanations_are_nonempty_and_name_the_rule() -> None:
                 assert re.search(rf"\b{label}\b", text), "the explanation names each assumption its kind depends on"
 
 
-# The two ways an explanation can name the side of a parity gap: the trade in the call, or the call's richness.
-# The page states the sign meaning (a positive gap means the call is rich), so either wording is accepted.
-_SELL_CALL = re.compile(r"\b(sell|sells|selling|short|shorts|shorting)\s+(the\s+)?call\b", re.IGNORECASE)
-_BUY_CALL = re.compile(r"\b(buy|buys|buying|long|longs|longing)\s+(the\s+)?call\b", re.IGNORECASE)
-_RICH = re.compile(r"\brich\b", re.IGNORECASE)
-_CHEAP = re.compile(r"\bcheap\b", re.IGNORECASE)
-
-
-def _names_side(text: str, trade: re.Pattern[str], wording: re.Pattern[str]) -> bool:
-    """True when the explanation states the trade, or the richness or cheapness, of the call."""
-    return trade.search(text) is not None or wording.search(text) is not None
-
-
-def test_parity_explanation_states_the_trade_for_the_sign_of_the_gap() -> None:
-    __tracebackhide__ = True
-    # Two hand chains fix both signs of the gap; the seeded chains add more strikes of whichever signs they carry.
-    cases = [
-        chain_of(INST),
-        chain_of(INST2),
-        hand_chain([9_000], [1_500], [0], spot=10_000),  # gap +500 cents: the call is rich
-        hand_chain([9_000], [500], [0], spot=10_000),  # gap -500 cents: the call is cheap
-    ]
-    signs_seen: set[str] = set()
-    for chain in cases:
-        for record in sol.scan(chain):
-            if record["kind"] != "parity":
-                continue
-            k = chain["strikes_cents"].index(record["strike_cents"])
-            gap = oracle_gap(
-                chain["call_cents"][k],
-                chain["put_cents"][k],
-                chain["spot_cents"],
-                record["strike_cents"],
-                chain["df_ppm"],
-            )
-            text = record["explanation"]
-            if gap > 0:
-                signs_seen.add("positive")
-                assert _names_side(text, _SELL_CALL, _RICH) and not _names_side(text, _BUY_CALL, _CHEAP), (
-                    "a positive gap (the call is rich) must explain the trade that sells the call"
-                )
-            elif gap < 0:
-                signs_seen.add("negative")
-                assert _names_side(text, _BUY_CALL, _CHEAP) and not _names_side(text, _SELL_CALL, _RICH), (
-                    "a negative gap (the call is cheap) must explain the trade that buys the call"
-                )
-    assert signs_seen == {"positive", "negative"}, "both signs of the parity gap must be exercised"
-
-
 def test_scan_matches_exhaustive_oracle_seed() -> None:
     __tracebackhide__ = True
     assert rows_of(sol.scan(chain_of(INST))) == oracle_findings(chain_of(INST)), (

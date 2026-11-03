@@ -93,7 +93,7 @@ def main() -> None:
     names = ("level", "slope", "curvature")
     matches = []
     for name, shape in zip(names, (level, slope, curv), strict=True):
-        cosines = np.abs(v[:, :3].T @ shape)
+        cosines = np.abs(v.T @ shape)
         best = int(np.argmax(cosines))
         matches.append(best)
         print(f"planted {name}: best-matching component PC{best + 1}, |cosine| {cosines[best]:.4f}")

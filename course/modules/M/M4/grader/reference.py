@@ -58,9 +58,9 @@ def simulate_losses(
 ) -> list[int]:
     """One portfolio loss per draw, in integer cents: loss = -sum_i w_i r_i with w_i the position in cents.
 
-    The returns are r = sqrt(s) L Z for the Gaussian family (s = 1) and r = sqrt(s nu / W) L Z for the Student-t
-    family, where Z is standard normal, W is chi-square with nu degrees of freedom, s = (nu - 2) / nu, and
-    L L^T = cov.
+    The returns are r = L Z for the Gaussian family and r = sqrt((nu - 2) / W) L Z for the Student-t family, where Z
+    is standard normal, W is chi-square with nu degrees of freedom, and L L^T = cov. Equivalently, the Student-t
+    returns are r = sqrt(s) sqrt(nu / W) L Z with the matched factor s = (nu - 2) / nu.
     """
     if not isinstance(position_cents, list) or not position_cents or any(not _whole(w) for w in position_cents):
         raise ValueError("position_cents must be a non-empty list of whole numbers of cents")

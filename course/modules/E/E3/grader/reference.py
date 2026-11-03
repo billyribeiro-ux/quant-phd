@@ -175,8 +175,8 @@ def log_likelihood(responses: list[dict[str, object]], params: dict[str, float])
     return _logit_sum([_parse(r) for r in responses], gamma, lam, kappa)
 
 
-def _objective(theta: Sequence[float], parsed: list[Parsed]) -> float:
-    c, a, b = theta
+def _objective(xi: Sequence[float], parsed: list[Parsed]) -> float:
+    c, a, b = xi
     if max(abs(c), abs(a), abs(b)) > _BOUND:
         return -math.inf
     gamma = 1.0 / (1.0 + math.exp(-c))
@@ -253,28 +253,28 @@ def _maximise(parsed: list[Parsed]) -> list[float]:
                     best = (v, t)
     if best is None:
         raise RuntimeError("the starting grid is empty")
-    theta = list(best[1])
+    xi = list(best[1])
     value = best[0]
     mu = 1e-3
     for _ in range(_MAX_ITER):
-        grad, hess = _gradient_and_hessian(f, theta)
+        grad, hess = _gradient_and_hessian(f, xi)
         if max(abs(g) for g in grad) < 1e-7:
-            return theta
+            return xi
         while True:
             lower = _cholesky([[-h + (mu if i == j else 0.0) for j, h in enumerate(row)] for i, row in enumerate(hess)])
             if lower is not None:
                 step = _solve(lower, grad)
-                trial = [x + s for x, s in zip(theta, step, strict=True)]
+                trial = [x + s for x, s in zip(xi, step, strict=True)]
                 new_value = f(trial)
                 if new_value > value:
                     break
             mu = max(mu * 4.0, 1e-9)
             if mu > 1e12:
-                return theta
-        theta, value = trial, new_value
+                return xi
+        xi, value = trial, new_value
         mu = max(mu / 3.0, 1e-12)
         if max(abs(s) for s in step) < 1e-10:
-            return theta
+            return xi
     raise RuntimeError("the likelihood maximisation did not converge")
 
 
@@ -289,12 +289,12 @@ def estimate(responses: list[dict[str, object]]) -> dict[str, float]:
     parsed = [_parse(r) for r in responses]
     if not any(_mixed(a, pa) or _mixed(b, pb) for a, pa, b, pb, _ in parsed):
         raise ValueError("need mixed-sign lotteries to identify loss aversion")
-    theta = _maximise(parsed)
+    xi = _maximise(parsed)
 
     def f(t: list[float]) -> float:
         return _objective(t, parsed)
 
-    _, hess = _gradient_and_hessian(f, theta)
+    _, hess = _gradient_and_hessian(f, xi)
     lower = _cholesky([[-h for h in row] for row in hess])
     if lower is None:
         raise RuntimeError("the observed information is not positive definite at the estimate")
@@ -302,7 +302,7 @@ def estimate(responses: list[dict[str, object]]) -> dict[str, float]:
     for i in range(3):
         unit = [1.0 if k == i else 0.0 for k in range(3)]
         cov_diag.append(_solve(lower, unit)[i])
-    c, a, b = theta
+    c, a, b = xi
     gamma = 1.0 / (1.0 + math.exp(-c))
     lam = math.exp(a)
     kappa = math.exp(b)
@@ -313,5 +313,5 @@ def estimate(responses: list[dict[str, object]]) -> dict[str, float]:
         "se_gamma": gamma * (1.0 - gamma) * math.sqrt(cov_diag[0]),
         "se_lambda": lam * math.sqrt(cov_diag[1]),
         "se_kappa": kappa * math.sqrt(cov_diag[2]),
-        "log_likelihood": _objective(theta, parsed),
+        "log_likelihood": _objective(xi, parsed),
     }

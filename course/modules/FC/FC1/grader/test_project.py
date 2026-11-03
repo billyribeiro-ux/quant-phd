@@ -282,8 +282,9 @@ def test_bond_price_with_thirteen_to_fifteen_periods_uses_every_period() -> None
     """The page gives every period 1..periods a coupon and discounts an event in period t by (1 + y) ** -t, with no
     upper limit on t. For 13 to 15 periods the event list must equal the oracle's, and bond_price_cents at 400 bps must
     equal the exact Fraction sum of every event discounted by (1 + y) ** -t, rounded once. The yield is not the coupon
-    rate here: at 500 bps a bond is at par for every n, so a schedule that dropped its later coupons would still
-    price at 10000 cents, and only the 400 bps price and the event list catch that."""
+    rate here: at 500 bps a bond whose face is paid with its last coupon is at par for every number of periods, so a
+    schedule that stopped early and paid its face in the last period it kept would still price at 10000 cents, and only
+    the 400 bps price and the event list catch that."""
     __tracebackhide__ = True
     for periods in (13, 14, 15):
         bond = sol.Bond(10_000, 500, periods)
@@ -298,6 +299,20 @@ def test_bond_price_with_thirteen_to_fifteen_periods_uses_every_period() -> None
         )
         par = checked_int(sol.bond_price_cents(sol.Bond(10_000, 500, periods), 500), "bond_price_cents")
         assert par == 10_000, "a bond whose coupon rate equals the yield must price at par, for any number of periods"
+
+
+def test_bond_schedule_longer_than_twenty_periods_is_complete() -> None:
+    """The page gives every period 1..periods a coupon and names no upper limit on periods. A 24-period bond must have
+    one event per period 1..24, with the face in period 24, and its price at 400 bps must be the exact sum of all 24
+    events, each discounted by (1 + y) ** -t, rounded once."""
+    __tracebackhide__ = True
+    bond = sol.Bond(10_000, 500, 24)
+    rows = checked_events(bond.events(), "Bond.events")
+    assert rows == oracle_events(10_000, 500, 24), "every period 1..24 must carry its coupon, and the face the last one"
+    got = checked_int(sol.bond_price_cents(bond, 400), "bond_price_cents")
+    assert got == oracle_price(oracle_events(10_000, 500, 24), 400), (
+        "all 24 events must be discounted by (1 + y) ** -t for their own periods, and the sum rounded once"
+    )
 
 
 def test_bond_coupon_above_one_hundred_percent_is_accepted() -> None:
@@ -396,6 +411,20 @@ def test_bond_price_exact_half_cent_at_496_bps_is_exact_not_float() -> None:
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(1_704_285, 179, 1), 496) == 1_652_813, (
         "an exact half cent at a large face must be exact, not a float result"
+    )
+
+
+def test_bond_price_exact_half_above_ten_significant_digits_is_exact() -> None:
+    """Exact halves of prices with more than ten significant digits. Bond(10**10 + 1, 0, 1) at 10000 bps has the one
+    event (1, 10**10 + 1) and exact present value 5000000000.5 cents, which rounds away from zero to 5000000001.
+    Bond(10**12 + 1, 0, 1) gives 500000000000.5, which rounds to 500000000001. A decimal context of ten significant
+    digits drops the half before the final rounding."""
+    __tracebackhide__ = True
+    assert sol.bond_price_cents(sol.Bond(10**10 + 1, 0, 1), 10_000) == 5_000_000_001, (
+        "an exact half cent of an eleven-digit price must round away from zero, with no digits lost"
+    )
+    assert sol.bond_price_cents(sol.Bond(10**12 + 1, 0, 1), 10_000) == 500_000_000_001, (
+        "an exact half cent of a thirteen-digit price must round away from zero, with no digits lost"
     )
 
 

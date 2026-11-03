@@ -192,10 +192,11 @@ def seeds_of(text: str) -> list[int]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--seeds", default="0-9")
+    parser.add_argument("--alts", default=",".join(ALTERNATIVES), help="comma-separated alternative names to run")
     args = parser.parse_args()
     seeds = seeds_of(args.seeds)
     status = 0
-    for name in ALTERNATIVES:
+    for name in args.alts.split(","):
         work = Path(tempfile.mkdtemp(prefix=f"e3-{name}-"))
         try:
             for f in ("test_project.py", "instance.py"):
@@ -224,6 +225,10 @@ def main() -> int:
                 )
                 if result.returncode != 0:
                     failed.append(seed)
+                    # Keep the failing output: a first-run failure with no captured output cannot be diagnosed.
+                    print(f"--- {name} seed {seed}: pytest exit {result.returncode}")
+                    print(result.stdout[-4000:])
+                    print(result.stderr[-2000:])
             status |= bool(failed)
             verdict = "PASS" if not failed else "FAIL"
             print(

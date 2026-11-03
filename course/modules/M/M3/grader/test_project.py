@@ -16,12 +16,15 @@ never prints the value it expected.
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import copy
 import io
 import math
 import os
+import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import covariance_doctor as sol
@@ -757,24 +760,64 @@ def test_inputs_are_not_mutated() -> None:
     vols = copy.deepcopy(VOLS_AT_IMPORT)
     psd = copy.deepcopy(PSD_CORR_AT_IMPORT)
     # Asymmetric by 1e-10, which the page accepts, so a routine that symmetrises its argument in place is caught.
+    # Every function that takes a matrix is called on such an input, not only the two repairs.
     near = symmetric_pair(corr, 0, 1, 1e-10)
     near_before = copy.deepcopy(near)
+    near_psd = symmetric_pair(psd, 0, 1, 1e-10)
+    near_psd_before = copy.deepcopy(near_psd)
     sol.clip_repair(corr)
     sol.projection_repair(corr)
     sol.min_eigenvalue(corr)
     sol.is_psd(corr)
     sol.clip_repair(near)
     sol.projection_repair(near)
+    sol.min_eigenvalue(near)
+    sol.is_psd(near)
+    sol.comparison_weights(near_psd, vols)
     sol.comparison_weights(psd, vols)
     assert corr == CORR_AT_IMPORT, "a repair must not change the matrix it is given"
     assert near == near_before, "a function must not change an asymmetric-within-tolerance matrix it is given"
+    assert near_psd == near_psd_before, (
+        "comparison_weights must not change an asymmetric-within-tolerance correlation matrix it is given"
+    )
     assert vols == VOLS_AT_IMPORT, "comparison_weights must not change the volatilities it is given"
     assert psd == PSD_CORR_AT_IMPORT, "comparison_weights must not change the correlation matrix it is given"
 
 
+def test_module_imports_only_standard_library_or_numpy() -> None:
+    """The page allows the standard library and NumPy only: every import in the module must be one of those."""
+    __tracebackhide__ = True
+    tree = ast.parse(Path(str(sol.__file__)).read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            names = ["(relative import)"] if node.level else [node.module or ""]
+        else:
+            continue
+        for name in names:
+            top = name.split(".")[0]
+            if top == "numpy" or top in sys.stdlib_module_names:
+                continue
+            pytest.fail("the module may import only the standard library and NumPy; an import outside that was found")
+
+
 def test_repeated_calls_agree() -> None:
+    """Every function returns the same value on a repeated call with the same arguments."""
     first = as_matrix(sol.projection_repair(INST["corr"]), K)
     second = as_matrix(sol.projection_repair(INST["corr"]), K)
     assert max(abs(first[i][j] - second[i][j]) for i in range(K) for j in range(K)) <= 1e-12, (
         "projection_repair must give the same answer on repeated calls"
     )
+    clip_a = as_matrix(sol.clip_repair(INST["corr"]), K)
+    clip_b = as_matrix(sol.clip_repair(INST["corr"]), K)
+    assert max(abs(clip_a[i][j] - clip_b[i][j]) for i in range(K) for j in range(K)) <= 1e-12, (
+        "clip_repair must give the same answer on repeated calls"
+    )
+    assert as_number(sol.min_eigenvalue(INST["corr"])) == as_number(sol.min_eigenvalue(INST["corr"])), (
+        "min_eigenvalue must give the same answer on repeated calls"
+    )
+    assert sol.is_psd(INST["corr"]) is sol.is_psd(INST["corr"]), "is_psd must give the same answer on repeated calls"
+    w_a = as_number_list(sol.comparison_weights(INST["psd_corr"], INST["vols"]), K)
+    w_b = as_number_list(sol.comparison_weights(INST["psd_corr"], INST["vols"]), K)
+    assert w_a == w_b, "comparison_weights must give the same answer on repeated calls"

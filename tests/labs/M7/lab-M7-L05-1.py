@@ -1,6 +1,7 @@
 """M7 L05 lab 1: a quadratic program solved from its KKT system in exact arithmetic, and checked by enumeration.
 
-Inputs are small hand-chosen integers, not data. No random draws are used, so every run prints the same lines.
+SIMULATED: the inputs are small integers chosen by hand as illustrative values, not data.
+No random draws are used, so every run prints the same lines.
 Every number is a fractions.Fraction, so each residual is exactly zero or exactly a stated value.
 
 Part A: equality-constrained QP, minimise f(x) = (1/2) x'Qx + c'x subject to Ax = b, with Q symmetric positive

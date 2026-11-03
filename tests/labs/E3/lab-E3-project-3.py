@@ -47,10 +47,10 @@ def certainty_equivalent(prizes: list[int], probs: list[str], gamma: float, lam:
     return -math.pow(-total / lam, 1.0 / (1.0 - gamma))
 
 
-def log_likelihood(theta: list[float]) -> float:
-    """The logit log-likelihood at theta = (zeta, log lambda, log kappa); each answer contributes log P(chosen)."""
-    gamma = 1.0 / (1.0 + math.exp(-theta[0]))
-    lam, kappa = math.exp(theta[1]), math.exp(theta[2])
+def log_likelihood(xi: list[float]) -> float:
+    """The logit log-likelihood at xi = (zeta, log lambda, log kappa); each answer contributes log P(chosen)."""
+    gamma = 1.0 / (1.0 + math.exp(-xi[0]))
+    lam, kappa = math.exp(xi[1]), math.exp(xi[2])
     total = 0.0
     for _, choice, pa, qa, pb, qb in ANSWERS:
         z = kappa * (certainty_equivalent(pa, qa, gamma, lam) - certainty_equivalent(pb, qb, gamma, lam)) / 10_000.0
@@ -71,37 +71,37 @@ def grid_start() -> list[float]:
     return best
 
 
-def second_order_search(theta: list[float]) -> list[float]:
+def second_order_search(xi: list[float]) -> list[float]:
     """A second-derivative search on the log-likelihood, with central differences of step 1e-6 and step halving."""
     h = 1e-6
     for _ in range(100):
-        f0 = log_likelihood(theta)
+        f0 = log_likelihood(xi)
         grad = [0.0, 0.0, 0.0]
         neg_hess = [[0.0] * 3 for _ in range(3)]
         for i in range(3):
-            up = [x + (h if k == i else 0.0) for k, x in enumerate(theta)]
-            down = [x - (h if k == i else 0.0) for k, x in enumerate(theta)]
+            up = [x + (h if k == i else 0.0) for k, x in enumerate(xi)]
+            down = [x - (h if k == i else 0.0) for k, x in enumerate(xi)]
             grad[i] = (log_likelihood(up) - log_likelihood(down)) / (2 * h)
             neg_hess[i][i] = -(log_likelihood(up) - 2 * f0 + log_likelihood(down)) / (h * h)
         for i in range(3):
             for j in range(i + 1, 3):
-                pp = [x + (h if k in (i, j) else 0.0) for k, x in enumerate(theta)]
-                pm = [x + (h if k == i else 0.0) - (h if k == j else 0.0) for k, x in enumerate(theta)]
-                mp = [x - (h if k == i else 0.0) + (h if k == j else 0.0) for k, x in enumerate(theta)]
-                mm = [x - (h if k in (i, j) else 0.0) for k, x in enumerate(theta)]
+                pp = [x + (h if k in (i, j) else 0.0) for k, x in enumerate(xi)]
+                pm = [x + (h if k == i else 0.0) - (h if k == j else 0.0) for k, x in enumerate(xi)]
+                mp = [x - (h if k == i else 0.0) + (h if k == j else 0.0) for k, x in enumerate(xi)]
+                mm = [x - (h if k in (i, j) else 0.0) for k, x in enumerate(xi)]
                 neg_hess[i][j] = neg_hess[j][i] = -(
                     log_likelihood(pp) - log_likelihood(pm) - log_likelihood(mp) + log_likelihood(mm)
                 ) / (4 * h * h)
         step = solve3(neg_hess, grad)
         scale = 1.0
-        while scale > 1e-14 and log_likelihood([x + scale * d for x, d in zip(theta, step, strict=True)]) <= f0:
+        while scale > 1e-14 and log_likelihood([x + scale * d for x, d in zip(xi, step, strict=True)]) <= f0:
             scale /= 2.0
         if scale <= 1e-14:
             break
-        theta = [x + scale * d for x, d in zip(theta, step, strict=True)]
+        xi = [x + scale * d for x, d in zip(xi, step, strict=True)]
         if max(abs(g) for g in grad) < 1e-7:
             break
-    return theta
+    return xi
 
 
 def solve3(matrix: list[list[float]], rhs: list[float]) -> list[float]:
@@ -124,21 +124,21 @@ def inverse3(matrix: list[list[float]]) -> list[list[float]]:
     return [[columns[j][i] for j in range(3)] for i in range(3)]
 
 
-def observed_information(theta: list[float]) -> list[list[float]]:
-    """The negative Hessian of the log-likelihood at theta, by central differences of step 1e-5."""
+def observed_information(xi: list[float]) -> list[list[float]]:
+    """The negative Hessian of the log-likelihood at xi, by central differences of step 1e-5."""
     h = 1e-5
-    f0 = log_likelihood(theta)
+    f0 = log_likelihood(xi)
     info = [[0.0] * 3 for _ in range(3)]
     for i in range(3):
-        up = [x + (h if k == i else 0.0) for k, x in enumerate(theta)]
-        down = [x - (h if k == i else 0.0) for k, x in enumerate(theta)]
+        up = [x + (h if k == i else 0.0) for k, x in enumerate(xi)]
+        down = [x - (h if k == i else 0.0) for k, x in enumerate(xi)]
         info[i][i] = -(log_likelihood(up) - 2 * f0 + log_likelihood(down)) / (h * h)
     for i in range(3):
         for j in range(i + 1, 3):
-            pp = [x + (h if k in (i, j) else 0.0) for k, x in enumerate(theta)]
-            pm = [x + (h if k == i else 0.0) - (h if k == j else 0.0) for k, x in enumerate(theta)]
-            mp = [x - (h if k == i else 0.0) + (h if k == j else 0.0) for k, x in enumerate(theta)]
-            mm = [x - (h if k in (i, j) else 0.0) for k, x in enumerate(theta)]
+            pp = [x + (h if k in (i, j) else 0.0) for k, x in enumerate(xi)]
+            pm = [x + (h if k == i else 0.0) - (h if k == j else 0.0) for k, x in enumerate(xi)]
+            mp = [x - (h if k == i else 0.0) + (h if k == j else 0.0) for k, x in enumerate(xi)]
+            mm = [x - (h if k in (i, j) else 0.0) for k, x in enumerate(xi)]
             info[i][j] = info[j][i] = -(
                 log_likelihood(pp) - log_likelihood(pm) - log_likelihood(mp) + log_likelihood(mm)
             ) / (4 * h * h)
@@ -146,10 +146,10 @@ def observed_information(theta: list[float]) -> list[list[float]]:
 
 
 def main() -> None:
-    theta = second_order_search(grid_start())
-    gamma = 1.0 / (1.0 + math.exp(-theta[0]))
-    lam, kappa = math.exp(theta[1]), math.exp(theta[2])
-    cov = inverse3(observed_information(theta))
+    xi = second_order_search(grid_start())
+    gamma = 1.0 / (1.0 + math.exp(-xi[0]))
+    lam, kappa = math.exp(xi[1]), math.exp(xi[2])
+    cov = inverse3(observed_information(xi))
     se_gamma = gamma * (1.0 - gamma) * math.sqrt(cov[0][0])
     se_lambda = lam * math.sqrt(cov[1][1])
     se_kappa = kappa * math.sqrt(cov[2][2])
@@ -157,18 +157,18 @@ def main() -> None:
     print("gamma_hat:", f"{gamma:.4f}", "| se_gamma:", f"{se_gamma:.2f}")
     print("lambda_hat:", f"{lam:.4f}", "| se_lambda:", f"{se_lambda:.2f}")
     print("kappa_hat:", f"{kappa:.4f}", "| se_kappa:", f"{se_kappa:.2f}")
-    print("log-likelihood at the estimate:", f"{log_likelihood(theta):.4f}")
-    print("largest score component at the estimate:", f"{largest_score(theta):.2e}")
+    print("log-likelihood at the estimate:", f"{log_likelihood(xi):.4f}")
+    print("largest score component at the estimate:", f"{largest_score(xi):.2e}")
     print("every parameter lies in its domain:", 0.0 < gamma < 1.0 and lam > 0.0 and kappa > 0.0)
 
 
-def largest_score(theta: list[float]) -> float:
-    """The largest absolute partial derivative of the log-likelihood at theta, in its three coordinates."""
+def largest_score(xi: list[float]) -> float:
+    """The largest absolute partial derivative of the log-likelihood at xi, in its three coordinates."""
     h = 1e-5
     values = []
     for i in range(3):
-        up = [x + (h if k == i else 0.0) for k, x in enumerate(theta)]
-        down = [x - (h if k == i else 0.0) for k, x in enumerate(theta)]
+        up = [x + (h if k == i else 0.0) for k, x in enumerate(xi)]
+        down = [x - (h if k == i else 0.0) for k, x in enumerate(xi)]
         values.append(abs(log_likelihood(up) - log_likelihood(down)) / (2 * h))
     return max(values)
 

@@ -546,7 +546,7 @@ def test_rolling_string_value_is_refused_or_correct() -> None:
 
 
 def test_rolling_none_window_is_refused() -> None:
-    """None denotes no number, so a window of None must raise whenever the call fails (the page says so)."""
+    """None denotes no number, so a window of None must raise an exception (the page says so)."""
 
     def action() -> float:
         wrong_type: Any = None  # None is not a window, on purpose
@@ -835,7 +835,7 @@ def test_sketch_rank_guarantee_on_short_streams(length: int, eps: float) -> None
 
 @pytest.mark.parametrize("eps", [0.05, 0.1, 0.2])
 def test_sketch_rank_guarantee_with_ties(eps: float) -> None:
-    """Repeated values: the guarantee counts every copy, so a tie cannot be split by the answer."""
+    """Repeated values: the guarantee counts every copy of a value, strictly below the answer and at or below it."""
     stream = [1.0] * 7 + [2.0] * 5 + [3.0] * 9 + [4.0] * 2
     sketch = sketch_of(stream, eps)
     n = len(stream)
@@ -869,8 +869,8 @@ def test_sketch_rank_target_keeps_seven_decimal_q() -> None:
     """Fixed witness, the same for every seed: q = 0.2500004, n = 20, epsilon = 0.05 on the stream 1 to 20.
 
     qn is 5.000008, so the exact rank target is 5. A q rounded to six decimal places is 0.25, which gives a target of
-    4; the answer 4 has four values at or below it, one short of qn - epsilon n = 4.000008. Both inequalities are
-    checked with Fraction.
+    4; the answer 4 has four values at or below it, but the inequality needs at least 4.000008, so five are needed.
+    Both inequalities are checked with Fraction.
     """
     stream = [float(k) for k in range(1, 21)]
     q = 0.2500004

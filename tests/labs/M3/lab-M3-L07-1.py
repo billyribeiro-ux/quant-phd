@@ -52,6 +52,8 @@ def main() -> None:
     )
     print(f"coefficients (intercept, x1, x2), printed to 4 decimals: {beta[0]:.4f} {beta[1]:.4f} {beta[2]:.4f}")
     print(f"residual norm, printed to 4 decimals: {np.linalg.norm(residual):.4f}")
+    a_transpose_y = a.T @ y
+    print("A^T y, printed to 2 decimals: " + " ".join(f"{value:.2f}" for value in a_transpose_y))
 
     dup = np.column_stack([a[:, 0], a[:, 1], a[:, 1]])
     rank = int(np.linalg.matrix_rank(dup.T @ dup))

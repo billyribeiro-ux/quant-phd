@@ -1,7 +1,7 @@
 """Per-learner instances for the M7 constrained allocator (constrained_allocator.py).
 
 make_instance(seed) is deterministic. It returns a SIMULATED case of three to five assets in two sectors: expected
-returns, a covariance matrix equal to (A-transpose A plus the identity) over 1000, a starting portfolio, box bounds,
+returns, a risk matrix Sigma equal to (A-transpose A plus the identity) over 1000, a starting portfolio, box bounds,
 sector caps and a turnover limit. Every case is feasible by construction: the starting portfolio sums to one, lies in
 its box and within every sector cap, and the turnover limit is not negative. Nothing here is a real portfolio or a
 real return series.

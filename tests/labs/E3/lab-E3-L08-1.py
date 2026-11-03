@@ -1,16 +1,16 @@
 """E3 L08 lab 1: certainty equivalents of one gamble under four preference models, and a two-urn check.
 
-Inputs are integer cents (100 cents = 1 CU). Initial wealth is W0 = 100000 cents (1000 CU). The gamble is a bet on
+Inputs are integer cents (100 cents = 1 CU). Initial wealth is w0 = 100000 cents (1000 CU). The gamble is a bet on
 one ball drawn from an urn of 90 balls: final wealth is 110000 cents (a gain of 10000 cents) if the ball is red and
 95000 cents (a loss of 5000 cents) otherwise. A certainty equivalent (CE) is the sure final wealth, in cents, that
 the model ranks equal to the gamble. Part A prints each of the four model CEs at four decimals and rounds it once, half
-up, to a whole cent; Parts B and C print at fixed decimals and round nothing to a whole cent.
+up, to a whole cent; Parts B and C print at fixed decimals and do not round to a whole cent.
 
 The ambiguous urn holds k red balls, with k unknown and only known to lie in 30 to 60 (the prior set). Four models:
- 1. Expected utility with CRRA utility u(W) = -1/W (gamma = 2), at P(red) = 1/2, the average of the prior set.
+ 1. Expected utility with CRRA utility u(w) = -1/w (gamma = 2), at P(red) = 1/2, the average of the prior set.
  2. Prospect value on changes from the reference point 0, with v(x) = x**(1/2) for gains and -2 * (-x)**(1/2) for
     losses (alpha = delta = 1/2, lambda = 2), at P(red) = 1/2. The gamble's value is inverted in closed form.
- 3. Epstein-Zin over two dates: date 0 consumes W0; date 1 consumes final wealth. psi = 1/2, beta = 0.95, gamma = 2,
+ 3. Epstein-Zin over two dates: date 0 consumes w0; date 1 consumes final wealth. psi = 1/2, beta = 0.95, gamma = 2,
     at P(red) = 1/2. The CE is the sure date-1 amount that gives the same date-0 value, found by 200 halvings of
     a bracket of 17000 cents, which reaches floating-point resolution.
  4. Maxmin expected utility over the prior set (tau = 1), and alpha-MEU with tau = 1/2, which weights the lowest
@@ -19,7 +19,7 @@ The ambiguous urn holds k red balls, with k unknown and only known to lie in 30 
 Part A prints the four CEs, the alpha-MEU value at tau = 1/2, the prospect closed form against bisection, and
 the ambiguity-aversion check. Part B checks the Epstein-Zin CE against the CRRA CE for three values of psi and two of
 beta. Part C is an Ellsberg-type two-urn check: a known urn (30 red of 90) against an ambiguous urn whose red count is
-any of 0 to 90, under the CRRA utility u(W) = -1/W. Part D checks that a one-element prior set gives expected
+any of 0 to 90, under the CRRA utility u(w) = -1/w. Part D checks that a one-element prior set gives expected
 utility. Standard library only; no randomness and no network access.
 """
 
@@ -50,23 +50,23 @@ def average(values: Sequence[Fraction]) -> Fraction:
 
 
 def ce_single_prior(p: Fraction) -> Fraction:
-    """CE in cents of the gamble when red has probability p, under CRRA gamma = 2 (u(W) = -1/W), exactly.
+    """CE in cents of the gamble when red has probability p, under CRRA gamma = 2 (u(w) = -1/w), exactly.
 
-    The CE solves -1/CE = E u(W) = -(p/WIN + (1 - p)/LOSS), so CE = 1 / E[1/W]."""
+    The CE solves -1/CE = E u(w) = -(p/WIN + (1 - p)/LOSS), so CE = 1 / E[1/w]."""
     return 1 / (p / WIN_CENTS + (1 - p) / LOSS_CENTS)
 
 
 def alpha_meu_ce(priors: Sequence[Fraction], tau: Fraction) -> Fraction:
     """CE in cents of alpha-MEU: V = tau * min_P E_P u + (1 - tau) * max_P E_P u, then CE = u^{-1}(V).
 
-    With u(W) = -1/W and inv(P) = E_P[1/W], V = -(tau * max inv + (1 - tau) * min inv), so CE = 1/(tau * max inv
+    With u(w) = -1/w and inv(P) = E_P[1/w], V = -(tau * max inv + (1 - tau) * min inv), so CE = 1/(tau * max inv
     + (1 - tau) * min inv). tau = 1 is maxmin expected utility."""
     invs = [ce_inv(p) for p in priors]
     return 1 / (tau * max(invs) + (1 - tau) * min(invs))
 
 
 def ce_inv(p: Fraction) -> Fraction:
-    """E[1/W] of the gamble when red has probability p, in 1/cents."""
+    """E[1/w] of the gamble when red has probability p, in 1/cents."""
     return p / WIN_CENTS + (1 - p) / LOSS_CENTS
 
 
@@ -141,7 +141,7 @@ def gamble_outcomes(p: float) -> list[tuple[float, float]]:
 def part_a() -> None:
     p_bar = average(PRIOR_SET)
     print(
-        f"part A: wealth W0 = {W0_CENTS} cents; red pays +{WIN_CENTS - W0_CENTS} cents, otherwise "
+        f"part A: wealth w0 = {W0_CENTS} cents; red pays +{WIN_CENTS - W0_CENTS} cents, otherwise "
         f"{LOSS_CENTS - W0_CENTS} cents"
     )
     print(f"part A: prior set = red counts 30 to 60 out of {URN_SIZE}; average prior P(red) = {p_bar}")
@@ -150,7 +150,7 @@ def part_a() -> None:
     prospect_cu = 0.5 * prospect_value(GAIN_CU) + 0.5 * prospect_value(LOSS_CU)
     prospect_wealth = W0_CENTS + 100.0 * prospect_inverse(prospect_cu)
     print(
-        f"part A: prospect value V = {prospect_cu:.6f} (CU to the 1/2 power), CE = {prospect_wealth:.4f} cents, "
+        f"part A: prospect value V_p = {prospect_cu:.6f} (CU to the 1/2 power), CE = {prospect_wealth:.4f} cents, "
         f"whole cents = {half_up_float(prospect_wealth)}"
     )
     gap_inverse = prospect_inverse(prospect_cu) - prospect_inverse_by_bisection(prospect_cu)
@@ -200,7 +200,7 @@ def part_c() -> None:
     known_black = ce_bet(black_known)
     amb_red = min(ce_bet(p) for p in FULL_PRIOR_SET)
     amb_black = min(ce_bet(1 - p) for p in FULL_PRIOR_SET)
-    print("part C: CRRA utility u(W) = -1/W; the bet pays 10000 cents on a win and 0 otherwise")
+    print("part C: CRRA utility u(w) = -1/w; the bet pays 10000 cents on a win and 0 otherwise")
     print("part C: wealth is 100000 or 110000 cents")
     print(f"part C: known urn (30 red of 90): red CE = {float(known_red):.4f}, black CE = {float(known_black):.4f}")
     print(

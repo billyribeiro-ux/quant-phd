@@ -369,7 +369,7 @@ def test_no_function_prints(capsys: pytest.CaptureFixture[str]) -> None:
     # Every function runs at the sizes the instances use and at the edges they can reach: the instance's own draw count
     # for both families, 50 draws and 100 draws (a multiple of 100), and every nu of 3 to 8 in simulate_losses and
     # matched_scale, so a print that shows only on long runs, on a multiple of 100 draws, or at one nu is caught as
-    # well. quantile_99 runs on one loss, on 100 losses and on 101 losses.
+    # well. quantile_99 runs on three losses, on one loss, on 100 losses and on 101 losses.
     for nu in range(3, 9):
         sol.matched_scale(nu)
         sol.simulate_losses(POSITIONS, COV, 50, SEED, "student_t", nu)

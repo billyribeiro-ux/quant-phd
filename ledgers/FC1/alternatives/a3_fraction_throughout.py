@@ -1,4 +1,4 @@
-"""Alternative correct implementation 3: exact Fraction arithmetic throughout, one half-up rounding per output."""
+"""Alternative correct implementation 3: exact Fraction arithmetic throughout, one rounding per output, a half going away from zero."""
 
 from __future__ import annotations
 
