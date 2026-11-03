@@ -1,6 +1,6 @@
-# Student-error mutant (verifier E3-d, round 10). The prospect inverse for a non-negative lottery value uses the exponent 1 - gamma instead of 1/(1 - gamma).
+# Student-error mutant (verifier E3-d, round 10): the prospect inverse uses exponent 1 - gamma, not 1/(1 - gamma).
 # Single-change copy of the reference solution.
-"""Reference solution for the E3 project: elicit.py, the preference-elicitation engine.
+"""The prospect inverse for a non-negative lottery value uses the exponent 1 - gamma instead of 1/(1 - gamma).
 
 This is the full solution. It is excluded from deployment (BLUEPRINT section 7); it exists so that the suite can be
 checked against a passing implementation on seeds 0 to 49. Standard library only.

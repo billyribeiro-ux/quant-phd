@@ -9,7 +9,7 @@ Each answer is (pair_id, choice, prizes of A, probabilities of A, prizes of B, p
 cents and probabilities are exact fractions, read with Fraction. The model is the prospect model of the
 specification: gamma in (0, 1), lambda > 0, kappa > 0. Standard errors come from the observed information, the
 negative Hessian of the log-likelihood in the coordinates (zeta, log lambda, log kappa),
-zeta = log(gamma / (1 - gamma)), inverted and carried to the parameters by the delta method.
+zeta = log(gamma / (1 - gamma)), inverted and carried to the parameters by the derivative of each change of coordinates.
 """
 
 import math
@@ -71,8 +71,8 @@ def grid_start() -> list[float]:
     return best
 
 
-def newton(theta: list[float]) -> list[float]:
-    """Newton's method on the log-likelihood, with central differences of step 1e-6 and step halving."""
+def second_order_search(theta: list[float]) -> list[float]:
+    """A second-derivative search on the log-likelihood, with central differences of step 1e-6 and step halving."""
     h = 1e-6
     for _ in range(100):
         f0 = log_likelihood(theta)
@@ -146,7 +146,7 @@ def observed_information(theta: list[float]) -> list[list[float]]:
 
 
 def main() -> None:
-    theta = newton(grid_start())
+    theta = second_order_search(grid_start())
     gamma = 1.0 / (1.0 + math.exp(-theta[0]))
     lam, kappa = math.exp(theta[1]), math.exp(theta[2])
     cov = inverse3(observed_information(theta))

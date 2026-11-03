@@ -3,10 +3,10 @@
 SIMULATED: the bond is a generated specification, not a quoted security. Face value 100000 cents, an annual coupon of
 5 percent of face (5000 cents a year), ten annual coupons, and the face repaid with the last coupon. Yield compounds
 annually, so the price at yield y is P(y) = sum over t = 1..10 of c_t / (1 + y)**t, with c_t the cash flow in cents.
-The price and its Taylor polynomials are exact rational arithmetic (Fraction) on the float yields, so no rounding enters
-before the price is reported. The two sensitivities P'(y0) and P''(y0) are floats: each is the
-exact rational value rounded once to the nearest double, so its relative error is at most 2**-53, and the Taylor
-polynomials use these float sensitivities as exact rationals. Only the reported price and the reported expansion are
+The price is exact rational arithmetic (Fraction) on the float yields, so no rounding enters the price before it is
+reported. The two sensitivities P'(y0) and P''(y0) are floats: each is the exact rational value rounded once to the
+nearest double, so its relative error is at most 2**-53. The Taylor polynomials are exact given these two float
+sensitivities, which they use as exact rationals. Only the reported price and the reported expansion are
 integer numbers of cents: each is the unrounded value rounded to the nearest cent with halves to even, which is
 Fraction's round(). Floats also appear in the
 central-difference checks and in the printed values.

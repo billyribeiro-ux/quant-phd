@@ -189,7 +189,7 @@ def test_welford_population_variance_of_one_value_is_zero() -> None:
     acc = WelfordAccumulator()
     acc.update(VALUES[0])
     if acc.variance(0) != 0.0:
-        pytest.fail("the population variance of one value is zero.")
+        pytest.fail("the population variance of a single value must follow Conventions.")
 
 
 def test_welford_sample_variance_of_two_values_is_defined() -> None:
@@ -197,7 +197,7 @@ def test_welford_sample_variance_of_two_values_is_defined() -> None:
     acc.update(1.0)
     acc.update(3.0)
     if not close(must_accept(lambda: acc.variance(1), "variance(1) with two values"), 2.0):
-        pytest.fail("the sample variance of 1 and 3 is 2.")
+        pytest.fail("the sample variance of the two values 1 and 3 is not the value that Conventions defines.")
 
 
 def test_welford_nan_update_raises() -> None:
@@ -215,7 +215,7 @@ def test_welford_constant_stream_has_zero_variance() -> None:
     for _ in range(10):
         acc.update(5.0)
     if not close(acc.mean(), 5.0) or acc.variance(1) != 0.0:
-        pytest.fail("on a stream of one repeated value, the mean is that value and the sample variance is zero.")
+        pytest.fail("on a stream of one repeated value, the mean and the sample variance must follow Conventions.")
 
 
 def test_welford_count_is_read_only_int() -> None:

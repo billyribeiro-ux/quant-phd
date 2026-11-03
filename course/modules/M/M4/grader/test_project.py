@@ -181,8 +181,8 @@ def test_student_t_cross_term_matches_matched_covariance() -> None:
 
 
 def test_student_t_mean_absolute_loss_matches_the_matched_scale() -> None:
-    # For one position w with variance sigma^2, the loss is -w R with R = sqrt((nu - 2) / nu) sigma T_nu, where T_nu
-    # is a Student-t variable. So E|loss| = w sigma sqrt((nu - 2) / nu) E|T_nu| for every nu of 3 to 8. This is
+    # For one position w with variance sigma^2, the loss is -w R with R = sqrt((nu - 2) / nu) sigma X_nu, where X_nu
+    # is a Student-t variable. So E|loss| = w sigma sqrt((nu - 2) / nu) E|X_nu| for every nu of 3 to 8. This is
     # checked at nu = 3 and 4 too, where the variance is not checked: a matched factor left out there inflates
     # E|loss| by sqrt(nu / (nu - 2)), about 1.73 at nu = 3, far outside the 5 % tolerance over 20,000 draws.
     w = 1_000_000
@@ -198,7 +198,7 @@ def test_student_t_mean_absolute_loss_matches_the_matched_scale() -> None:
 
 
 def _mean_abs_t(nu: int) -> float:
-    """E|T| for a Student-t variable with nu > 1 degrees of freedom, from the Gamma function."""
+    """E|X| for a Student-t variable X with nu > 1 degrees of freedom, from the Gamma function."""
     return 2.0 * math.sqrt(nu) * math.gamma((nu + 1) / 2) / (math.sqrt(math.pi) * (nu - 1) * math.gamma(nu / 2))
 
 

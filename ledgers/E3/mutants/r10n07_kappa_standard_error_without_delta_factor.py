@@ -1,6 +1,6 @@
-# Student-error mutant (verifier E3-d, round 10). The standard error of kappa omits the delta-method factor kappa (it is the standard error in log kappa).
+# Student-error mutant (verifier E3-d, round 10): kappa's standard error omits the factor kappa.
 # Single-change copy of the reference solution.
-"""Reference solution for the E3 project: elicit.py, the preference-elicitation engine.
+"""The standard error of kappa is reported in log kappa: the factor kappa of the coordinate change is left out.
 
 This is the full solution. It is excluded from deployment (BLUEPRINT section 7); it exists so that the suite can be
 checked against a passing implementation on seeds 0 to 49. Standard library only.

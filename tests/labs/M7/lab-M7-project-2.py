@@ -64,7 +64,7 @@ def main() -> None:
     free, _, _ = kkt_solution([])
     print("step 1 budget-only weights:", [str(w) for w in free])
 
-    # Step 2. Active set. Why: a lower bound is active when the budget-only weight below it is negative.
+    # Step 2. Active set. Why: each asset with a negative budget-only weight is held at zero; steps 4 to 6 test it.
     held = [i for i in range(N) if free[i] < 0]
     print("step 2 assets held at zero:", held)
 

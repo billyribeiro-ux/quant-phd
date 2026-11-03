@@ -1,4 +1,4 @@
-"""Quantile sketch inserts a new value before any equal stored values (bisect_left), so the delta is taken from the wrong neighbour."""
+"""Quantile sketch places a new value before any equal stored values (bisect_left) instead of after them."""
 
 
 from __future__ import annotations

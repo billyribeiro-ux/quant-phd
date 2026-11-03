@@ -1,5 +1,7 @@
-# Student error mutant (round 7, FC2-d verifier). Not deployed (BLUEPRINT section 7).
-# Student error: the strike check accepts equal neighbouring strikes (b < a instead of b <= a).
+"""Student error: the strike check accepts equal neighbouring strikes (b < a instead of b <= a).
+
+Not deployed (BLUEPRINT section 7). Round 7 verifier mutant for FC2-d.
+"""
 
 from __future__ import annotations
 

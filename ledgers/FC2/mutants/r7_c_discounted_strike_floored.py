@@ -1,5 +1,7 @@
-# Student error mutant (round 7, FC2-d verifier). Not deployed (BLUEPRINT section 7).
-# Student error: the discounted strike is truncated to whole cents before the parity gap.
+"""Student error: the discounted strike is truncated to whole cents before the parity gap.
+
+Not deployed (BLUEPRINT section 7). Round 7 verifier mutant for FC2-d.
+"""
 
 from __future__ import annotations
 

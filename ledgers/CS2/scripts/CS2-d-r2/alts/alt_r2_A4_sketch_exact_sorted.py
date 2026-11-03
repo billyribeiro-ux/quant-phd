@@ -1,0 +1,114 @@
+"""Reference solution for the CS2 streaming statistics library (streamstats.py).
+
+Standard library only. Values are floats in the caller's unit; counts and window lengths are ints; the
+quantile sketch's epsilon and q are floats in [0, 1] (epsilon strictly inside (0, 1)). Nothing here prints,
+warns or reads files. The grader copies this file into the workspace as streamstats.py.
+"""
+
+from __future__ import annotations
+from bisect import insort
+
+import math
+from bisect import bisect_right
+from collections import deque
+from fractions import Fraction
+
+
+class WelfordAccumulator:
+    """Online mean and sum of squared deviations (M2) with Welford's update. One update costs O(1) arithmetic."""
+
+    def __init__(self) -> None:
+        self._count = 0
+        self._mean = 0.0
+        self._m2 = 0.0
+
+    def update(self, x: float) -> None:
+        if math.isnan(x):
+            raise ValueError("a NaN value is not a number and cannot be added")
+        self._count += 1
+        delta = x - self._mean
+        self._mean += delta / self._count
+        self._m2 += delta * (x - self._mean)
+
+    @property
+    def count(self) -> int:
+        return self._count
+
+    def mean(self) -> float:
+        if self._count == 0:
+            raise ValueError("the mean is undefined before the first value")
+        return self._mean
+
+    def variance(self, ddof: int = 1) -> float:
+        if self._count == 0:
+            raise ValueError("the variance is undefined before the first value")
+        if ddof == 0:
+            return self._m2 / self._count
+        if ddof == 1:
+            if self._count < 2:
+                raise ValueError("the sample variance needs at least two values")
+            return self._m2 / (self._count - 1)
+        raise TypeError("ddof must be 0 (population) or 1 (sample); other values are not defined")
+
+
+class RollingMinMax:
+    """Minimum and maximum of the last `window` values, with two monotonic deques of (index, value) pairs."""
+
+    def __init__(self, window: int) -> None:
+        if window < 1:
+            raise ValueError("the window must hold at least one value")
+        if window != int(window):
+            raise ValueError("the window must be a whole number of values")
+        self._window = window
+        self._pushed = 0
+        self._mins: deque[tuple[int, float]] = deque()
+        self._maxs: deque[tuple[int, float]] = deque()
+
+    def push(self, x: float) -> None:
+        if math.isnan(x):
+            raise ValueError("a NaN value is not a number and cannot be pushed")
+        index = self._pushed
+        self._pushed += 1
+        while self._mins and self._mins[-1][1] >= x:
+            self._mins.pop()
+        self._mins.append((index, x))
+        while self._maxs and self._maxs[-1][1] <= x:
+            self._maxs.pop()
+        self._maxs.append((index, x))
+        oldest = index - self._window + 1
+        while self._mins[0][0] < oldest:
+            self._mins.popleft()
+        while self._maxs[0][0] < oldest:
+            self._maxs.popleft()
+
+    def minimum(self) -> float:
+        if self._pushed == 0:
+            raise ValueError("no value has been pushed, so there is no minimum")
+        return self._mins[0][1]
+
+    def maximum(self) -> float:
+        if self._pushed == 0:
+            raise ValueError("no value has been pushed, so there is no maximum")
+        return self._maxs[0][1]
+
+
+class QuantileSketch:
+    def __init__(self, epsilon: float) -> None:
+        if not (0.0 < epsilon < 1.0):
+            raise ValueError("epsilon must lie strictly between 0 and 1")
+        self._eps = Fraction(epsilon)
+        self._sorted: list[float] = []
+
+    def add(self, x: float) -> None:
+        if math.isnan(x):
+            raise ValueError("NaN cannot be added")
+        insort(self._sorted, float(x))
+
+    def quantile(self, q: float) -> float:
+        if not (0.0 <= q <= 1.0):
+            raise ValueError("q must lie in [0, 1]")
+        if not self._sorted:
+            raise ValueError("empty sketch")
+        n = len(self._sorted)
+        target = max(1, math.ceil(Fraction(q) * n - self._eps * n))
+        return self._sorted[target - 1]

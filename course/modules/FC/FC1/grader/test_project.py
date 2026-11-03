@@ -279,17 +279,25 @@ def test_bond_with_twelve_periods_is_valid_and_silent() -> None:
 
 
 def test_bond_price_with_thirteen_to_fifteen_periods_uses_every_period() -> None:
-    """The page discounts an event in period t by (1 + y) ** -t with no upper limit on t. For 13 to 15 periods at a
-    non-zero yield, bond_price_cents must equal the exact Fraction sum of every event discounted by (1 + y) ** -t,
-    rounded once. Bond(10000, 500, n) at 500 bps is exactly at par, so its exact sum is 10000 cents
-    for each n tested here."""
+    """The page gives every period 1..periods a coupon and discounts an event in period t by (1 + y) ** -t, with no
+    upper limit on t. For 13 to 15 periods the event list must equal the oracle's, and bond_price_cents at 400 bps must
+    equal the exact Fraction sum of every event discounted by (1 + y) ** -t, rounded once. The yield is not the coupon
+    rate here: at 500 bps a bond is at par for every n, so a schedule that dropped its later coupons would still
+    price at 10000 cents, and only the 400 bps price and the event list catch that."""
     __tracebackhide__ = True
     for periods in (13, 14, 15):
         bond = sol.Bond(10_000, 500, periods)
-        got = checked_int(sol.bond_price_cents(bond, 500), "bond_price_cents")
-        want = oracle_price(oracle_events(10_000, 500, periods), 500)
-        assert got == want, f"{periods} periods: each event must be discounted by (1 + y) ** -t for its own period t"
-        assert got == 10_000, f"{periods} periods at 500 bps: the coupon equals the yield, so the exact price is par"
+        rows = checked_events(bond.events(), "Bond.events")
+        assert rows == oracle_events(10_000, 500, periods), (
+            "every period 1..periods must carry its coupon, and the face"
+        )
+        got = checked_int(sol.bond_price_cents(bond, 400), "bond_price_cents")
+        want = oracle_price(oracle_events(10_000, 500, periods), 400)
+        assert got == want, (
+            "each event must be discounted by (1 + y) ** -t for its own period t, and the sum rounded once"
+        )
+        par = checked_int(sol.bond_price_cents(sol.Bond(10_000, 500, periods), 500), "bond_price_cents")
+        assert par == 10_000, "a bond whose coupon rate equals the yield must price at par, for any number of periods"
 
 
 def test_bond_coupon_above_one_hundred_percent_is_accepted() -> None:
@@ -393,8 +401,8 @@ def test_bond_price_exact_half_cent_at_496_bps_is_exact_not_float() -> None:
 
 def test_bond_price_exact_half_cent_at_400_bps_uses_the_exact_yield() -> None:
     """Hand check: Bond(13, 0, 1) at 400 bps has the one event (1, 13) and exact present value 13 / 1.04 = 25/2 cents,
-    an exact half that rounds away from zero to 13. The yield 0.04 is exactly 1/25 as a Fraction but not as a binary
-    float, and the float yield misses this case."""
+    an exact half that rounds away from zero to 13. A float discount factor, (1 + 0.04) ** -1 times 13, gives
+    12.499999999999998 and rounds to 12, so this case catches that form; the exact Fraction form does not fail it."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(13, 0, 1), 400) == 13, (
         "an exact half cent must use the exact yield, not a float yield"
@@ -413,6 +421,22 @@ def test_bond_price_is_the_same_on_repeated_calls() -> None:
     first = sol.bond_price_cents(bond_of(INST), INST["yield_bps"])
     second = sol.bond_price_cents(bond_of(INST), INST["yield_bps"])
     assert first == second, "bond_price_cents must not keep state between calls"
+
+
+def test_one_bond_priced_at_two_yields_gives_each_yield_its_own_price() -> None:
+    """The same bond object priced at two yields: each price is the present value at the yield it was asked for, so
+    the first price is not kept on the object. The second yield, 1000 bps, is outside the seeded yields (50 to 900)."""
+    __tracebackhide__ = True
+    bond = bond_of(INST)
+    events = oracle_events(INST["face_cents"], INST["coupon_bps"], INST["periods"])
+    first = checked_int(sol.bond_price_cents(bond, INST["yield_bps"]), "bond_price_cents")
+    second = checked_int(sol.bond_price_cents(bond, 1_000), "bond_price_cents")
+    assert first == oracle_price(events, INST["yield_bps"]), (
+        "the price at the first yield must be the present value there"
+    )
+    assert second == oracle_price(events, 1_000), (
+        "the price at the second yield must be the present value there, not the first price"
+    )
 
 
 def test_yield_at_minus_one_is_refused() -> None:
@@ -646,10 +670,15 @@ def test_refused_inputs_print_nothing_before_they_raise(capsys: pytest.CaptureFi
 
 def test_repeated_events_calls_agree() -> None:
     """events() is pure: two calls on one object give the same list, for the bond and for the trade."""
+    __tracebackhide__ = True
     bond = bond_of(INST)
-    assert checked_events(bond.events(), "Bond.events") == checked_events(bond.events(), "Bond.events")
+    assert checked_events(bond.events(), "Bond.events") == checked_events(bond.events(), "Bond.events"), (
+        "events() must return the same list on every call, for the bond"
+    )
     trade = trade_of(INST)
-    assert checked_events(trade.events(), "CashTrade.events") == checked_events(trade.events(), "CashTrade.events")
+    assert checked_events(trade.events(), "CashTrade.events") == checked_events(trade.events(), "CashTrade.events"), (
+        "events() must return the same list on every call, for the trade"
+    )
 
 
 def test_non_whole_face_is_refused_or_gives_ints() -> None:

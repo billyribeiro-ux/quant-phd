@@ -591,10 +591,25 @@ def test_scan_explanations_are_nonempty_and_name_the_rule() -> None:
             text = record["explanation"]
             assert isinstance(text, str) and text.strip(), "each finding needs an explanation"
             rule = "parity" if record["kind"] == "parity" else "convex"
-            assert rule in text, "the explanation names the rule that the finding breaks"
+            assert re.search(rf"\b{rule}", text, re.IGNORECASE), (
+                "the explanation names the rule that the finding breaks"
+            )
             labels = PARITY_LABELS if record["kind"] == "parity" else CONVEXITY_LABELS
             for label in labels:
                 assert re.search(rf"\b{label}\b", text), "the explanation names each assumption its kind depends on"
+
+
+# The two ways an explanation can name the side of a parity gap: the trade in the call, or the call's richness.
+# The page states the sign meaning (a positive gap means the call is rich), so either wording is accepted.
+_SELL_CALL = re.compile(r"\b(sell|sells|selling|short|shorts|shorting)\s+(the\s+)?call\b", re.IGNORECASE)
+_BUY_CALL = re.compile(r"\b(buy|buys|buying|long|longs|longing)\s+(the\s+)?call\b", re.IGNORECASE)
+_RICH = re.compile(r"\brich\b", re.IGNORECASE)
+_CHEAP = re.compile(r"\bcheap\b", re.IGNORECASE)
+
+
+def _names_side(text: str, trade: re.Pattern[str], wording: re.Pattern[str]) -> bool:
+    """True when the explanation states the trade, or the richness or cheapness, of the call."""
+    return trade.search(text) is not None or wording.search(text) is not None
 
 
 def test_parity_explanation_states_the_trade_for_the_sign_of_the_gap() -> None:
@@ -622,12 +637,12 @@ def test_parity_explanation_states_the_trade_for_the_sign_of_the_gap() -> None:
             text = record["explanation"]
             if gap > 0:
                 signs_seen.add("positive")
-                assert re.search(r"\bsell\w*\s+the\s+call\b", text), (
+                assert _names_side(text, _SELL_CALL, _RICH) and not _names_side(text, _BUY_CALL, _CHEAP), (
                     "a positive gap (the call is rich) must explain the trade that sells the call"
                 )
             elif gap < 0:
                 signs_seen.add("negative")
-                assert re.search(r"\bbuy\w*\s+the\s+call\b", text), (
+                assert _names_side(text, _BUY_CALL, _CHEAP) and not _names_side(text, _SELL_CALL, _RICH), (
                     "a negative gap (the call is cheap) must explain the trade that buys the call"
                 )
     assert signs_seen == {"positive", "negative"}, "both signs of the parity gap must be exercised"

@@ -11,8 +11,9 @@ expiry's European option chain on six evenly spaced strikes, in integer cents:
   moved together, which leaves parity unchanged at that strike), or none.
 
 The planted violation's exact gross amount is stored, so a test can state it. A draw is rejected, and the next draw
-taken, when any exact parity gap or second difference has a fractional part of one half. Such a value has no unique
-nearest cent under the contract's rule, so it would not be a fair test of a correct implementation. A draw is also
+taken, when any exact parity gap or second difference has a fractional part of one half. Such a value is an exact tie,
+which the contract's rule decides by convention; the seeded suite leaves ties to the hand-built tie tests, so a draw
+that produces one is rejected. A draw is also
 rejected when any quote breaks the model-free bounds of Lesson 5, Theorem 2.2, so no generated chain contains a quote
 that the lessons define as a violation.
 

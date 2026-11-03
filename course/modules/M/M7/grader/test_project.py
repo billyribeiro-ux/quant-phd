@@ -23,6 +23,7 @@ import sys
 import warnings
 from collections.abc import Callable, Mapping
 from functools import cache
+from numbers import Real
 from pathlib import Path
 from typing import Any
 
@@ -133,9 +134,7 @@ def output_shape(case: Mapping[str, Any], out: Any) -> None:
     k = len(case["sector_caps"])
     weights = out["weights"]
     assert isinstance(weights, list) and len(weights) == n, "weights must be a list with one entry per asset."
-    assert all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in weights), (
-        "every weight must be a real number."
-    )
+    assert all(is_real_number(v) for v in weights), "every weight must be a real number."
     mult = out["multipliers"]
     assert isinstance(mult, Mapping) and set(mult) == set(
         ("budget", "lower", "upper", "sector", "turnover_plus", "turnover_minus", "turnover_total")
@@ -158,6 +157,11 @@ def seed_output() -> dict[str, Any]:
 
 def weights_of(out: Mapping[str, Any]) -> list[float]:
     return [float(v) for v in out["weights"]]
+
+
+def is_real_number(value: object) -> bool:
+    """A real number that is not a bool: an int, a float or an exact Fraction, which the page permits."""
+    return isinstance(value, Real) and not isinstance(value, bool)
 
 
 def multipliers_of(out: Mapping[str, Any]) -> dict[str, Any]:
@@ -289,7 +293,7 @@ def test_output_has_the_three_fields_and_frozen_names() -> None:
 def test_weights_and_multipliers_are_real_numbers() -> None:
     out = seed_output()
     for value in (*out["weights"], *out["certificate"].values()):
-        assert isinstance(value, (int, float)) and not isinstance(value, bool), "every returned number must be real."
+        assert is_real_number(value), "every returned number must be real."
         assert math.isfinite(value), "every returned number must be finite."
 
 

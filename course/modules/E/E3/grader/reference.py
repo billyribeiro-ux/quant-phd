@@ -20,7 +20,7 @@ MODELS: tuple[str, str] = ("crra", "prospect")
 CENTS_PER_UNIT = 10_000.0  # the logit uses differences in units of $100: z = kappa * dCE / 10000
 _H = 1e-5  # finite-difference step in the transformed coordinates
 _MAX_ITER = 200
-_BOUND = 40.0  # |c|, |a|, |b| beyond this would overflow the transforms; such points get -infinity
+_BOUND = 40.0  # |c|, |a|, |b| beyond this are far outside any sensible parameter range; such points get -infinity
 
 Parsed = tuple[list[int], list[Fraction], list[int], list[Fraction], str]
 

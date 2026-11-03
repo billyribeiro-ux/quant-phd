@@ -1,5 +1,7 @@
-# Student error mutant (round 7, FC2-d verifier). Not deployed (BLUEPRINT section 7).
-# Student error: the parity loop stops one strike early, so a parity finding at the highest strike is never reported.
+"""Student error: the parity loop stops one strike early, so a parity finding at the highest strike is never reported.
+
+Not deployed (BLUEPRINT section 7). Round 7 verifier mutant for FC2-d.
+"""
 
 from __future__ import annotations
 

@@ -151,8 +151,8 @@ _BOUNDARY_GRID = (0.25, 0.5, 1.0, 2.0, 4.0, 8.0)
 def _boundary_loglik(answers: Sequence[tuple[Any, ...]]) -> float:
     """The best log-likelihood on a grid of lambda and kappa with curvature at the edge of the domain (gamma = 0.001).
 
-    A participant whose likelihood is higher at that edge than at the truth has an estimate at the boundary, where the
-    standard errors are meaningless, so such draws are rejected.
+    A draw whose likelihood at the truth does not exceed this edge value by at least _BOUNDARY_MARGIN is rejected: the
+    estimate for such a participant can sit near the domain's boundary, where the standard errors are not meaningful.
     """
     c = math.log(_BOUNDARY_GAMMA / (1.0 - _BOUNDARY_GAMMA))
     return max(

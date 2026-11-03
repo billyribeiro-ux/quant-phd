@@ -2,9 +2,9 @@
 
 SIMULATED: the two functions are test functions chosen for this lab, not market data.
 Part A is a kink. f(x) = |x| is not differentiable at 0. The forward quotient, the backward quotient and the central
-quotient are computed at h = 10**-1 to 10**-6. They are exact in float arithmetic here, and they show that the
-quotients converge to different limits (+1 and -1 for the one-sided quotients, 0 for the central quotient) instead of
-to one derivative.
+quotient are computed at h = 10**-1 to 10**-6. They are exact in float arithmetic here. They print +1 for the forward
+quotient, -1 for the backward quotient and 0 for the central quotient at each of the six steps, the values Theorem 2.1
+gives for every step. The lab computes no limit.
 Part B is a smooth function with cancellation. f(x) = exp(x) at x0 = 1, whose derivative is e. The forward and central
 quotients are computed at h = 10**-k for k = 1 to 15. Their errors fall while the truncation error dominates, then
 rise again as the subtraction of nearly equal function values loses digits. The lab prints the decade with the smallest

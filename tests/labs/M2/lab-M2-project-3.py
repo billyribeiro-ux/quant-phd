@@ -19,7 +19,7 @@ def bond_price(flows: list[Flow], y: float) -> float:
 
 
 def difference(f: Callable[[float], float], x: float, h: float, scheme: str) -> float:
-    """A forward or central difference estimate of f'(x) with step h."""
+    """A forward, backward or central difference estimate of f'(x) with step h."""
     if scheme == "forward":
         return (f(x + h) - f(x)) / h
     if scheme == "backward":

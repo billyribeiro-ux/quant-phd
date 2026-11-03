@@ -5,7 +5,7 @@ autograder there, or locally with the browser's flags:
 
     QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
 
-Use the standard library only. Every function must validate the conditions the specification names and raise
+Use the standard library and NumPy only. Every function must validate the conditions the specification names and raise
 ValueError for them. No function may print or warn.
 """
 

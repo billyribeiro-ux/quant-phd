@@ -9,7 +9,7 @@ from fractions import Fraction
 
 GAMMA = 0.40  # curvature of the value function, in [0, 1) for the prospect model
 LAMBDA = 2.00  # loss-aversion coefficient
-KAPPA = 1.50  # choice precision: the logit scale, per $100 of certainty-equivalent difference
+KAPPA = 1.50  # choice precision: the slope of the logit rule, per $100 of certainty-equivalent difference
 WEALTH = 100_000  # starting wealth in cents ($1,000.00); used by the CRRA model only
 
 

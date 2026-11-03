@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections import Counter
 from collections.abc import Sequence
 
 
@@ -84,11 +85,11 @@ def simulate_losses(
         if student and nu is not None:
             chi_square = rng.gammavariate(nu / 2, 2.0)
             scale = math.sqrt(matched * nu / chi_square)
-        parts = []
+        total = 0.0
         for i in range(n):
             ret = scale * sum(factor[i][k] * z[k] for k in range(i + 1))
-            parts.append(position_cents[i] * ret)
-        losses.append(round(-math.fsum(parts)))
+            total += position_cents[i] * ret
+        losses.append(round(-total))
     return losses
 
 
@@ -96,5 +97,12 @@ def quantile_99(losses_cents: list[int]) -> int:
     """The 99% loss: the order statistic with 1-based index ceil(0.99 n), computed in exact integers."""
     if not isinstance(losses_cents, list) or not losses_cents or any(not _whole(x) for x in losses_cents):
         raise ValueError("losses_cents must be a non-empty list of whole numbers of cents")
+    # Counting method: walk the distinct losses in increasing order and stop where the running count reaches the index.
     index = (99 * len(losses_cents) + 99) // 100
-    return sorted(losses_cents)[index - 1]
+    counts = Counter(losses_cents)
+    remaining = index
+    for value in sorted(counts):
+        if counts[value] >= remaining:
+            return value
+        remaining -= counts[value]
+    raise RuntimeError("the counts sum to n, so the index is always reached")

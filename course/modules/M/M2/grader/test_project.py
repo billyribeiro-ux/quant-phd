@@ -146,6 +146,18 @@ def exact_price(inst: dict[str, Any]) -> Fraction:
     return sum(((coupon + (face if t == years else 0)) * v**t for t in range(1, years + 1)), Fraction(0))
 
 
+def exact_sensitivities(inst: dict[str, Any]) -> tuple[Fraction, Fraction]:
+    """dprice_dy and d2price_dy2 from the stated cash-flow formulas, in exact rational arithmetic."""
+    face = inst["face_cents"]
+    coupon = Fraction(face * inst["coupon_bps"], 10_000)
+    years = inst["maturity_years"]
+    v = 1 / (1 + Fraction(inst["yield_bps"], 10_000))
+    flows = [(t, coupon + (face if t == years else 0)) for t in range(1, years + 1)]
+    first = -sum((t * cash * v ** (t + 1) for t, cash in flows), Fraction(0))
+    second = sum((t * (t + 1) * cash * v ** (t + 2) for t, cash in flows), Fraction(0))
+    return first, second
+
+
 def yield_of(inst: dict[str, Any]) -> float:
     return float(inst["yield_bps"]) / 10_000
 
@@ -333,6 +345,17 @@ def test_very_small_positive_step_is_accepted() -> None:
             "a positive step, however small, is inside the specification",
         )
         require(isinstance(value, float) and math.isfinite(value), "a positive step must return a finite float")
+
+
+def test_forward_quotient_at_a_tiny_step_is_the_quotient() -> None:
+    # For f(x) = x*x at x = 0 the forward quotient at step h is (h*h - 0) / h = h. At h = 1e-9 it must be 1e-9: a step
+    # above zero is used as given, not rounded up to a larger step (which would return 1e-8, ten times the value).
+    value = sol.fd_derivative(lambda x: x * x, 0.0, 1e-9, "forward")
+    require(
+        close(value, 1e-9, 1e-9),
+        "the forward estimate at a tiny positive step must be the forward quotient (f(x+h) - f(x)) / h at that step "
+        "(hint: Lesson 13, the step is used as given)",
+    )
 
 
 def test_forward_and_central_schemes_are_accepted() -> None:
@@ -802,6 +825,24 @@ def test_yield_just_above_minus_one_is_accepted() -> None:
     require(type(price) is int, "the price at a yield above -1 must still be an int")
     result = must_accept(lambda: sol.sensitivities(inst), "a yield above -1 is inside the specification")
     require(isinstance(result, dict), "sensitivities must return a dictionary")
+
+
+def test_sensitivities_near_minus_one_are_the_stated_formulas() -> None:
+    # A yield of -0.99 is above -1, so it is inside the specification. The discount factor there is 100, so a central
+    # difference at step 1e-5 is off by far more than 1e-9 relative, and only the stated formulas meet that tolerance.
+    inst = bond(1_000_000, 500, 30, -9_900)
+    first, second = exact_sensitivities(inst)
+    result = sol.sensitivities(inst)
+    require(
+        close(result["dprice_dy"], float(first), 1e-9),
+        "dprice_dy must be -sum t C_t (1+y)^(-t-1) near a yield of -1 "
+        "(hint: the derivative of each discount factor, with its sign)",
+    )
+    require(
+        close(result["d2price_dy2"], float(second), 1e-9),
+        "d2price_dy2 must be sum t(t+1) C_t (1+y)^(-t-2) near a yield of -1 "
+        "(hint: the second derivative of each discount factor)",
+    )
 
 
 # ---- the module is pure: no output ----

@@ -29,7 +29,7 @@ def bond_price(events: list[tuple[int, int]], yield_bps: int) -> int:
 
 
 def term_by_term_price(events: list[tuple[int, int]], yield_bps: int) -> int:
-    """The same present value with each term rounded before the terms are added. Not the rule; shown for contrast."""
+    """Each discounted term rounded to the cent before the terms are added. Not the rule; shown for contrast."""
     y = Fraction(yield_bps, 10_000)
     return sum(half_away(Fraction(a) / (1 + y) ** t) for t, a in events)
 

@@ -436,6 +436,58 @@ def test_log_likelihood_is_a_sum_of_log_probabilities() -> None:
     )
 
 
+def test_log_likelihood_refuses_a_sum_below_one() -> None:
+    """Named condition, in a response: log_likelihood applies the probability rule of the specification. Here the
+    probabilities of A are 1/2 and 499/1000, which sum to 999/1000, and the rest of the response is valid."""
+    bad = [RESPONSES_BASE | {"probs_a": ["1/2", "499/1000"]}]
+    must_raise(
+        lambda: sol.log_likelihood(bad, TRUE),
+        "a response whose probabilities sum below one",
+        contains=("probabilities must sum to 1",),
+    )
+
+
+def test_log_likelihood_refuses_a_sum_above_one() -> None:
+    """Named condition, in a response: the probabilities of A are 1/2 and 501/1000, which sum to 1001/1000."""
+    bad = [RESPONSES_BASE | {"probs_a": ["1/2", "501/1000"]}]
+    must_raise(
+        lambda: sol.log_likelihood(bad, TRUE),
+        "a response whose probabilities sum above one",
+        contains=("probabilities must sum to 1",),
+    )
+
+
+def test_log_likelihood_refuses_a_negative_probability() -> None:
+    """Named condition, in a response: the probabilities -1/4 and 5/4 sum to exactly 1, so only the sign is wrong."""
+    bad = [RESPONSES_BASE | {"probs_a": ["-1/4", "5/4"]}]
+    must_raise(
+        lambda: sol.log_likelihood(bad, TRUE),
+        "a response with a negative probability",
+        contains=("probabilities must sum to 1",),
+    )
+
+
+def test_log_likelihood_accepts_probabilities_that_sum_to_exactly_one() -> None:
+    """The boundary of the same rule: the probabilities 1/2 and 1/2 sum to exactly 1, so the likelihood is finite."""
+    got = sol.log_likelihood([RESPONSES_BASE], TRUE)
+    expect(math.isfinite(got), "probabilities that sum to exactly one must be accepted")
+
+
+def test_log_likelihood_stays_finite_for_a_large_choice_precision() -> None:
+    """Exact inputs at gamma = 0 and lambda = 1: the sure amount of -185 cents has CE_A = -185 and the sure 0 has
+    CE_B = 0, so with kappa = 1e5, z = kappa (CE_A - CE_B) / 10000 = -1850. The specification states no upper bound
+    for kappa, so the value must be finite. The oracle is log P(A) = z - log(1 + exp(z)), which is -1850 here; the form
+    -log(1 + exp(-z)) overflows in math.exp at this z."""
+    response = {"pair_id": 0, "choice": "A", "prizes_a": [-185], "probs_a": ["1"], "prizes_b": [0], "probs_b": ["1"]}
+    got = sol.log_likelihood([response], {"gamma": 0.0, "lambda": 1.0, "kappa": 1e5})
+    z = -1850.0
+    expected = z - math.log1p(math.exp(z))
+    expect(
+        math.isfinite(got) and abs(got - expected) <= 1e-9 * abs(expected),
+        "the log-likelihood of a choice must be finite and equal to the oracle at a large choice precision",
+    )
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # estimate
 # ---------------------------------------------------------------------------------------------------------------------
@@ -471,11 +523,11 @@ def test_reported_log_likelihood_is_the_likelihood_at_the_estimate() -> None:
 
 def test_score_is_zero_at_the_estimate() -> None:
     """At an interior maximum the score is zero. Derivatives are taken by central differences in the coordinates
-    zeta = log(gamma/(1-gamma)), log(lambda) and log(kappa), where the estimate is interior. The log-likelihood has
-    kinks (the certainty equivalent changes form where a lottery's value changes sign), and at a kink a central
-    difference depends on its step, so the score is computed at steps 1e-5 and 1e-6 and the smaller largest component
-    counts. It must be below 2e-5 in absolute value, a tolerance of this suite stated on the page; a search that stops
-    while a component is still of order 1e-4 or more has not reached the stationary point."""
+    zeta = log(gamma/(1-gamma)), log(lambda) and log(kappa), where the estimate is interior. The suite evaluates the
+    score at two steps, 1e-5 and 1e-6, and counts the smaller largest component: a numerical safeguard of this suite,
+    not a proof that the likelihood is smooth enough for either step to be exact. The score must be below 2e-5 in
+    absolute value, a tolerance of this suite stated on the page; a search that stops while a component is still of
+    order 1e-4 or more has not reached the stationary point."""
     gamma, lam, kappa = est()["gamma_hat"], est()["lambda_hat"], est()["kappa_hat"]
     theta = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
 
@@ -532,9 +584,9 @@ def test_estimate_recovers_the_true_parameters_within_four_standard_errors_on_47
 def test_estimate_on_a_second_participant_is_also_a_maximum() -> None:
     """A second SIMULATED participant (another seed, INST2): the reported likelihood is the likelihood at the estimate,
     the standard errors are positive and finite, and no move of gamma or kappa by 0.1 percent in either direction
-    raises the likelihood. Lambda is not moved: the likelihood has kinks in lambda where a certainty equivalent changes
-    sign, so the estimate there is a kink point whose neighbours may be higher, and the spec asks for the score
-    condition (test_score_is_zero_at_the_estimate), not a strict maximum in lambda."""
+    raises the likelihood. Lambda is not moved in this check: the score condition of
+    test_score_is_zero_at_the_estimate is the check the page states for lambda, and the first participant's check moves
+    all three parameters."""
     parsed2 = [parse(r) for r in json.loads(str(INST2["responses_json"]))]
     est2 = sol.estimate(json.loads(str(INST2["responses_json"])))
     gamma, lam, kappa = est2["gamma_hat"], est2["lambda_hat"], est2["kappa_hat"]
@@ -605,6 +657,34 @@ def test_estimate_needs_a_mixed_sign_lottery() -> None:
     )
     expect(
         not mixed([-100, 300], [Fraction(0), Fraction(1)]), "a loss of zero probability does not make a lottery mixed"
+    )
+
+
+def test_a_gain_of_zero_probability_does_not_make_a_lottery_mixed() -> None:
+    """Named condition: a lottery mixes gains and losses only when each has positive probability. Here the only gain
+    has probability zero and the loss has probability one, so no response has a mixed lottery and the set is refused."""
+    zero_gain = [
+        {
+            "pair_id": 0,
+            "choice": "A",
+            "prizes_a": [-100, 300],
+            "probs_a": ["1", "0"],
+            "prizes_b": [200],
+            "probs_b": ["1"],
+        },
+        {
+            "pair_id": 1,
+            "choice": "B",
+            "prizes_a": [500],
+            "probs_a": ["1"],
+            "prizes_b": [50, 900],
+            "probs_b": ["1/2", "1/2"],
+        },
+    ]
+    must_raise(lambda: sol.estimate(zero_gain), "a gain with probability zero is not a gain")
+    expect(
+        not mixed([-100, 300], [Fraction(1), Fraction(0)]),
+        "a gain of zero probability does not make a lottery mixed",
     )
 
 
@@ -790,22 +870,25 @@ def _observed_information(theta: list[float], h: float) -> list[list[float]]:
     return info
 
 
-def test_standard_errors_match_the_delta_method_oracle() -> None:
+def test_standard_errors_match_the_coordinate_change_oracle() -> None:
     """The standard errors are the square roots of the diagonal of the inverse observed information in
-    (zeta, log lambda, log kappa), carried to the parameters by the delta method: d gamma / d zeta = gamma (1 - gamma),
-    d lambda / d log lambda = lambda, d kappa / d log kappa = kappa. The oracle recomputes this at the reported
-    estimate by central differences at step 1e-5 or at step 1e-6, and each standard error must match one of the two
-    within 10% relative, as the score check accepts either step. The two steps are needed because the finite-difference
-    information depends on the step for a weakly identified parameter: for seed 49 the standard error of lambda is
-    135.05 at step 1e-5 and 97.67 at step 1e-6 (-27.7%), and of gamma 0.09474 and 0.07983 (-15.7%), while the
-    evaluation order of the same log-likelihood alone moves the standard error of lambda by about 1.3%. A missing or
-    wrong delta factor (gamma (1 - gamma), lambda or kappa, or a missing square root) changes a standard error by much
-    more than 10% at either step."""
+    (zeta, log lambda, log kappa), carried to the parameters by the derivative of each change of coordinates:
+    d gamma / d zeta = gamma (1 - gamma), d lambda / d log lambda = lambda, d kappa / d log kappa = kappa. The oracle
+    recomputes this at the reported estimate by central differences at step 1e-5 or at step 1e-6, and each standard
+    error must match one of the two within 10% relative, as the score check accepts either step. The two steps are
+    needed because the finite-difference information depends on the step for a weakly identified parameter: for seed 49
+    the standard error of lambda is 135.05 at step 1e-5 and 97.67 at step 1e-6 (-27.7% from the step 1e-5 value), and
+    that of gamma is 0.09474 and 0.07983 (-15.7% from the step 1e-5 value). Summing the likelihood terms in the reverse
+    order alone moves the standard error of lambda by +1.3% at step 1e-5 (135.05 to 136.78) and by +0.4% at step 1e-6
+    (97.67 to 98.09), each relative to the forward order. A missing or wrong derivative factor (gamma (1 - gamma),
+    lambda or kappa, or a missing square root) changes a standard error by much more than 10% at either step."""
     gamma, lam, kappa = est()["gamma_hat"], est()["lambda_hat"], est()["kappa_hat"]
     theta = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
     matched = False
     for h in (1e-5, 1e-6):
         cov = _invert3(_observed_information(theta, h))
+        if not all(cov[i][i] > 0.0 for i in range(3)):
+            continue  # at this step the information is not positive definite, so it gives no standard error to compare
         want = {
             "se_gamma": gamma * (1.0 - gamma) * math.sqrt(cov[0][0]),
             "se_lambda": lam * math.sqrt(cov[1][1]),
@@ -878,11 +961,11 @@ FIRST_ORDER_MODELS: list[tuple[str, dict[str, float]]] = [
     ("crra", {"gamma": 0.0}),
     ("crra", {"gamma": 0.5}),
     ("prospect", TRUE),
-]  # every model whose utility is increasing
+]  # the increasing models that this suite uses (the first-order check is run under these three)
 SECOND_ORDER_MODELS: list[tuple[str, dict[str, float]]] = [
     ("crra", {"gamma": 0.0}),
     ("crra", {"gamma": 0.5}),
-]  # every model whose utility is concave and increasing (the prospect value is not concave below zero)
+]  # the concave, increasing models that this suite uses (for gamma > 0 the prospect value is convex below zero)
 # Witness pairs, so that each dominance order is exercised whatever the seed's instrument holds.
 # FOSD: A is B with every prize raised by 100 cents, so F_A <= F_B everywhere (A dominates in the first order).
 FOSD_WITNESS = ([600, -100], [HALF, HALF], [500, -200], [HALF, HALF], "")

@@ -8,14 +8,18 @@ Proof that it does not violate the specification:
 
 1. The module contract (project.html, Rung 3 · Specification, Context) requires only that every run is reproducible from
    its seed. `m17` is deterministic in its seed: for each seed the Student-t losses are a fixed function of that seed.
-2. Conventions item 5 leaves the order and the source of the Student-t family's draws open. The suite's properties hold
-   for any generator that is seeded and yields the stated distributions, so a different stream for one family cannot
-   fail a stated property.
-3. Measured: `m17` passes all 138 checks of `grader/test_project.py` on every seed from 0 to 49 (run in this round).
-4. The only page sentence that ties the two families to one seed is the Lab 1 code docstring ("from the same seed"),
-   which describes the lab's own simulator. That simulator's output (for example the Lab 1 printed losses) is not
-   a contract for `tail_risk.py`: the module's order of draws is not fixed, so a conforming module does not reproduce
-   the lab's numbers. The docstring therefore does not bind the module.
+2. Conventions item 5 (project.html, Conventions) states that the source of the Student-t family's normals and the order
+   of its draws are not fixed. It fixes only the Gaussian stream, `random.Random(seed).gauss(0.0, 1.0)`, in position
+   order. `m17` changes only the Student-t source (it reads its normals from `random.Random(seed + 1)`), so it violates
+   no sentence of the page.
+3. Measured: `m17` passes every check of `grader/test_project.py` on every seed from 0 to 49 (round-2 verifier run,
+   `signt_m17_collect_seeds.out`; the suite collects 138 checks, and one is skipped on instances with nu of 3 or 4). The suite has no property that observes the Student-t source, so the survival is
+   expected.
+4. The page sentences that tie the two families to one seed are not in the contract. The Lab 1 code docstring ("from the
+   same seed") describes the lab's own simulator, whose printed losses are not a contract for `tail_risk.py`. Item 5
+   leaves the Student-t source open, so a conforming module need not reproduce the lab's numbers.
 
-Architect note: if the page should require a shared seed between the families, Conventions item 5 must freeze the
-Student-t draw order. Alternative 4 draws its chi-square variable from the Gaussian stream and would then need replacing.
+Design note (owner's choice): the alternative to this ruling is to freeze the Student-t source in item 5 and add a
+grader test that observes it. Freezing the source alone would not make it observable in a conforming module: the order
+of the Student-t normals and chi-square variables within that stream would also have to be fixed, and the page
+leaves that order open. The page as revised leaves both open.

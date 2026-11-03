@@ -265,7 +265,10 @@ or a coefficient from memory.
 .venv/bin/python tools/run_graders.py --unit M2 --seeds 0-49
 .venv/bin/python tools/mutate_graders.py --unit M2 --seeds 0-9     # verifier only
 .venv/bin/ruff check tests/labs/M2 course/modules/M/M2/grader && .venv/bin/ruff format --check tests/labs/M2
-.venv/bin/mypy tests/labs/M2 course/modules/M/M2/grader           # strict, repo configuration
+.venv/bin/mypy tests/labs/M2 --no-incremental                    # strict, repo configuration
+# grader: test_project.py imports sensitivity_engine, which the repo does not hold, so check it in a scratch workspace
+# with the reference as the module (the repo's mypy does not cover course/modules; run_graders checks reference.py itself):
+d=$(mktemp -d) && cp course/modules/M/M2/grader/test_project.py course/modules/M/M2/grader/instance.py "$d"/ && cp course/modules/M/M2/grader/reference.py "$d"/sensitivity_engine.py && .venv/bin/mypy --strict --no-incremental "$d"/test_project.py "$d"/instance.py "$d"/sensitivity_engine.py
 ```
 
 Flags are the repo's own (read from argparse blocks): `check_pages.py --unit/--page/--all` (line 429), `check_dag.py --unit`

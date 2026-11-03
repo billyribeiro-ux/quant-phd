@@ -26,26 +26,26 @@ def matched_scale(nu: int) -> float:
 
 
 def _cholesky(cov: Sequence[Sequence[float]], n: int) -> list[list[float]]:
-    """The lower-triangular factor L with L L^T = cov, computed row by row. Requires cov to be n x n, symmetric
-    and positive definite: every pivot must be strictly positive."""
+    """The lower-triangular factor L with L L^T = cov, computed from the LDL^T factorization. Requires cov to be
+    n x n, symmetric and positive definite: every pivot must be strictly positive."""
     if len(cov) != n or any(len(row) != n for row in cov):
         raise ValueError("cov must be a square matrix with one row and one column per position")
     for i in range(n):
         for j in range(i):
             if cov[i][j] != cov[j][i]:
                 raise ValueError("cov must be symmetric")
-    factor = [[0.0] * n for _ in range(n)]
-    for i in range(n):
-        for j in range(i + 1):
-            inner = sum(factor[i][k] * factor[j][k] for k in range(j))
-            if i == j:
-                pivot = cov[i][i] - inner
-                if not pivot > 0.0:
-                    raise ValueError("cov must be positive definite: every Cholesky pivot must be above zero")
-                factor[i][i] = math.sqrt(pivot)
-            else:
-                factor[i][j] = (cov[i][j] - inner) / factor[j][j]
-    return factor
+    # LDL^T factorization: unit lower-triangular unit[i][j] and the pivots d[j]; the factor is unit * sqrt(d).
+    unit = [[0.0] * n for _ in range(n)]
+    d = [0.0] * n
+    for j in range(n):
+        pivot = cov[j][j] - sum(unit[j][k] ** 2 * d[k] for k in range(j))
+        if not pivot > 0.0:
+            raise ValueError("cov must be positive definite: every Cholesky pivot must be above zero")
+        d[j] = pivot
+        unit[j][j] = 1.0
+        for i in range(j + 1, n):
+            unit[i][j] = (cov[i][j] - sum(unit[i][k] * unit[j][k] * d[k] for k in range(j))) / pivot
+    return [[unit[i][j] * math.sqrt(d[j]) for j in range(n)] for i in range(n)]
 
 
 def simulate_losses(

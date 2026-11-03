@@ -1,6 +1,6 @@
-# Student-error mutant (verifier E3-d, round 10). The probabilities are rescaled to sum to 1 instead of being refused when they do not.
+# Student-error mutant (verifier E3-d, round 10): probabilities are rescaled to sum to 1 instead of being refused.
 # Single-change copy of the reference solution.
-"""Reference solution for the E3 project: elicit.py, the preference-elicitation engine.
+"""Probabilities are normalised instead of refused when they do not sum to 1.
 
 This is the full solution. It is excluded from deployment (BLUEPRINT section 7); it exists so that the suite can be
 checked against a passing implementation on seeds 0 to 49. Standard library only.

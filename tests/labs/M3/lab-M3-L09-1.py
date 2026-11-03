@@ -11,11 +11,12 @@ Claims checked, each on the inputs named in the code:
    non-PSD matrices are repaired two ways. Clip-and-rescale gives R. Alternating projections (clip at zero,
    set the diagonal to one, repeat until the change is below 1e-12, at most 500 steps) gives W. The lab counts
    how often W passes is_correlation (symmetric and unit diagonal to 1e-12, smallest eigenvalue at least -1e-8),
-   and how often ||A - W||_F is strictly less than ||A - R||_F.
+   and how often W passes it and ||A - W||_F is strictly less than ||A - R||_F.
 
 Scope: the counts describe these 40 matrices and nothing more. The lab does not show that R or W is the
-nearest correlation matrix to any input. It shows only that R is not nearest for each instance where W is
-strictly closer, and that W is feasible for the instances counted.
+nearest correlation matrix to any input. It shows that R is not the nearest correlation matrix to A in each
+instance where W passes is_correlation and is strictly closer to A than R, and it prints how many instances
+those are.
 Standard library and NumPy only. Fixed seed, no network access.
 """
 
@@ -119,12 +120,12 @@ def main() -> None:
         nonpsd += 1
         repaired = rescale_to_unit_diagonal(clip_eigenvalues(a))
         alt = alternating_projections(a)
-        if is_correlation(alt):
-            feasible += 1
         d_rescale = float(np.linalg.norm(a - repaired))
         d_alt = float(np.linalg.norm(a - alt))
-        if d_alt < d_rescale:
-            closer += 1
+        if is_correlation(alt):
+            feasible += 1
+            if d_alt < d_rescale:
+                closer += 1
         if not first:
             first = f"first non-PSD matrix (index {index}): ||A - R||_F = {d_rescale:.6f}, ||A - W||_F = {d_alt:.6f}"
     print(f"seeded {SIZE}x{SIZE} matrices: {N_MATRICES}; not PSD (smallest eigenvalue below -1e-9): {nonpsd}")
@@ -132,7 +133,9 @@ def main() -> None:
         "alternating-projection output passes is_correlation "
         f"(symmetric and unit diagonal to 1e-12, smallest eigenvalue at least -1e-8): {feasible} of {nonpsd}"
     )
-    print(f"alternating-projection output strictly closer to A than R: {closer} of {nonpsd}")
+    print(
+        f"alternating-projection output passes is_correlation and is strictly closer to A than R: {closer} of {nonpsd}"
+    )
     print(first)
 
 
