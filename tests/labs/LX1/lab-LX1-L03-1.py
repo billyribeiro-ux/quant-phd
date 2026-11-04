@@ -21,8 +21,9 @@ Model, for t = 0, 1, ..., H with H = 12 periods:
     depth(m) = max over t of f_t       the output depth for a parity duration m
 
 Part A prints the parameters and the two paths. Part B prints the depth of each economy, the period where it is first
-reached, and whether X is deeper than Y. Part C prints the depth for every parity duration m from 0 to H, and checks
-that it never falls as m rises. Part D prints the ratio of the two depths for three values of the product beta * phi.
+reached, whether X is deeper than Y, and the difference of the two depths. Part C prints the depth for every parity
+duration m from 0 to H, and checks that it never falls as m rises and that it rises at every step from m to m + 1.
+Part D prints the ratio of the two depths for three values of the product beta * phi.
 """
 
 from __future__ import annotations

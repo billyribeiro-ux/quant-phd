@@ -47,7 +47,7 @@ def draw_game(seed: int) -> tuple[list[int], list[str]]:
 
 def quote(last_fill: int | None) -> tuple[int, int, int]:
     """The fixed rule: the mid is the last filled price, or 10000 cents before any fill. Returns (bid, ask, size)."""
-    # Step 2. Quote around the mid, so the market is symmetric about the last price the maker traded at.
+    # Step 2. Quote HALF_SPREAD cents either side of the mid: the last filled price, or 10000 before any fill.
     mid = START_CENTS if last_fill is None else last_fill
     return mid - HALF_SPREAD, mid + HALF_SPREAD, SIZE
 

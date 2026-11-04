@@ -11,10 +11,10 @@ The other parameters of the model (risk aversion 2, prior precision 1 and signal
 so every instance uses them. The box is chosen so that every instance has one interior informed fraction. With these
 constants, the interior root is the unique solution of tau_y(lambda) = tau_bar, where tau_bar = 2 exp(-4c) - 1 and tau_y
 is strictly increasing in lambda, with tau_y(1) = 1 / (1 + 4 sigma_u^2) (project page, Propositions 3 and 4).
-Over the box,
-tau_bar lies in (0, 0.2377], because tau_bar(0.120) = 0.2376 and tau_bar(0.150) = 0.0976, while
-tau_y(1) >= 1 / (1 + 4 * 0.75^2) = 0.30769... . So 0 < tau_bar < tau_y(1) for every instance in the box. This bound is
-derived here; the suite does not re-check it.
+Over the box, tau_bar decreases in c, so it lies between tau_bar(0.150) = 0.09762327... and
+tau_bar(0.120) = 0.23756678... (both unrounded), while tau_y(1) >= 1 / (1 + 4 * 0.75^2) = 0.30769... .
+So 0 < tau_bar < 0.237567 < 0.30769 <= tau_y(1) for every instance in the box. This bound is derived
+here; the suite does not re-check it.
 
 This module does not import the reference solution, which is excluded from deployment. Nothing here is a real market,
 a real payoff or a real participant.

@@ -10,9 +10,11 @@ Each test checks a property or an exact number. The expected numbers come from c
 over the 2**n walks, from a quadrature written in this file, or from identities. Several tests check one of the engine's
 functions against another: the srw reflection identity, the one-step estimate against reflection_tail, the nested counts
 against discrete_max_exceedance, and the coarse count against the fine count. One test calls discrete_max_exceedance
-twice on the same instance and requires the same answer. A seeded-simulation check uses a band of five standard errors
-plus one path (1/N), so that a target near zero is not a false failure. A failing test names the property it checks and
-the idea to revisit. It never prints the expected value.
+twice on the same instance and requires the same answer. One test pins the one-step draws to random.Random(seed).gauss.
+A seeded-simulation check against a known target p uses a band of five standard errors of p, sqrt(p (1 - p) / N), plus
+one path (1/N). The band takes the target's standard error, not the sample's: the sample's is zero when no path hits,
+which would shrink the band to 1/N and fail a correct engine. A failing test names the property it checks and the idea
+to revisit. It never prints the expected value.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from __future__ import annotations
 import itertools
 import math
 import os
+import random
 from collections.abc import Callable
 from typing import Any
 
@@ -73,9 +76,10 @@ def within(value: float, target: float, tolerance: float, message: str) -> None:
     expect(abs(value - target) <= tolerance, message)
 
 
-def simulation_band(se: float, n_paths: int) -> float:
-    """Five standard errors, plus one path, as the tolerance for a seeded-simulation comparison."""
-    return 5.0 * se + 1.0 / n_paths
+def simulation_band(target: float, n_paths: int) -> float:
+    """Five standard errors of the target, sqrt(target (1 - target) / N), plus one path: the tolerance for a seeded
+    comparison with a known probability."""
+    return 5.0 * math.sqrt(target * (1.0 - target) / n_paths) + 1.0 / n_paths
 
 
 def gaussian_tail_by_quadrature(level: float, horizon: float, intervals: int = 4000) -> float:
@@ -308,30 +312,37 @@ def test_standard_error_is_zero_when_no_path_reaches_the_level() -> None:
 
 
 def test_one_step_estimate_matches_the_one_step_gaussian_law() -> None:
-    estimate, se = sol.discrete_max_exceedance(INST, 1)
+    estimate, _ = sol.discrete_max_exceedance(INST, 1)
     target = sol.reflection_tail(INST["a"], INST["H"]) / 2.0
     expect(
-        abs(estimate - target) <= simulation_band(se, INST["n_paths"]),
+        abs(estimate - target) <= simulation_band(target, INST["n_paths"]),
         "with one grid step the maximum is B_H, so P(B_H >= a) is half the tail",
     )
 
 
 def test_one_step_estimate_matches_the_one_step_law_for_second_seed() -> None:
-    estimate, se = sol.discrete_max_exceedance(INST2, 1)
+    estimate, _ = sol.discrete_max_exceedance(INST2, 1)
     target = sol.reflection_tail(INST2["a"], INST2["H"]) / 2.0
     expect(
-        abs(estimate - target) <= simulation_band(se, INST2["n_paths"]),
+        abs(estimate - target) <= simulation_band(target, INST2["n_paths"]),
         "with one grid step the maximum is B_H, so P(B_H >= a) is half the tail",
     )
+
+
+def test_one_step_draws_are_the_seeded_gaussians() -> None:
+    rng = random.Random(INST["seed"])
+    hits = sum(1 for _ in range(INST["n_paths"]) if rng.gauss(0.0, math.sqrt(INST["H"])) >= INST["a"])
+    estimate, _ = sol.discrete_max_exceedance(INST, 1)
+    within(estimate, hits / INST["n_paths"], 1e-12, "one grid step must draw random.Random(seed).gauss(0, sqrt(H))")
 
 
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["student seed", "second seed"])
 def test_grid_estimate_does_not_exceed_the_continuous_tail(inst: dict[str, Any]) -> None:
     tail = sol.reflection_tail(inst["a"], inst["H"])
     for n_steps in (4, inst["n_steps"]):
-        estimate, se = sol.discrete_max_exceedance(inst, n_steps)
+        estimate, _ = sol.discrete_max_exceedance(inst, n_steps)
         expect(
-            estimate <= tail + simulation_band(se, inst["n_paths"]),
+            estimate <= tail + simulation_band(tail, inst["n_paths"]),
             "a grid maximum is at most the continuous maximum, so the grid estimate cannot exceed the tail",
         )
 
@@ -407,10 +418,9 @@ def test_equal_grids_give_equal_counts() -> None:
 def test_one_step_coarse_grid_tracks_the_terminal_law() -> None:
     fine, coarse = sol.nested_grid_counts(INST, 8, 1)
     estimate = coarse / INST["n_paths"]
-    se = math.sqrt(estimate * (1.0 - estimate) / (INST["n_paths"] - 1))
     target = sol.reflection_tail(INST["a"], INST["H"]) / 2.0
     expect(
-        abs(estimate - target) <= simulation_band(se, INST["n_paths"]),
+        abs(estimate - target) <= simulation_band(target, INST["n_paths"]),
         "a one-step coarse grid observes B_H, whose exceedance probability is half the tail",
     )
     expect(fine >= coarse, "the fine count still dominates the coarse count")

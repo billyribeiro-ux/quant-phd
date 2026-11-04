@@ -1,0 +1,146 @@
+import re
+import json, sys
+P = "course/modules/LX/LX1/project.html"
+R = lambda i, check, loc, status, ev: {"id": i, "check": check, "location": loc, "status": status, "evidence": ev}
+rows = [
+R("proj-rung1-step3-rounding-claim", "2.6 spec (rung 1 worked steps) / 2.4 arithmetic", P+":173 (step 3), :175 (step 5)", "PASS",
+  "Step 3 says rounding happens once at print time; exact 10000000/0.85 cents = 11764705.882 prints 117647.06 (lab expected line 153). Step 5: 10000000/0.85 - 10000000/1.15 = 3069053.708 cents prints 30690.54 (expected line 165). lab_check.py: lab-LX1-project-1 output equals expected block."),
+R("proj-real-value-vs-lesson2", "2.4 notation and Lesson 2 attribution", P+":56, :500; course/modules/LX/LX1/L02.html:83 (V_t = D P_0 / P_t), :84 (Prop 2.1 uses (A2),(A3)), :89-90 (A2, A3), :97 (proof uses P_0 cancel)", "PASS",
+  "Conventions gives V_t = D/P_t as Lesson 2's V_t = D P_0/P_t with P_0 = 1; exemplar A writes D P_0/P_t and cites Prop 2.1(a) under (A2),(A3). Labs' A1/A2 are stated as the labs' own."),
+R("proj-manifest-note-misattributed", "2.4 data attribution", P+":267, :275, :289-290 (lab 3 docstring); course/assets/data/market/MANIFEST.json (fx_monthly: transform, columns, first, last, retrieved)", "PASS",
+  "Every dataset claim matches the MANIFEST fx_monthly entry: last-noon/last-value of month transform, currencies inverted (CAD, CHF, DKK, JPY, NOK, SEK), title USD per unit of foreign currency, 669 rows, 1971-01 to 2026-09, retrieved 2026-10-19. No spot-only wording is attributed to the snapshot on the page (the spot-only note is in tools/data_sources.yaml:62-64, not quoted as a claim)."),
+R("proj-lab3-citation-string", "2.4 citation string", P+":283 (Lab 3 hypothesis); lab-LX1-project-3 docstring :286", "PASS",
+  "Citation string 'Board of Governors of the Federal Reserve System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York)' equals tools/data_sources.yaml:61 and MANIFEST citation field."),
+R("proj-reading-reinhart-registry", "registry keys on the reading list", P+":627-631 (reading list)", "PASS",
+  "Reading list keys friedman1963monetary, eichengreen1992golden, garber2000famous: all present in references/references.json entries (lines 9399, 7946, 9667; status verified). reinhart2009this is absent (optional in plan section 5.2); no key cited that is not in the registry."),
+R("proj-spec-current-undefined", "brief item 1: current condition defined", P+":438 (brief item 1), :280 (Lab 3 window three)", "PASS",
+  "Current condition is dated within the twelve months ending at the last data month; for the snapshot that is 2025-10 to 2026-09 = window three, which Lab 3 prints as 12 changes (expected line 423-424)."),
+R("proj-exemplar-A-condition", "exemplar A episode and condition dating", P+":489 (condition), :493 (C1 annotation)", "PASS",
+  "Condition = sterling over window three 2025-10 to 2026-09; MANIFEST fx_monthly last = 2026-09 (field present). Locator = MANIFEST field and Lab 3 window."),
+R("proj-gate-commands", "gate commands on pin 67a2d13", "tools/check_projects.py, check_pages.py, check_dag.py, run_labs.py, page_smoke.py, fetch_data.py, verify_refs.py; ruff; mypy; pytest", "PASS",
+  "Observed: 'check_projects LX1: PASS'; 'check_pages LX1: PASS'; 'check_dag LX1: PASS'; 'run_labs LX1: PASS (7/7)'; 'page_smoke LX1: PASS' (--pages project.html --skip-sweep); ruff check and ruff format --check on the three twins pass; mypy --no-incremental on the three twins: 'Success: no issues found in 3 source files'; verify_refs --offline: '560 entries, 0 problems'; fetch_data --check: '3 datasets, 0 problems'; pytest tests/test_labs.py tests/test_run_labs.py tests/test_page_checks.py: all pass. Note: 'run_labs --page project.html' reported 0/0 (a path form), so the unit run is the evidence for the project labs. Full-workspace mypy and the full gate were not run (slice scope)."),
+R("proj-lab1-twin-run", "lab 1 twin run and page code", "tests/labs/LX1/lab-LX1-project-1.py; "+P+":71-170", "PASS",
+  "scripts/LX1-c-r3/lab_check.py: python -I -W error exit 0, stderr empty, stdout equals expected block (:146-165). lab_diff.py: page code equals twin byte-for-byte (trailing newline aside)."),
+R("proj-lab1-numbers", "lab 1 hypothesis, expected block, interpretation", P+":73 (hypothesis), :146-165 (expected), :166 (interpretation)", "PASS",
+  "Re-derived: 10000000/0.97 = 10309278.35 cents -> 103092.78 ... 10000000/1.15 -> 86956.52; 100(1/0.85-1) = 17.647 -> 17.65; 100(1/1.15-1) = -13.043 -> -13.04; difference 30690.54. All match the expected block."),
+R("proj-lab2-twin-run", "lab 2 completion twin run and page code", "tests/labs/LX1/lab-LX1-project-2.py; "+P+":178-254", "PASS",
+  "lab_check.py: twin run exit 0 and output equals expected block (:243-252). lab_diff.py: page code differs from the twin only on two lines (Fraction(nominal_cents) / price_level -> ___ and 100 * (start_price / end_price - 1) -> ___), the completion-problem rule. labs.js:133-135 grades the completion lab on output tokens."),
+R("proj-lab2-numbers", "lab 2 hypothesis and expected block", P+":180 (hypothesis), :243-252", "PASS",
+  "40000/0.93 = 43010.7527 -> 43010.75; 100(1/0.93 - 1) = 7.5269 -> 7.53. Path 1.00, 0.99, 0.98, 0.96, 0.95, 0.93 gives the printed real values (40404.04, 40816.33, 41666.67, 42105.26)."),
+R("proj-lab2-check-claims", "lab 2 interpretation: what the check does", P+":253", "PASS",
+  "Claim 'a real-value line that leaves out the division prints 40000.00 in every period' verified by lx1c_m01 output (all six lines 40000.00). Claim 'a burden line that inverts the ratio prints -7.00 in place of 7.53' verified by lx1c_m02 output ('change: -7.00'). Both mutants killed by the expected block."),
+R("proj-lab3-twin-run", "lab 3 twin run and page code", "tests/labs/LX1/lab-LX1-project-3.py; "+P+":281-300", "PASS",
+  "lab_check.py and a direct run (python -I -W error, data/fx_monthly.csv): exit 0, output equals expected block (:411-428). lab_diff.py: page code equals twin byte-for-byte. Blank GBP cell (1995-12 blanked on a copy) raises ValueError, as the docstring states."),
+R("proj-lab3-numbers", "lab 3 figures re-derived", P+":283 (hypothesis), :411-428 (expected), :430 (interpretation)", "PASS",
+  "scripts/LX1-c-r3/rederive_lab3.py (Decimal, 50 digits, independent sd): w1 n=668 zeros=3 sd=2.793528 -> 2.79; w2 n=321 zeros=2 sd=2.469950 -> 2.47; w3 n=12 zeros=0 sd=1.902019 -> 1.90; largest 13.58 (1985-03), -9.66 (2008-10), 2.96 (2026-04); ratio 0.8842 -> 0.88; difference 0.323578 -> 0.32. All match."),
+R("proj-lab3-L04-cross-check", "Lab 3 vs Lesson 4 lab (windows, counts, decimals)", P+":280, :293-294; course/modules/LX/LX1/L04.html (lab output), tests/labs/LX1/lab-LX1-L04-1.py", "PASS",
+  "L04 twin run (python -I -W error): 'changes 668' / 'changes 321'; 'standard deviation 0.027935' and '0.024700'; largest 0.135846 at 1985-03, 0.096575 at 2008-10; zero months 1976-07, 2012-07, 2019-11 (two of them in window two, matching the project's 2 zero changes). Project quotes the same counts and decimals."),
+R("proj-lab3-docstring-claims", "lab 3 docstring claims", "tests/labs/LX1/lab-LX1-project-3.py docstring (shown at "+P+":283-300)", "PASS",
+  "Claims checked against code and run: 669 months 1971-01..2026-09; GBP column, no interest column; windows (668, 321, 12) and start months; 1e-9 two-pass agreement check (window_report raises); blank or non-decimal cell raises (load_column); month gap raises; rounding exact binary half-up (show). All hold."),
+R("proj-lab3-interpretation-claims", "lab 3 interpretation claims", P+":430; course/modules/LX/LX1/L04.html:84 (Definition 2.1 fixed-parity model); L02.html Remark 3.3", "PASS",
+  "13.58 percent in 1985-03 is outside window two (expected line 417); 0.32 = 0.3236 unrounded; 12 changes, 11 degrees of freedom; two zero changes in window two; Definition 2.1 is the fixed-parity model cited by name. No causal claim is made."),
+R("proj-lab-simulated-labels", "SIMULATED labelling", P+":42, :71, :178, :281", "PASS",
+  "Labs 1 and 2 are labelled SIMULATED in the text and in their printed output; Lab 3 carries no SIMULATED label (grep count 0 in twin and section), as the plan requires for the real-data check."),
+R("proj-data-licence-quote", "licence quote", P+":275; course/assets/data/market/MANIFEST.json (fx_monthly licence); tools/data_sources.yaml:57-60", "PASS",
+  "Quoted sentence identical to MANIFEST licence and data_sources.yaml:57-60; licence_url federalreserve.gov/disclaimer.htm identical."),
+R("proj-data-snapshot-rebuild", "snapshot matches MANIFEST", "course/assets/data/market/fx_monthly.csv; MANIFEST.json (fx_monthly); fetch_data --check", "PASS",
+  "fetch_data --check: 0 problems. CSV has 669 data rows (670 lines with header), months 1971-01 to 2026-09, matching rows/first/last."),
+R("proj-data-fields", "columns and blanks", P+":275, :267; MANIFEST fx_monthly columns; fx_monthly.csv", "PASS",
+  "Columns AUD, CAD, CHF, DKK, EUR, GBP, JPY, NOK, NZD, SEK (MANIFEST). Re-derived: GBP 0 blanks; EUR 336 blanks, first observation 1999-01, last blank 1998-12 (scripts/LX1-c-r3/rederive_lab3.out). Page statements match."),
+R("proj-spec-ladder", "ladder order and rung definitions", P+":40-48 (ladder), :71-170 (rung 1), :178-255 (rung 2), :257-280 (rung 3 spec), :616 (rung 4)", "PASS",
+  "Order rung 1 worked, rung 2 completion, rung 3 independent project, rung 4 stretch matches plan section 5.1 and check_projects PASS."),
+R("proj-spec-curriculum-scope", "curriculum project block vs page", "curriculum/06-profession-capstone.yaml:19-49 (project block) vs "+P+":257-270, :435-446", "PASS",
+  "Title 'Then vs. now', brief (pick one episode and one current condition, mechanism-level comparison), deliverable two-page essay, grading rubric all match. Citation-clause inconsistency is recorded in proj-brief-rubric-escape-clauses."),
+R("proj-hours", "hours arithmetic", P+":33 (data-hours-project=10), :449-460 (time table); course/modules/LX/LX1/index.html:29 (lessons 40, project 10)", "PASS",
+  "Table rows 1 + 1 + 2 + 1.5 + 2.5 + 2 = 10, equal to hub data-hours-project 10; hub 40 + 10 = 50 (curriculum hours 50). Each row has a rationale."),
+R("proj-rubric-observable", "rubric descriptors observable", P+":469-475", "PASS",
+  "All four levels of each of C1-C5 name an element the essay shows or lacks. Round-2 vague descriptors replaced: C2 L1 'Names at least one similarity, with no chain of steps.'; C5 L1 'Mentions a caveat without naming what it limits.' Literal coverage gap for exemplar B C1/C3 annotations is recorded in proj-exemplar-b-annotations-vs-descriptors."),
+R("proj-calibration-exemplars", "exemplar scores vs descriptors", P+":483 (data-scores 4,4,4,4,3), :545 (data-scores 2,2,2,2,1)", "PASS",
+  "Within one level per criterion of my own scores: exemplar A 4,4,4,4,3 (agrees); exemplar B my scores C1 1 or 2, C2 2, C3 1 or 2, C4 2, C5 1 (within one level of official 2,2,2,2,1). Caveat: scoring was not strictly blind; I read the annotations before scoring each descriptor against the passage text."),
+R("proj-exemplar-locators", "exemplar A locators", P+":489 (title field, MANIFEST last), :500 (Lesson 2 Prop 2.1(a), Remark 3.3), :511 (MANIFEST transform), :522 (Lab 1 Part B, Lab 3 lines)", "PASS",
+  "Each locator exists: title field of eichengreen1992golden (registry line 7946 title 'Golden fetters: the gold standard and the Great Depression, 1919-1939'); L02.html Prop 2.1 and Remark 3.3 (line 128: 'The corollary says nothing about the cause of a fall'); MANIFEST transform and last field."),
+R("proj-exemplar-numbers", "exemplar numbers", P+":522, :533, :575, :579", "PASS",
+  "Exemplar A: 17.65 (Lab 1 Part B), 2.47/2.79/1.90, ratio 0.88, difference 0.32, 13.58 (1985-03) all match Lab 1 and Lab 3 output. Exemplar B: 2.47/2.79 = 0.885 -> 0.89 (rounded inputs) vs unrounded 0.88 (annotated correctly at :579)."),
+R("proj-reading-keys", "reading-list keys", P+":624-631", "PASS",
+  "Keys match registry entries; the sentence at :626 limits attribution to the exemplars' use of the Eichengreen title, which is what the page does (:489, :562)."),
+R("proj-notation", "notation registry", P+" (19 math spans); notation/notation.json (symbols T, Phi, gamma_3, gamma_4, R^ast, R^{e ast}, R_f, Q; macros)", "PASS",
+  "Symbols used: D, P_t, P_0, V_t, S_m, n, t, m, ln. None is a registered program-wide symbol; the registry says local letters are defined per lesson, and each is defined on the page (Conventions :56-60). No registered symbol reused with a different meaning."),
+R("proj-scope-words", "scope words and claims", P+":7 (meta), :267 (constraints), :44, :62, :77, :253, :295, :587", "PASS",
+  "Round-2 FAIL resolved: :267 now says one value per month for each currency column, blank before a column's first observation, euro blank before 1999 (336 blank cells re-derived); meta description no longer says spot-rate. Remaining 'spot' is at :587 inside exemplar B's gold-standard mechanism claim, not a dataset claim. 'every' and 'exactly' claims checked against code (668 changes; 40000.00 each period in the m01 mutant)."),
+R("proj-process-words", "process words in learner text", P+" (all prose, labs, comments)", "PASS",
+  "grep for builder|verifier|architect|planner|fixer|DATA_REQUEST|REFERENCE_REQUEST|pending|TODO|blocked|Haiku|Claude|orchestrat: no matches. 'Round once' (:173) is the rounding rule. 'placement bar' (:42) refers to the hub diagnostic at course/modules/LX/LX1/index.html:73-75, which defines it. Out of slice, noted: index.html:75 contains 'P0.1 is not yet released ... until P0.1 ships', which is build-status wording in learner text (hub, not this slice)."),
+R("proj-links-anchors", "links and anchors", P+" (all href and id targets); course/modules/LX/LX1/L02.html:110 (def-debt-deflation)", "PASS",
+  "check_pages LX1 PASS; page_smoke project.html PASS (zero failed requests, no unrendered math, no console errors); the concept link L02.html#def-debt-deflation resolves to L02.html:110."),
+R("proj-page-smoke", "page smoke, project page alone", P, "PASS",
+  "tools/page_smoke.py --unit LX1 --pages project.html --skip-sweep: 'page_smoke LX1: PASS' (light and dark, desktop and 360 px, per the tool's documented checks)."),
+R("proj-atlas-autograder-na", "no atlas key, no grader", "curriculum/06-profession-capstone.yaml:19-49; tools/mutate_graders.py --unit LX1", "PASS",
+  "The LX1 block has no atlas: key and grading: rubric. tools/mutate_graders.py --unit LX1 exits 0 with no output (no grader). Ten student-error mutants and five alternatives are applied to the project labs here, as the planner's analogue."),
+R("proj-mutants-student-errors", "student-error mutants (labs and planner analogue)", "ledgers/LX1/mutants/*.py (18 files); scripts/LX1-c-r3/run_r3.py, run_r3.out", "PASS",
+  "18/18 killed: 14 existing (lx1c_m01-m10, lx1c_r2n01-n04) and 4 new (lx1c_r3n01 debt in dollars as cents; r3n02 window three one month early; r3n03 ratio from rounded sds, prints 0.89; r3n04 zero threshold 1e-3, prints 34/14 zero changes). Re-run: 'mutants killed 18/18'."),
+R("proj-alternatives", "five alternative correct implementations", "tests/labs/LX1/lab-LX1-project-2.py, lab-LX1-project-3.py; scripts/LX1-c-r3/gen/*.py", "PASS",
+  "5/5 pass with the expected output: alt_lab2_burden_as_end_minus_start, alt_lab2_real_value_via_reciprocal, alt_lab3_log1p_changes, alt_lab3_stdev_only_no_two_pass, alt_lab3_welford_sd (run_r3.out 'alternatives passing 5/5')."),
+R("proj-exemplar-a-c2-annotation", "exemplar A C2 annotation: zero changes", P+":511, :515", "PASS",
+  "Round-2 FAIL resolved: the passage and annotation now both say 0 exact zero changes in window three, matching Lab 3 output (window three 'exact zero changes: 0', expected line 425)."),
+R("proj-exemplar-b-annotations-vs-descriptors", "exemplar B annotations vs literal rubric descriptors", P+":547 (verdict), :566 (C1 meets L2), :567 (C3 meets L2); descriptors :471 (C1 L2), :473 (C3 L2); passages :551, :562, :575, :587", "FAIL",
+  "C1 L2 descriptor is 'a date or a locator is missing for one of them'; exemplar B dates neither the episode nor the condition (verdict :547, passage :562), so the L2 descriptor is not met as written, and the annotation 'Meets C1 level 2' (:566) is unsupported. C3 L2 descriptor is 'Most claims are cited'; exemplar B has about ten factual claims (:551, :562, :575, :587) of which two carry a source (the title field at :562, the H.10 data without a locator), so 'Meets C3 level 2' (:567) is unsupported; the literal descriptor for C3 L1 ('Lists some sources') fits. Fail-closed: the official scores 2 for C1 and C3 do not follow from the descriptors as written."),
+R("proj-brief-rubric-escape-clauses", "counter-evidence and citation escape clauses agree across brief, spec and rubric", P+":441 (brief item 4), :473 (C3 L4), :261 and :267 (spec), :442 (brief item 5)", "FAIL",
+  "Three different rules: brief :441 lets a B/C claim 'state that the essay found none' (counter-evidence search); rubric C3 L4 :473 requires 'the essay states that it makes no such claim'; C3 L3 requires counter-evidence named for at least one B/C claim, so a student who follows the brief's 'found none' route loses level 3 and above on C3. Spec :267 has no escape clause at all. Spec :261 says 'Every claim is cited to a source you have read', while brief :441 and plan section 5.4 allow 'mark it as your own inference'. Fix: make :441 and :267 use the same clause as C3 L4 (name the counter-evidence, or state that the essay makes no such claim), and make :261 match 'cited, or marked as your own inference'."),
+]
+
+MUT_DESC = {
+ "lx1c_m01": ("real value without division", "lab-LX1-project-2"),
+ "lx1c_m02": ("burden ratio inverted", "lab-LX1-project-2"),
+ "lx1c_m03": ("real value multiplied", "lab-LX1-project-2"),
+ "lx1c_m04": ("burden as ratio, no percent", "lab-LX1-project-2"),
+ "lx1c_m05": ("real value rounded before burden", "lab-LX1-project-2"),
+ "lx1c_m06": ("start and end swapped in real value", "lab-LX1-project-2"),
+ "lx1c_m07": ("population sd, denominator n", "lab-LX1-project-3"),
+ "lx1c_m08": ("window two starts one month late", "lab-LX1-project-3"),
+ "lx1c_m09": ("simple return instead of log", "lab-LX1-project-3"),
+ "lx1c_m10": ("blank cell skipped", "lab-LX1-project-3"),
+ "lx1c_r2n01": ("real value truncated to whole cents", "lab-LX1-project-2"),
+ "lx1c_r2n02": ("lagged price level", "lab-LX1-project-2"),
+ "lx1c_r2n03": ("window three drops last change", "lab-LX1-project-3"),
+ "lx1c_r2n04": ("log change sign flipped", "lab-LX1-project-3"),
+ "lx1c_r3n01": ("debt entered in dollars as cents (NEW r3)", "lab-LX1-project-2"),
+ "lx1c_r3n02": ("window three starts 2025-09 (NEW r3)", "lab-LX1-project-3"),
+ "lx1c_r3n03": ("ratio computed from rounded sds, prints 0.89 (NEW r3)", "lab-LX1-project-3"),
+ "lx1c_r3n04": ("zero threshold 1e-3 counts small changes as zero (NEW r3)", "lab-LX1-project-3"),
+}
+import os
+mutants = []
+for f in sorted(os.listdir("ledgers/LX1/mutants")):
+    key = f[:9] if not f.startswith("lx1c_r2n") and not f.startswith("lx1c_r3n") else f[:11]
+    key = re.match(r"(lx1c_(?:m\d\d|r2n\d\d|r3n\d\d))", f).group(1)
+    desc, lab = MUT_DESC[key]
+    mutants.append({"name": f, "description": desc, "killed_by": lab + " expected block (stdout differs) or nonzero exit; scripts/LX1-c-r3/run_r3.out"})
+verdict = "FAIL" if any(r["status"] != "PASS" for r in rows) else "PASS"
+counts = {s: sum(1 for r in rows if r["status"] == s) for s in ("PASS", "FAIL")}
+frag = {
+ "unit": "LX1", "slice": "LX1-c", "round": 3,
+ "verifier": "Claude Haiku 5.5, independent verifier for LX1-c, round 3 (did not build LX1)",
+ "pin": "67a2d13e7575608e95b2e34a9c7c2a82c61b117b",
+ "base": "67c47689 (round-2 pin; delta 67c47689..67a2d13 read for project.html, lab-LX1-project-3.py, L02/L04/index hunks as context). Every row re-verified from the current pin; no PASS carried.",
+ "checkout": "/Users/billyribeiro/.fanout/wt/verifyE3-LX1-c (detached at 67a2d13, .venv symlinked)",
+ "scratch": "/tmp/lx1c-r3-* (disposable; removed)",
+ "verified_at": "2026-11-04T08:00:00+00:00",
+ "verdict": verdict,
+ "rows": rows,
+ "mutants": mutants,
+ "registry_flags": [
+   "eichengreen1992golden, friedman1963monetary, garber2000famous exist in references/references.json (lines 7946, 9399, 9667), status verified; eichengreen title matches the page's quoted title.",
+   "No registry key cited on the project page is absent from the registry. verify_refs --offline: 560 entries, 0 problems."],
+ "freshness_flags": [
+   "fx_monthly MANIFEST retrieved 2026-10-19; tools/data_sources.yaml:70-71 and :36-37 mention checked 2026-10-26 for about.htm (a different page); not a conflict with the page's retrieval date."],
+ "notes": [
+   "Lab runs: lab_check.py (twins under python -I -W error in scratch dirs with data/fx_monthly.csv): all three project twins exit 0 and equal their expected blocks. Page code equals twin for labs 1 and 3; lab 2 differs only on the two blanked lines.",
+   "Re-derivations: scripts/LX1-c-r3/rederive_lab3.py (Decimal, 50 digits) reproduces every Lab 3 figure and the EUR/GBP blank counts.",
+   "Rubric calibration: exemplar scores were read against the descriptors after reading the annotations; not strictly blind.",
+   "Alternatives (5/5 pass) and new mutants (4 new, all killed) are listed in run_r3.out.",
+   "Not checked: the full gate (mypy over the whole workspace, the whole pytest suite, build_site --check, render_curriculum) was not run; slice-scope commands only. No browser-based rubric form interaction was exercised beyond page_smoke. Cards (none in this slice), L01-L04 lessons other than the cross-checked lines, and the hub index beyond hours and the placement diagnostic were not verified here."
+ ],
+ "summary": f"LX1-c round 3: verdict {verdict}. {len(rows)} rows: {counts['PASS']} PASS, {counts['FAIL']} FAIL. FAIL: proj-exemplar-b-annotations-vs-descriptors (exemplar B 'Meets C1 level 2' and 'Meets C3 level 2' do not satisfy the literal L2 descriptors), proj-brief-rubric-escape-clauses (brief item 4, rubric C3 L4 and spec disagree on the counter-evidence and inference clauses). All round-2 FAIL rows re-verified PASS. Labs: 3/3 twins equal page code (lab 2 on blanks) and expected blocks; all Lab 3 figures re-derived; 18/18 mutants killed (4 new); 5/5 alternatives pass."
+}
+out = "ledgers/LX1/LX1-c.json"
+json.dump(frag, open(out, "w", encoding="utf-8"), indent=1, ensure_ascii=False)
+print("wrote", out, verdict, counts, len(mutants))

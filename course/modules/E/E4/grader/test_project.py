@@ -41,7 +41,7 @@ SD = float(INST["noise_sd"])
 COST = float(INST["info_cost"])
 KEYS = {"informed_fraction", "price_informativeness", "indifference_gap"}
 TOL_GAP = 1e-8  # the indifference gap, and the agreement of the gap with the oracle, in expected-utility units
-TOL_ROOT = 1e-6  # the agreement of the informed fraction with the oracle's root
+TOL_ROOT = 1e-10  # the agreement of the informed fraction with the oracle's root
 TOL_MOMENT = 1e-8  # the agreement of the price informativeness with the oracle's moment formula
 
 

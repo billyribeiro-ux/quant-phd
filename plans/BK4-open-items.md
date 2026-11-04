@@ -5,6 +5,25 @@ records a deviation between the built project and the plan, and the decision tak
 internally consistent (page, `grader/instance.py`, `grader/test_project.py` and the lab twins agree), the plan text was
 changed to match the project. Architect may overrule any of these.
 
+## Status of the plan conformance items (round 3)
+
+Items 1 to 4 below are the builder's proposals, not Architect rulings. The 2026-11-03 Architect block in
+`plans/BK4-build-plan.md` is binding ("where the plan states a recommendation ... follow it"), and the builder's edits to
+that plan (lines 419, 478, 481 and 515 in commit 67a2d13) have not been ratified, and they remain in the plan until the
+Architect rules. Until the Architect records a
+ruling in the plan's "Architect decisions" block, the project page and suite deviate from the binding plan on the points
+below. Round-3 verifier row `proj-plan-conformance` stays FAIL for these reasons. Not yet listed in round 2:
+
+- (e) Monotonicity: the plan asks for "on each seed" (plan 517). The suite checks `INST` and `INST2` only
+  (`test_margin_is_non_decreasing_in_the_target`).
+- (f) Exception table: the plan names five conditions (plan 441-445). The page and suite add `cover_bps` with an empty
+  `losses_cents` (project.html Constraints; `test_empty_losses_are_refused_in_cover_bps_with_the_scenario_message`).
+- (g) Plan 5.3 period convention (the settlement date is period 0; the scenario index starts at 1) appears nowhere on the
+  page. Not checked whether the page must state it.
+
+Round 3 also added grader tests for the defaulter-id, sizing and cover conditions (`test_project.py`, 81 checks). These
+follow the page's named conditions and do not change any rule in plan 5.2.
+
 ## Plan conformance decisions (round 2 verifier rows `proj-plan-conformance`)
 
 1. **Target set (plan §5.2).** The plan gave `target_bps` from {9900, 9950, 9975}. The project uses {9000, 9500, 9750}

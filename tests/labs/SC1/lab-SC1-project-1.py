@@ -44,7 +44,10 @@ def reflection_tail(level: float, horizon: float) -> float:
 
 
 def gaussian_tail_simpson(level: float, horizon: float, intervals: int = 4000) -> float:
-    """2 P(B_H >= level) by Simpson's rule on the N(0, H) density over [level, level + 12 sqrt(H)]."""
+    """2 P(B_H >= level) by Simpson's rule on the normal density with mean 0 and variance H.
+
+    The integration runs over [level, level + 12 sqrt(H)].
+    """
     top = level + 12.0 * math.sqrt(horizon)
     step = (top - level) / intervals
 
@@ -79,12 +82,14 @@ def main() -> None:
     quad = gaussian_tail_simpson(inst.level, inst.horizon)
     estimate, se = one_step_estimate(inst)
     target = tail / 2.0
-    band = 5.0 * se + 1.0 / inst.n_paths
+    target_se = math.sqrt(target * (1.0 - target) / inst.n_paths)
+    band = 5.0 * target_se + 1.0 / inst.n_paths
     print(f"seed {inst.seed} instance: label SIMULATED, H = {inst.horizon}, a = {inst.level}, N = {inst.n_paths}")
     print(f"closed form erfc(a / sqrt(2 H)) = {tail:.6f}")
     print(f"quadrature 2 P(B_H >= a) = {quad:.6f}, absolute difference from the closed form {abs(quad - tail):.2e}")
-    print(f"one step: estimate of P(B_H >= a) = {estimate:.6f}, standard error {se:.6f}")
-    print(f"target tail / 2 = {target:.6f}, band 5 se + 1/N = {band:.6f}, difference {abs(estimate - target):.6f}")
+    print(f"one step: estimate of P(B_H >= a) = {estimate:.6f}, sample standard error {se:.6f}")
+    print(f"target tail / 2 = {target:.6f}, target standard error {target_se:.6f}")
+    print(f"band 5 target se + 1/N = {band:.6f}, difference {abs(estimate - target):.6f}")
     print(f"inside the band: {abs(estimate - target) <= band}")
 
 

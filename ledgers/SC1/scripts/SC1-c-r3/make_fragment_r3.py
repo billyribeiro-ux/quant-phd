@@ -1,0 +1,198 @@
+"""Writes the round-3 fragment ledgers/SC1/SC1-c.json (rows are the verifier's findings; see the fragment notes)."""
+import json
+import sys
+
+OUT = "ledgers/SC1/SC1-c.json"
+S = "ledgers/SC1/scripts/SC1-c-r3/"
+O = S + "out/"
+P = "PASS"
+
+def row(rid, check, location, status, evidence, fix=None):
+    r = {"id": rid, "check": check, "location": location, "status": status, "evidence": evidence}
+    if status != P:
+        r["fix"] = fix
+    return r
+
+rows = [
+ row("gate-check-pages", "2.9 structure (check_pages)", "course/modules/SC/SC1/L07.html, L08.html",
+     P, "Run this round at 67a2d13: check_pages.py --unit SC1 --page L07 -> 'check_pages SC1 L07: PASS'; --page L08 -> PASS; check_pages.py --unit SC1 -> 'check_pages SC1: PASS' (" + O + "gates1.txt, " + O + "gates3.txt)."),
+ row("gate-check-dag", "2.9 DAG (check_dag)", "L07.html, L08.html links and anchors",
+     P, "check_dag.py --unit SC1 -> 'check_dag SC1: PASS' (" + O + "gates1.txt). Anchors read by hand: L07 links L01#def-brownian-motion, L02#def-brownian-motion-construction, L06#def-reflection-principle, own #def-running-maximum-distribution; L08 links L01, L02, L06, L07#def-running-maximum-distribution, own #def-first-passage-time; all exist (grep of id=\"def-\" in L01-L08)."),
+ row("gate-run-labs", "2.5 labs (run_labs)", "tests/labs/SC1/lab-SC1-L07-1.py, lab-SC1-L08-1.py",
+     P, "run_labs.py --unit SC1 --page L07 -> 'run_labs SC1: PASS (1/1)'; --page L08 -> 'run_labs SC1: PASS (1/1)' (" + O + "gates1.txt)."),
+ row("lab-L07-twin-isolated", "2.5 labs (python -I -W error)", "tests/labs/SC1/lab-SC1-L07-1.py",
+     P, "python -I -W error tests/labs/SC1/lab-SC1-L07-1.py: exit 0, stderr 0 chars (" + O + "twin_L07.txt via " + O + "gates2.txt; check_embed_r3.py prints 'L07 twin exit 0 stderr chars 0')."),
+ row("lab-L08-twin-isolated", "2.5 labs (python -I -W error)", "tests/labs/SC1/lab-SC1-L08-1.py",
+     P, "python -I -W error tests/labs/SC1/lab-SC1-L08-1.py: exit 0, stderr 0 chars (" + O + "twin_L08.txt; check_embed_r3.py 'L08 twin exit 0 stderr chars 0'); real 0.104 s."),
+ row("lab-L07-page-equals-twin", "2.5 labs (embed)", "course/modules/SC/SC1/L07.html <code data-run> vs tests/labs/SC1/lab-SC1-L07-1.py",
+     P, "check_embed_r3.py (" + O + "check_embed_r3.out): HTML-unescaped page code 8925 chars, twin 8926 chars; equal after rstrip (True); the only difference is the twin's final newline, the convention round 2 accepted."),
+ row("lab-L08-page-equals-twin", "2.5 labs (embed)", "course/modules/SC/SC1/L08.html <code data-run> vs tests/labs/SC1/lab-SC1-L08-1.py",
+     P, "check_embed_r3.py: 8413 vs 8414 chars; equal after rstrip (True); final-newline difference only."),
+ row("lab-L07-expected-equals-output", "2.5 labs (expected block)", "course/modules/SC/SC1/L07.html pre.expected",
+     P, "check_embed_r3.py: expected block equals twin stdout after rstrip (True); exact-string difference is the trailing newline only (" + O + "twin_L07.txt)."),
+ row("lab-L08-expected-equals-output", "2.5 labs (expected block)", "course/modules/SC/SC1/L08.html pre.expected",
+     P, "check_embed_r3.py: expected block equals twin stdout after rstrip (True) (" + O + "check_embed_r3.out)."),
+ row("lab-L07-printed-numbers", "2.2 numbers (a) lab-computed", "L07.html expected block and interpretation",
+     P, "Independent recomputation (" + S + "recompute_r3.py, out/recompute_r3.out): walk identity 78 of 78; tails by binomial sums 0.375000, 0.332306, 0.321084, 0.318255, 0.317547; grid proportions 0.2275, 0.2675, 0.2825, 0.3025 with se 0.020987, 0.022160, 0.022539, 0.022996; differences -0.089811, -0.049811, -0.034811, -0.014811; nesting violations 0; grid means 0.554645, 0.663890, 0.723150, 0.758633 with se 0.0315-0.0317 (unrounded twin values in out/twin_L07_digits.out: 0.723150393 rounds to 0.7232); Simpson and erfc 1-Phi(1)=0.1586552539. Every printed figure reproduced."),
+ row("lab-L08-printed-numbers", "2.2 numbers (a) lab-computed", "L08.html expected block and interpretation",
+     P, "recompute_r3.py: 90114 = sum n*2^n (n=1..12); pathwise agreement 90114 of 90114; first-passage counts at k=3..12 [512,0,384,0,288,0,224,0,180,0], sum 1588; #{S_12>=3}=794 (ratio exactly 2); E[min(nu_1,N)] by an independent DP on positions: 5.480560302734, 11.815731233488, 24.557203397240; Part C means 5.2850, 11.3840, 23.1240, se 0.1868/0.6288/1.8497, z -1.0466/-0.6866/-0.7748; Part D F(1)=0.317311, F(2)=0.479500, densities 0.241970725 and 0.109847822 with central-difference agreement 4.7e-12."),
+ row("lab-L07-hypothesis-interpretation", "2.5 lab statements", "L07.html lab hypothesis and interpretation",
+     P, "Each claim checked against out/recompute_r3.out and the expected block: exact tails decrease; 91, 107, 113, 121 counts (0.2275*400, 0.3025*400 and the 0.2675, 0.2825 proportions); violations 0; gaps 0.0898/0.0498/0.0348/0.0148; finest gap 0.0393 = 1.24 printed se; Part D agreement. The hypothesis wording 'checks the walk identity ... for every pair' matches the 78 pairs."),
+ row("lab-L08-hypothesis-interpretation", "2.5 lab statements", "L08.html lab hypothesis and interpretation",
+     P, "Checked against out/recompute_r3.out and the twin: 90114 sequences agree; parity zeros at even k; 1588 of 4096; 794 of 4096; 'exactly twice' (1588 = 2 x 794, S_12 even); Part C z -1.05, -0.69, -0.77 ('below by less than 1.1 se'); 'the walks are the same for the three horizons' (one capped list in the twin, lines 141-152)."),
+ row("lab-simulated-labels-seeds", "2.5 labs (seeds, SIMULATED labels)", "L07.html lab heading; L08.html lab heading; twins SEED",
+     P, "L07 heading '(Parts B and C SIMULATED)', SEED = 20260507 (twin line 32); L08 heading '(Part C SIMULATED)', SEED = 20260508 (twin line 37). Exact enumerations (Parts A, D of L07; A, B, D of L08) carry no SIMULATED label and use no randomness (twin docstrings)."),
+ row("lab-runtime", "2.5 labs (runtime)", "tests/labs/SC1 twins; page_smoke Pyodide timing",
+     P, "CPython wall time: L07 0.049 s, L08 0.104 s (time output in " + O + "gates2.txt). page_smoke Pyodide lab timing: lab-SC1-L07-1 0.1 s, lab-SC1-L08-1 0.2 s (" + O + "gates2.txt)."),
+ row("lint-mypy-twins", "code quality (ruff, mypy strict)", "tests/labs/SC1/lab-SC1-L07-1.py, lab-SC1-L08-1.py",
+     P, "ruff check: 'All checks passed!'; ruff format --check: '2 files already formatted'; mypy --no-incremental: 'Success: no issues found in 2 source files' (" + O + "gates3.txt)."),
+ row("page-smoke-L07-L08", "2.9 page_smoke (console, math, 360 px, labs in Pyodide)", "course/modules/SC/SC1/L07.html, L08.html",
+     P, "page_smoke.py --unit SC1 --pages L07 L08 -> 'page_smoke modules/SC/SC1/L07.html: PASS', 'page_smoke modules/SC/SC1/L08.html: PASS', 'page_smoke SC1: PASS' (" + O + "gates2.txt). Figures: none on these pages."),
+ row("pytest-lab-tools", "2.5 labs (pytest, tooling)", "tests/test_labs.py, tests/test_run_labs.py, tests/test_page_checks.py",
+     P, "pytest tests/test_labs.py tests/test_run_labs.py tests/test_page_checks.py -q: exit 0, all dots, no failures (" + O + "pytest_labs.out). Full suite not run (outside this slice)."),
+ row("verify-refs-offline", "2.1 citations (integrity, offline)", "references/references.json",
+     P, "verify_refs.py --offline: 'offline integrity: 560 entries, 0 problems', exit 0 (" + O + "verify_refs_offline.out). references/ and tools/ are unchanged between 67c47689 and 67a2d13."),
+ row("verify-refs-live-SC1", "2.1 citations (live, unit)", "references/references.json entries used by SC1 (shreve2004stochastic)",
+     P, "verify_refs.py --unit SC1 (live, plain client): 'live re-verification of SC1: 1 of 560 entries, 0 problems', exit 0 (" + O + "verify_refs_live_SC1.out)."),
+ row("refs-no-citation-markup", "2.1 attribution (no unread citation)", "course/modules/SC/SC1/L07.html, L08.html",
+     P, "grep -c 'data-cite\\|data-locator': L07.html 0, L08.html 0 (run this round). Both References sections say no passage from a registry source is cited; no theorem number, page or edition is typed for shreve2004stochastic."),
+ row("claim-grades-L07", "2.3 grades (re-graded)", "L07.html Theorem 1.3, Cor 1.5, Prop 2.2, Cor 2.3, Remark 2.4, key-results table, lab claims",
+     P, "Re-graded against BLUEPRINT section 3: T for Definition 1.1, Theorem 1.3 (T conditional on H2 = A3, A4, as the plan states), Cor 1.5(a),(b) (T; (b) also assumes A5, which is a labelled assumption), Prop 2.2, Cor 2.3, Remark 2.4 (T); C for the walk enumeration (Lab 1 Part A) and the simulation rows (Lab 1 Parts B, C), with the basis named. No claim graded above its basis."),
+ row("claim-grades-L08", "2.3 grades (re-graded)", "L08.html Prop 1.2, Cor 1.3-1.5, Prop 2.2-2.3, key-results table",
+     P, "Re-graded: Prop 1.2 T (no probability assumption); Cor 1.3 T (assuming A3, A4 through Lesson 7 Theorem 1.3); Cor 1.4 T (limit of probabilities, nothing per outcome); Cor 1.5 T (density, assuming A3, A4); Prop 2.2, 2.3 T (finite sums); walk enumeration and Part C simulation C with basis named."),
+ row("math-L07-thm-1.3", "2.4 mathematics (Theorem 1.3 and proof)", "course/modules/SC/SC1/L07.html Theorem 1.3 and its proof",
+     P, "Chain re-derived: L06.html Theorem 2.5 (lines 153-171: under A3, A4, P(M_t>=a)=2P(B_t>=a)); L01.html Definition 1.1 D2 at s=0 (lines 58-66) gives B_t ~ N(0,t); no atoms gives P(Z>=x)=1-Phi(x); L06 Corollary 2.6 (lines 174-183) gives 2P(B_t>a)=erfc(a/sqrt(2t)). 2(1-Phi(a/sqrt t))=erfc(a/sqrt(2t)) verified numerically at a=1, t=1 and t=4 (recompute_r3.out)."),
+ row("math-L07-cor-1.5b", "2.4 mathematics (Corollary 1.5(b))", "L07.html Corollary 1.5(b) proof",
+     P, "Integration by parts re-derived: int_0^R (1-Phi)=R(1-Phi(R))+phi(0)-phi(R); 0<=R(1-Phi(R))<=phi(R)->0; int_0^inf (1-Phi)=phi(0)=1/sqrt(2pi)=0.398942; then E[M_t]=2 sqrt(t) int(1-Phi)=sqrt(2t/pi), numerically sqrt(2/pi)=0.797884561 (recompute_r3.out)."),
+ row("math-L07-prop-2.2-cor-2.3-remark-2.4", "2.4 mathematics (Prop 2.2, Cor 2.3, Remark 2.4)", "L07.html Proposition 2.2, Corollary 2.3, Remark 2.4",
+     P, "Prop 2.2(a): grid times lie in [0,t], so the grid maximum is at most M_t; (b): N'=cN gives t_k=(kc)t/N', subset argument (both re-derived). Cor 2.3 inclusion and Remark 2.4 (P(max(0,B_t)>=a)=P(B_t>=a) for a>0, then factor 2 from Theorem 2.5 of Lesson 6) re-derived. Remark 2.4 verified by enumeration logic, not by simulation."),
+ row("math-L07-R1-R3-P2-P3-M-E", "2.4 mathematics (problem solutions)", "L07.html problem solutions M1-M3, P1-P3, E1-E3, R1-R3",
+     P, "Recomputed: M1 2(1-Phi(1))=0.317310507863 and erfc(2/sqrt 8)=erfc(1/sqrt 2); M2 scaling; M3 1-Phi(1)=0.1586552539 and the exact halving; P2 integration by parts; E1 counts 91, 121 (0.2275x400, 0.3025x400); E2 binomial sums 8008+4368+1820+560+120+16+1=14893 and 6885, total 21778/65536=0.332306; E3 sqrt(33759/63840000)=0.0230; R1 for a<0 and a<=0; R2 no atoms; R3 short horizons (remark 1.4 limits). Each recomputed by recompute_r3.py or by hand as shown."),
+ row("math-L08-prop-1.2-cor-1.3-1.4", "2.4 mathematics (Prop 1.2, Cor 1.3, Cor 1.4)", "L08.html Proposition 1.2, Corollaries 1.3, 1.4 and proofs",
+     P, "Prop 1.2: closed set {s: B_s=a} contains tau_a when tau_a<=t, giving M_t>=a; converse by intermediate value theorem on [0,t] (both directions re-derived). Cor 1.3 chain: first equality is Prop 1.2 (no probability assumption); second is L07 Theorem 1.3 (assumes A3, A4 via L06 Thm 2.5); erfc form is L06 Cor 2.6. Cor 1.4: union of increasing events over integers n; lim 2(1-Phi(a/sqrt n))=1 (re-derived)."),
+ row("math-L08-cor-1.5", "2.4 mathematics (Corollary 1.5, density)", "L08.html Corollary 1.5 and its proof",
+     P, "F(t)=2(1-Phi(a t^-1/2)); F'(t)=a t^(-3/2) phi(a/sqrt t)=a t^(-3/2) e^(-a^2/(2t))/sqrt(2 pi)=f_a(t) (derivative re-derived by hand: chain rule gives 2 phi(.)(a/2) t^(-3/2)). Numerical check f_1(1)=0.241970725 and f_1(2)=0.109847822 against a central difference of F, difference 4.7e-12 (recompute_r3.out). Integral identity F(t)=int_0^t f_a since F(0+)=0."),
+ row("math-L08-prop-2.2-2.3", "2.4 mathematics (Prop 2.2, Prop 2.3)", "L08.html Propositions 2.2, 2.3 and proofs",
+     P, "Prop 2.2: both inclusions re-derived (the first-passage index is at most N iff the maximum over 0..N reaches a; S_{k*}=a since steps are +-1); count identity from L06 Corollary 1.4 (L06.html lines 87-92). Brute force: 90114 of 90114 pathwise agreements (recompute_r3.out). Prop 2.3: min(nu,N)=sum_k 1{nu>k} for each outcome; each P(nu>k) = integer/2^k."),
+ row("math-L08-R3", "2.4 mathematics (Problem R3)", "L08.html Problem R3",
+     P, "d/dt log f_a = -3/(2t)+a^2/(2t^2) = (a^2-3t)/(2t^2): positive before a^2/3, negative after; mode a^2/3 (re-derived). Numerically f_1 at 1/3 (0.462541) exceeds f_1 at 0.30 (0.458568) and 0.36 (0.460542) (recompute_r3.out)."),
+ row("math-L08-R1-R2", "2.4 mathematics (Problems R1, R2)", "L08.html Problems R1, R2",
+     P, "R1: #{nu<=N} = #{S_N>=a}+#{S_N>a} = 2#{S_N>=a} - #{S_N=a}; for N=12, a=3, #{S_12=3}=0 by parity, giving 2 x 794 = 1588 (brute force, recompute_r3.out). R2: min(nu,N+1)-min(nu,N)=1{nu>N}, so the truncated mean is nondecreasing (re-derived)."),
+ row("prob-L08-all", "2.4 problems (all L08 problems, solutions)", "L08.html Problems M1-M3, P1-P3, E1-E3, R1-R3",
+     P, "All nine problems read and recomputed: M1 0.317311 (Cor 1.3); M2 0.241971; M3 5/8 by listing (4 sequences starting +1, plus (-1,+1,+1)) and the walk identity 4+1; P1 proof and hypotheses (continuity, B_0=0, a>0) match Prop 1.2; P2 walk identity re-derived; P3 truncated mean; E1 parity counts and sum 1588; E2 z values; E3 density 0.109848; R1-R3 as above."),
+ row("prob-L07-remaining", "2.4 problems (other L07 problems)", "L07.html problems M1-M3, P2, P3, E1-E3, R1-R3",
+     P, "Recomputed in math-L07-R1-R3-P2-P3-M-E. P1 is checked in prob-L07-P1-continuity and prob-L07-P1-assumptions."),
+ row("misconceptions-L07-content", "2.4 misconceptions (content)", "L07.html Misconceptions 1-3 (lines 390-404)",
+     P, "Misconception 1: P(M_1>=1)-P(B_1>=1)=0.3173-0.1587 is the event 'reaches 1 and ends below 1' (correct by Lemma 2.1(iii)-style reasoning and Theorem 1.3). Misconception 2: Prop 2.2(a) and Cor 2.3 are correct; printed grid estimates 0.2275 and 0.3025 are below 0.3173 (lab output). Misconception 3: no tail formula for B-tilde (L01 Section 4) is asserted."),
+ row("misconceptions-L08-content", "2.4 misconceptions (content)", "L08.html Misconceptions 1-3",
+     P, "Misconception 1: Cor 1.4 is a probability statement; {tau=infinity} has probability zero, not empty (correct). Misconception 2: P(tau_1<=1)=0.317311 vs P(B_1>=1)=0.1586552539; walk ratio exactly 2 at n=12, a=3 (1588 vs 794), parity correction 0 (Problem R1). Misconception 3: density ~ const t^(-3/2) gives no moment (correct)."),
+ row("canon-breaks-L07-L08", "2.4 canon breaks", "L07.html Section 3 (lines 379-386); L08.html Section 3 (lines 363-370)",
+     P, "L07: continuity (L06 Lemma 2.1 needs it, L06.html line 105-107), closed form conditional on A3, A4, grid maximum vs continuous tail (Cor 2.3). L08: the jump example (0 on [0,1/2), 2 from 1/2 on) has M_1=2>=1, never equals 1, so tau_1=infinity and {tau_1<=1} fails (verified by hand); Corollaries 1.3-1.5 assume A3, A4; finite does not mean integrable."),
+ row("key-results-L07", "2.4 key-results table", "L07.html Section 6 table (lines 512-530)",
+     P, "Each row checked against its proof, lab output, or simulation status; grades and sources consistent (T for proved results with the A3/A4 condition named; C for enumeration and SIMULATED lab rows)."),
+ row("key-results-L08", "2.4 key-results table", "L08.html Section 6 table (lines 492-512)",
+     P, "Each row checked against its proof or lab output; the 'within 1.1 standard errors below' row matches z -1.05, -0.69, -0.77."),
+ row("quiz-L07", "2.9 quiz (answers, tolerances, explanations)", "L07.html Section 7 (ten items)",
+     P, "Each keyed answer recomputed. Tolerances: 0.3173105 vs 0.3173105079 (7.9e-9 <= 1e-6); 0.158655 vs 0.1586552539 (2.5e-7 <= 1e-6); 0.797885 vs 0.797884561 (4.4e-7 <= 1e-6); 0.3173105 for M_4>=2 (7.9e-9). Options and explanations match Theorem 2.5, Proposition 2.2(a), Remark 2.4, Corollary 1.5(a) with m=0 (2 Phi(0)-1=0), R1 for a<0."),
+ row("quiz-L08", "2.9 quiz (answers, tolerances, explanations)", "L08.html Section 7 (ten items)",
+     P, "Keyed answers recomputed: 0.625 exact; 5.48056 vs 5.4805603 (3.0e-7 < 1e-5); 0.241971 vs 0.2419707 (2.8e-7 < 1e-6); 0.3173105 vs 0.3173105079 (7.9e-9); correct options for Prop 1.2 hypothesis, Cor 1.4 (probability), parity (S_k = k mod 2), R1 (2 x 794), Remark 1.6 (no E[tau])."),
+ row("structure-L07", "2.9 structure (section order, minimum counts)", "course/modules/SC/SC1/L07.html",
+     P, "check_pages.py --page L07 PASS (order, counts, why-it-matters length, 9 declared hours); read: why it matters, Sections 1-2 with definitions, theorems, proofs, remarks, lab; canon-breaks (3 items), misconceptions (3), problems (3 in each of 4 tiers), key-results table, quiz (10 items, each with an explanation), references."),
+ row("structure-L08", "2.9 structure (section order, minimum counts)", "course/modules/SC/SC1/L08.html",
+     P, "check_pages.py --page L08 PASS; same order and counts as L07 (canon-breaks 3, misconceptions 3, problems 3 per tier, quiz 10, key results 8 rows, 9 hours)."),
+ row("banned-and-process-words", "2.9 banned phrases (BUILDER_RULES 1.3-1.4)", "L07.html, L08.html prose",
+     P, "check_pages PASS (banned strings). Own scan: grep for build, builder, verifier, round, fixer, REQUEST, planning in L07/L08 returns only 'Standard'-type false hits and mathematical 'process' (stochastic process); no process words in learner text."),
+ row("notation-macros", "2.4 notation (macros and symbols)", "L07.html, L08.html, both twins, cards.json",
+     P, "LaTeX macros used (scan, this round): \\E, \\Prob, \\indic (registered in notation/notation.json); \\Phi as the standard normal CDF (registered meaning); \\varphi for the Gaussian density only (plan 2.3 local); \\tau_a, \\nu_a, S_k, M_t, B_t, s^\\ast local (plan 2.3). No \\Var, \\se or macro outside the registry; no capital T used as a symbol; no gamma_3, gamma_4, R^\\ast, Q."),
+ row("dag-defined-once-L07-L08", "2.9 DAG (nothing defined twice)", "L07.html dfn lines; L08.html dfn line",
+     P, "dfn anchors: def-running-maximum-distribution (L07), plain dfn 'discretely monitored maximum' (L07, no data-concept, allowed), def-first-passage-time (L08). No id defined twice across L01-L08 (grep of id=\"def-\")."),
+ row("dag-outside-closure", "2.9 DAG (concepts outside the prerequisite closure)", "L07.html, L08.html",
+     P, "check_dag PASS. Concept links only to normal-distribution, random-variable, expectation (concepts.html) and earlier SC1 lessons. grep for SC2/SC3 and D1-D10 names (Ito, SDE, Girsanov, Ornstein, Euler, Milstein, Feynman-Kac, Poisson, Levy, Black-Scholes, barrier, Monte Carlo, pseudo-random, bias, estimator, Donsker, invariance, bridge, risk-neutral, change of measure): none, except the plain-prose 'discrete bias' (L07 line 376), allowed as D9 plain prose."),
+ row("xref-L01-L05-L06", "2.9 cross-lesson references", "L07/L08 citations of L01, L02, L05, L06",
+     P, "Re-verified at 67a2d13 (L06 changed in this delta): L01 Def 1.1 D1-D2 (L01.html 58-66); L01 Section 4 B-tilde (L01.html 214-215, 233); L02 anchor; L05 Assumption A3 (L05.html line 269) and A4 (line 59); L06 Lemma 2.1 (i)-(iii) (L06.html 105-109), tau_a defined in L06 Section 2 (L06.html line 102), Corollary 1.4 discrete tail identity (L06.html 87-92), Theorem 2.5 (153-171), Corollary 2.6 (174-183). Every L07/L08 citation of these locators matches."),
+ row("cards-dup-and-numbers", "2.7 cards (duplicates, numbers)", "course/modules/SC/SC1/cards.json (187 cards; 25 L07, 23 L08)",
+     P, "cards_check_r3.py (" + O + "cards_check_r3.out): no duplicate ids, no duplicate fronts across 187 cards. Numbers on L07/L08 cards appear in the lesson or its expected block: 21778, 14893, 6885 (Problem E2); 0.0210, 0.0230, 0.7586, 0.0317 (expected block); 512..180 and 1588, 794 (Problem E1, R1); 0.241971, 0.109848, 0.479500 (expected block); -1.05, -0.69, -0.77 (Lab 1 Part C)."),
+ row("proof-L07-cor-1.5a-continuity-direction", "2.4 mathematics (proof of Corollary 1.5(a), continuity direction)", "L07.html Corollary 1.5(a) proof",
+     P, "Re-read: as b decreases to m the events {M_t>=b} increase; their union over b>m is {M_t>m}; continuity from below gives P(M_t>m)=lim P(M_t>=b). Correct direction; no defect."),
+ row("prob-L07-P1-continuity", "2.4 problem solution (P1 continuity)", "L07.html problem P1 solution",
+     P, "Solution states the same argument (sets increase as b decreases to m; union over b>m is {M_t>m}); correct."),
+ row("prob-L07-R2-continuity", "2.4 problem solution (R2 continuity)", "L07.html problem R2 solution",
+     P, "Solution: {M_t>=b} increase as b decreases to a, union {M_t>a}; P(M_t=a)=0 by subtraction of two equal closed forms; correct."),
+ row("num-rounding-0.3173105078", "2.2 numbers (rounding of unrounded values)", "L07.html (lines with 0.3173105078); L08.html",
+     P, "The string 0.3173105078 appears in L07 only as '2 x 0.1586552539 = 0.3173105078 on the printed digits' (labelled as printed-digit arithmetic at L07.html lines 376, 416 (M1 solution) and 547 (quiz explanation)). Every other closed-form value is given as 0.3173105079 or 0.31731050786 (unrounded 0.317310507863, recompute_r3.out). L08 uses 0.317311 (printed) and 0.3173105079 (unrounded)."),
+ row("notation-T-first-passage-index", "2.4 notation (registered symbol T)", "L07.html, L08.html, both twins, cards.json",
+     P, "grep for a capital T used as a symbol in L07/L08 math, twins and cards: no match. The walk's first-passage index is nu_a (Definition 2.1) and the horizon is t."),
+ row("dag-simple-random-walk-defined-twice", "2.9 DAG (defined once)", "L08.html Section 2 line 113; L06.html line 56",
+     P, "L08 names 'the simple random walk of Lesson 6' in plain prose without a dfn; L06.html line 56 is the only dfn for the simple random walk (grep). L07 line 150 uses the name in the lab hypothesis without a dfn (plain prose)."),
+ row("prose-L08-same-events", "2.4 prose claims (scope word 'same')", "L08.html line 113",
+     P, "Now reads: 'Its counts are exact, so they check discrete analogues of the events that the Brownian results use.' No identity of events is claimed."),
+ row("prose-L08-first-passage-name", "2.4 attribution of names across lessons", "L08.html Definition 1.1 (line 59)",
+     P, "'the time tau_a of Lesson 6, Section 2' checked: L06.html line 102 writes tau_a = inf{s >= 0: B_s = a} in Section 2 (line 100 heading)."),
+ row("lab-L07-docstring-exact-fractions", "2.5 lab statements (docstring vs code)", "tests/labs/SC1/lab-SC1-L07-1.py lines 9-11",
+     P, "Docstring: 'exact integer counts divided by 2**N, computed as floats and printed to six decimals'. Code: max_at_least(n, m) / 2**n printed with :.6f (line 93); matches."),
+ row("scope-L07-assumption-phrase", "2.4 scope claim ('every result on this page that uses the closed form carries the phrase or names H2')", "course/modules/SC/SC1/L07.html line 383 and every closed-form passage",
+     P, "Round-2 FAIL re-verified as fixed: the closed-form passages (Theorem 1.3, Remark 1.4, Cor 1.5, Cor 2.3, Remark 2.4, misconceptions 1-2, problems M1-M3 and R2-R3, quiz items 2, 5, 8, the lab interpretation) carry 'Assuming A3 and A4' or 'under H2'; the problem-set intro says problems using the closed form assume A3 and A4. Scan output: " + O + "closed_form_qualifiers_r3.out (manual reading, since the scan splits at prompt boundaries)."),
+ row("scope-L08-everything-after", "2.4 scope claim ('everything after it assume A3 and A4')", "course/modules/SC/SC1/L08.html lines 367, 381",
+     P, "Now reads: 'Corollaries 1.3 to 1.5 assume A3 and A4 of Lesson 5; Section 2 does not.' Section 2 proofs (Prop 2.2, 2.3) use finite counts only (recheck: no A3 used)."),
+ row("notation-kappa-redefined", "2.4 notation (local symbol redefined across lessons)", "course/modules/SC/SC1/L08.html; L07.html; twins; cards.json",
+     P, "Round-2 FAIL resolved: no kappa in L07, L08, both twins or cards.json (grep -c kappa = 0). L08 uses nu_a (Definition 2.1; no SC1 page of L07/L08 uses nu for another meaning). Note for the orchestrator: L06.html line 56 still uses kappa for the walk index; that is outside this slice (L06 slice)."),
+ row("math-L08-prop-2.3-denominator", "2.4 mathematics (statement precision, Prop 2.3)", "course/modules/SC/SC1/L08.html Proposition 2.3",
+     P, "Round-2 FAIL resolved: statement now reads 'Each probability in the first sum is an integer divided by 2^k'; counterexample removed (P(nu_1>2)=1/2 is 2/4 = integer/2^k)."),
+ row("prob-L07-P1-assumptions", "2.4 proof completeness (assumptions used, P1)", "course/modules/SC/SC1/L07.html problem P1 solution",
+     P, "Round-2 FAIL resolved: solution now reads 'Assumptions used: H1, H2 and H3 of Theorem 1.3, with H3 applied at each level b>0 and t>0 fixed.' The argument applies Theorem 1.3 at every b>0 and so uses H3 at each level."),
+ row("cards-L07-L08-full-read", "2.7 cards (full read of the 48 L07/L08 cards)", "course/modules/SC/SC1/cards.json (ids c134-c183, c190; 48 cards)",
+     "FAIL", "All 48 L07/L08 cards read against the current lesson text (cards_check_r3.py and manual read). Defects found: no card for the L07 misconception 'the running maximum has the same law as B_t' (row cards-L07-misconception-same-law) and three cards whose basis omits the A3/A4 dependence (row cards-basis-A3-dependence). Every other card matches its lesson text, its grade, and its basis.",
+     "Fix the two rows cards-L07-misconception-same-law and cards-basis-A3-dependence; no other card change is needed."),
+ row("math-L07-remark-1.4-phi0", "2.4 mathematics (proof step, Remark 1.4)", "course/modules/SC/SC1/L07.html Remark 1.4 (sentence 'so P(Z>=0)=P(Z<=0) and the two add to 1')",
+     "FAIL", "The step needs P(Z=0)=0. Remark 1.4 says the two events add to 1 with no reason. P(Z>=0)+P(Z<=0)=1+P(Z=0), so the sum is 1 only because the normal law has no atoms. Theorem 1.3's proof states this fact (L07.html line 79, 'The standard normal law has no atoms'), but Remark 1.4 does not. Minor gap (not a graded result).",
+     "Replace 'and the two add to 1' with 'and the two add to 1, because P(Z=0)=0 (the standard normal law has no atoms)'."),
+ row("notation-horizon-H", "2.4 notation (architect decision: H is the horizon symbol; plan 2.3 'the page says so once')", "course/modules/SC/SC1/L07.html Definition 2.1, Theorem 1.3, Cor 1.5, Remark 1.4; L08.html Corollary 1.3, Remark 1.6",
+     "FAIL", "plans/SC1-build-plan.md, Architect decisions (binding): 'H is the horizon symbol'; section 2.3: 'Use H for the horizon ... the page says so once'. The pages use t as the time and horizon variable (e.g. L07 Definition 2.1 'Fix t>0'; L08 Corollary 1.3 'for t>0'), H is never a horizon (grep), and no page states the T/H convention. Round 2 declined to fail this; this round does not waive a binding decision. Judgement call for the architect.",
+     "Either rename the horizon to H in the tail statements (L07 Theorem 1.3, Corollary 1.5, Definition 2.1, Corollary 2.3; L08 Corollary 1.3, Remark 1.6) and add the one-sentence convention once, or record an architect ruling in plans/SC1-build-plan.md that t is the time symbol (then this row is PASS)."),
+ row("lab-L08-twin-docstring-PATHS", "2.5 labs (docstring vs code; the docstring is printed on the page)", "tests/labs/SC1/lab-SC1-L08-1.py lines 3-4 (shown in L08.html code block)",
+     "FAIL", "The module docstring says Part C 'draws PATHS seeded simple random walk paths'. The twin defines no PATHS (grep: line 3 is the only use); the constant is SIM_PATHS (line 40, used at lines 21, 119, 142). The printed Part C line is correct ('1000 seeded ...'), so only the docstring is wrong.",
+     "Change 'draws PATHS seeded' to 'draws SIM_PATHS seeded' in tests/labs/SC1/lab-SC1-L08-1.py line 3, then run tools/embed_labs.py course/modules/SC/SC1/L08.html --refresh lab-SC1-L08-1 and tools/run_labs.py --unit SC1 --page L08."),
+ row("cards-L07-misconception-same-law", "2.7 cards (coverage: one card per misconception, BUILDER_RULES 7)", "course/modules/SC/SC1/L07.html line 392 (misconception 1); course/modules/SC/SC1/cards.json (no card)",
+     "FAIL", "cards_check_r3.py (" + O + "cards_check_r3.out): 'L07 misconception [The running maximum has the same law as B_t.] -> cards: NONE'. grep 'same law' in cards.json: no match. The other two L07 misconceptions have cards (SC1-c153, SC1-c154); all three L08 misconceptions have cards (c176, c190, c178).",
+     "Add one card (next free id, e.g. SC1-c184): front 'Does the running maximum M_t of Brownian motion have the same law as B_t?'; back 'No. Under A3 and A4, P(M_t>=a)=2 P(B_t>=a) for a>0 (Theorem 1.3), so at t=1, a=1 the tails are 0.3173 and 0.1587.'; grade T; basis 'Theorem 1.3 and Lab 1, Part D, assuming A3 and A4 of Lesson 5'."),
+ row("cards-basis-A3-dependence", "2.7 cards (plan 9: a result that depends on A3 says so in its basis)", "course/modules/SC/SC1/cards.json SC1-c139, SC1-c140, SC1-c163",
+     "FAIL", "cards_check_r3.py: c139 basis 'Proof of Corollary 1.5(a), Section 1, from Theorem 1.3' (its result depends on A3, A4 through Theorem 1.3, L07.html H2); c140 basis 'Proof of Corollary 1.5(b), Section 1, assuming A5' (depends on A3, A4 likewise); c163 basis 'Proof of Corollary 1.3, from Proposition 1.2, Theorem 1.3 of Lesson 7, and Corollary 2.6 of Lesson 6' (its second equality uses A3, A4). None of the three bases names A3 or A4.",
+     "Set the basis of SC1-c139 to 'Proof of Corollary 1.5(a), Section 1, from Theorem 1.3, assuming A3 and A4 of Lesson 5'; of SC1-c140 to 'Proof of Corollary 1.5(b), Section 1, assuming A3 and A4 of Lesson 5 and A5'; of SC1-c163 to 'Proof of Corollary 1.3, from Proposition 1.2, Theorem 1.3 of Lesson 7 (assuming A3 and A4 of Lesson 5), and Corollary 2.6 of Lesson 6'."),
+]
+
+fragment = {
+    "unit": "SC1",
+    "slice": "SC1-c",
+    "round": 3,
+    "verifier": "Claude Haiku 5.5, independent verifier for SC1-c (L07, L08 and lab twins), round 3; did not build SC1",
+    "pin": "67a2d13e7575608e95b2e34a9c7c2a82c61b117b",
+    "base": "67c47689c49435bc0e6639e3de4feded5eefdd64 (round-2 pin; round-2 fragment /Users/billyribeiro/.fanout/frags/E-SC1-c.round2.json)",
+    "checkout": "/Users/billyribeiro/.fanout/wt/verifyE3-SC1-c (detached at 67a2d13; .venv symlinked)",
+    "scratch": "ledgers/SC1/scripts/SC1-c-r3/out/ (outputs of every command and script in this round)",
+    "verified_at": "2026-11-04T11:42:29+00:00",
+    "verdict": "FAIL",
+    "rows": rows,
+    "mutants": [],
+    "registry_flags": [],
+    "freshness_flags": [],
+    "notes": (
+        "Delta 67c47689..67a2d13 in this slice: L07.html, L08.html, cards.json, tests/labs/SC1/lab-SC1-L07-1.py, lab-SC1-L08-1.py "
+        "(L06.html and L01-L05 changed in the same commit; re-read only for cross-references). Every row was re-verified this round; no round-2 PASS row is carried. "
+        "Not checked by this slice: hub index.html and L01-L06 and the project (other slices); project graders (run_graders, mutate_graders, check_projects: none in this slice); "
+        "render_curriculum, build_site --check, fetch_data --check (outside this slice); the full pytest suite (only tests/test_labs.py, tests/test_run_labs.py, tests/test_page_checks.py were run); "
+        "live verify_refs only for SC1 (1 entry); lab twins are demonstrations, not mutation-tested (architect ruling 9), so no mutants are listed. "
+        "The page code and the twin differ only by the final newline, the convention round 2 accepted. "
+        "Judgement calls: L08 Part D interpretation (closed-form values stated after 'Part D gives') is not failed, because the same paragraph says Part D evaluates formulas and does not check A3, A4. "
+        "L07 Corollary 1.5(a) cites H3 (a>0 fixed) while the proof uses H3 at each level b>0; read as Theorem 1.3 applied for each level, so not failed. "
+        "Remark 1.4 and the architect H decision are the only findings of notation/prose gaps in this round besides the card and docstring rows."
+    ),
+    "summary": "SC1-c round 3: 69 rows: 63 PASS, 6 FAIL, 0 UNVERIFIABLE; 0 mutants (lab twins are not mutation-tested).",
+}
+
+counts = {}
+for r in rows:
+    counts[r["status"]] = counts.get(r["status"], 0) + 1
+print("rows:", len(rows), counts)
+json.dump(fragment, open(OUT, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+open(OUT, "a", encoding="utf-8").write("\n")
+print("wrote", OUT)

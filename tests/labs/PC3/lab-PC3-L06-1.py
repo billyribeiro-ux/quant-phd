@@ -11,9 +11,9 @@ Part 1 is a forward-price check. A discount factor D = 97/100 for the expiry is 
 convention of the lesson. The no-arbitrage forward price is F = S / D. The portfolio of a long asset, a loan of S repaid
 as S / D, and a short forward at a quoted price F' pays F' - S / D at expiry in every spot state.
 
-Part 2 is a case. A machine costs 150000 USD. It earns a contribution of 50 USD per unit sold for three years, and
-units per year are sized by a Fermi product of three assumed factor ranges. The net present value is the sum of
-C_t / (1 + r)^t at the stated rate, with the outlay at t = 0.
+Part 2 is a case. A machine costs 15000000 cents. It earns a contribution of 5000 cents per unit sold for three
+years, and units per year are sized by a Fermi product of three assumed factor ranges. The net present value is the
+sum of C_t / (1 + r)^t at the stated rate, with the outlay at t = 0.
 """
 
 from __future__ import annotations
@@ -23,12 +23,12 @@ import math
 from collections.abc import Sequence
 from fractions import Fraction
 
-SPOT_CENTS = 9_700  # spot price today, 97.00 USD
+SPOT_CENTS = 9_700  # spot price today, 9700 cents
 DISCOUNT = Fraction(97, 100)  # assumed discount factor for the expiry
 QUOTED_CENTS = 10_100  # a forward quoted above the no-arbitrage price
 
-OUTLAY_CENTS = 15_000_000  # 150000 USD at t = 0
-MARGIN_CENTS = 5_000  # contribution per unit: 50 USD
+OUTLAY_CENTS = 15_000_000  # 15000000 cents at t = 0
+MARGIN_CENTS = 5_000  # contribution per unit: 5000 cents
 YEARS = 3
 RATE = Fraction(10, 100)  # assumed rate for the case
 
@@ -66,7 +66,7 @@ def part_one() -> None:
         constant = len(set(payoffs)) == 1
         print(f"{label}, F = {quoted}: payoff at expiry for S_T = 8000..12000 is {[str(p) for p in payoffs]}")
         equals_formula = payoffs[0] == quoted - spot / DISCOUNT
-        print(f"  payoff the same in every spot state: {constant}; equals F - S / D: {equals_formula}")
+        print(f"  payoff the same at the five spot values: {constant}; equals F - S / D: {equals_formula}")
     initial = -spot + spot  # buy the asset for S, lend nothing; borrow S today
     print(f"initial outlay of the portfolio: -S for the asset plus S from the loan = {initial} cents")
 
@@ -87,7 +87,7 @@ def cash_flows(units: Fraction) -> list[Fraction]:
 
 
 def part_two() -> None:
-    print("Part 2 · case: machine cost 150000 USD, margin 50 USD per unit, 3 years, rate 10% (assumed)")
+    print("Part 2 · case: machine cost 15000000 cents, margin 5000 cents per unit, 3 years, rate 10% (assumed)")
     lower, upper = fermi_units()
     print(f"Fermi bounds on units per year: lower {lower}, upper {upper}")
     annuity = sum((1 / (1 + RATE) ** t for t in range(1, YEARS + 1)), Fraction(0))

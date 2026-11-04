@@ -14,7 +14,7 @@ Part B: the equilibrium price vector and the normalization.
 Part C: each agent's demand, with its budget residual, and the market-clearing residual in each state, all zero.
 Part D: the first-order ratio PROBS[s] / (x[s] q[s]) for each agent in each state, which equals the agent's multiplier.
 Part E: demand is unchanged when every price is multiplied by 3 and wealth is re-valued at the new prices (wealth equals
-the value of the endowment), so the prices are fixed only up to scale.
+the value of the endowment), so demand does not fix the scale of the prices.
 Part F: an economy with a non-positive (zero) endowment entry is rejected with a ValueError.
 
 No random draws are used, so every run prints the same lines.

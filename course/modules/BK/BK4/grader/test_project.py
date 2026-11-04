@@ -472,6 +472,17 @@ def test_negative_initial_margin_is_refused_and_the_message_names_it() -> None:
     )
 
 
+def test_negative_initial_margin_of_the_defaulter_is_refused() -> None:
+    """The defaulter's own negative initial margin is refused, and the message names initial_margin_cents."""
+    __tracebackhide__ = True
+    margins = {1: 500, 2: 500, 3: -1}
+    must_refuse(
+        lambda: sol.waterfall(10, 3, margins, FIX_FUNDS, FIX_CAPITAL),
+        "waterfall with a negative initial margin for the defaulter",
+        naming="initial_margin_cents",
+    )
+
+
 def test_zero_initial_margin_is_accepted() -> None:
     """An initial margin of zero is a valid input, so the boundary on the accepted side is tested."""
     __tracebackhide__ = True
@@ -486,6 +497,17 @@ def test_negative_default_fund_is_refused_and_the_message_names_it() -> None:
     must_refuse(
         lambda: sol.waterfall(10, 3, FIX_MARGINS, funds, FIX_CAPITAL),
         "waterfall with a negative default fund",
+        naming="default_fund_cents",
+    )
+
+
+def test_negative_default_fund_of_the_defaulter_is_refused() -> None:
+    """The defaulter's own negative default fund is refused, and the message names default_fund_cents."""
+    __tracebackhide__ = True
+    funds = {1: 40, 2: 60, 3: -1}
+    must_refuse(
+        lambda: sol.waterfall(10, 3, FIX_MARGINS, funds, FIX_CAPITAL),
+        "waterfall with a negative default fund for the defaulter",
         naming="default_fund_cents",
     )
 
@@ -520,6 +542,39 @@ def test_defaulter_that_is_not_a_member_is_refused_and_the_message_names_it() ->
         lambda: sol.waterfall(10, 9, FIX_MARGINS, FIX_FUNDS, FIX_CAPITAL),
         "waterfall with a defaulter that is not a member",
         naming="defaulter_id",
+    )
+
+
+def test_defaulter_below_the_member_ids_is_refused_and_the_message_names_it() -> None:
+    """A defaulter id below the lowest member id is not a member: it is refused, and the message names defaulter_id."""
+    __tracebackhide__ = True
+    must_refuse(
+        lambda: sol.waterfall(10, 0, FIX_MARGINS, FIX_FUNDS, FIX_CAPITAL),
+        "waterfall with a defaulter id of 0, below the member ids",
+        naming="defaulter_id",
+    )
+
+
+def test_defaulter_inside_the_id_range_but_not_a_member_is_refused() -> None:
+    """Member ids need not be contiguous: id 3 lies between the members 1, 2 and 4, but it is not a member."""
+    __tracebackhide__ = True
+    margins = {1: 500, 2: 500, 4: 100}
+    funds = {1: 40, 2: 60, 4: 50}
+    must_refuse(
+        lambda: sol.waterfall(10, 3, margins, funds, FIX_CAPITAL),
+        "waterfall with a defaulter id inside the id range that is not a member",
+        naming="defaulter_id",
+    )
+
+
+def test_defaulter_that_is_a_member_of_a_non_contiguous_set_is_accepted() -> None:
+    """In the same non-contiguous set, id 4 is a member, so it is accepted: the accepted side of that limit."""
+    __tracebackhide__ = True
+    margins = {1: 500, 2: 500, 4: 100}
+    funds = {1: 40, 2: 60, 4: 50}
+    must_accept(
+        lambda: sol.waterfall(10, 4, margins, funds, FIX_CAPITAL),
+        "waterfall with a defaulter that is the highest of non-contiguous member ids",
     )
 
 
@@ -599,6 +654,21 @@ def test_fixture_four_losses_at_5000_bps_uses_the_exact_position() -> None:
     want = 20
     got = sol.margin_for_cover(losses, 5_000)
     assert got == want, "half of four scenarios is an exact position, and a strict count gives a different margin"
+
+
+def test_repeated_losses_each_count_as_a_scenario_in_the_sizing() -> None:
+    """A repeated loss is one scenario per occurrence, so the count S includes every repeat, not the distinct losses."""
+    __tracebackhide__ = True
+    got_four = sol.margin_for_cover([5, 5, 10, 20], 5_000)
+    got_five = sol.margin_for_cover([5, 5, 5, 9, 12], 6_000)
+    assert got_four == 5, (
+        "the scenario count S counts every occurrence of a loss, repeats included: k is the ceiling of "
+        "target * S / 10000, counted from the smallest of all S losses"
+    )
+    assert got_five == 5, (
+        "the scenario count S counts every occurrence of a loss, repeats included: k is the ceiling of "
+        "target * S / 10000, counted from the smallest of all S losses"
+    )
 
 
 def test_a_single_scenario_gives_that_scenario_at_every_target() -> None:
@@ -698,6 +768,13 @@ def test_full_margin_covers_every_scenario() -> None:
     want = 10_000
     got = sol.cover_bps(INST["losses_cents"], max(INST["losses_cents"]))
     assert got == want, "a margin at the largest loss covers every scenario"
+
+
+def test_repeated_losses_each_count_in_the_cover() -> None:
+    """Each of the S scenarios counts once, repeats included: two of four scenarios at or below 5 cents is 5000 bps."""
+    __tracebackhide__ = True
+    got = sol.cover_bps([5, 5, 10, 20], 5)
+    assert got == 5_000, "the cover counts every scenario, repeated losses included, and divides by all S scenarios"
 
 
 def test_cover_matches_the_oracle_on_both_instances() -> None:

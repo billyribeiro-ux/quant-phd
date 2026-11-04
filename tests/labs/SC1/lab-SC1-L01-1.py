@@ -2,9 +2,10 @@
 
 Standard library only. Nothing is random and nothing is read from a file, so every run prints the same lines.
 Every time, increment variance and covariance is a fractions.Fraction, so each printed comparison is exact.
-The lab simulates no path. It checks, on finite grids, the algebra that Proposition 1.2 of the page proves in
-general: the increment variances over a dyadic partition of [0, t] sum to t, and the covariance computed from
-independent increments equals min(s, t) at every pair of grid times.
+The lab simulates no path. It checks two identities on finite grids. The increment variances over a dyadic partition
+of [0, t] sum to t; this is arithmetic on the piece lengths, which Definition 1.1 (D2) fixes. The covariance computed
+from independent increments equals min(s, t) at every pair of grid times; this is the identity of Proposition 1.2,
+checked on a grid.
 """
 
 from __future__ import annotations
