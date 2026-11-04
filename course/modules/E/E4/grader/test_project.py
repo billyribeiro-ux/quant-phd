@@ -21,10 +21,11 @@ import math
 import os
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
-import solver as sol
-from instance import make_instance
+import solver as sol  # type: ignore[import-not-found]
+from instance import make_instance  # type: ignore[import-not-found]
 
 pytestmark = pytest.mark.filterwarnings("error")
 
@@ -171,7 +172,7 @@ def run(noise_sd: float, info_cost: float) -> dict[str, float]:
     out = sol.solve_model(noise_sd, info_cost)
     expect(isinstance(out, dict) and set(out) == KEYS, "solve_model must return exactly the three named keys")
     expect(all(isinstance(out[k], float) for k in KEYS), "every returned value must be a float")
-    return out
+    return cast(dict[str, float], out)
 
 
 INSTANCES = {"first": INST, "second": INST2}
@@ -193,6 +194,14 @@ def test_noise_volume_negative_is_rejected() -> None:
 def test_noise_volume_infinite_is_rejected() -> None:
     must_raise(
         lambda: sol.solve_model(math.inf, COST), "noise volume not finite", contains=("noise volume must be positive",)
+    )
+
+
+def test_noise_volume_nan_is_rejected() -> None:
+    must_raise(
+        lambda: sol.solve_model(math.nan, COST),
+        "noise volume not a number",
+        contains=("noise volume must be positive",),
     )
 
 
@@ -349,7 +358,7 @@ def test_unit_fraction_is_reported_at_zero_cost() -> None:
 
 @pytest.mark.parametrize("which", list(INSTANCES))
 def test_fraction_falls_with_the_cost(which: str) -> None:
-    """Proposition 5: the informed fraction is strictly decreasing in the information cost on the interior."""
+    """Proposition 5: on the interior, the informed fraction does not rise when the information cost rises."""
     inst = INSTANCES[which]
     sd, cost = float(inst["noise_sd"]), float(inst["info_cost"])
     lam = run(sd, cost)["informed_fraction"]

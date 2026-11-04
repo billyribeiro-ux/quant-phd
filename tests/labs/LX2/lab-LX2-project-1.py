@@ -6,14 +6,14 @@ draws are used, so every run prints the same lines.
 The case model. The model forecasts a monthly planning figure in whole units. For month index t its forecast is
 forecast(t) = 100 + 2 * t (assumption M1: the trend of 2 units per month is the model's stated assumption). The
 forecast for month t is issued before month t starts and uses no information from month t (assumption M2). The
-validation window is months 13 to 20, so H = 8 months.
+eight-month window is months 13 to 20, so H = 8 months.
 
 Error and hit. The error of month t is e = forecast - realised, in units. A month is a hit when |e| <= 2 (a band of
 2 units, inclusive). A month with |e| = 2 exactly is a hit at the edge of the band.
 
 Hit rate. The hit rate is the number of hits divided by H.
 
-Bias. The bias is the mean error over the validation window, (1 / H) times the sum of e, in units per month. A
+Bias. The bias is the mean error over the eight-month window, (1 / H) times the sum of e, in units per month. A
 positive bias means the model forecasts too high on average.
 
 Part A: the forecast, realised value, error and hit of each month.
@@ -21,7 +21,8 @@ Part B: the number of hits and the hit rate, to four decimals.
 Part C: the bias, in units per month, to four decimals.
 Part D: the months with |e| = 2 exactly, which are hits at the edge of the band.
 
-Every value is an exact Fraction. A value is rounded once, when it is printed: half up (a tie goes away from zero).
+The hit rate and the bias are exact Fractions. A value is rounded once, when it is printed: half up (a tie goes away
+from zero).
 """
 
 from __future__ import annotations
@@ -58,7 +59,9 @@ def decimal_text(value: Fraction, places: int) -> str:
 
 
 def main() -> None:
-    print("SIMULATED case model: forecast(t) = 100 + 2t units; validation months 13 to 20, H = 8; band 2 units")
+    print(
+        "SIMULATED case model: forecast(t) = 100 + 2t units; eight-month window, months 13 to 20, H = 8; band 2 units"
+    )
     print("Part A: month, forecast, realised, error (forecast - realised), hit")
     errors: list[int] = []
     hits = 0

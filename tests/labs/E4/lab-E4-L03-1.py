@@ -5,8 +5,9 @@ an aggregate endowment equal to the sum of ENDOWMENTS, and two agents. Agent i's
 sum over states of PROBS[s] times ln(x[s]). The equilibrium prices and demands are those of Lesson L02, which are
 computed here in exact Fractions.
 
-Part A: the marginal rate of substitution between states, (PROBS[s] / x[s]) / (PROBS[t] / x[t]), for each agent at the
-equilibrium, checked exactly against the price ratio q[s] / q[t].
+Part A: the marginal rate of substitution between states, (PROBS[s] / x[s]) / (PROBS[t] / x[t]), for each agent at
+the equilibrium, checked exactly against the price ratio q[s] / q[t]. States are numbered 1 to 3 in the printed output,
+as in the lesson, and indexed 0 to 2 in the code, so printed "states 1 2" is the code pair (0, 1).
 Part B: a finite search. Agent 1 receives the fraction f[s] of the aggregate in state s, with f[s] in the grid
 GRID, and agent 2 receives the rest. The search counts the grid allocations that make one agent strictly better off
 and no agent worse off than the equilibrium, and the same count against the endowment allocation.
@@ -96,7 +97,7 @@ def main() -> None:
             mrs.append((PROBS[left] / bundle[left]) / (PROBS[right] / bundle[right]))
         same = mrs[0] == mrs[1] == price_ratio
         print(
-            f"states {left} {right} mrs_agent_1 {mrs[0]} mrs_agent_2 {mrs[1]} "
+            f"states {left + 1} {right + 1} mrs_agent_1 {mrs[0]} mrs_agent_2 {mrs[1]} "
             f"price_ratio {price_ratio} all_equal {same}"
         )
     feasible = all(x1[s] + x2[s] == total[s] for s in range(len(total)))

@@ -14,8 +14,10 @@ Part D: a slope other than the equilibrium slope leaves a nonzero residual at on
 Part E: SIMULATED. A seeded sample of N_DRAWS draws of (v, eps, u). The sample slope of p on s and of v on p each lie
 within three estimated standard errors of the population value.
 
-Units: variances are in squared units of the payoff, which is in cents of value per unit of the asset. The coefficients
-are dimensionless. The sample uses floating point and prints six decimals. Every other value is an exact Fraction.
+Units: the payoff, the signal and the price are in price units per unit of the asset, so their variances are in squared
+price units. The supply u is in units of the asset. The coefficient theta_s is dimensionless. The coefficients kappa and
+theta_u have units of price per unit of the asset, because theta_u * u is a price. The sample uses floating point and
+prints six decimals. Every other value is an exact Fraction.
 """
 
 from __future__ import annotations
@@ -85,7 +87,8 @@ def residual(
 ) -> Fraction:
     """Total demand minus supply at (s, u) when the price is theta_s * s - theta_u * u.
 
-    The informed demand uses E[v | s] = sig_v2 s / (sig_v2 + sig_e2) and Var(v | s). The uninformed belief is the
+    The informed demand uses E[v | s, p] = omega s with omega = sig_v2 / (sig_v2 + sig_e2), and Var(v | s, p) = V_I
+    (Lemma 6.3, which holds for any price coefficients). The uninformed belief is the
     projection of v on p, with slope Cov(v, p) / Var(p) and residual variance Var(v) - slope Cov(v, p). Both use the
     moments of p, so the residual does not depend on the closed form.
     """

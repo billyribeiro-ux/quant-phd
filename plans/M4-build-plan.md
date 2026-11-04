@@ -247,14 +247,16 @@ Pyodide). The verifier times this in `page_smoke.py`. (Q12.)
 
 The suite must pass five independently written correct implementations, not only `reference.py`:
 
-1. Box-Muller for normal draws (instead of `random.gauss`).
-2. Polar (Marsaglia) method for normal draws.
+1. Box-Muller for the normal draws of the Student-t family (instead of `random.gauss`). The Gaussian family keeps
+   `random.gauss`, because its stream is frozen by project.html Conventions item 5.
+2. Polar (Marsaglia) method for the normal draws of the Student-t family, with the same scope as item 1.
 3. Cholesky factor computed row by row for \(\Sigma\).
 4. A chi-square draw as a sum of \(\nu\) squared normals (integer \(\nu\)) instead of a gamma draw.
 5. Quantile by full sort versus `heapq.nsmallest`, same order statistic.
 
-Each differs in its random stream, so the suite's tests must be property-based (§5.3), never exact-draw comparisons. The
-five files live under `tests/graders/M4/` (Q9); `run_graders.py` does not run them (§Tooling).
+Items 1, 2 and 4 differ from the reference in the random stream of the Student-t family. The Gaussian stream is the same
+in all five, because the suite compares it exactly (project.html Conventions item 5); every other comparison in the suite
+is property-based (§5.3). The five files live under `tests/graders/M4/` (Q9); `run_graders.py` does not run them (§Tooling).
 
 ### 5.6 Mutants (verifier writes at least three; each must be killed)
 

@@ -5,9 +5,10 @@ so every count is an exact integer and every probability is an exact fraction. T
 S_k is the sum of the steps e_1 to e_k, where each step e_i is +1 or -1. For an integer level a >= 1, M_N is
 the largest of S_0 to S_N. Proposition 1.3 of the page proves, for every N, every integer a >= 1 and every
 integer b < a, that the number of paths with M_N >= a and S_N = b equals the number of paths with S_N = 2a - b.
-The lab checks that identity for every (N, a, b) in the enumerated range, and checks the tail identity of
-Corollary 1.4. Part D shows the term that the discrete identity keeps and the continuous identity drops. Part E
-evaluates the continuous tail 2 P(B_1 > 1) in closed form.
+The lab checks that identity for every N from 1 to 12, every integer a with 1 <= a <= N, and every integer b < a
+with b >= -N, and checks the tail identity of Corollary 1.4 for the same (N, a). Part D shows the term that the
+discrete identity keeps and the continuous identity drops. Part E evaluates the continuous tail 2 P(B_1 > 1) in
+closed form.
 """
 
 from __future__ import annotations

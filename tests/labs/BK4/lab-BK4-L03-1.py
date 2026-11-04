@@ -165,16 +165,16 @@ def main() -> None:
     for loss in (1, 2):
         show(f"loss {loss}", loss, waterfall(loss, 4, {4: 0, 1: 0, 2: 0, 3: 0}, {1: 1, 2: 1, 3: 1, 4: 0}, 0))
 
-    d = DEFAULTER
-    survivors_df = sum(df[i] for i in MEMBERS if i != d)
+    defaulter = DEFAULTER
+    survivors_df = sum(df[i] for i in MEMBERS if i != defaulter)
     scenarios = (
-        ("Part A3, within the margin", im[d] // 2),
-        ("Part A3, reaching the default fund", im[d] + df[d] // 2),
-        ("Part A3, reaching the surviving members", im[d] + df[d] + capital + survivors_df // 2),
+        ("Part A3, within the margin", im[defaulter] // 2),
+        ("Part A3, reaching the default fund", im[defaulter] + df[defaulter] // 2),
+        ("Part A3, reaching the surviving members", im[defaulter] + df[defaulter] + capital + survivors_df // 2),
     )
     print("Part A3, seeded scenarios for defaulter 3:")
     for label, loss in scenarios:
-        show(label, loss, waterfall(loss, d, im, df, capital))
+        show(label, loss, waterfall(loss, defaulter, im, df, capital))
 
     losses = [rng.randint(0, MAX_LOSS_CENTS) for _ in range(SCENARIOS)]
     print(f"Part B, sizing: {SCENARIOS} seeded scenario losses from 0 to {MAX_LOSS_CENTS} cents (SIMULATED).")

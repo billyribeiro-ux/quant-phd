@@ -13,8 +13,8 @@ constants, the interior root is the unique solution of tau_y(lambda) = tau_bar, 
 is strictly increasing in lambda, with tau_y(1) = 1 / (1 + 4 sigma_u^2) (project page, Propositions 3 and 4).
 Over the box,
 tau_bar lies in (0, 0.2377], because tau_bar(0.120) = 0.2376 and tau_bar(0.150) = 0.0976, while
-tau_y(1) >= 1 / (1 + 4 * 0.75^2) = 0.3077. So 0 < tau_bar < tau_y(1) for every instance in the box. The suite re-checks
-the interior condition on each seed it runs.
+tau_y(1) >= 1 / (1 + 4 * 0.75^2) = 0.3077. So 0 < tau_bar < tau_y(1) for every instance in the box. This bound is
+derived here; the suite does not re-check it.
 
 This module does not import the reference solution, which is excluded from deployment. Nothing here is a real market,
 a real payoff or a real participant.

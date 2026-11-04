@@ -13,8 +13,8 @@ Part D: the sweep over the CARA coefficient a at the base noise volume.
 Part E: the benchmark of no supply noise, as a limit, and the largest value on the sweep.
 Part F: SIMULATED. A seeded sample of N_DRAWS draws of (v, eps, u), and the sample squared correlation of v and p.
 
-Units: the payoff is in cents of value per unit of the asset. Corr(v, p)^2 is dimensionless and lies in [0, 1]. Every
-population value is an exact Fraction. The sample uses floating point and prints six decimals.
+Units: the payoff v is in units of the asset (its liquidation value). Corr(v, p)^2 is dimensionless and lies
+in [0, 1]. Every population value is an exact Fraction. The sample uses floating point and prints six decimals.
 """
 
 from __future__ import annotations

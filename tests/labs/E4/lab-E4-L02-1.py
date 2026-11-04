@@ -13,8 +13,9 @@ Part A: the economy, the aggregate endowment and each agent's share of wealth, w
 Part B: the equilibrium price vector and the normalization.
 Part C: each agent's demand, with its budget residual, and the market-clearing residual in each state, all zero.
 Part D: the first-order ratio PROBS[s] / (x[s] q[s]) for each agent in each state, which equals the agent's multiplier.
-Part E: demand is unchanged when every price is multiplied by 3, so the prices are fixed only up to scale.
-Part F: an economy with a negative endowment is rejected with a ValueError.
+Part E: demand is unchanged when every price is multiplied by 3 and wealth is re-valued at the new prices (wealth equals
+the value of the endowment), so the prices are fixed only up to scale.
+Part F: an economy with a non-positive (zero) endowment entry is rejected with a ValueError.
 
 No random draws are used, so every run prints the same lines.
 """
@@ -102,7 +103,7 @@ def main() -> None:
         same = all(r == 1 / wealth[i - 1] for r in ratios)
         print(f"agent {i} ratios {tuple(str(r) for r in ratios)} equal_to_one_over_wealth {same}")
 
-    print("Part E: scaling every price by 3 leaves demand unchanged")
+    print("Part E: scaling every price by 3, with wealth re-valued at the new prices, leaves demand unchanged")
     scaled = tuple(3 * q for q in prices)
     for i, e in enumerate(ENDOWMENTS, start=1):
         again = demand(PROBS, scaled, dot(scaled, e))

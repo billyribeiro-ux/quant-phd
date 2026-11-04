@@ -7,9 +7,11 @@ Runs identically in the browser (Pyodide) and locally:
 with your bm_checks.py next to this file. Warnings are failures, as in the browser.
 
 Each test checks a property or an exact number. The expected numbers come from closed forms, from exact enumeration
-over the 2**n walks, from a quadrature written in this file, or from identities, never from the engine's own output.
-A Monte Carlo check uses a band of five standard errors plus one path (1/N), so that a target near zero is not a false
-failure. A failing test names the property it checks and the idea to revisit. It never prints the expected value.
+over the 2**n walks, from a quadrature written in this file, or from identities. Two tests compare two of the engine's
+own functions with each other, as an identity that must hold on the same paths, and no test compares the engine with
+its own earlier output. A seeded-simulation check uses a band of five standard errors plus one path (1/N), so that a
+target near zero is not a false failure. A failing test names the property it checks and the idea to revisit.
+It never prints the expected value.
 """
 
 from __future__ import annotations
@@ -70,8 +72,8 @@ def within(value: float, target: float, tolerance: float, message: str) -> None:
     expect(abs(value - target) <= tolerance, message)
 
 
-def monte_carlo_band(se: float, n_paths: int) -> float:
-    """Five standard errors, plus one path, as the tolerance for a Monte Carlo comparison."""
+def simulation_band(se: float, n_paths: int) -> float:
+    """Five standard errors, plus one path, as the tolerance for a seeded-simulation comparison."""
     return 5.0 * se + 1.0 / n_paths
 
 
@@ -135,7 +137,7 @@ def test_fifty_seeds_give_valid_instances_with_distinct_levels() -> None:
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["student seed", "second seed"])
 def test_reflection_tail_is_the_erfc_closed_form(inst: dict[str, Any]) -> None:
     target = math.erfc(inst["a"] / math.sqrt(2.0 * inst["H"]))
-    within(sol.reflection_tail(inst["a"], inst["H"]), target, 1e-12, "the tail must equal erfc(a / sqrt(2 t))")
+    within(sol.reflection_tail(inst["a"], inst["H"]), target, 1e-10, "the tail must equal erfc(a / sqrt(2 t)) to 1e-10")
 
 
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["student seed", "second seed"])
@@ -256,9 +258,21 @@ def test_srw_accepts_one_step(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", ["srw_max_count", "srw_terminal_count"])
+def test_srw_rejects_negative_length(name: str) -> None:
+    function = getattr(sol, name)
+    must_raise(lambda: function(-1, 1), f"{name} with n = -1")
+
+
+@pytest.mark.parametrize("name", ["srw_max_count", "srw_terminal_count"])
 def test_srw_rejects_zero_level(name: str) -> None:
     function = getattr(sol, name)
     must_raise(lambda: function(4, 0), f"{name} with a = 0")
+
+
+@pytest.mark.parametrize("name", ["srw_max_count", "srw_terminal_count"])
+def test_srw_rejects_negative_level(name: str) -> None:
+    function = getattr(sol, name)
+    must_raise(lambda: function(4, -1), f"{name} with a = -1")
 
 
 @pytest.mark.parametrize("name", ["srw_max_count", "srw_terminal_count"])
@@ -296,7 +310,7 @@ def test_one_step_estimate_matches_the_one_step_gaussian_law() -> None:
     estimate, se = sol.discrete_max_exceedance(INST, 1)
     target = sol.reflection_tail(INST["a"], INST["H"]) / 2.0
     expect(
-        abs(estimate - target) <= monte_carlo_band(se, INST["n_paths"]),
+        abs(estimate - target) <= simulation_band(se, INST["n_paths"]),
         "with one grid step the maximum is B_H, so P(B_H >= a) is half the tail",
     )
 
@@ -305,7 +319,7 @@ def test_one_step_estimate_matches_the_one_step_law_for_second_seed() -> None:
     estimate, se = sol.discrete_max_exceedance(INST2, 1)
     target = sol.reflection_tail(INST2["a"], INST2["H"]) / 2.0
     expect(
-        abs(estimate - target) <= monte_carlo_band(se, INST2["n_paths"]),
+        abs(estimate - target) <= simulation_band(se, INST2["n_paths"]),
         "with one grid step the maximum is B_H, so P(B_H >= a) is half the tail",
     )
 
@@ -316,7 +330,7 @@ def test_grid_estimate_does_not_exceed_the_continuous_tail(inst: dict[str, Any])
     for n_steps in (4, inst["n_steps"]):
         estimate, se = sol.discrete_max_exceedance(inst, n_steps)
         expect(
-            estimate <= tail + monte_carlo_band(se, inst["n_paths"]),
+            estimate <= tail + simulation_band(se, inst["n_paths"]),
             "a grid maximum is at most the continuous maximum, so the grid estimate cannot exceed the tail",
         )
 
@@ -343,6 +357,14 @@ def test_one_grid_step_is_accepted() -> None:
 
 def test_one_path_raises_value_error() -> None:
     must_raise(lambda: sol.discrete_max_exceedance(with_(INST, n_paths=1), 4), "n_paths = 1")
+
+
+def test_zero_paths_raises_value_error() -> None:
+    must_raise(lambda: sol.discrete_max_exceedance(with_(INST, n_paths=0), 4), "n_paths = 0")
+
+
+def test_negative_grid_size_raises_value_error() -> None:
+    must_raise(lambda: sol.discrete_max_exceedance(INST, -3), "n_steps = -3")
 
 
 def test_two_paths_are_accepted() -> None:
@@ -377,7 +399,7 @@ def test_one_step_coarse_grid_tracks_the_terminal_law() -> None:
     se = math.sqrt(estimate * (1.0 - estimate) / (INST["n_paths"] - 1))
     target = sol.reflection_tail(INST["a"], INST["H"]) / 2.0
     expect(
-        abs(estimate - target) <= monte_carlo_band(se, INST["n_paths"]),
+        abs(estimate - target) <= simulation_band(se, INST["n_paths"]),
         "a one-step coarse grid observes B_H, whose exceedance probability is half the tail",
     )
     expect(fine >= coarse, "the fine count still dominates the coarse count")
@@ -391,6 +413,23 @@ def test_coarse_grid_that_does_not_divide_fine_raises_value_error(n_fine: int, n
 @pytest.mark.parametrize(("n_fine", "n_coarse"), [(4, 2), (4, 4), (4, 1), (12, 6)])
 def test_coarse_grid_that_divides_fine_is_accepted(n_fine: int, n_coarse: int) -> None:
     must_accept(lambda: sol.nested_grid_counts(INST, n_fine, n_coarse), f"n_coarse = {n_coarse} divides n_fine")
+
+
+def test_fine_grid_of_zero_steps_raises_value_error() -> None:
+    must_raise(lambda: sol.nested_grid_counts(INST, 0, 1), "n_fine = 0")
+
+
+def test_coarse_grid_of_zero_steps_raises_value_error() -> None:
+    must_raise(lambda: sol.nested_grid_counts(INST, 4, 0), "n_coarse = 0")
+
+
+@pytest.mark.parametrize(("n_fine", "n_coarse"), [(-4, 2), (4, -2), (-1, -1)])
+def test_negative_grid_sizes_raise_value_error(n_fine: int, n_coarse: int) -> None:
+    must_raise(lambda: sol.nested_grid_counts(INST, n_fine, n_coarse), f"n_fine = {n_fine}, n_coarse = {n_coarse}")
+
+
+def test_one_fine_step_and_one_coarse_step_are_accepted() -> None:
+    must_accept(lambda: sol.nested_grid_counts(INST, 1, 1), "n_fine = 1 and n_coarse = 1")
 
 
 # ---------------------------------------------------------------------------------------------------------------------

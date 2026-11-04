@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import engine
 import market_maker as sol
@@ -153,11 +153,12 @@ def test_quotes_are_legal_on_every_turn(seed: int) -> None:
             isinstance(out, tuple) and len(out) == 3,
             "quote must return a tuple of three values: (bid_cents, ask_cents, size)",
         )
+        triple = cast(tuple[int, int, int], out)  # narrowed by the check above: a tuple of three values
         expect(
-            all(type(x) is int for x in out),
+            all(type(x) is int for x in triple),
             "every value a quote returns must be an integer: cents for prices, units for size",
         )
-        bid, ask, size = out
+        bid, ask, size = triple
         expect(bid < ask, "every quote needs a bid below its ask")
         expect(0 <= size <= 5, "a quoted size must lie in 0..5")
 
@@ -253,6 +254,19 @@ def test_replay_agrees_with_the_engine_final_cash_and_inventory(seed: int) -> No
     )
 
 
+def test_replay_sums_the_fills_not_the_running_totals() -> None:
+    """A hand-built log: one sale at the ask on turn 1, then running totals that stay at zero cash and zero inventory
+    on turns 2 to 20. The cash flow and the inventory must be the sums over the fills, not the last turn's totals."""
+    turns = [turn_record(1, filled=True, arrival="uninformed-buy", price=10_010, inventory=-1, cash=10_010)]
+    turns += [turn_record(t, size=0, inventory=0, cash=0) for t in range(2, HORIZON + 1)]
+    log = hand_log(turns, 10_000)
+    expect(
+        sol.replay(log) == oracle(log),
+        "the cash flow must be the sum of the fill cash flows, and the inventory the sum of the fills, "
+        "not the running totals of the last turn",
+    )
+
+
 @pytest.mark.parametrize("seed", SEEDS)
 def test_pnl_is_cash_flow_plus_inventory_times_settlement(seed: int) -> None:
     """The P&L identity holds exactly, in integer cents: P&L = cash flow + ending inventory x settlement value."""
@@ -315,6 +329,13 @@ def test_a_log_carries_its_own_seed_and_settlement(seed: int) -> None:
         log["settlement_cents"] == make_instance(seed)["settlement_cents"],
         "the settlement of a log must be the last fair value of its own instance",
     )
+
+
+def test_no_function_prints(capsys: pytest.CaptureFixture[str]) -> None:
+    """The quote and the replay print nothing: the constraints of the specification name no function that prints."""
+    log = engine.play(sol.quote, SEED)
+    sol.replay(log)
+    expect(capsys.readouterr().out == "", "no function may print")
 
 
 # The instance: deterministic, valid, and different across seeds.

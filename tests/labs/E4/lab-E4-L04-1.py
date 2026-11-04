@@ -1,7 +1,7 @@
 """E4 L04 lab 1: rank of a payoff matrix by exact Gaussian elimination, and the completeness test.
 
 Inputs are illustrative numbers, not data. A payoff matrix has one row per traded security and one column per state.
-Entry (j, s) is the payoff of security j in state s, in whole units of the numeraire. Two matrices are used: an
+Entry (j, s) is the payoff of security j in state s, in whole units of one common payoff unit. Two matrices are used: an
 incomplete market with two securities in three states, and a complete market with four securities in three states,
 one of which is a redundant combination of the other three.
 

@@ -1,4 +1,4 @@
-"""Student error: a hard-coded answer, the one for seed 0, is returned for every log.
+"""Student error: replay returns all zeros, a hard-coded answer, for every log.
 
 Excluded from deployment (BLUEPRINT section 7): the suites are public, the reference solutions are not.
 

@@ -58,10 +58,10 @@ def coverage_of(rho: Fraction, share: Fraction) -> Fraction:
 
 
 def seeded_path(seed: int, length: int) -> list[Fraction]:
-    """Return `length` distinct cumulative shares k/100 with k in 1 to 99, in increasing order.
+    """Return the `length` distinct sampled shares k/100 with k in 1 to 99, in increasing order, then append 99/100.
 
-    The fixed share 99/100 is appended as the last point of the path, so that the path reaches a share above both
-    reserve ratios of this lab and the omission rule is exercised.
+    The returned list has length + 1 shares. The appended 99/100 exceeds 19/20, so the omission rule is exercised for
+    that ratio, and it does not exceed 21/20. When the sample contains 99, the appended 99/100 repeats that share.
     """
     rng = random.Random(seed)
     hundredths = sorted(rng.sample(range(1, 100), length))
@@ -124,7 +124,7 @@ def check_differences(rho: Fraction, rows: list[Row]) -> None:
 
 
 def haircut_check() -> None:
-    """Print the full-cover threshold 1/(1 - h) under the valuation convention, and coverage on either side of it.
+    """Print the full-cover threshold 1/(1 - h) and the coverage at share 1/2 for a ratio just below it and at it.
 
     The convention values the reserves at (1 - h) of face value, so the effective ratio is rho times (1 - h). The
     coverage at share 1/2 is the same formula with the effective ratio in place of rho.

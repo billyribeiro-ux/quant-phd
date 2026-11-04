@@ -6,7 +6,8 @@ Fraction of cents is printed as a fraction and, once, as a decimal to two places
 
 Part 1 checks linearity of expectation for two dice. Part 2 solves a one-roll game with a paid reroll in two
 ways: by backward induction over the two options, and by enumerating every stopping policy. Part 3 applies
-stopping rules to a fair game and to a biased game over a finite horizon, by two methods that must agree.
+stopping rules to a fair game over a finite horizon, by two methods that must agree. Part 3b applies the same
+rules to a biased game, by the recursion alone.
 """
 
 from __future__ import annotations

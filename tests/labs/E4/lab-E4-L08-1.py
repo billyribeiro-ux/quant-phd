@@ -79,7 +79,7 @@ def informativeness(lam: float) -> float:
 
 
 def part_a() -> None:
-    """Seeded draws at lam = 0.5: market clearing holds exactly, and the uninformed slope matches the formula."""
+    """Seeded draws at lam = 0.5: clearing residual below 1e-12, and the sample slope within 0.02 of the formula."""
     lam = 0.5
     eq = equilibrium(lam)
     beta, kappa = eq["beta"], eq["kappa"]
@@ -127,7 +127,7 @@ def part_a() -> None:
 
 
 def part_b() -> None:
-    """Exact gains at the boundaries and the monotonicity of gain and informativeness on a grid."""
+    """Closed-form gains at the boundaries (double precision) and monotonicity of gain and informativeness on a grid."""
     g0 = gain_at_zero()
     g1 = equilibrium(1.0)["gain"]
     gmid = equilibrium(0.5)["gain"]
@@ -178,7 +178,7 @@ def part_c() -> None:
 
 
 def part_d() -> None:
-    """With no noise supply, gain is zero at every interior fraction, so no fraction is an equilibrium at cost 0.15."""
+    """No noise supply: gain is zero on the interior grid, so no grid fraction or endpoint is an equilibrium at 0.15."""
     grid = [k / (GRID + 1) for k in range(1, GRID + 1)]
     cost = 0.15
     gains = [equilibrium(x, var_u=0.0)["gain"] for x in grid]

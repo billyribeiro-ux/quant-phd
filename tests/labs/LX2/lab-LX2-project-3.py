@@ -26,7 +26,8 @@ Part E: the month with the largest absolute error, the earliest such month on a 
 Part F: the bias over the calibration window, in units per month, to four decimals. It checks the calibration fit. It is
 not part of the outcomes measures.
 
-Every value is an exact Fraction. A value is rounded once, when it is printed: half up (a tie goes away from zero).
+The hit rate and both biases are exact Fractions. A value is rounded once, when it is printed: half up (a tie goes away
+from zero).
 """
 
 from __future__ import annotations

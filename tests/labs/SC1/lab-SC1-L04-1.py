@@ -1,13 +1,13 @@
 """SC1 lab L04: the exponential martingale of Brownian motion, checked by numerical quadrature.
 
 Numerical, not simulated. Nothing is random and nothing is read from a file, so every run prints the same lines.
-B_t is normal with mean zero and variance t, so B_t has the law of sqrt(t) * Z for a standard normal Z. Hence
+B_t is normal with mean zero and variance t, so B_t has the law of sqrt(t) times a standard normal variable. Hence
 E[exp(theta * B_t)] is the integral of
 exp(theta * sqrt(t) * z) against the standard normal density phi(z), over the real line. The lab evaluates each
 integral by composite Simpson's rule with PANELS panels on [-LIMIT, LIMIT].
 
 For each theta the lab prints two checks. First, the quadrature of E[exp(theta * B_t)] against the closed form
-exp(theta**2 * t / 2). Second, the quadrature of E[M_t] for M_t = exp(theta * B_t - theta**2 * t / 2) against M_0 = 1.
+exp(theta**2 * t / 2). Second, the quadrature of E[Z_t] for Z_t = exp(theta * B_t - theta**2 * t / 2) against Z_0 = 1.
 Agreement with the closed form also tests that the truncation at LIMIT is harmless for these integrands.
 
 These are finite computations for three values of theta and one value of t. They are not a proof for all theta and t.
@@ -62,7 +62,7 @@ def main() -> None:
             f"theta = {theta:+.1f}: E[exp(theta B_t)] = {mgf:.9f}, exp(theta^2 t / 2) = {closed:.9f}, "
             f"agree within 1e-9 relative: {mgf_ok}"
         )
-        print(f"  E[M_t] = {martingale:.9f}, equal to M_0 = 1 within 1e-9: {martingale_ok}")
+        print(f"  E[Z_t] = {martingale:.9f}, equal to Z_0 = 1 within 1e-9: {martingale_ok}")
 
 
 main()

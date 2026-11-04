@@ -1,7 +1,6 @@
 """Rung 2 completion: the default of Lab 1, with the survivor share and the sizing index left for you to fill in.
 
-Standard library only. The inputs are SIMULATED: illustrative values, not market data. This file is the completed
-solution. The page shows the same code with two blanks, and every other line is the same.
+Standard library only. The inputs are SIMULATED: illustrative values, not market data.
 """
 
 import random

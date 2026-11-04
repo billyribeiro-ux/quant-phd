@@ -3,9 +3,10 @@
 The instance is the one the project's generator gives seed 0. This file draws the same four numbers in the same order,
 so the two agree. The reflection principle gives P(M_t >= a) = 2 P(B_t >= a) for a standard Brownian motion M, so the
 tail at level a and horizon H equals erfc(a / sqrt(2 H)). The lab prints that closed form, a Simpson's rule value of
-2 P(B_H >= a) from the N(0, H) density, and a seeded Monte Carlo estimate of P(B_H >= a) on N paths. With one grid step
+2 P(B_H >= a) from the N(0, H) density, and a seeded simulation estimate of P(B_H >= a) on N paths. With one grid step
 the grid maximum is B_H itself, so the estimate tests the half of the tail that needs no grid. Every printed number is
-rounded to six decimal places by Python's own formatting, from the unrounded value. Standard library only.
+rounded to six decimal places by Python's own formatting, from the unrounded value, except the Simpson difference,
+which is printed to two significant digits in exponent form. Standard library only.
 """
 
 from __future__ import annotations

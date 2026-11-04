@@ -37,7 +37,7 @@ def partial_sum(xi0: float, coeffs: list[list[float]], levels: int, t: float) ->
 
 
 def level_term_sup(coeffs_m: list[float], m: int) -> float:
-    """The supremum over t in [0, 1] of |T_m(t)|, where T_m is the level-m term of the sum.
+    """The supremum over t in [0, 1] of |Y_m(t)|, where Y_m is the level-m term of the sum.
 
     At most one hat of level m is non-zero at any t, and each hat peaks at 1, so the supremum is the largest
     coefficient in absolute value times 2**(-(m+1)/2).

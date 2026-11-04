@@ -1,7 +1,8 @@
 """LX2 L04 lab 1: outcomes analysis of a SIMULATED forecast path, with both measures in exact arithmetic.
 
-SIMULATED. Every realised value and every forecast in this lab is drawn from the generator below with a fixed seed. No
-value is observed data, and no value describes a real firm, a real planning figure or a real model.
+SIMULATED. The path of Parts A and B is drawn from the generator below with a fixed seed. Part D enumerates the
+generator's distribution, and the path of Part C is hand-built, with fixed values. No value is observed data, and no
+value describes a real firm, a real planning figure or a real model.
 
 Standard library only. Seed 20261103, with random.Random(seed) and no other source of randomness. No network.
 
@@ -24,7 +25,8 @@ Part A: the two measures over the full 24-period path, with the path printed per
 Part B: the same two measures over the first 12 and the last 12 periods, to show that the window is part of the
 definition.
 Part C: a hand-built path with errors +3, -3, +3, -3, to show that a bias of zero does not mean small errors.
-Part D: exact expectations under the generator, by enumerating all 9 x 13 pairs (U, V), printed as Fractions.
+Part D: exact expectations under the generator, by enumerating all 9 x 13 pairs (V, U), with V the forecast draw
+and U the realised draw, printed as Fractions.
 """
 
 from __future__ import annotations
@@ -137,12 +139,15 @@ def part_c() -> None:
 
 
 def part_d() -> None:
-    """Exact expectations under the generator, by enumerating all 9 x 13 equally likely pairs (U, V)."""
+    """Exact expectations under the generator, by enumerating all 9 x 13 equally likely pairs (V, U).
+
+    V is the forecast draw, over the 9 values -4 to 4, and U is the realised draw, over the 13 values -6 to 6.
+    """
     print("Part D: exact expectations under the generator, by enumeration")
     pairs = [
-        (FORECAST_CENTRE + u - (REALISED_CENTRE + v))
-        for u in range(-FORECAST_SPREAD, FORECAST_SPREAD + 1)
-        for v in range(-REALISED_SPREAD, REALISED_SPREAD + 1)
+        (FORECAST_CENTRE + v - (REALISED_CENTRE + u))
+        for v in range(-FORECAST_SPREAD, FORECAST_SPREAD + 1)
+        for u in range(-REALISED_SPREAD, REALISED_SPREAD + 1)
     ]
     count = len(pairs)
     hits = sum(1 for e in pairs if abs(e) <= BAND)

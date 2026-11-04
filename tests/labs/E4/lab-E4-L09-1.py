@@ -38,7 +38,7 @@ def posterior(partition: tuple[frozenset[int], ...], state: int, receipt: dict[i
 
 
 def meet(state: int) -> frozenset[int]:
-    """States reachable from state by alternating moves within a P1 cell and within a P2 cell."""
+    """States reachable from state by moves within a P1 cell or within a P2 cell."""
     reached = {state}
     frontier = [state]
     while frontier:

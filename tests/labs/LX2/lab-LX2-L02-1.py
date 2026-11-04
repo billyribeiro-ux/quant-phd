@@ -9,8 +9,8 @@ gpo1997united). For each pattern it stops at the first element the pattern does 
 with the registry key and the printed page it rests on. A pattern that states every element of a branch fires it.
 
 The three branches and the elements each one checks, in order:
-  classical (role issuer_insider): material information; nonpublic information; a trade in the issuer's securities;
-    no public disclosure before the trade.
+  classical (role issuer_insider): material information; nonpublic information; a trade (the classifier does not test
+    that the security is the issuer's); no public disclosure before the trade.
   tippee (role tippee): material and nonpublic information from an insider; a personal benefit to the tipper; the
     tippee traded; the tippee knew or should have known of the breach.
   misappropriation (role outsider): confidential information; a duty owed to its source; the information was used to
@@ -227,7 +227,7 @@ def branch_checks(p: Pattern) -> tuple[str, tuple[Check, ...]]:
         return "classical", (
             Check("material information", p.material, KEY_O_HAGAN, "pp. 651-652"),
             Check("nonpublic information", p.nonpublic, KEY_O_HAGAN, "pp. 651-652"),
-            Check("trade in the issuer's securities", p.traded, KEY_O_HAGAN, "pp. 651-652"),
+            Check("a trade", p.traded, KEY_O_HAGAN, "pp. 651-652"),
             Check("no public disclosure before the trade", not p.public_before_trade, KEY_DIRKS, "p. 654"),
         )
     if p.role == "tippee":

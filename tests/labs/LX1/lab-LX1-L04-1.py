@@ -2,9 +2,10 @@
 
 Data. The lab reads data/fx_monthly.csv, the spot exchange rates of the Board of Governors of the Federal Reserve
 System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), one per month. Each value is the last noon
-rate of its month, as the MANIFEST note states. The snapshot was retrieved 2026-10-19 and holds 669 months, 1971-01 to
-2026-09. The column read is GBP, in US dollars per pound sterling. The MANIFEST transform inverts CAD, CHF, DKK, JPY,
-NOK and SEK only, so GBP is a direct quote. Spot rates only: the file has no interest rates and no forward rates.
+rate of its month, as the note in tools/data_sources.yaml states. The snapshot was retrieved 2026-10-19 and holds
+669 months, 1971-01 to 2026-09. The column read is GBP, in US dollars per pound sterling. The MANIFEST transform
+inverts CAD, CHF, DKK, JPY, NOK and SEK only, so GBP is a direct quote. Spot rates only: the file has no interest
+rates and no forward rates.
 
 Conventions. A monthly log change at month m is ln(x_m / x_(m-1)), with x_m the rate of month m, the natural
 logarithm, per month, and no annualization. A window's dispersion is the sample standard deviation of its monthly log
@@ -19,12 +20,12 @@ the previous one, or a missing column raises ValueError. No row is skipped or fi
 Rounding. Log changes are floats computed from exact ratios. Printed values are the exact binary value of each float,
 rounded half away from zero (Decimal ROUND_HALF_UP) to the number of places stated on the line.
 
-Part A is a model check, not data: a parity held at 2.0000 dollars per pound for 12 months gives zero monthly log
-changes and zero dispersion, which is the model's claim in Proposition 2.2 of the lesson. Part B reads the GBP column
-and counts its changes and its exactly zero changes. Part C prints the count, the dispersion and the largest absolute
-change for each window, and checks the telescoping identity of Proposition 1.2 of the lesson: the sum of a window's
-log changes equals the log of its last rate over the rate before the window. Part D prints the difference in
-dispersion between the two windows.
+Part A is a SIMULATED model check, not data: a parity held at 2.0000 dollars per pound for 12 months gives zero
+monthly log changes and zero dispersion, which is the model's claim in Proposition 2.2 of the lesson. Part B reads
+the GBP column and counts its changes and its exactly zero changes. Part C prints the count, the dispersion and the
+largest absolute change for each window, and checks the telescoping identity of Proposition 1.2 of the lesson: the
+sum of a window's log changes equals the log of its last rate over the rate before the window. Part D prints the
+difference and the ratio of the two windows' dispersions.
 """
 
 from __future__ import annotations
@@ -136,11 +137,11 @@ def largest_move(changes: Sequence[tuple[str, float]]) -> tuple[str, float]:
 
 def main() -> None:
     """Print Parts A to D in a fixed order."""
-    # Part A: a model check, not data.
+    # Part A: a SIMULATED model check, not data.
     model_rows = [(month_label(month_index("2000-01") + i), MODEL_PARITY) for i in range(MODEL_MONTHS)]
     model = log_changes(model_rows)
     model_values = [c for _, c in model]
-    print(f"Part A: model check, not data: a parity held at {show(float(MODEL_PARITY), 4)} dollars per pound")
+    print(f"Part A: SIMULATED model check, not data: a parity held at {show(float(MODEL_PARITY), 4)} dollars per pound")
     print(f"model monthly log changes: {len(model)}; all exactly zero: {all(c == 0.0 for c in model_values)}")
     print(f"model sample standard deviation: {show(sample_sd(model_values), 6)}")
 
