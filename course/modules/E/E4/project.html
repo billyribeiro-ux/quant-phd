@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="E4" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>E4 Project · Price Informativeness</title>
+  <meta name="description" content="Solve a noisy rational-expectations model with costly information: find the informed fraction by bisection, derive and report the price informativeness, and show how both respond to the noise volume and the information cost. The solver is autograded on seeded SIMULATED instances; the report is graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">E4 General Equilibrium &amp; Information in Markets</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="28">
+      <header class="page-head">
+        <p class="eyebrow">E4 project · 28 hours · autograded solver, rubric-graded report</p>
+        <h1>Price Informativeness</h1>
+        <p class="lede">Some investors pay to learn the payoff of a risky asset, and the others learn only from its price. Noise traders, investors who trade for reasons unrelated to the payoff, add a random supply of the asset, so the price moves for reasons unrelated to the payoff and reveals less about it as the noise grows. You write the solver that finds the fraction of investors who pay to learn, and you report how that fraction and the price's informativeness move with the noise and with the cost of information.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are at full length. If you met the placement bar on the <a href="index.html#placement">module page</a>, skip rungs 1 and 2 and start at rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: one SIMULATED instance, solved step by step, with the quantity each step computes printed.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: the return line of the indifference gap is blanked. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: the solver <code>solver.py</code>, autograded in <a href="#grader-section">the autograder section</a>, and the report, graded by the rubric in <a href="#report">the report section</a>, with annotated exemplars and a self-assessment.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Lab 1 uses one SIMULATED instance with a noise volume of 0.60 and an information cost of 0.13. Lab 2 uses 0.70 and 0.14. Both pairs are stated inputs chosen for these examples, not draws from the generator in <code>grader/instance.py</code>, and neither lab reads a file. The model's constants are the same in both labs and in the project: risk aversion \(a = 2\), prior precision \(\tau_v = 1\) and signal precision \(\tau_\varepsilon = 1\). The derivation of each formula the labs compute, except the bisection itself, is in <a href="#model">the model section</a>. The equation that fixes the informed fraction is Proposition 3, and the bisection is the method of <a href="#spec">the specification</a>.</p>
+
+        <section class="lab" id="lab-E4-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: one SIMULATED instance, step by step</h3>
+          <p class="hypothesis">The instance is SIMULATED: a noise volume of 0.60 and an information cost of 0.13, with the constants above. Expected, stated before running: the gap is \(+0.053092\) as the informed fraction tends to 0 and \(-0.080731\) at 1, so it changes sign on the interval; the bisection's root is \(\lambda^* = 0.57937525\), where the gap is zero to the printed precision; the ratio \(b_u/b_s\) equals \(-a/(\lambda^*\tau_\varepsilon) = -3.45199422\); the precision of the price signal equals \(\bar\tau = 0.18904110\) at the root; and the informativeness is \(0.15898618\), which is also \(1 - e^{2ac}\tau_v/(\tau_v+\tau_\varepsilon)\).</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: one SIMULATED instance, solved step by step.
+
+Standard library only. The two inputs are stated values for this example, a noise volume of 0.60 and an information
+cost of 0.13. They are not a draw from the generator in grader/instance.py. The model constants are a = 2, tau_v = 1
+and tau_e = 1. Each step prints the quantity it computes, so every printed number comes from the code below.
+"""
+
+import math
+
+A = 2.0  # the CARA coefficient
+TAU_V = 1.0  # the prior precision of the payoff v
+TAU_E = 1.0  # the precision of the signal s = v + eps
+SD = 0.60  # the noise volume: the standard deviation of the noise supply u
+COST = 0.13  # the information cost c
+BISECTION_STEPS = 60  # 60 halvings of [0, 1] reach the floating-point resolution near the root
+
+
+def price_precision(lam: float) -&gt; float:
+    """tau_y, the precision of the price signal, for an informed fraction lam in (0, 1]: lam^2 tau_e^2 /
+    (lam^2 tau_e + a^2 SD^2). It is 0 at lam = 0."""
+    return lam * lam * TAU_E * TAU_E / (lam * lam * TAU_E + A * A * SD * SD)
+
+
+def price_coefficients(lam: float) -&gt; tuple[float, float]:
+    """The coefficients b_s and b_u of the linear price p = b_s s + b_u u, for lam in (0, 1]."""
+    ty = price_precision(lam)
+    denominator = lam * (TAU_V + TAU_E) + (1.0 - lam) * (TAU_V + ty)
+    b_s = (lam * TAU_E + (1.0 - lam) * ty) / denominator
+    return b_s, -A * b_s / (lam * TAU_E)
+
+
+def uninformed_term(lam: float) -&gt; float:
+    """F_U(lam) for lam in (0, 1]: the Gaussian term of the uninformed investor's expected utility."""
+    ty = price_precision(lam)
+    b_s, _ = price_coefficients(lam)
+    r = ty / (TAU_V + ty) - b_s
+    return math.pow(1.0 + r * r * (TAU_V + ty) * (1.0 / TAU_V + 1.0 / ty), -0.5)
+
+
+def informed_term(lam: float) -&gt; float:
+    """F_I(lam) for lam in (0, 1]: the Gaussian term of the informed investor's expected utility."""
+    b_s, b_u = price_coefficients(lam)
+    precision = TAU_V + TAU_E
+    slope = TAU_E / precision - b_s
+    var_gap = slope * slope * (1.0 / TAU_V + 1.0 / TAU_E) + b_u * b_u * SD * SD
+    return math.pow(1.0 + precision * var_gap, -0.5)
+
+
+def gap(lam: float) -&gt; float:
+    """The informed-minus-uninformed expected utility at lam in (0, 1]: F_U(lam) - exp(a c) F_I(lam)."""
+    return uninformed_term(lam) - math.exp(A * COST) * informed_term(lam)
+
+
+def gap_at_zero() -&gt; float:
+    """The limit of the gap as lam tends to 0: the price then tends to -a u / tau_v."""
+    uninformed = math.pow(1.0 + A * A * SD * SD / TAU_V, -0.5)
+    informed = math.pow(1.0 + TAU_E / TAU_V + (TAU_V + TAU_E) * A * A * SD * SD / (TAU_V * TAU_V), -0.5)
+    return uninformed - math.exp(A * COST) * informed
+
+
+def main() -&gt; None:
+    print("step 1 | inputs: noise volume", SD, "| information cost", COST, "| a", A)
+    g0, g1 = gap_at_zero(), gap(1.0)
+    print("step 2 | gap as the informed fraction tends to 0:", f"{g0:+.6f}")
+    print("step 2 | gap at the informed fraction 1:", f"{g1:+.6f}")
+    print("step 2 | the gap changes sign on (0, 1):", g0 &gt; 0.0 and g1 &lt; 0.0)
+    low, high = 0.0, 1.0
+    for step in range(1, BISECTION_STEPS + 1):
+        mid = 0.5 * (low + high)
+        if gap(mid) &gt; 0.0:
+            low = mid
+        else:
+            high = mid
+        if step in (1, 2, 3):
+            print(f"step 3 | after halving {step}: bracket [{low:.6f}, {high:.6f}]")
+    root = 0.5 * (low + high)
+    print("step 3 | after", BISECTION_STEPS, "halvings the bracket width is", f"{high - low:.3e}")
+    print("step 4 | informed fraction lambda* =", f"{root:.8f}")
+    print("step 4 | gap at lambda* =", f"{gap(root):+.3e}")
+    b_s, b_u = price_coefficients(root)
+    print("step 5 | price coefficients b_s =", f"{b_s:.8f}", "b_u =", f"{b_u:.8f}")
+    print("step 5 | b_u / b_s =", f"{b_u / b_s:.8f}", "and -a / (lambda* tau_e) =", f"{-A / (root * TAU_E):.8f}")
+    ty = price_precision(root)
+    print(
+        "step 6 | tau_y at lambda* =",
+        f"{ty:.8f}",
+        "| tau_bar = (tau_v + tau_e) exp(-2 a c) - tau_v =",
+        f"{(TAU_V + TAU_E) * math.exp(-2.0 * A * COST) - TAU_V:.8f}",
+    )
+    pi = ty / (TAU_V + ty)
+    print("step 6 | price informativeness tau_y / (tau_v + tau_y) =", f"{pi:.8f}")
+    print(
+        "step 6 | 1 - exp(2 a c) tau_v / (tau_v + tau_e) =",
+        f"{1.0 - math.exp(2.0 * A * COST) * TAU_V / (TAU_V + TAU_E):.8f}",
+    )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">step 1 | inputs: noise volume 0.6 | information cost 0.13 | a 2.0
+step 2 | gap as the informed fraction tends to 0: +0.053092
+step 2 | gap at the informed fraction 1: -0.080731
+step 2 | the gap changes sign on (0, 1): True
+step 3 | after halving 1: bracket [0.500000, 1.000000]
+step 3 | after halving 2: bracket [0.500000, 0.750000]
+step 3 | after halving 3: bracket [0.500000, 0.625000]
+step 3 | after 60 halvings the bracket width is 1.110e-16
+step 4 | informed fraction lambda* = 0.57937525
+step 4 | gap at lambda* = +0.000e+00
+step 5 | price coefficients b_s = 0.39718750 b_u = -1.37108895
+step 5 | b_u / b_s = -3.45199422 and -a / (lambda* tau_e) = -3.45199422
+step 6 | tau_y at lambda* = 0.18904110 | tau_bar = (tau_v + tau_e) exp(-2 a c) - tau_v = 0.18904110
+step 6 | price informativeness tau_y / (tau_v + tau_y) = 0.15898618
+step 6 | 1 - exp(2 a c) tau_v / (tau_v + tau_e) = 0.15898618</pre>
+          <p class="interpretation">Each printed line comes from the code above it. Step 2 evaluates the gap at the two ends of the interval and checks the sign change. Step 3 prints the bracket after the first three halvings and its final width, which is the floating-point resolution near the root. Step 4 prints the root and the gap there. Step 5 prints the price coefficients and checks the ratio that Proposition 1 gives. Step 6 prints the precision of the price signal, the informativeness, and the closed form of Proposition 4. The gap is zero to the printed precision, which shows that the root is a sign change at the printed bracket. It does not show that the gap has no other sign change; Proposition 3 does. One instance shows nothing about how the answer moves with the inputs. Lab 3 does that.</p>
+        </section>
+
+        <section class="lab completion" id="lab-E4-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: the gap at a fraction</h3>
+          <p class="hypothesis">Replace the <code>___</code> with the expression that completes the return of <code>indifference_gap</code>: the uninformed term \(F_U\) minus \(e^{ac}\) times the informed term \(F_I\), both computed on the lines above it. The inputs are SIMULATED: a noise volume of 0.70 and an information cost of 0.14, which are stated values, not a draw. The completed solution prints a gap of \(+0.037435\) as the fraction tends to 0 and \(-0.071386\) at 1, a root of \(\lambda^* = 0.57052263\) with a gap printed as +0.000e+00 at the root, and an informativeness of \(0.12466375\).</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completion problem: the indifference gap and its bisection, for one SIMULATED instance.
+
+Standard library only. The inputs are stated values for this example: a noise volume of 0.70 and an information cost of
+0.14, not a draw from the generator. The model constants are a = 2, tau_v = 1 and tau_e = 1. This file is the completed
+solution: the page shows the same lines with the return of indifference_gap replaced by blanks.
+"""
+
+import math
+
+A = 2.0  # the CARA coefficient
+TAU_V = 1.0  # the prior precision of the payoff v
+TAU_E = 1.0  # the precision of the signal s = v + eps
+SD = 0.70  # the noise volume: the standard deviation of the noise supply u
+COST = 0.14  # the information cost c
+BISECTION_STEPS = 60  # 60 halvings of [0, 1] reach the floating-point resolution near the root
+
+
+def price_precision(lam: float) -&gt; float:
+    """tau_y for lam in (0, 1]: lam^2 tau_e^2 / (lam^2 tau_e + a^2 SD^2)."""
+    return lam * lam * TAU_E * TAU_E / (lam * lam * TAU_E + A * A * SD * SD)
+
+
+def price_coefficients(lam: float) -&gt; tuple[float, float]:
+    """The coefficients b_s and b_u of the linear price p = b_s s + b_u u, for lam in (0, 1]."""
+    ty = price_precision(lam)
+    denominator = lam * (TAU_V + TAU_E) + (1.0 - lam) * (TAU_V + ty)
+    b_s = (lam * TAU_E + (1.0 - lam) * ty) / denominator
+    return b_s, -A * b_s / (lam * TAU_E)
+
+
+def indifference_gap(lam: float) -&gt; float:
+    """The informed-minus-uninformed expected utility at lam in (0, 1]: F_U(lam) - exp(a c) F_I(lam)."""
+    ty = price_precision(lam)
+    b_s, b_u = price_coefficients(lam)
+    r = ty / (TAU_V + ty) - b_s
+    f_u = math.pow(1.0 + r * r * (TAU_V + ty) * (1.0 / TAU_V + 1.0 / ty), -0.5)
+    precision = TAU_V + TAU_E
+    slope = TAU_E / precision - b_s
+    var_gap = slope * slope * (1.0 / TAU_V + 1.0 / TAU_E) + b_u * b_u * SD * SD
+    f_i = math.pow(1.0 + precision * var_gap, -0.5)
+    return ___
+
+
+def main() -&gt; None:
+    low, high = 0.0, 1.0
+    gap_at_zero = math.pow(1.0 + A * A * SD * SD / TAU_V, -0.5) - math.exp(A * COST) * math.pow(
+        1.0 + TAU_E / TAU_V + (TAU_V + TAU_E) * A * A * SD * SD / (TAU_V * TAU_V), -0.5
+    )
+    print("gap as the fraction tends to 0:", f"{gap_at_zero:+.6f}", "| gap at 1:", f"{indifference_gap(1.0):+.6f}")
+    for _ in range(BISECTION_STEPS):
+        mid = 0.5 * (low + high)
+        if indifference_gap(mid) &gt; 0.0:
+            low = mid
+        else:
+            high = mid
+    root = 0.5 * (low + high)
+    print("informed fraction lambda* =", f"{root:.8f}", "| bracket width", f"{high - low:.3e}")
+    print("gap at lambda* =", f"{indifference_gap(root):+.3e}")
+    ty = price_precision(root)
+    print("price informativeness tau_y / (tau_v + tau_y) =", f"{ty / (TAU_V + ty):.8f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">gap as the fraction tends to 0: +0.037435 | gap at 1: -0.071386
+informed fraction lambda* = 0.57052263 | bracket width 1.110e-16
+gap at lambda* = +0.000e+00
+price informativeness tau_y / (tau_v + tau_y) = 0.12466375</pre>
+          <p class="interpretation">The blank is the only line that changes. It is the return of <code>indifference_gap</code>, and the rest of the code is the solver's bisection and display. If your completed line gives a gap at 1 other than \(-0.071386\), the expression has the wrong sign or a wrong term, because that gap is computed by the same function. The informativeness on the last line is computed at the root, so a wrong blank changes it too.</p>
+        </section>
+      </section>
+
+      <section id="model">
+        <h2 id="h-model">The model and its equilibrium</h2>
+        <p>The model has one risky asset, two dates and a risk-free return of zero. It is the <a class="concept" data-concept="noisy-rational-expectations-equilibrium" href="L06.html#def-noisy-rational-expectations-equilibrium">noisy rational-expectations equilibrium</a> of Lesson 6, and its <a class="concept" data-concept="price-informativeness" href="L07.html#def-price-informativeness">price informativeness</a> is the measure of Lesson 7. Each result below is derived from the assumptions numbered here, and each proposition states the assumptions it uses.</p>
+
+        <h3 id="notation">Notation</h3>
+        <p>\(v\) is the payoff, \(p\) the price, \(s\) the signal, \(\varepsilon\) the noise in the signal, \(u\) the noise-trader supply, \(\sigma\) its standard deviation (the noise volume, <code>noise_sd</code>), \(c\) the information cost (<code>info_cost</code>), \(\lambda\) the informed fraction, \(a\) the CARA coefficient, \(x\) a demand, \(w\) terminal wealth, and \(\tau\) a precision, which is the inverse of a variance. \(\tau_v\) is the prior precision of \(v\), \(\tau_\varepsilon\) the precision of \(\varepsilon\), and \(\tau_y\) the precision of the price signal defined in Proposition 1. \(\Omega = \Var(v-p)\) is the variance of the payoff less the price, and \(V_I\) and \(V_U\) are the conditional variances of \(v\) for an informed and for an uninformed investor. The target precision is \(\bar\tau = (\tau_v+\tau_\varepsilon)e^{-2ac}-\tau_v\). This page uses \(\bar\tau\) for this quantity only.</p>
+
+        <h3 id="assumptions">Assumptions</h3>
+        <ol class="assumptions">
+          <li><strong>A1 · Prior and signal.</strong> \(v \sim \Normal(0, 1/\tau_v)\) and \(\varepsilon \sim \Normal(0, 1/\tau_\varepsilon)\), with \(\varepsilon\) independent of \(v\), and \(s = v + \varepsilon\). The prior mean of zero is a normalization: a common prior mean \(m\) shifts every conditional mean and the price by \(m\), so every demand and every expected utility is unchanged.</li>
+          <li><strong>A2 · Noise supply.</strong> \(u \sim \Normal(0, \sigma^2)\) with \(\sigma > 0\), independent of \((v, \varepsilon)\). The rational demand absorbs it: \(\lambda x_I + (1-\lambda)x_U = u\).</li>
+          <li><strong>A3 · Preferences, wealth and cost.</strong> Each investor has <dfn>constant absolute risk aversion (CARA) utility</dfn>, \(-\exp(-a w)\), with \(a = 2\). Initial wealth is 0 for every investor, and the risk-free return is 0. An informed investor pays \(c\), in units of terminal wealth, so \(w = x(v-p) - c\). An uninformed investor has \(w = x(v-p)\). A common initial wealth multiplies every expected utility by the same positive factor, so it changes no comparison below.</li>
+          <li><strong>A4 · Linear price.</strong> The price is \(p = b_s s + b_u u\) with \(b_s \neq 0\). The results are for this family. The page does not claim that an equilibrium exists outside it.</li>
+          <li><strong>A5 · Types and price taking.</strong> A fraction \(\lambda \in [0,1]\) of investors is informed. Every informed investor observes the same \(s\). The others observe only \(p\). Each investor takes the price as given, and the average over a type is its expectation, which is the continuum limit.</li>
+        </ol>
+        <p><strong>Definition (equilibrium).</strong> At an informed fraction \(\lambda\), an equilibrium is a price and two demand functions, \(x_I(s,p)\) for an informed investor and \(x_U(p)\) for an uninformed one, such that each investor maximizes <a class="concept" data-concept="expected-utility" href="../../../concepts.html#expected-utility">expected utility</a> given the information of its type, and the market clears: \(\lambda x_I + (1-\lambda)x_U = u\) for every realized \((s,u)\).</p>
+
+        <h3 id="lemmas">Three lemmas</h3>
+        <p><span class="block-title claim" data-grade="T">Lemma 1 · CARA demand and expected utility.</span> Assume A3. Let \(\mathcal F\) be an information set for which \(p\) is measurable, let \(m = \E[v\mid\mathcal F]\) (a function of the information), and suppose \(V = \Var(v\mid\mathcal F) > 0\) is a constant, as it is when \(v\) is conditionally normal. Then the optimal demand is \(x^* = (m-p)/(aV)\), and the conditional expected utility at that demand is \(\E[-\exp(-aw)\mid\mathcal F] = -\exp(ac)\exp\!\big(-(m-p)^2/(2V)\big)\) for an informed investor, whose wealth carries the cost \(c\). For an uninformed investor the factor \(\exp(ac)\) is absent.</p>
+        <p><em>Proof.</em> Given \(\mathcal F\), the payoff \(v-p\) is normal with mean \(m-p\) and variance \(V\), so \(\E[\exp(-a x(v-p))\mid\mathcal F] = \exp\big(-a x(m-p) + a^2x^2V/2\big)\). For an informed investor \(w = x(v-p)-c\), so \(\E[-\exp(-aw)\mid\mathcal F] = -\exp(ac)\exp\big(-a g(x)\big)\) with \(g(x) = x(m-p) - (a/2)x^2V\). The function \(g\) is strictly concave in \(x\), with \(g'(x) = (m-p) - axV\), which vanishes at \(x^* = (m-p)/(aV)\). Then \(g(x^*) = (m-p)^2/(aV) - (m-p)^2/(2aV) = (m-p)^2/(2aV)\), and \(-a\,g(x^*) = -(m-p)^2/(2V)\). An uninformed investor has no cost, so the factor \(\exp(ac)\) is absent for it. \(\square\)</p>
+
+        <p><span class="block-title claim" data-grade="T">Lemma 2 · The Gaussian mean.</span> If \(Z \sim \Normal(0, S)\) with \(S \ge 0\) and \(V > 0\), then \(\E[\exp(-Z^2/(2V))] = (V/(V+S))^{1/2}\).</p>
+        <p><em>Proof.</em> For \(S = 0\) the value is 1. For \(S > 0\), the expectation is \((2\pi S)^{-1/2}\int \exp\big(-z^2(1/S + 1/V)/2\big)\,dz = (2\pi S)^{-1/2}\sqrt{2\pi SV/(S+V)} = (V/(V+S))^{1/2}\). \(\square\)</p>
+
+        <p><span class="block-title claim" data-grade="T">Lemma 3 · Total variance of the payoff less the price.</span> Let \(\mathcal F\) be as in Lemma 1, and let \(m = \E[v\mid\mathcal F]\) and \(V = \Var(v\mid\mathcal F)\). Then \(\Var(v-p) = V + \Var(m-p)\).</p>
+        <p><em>Proof.</em> Let \(X = v-p\). Since \(p\) is \(\mathcal F\)-measurable, \(\Var(X\mid\mathcal F) = V\) and \(\E[X\mid\mathcal F] = m - p\). Writing \(\Var(X) = \E[X^2] - (\E X)^2\) and \(\E[X^2] = \E[\Var(X\mid\mathcal F) + \E[X\mid\mathcal F]^2]\) gives \(\Var(X) = \E[\Var(X\mid\mathcal F)] + \Var(\E[X\mid\mathcal F])\). Here \(\E[\Var(X\mid\mathcal F)] = V\), a constant, and \(\Var(\E[X\mid\mathcal F]) = \Var(m-p)\). So \(\Var(v-p) = V + \Var(m-p)\). \(\square\)</p>
+
+        <h3 id="props">Equilibrium, informativeness and the indifference condition</h3>
+        <p><span class="block-title claim" data-grade="T">Proposition 1 · The linear equilibrium.</span> Assume A1 to A5 and let \(\lambda \in (0,1]\). The linear equilibrium of A4 exists and is unique. Its coefficients satisfy
+        \[\frac{b_u}{b_s} = -\frac{a}{\lambda\tau_\varepsilon}, \qquad b_s = \frac{\lambda\tau_\varepsilon + (1-\lambda)\tau_y}{\lambda(\tau_v+\tau_\varepsilon)+(1-\lambda)(\tau_v+\tau_y)}, \qquad \tau_y = \frac{\lambda^2\tau_\varepsilon^2}{\lambda^2\tau_\varepsilon+a^2\sigma^2}.\]</p>
+        <p><em>Proof.</em> Let \(\kappa = b_u/b_s\) and \(y = p/b_s = s + \kappa u\). The term \(\varepsilon + \kappa u\) is independent of \(v\), normal with mean 0 and variance \(1/\tau_\varepsilon + \kappa^2\sigma^2\). Define \(\tau_y\) as the reciprocal of that variance; this gives the formula for \(\tau_y\) once \(\kappa\) is known.</p>
+        <p>(1) Informed demand. Since \(v\) is independent of \(u\) given \(s\) (A1 and A2), \(\E[v\mid s,u] = \E[v\mid s]\), and \(\sigma(s,p) \subseteq \sigma(s,u)\), so \(\E[v\mid s,p] = \E[v\mid s] = \tau_\varepsilon s/(\tau_v+\tau_\varepsilon)\) and \(\Var(v\mid s,p) = 1/(\tau_v+\tau_\varepsilon)\). By Lemma 1, \(x_I = (\tau_\varepsilon s - (\tau_v+\tau_\varepsilon)p)/a\).</p>
+        <p>(2) Uninformed demand. The uninformed investor observes \(p\), which is equivalent to \(y\) because \(b_s \neq 0\). Since \(y = v + (\varepsilon+\kappa u)\) with \(\varepsilon + \kappa u\) normal and independent of \(v\), the posterior of \(v\) has precision \(\tau_v + \tau_y\) and mean \(\tau_y y/(\tau_v+\tau_y)\). So \(\E[v\mid p] = \tau_y y/(\tau_v+\tau_y)\), \(\Var(v\mid p) = 1/(\tau_v+\tau_y)\), and by Lemma 1, \(x_U = (\tau_y y - (\tau_v+\tau_y)p)/a\).</p>
+        <p>(3) Clearing. Let \(D = \lambda(\tau_v+\tau_\varepsilon)+(1-\lambda)(\tau_v+\tau_y)\). Multiply \(\lambda x_I + (1-\lambda)x_U = u\) by \(a\), substitute \(y = s + \kappa u\) and \(p = b_s s + \kappa b_s u\). The condition becomes \([\lambda\tau_\varepsilon + (1-\lambda)\tau_y - Db_s]\,s + [(1-\lambda)\tau_y\kappa - D b_s\kappa - a]\,u = 0\). Since \(s\) and \(u\) are independent with positive variances, both brackets vanish. The first gives \(b_s = (\lambda\tau_\varepsilon+(1-\lambda)\tau_y)/D\). Substituting \(Db_s = \lambda\tau_\varepsilon + (1-\lambda)\tau_y\) into the second gives \(-\lambda\tau_\varepsilon\kappa = a\), so \(\kappa = -a/(\lambda\tau_\varepsilon)\).</p>
+        <p>(4) Consistency and uniqueness. The value of \(\kappa\) fixes \(\tau_y = \lambda^2\tau_\varepsilon^2/(\lambda^2\tau_\varepsilon+a^2\sigma^2)\), and \(b_s\) then follows from (3). Each step is an equivalence, so the coefficients above give the one linear equilibrium. \(D > 0\) because \(\lambda > 0\). \(\square\)</p>
+
+        <p><span class="block-title claim" data-grade="T">Proposition 2 · Informativeness.</span> Assume A1 to A5. For \(\lambda \in (0,1]\), \(\Corr(v,p)^2 = \tau_y/(\tau_v+\tau_y)\). At \(\lambda = 0\), \(\Corr(v,p) = 0\).</p>
+        <p><em>Proof.</em> With \(p = b_s y\), \(\Cov(v,p) = b_s\Cov(v,y) = b_s/\tau_v\), because \(\Cov(v,y) = \Var(v)\). Also \(\Var(y) = 1/\tau_v + 1/\tau_y\), so \(\Var(p) = b_s^2(1/\tau_v+1/\tau_y)\). Hence \(\Corr(v,p)^2 = (b_s^2/\tau_v^2)/\big((1/\tau_v)\,b_s^2(1/\tau_v+1/\tau_y)\big) = \tau_y/(\tau_v+\tau_y)\). At \(\lambda = 0\) there are no informed investors, \(\E[v\mid p] = 0\) because \(p\) is a function of \(u\) alone, and clearing gives \(x_U = -\tau_v p/a = u\), so \(p = -au/\tau_v\), which is independent of \(v\). \(\square\)</p>
+
+        <p><span class="block-title claim" data-grade="T">Proposition 3 · The indifference gap.</span> Assume A1 to A5 and let \(\lambda \in (0,1]\). Let \(V_I = 1/(\tau_v+\tau_\varepsilon)\) and \(V_U = 1/(\tau_v+\tau_y)\). The expected utilities net of cost are \(\E[U_I] = -e^{ac}(V_I/\Omega)^{1/2}\) and \(\E[U_U] = -(V_U/\Omega)^{1/2}\), so the gap \(G(\lambda) = \E[U_I] - \E[U_U] = \Omega^{-1/2}\big(V_U^{1/2} - e^{ac}V_I^{1/2}\big)\). For \(\lambda = 1\) the uninformed term is that of a hypothetical uninformed investor who faces the price of the economy with \(\lambda = 1\). Then
+        \[\operatorname{sign} G(\lambda) = \operatorname{sign}(\bar\tau - \tau_y(\lambda)),\]
+        so \(G(\lambda) > 0\) iff \(\tau_y(\lambda) < \bar\tau\), and \(G\) has at most one zero in \((0,1]\). The limit as \(\lambda\) tends to 0 is
+        \[G(0{+}) = \Big(\tfrac{1}{\tau_v}+\tfrac{a^2\sigma^2}{\tau_v^2}\Big)^{-1/2}\Big(\tfrac{1}{\tau_v^{1/2}} - \tfrac{e^{ac}}{(\tau_v+\tau_\varepsilon)^{1/2}}\Big),\]
+        whose sign is the sign of \(\bar\tau\).</p>
+        <p><em>Proof.</em> For an informed investor, Lemma 1 gives \(\E[U_I\mid s,p] = -e^{ac}\exp(-(m_I-p)^2/(2V_I))\), where \(m_I = \E[v\mid s,p]\) from step (1) of Proposition 1. The variable \(m_I - p\) is a linear function of \((s,u)\) with mean 0 (A1), so Lemma 2 gives \(\E[U_I] = -e^{ac}(V_I/(V_I+S_I))^{1/2}\) with \(S_I = \Var(m_I-p)\). Lemma 3 gives \(V_I + S_I = \Omega\). The uninformed case is identical with \(m_U = \tau_y y/(\tau_v+\tau_y)\), \(V_U\) and \(S_U = \Var(m_U-p)\), and Lemma 3 again gives \(V_U+S_U = \Omega\). Since \(\Omega \ge V_I > 0\), the sign of \(G\) is the sign of \(V_U - e^{2ac}V_I\). Multiplying by \((\tau_v+\tau_y)(\tau_v+\tau_\varepsilon)e^{-2ac} > 0\) gives \((\tau_v+\tau_\varepsilon)e^{-2ac} - (\tau_v+\tau_y) = \bar\tau - \tau_y\). Proposition 1 gives \(\tau_y(\lambda) = \lambda^2\tau_\varepsilon^2/(\lambda^2\tau_\varepsilon + a^2\sigma^2)\), which is strictly increasing in \(\lambda\), so \(\bar\tau - \tau_y\) changes sign at most once. As \(\lambda\) tends to 0, \(\tau_y\) tends to 0, \(b_s\) tends to 0 and \(b_u\) tends to \(-a/\tau_v\) (Proposition 1, using \(b_s/\lambda \to \tau_\varepsilon/\tau_v\)), so \(p\) tends to \(-au/\tau_v\), \(\Omega\) tends to \(1/\tau_v + a^2\sigma^2/\tau_v^2\) and \(V_U\) to \(1/\tau_v\). Substituting these limits into the formula for \(G\) gives the displayed \(G(0{+})\). \(\square\)</p>
+
+        <p><span class="block-title claim" data-grade="T">Proposition 4 · The informed fraction.</span> Assume A1 to A5, and let \(\lambda^*\) be the informed fraction defined by the boundary rule: \(\lambda^* = 0\) when \(G(0{+}) \le 0\), \(\lambda^* = 1\) when \(G(1) \ge 0\), and otherwise the zero of \(G\) in \((0,1)\). Then
+        \[\lambda^* = \begin{cases} 0, & \bar\tau \le 0,\\ 1, & \bar\tau \ge \tau_\varepsilon^2/(\tau_\varepsilon+a^2\sigma^2),\\ a\sigma\sqrt{\bar\tau/\big(\tau_\varepsilon(\tau_\varepsilon-\bar\tau)\big)}, & \text{otherwise.}\end{cases}\]
+        In the interior case the price informativeness is \(\bar\tau/(\tau_v+\bar\tau) = 1 - e^{2ac}\tau_v/(\tau_v+\tau_\varepsilon)\), which does not depend on \(\sigma\).</p>
+        <p><em>Proof.</em> In the limit formula of Proposition 3 the bracket \(\tau_v^{-1/2} - e^{ac}(\tau_v+\tau_\varepsilon)^{-1/2}\) is positive exactly when \((\tau_v+\tau_\varepsilon)e^{-2ac} > \tau_v\), that is, when \(\bar\tau > 0\); so \(G(0{+}) \le 0\) iff \(\bar\tau \le 0\). By the sign rule of Proposition 3, \(G(1) \ge 0\) iff \(\tau_y(1) \le \bar\tau\), where \(\tau_y(1) = \tau_\varepsilon^2/(\tau_\varepsilon+a^2\sigma^2)\). Otherwise \(G\) has a zero \(\lambda^*\) in \((0,1)\) at which \(\tau_y(\lambda^*) = \bar\tau\). Solving \(\lambda^{*2}\tau_\varepsilon^2/(\lambda^{*2}\tau_\varepsilon+a^2\sigma^2) = \bar\tau\) gives \(\lambda^{*2}(\tau_\varepsilon^2 - \bar\tau\tau_\varepsilon) = \bar\tau a^2\sigma^2\). Here \(\bar\tau < \tau_\varepsilon\), because \(\tau_y(1) < \tau_\varepsilon\) and \(\bar\tau < \tau_y(1)\) in this case, so the division is valid, and the formula follows. The informativeness at \(\lambda^*\) is \(\tau_y/(\tau_v+\tau_y)\) at \(\tau_y = \bar\tau\) (Proposition 2), and \(\bar\tau/(\tau_v+\bar\tau) = 1 - \tau_v e^{2ac}/(\tau_v+\tau_\varepsilon)\) by substituting \(\bar\tau\). \(\square\)</p>
+
+        <p><span class="block-title claim" data-grade="T">Proposition 5 · Comparative statics on the interior.</span> Assume A1 to A5, and suppose \(0 < \bar\tau < \tau_\varepsilon^2/(\tau_\varepsilon+a^2\sigma^2)\), so that \(\lambda^*\) is interior. Then \(\partial\lambda^*/\partial\sigma = \lambda^*/\sigma > 0\); \(\lambda^*\) and the price informativeness are strictly decreasing in \(c\); and the price informativeness does not depend on \(\sigma\).</p>
+        <p><em>Proof.</em> By Proposition 4, \(\lambda^* = a\sigma k(\bar\tau)\) with \(k(t) = \sqrt{t/(\tau_\varepsilon(\tau_\varepsilon-t))}\), which does not depend on \(\sigma\), so \(\partial\lambda^*/\partial\sigma = \lambda^*/\sigma > 0\). The map \(c \mapsto \bar\tau = (\tau_v+\tau_\varepsilon)e^{-2ac}-\tau_v\) is strictly decreasing because \(a > 0\), and \(k\) is strictly increasing on \((0,\tau_\varepsilon)\), so \(\lambda^*\) is strictly decreasing in \(c\). The informativeness \(\bar\tau/(\tau_v+\bar\tau)\) is strictly increasing in \(\bar\tau\), so it is strictly decreasing in \(c\), and it depends on \(\sigma\) through no term. \(\square\)</p>
+
+        <p>With \(\tau_v = \tau_\varepsilon = 1\) and \(a = 2\), the formulas read \(\bar\tau = 2e^{-4c} - 1\), \(\lambda^* = 2\sigma\sqrt{\bar\tau/(1-\bar\tau)}\) in the interior, and an informativeness of \(1 - e^{4c}/2\). Lab 3 prints these values on its grid, and its last column checks \(\lambda^*\) against the closed form of Proposition 4 at each point. Proposition 5 explains the pattern of the grid: at a fixed cost the informed fraction is proportional to the noise volume, and the informativeness is the same at every noise volume.</p>
+
+        <p><strong>Where the model's limits are.</strong> The results need A1 to A5 together. Exponential utility with normal payoffs (A1, A3) is the source of the closed forms, and a utility other than the exponential, or a payoff that is not normal, is outside this page. The noise supply is exogenous (A2), so the model says nothing about why noise traders trade. Investors are price takers in a static, two-date economy (A5), and the price is linear (A4). This page does not estimate how much any of these limits changes the answer.</p>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A risky asset pays an uncertain amount \(v\). Some investors pay a cost \(c\) to observe a signal of \(v\), and the others learn only from the price. A noise-trader supply \(u\) moves the price. The question is how informative the price is, and what fraction of investors chooses to pay for information. The fraction solves an indifference condition, and the informativeness follows from it.</dd>
+          <dt>Inputs</dt>
+          <dd>No dataset. The solver receives two numbers for each instance: <code>noise_sd</code>, the noise volume \(\sigma\), and <code>info_cost</code>, the cost \(c\). The instance generator in <code>grader/instance.py</code> draws both from the seed, and the draws are SIMULATED. The constants \(a = 2\), \(\tau_v = 1\) and \(\tau_\varepsilon = 1\) are fixed in your module and are not arguments of the interface. The report's grid is given in <a href="#report">the report section</a>. <span class="block-title claim" data-grade="T">Every instance has one interior root.</span> The generator draws \(c\) from \([0.120, 0.150]\) and \(\sigma\) from \([0.500, 0.750]\). Here \(\bar\tau = 2e^{-4c}-1\) decreases in \(c\), so \(0.0976 \le \bar\tau \le 0.2376\) on the box, and \(\tau_y(1) = 1/(1+4\sigma^2) \ge 1/(1+4\cdot 0.75^2) = 0.3077\). Therefore \(0 < \bar\tau < \tau_y(1)\) at every point of the box, and Proposition 4 gives an interior \(\lambda^*\) there.</dd>
+          <dt>Required outputs</dt>
+          <dd>In a repository of your own: <code>solver.py</code> at its root, with the function <code>solve_model(noise_sd: float, info_cost: float) -&gt; dict[str, float]</code>, which returns exactly the keys <code>informed_fraction</code>, <code>price_informativeness</code> and <code>indifference_gap</code>, all floats. <code>informed_fraction</code> is \(\lambda^*\) by the boundary rule of Proposition 4. <code>price_informativeness</code> is \(\Corr(v,p)^2\) at \(\lambda^*\) (Proposition 2). <code>indifference_gap</code> is the gap of Proposition 3 at \(\lambda^*\), with the limit at 0 when \(\lambda^* = 0\). Also <code>report/report.md</code> with the four sections of <a href="#brief">the brief</a> and its appendix, <code>report/run_case.py</code>, which is <a href="#lab-E4-project-3">Lab 3</a> with its <code>solve</code> replaced by a call to <code>solve_model</code> and printing the same lines, and <code>report/self_assessment.md</code> produced by the form in <a href="#self-assessment">the self-assessment section</a>. Start from <a href="grader/starter.py">the starter file</a>, whose signature is complete.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only, with no network. No function prints or warns. The solver works in floating point at full precision. The bisection on \(\lambda\) brackets the root in \([0,1]\), evaluates the gap at 0 by the limit of Proposition 3, and stops when the bracket is narrower than \(10^{-12}\) times its upper end, or after 200 halvings. These constants are stated here, not arguments of the interface. The boundary rule is part of the answer, and the suite tests it. Invalid input raises the exception named in <a href="#exceptions">the exception table</a>, and the message contains the text the table gives. The report displays every number at the precision of <a href="#brief">the brief</a> and computes each one from unrounded solver output.</dd>
+          <dt>Grading mode</dt>
+          <dd>Both modes apply. The solver is autograded by <code>grader/test_project.py</code>, which runs 29 checks with warnings as errors, against an oracle that does not read your code and that evaluates the model by moments and quadrature. The report is graded by the rubric in <a href="#rubric">the report rubric</a>, against five criteria with four observable levels each, after you score yourself against two annotated exemplars. The report meets the bar at level 3 or above on every criterion.</dd>
+          <dt>Reading list</dt>
+          <dd>See <a href="#reading">the reading section</a>. The page attributes no statement to any of its registry keys, and every result above is derived from the assumptions of <a href="#model">the model section</a>.</dd>
+        </dl>
+
+        <h3 id="exceptions">Exception table</h3>
+        <p>These are the named invalid inputs, and each names the exception type it requires. An invalid input that this table does not name may raise any exception or return a value.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Condition</th><th>Exception</th><th>The message names</th></tr></thead>
+            <tbody>
+              <tr><td><code>noise_sd</code> is not positive, or is not finite</td><td><code>ValueError</code></td><td>"noise volume must be positive"</td></tr>
+              <tr><td><code>info_cost</code> is negative</td><td><code>ValueError</code></td><td>"information cost must be nonnegative"</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">1</td><td>One SIMULATED instance, six printed steps, each tied to a line of the code.</td></tr>
+              <tr><td>Rung 2 completion problem and its instant check</td><td class="num">1</td><td>One blank, the return of the gap; the time goes into why the two terms carry the signs they do.</td></tr>
+              <tr><td>Model derivation: the linear equilibrium, the informativeness, and the indifference condition</td><td class="num">5</td><td>Propositions 1 to 4 from the numbered assumptions, each step checked against Lab 1.</td></tr>
+              <tr><td><code>solver.py</code> and the local test run</td><td class="num">8</td><td>The interface, the boundary rule, the bisection and the two named exceptions, with a pass on seeds 0 to 49.</td></tr>
+              <tr><td>Comparative-statics grid</td><td class="num">5</td><td>Run the solver on the 3 by 3 grid of the report and compare each root with the closed form of Proposition 4.</td></tr>
+              <tr><td>Write-up <code>report/report.md</code></td><td class="num">5</td><td>The four sections of the brief, with the displayed numbers and their rule, and the appendix.</td></tr>
+              <tr><td>Self-assessment against the exemplars</td><td class="num">3</td><td>Score the report with the rubric, then compare with exemplar A and exemplar B and reconcile the scores.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>28</strong></td><td>Equals the hours of the project in the hub: 28 of the module's 100.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>solver.py</code> and run the suite on the instance for your seed. Your code is saved in this browser as you type. The instance is SIMULATED, and its two inputs come from the seed alone.</p>
+        <section class="grader-panel" id="grader" data-unit="E4" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="solver.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>solver.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> turns off pytest's comparison details, so a failure shows the test's own message and no values, and <code>-W error</code> turns warnings into failures, both as in the browser.</p>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The report</h2>
+        <p>The report explains the model, how the solver finds the informed fraction, and how the fraction and the informativeness move with the noise volume and the cost. Its numbers are the ones Lab 3 prints for the nine points of its grid, so you can check your solver and your display rule before you write.</p>
+
+        <section class="lab" id="lab-E4-project-3" data-runtime="python">
+          <h3>Lab 3 · The reference case: the grid of the report</h3>
+          <p class="hypothesis">The inputs are a stated grid, SIMULATED: noise volumes 0.500, 0.625 and 0.750, and information costs 0.120, 0.135 and 0.150. Expected, stated before running: at each noise volume the informed fraction falls as the cost rises, and at each cost it rises in proportion to the noise volume, so at cost 0.120 it is 0.5582, 0.6978 and 0.8373 for noise volumes 0.500, 0.625 and 0.750; the informativeness is the same at the three noise volumes of each cost, at 0.1920, 0.1420 and 0.0889 for costs 0.120, 0.135 and 0.150; the gap at each reported point has absolute value below \(10^{-13}\); the bisection agrees with the closed form of Proposition 4 to within \(10^{-12}\); and the gap is positive at fraction 0 and negative at fraction 1 at all 484 points of a 22 by 22 grid over the autograder's box.</p>
+          <pre><code class="language-python" data-run>"""Rung 3 reference case: the solver on the 3 by 3 grid that the report uses, with stated SIMULATED inputs.
+
+Standard library only. The grid values are stated parameters of the model, not a draw from the generator. The model
+constants are a = 2, tau_v = 1 and tau_e = 1. The function solve is the reference: copy this file as report/run_case.py
+and replace the body of solve with a call to your module's solve_model; the file must then print the same lines.
+
+Each row gives the informed fraction (bisection on the gap, with the stated tolerance), the price informativeness, the
+gap at the reported fraction, and the closed-form fraction of the report's appendix. The last line checks the box of
+the autograder's generator on a 22 by 22 grid, which includes the four corners: the gap must be positive at fraction 0
+and negative at fraction 1 at every grid point.
+"""
+
+import math
+
+A = 2.0  # the CARA coefficient
+TAU_V = 1.0  # the prior precision of the payoff v
+TAU_E = 1.0  # the precision of the signal s = v + eps
+NOISE_GRID = (0.500, 0.625, 0.750)  # the noise volumes the report uses
+COST_GRID = (0.120, 0.135, 0.150)  # the information costs the report uses
+TOLERANCE = 1e-12  # the bisection stops when the bracket is narrower than this times its upper end
+
+
+def price_precision(lam: float, sd: float) -&gt; float:
+    """tau_y for lam in (0, 1]: lam^2 tau_e^2 / (lam^2 tau_e + a^2 sd^2)."""
+    return lam * lam * TAU_E * TAU_E / (lam * lam * TAU_E + A * A * sd * sd)
+
+
+def indifference_gap(lam: float, sd: float, cost: float) -&gt; float:
+    """F_U(lam) - exp(a c) F_I(lam) for lam in (0, 1]; at lam = 1 the uninformed term is a hypothetical agent's."""
+    ty = price_precision(lam, sd)
+    denominator = lam * (TAU_V + TAU_E) + (1.0 - lam) * (TAU_V + ty)
+    b_s = (lam * TAU_E + (1.0 - lam) * ty) / denominator
+    b_u = -A * b_s / (lam * TAU_E)
+    r = ty / (TAU_V + ty) - b_s
+    f_u = math.pow(1.0 + r * r * (TAU_V + ty) * (1.0 / TAU_V + 1.0 / ty), -0.5)
+    precision = TAU_V + TAU_E
+    slope = TAU_E / precision - b_s
+    var_gap = slope * slope * (1.0 / TAU_V + 1.0 / TAU_E) + b_u * b_u * sd * sd
+    f_i = math.pow(1.0 + precision * var_gap, -0.5)
+    return f_u - math.exp(A * cost) * f_i
+
+
+def gap_at_zero(sd: float, cost: float) -&gt; float:
+    """The limit of the gap as the informed fraction tends to 0."""
+    uninformed = math.pow(1.0 + A * A * sd * sd / TAU_V, -0.5)
+    informed = math.pow(1.0 + TAU_E / TAU_V + (TAU_V + TAU_E) * A * A * sd * sd / (TAU_V * TAU_V), -0.5)
+    return uninformed - math.exp(A * cost) * informed
+
+
+def closed_form_fraction(sd: float, cost: float) -&gt; float:
+    """The root in closed form: tau_y(lam) = T = (tau_v + tau_e) exp(-2 a c) - tau_v, solved for lam, with the same
+    boundary rule as solve. Valid as an appendix check of the bisection, not as the solver."""
+    t = (TAU_V + TAU_E) * math.exp(-2.0 * A * cost) - TAU_V
+    if t &lt;= 0.0:
+        return 0.0
+    if t &gt;= TAU_E * TAU_E / (TAU_E + A * A * sd * sd):
+        return 1.0
+    return A * sd * math.sqrt(t / (TAU_E * (TAU_E - t)))
+
+
+def solve(sd: float, cost: float) -&gt; dict[str, float]:
+    """The reference solver: the boundary rule, then bisection on the sign change of the gap."""
+    g_0, g_1 = gap_at_zero(sd, cost), indifference_gap(1.0, sd, cost)
+    if g_0 &lt;= 0.0:
+        lam = 0.0
+    elif g_1 &gt;= 0.0:
+        lam = 1.0
+    else:
+        low, high = 0.0, 1.0
+        while high - low &gt; TOLERANCE * high:
+            mid = 0.5 * (low + high)
+            if indifference_gap(mid, sd, cost) &gt; 0.0:
+                low = mid
+            else:
+                high = mid
+        lam = 0.5 * (low + high)
+    if lam == 0.0:
+        gap, pi = g_0, 0.0
+    elif lam == 1.0:
+        gap, pi = g_1, price_precision(1.0, sd) / (TAU_V + price_precision(1.0, sd))
+    else:
+        gap = indifference_gap(lam, sd, cost)
+        ty = price_precision(lam, sd)
+        pi = ty / (TAU_V + ty)
+    return {"informed_fraction": lam, "price_informativeness": pi, "indifference_gap": gap}
+
+
+def main() -&gt; None:
+    print("noise volume | cost | informed fraction | informativeness | gap | closed-form fraction")
+    worst = 0.0
+    for sd in NOISE_GRID:
+        for cost in COST_GRID:
+            out = solve(sd, cost)
+            closed = closed_form_fraction(sd, cost)
+            worst = max(worst, abs(out["informed_fraction"] - closed))
+            print(
+                f"{sd:.3f} | {cost:.3f} | {out['informed_fraction']:.4f} | {out['price_informativeness']:.4f} | "
+                f"{out['indifference_gap']:+.2e} | {closed:.4f}"
+            )
+    print("largest difference between the bisection and the closed form on the grid:", f"{worst:.1e}")
+    inside = 0
+    for i in range(22):
+        for j in range(22):
+            sd = 0.500 + 0.250 * i / 21.0
+            cost = 0.120 + 0.030 * j / 21.0
+            if gap_at_zero(sd, cost) &gt; 0.0 and indifference_gap(1.0, sd, cost) &lt; 0.0:
+                inside += 1
+    print("box grid points with an interior fraction (gap positive at 0, negative at 1):", inside, "of", 22 * 22)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">noise volume | cost | informed fraction | informativeness | gap | closed-form fraction
+0.500 | 0.120 | 0.5582 | 0.1920 | +1.97e-14 | 0.5582
+0.500 | 0.135 | 0.4453 | 0.1420 | -2.00e-14 | 0.4453
+0.500 | 0.150 | 0.3289 | 0.0889 | -2.00e-14 | 0.3289
+0.625 | 0.120 | 0.6978 | 0.1920 | +2.92e-14 | 0.6978
+0.625 | 0.135 | 0.5567 | 0.1420 | +3.55e-14 | 0.5567
+0.625 | 0.150 | 0.4111 | 0.0889 | +1.14e-14 | 0.4111
+0.750 | 0.120 | 0.8373 | 0.1920 | -3.06e-14 | 0.8373
+0.750 | 0.135 | 0.6680 | 0.1420 | -1.02e-14 | 0.6680
+0.750 | 0.150 | 0.4934 | 0.0889 | -1.08e-14 | 0.4934
+largest difference between the bisection and the closed form on the grid: 2.1e-13
+box grid points with an interior fraction (gap positive at 0, negative at 1): 484 of 484</pre>
+          <p class="interpretation">Each row is one call of the reference solver. The fraction and the informativeness are printed to four decimals, and the gap in scientific notation to three significant digits. The closed-form column is Proposition 4, and the largest difference from the bisection is printed on the line below the grid. The informativeness column is constant across the noise volumes for each cost. Proposition 5 gives this on the interior: the informativeness depends on the cost and not on the noise volume. The last line checks the sign pattern at 484 grid points of the autograder's box. That count is a computed check of those points; the argument that covers the whole box is the bound on the Inputs line of the specification.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Write for a reader who knows the model section, not for a referee of this instance. Use these four sections, in this order and under these headings, followed by the appendix.</p>
+        <ol>
+          <li><strong>Model</strong>: the payoff, the signal, the noise supply, the preferences, the equilibrium definition, and the assumptions A1 to A5 numbered, with the result each one supports.</li>
+          <li><strong>Method</strong>: the bracket, the boundary rule, the bisection's tolerance and stop rule, and the indifference gap at each reported point.</li>
+          <li><strong>Results and comparative statics</strong>: the nine points of the grid with the informed fraction, the informativeness and the gap, the sign of each change in the noise volume and in the cost, and the points on which each sign holds.</li>
+          <li><strong>Limits and evidence</strong>: at least three limits of the model, and the grade of each derived or computed claim.</li>
+        </ol>
+        <p><strong>Appendix A · Evidence and derivations.</strong> Every claim in the four sections is marked as a derivation (with the proposition number) or as a computed result (with the lab that prints it). An empirical claim, if one is made, carries a grade (T, A, B, C, D or X) and a registry key, or it says "no registry key; not claimed".</p>
+        <p><strong>Length.</strong> The four sections run 350 to 800 words. A word is a run of characters between spaces.</p>
+        <p><strong>Numbers.</strong> Every number the report displays is printed by <code>report/run_case.py</code> for one of the nine grid points, or is derived in the appendix. Display rule: the informed fraction and the informativeness to four decimals, and the gap in scientific notation to three significant digits. Each number is computed from unrounded solver output and displayed once, at that precision.</p>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The price-informativeness report: five criteria, four levels each, scored by the rule above. The report meets the bar at level 3 or above on every criterion.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Model specification</th><td>Everything in level 3, and lists each assumption with its number and names each result that uses it.</td><td>States the payoff, the signal, the noise supply, the preferences with their coefficient, and the equilibrium condition, each as a formula.</td><td>States the payoff, the signal, the noise supply and the preferences, and gives the equilibrium condition in words only.</td><td>Describes the model in general terms, with no payoff, signal or utility function written down.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Solver and verification</th><td>Everything in level 3, and reports the indifference gap at each reported point.</td><td>States the method, the bracket, the tolerance, the stop rule and the boundary rule.</td><td>States the method and the bracket, with no tolerance or stop rule.</td><td>Says the solver works, with no method, bracket or tolerance.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Comparative statics</th><td>Everything in level 3, and states each sign as the solver gives it on the stated grid, and says which grid points the sign holds on.</td><td>States how the informed fraction and the informativeness respond to the noise volume and to the cost, each with its sign and its grid.</td><td>States one sign, for either output, with its grid.</td><td>States a sign with no grid and no derivation, for example "prices become more informative".</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Numerical rigour and display</th><td>Everything in level 3, and names the significant digits shown for each output and the rule that produces them.</td><td>States the number of decimals for each output, and states that every number is computed from unrounded solver output.</td><td>Gives numbers with a fixed number of decimals and no rule.</td><td>Gives numbers with no stated precision.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Limits and evidence</th><td>Everything in level 3, and grades every empirical claim with a registry key, or says "no registry key; not claimed".</td><td>Names at least three limits of the model, and grades each derived or computed claim with its basis.</td><td>Names one or two limits of the model.</td><td>Notes caveats without naming a limit.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two report excerpts, at different levels, on the grid point of Lab 3 with a noise volume of 0.625 and an information cost of 0.135. Their numbers are the lab's printed numbers: an informed fraction of 0.5567, an informativeness of 0.1420, and a gap of +3.55e-14. Each passage carries an annotation that names the descriptors it meets or misses. With JavaScript on, the annotations stay hidden until you reveal the official scoring with the form below, so score both exemplars first. Both exemplars are excerpts, not full reports.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,1,2,1" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 1 · C4 2 · C5 1. The payoff, signal, noise supply and preferences are stated and the equilibrium is given in words; the method and bracket are stated without a tolerance; the informed fraction and informativeness are given with fixed decimals and no rule; the sign given for the noise volume is not the one the grid shows; and no limit of the model is named.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model</h5>
+              <p>The payoff is normal and the signal is the payoff plus normal noise. The noise supply is normal. Investors have exponential utility. Some investors are informed, and the price clears the market.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: states the payoff, the signal, the noise supply and the preferences, and gives the equilibrium in words.</li>
+                <li class="misses" data-criterion="C1" data-level="3">Misses C1 level 3: the preferences have no coefficient, and the equilibrium condition is not written as a formula.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Method</h5>
+              <p>The solver finds the informed fraction by bisection on the gap between the informed and uninformed utilities, starting from the interval from 0 to 1.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: states the method and the bracket.</li>
+                <li class="misses" data-criterion="C2" data-level="3">Misses C2 level 3: no tolerance, no stop rule and no boundary rule.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Results</h5>
+              <p>At a noise volume of 0.625 and a cost of 0.135, the informed fraction is 0.5567 and the price informativeness is 0.1420.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: gives numbers with a fixed number of decimals.</li>
+                <li class="misses" data-criterion="C4" data-level="3">Misses C4 level 3: no display rule is stated, and the passage does not say that the numbers come from unrounded solver output.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Comparative statics</h5>
+              <p>A higher noise volume makes prices less informative, so the informativeness should fall as the noise rises.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="1">Meets C3 level 1: a sign with no grid and no derivation.</li>
+                <li class="misses" data-criterion="C3" data-level="2">Misses C3 level 2: no grid is stated, and on the grid of Lab 3 the sign is not the one given, because the informativeness is 0.1420 at each noise volume for the cost 0.135.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limitations</h5>
+              <p>The results depend on the model, which is only a sketch of a market.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="1">Meets C5 level 1: notes a caveat without naming a limit.</li>
+                <li class="misses" data-criterion="C5" data-level="2">Misses C5 level 2: names no limit of the model: the utility, the normal payoff and the single asset are not named.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. The assumptions are numbered and each is tied to the results it supports; the method, bracket, tolerance, stop rule, boundary rule and gap at each point are stated; the signs are given on the grid with the points they hold on; the display rule names the significant digits; and the one claim without a registry key says so.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model</h5>
+              <p>Assumption 1 (prior and signal): the payoff \(v\) is normal with mean 0 and precision 1, and the signal is \(s = v + \varepsilon\) with \(\varepsilon\) normal, independent, of precision 1. Assumption 2 (noise): \(u\) is normal with mean 0 and standard deviation \(\sigma\), independent of \((v,\varepsilon)\), and the market clears, \(\lambda x_I + (1-\lambda)x_U = u\). Assumption 3 (preferences): utility is \(-\exp(-2w)\), initial wealth and the risk-free return are zero, and an informed investor pays \(c\). Assumption 4: the price is linear, \(p = b_s s + b_u u\), with \(b_s \neq 0\). Assumption 1 is used in Lemma 2 and Proposition 1; Assumption 4 in Proposition 1 and Proposition 2.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: lists each assumption with its number and names the results that use it.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Method</h5>
+              <p>The solver brackets the informed fraction in \([0,1]\). It sets the fraction to 0 when the gap at 0, taken as the limit of Proposition 3, is nonpositive, and to 1 when the gap at 1 is nonnegative. Otherwise it bisects on the sign of the gap, with a tolerance of \(10^{-12}\) times the upper end of the bracket, and it stops after at most 200 halvings. The reported fraction is the midpoint of the final bracket. The table below gives the gap at each reported point.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: states the method, bracket, tolerance, stop rule and boundary rule, and reports the gap at each point.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Results and comparative statics</h5>
+              <p>Each row is one point of the grid printed by Lab 3. At cost 0.120 the informed fraction is 0.5582, 0.6978 and 0.8373 for noise volumes 0.500, 0.625 and 0.750, and the informativeness is 0.1920 at all three. At cost 0.135 the informativeness is 0.1420 at all three noise volumes, and at cost 0.150 it is 0.0889. So on the stated grid, at each cost the informativeness is the same at every noise volume, and it falls as the cost rises. The informed fraction rises with the noise volume at each cost, and at cost 0.120 the three fractions are proportional to the noise volumes: 0.6978 / 0.5582 = 1.25 = 0.625 / 0.500, and 0.8373 / 0.5582 = 1.50 = 0.750 / 0.500. Proposition 5 gives this, since \(\lambda^* = 2\sigma\sqrt{\bar\tau/(1-\bar\tau)}\) is proportional to \(\sigma\) at a fixed cost. At each noise volume the fraction falls as the cost rises. Every printed gap has absolute value below \(4\times10^{-14}\).</p>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Noise volume</th><th>Cost</th><th>Informed fraction</th><th>Informativeness</th><th>Gap</th></tr></thead>
+                <tbody>
+                  <tr><td>0.500</td><td>0.120</td><td>0.5582</td><td>0.1920</td><td>+1.97e-14</td></tr>
+                  <tr><td>0.500</td><td>0.135</td><td>0.4453</td><td>0.1420</td><td>-2.00e-14</td></tr>
+                  <tr><td>0.500</td><td>0.150</td><td>0.3289</td><td>0.0889</td><td>-2.00e-14</td></tr>
+                  <tr><td>0.625</td><td>0.120</td><td>0.6978</td><td>0.1920</td><td>+2.92e-14</td></tr>
+                  <tr><td>0.625</td><td>0.135</td><td>0.5567</td><td>0.1420</td><td>+3.55e-14</td></tr>
+                  <tr><td>0.625</td><td>0.150</td><td>0.4111</td><td>0.0889</td><td>+1.14e-14</td></tr>
+                  <tr><td>0.750</td><td>0.120</td><td>0.8373</td><td>0.1920</td><td>-3.06e-14</td></tr>
+                  <tr><td>0.750</td><td>0.135</td><td>0.6680</td><td>0.1420</td><td>-1.02e-14</td></tr>
+                  <tr><td>0.750</td><td>0.150</td><td>0.4934</td><td>0.0889</td><td>-1.08e-14</td></tr>
+                </tbody>
+              </table></div>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: states each sign on the grid and the points it holds on, and derives the proportionality from Proposition 5.</li>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: names the significant digits (four decimals for the fraction and the informativeness, three significant digits for the gap) and the rule.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limits and evidence</h5>
+              <p>The model is limited by its exponential utility and its normal payoff, which give the closed forms; by the exogenous noise supply, which the model does not explain; by price taking in a static, two-date economy; and by the linear price, which is the only equilibrium family the page treats. A result for a different utility or a different information structure is outside these propositions. No empirical claim is made. No registry key is attached to any claim, and none is claimed: the results are the derivations of Propositions 1 to 5 and the computed results of Lab 3.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: names limits, grades each claim by its derivation or computed result, and says "no registry key; not claimed" for the empirical claims.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="E4/project/report" data-work-label="Your report" data-work-noun="report" data-summary-path="report/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own report on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own report. Your scores stay in this browser; keep the summary the form produces as <code>report/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>A second information structure.</strong> Let the signal also reduce the noise of the price, so that informed investors reveal more than their own signal. State as a hypothesis whether the informativeness still depends on the cost alone, and check the hypothesis on a grid before you derive anything.</li>
+          <li><strong>A different preference.</strong> Replace the exponential utility with a power utility. Identify which of Lemmas 1 to 3 fail, and state which closed form, if any, survives.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <p>The two registry keys below are the module's reading on rational expectations and on the no-trade result. The results of this page are derived from the numbered assumptions of <a href="#model">the model section</a>, and the page attributes no statement to either work.</p>
+        <ol class="reading-list">
+          <li data-cite="muth1961rational"></li>
+          <li data-cite="milgrom1982information"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L09.html"><span class="dir">Previous</span>L09 · The no-trade theorem</a>
+        <a class="next" href="index.html"><span class="dir">Unit</span>E4 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">E4 project · Price Informativeness · The autograder and the self-assessment run in your browser; nothing you write leaves it.</footer>
+</body>
+</html>

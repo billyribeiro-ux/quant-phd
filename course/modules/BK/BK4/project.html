@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="BK4" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BK4 Project · Clearing-house simulator</title>
+  <meta name="description" content="Write the loss waterfall of a central counterparty for one member default, share the surviving members' default funds, and size the defaulter's margin for a target cover. The code is autograded on your own seeded case; the memo is graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+  <style>.reading-list a, .references a { overflow-wrap: anywhere; }</style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">BK4 Payments, Market Infrastructure &amp; Fintech</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="15">
+      <header class="page-head">
+        <p class="eyebrow">BK4 project · 15 hours · autograded code and a rubric-graded memo</p>
+        <h1>Clearing-house simulator</h1>
+        <p class="lede">A clearing house takes the other side of each trade its members make, and it holds margin and default funds against the risk. When a member defaults, a fixed order of layers pays the loss. You will write the simulator that pays one default through those layers, shares the residual among the surviving members, and sizes the defaulter's margin for a target cover. The code is tested against hand-computed fixtures and against the rules on this page, and the memo is graded against the rubric.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are at full length. If you met the placement bar on the <a href="index.html#placement">module page</a>, skip rungs 1 and 2 and start at rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: one default on a four-member clearing house, with the three layers, the survivors' shares and the margin for a target cover, each step annotated.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: the same default with two blanks, the survivor share and the sizing index. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">the specification section</a>: the module <code>clearing_house.py</code>, autograded in <a href="#grader-section">the autograder section</a>, and a memo, graded by the rubric in <a href="#report">the report section</a> with annotated exemplars and a self-assessment.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended extensions in <a href="#stretch">the stretch section</a>, for your portfolio. They are not graded.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Both labs use one illustrative clearing house with four members, and all of its amounts are SIMULATED: they are illustrative values, not market data, and no file is read. Every amount is an integer number of cents, and every ratio is an integer number of basis points, floored. Member 2 defaults. Its initial margin is 50000 cents and its default fund is 6000 cents. The CCP capital is 20000 cents. The surviving members are 1, 3 and 4, with default funds of 4000, 5000 and 3000 cents, so their pool is 12000 cents. The losses for the sizing come from a seeded generator, a set of 40 scenarios between 0 and 120000 cents.</p>
+
+        <section class="lab" id="lab-BK4-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: one default, step by step</h3>
+          <p class="hypothesis">Stated before running. The loss of 80000 cents is paid by the margin (50000), the default fund (6000) and the CCP capital (20000), which leaves a residual of 4000 cents. The residual is below the pool of 12000, so the survivors pay pro rata: the floored shares are 1333, 1666 and 1000, and one cent is left over. That cent goes to member 1, so the survivors pay 1334, 1666 and 1000 cents, and nothing is uncovered. The layers and the survivors' payments add to 80000. For the 40 seeded scenarios, a target of 9550 bps has an exact position of 38.2, so the index is k = 39 and the margin is the 39th smallest loss, 117088 cents. That margin gives a cover of 9750 bps, which reaches the target, and one cent less gives 9500 bps, which does not.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: one default on a four-member clearing house, every step annotated, in integer cents.
+
+Standard library only. The inputs are SIMULATED: illustrative values, not market data. No file is read, and the
+scenario losses come from a seeded generator, so every run prints the same lines.
+"""
+
+import random
+
+MARGIN = {1: 30_000, 2: 50_000, 3: 40_000, 4: 20_000}  # initial margin of each member, in cents (SIMULATED)
+FUND = {1: 4_000, 2: 6_000, 3: 5_000, 4: 3_000}  # default-fund contribution of each member, in cents (SIMULATED)
+CAPITAL = 20_000  # the CCP's own capital, in cents (SIMULATED)
+DEFAULTER = 2
+LOSS = 80_000  # the loss from this one default, in cents
+
+
+def main() -&gt; None:
+    # Step 1. The three layers, in order. Each layer pays what the loss still needs, up to its own size, so the
+    # layers never pay the same cent twice. The defaulter's margin is used before its default fund, and the
+    # default fund before the CCP capital.
+    from_margin = min(LOSS, MARGIN[DEFAULTER])
+    from_fund = min(LOSS - from_margin, FUND[DEFAULTER])
+    from_capital = min(LOSS - from_margin - from_fund, CAPITAL)
+    residual = LOSS - from_margin - from_fund - from_capital
+    print(f"layers: margin {from_margin} | default fund {from_fund} | CCP capital {from_capital} | residual {residual}")
+    # Step 2. The surviving members are every member except the defaulter. Their default funds form the pool that
+    # pays the residual, and the pool is the sum of their contributions.
+    survivors = sorted(m for m in FUND if m != DEFAULTER)
+    pool = sum(FUND[m] for m in survivors)
+    print(f"survivors {survivors} | default funds {[FUND[m] for m in survivors]} | pool {pool}")
+    # Step 3. The residual is below the pool, so each survivor pays its pro rata share. The share is floored to a
+    # whole cent, which can leave a few cents unpaid. Those cents are given out one each, to the first survivors in
+    # ascending id order that have a positive contribution, so the shares add up to the residual exactly.
+    uncovered = 0
+    if residual &gt;= pool:
+        shares = {m: FUND[m] for m in survivors}
+        uncovered = residual - pool
+    else:
+        shares = {m: residual * FUND[m] // pool for m in survivors}
+        leftover = residual - sum(shares.values())
+        print(f"floored shares {shares} | leftover cents {leftover}")
+        for m in survivors:
+            if leftover &gt; 0 and FUND[m] &gt; 0:
+                shares[m] += 1
+                leftover -= 1
+    print(f"survivor payments {shares} | uncovered {uncovered}")
+    # Step 4. The conservation check. The layers, the survivors' payments and the uncovered loss add to the loss.
+    total = from_margin + from_fund + from_capital + sum(shares.values()) + uncovered
+    print(f"conservation: {total} == {LOSS} is {total == LOSS}")
+    # Step 5. Sizing. The scenario set is 40 losses drawn from a seeded generator, each between 0 and 120000 cents.
+    rng = random.Random(1)
+    losses = [rng.randint(0, 120_000) for _ in range(40)]
+    count = len(losses)
+    target = 9_550  # basis points: the cover we want, 95.50 % of scenarios
+    # The exact position of the target in the sorted losses is target * count / 10000, which is 38.2 here. The
+    # margin must cover at least that many scenarios, so the position is rounded up: k = 39.
+    exact_position = target * count / 10_000
+    k = -((-target * count) // 10_000)
+    print(f"target {target} bps of {count} scenarios: exact position {exact_position:.1f} | k {k}")
+    margin = sorted(losses)[k - 1]
+    print(f"margin: the {k}th smallest loss = {margin}")
+    # Step 6. The cover at the margin, and one cent below it. Both are floored counts in basis points.
+    covered = sum(1 for loss in losses if loss &lt;= margin)
+    below = sum(1 for loss in losses if loss &lt;= margin - 1)
+    cover_at = 10_000 * covered // count
+    cover_below = 10_000 * below // count
+    print(f"cover at the margin: {cover_at} bps | reaches the target: {cover_at &gt;= target}")
+    print(f"cover one cent below: {cover_below} bps | reaches the target: {cover_below &gt;= target}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">layers: margin 50000 | default fund 6000 | CCP capital 20000 | residual 4000
+survivors [1, 3, 4] | default funds [4000, 5000, 3000] | pool 12000
+floored shares {1: 1333, 3: 1666, 4: 1000} | leftover cents 1
+survivor payments {1: 1334, 3: 1666, 4: 1000} | uncovered 0
+conservation: 80000 == 80000 is True
+target 9550 bps of 40 scenarios: exact position 38.2 | k 39
+margin: the 39th smallest loss = 117088
+cover at the margin: 9750 bps | reaches the target: True
+cover one cent below: 9500 bps | reaches the target: False</pre>
+          <p class="interpretation">Each step names one rule of the simulator, and the printed lines are the values of those steps. The layers come first and each takes only what the loss still needs, which is why the residual is 4000 and not a figure from another order. The shares are floored, so 1333 + 1666 + 1000 falls one cent short of the residual 4000, and the leftover cent goes to member 1 because it is the first survivor with a positive contribution. The sizing index is 38.2 taken up to 39, not down: a margin that covers 38 of 40 scenarios is 95.00 % and does not reach 95.50 %. The cover one cent below the margin falls to 9500 bps. The lab checks these numbers for one seeded set of 40 scenarios, and it does not show that the rules are correct for any other set.</p>
+        </section>
+
+        <section class="lab completion" id="lab-BK4-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: the survivor share and the sizing index</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the expression the conventions below give. In the share line, the share of each survivor is the residual times its default fund, floored by integer division by the pool. In the index line, the index is the ceiling of target times count over 10000, computed in integers as <code>-((-target * count) // 10000)</code>. When both blanks are right, the survivor shares are 1334, 1666 and 1000 cents, the index is 39, and the margin for the target is 117088 cents, the same as Lab 1.</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completion: the default of Lab 1, with the survivor share and the sizing index left for you to fill in.
+
+Standard library only. The inputs are SIMULATED: illustrative values, not market data. This file is the completed
+solution. The page shows the same code with two blanks, and every other line is the same.
+"""
+
+import random
+
+MARGIN = {1: 30_000, 2: 50_000, 3: 40_000, 4: 20_000}  # initial margin of each member, in cents (SIMULATED)
+FUND = {1: 4_000, 2: 6_000, 3: 5_000, 4: 3_000}  # default-fund contribution of each member, in cents (SIMULATED)
+CAPITAL = 20_000  # the CCP's own capital, in cents (SIMULATED)
+DEFAULTER = 2
+LOSS = 80_000  # the loss from this one default, in cents
+
+
+def main() -&gt; None:
+    # The layers: margin, then default fund, then CCP capital. Each pays what the loss still needs.
+    from_margin = min(LOSS, MARGIN[DEFAULTER])
+    from_fund = min(LOSS - from_margin, FUND[DEFAULTER])
+    from_capital = min(LOSS - from_margin - from_fund, CAPITAL)
+    residual = LOSS - from_margin - from_fund - from_capital
+    print(f"layers: margin {from_margin} | default fund {from_fund} | CCP capital {from_capital} | residual {residual}")
+    # The survivors pay the residual pro rata to their default funds: each share is floored to a whole cent.
+    survivors = sorted(m for m in FUND if m != DEFAULTER)
+    pool = sum(FUND[m] for m in survivors)
+    shares = {m: ___ for m in survivors}
+    leftover = residual - sum(shares.values())
+    for m in survivors:
+        if leftover &gt; 0 and FUND[m] &gt; 0:
+            shares[m] += 1
+            leftover -= 1
+    print(f"survivor shares (cents): {shares}")
+    # The sizing. The margin for a target is the k-th smallest loss, where k is the target's share of the scenarios
+    # rounded up: k = ceil(target * count / 10000), computed in integers as -((-target * count) // 10000).
+    rng = random.Random(1)
+    losses = [rng.randint(0, 120_000) for _ in range(40)]
+    target = 9_550
+    count = len(losses)
+    index = ___
+    print(f"sizing index k = {index} | margin for target {target} bps = {sorted(losses)[index - 1]}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">layers: margin 50000 | default fund 6000 | CCP capital 20000 | residual 4000
+survivor shares (cents): {1: 1334, 3: 1666, 4: 1000}
+sizing index k = 39 | margin for target 9550 bps = 117088</pre>
+          <p class="interpretation">The first blank is the floored pro rata share, and the second is the ceiling index. The leftover loop that follows the first blank is the same as in Lab 1, and it gives the one leftover cent to member 1. The index blank uses only integers, so the ceiling is exact for every target and every count. The printed lines agree with Lab 1 because the completed expressions are the expressions Lab 1 uses. The check compares every printed line with the expected block.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A clearing house novates each trade it clears, so it becomes the counterparty to both sides, and it holds initial margin and a default fund from its members against the losses from their defaults. When a member defaults, its initial margin pays first, then its default fund, then the clearing house's own capital, and only then do the surviving members pay, through their default funds. You write the simulator that pays one default through these layers, shares the residual among the survivors, and sizes the defaulter's margin for a target cover. The cover of a margin is the share of the scenarios whose loss the margin covers in full. One default is simulated at a time, over a fixed set of scenarios, and the rules are those on this page, which the autograder checks.</dd>
+          <dt>Inputs</dt>
+          <dd>No data file. The autograder's case comes from <code>grader/instance.py</code>, seeded by your workspace ID. It holds <code>N</code> members with ids 1 to <code>N</code>, where <code>N</code> is from 4 to 6; for each member, an initial margin and a default-fund contribution in whole cents, with every default fund at least 1 cent; the CCP capital in whole cents; the defaulting member's id; a list of 40 to 80 scenario losses in whole cents; and a target cover of 9000, 9500 or 9750 basis points. All values are SIMULATED. None is market data.</dd>
+          <dt>Required outputs</dt>
+          <dd><code>clearing_house.py</code> at the root of your repository, with these names. <code>Waterfall</code>, a frozen dataclass with the fields <code>margin_cents</code>, <code>default_fund_cents</code> and <code>ccp_capital_cents</code> (ints), <code>survivor_cents</code> (a dictionary from each surviving member's id to its cents) and <code>uncovered_cents</code> (an int). <code>waterfall(loss_cents, defaulter_id, initial_margin_cents, default_fund_cents, ccp_capital_cents)</code>, which returns a <code>Waterfall</code>. The two dictionaries map each member id to cents, and the member ids are the keys of <code>default_fund_cents</code>. <code>margin_for_cover(losses_cents, target_bps)</code>, which returns the least margin in cents whose cover is at least <code>target_bps</code>. <code>cover_bps(losses_cents, margin_cents)</code>, which returns the cover in basis points. Start from <a href="grader/starter.py">the starter file</a>, whose names and signatures are complete. The module docstring states the conventions in your own words (the layer order, the sign of every amount, the integer rule and the leftover rule). A reviewer reads the docstring; the autograder does not check it. For the memo, commit <code>memo.md</code>, the rubric memo described in <a href="#report">the report section</a>.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only (not checked by the autograder; a reviewer reads it). Every money value is an int in cents, and every computation is integer arithmetic, so no float and no rounding step appears: a share is floored by integer division, and the leftover cents are given out as the rule below states. Each named condition below raises <code>ValueError</code>. Any other invalid input may raise any exception or return. On a valid input and on each named refused input, no function prints or warns.
+            <ul>
+              <li><code>margin_for_cover</code>: <code>losses_cents</code> is empty. The message says that at least one scenario is needed.</li>
+              <li><code>margin_for_cover</code>: <code>target_bps</code> is below 1 or above 10000. The message names <code>target_bps</code>.</li>
+              <li><code>margin_for_cover</code> and <code>cover_bps</code>: a loss is negative. The message says that losses cannot be negative.</li>
+              <li><code>cover_bps</code>: <code>losses_cents</code> is empty. The message says that at least one scenario is needed.</li>
+              <li><code>waterfall</code>: the loss, a member's initial margin, a member's default fund, or the CCP capital is negative. The message names that input, for example <code>default_fund_cents</code>.</li>
+              <li><code>waterfall</code>: <code>defaulter_id</code> is not one of the member ids. The message names <code>defaulter_id</code>.</li>
+            </ul>
+          </dd>
+          <dt>Grading mode</dt>
+          <dd>Both. The autograder is <code>grader/test_project.py</code>, which runs 73 checks with warnings as errors. Its checks cover the conservation invariant on every scenario, the layer order at every boundary of a hand-computed fixture, the remainder rule, each named condition on both sides of its limit, the sizing against the order statistic and against a brute-force search over whole-cent margins, the cover and its floor, monotonicity, and the silence and purity of the module. The same file runs in your browser and on your machine. It checks the cent results and the cover values, not the method that computes them. It is not secret: its integrity comes from your seeded case and from a second case, which a fixed answer for the first would also have to match. The memo is graded by rubric, against the five criteria in <a href="#rubric-heading">the rubric</a>, each with four observable levels. You score the memo yourself with the form in <a href="#self-assessment">the self-assessment section</a>, and you calibrate that score on two annotated exemplars.</dd>
+        </dl>
+
+        <h3 id="conventions">Conventions</h3>
+        <ul>
+          <li><strong>Layer order.</strong> A loss <code>L</code> is paid by four layers in this order, where <code>IM_d</code> and <code>DF_d</code> are the defaulter's initial margin and default fund, and <code>K</code> is the CCP capital: the margin pays <code>a1 = min(L, IM_d)</code>; the default fund pays <code>a2 = min(L - a1, DF_d)</code>; the capital pays <code>a3 = min(L - a1 - a2, K)</code>; and the residual is <code>R = L - a1 - a2 - a3</code>. A layer is used only after the layer before it is exhausted. The order is a rule of this simulator. It is not a claim about any clearing house.</li>
+          <li><strong>Survivors.</strong> Let <code>T</code> be the sum of the surviving members' default funds. If <code>R &gt;= T</code>, each survivor pays its whole default fund and the uncovered loss is <code>R - T</code>. If <code>R &lt; T</code>, survivor <code>i</code> pays <code>share_i = (R * DF_i) // T</code>, and the leftover <code>R - sum(share_i)</code> goes one cent each to the first survivors, in ascending id order, that have <code>DF_i &gt; 0</code>. A survivor with <code>DF_i = 0</code> pays zero. The uncovered loss is zero in this case.</li>
+          <li><strong>Conservation.</strong> The layers, the survivors' payments and the uncovered loss add to the loss: <code>a1 + a2 + a3 + sum(survivor payments) + uncovered = L</code>.</li>
+          <li><strong>Cover.</strong> For a set of <code>S</code> scenario losses and a margin <code>M</code>, <code>cover_bps(L, M) = (10000 * #{s : L_s &lt;= M}) // S</code>. The cover is an integer in basis points, floored. A loss equal to the margin is covered.</li>
+          <li><strong>Sizing.</strong> For a target <code>t</code> in basis points, <code>margin_for_cover(L, t)</code> is the <code>k</code>-th smallest loss, where <code>k = ceil(t * S / 10000)</code>, computed in integers as <code>-((-t * S) // 10000)</code>. Lesson 3 defines the cover and states the sizing rule with its proof under its own assumptions; this page states the rule the simulator must implement.</li>
+          <li><strong>Money.</strong> Every amount is an int number of cents. The exact value of every output is an integer, so no output is rounded.</li>
+        </ul>
+
+        <h3 id="fixtures">Hand-computed fixtures</h3>
+        <p>These fixtures are computed by hand on this page, and they do not depend on the seed. The autograder checks every one of them.</p>
+        <p><strong>Layer-order fixture.</strong> The defaulter is member 3, with an initial margin of 100 cents and a default fund of 50 cents. The CCP capital is 30 cents. The survivors are members 1 and 2, with default funds of 40 and 60 cents. The table gives the waterfall for each loss.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col" class="num">Loss (cents)</th><th scope="col" class="num">Margin</th><th scope="col" class="num">Default fund</th><th scope="col" class="num">CCP capital</th><th scope="col" class="num">Survivor 1</th><th scope="col" class="num">Survivor 2</th><th scope="col" class="num">Uncovered</th></tr></thead>
+            <tbody>
+              <tr><td class="num">80</td><td class="num">80</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+              <tr><td class="num">100</td><td class="num">100</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+              <tr><td class="num">120</td><td class="num">100</td><td class="num">20</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+              <tr><td class="num">150</td><td class="num">100</td><td class="num">50</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+              <tr><td class="num">151</td><td class="num">100</td><td class="num">50</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+              <tr><td class="num">170</td><td class="num">100</td><td class="num">50</td><td class="num">20</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+              <tr><td class="num">180</td><td class="num">100</td><td class="num">50</td><td class="num">30</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+              <tr><td class="num">181</td><td class="num">100</td><td class="num">50</td><td class="num">30</td><td class="num">1</td><td class="num">0</td><td class="num">0</td></tr>
+              <tr><td class="num">200</td><td class="num">100</td><td class="num">50</td><td class="num">30</td><td class="num">8</td><td class="num">12</td><td class="num">0</td></tr>
+              <tr><td class="num">205</td><td class="num">100</td><td class="num">50</td><td class="num">30</td><td class="num">10</td><td class="num">15</td><td class="num">0</td></tr>
+              <tr><td class="num">300</td><td class="num">100</td><td class="num">50</td><td class="num">30</td><td class="num">40</td><td class="num">60</td><td class="num">20</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Remainder fixture.</strong> The defaulter has no initial margin, no default fund and no capital, so the loss is the residual. The survivors are members 1, 2 and 3, each with a default fund of 1 cent. A loss of 1 cent gives <code>{1: 1, 2: 0, 3: 0}</code>, and a loss of 2 cents gives <code>{1: 1, 2: 1, 3: 0}</code>. A loss of 4 cents leaves 1 cent uncovered, with each survivor paying 1 cent.</p>
+        <p><strong>Sizing fixtures.</strong> With the losses 10, 20, 30, 40 and 50 cents, a target of 8000 bps gives a margin of 40 cents, a target of 8001 bps gives 50, and a target of 10000 bps gives 50. With the losses 10, 20, 30 and 40 cents, a target of 5000 bps gives 20 cents.</p>
+        <p><strong>Cover fixtures.</strong> With the losses 1, 5 and 9 cents and a margin of 4 cents, the cover is 3333 bps. With the losses 1, 2 and 9 cents and a margin of 2 cents, the cover is 6666 bps, which is the floor of 6666.67.</p>
+
+        <section class="lab" id="lab-BK4-project-3" data-runtime="python">
+          <h3>Lab 3 · Rung 3 check: the reference instance, its waterfall rows and its sizing table</h3>
+          <p class="hypothesis">Stated before running. The reference instance is the instance of Lab 1, with the 40 scenarios of Lab 1. Part A gives five waterfall rows, and each row adds to its loss. The 20000-cent loss is paid by the margin alone. The 55000-cent loss is paid by the margin and 5000 cents of default fund. The 70000-cent loss is paid by the margin, the whole default fund and 14000 cents of capital. The 80000-cent loss reaches the survivors, who pay 1334, 1666 and 1000 cents. The 100000-cent loss leaves 12000 cents uncovered. Part B gives the sizing for targets 9000, 9500 and 9750 bps. The margins are 105154, 111074 and 117088 cents, the covers at those margins are 9000, 9500 and 9750 bps, and one cent below each margin the cover falls short of its target. The brute-force search agrees with the order statistic for every target. Part C takes each margin as the defaulter's initial margin and counts the scenarios that get past each layer.</p>
+          <pre><code class="language-python" data-run>"""Rung 3 check: the reference instance of the project page, its waterfall rows and its sizing table.
+
+Standard library only. The inputs are SIMULATED: illustrative values, not market data. Every amount is an int in cents,
+and every ratio is an int in basis points, floored. The scenario losses are the seeded set of Lab 1. The brute-force
+search below is a check on the sizing rule, not a proof of it.
+"""
+
+import random
+
+MEMBERS = [1, 2, 3, 4]
+MARGIN = {1: 30_000, 2: 50_000, 3: 40_000, 4: 20_000}  # initial margin of each member, in cents (SIMULATED)
+FUND = {1: 4_000, 2: 6_000, 3: 5_000, 4: 3_000}  # default-fund contribution of each member, in cents (SIMULATED)
+CAPITAL = 20_000  # the CCP's own capital, in cents (SIMULATED)
+DEFAULTER = 2
+TARGETS = (9_000, 9_500, 9_750)  # basis points
+
+
+def waterfall(loss: int, margin_d: int) -&gt; tuple[int, int, int, dict[int, int], int]:
+    """Pay one loss in cents: the defaulter's margin (margin_d), its default fund, the CCP capital, then survivors."""
+    from_margin = min(loss, margin_d)
+    from_fund = min(loss - from_margin, FUND[DEFAULTER])
+    from_capital = min(loss - from_margin - from_fund, CAPITAL)
+    residual = loss - from_margin - from_fund - from_capital
+    survivors = [m for m in MEMBERS if m != DEFAULTER]
+    pool = sum(FUND[m] for m in survivors)
+    if residual &gt;= pool:
+        return from_margin, from_fund, from_capital, {m: FUND[m] for m in survivors}, residual - pool
+    shares = {m: residual * FUND[m] // pool for m in survivors}
+    leftover = residual - sum(shares.values())
+    for m in survivors:
+        if leftover &gt; 0 and FUND[m] &gt; 0:
+            shares[m] += 1
+            leftover -= 1
+    return from_margin, from_fund, from_capital, shares, 0
+
+
+def margin_for_target(losses: list[int], target: int) -&gt; int:
+    """The k-th smallest loss in cents, with k = ceil(target * count / 10000) in integers."""
+    k = -((-target * len(losses)) // 10_000)
+    return sorted(losses)[k - 1]
+
+
+def brute_force_margin(losses: list[int], target: int) -&gt; int:
+    """The least whole-cent margin whose floored cover in basis points reaches the target, found by scanning margins."""
+    top = max(losses)
+    tally = [0] * (top + 1)
+    for loss in losses:
+        tally[loss] += 1
+    covered = 0
+    for margin in range(top + 1):
+        covered += tally[margin]
+        if 10_000 * covered // len(losses) &gt;= target:
+            return margin
+    return top
+
+
+def main() -&gt; None:
+    # Part A. Five losses on the reference instance, each with its layers, survivor payments and uncovered loss.
+    print("part A: the waterfall rows, with the defaulter's margin as set")
+    for loss in (20_000, 55_000, 70_000, 80_000, 100_000):
+        a1, a2, a3, shares, uncovered = waterfall(loss, MARGIN[DEFAULTER])
+        total = a1 + a2 + a3 + sum(shares.values()) + uncovered
+        print(
+            f"loss {loss} | margin {a1} | fund {a2} | capital {a3} | survivors {shares} | "
+            f"uncovered {uncovered} | conservation {total == loss}"
+        )
+    # Part B. Sizing for three targets on the 40 seeded scenario losses.
+    rng = random.Random(1)
+    losses = [rng.randint(0, 120_000) for _ in range(40)]
+    print(f"part B: {len(losses)} scenarios, largest loss {max(losses)}")
+    for target in TARGETS:
+        k = -((-target * len(losses)) // 10_000)
+        margin = margin_for_target(losses, target)
+        cover_at = 10_000 * sum(1 for x in losses if x &lt;= margin) // len(losses)
+        cover_below = 10_000 * sum(1 for x in losses if x &lt;= margin - 1) // len(losses)
+        brute = brute_force_margin(losses, target)
+        print(
+            f"target {target} | k {k} | margin {margin} | cover {cover_at} | cover one cent below {cover_below} | "
+            f"brute force {brute} | agrees {brute == margin}"
+        )
+    # Part C. The margin for two targets, taken as the defaulter's initial margin. Each count is the number of
+    # scenarios that get past one more layer: past the margin, past the default fund, past the CCP capital (so the
+    # surviving members pay), and past the surviving members' total (so a loss is uncovered).
+    surviving_fund = sum(FUND[m] for m in MEMBERS if m != DEFAULTER)
+    print("part C: the scenarios that get past each layer, for each margin taken as the defaulter's margin")
+    for target in (9_500, 9_000):
+        margin = margin_for_target(losses, target)
+        past_margin = sum(1 for x in losses if x &gt; margin)
+        past_fund = sum(1 for x in losses if x &gt; margin + FUND[DEFAULTER])
+        past_capital = sum(1 for x in losses if x &gt; margin + FUND[DEFAULTER] + CAPITAL)
+        past_survivors = sum(1 for x in losses if x &gt; margin + FUND[DEFAULTER] + CAPITAL + surviving_fund)
+        print(
+            f"target {target} | margin {margin} | past margin {past_margin} | past default fund {past_fund} | "
+            f"past CCP capital {past_capital} | past survivors (uncovered) {past_survivors}"
+        )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">part A: the waterfall rows, with the defaulter's margin as set
+loss 20000 | margin 20000 | fund 0 | capital 0 | survivors {1: 0, 3: 0, 4: 0} | uncovered 0 | conservation True
+loss 55000 | margin 50000 | fund 5000 | capital 0 | survivors {1: 0, 3: 0, 4: 0} | uncovered 0 | conservation True
+loss 70000 | margin 50000 | fund 6000 | capital 14000 | survivors {1: 0, 3: 0, 4: 0} | uncovered 0 | conservation True
+loss 80000 | margin 50000 | fund 6000 | capital 20000 | survivors {1: 1334, 3: 1666, 4: 1000} | uncovered 0 | conservation True
+loss 100000 | margin 50000 | fund 6000 | capital 20000 | survivors {1: 4000, 3: 5000, 4: 3000} | uncovered 12000 | conservation True
+part B: 40 scenarios, largest loss 118151
+target 9000 | k 36 | margin 105154 | cover 9000 | cover one cent below 8750 | brute force 105154 | agrees True
+target 9500 | k 38 | margin 111074 | cover 9500 | cover one cent below 9250 | brute force 111074 | agrees True
+target 9750 | k 39 | margin 117088 | cover 9750 | cover one cent below 9500 | brute force 117088 | agrees True
+part C: the scenarios that get past each layer, for each margin taken as the defaulter's margin
+target 9500 | margin 111074 | past margin 2 | past default fund 2 | past CCP capital 0 | past survivors (uncovered) 0
+target 9000 | margin 105154 | past margin 4 | past default fund 2 | past CCP capital 0 | past survivors (uncovered) 0</pre>
+          <p class="interpretation">Part A checks the layer rules on five losses. The conservation column is True in every row, and the 100000-cent row is the one case with an uncovered loss. Part B shows that the three targets give three different sizing indices, 36, 38 and 39, for these 40 scenarios. The brute-force column is a search over whole-cent margins, and it agrees with the order statistic for each target, which is a check on this set and not a proof. Part C shows how many scenarios get past each layer at each margin: for the 9000 bps margin, 4 scenarios are past the margin and 2 are past the default fund, and no scenario is past the capital or leaves an uncovered loss. The printed values describe this set of 40 scenarios only.</p>
+        </section>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-budget">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">2</td><td>One default with three layers and a survivor share; the comments give the reason for each step.</td></tr>
+              <tr><td>Rung 2 completion problem and its instant check</td><td class="num">2</td><td>Two blanks, the survivor share and the sizing index; the time goes into why each expression is the right one.</td></tr>
+              <tr><td>Waterfall layers and survivor sharing</td><td class="num">3</td><td>The layer order, the remainder rule and the uncovered loss, each checked on the fixtures.</td></tr>
+              <tr><td>Margin sizing and the cover check</td><td class="num">3</td><td>The order statistic, the ceiling index, and the integer cover in basis points with its floor.</td></tr>
+              <tr><td>Edge cases and the suite on seeds 0 to 9</td><td class="num">2</td><td>The named conditions, each tested on both sides, and the local run of the suite.</td></tr>
+              <tr><td>Memo (rubric)</td><td class="num">2</td><td>One to two pages, written against the five rubric criteria.</td></tr>
+              <tr><td>Self-assessment against the exemplars</td><td class="num">1</td><td>Score the memo with the rubric, then compare your scores with exemplar A and exemplar B.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>15</strong></td><td>Equals the project hours in the hub: 15 of the module's 50 hours, or 30 %.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>clearing_house.py</code> and run the suite on your own case. Your code is saved in this browser as you type.</p>
+        <section class="grader-panel" id="grader" data-unit="BK4" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="clearing_house.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>Copy <a href="grader/test_project.py">test_project.py</a> and <a href="grader/instance.py">instance.py</a> next to your <code>clearing_house.py</code>, then run, with the seed shown in the autograder panel:</p>
+        <pre><code class="no-math">QF_SEED=&lt;your seed&gt; pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+        <p><code>--assert=plain</code> turns off pytest's comparison details, so a failure shows the test's own message and no values, and <code>-W error</code> turns warnings into failures, both as in the browser. The browser runs the same file.</p>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The memo</h2>
+        <p>The memo is <code>memo.md</code>, one to two pages, in the repository beside <code>clearing_house.py</code>. It states the layer amounts for one stated scenario, the margin you size for one target cover, the survivors' payments for one stated scenario, and a recommendation between two margins. Every number in the memo is printed by your own run of the simulator on the seeded case, or by Lab 3 on the reference instance, so that you can check each one against a printed line before you write it.</p>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The memo: five criteria, four levels each, scored by the descriptors below. The memo meets the bar at level 3 or above on every criterion.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Waterfall order and layer amounts</th><td>Names each layer in order, gives its cents for a stated scenario, and states that a layer is used only after the one before is exhausted.</td><td>Names each layer in order and gives its cents for a stated scenario, without the statement that a layer waits for the one before it.</td><td>Names the layers, but gives the cents for no scenario, or gives them in a different order.</td><td>Names fewer than two of the layers, or gives no layer amount.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Margin sizing</th><td>States the target in basis points, the value of k, the sorted position used, and checks the cover at the chosen margin and at one cent below it.</td><td>States the target, the value of k and the margin, and checks the cover at the chosen margin only.</td><td>States the margin for a stated target, with no check of the cover.</td><td>Gives no margin, or gives a margin with no target stated.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Survivor sharing and rounding</th><td>States the pro rata rule and the leftover rule, and shows that the survivors' cents add to the residual for a stated scenario.</td><td>States the pro rata rule and the leftover rule, without the sum that checks them.</td><td>States the pro rata rule only.</td><td>Names no sharing rule, and gives no survivor amount.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Interpretation and recommendation</th><td>Recommends one margin with the cover it achieves, gives the count of scenarios that get past the surviving members or leave an uncovered loss, and compares one alternative.</td><td>Recommends one margin with its cover, and compares one alternative, without the count.</td><td>Recommends a margin with no cover stated.</td><td>Recommends no margin.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Limits and evidence</th><td>Names the limits of the simulator (one default at a time, a fixed scenario set, no time to close out the defaulter's positions, no change in margins in stress), and for each claim graded B or C names its counter-evidence, or states that the memo cites none.</td><td>Names three of the four limits, and states what each one does to the result.</td><td>Names one or two limits.</td><td>Names no limit of the simulator.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two memos on the reference instance, at two levels. Each passage carries an annotation that names the descriptors it meets or misses. Each exemplar gives its official scoring after its annotations; reveal it after you have scored the exemplar yourself. Exemplar B quotes only numbers that Lab 3 prints. Exemplar A quotes only the rule, and no printed value.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,1,2,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 1 · C4 2 · C5 2. The layers are named in order, but no amount is given for any scenario; the margin is stated with its target but its cover is not checked; the survivors' sharing rule is not stated; the recommendation has no cover; and two limits are named.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Setting</h5>
+              <p>The clearing house has four members, and member 2 defaults. The simulator pays the loss through the margin, the default fund and the capital, and then the survivors pay.</p>
+              <h5>Waterfall</h5>
+              <p>The margin pays first, then the default fund, then the capital, and the survivors pay what is left of the loss.</p>
+              <h5>Sizing</h5>
+              <p>For a target of 9500 bps, the margin is the 38th smallest loss of the scenario set.</p>
+              <h5>Survivors</h5>
+              <p>The survivors share the rest.</p>
+              <h5>Recommendation</h5>
+              <p>We recommend the margin for 9500 bps.</p>
+              <h5>Limits</h5>
+              <p>The model considers one default at a time and a fixed set of scenarios.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: names the layers in order, but gives the cents for no scenario.</li>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: states the margin for a stated target, with no check of the cover.</li>
+                <li class="misses" data-criterion="C2" data-level="3">Misses C2 level 3: the cover at the chosen margin is not checked, and the value of k is not stated.</li>
+                <li class="meets" data-criterion="C3" data-level="1">Meets C3 level 1: names no sharing rule, and gives no survivor amount.</li>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: recommends a margin with no cover stated.</li>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: names two limits.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. Every criterion is met at level 4. The memo quotes only the numbers that Lab 3 prints or the rules on this page.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Setting</h5>
+              <p>The reference instance has four members, with initial margins of 30000, 50000, 40000 and 20000 cents, default funds of 4000, 6000, 5000 and 3000 cents, and a CCP capital of 20000 cents. Member 2 defaults, so the survivors are members 1, 3 and 4, with a pool of 12000 cents. The scenario set has 40 losses, and the instance is SIMULATED.</p>
+              <h5>Waterfall</h5>
+              <p>For a loss of 80000 cents, the margin pays 50000 cents, the default fund pays 6000 cents and the capital pays 20000 cents. That leaves a residual of 4000 cents, which is below the pool. Under the layer order, a layer is used only after the one before it is exhausted, so the capital is used before any survivor pays. The survivors pay 1334, 1666 and 1000 cents, and the sum of the layers and the payments is 80000 cents, which is the loss. The printed line <code>conservation: 80000 == 80000 is True</code> in Lab 1 confirms it.</p>
+              <h5>Sizing</h5>
+              <p>For the target of 9500 bps, the exact position is 38.0, so k is 38. The margin is the 38th smallest loss, 111074 cents, which is the line <code>part C</code> of Lab 3 prints for that target. At that margin the cover is 9500 bps. One cent below it the cover is 9250 bps, which is below the target. Lab 3 prints the same pair for the targets 9000 and 9750 bps, with margins of 105154 and 117088 cents.</p>
+              <h5>Recommendation</h5>
+              <p>I recommend the margin of 111074 cents for the 9500 bps target. Two scenarios are past this margin, and no scenario is past the capital or leaves an uncovered loss, so the count of scenarios that get past the surviving members, and the count with an uncovered loss, are both 0. The alternative is the margin for 9000 bps, 105154 cents, which covers 9000 bps and leaves four scenarios past the margin. The difference is 5920 cents of initial margin for 500 bps of cover, on this set.</p>
+              <h5>Limits</h5>
+              <p>The model simulates one default at a time, over a fixed set of 40 scenarios, and the margin is sized on that set alone. It has no time to close out the defaulter's positions, so the losses are given and not built from a close-out path. It has no change in margin during stress. The memo makes no claim about any real clearing house, so no claim in it is graded B or C, and it cites no source.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: names each layer in order, gives the cents for the stated scenario, and states that a layer is used only after the one before it.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: states the target, the value of k and the sorted position, and checks the cover at the margin and one cent below.</li>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: states the pro rata rule and the leftover rule, and sums the layers and the survivors' payments to the loss.</li>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: recommends one margin with its cover, gives the count of scenarios past the surviving members and with an uncovered loss, and compares one alternative.</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: names all four limits, and states that the memo makes no claim graded B or C and cites no source.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="BK4/project/memo" data-work-label="Your memo" data-work-noun="memo" data-summary-path="report/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own memo on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own memo. Your scores stay in this browser; keep the summary the form produces as <code>report/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <p>Not graded. Each extension needs a stated rule and a check against a direct computation.</p>
+        <ul>
+          <li><strong>A second default.</strong> Pay a second default from the same scenario set, after the first default's payments have reduced the surviving pool and the capital. State the reduction rule, and check that the total paid by the two defaults equals the total of their losses.</li>
+          <li><strong>The number of scenarios.</strong> For the same target, measure how the sized margin changes as the number of scenarios grows from 40 to 80 on a fixed generator. State which scenario is the one the k-th smallest loss selects, and why it changes.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <p>The two sources the course cites for this unit. This page attributes no statement to either.</p>
+        <ol class="reading-list">
+          <li data-cite="duffie2011central"></li>
+          <li data-cite="bisndcpmi"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L05.html"><span class="dir">Previous</span>L05 · Operational risk in market infrastructure</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>BK4 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">BK4 project · Clearing-house simulator · The autograder and the self-assessment run in your browser; nothing you write leaves it.</footer>
+</body>
+</html>
