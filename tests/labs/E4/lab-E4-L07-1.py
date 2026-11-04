@@ -14,7 +14,8 @@ Part E: the benchmark of no supply noise, as a limit, and the largest value on t
 Part F: SIMULATED. A seeded sample of N_DRAWS draws of (v, eps, u), and the sample squared correlation of v and p.
 
 Units: the payoff v is in units of the asset (its liquidation value). Corr(v, p)^2 is dimensionless and lies
-in [0, 1]. Every population value is an exact Fraction. The sample uses floating point and prints six decimals.
+in [0, 1]. Parts A to E print exact Fraction population values; Part F converts the exact population value
+to float for comparison with the sample. The sample uses floating point and prints six decimals.
 """
 
 from __future__ import annotations

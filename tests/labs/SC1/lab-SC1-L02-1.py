@@ -2,9 +2,9 @@
 
 SIMULATED. The coefficients are standard normal draws from random.Random(SEED). The dyadic count and the grid-supremum
 line are identities that hold for every seed; the bound lines describe one seeded sample. Standard library only; no
-network; nothing is read from a file. The hat functions are evaluated at dyadic points, which binary floats
-represent exactly, so the dyadic checks compare exact values. Numbers are printed to six decimal places from
-unrounded values.
+network; nothing is read from a file. The hat values at dyadic points are exact binary fractions, and every level
+term beyond the depth of the point is exactly 0.0 there, so the dyadic checks compare identical floating-point sums.
+Numbers are printed to six decimal places from unrounded values.
 """
 
 from __future__ import annotations

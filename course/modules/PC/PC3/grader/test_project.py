@@ -267,6 +267,30 @@ def test_replay_sums_the_fills_not_the_running_totals() -> None:
     )
 
 
+def test_a_fill_is_one_unit_whatever_its_quoted_size() -> None:
+    """A hand-built log: a sale at the ask on turn 1 quoted at size 3. A fill is one unit, so the cash flow is one ask
+    and the inventory moves by one unit, not by the quoted size."""
+    turns = [turn_record(1, size=3, filled=True, arrival="uninformed-buy", price=10_010, inventory=-1, cash=10_010)]
+    turns += [turn_record(t, size=0, inventory=-1, cash=10_010) for t in range(2, HORIZON + 1)]
+    log = hand_log(turns, 10_000)
+    expect(
+        sol.replay(log) == oracle(log),
+        "a fill is one unit: the cash flow and the inventory of a fill must not scale with the quoted size",
+    )
+
+
+def test_a_fill_at_price_zero_is_a_legal_fill() -> None:
+    """A hand-built log: a purchase at the bid of 0 cents on turn 1. Zero is a whole number of cents, and the only
+    named refusal is a fill price of None, so the fill is counted."""
+    turns = [turn_record(1, bid=0, ask=10, filled=True, arrival="uninformed-sell", price=0, inventory=1, cash=0)]
+    turns += [turn_record(t, bid=0, ask=10, size=0, inventory=1, cash=0) for t in range(2, HORIZON + 1)]
+    log = hand_log(turns, 10_000)
+    expect(
+        sol.replay(log) == oracle(log),
+        "a fill at price 0 is a legal fill: it must be counted, with the inventory and the mark it implies",
+    )
+
+
 @pytest.mark.parametrize("seed", SEEDS)
 def test_pnl_is_cash_flow_plus_inventory_times_settlement(seed: int) -> None:
     """The P&L identity holds exactly, in integer cents: P&L = cash flow + ending inventory x settlement value."""

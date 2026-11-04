@@ -682,6 +682,15 @@ def test_repeated_losses_each_count_as_a_scenario_in_the_sizing() -> None:
     )
 
 
+def test_zero_losses_are_scenarios_in_the_sizing() -> None:
+    """A zero loss is one of the S scenarios, so the sizing counts it: with four scenarios, k = 2 gives the second."""
+    __tracebackhide__ = True
+    got = sol.margin_for_cover([0, 10, 20, 30], 5_000)
+    assert got == 10, (
+        "a zero loss is a scenario: S counts it, and the margin is the k-th smallest of all S losses, zeros included"
+    )
+
+
 def test_a_single_scenario_gives_that_scenario_at_every_target() -> None:
     """With one scenario, every target needs that one loss: the boundary S = 1."""
     __tracebackhide__ = True
@@ -786,6 +795,13 @@ def test_repeated_losses_each_count_in_the_cover() -> None:
     __tracebackhide__ = True
     got = sol.cover_bps([5, 5, 10, 20], 5)
     assert got == 5_000, "the cover counts every scenario, repeated losses included, and divides by all S scenarios"
+
+
+def test_zero_losses_are_in_the_cover_denominator() -> None:
+    """A zero loss is a scenario: two zero losses of four scenarios, at a zero margin, give a cover of 5000 bps."""
+    __tracebackhide__ = True
+    got = sol.cover_bps([0, 0, 5, 9], 0)
+    assert got == 5_000, "the cover divides by all S scenarios, and the zero losses are among them, so they count"
 
 
 def test_cover_matches_the_oracle_on_both_instances() -> None:
@@ -991,7 +1007,7 @@ def test_the_module_prints_nothing_on_valid_inputs(capsys: pytest.CaptureFixture
 
 
 def test_refused_inputs_print_nothing_before_they_raise(capsys: pytest.CaptureFixture[str]) -> None:
-    """Each of the thirteen named refusals raises ValueError and prints nothing on the way."""
+    """Each named refusal in the list below raises ValueError and prints nothing on the way."""
     __tracebackhide__ = True
     refusals: list[tuple[str, Callable[[], object]]] = [
         ("margin_for_cover with no scenarios", lambda: sol.margin_for_cover([], 9_950)),

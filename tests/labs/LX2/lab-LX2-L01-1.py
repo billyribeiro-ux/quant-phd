@@ -15,7 +15,7 @@ one whose 1933 registration has become effective, for the reporting-duty reading
 this as an assumption and does not claim the statute says it.
 
 The lab enumerates every state and every transition, computes the states reachable from the start state, and
-checks that no transition leaves the state set. It does not model the statutory timing (the twentieth day in
+prints how many transitions leave the state set. It does not model the statutory timing (the twentieth day in
 section 8(a) and the thirty days in section 12(d)), the exemptions, the prospectus requirement of section 5(b),
 or the examinations and proceedings of section 8. Its printed flags are the lesson's reading, not a test the
 Commission or a court applies.

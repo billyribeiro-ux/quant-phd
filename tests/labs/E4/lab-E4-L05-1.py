@@ -11,7 +11,8 @@ c0* = alpha / (beta + varsigma) and c1* = -delta / (beta + varsigma), which is u
 beta + varsigma > 0. The error e_k = c_k - c* obeys e_{k+1} = -(varsigma / beta) * e_k exactly, so iteration converges
 from any start when varsigma < beta and fails to converge when varsigma >= beta and the start is off the fixed point.
 
-Parameters are checked as beta > 0 and varsigma >= 0; otherwise the lab raises ValueError.
+Each parameter set that Parts B to D iterate is checked by check_params before the iteration runs: beta must be
+positive and varsigma nonnegative, otherwise the lab raises ValueError.
 
 Part A: the closed-form fixed point, and the residual of the map at it, which is exactly zero.
 Part B: iteration from (0, 0) at the base parameters; the ratio of successive errors is -varsigma / beta at every step.

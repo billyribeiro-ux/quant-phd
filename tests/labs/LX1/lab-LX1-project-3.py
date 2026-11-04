@@ -7,12 +7,12 @@ transform field states. The column read is GBP. The MANIFEST title gives US doll
 and the transform inverts only CAD, CHF, DKK, JPY, NOK and SEK, so GBP is in US dollars per pound sterling.
 The file has no interest-rate column.
 
-Windows. Windows one and two are the two windows of LX1 Lesson 4. That lesson's lab reads the same column with the
-same windows and prints the same counts; its standard deviations are decimals (0.027935 and 0.024700), which are
-2.79 and 2.47 percent per month here. Window one holds every monthly change of the GBP column, dated 1971-02 to
-2026-09 (668 changes). Window two holds the changes dated 2000-01 to 2026-09 (321 changes); its first change
-uses the rate of 1999-12. Window three holds the changes dated 2025-10 to 2026-09 (12 changes), the twelve months
-to the snapshot's last month; it is the current window of this project's brief.
+Windows. Windows one and two are the two windows of LX1 Lesson 4. That lesson's lab reads the same column with the same
+windows and prints the same change counts (668 and 321); its standard deviations are decimals (0.027935 and 0.024700),
+which are 2.79 and 2.47 percent per month here. Window one holds every monthly change of the GBP column, dated 1971-02
+to 2026-09 (668 changes). Window two holds the changes dated 2000-01 to 2026-09 (321 changes); its first change uses the
+rate of 1999-12. Window three holds the changes dated 2025-10 to 2026-09 (12 changes), the twelve months to the
+snapshot's last month; it is the current window of this project's brief.
 
 Conventions. A monthly log change at month m is ln(S_m / S_(m-1)), per month, with no annualization. A window's
 dispersion is the sample standard deviation of its changes, with denominator n - 1, reported in percent per month as

@@ -6,8 +6,9 @@ Runs identically in the browser (Pyodide) and locally:
 
 with your solver.py next to this file. Warnings are failures, as in the browser.
 
-Every expected value below is recomputed here by oracle functions written for this suite, which do not read solver.py
-and do not use the closed forms of the reference. The oracle finds the linear price by fixed-point iteration on the
+Most expected values below are recomputed here by oracle functions written for this suite, which do not read solver.py
+and do not use the closed forms of the reference. The small-noise checks compare with the closed form of Proposition 4,
+written in this file from the page's formula. The oracle finds the linear price by fixed-point iteration on the
 moments of the model (regressions of the payoff on the signal and the price, and on the price), and it evaluates each
 expected utility by a quadrature over the standard normal density. The instance is SIMULATED: its two inputs come from
 instance.py for the seed. A failing check names the property it tests and the idea to revisit. It never prints the
@@ -441,4 +442,16 @@ def test_small_noise_root_is_relatively_accurate(sd: float) -> None:
     expect(
         exact > 0.0 and abs(lam - exact) <= 1e-8 * exact,
         "the informed fraction must be accurate relative to its size: check the stop rule of the bisection",
+    )
+
+
+@pytest.mark.parametrize("sd", [1e-11, 1e-12])
+def test_tiny_noise_root_is_relatively_accurate(sd: float) -> None:
+    """A root near 1e-12 is as precise as one near 0.5: the bracket starts at 0, and its stop rule is relative to its
+    upper end, so no absolute width (such as a fixed number of halvings) limits the accuracy of a small root."""
+    lam = run(sd, 0.15)["informed_fraction"]
+    exact = closed_form_root(sd, 0.15)
+    expect(
+        exact > 0.0 and abs(lam - exact) <= 1e-8 * exact,
+        "the informed fraction must be accurate relative to its size: check the bracket and the bisection stop rule",
     )

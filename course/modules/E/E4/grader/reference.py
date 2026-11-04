@@ -5,8 +5,9 @@ public and does not import it. The model and its derivation are in the section "
 project.html, where Propositions 1 to 4 give the formulas below (the numbers in each docstring name the proposition).
 Standard library only.
 
-Units: the payoff and the price are in the same units; prices and payoffs are dimensionless in this model. Precisions
-are inverse variances. Utilities are in the units of -exp(-a W), so an uninformed expected utility lies in [-1, 0).
+Units: the model is written in one normalization, so the payoff, the price and the noise supply are plain numbers and
+carry no unit here. Precisions are inverse variances. Utilities are in the units of -exp(-a W), so an uninformed
+expected utility lies in [-1, 0).
 An informed one also carries the factor exp(a c) for the cost, so it can lie below -1.
 """
 
@@ -18,7 +19,8 @@ RISK_AVERSION = 2.0  # a: the CARA coefficient of U(W) = -exp(-a W), fixed for e
 PRIOR_PRECISION = 1.0  # tau_v: the precision of the payoff's prior, 1 / Var(v), fixed for every instance
 SIGNAL_PRECISION = 1.0  # tau_e: the precision of the signal s = v + eps, 1 / Var(eps), fixed for every instance
 BISECTION_TOLERANCE = 1e-12  # the search stops when the bracket is narrower than this times its upper end
-MAX_BISECTION_STEPS = 200  # a safety bound; the bracket halves each step, so 200 halvings exceed any relative tolerance
+MAX_BISECTION_STEPS = 200  # a safety bound: each halving halves the bracket, so 200 halvings reach the relative
+# tolerance for every root above about 6e-49 (2^-200 is about 6.2e-61)
 
 
 def _check_inputs(noise_sd: float, info_cost: float) -> tuple[float, float]:

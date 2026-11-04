@@ -62,7 +62,7 @@ def equilibrium(lam: float, var_u: float = VAR_U) -> dict[str, float]:
 
 
 def gain_at_zero(var_u: float = VAR_U) -> float:
-    """Gain from becoming informed when no trader is informed; the price is prior mean minus CARA VAR_V u."""
+    """Gain from becoming informed when no trader is informed; the price is the prior mean minus CARA*VAR_V*u."""
     total = VAR_V + VAR_EPS
     b_s = VAR_V / total
     post_s = 1.0 / (1.0 / VAR_V + 1.0 / VAR_EPS)

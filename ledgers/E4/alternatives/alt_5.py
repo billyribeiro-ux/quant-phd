@@ -97,7 +97,7 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     if g1 >= 0.0:
         ty1 = tau_y_prec(1.0)
         return {"informed_fraction": 1.0, "price_informativeness": ty1 / (TAU_V + ty1), "indifference_gap": g1}
-    lo, hi = 1e-12, 1.0
+    lo, hi = 0.0, 1.0
     for _ in range(200):
         if hi - lo <= 1e-12 * hi:
             break
