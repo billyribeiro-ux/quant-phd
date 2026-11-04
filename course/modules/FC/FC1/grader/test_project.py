@@ -172,7 +172,7 @@ def test_bond_events_are_sorted_and_within_the_periods() -> None:
 
 
 def test_bond_one_period_fixture_is_par_coupon_plus_face() -> None:
-    """Hand fixture: face 10000 cents, coupon 500 bps, one period: the single event is (1, 500 + 10000)."""
+    """Hand fixture: face 10000 cents, coupon 500 bps, one period: the one event carries the coupon and the face."""
     __tracebackhide__ = True
     assert checked_events(sol.Bond(10_000, 500, 1).events(), "Bond.events") == [(1, 10_500)], (
         "the one-period bond must pay its coupon and its face in one event"
@@ -187,7 +187,7 @@ def test_bond_zero_coupon_pays_only_the_face_in_the_last_period() -> None:
 
 
 def test_bond_half_cent_coupon_rounds_away_from_zero() -> None:
-    """Hand fixture: 10001 cents at 50 % is 5000.5 cents, which rounds to 5001 (a tie goes up, not down)."""
+    """Hand fixture: a face of 10001 cents at 50 % has an exact half-cent coupon, and a tie goes up, not down."""
     __tracebackhide__ = True
     assert checked_events(sol.Bond(10_001, 5_000, 2).events(), "Bond.events") == [(1, 5_001), (2, 15_002)], (
         "a half-cent coupon must round away from zero, with the face in the last period"
@@ -195,7 +195,7 @@ def test_bond_half_cent_coupon_rounds_away_from_zero() -> None:
 
 
 def test_bond_half_cent_on_a_one_cent_face_rounds_up_not_to_zero() -> None:
-    """Hand fixture: 1 cent at 50 % is 0.5 cents, which rounds to 1 cent; truncation would give 0."""
+    """Hand fixture: a one-cent face at 50 % has an exact half-cent coupon, which rounds up, not down to zero."""
     __tracebackhide__ = True
     assert checked_events(sol.Bond(1, 5_000, 1).events(), "Bond.events") == [(1, 2)], (
         "a half-cent coupon on a one-cent face must round up, not to zero"
@@ -203,9 +203,9 @@ def test_bond_half_cent_on_a_one_cent_face_rounds_up_not_to_zero() -> None:
 
 
 def test_bond_coupon_is_exact_for_a_face_too_large_for_floats() -> None:
-    """Hand check: a face of 10**17 + 4999 cents at 1 bps has the coupon (10**17 + 4999) / 10000 = 10**13 + 0.4999
-    cents, which rounds down to 10**13. A binary float cannot hold this face, so the coupon must come from exact
-    fractions; the one event adds the face to that coupon."""
+    """Hand check: a face of 10**17 + 4999 cents at 1 bps has a coupon, (10**17 + 4999) / 10000 cents, that rounds down
+    to a whole cent. A binary float cannot hold this face, so the coupon must come from exact fractions; the one event
+    adds the face to that coupon."""
     __tracebackhide__ = True
     face = 10**17 + 4999
     rows = checked_events(must_accept(lambda: sol.Bond(face, 1, 1).events(), "face above 2**53"), "Bond.events")
@@ -365,7 +365,8 @@ def test_bond_price_at_zero_yield_is_the_undiscounted_total() -> None:
 
 
 def test_bond_price_one_period_at_its_coupon_rate_is_par() -> None:
-    """Hand fixture: 10000 cents face, 500 bps coupon, one period, yield 500 bps: 10500 / 1.05 = 10000 exactly."""
+    """Hand fixture: 10000 cents face, 500 bps coupon, one period, yield 500 bps: the coupon rate equals
+    the yield, so the bond is at par."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(10_000, 500, 1), 500) == 10_000, (
         "a one-period bond priced at its own coupon rate must be at par"
@@ -373,7 +374,8 @@ def test_bond_price_one_period_at_its_coupon_rate_is_par() -> None:
 
 
 def test_bond_price_negative_yield_is_above_the_undiscounted_value() -> None:
-    """Hand fixture: 10500 at yield -500 bps is 10500 / 0.95 = 210000 / 19 = 11052.63..., which rounds to 11053."""
+    """Hand fixture: a one-period bond of 10000 cents face and 500 bps coupon, at a yield of -500 bps, is priced above
+    the undiscounted sum of its events. The exact price is the discounted event, rounded once."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(10_000, 500, 1), -500) == 11_053, (
         "a negative yield must give the discounted sum of the events, rounded once"
@@ -402,8 +404,8 @@ def test_bond_price_hand_fixture_rounds_the_sum_once() -> None:
 
 
 def test_bond_price_exact_half_cent_rounds_away_from_zero() -> None:
-    """Hand fixture F: one cent of face, no coupon, one period, yield 10000 bps: the price is exactly 1/2 cent, which
-    rounds away from zero to 1 cent. Round-half-to-even (Python round()) or truncation gives 0."""
+    """Hand fixture F: one cent of face, no coupon, one period, yield 10000 bps: the exact price is a half-cent tie, and
+    a tie goes away from zero. Round-half-to-even (Python round()) or truncation gives 0."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(1, 0, 1), 10_000) == 1, (
         "an exact half cent must round away from zero, not to even"
@@ -411,7 +413,7 @@ def test_bond_price_exact_half_cent_rounds_away_from_zero() -> None:
 
 
 def test_bond_price_exact_half_at_five_thousand_point_five_rounds_up() -> None:
-    """Hand fixture G: Bond(10001, 0, 1) at 10000 bps: the price is exactly 5000.5 cents, which rounds to 5001."""
+    """Hand fixture G: Bond(10001, 0, 1) at 10000 bps: the exact price is a half-cent tie, and it rounds up."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(10_001, 0, 1), 10_000) == 5_001, (
         "an exact half cent above a whole number of cents must round up"
@@ -419,9 +421,10 @@ def test_bond_price_exact_half_at_five_thousand_point_five_rounds_up() -> None:
 
 
 def test_bond_price_exact_half_cent_at_496_bps_is_exact_not_float() -> None:
-    """Bond(1704285, 179, 1) at 496 bps: the coupon is 30506.7015 cents, rounded to 30507, so the one event is
-    (1, 1734792). Its exact present value is 1734792 / 1.0496 = 3305625 / 2 = 1652812.5 cents, an exact half that
-    rounds away from zero to 1652813. Discounting in binary floats gives 1652812.4999999998, which rounds to 1652812."""
+    """Bond(1704285, 179, 1) at 496 bps: the exact present value is a half-cent tie, and it must be computed exactly.
+    The coupon is 30506.7015 cents, rounded once, so the one event is (1, 1734792). Its exact present value is
+    1734792 / 1.0496 = 3305625 / 2 cents, an exact half that rounds away from zero to 1652813. Discounting in binary
+    floats gives 1652812.4999999998, which rounds to 1652812."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(1_704_285, 179, 1), 496) == 1_652_813, (
         "an exact half cent at a large face must be exact, not a float result"
@@ -443,8 +446,9 @@ def test_bond_price_exact_half_above_ten_significant_digits_is_exact() -> None:
 
 
 def test_bond_price_exact_half_cent_at_400_bps_uses_the_exact_yield() -> None:
-    """Hand check: Bond(13, 0, 1) at 400 bps has the one event (1, 13) and exact present value 13 / 1.04 = 25/2 cents,
-    an exact half that rounds away from zero to 13. A float discount factor, (1 + 0.04) ** -1 times 13, gives
+    """Hand check: Bond(13, 0, 1) at 400 bps has one event, whose exact present value is a half-cent tie that
+    a float discount factor gets wrong. The event is (1, 13) and its exact present value is 13 / 1.04 cents,
+    an exact half that rounds away from zero. A float discount factor, (1 + 0.04) ** -1 times 13, gives
     12.499999999999998 and rounds to 12, so this case catches that form; the exact Fraction form does not fail it."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(13, 0, 1), 400) == 13, (
@@ -453,8 +457,9 @@ def test_bond_price_exact_half_cent_at_400_bps_uses_the_exact_yield() -> None:
 
 
 def test_bond_price_just_under_a_half_cent_rounds_down() -> None:
-    """Zero-coupon bond, face 300075005 cents, three periods, yield 1 bps: the exact price is 299985000 plus 1/2 minus
-    1/(2 * 1000300030001) cents, a hair under a half cent, which rounds down to 299985000 (the nearest cent)."""
+    """Zero-coupon bond, three periods, yield 1 bps: its exact price is a whole number of cents plus a fraction a hair
+    under a half, so it rounds down with no tolerance. Face 300075005 cents: the exact price is 299985000 plus 1/2 minus
+    1/(2 * 1000300030001) cents, which rounds down to 299985000 (the nearest cent)."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(300_075_005, 0, 3), 1) == 299_985_000, (
         "a price a hair under a half cent must round down to the nearest cent, with no tolerance"
@@ -529,7 +534,7 @@ def test_trade_has_one_settlement_event_on_its_settlement_day() -> None:
 
 
 def test_buyer_pays_cash_at_settlement() -> None:
-    """Hand fixture: buying 10 units at 9850 cents settling in period 2 is a payment of 98500 cents (negative)."""
+    """Hand fixture: buying 10 units at 9850 cents, settling in period 2, is a payment, so the amount is negative."""
     __tracebackhide__ = True
     assert checked_events(sol.CashTrade(10, 9_850, 1, 2).events(), "CashTrade.events") == [(2, -98_500)], (
         "the settlement event of the buyer must pay cash, a negative amount"
@@ -537,7 +542,7 @@ def test_buyer_pays_cash_at_settlement() -> None:
 
 
 def test_seller_receives_cash_at_settlement() -> None:
-    """Hand fixture: selling the same 10 units at 9850 cents is a receipt of 98500 cents (positive)."""
+    """Hand fixture: selling the same 10 units at 9850 cents is a receipt, so the settlement amount is positive."""
     __tracebackhide__ = True
     assert checked_events(sol.CashTrade(10, 9_850, -1, 2).events(), "CashTrade.events") == [(2, 98_500)], (
         "the settlement event of the seller must receive cash, a positive amount"
@@ -590,8 +595,8 @@ def test_trade_quantity_of_1001_is_accepted() -> None:
 
 
 def test_trade_cash_flow_is_exact_above_two_to_the_fifty_three() -> None:
-    """Hand check: 2**40 + 1 units at 9851 cents is (2**40 + 1) * 9851 = 10831289045231227 cents, an odd integer above
-    2**53, which a binary float cannot hold exactly. The settlement event is that amount, negative for a buyer."""
+    """Hand check: a trade of 2**40 + 1 units at 9851 cents has a cash flow above 2**53, which a float cannot hold.
+    The settlement event is that exact product, negative for a buyer."""
     __tracebackhide__ = True
     quantity = 2**40 + 1
     rows = checked_events(
@@ -783,11 +788,6 @@ def _named_when_unimplemented(test: Callable[..., None]) -> Callable[..., None]:
     return run
 
 
-for _name, _value in list(globals().items()):
-    if _name.startswith("test_") and callable(_value):
-        globals()[_name] = _named_when_unimplemented(_value)
-
-
 def test_bond_schedule_of_one_hundred_periods_is_complete_and_discounted_by_its_own_period() -> None:
     """Accepted-input check: a 100-period bond has one event per period 1..100, the face in period 100, and its price at
     400 bps is the exact sum of all 100 events, each discounted by its own period, rounded once."""
@@ -803,8 +803,25 @@ def test_bond_schedule_of_one_hundred_periods_is_complete_and_discounted_by_its_
     )
 
 
+def test_bond_schedule_of_one_thousand_and_one_periods_is_accepted() -> None:
+    """Accepted-input check: the page refuses only periods below 1 and gives every period 1..periods a coupon, so a
+    1001-period bond has one event per period 1..1001, and its price at 400 bps is the exact sum of those events,
+    rounded once."""
+    __tracebackhide__ = True
+    bond = sol.Bond(10_000, 500, 1_001)
+    rows = checked_events(bond.events(), "Bond.events")
+    assert rows == oracle_events(10_000, 500, 1_001), (
+        "every period 1..1001 must carry its coupon, and the face the last one"
+    )
+    got = checked_int(sol.bond_price_cents(bond, 400), "bond_price_cents")
+    assert got == oracle_price(oracle_events(10_000, 500, 1_001), 400), (
+        "all 1001 events must be discounted by (1 + y) ** -t for their own periods, and the sum rounded once"
+    )
+
+
 def test_yield_of_three_hundred_percent_per_period_is_accepted() -> None:
-    """Accepted-input check: a yield of 30000 bps (300 % per period) is not named as refused: 10500 / 4 = 2625 cents."""
+    """Accepted-input check: a yield of 30000 bps (300 % per period) is not named as refused; the price is the
+    discounted event."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(10_000, 500, 1), 30_000) == 2_625, (
         "a yield above 100 % per period is not named as refused; the price is the discounted event"
@@ -820,9 +837,16 @@ def test_trade_settling_after_period_one_hundred_is_accepted() -> None:
 
 
 def test_bond_price_exact_half_above_forty_significant_digits_is_exact() -> None:
-    """Accepted-input check: Bond(10**40 + 1, 0, 1) at 10000 bps has exact present value 5 * 10**39 + 1/2 cents
-    (forty-one significant digits), which rounds away from zero to 5 * 10**39 + 1."""
+    """Accepted-input check: Bond(10**40 + 1, 0, 1) at 10000 bps has a half-cent present value with forty-one
+    significant digits, which must round away from zero with no digits lost.
+    The exact present value is 5 * 10**39 + 1/2 cents."""
     __tracebackhide__ = True
     assert sol.bond_price_cents(sol.Bond(10**40 + 1, 0, 1), 10_000) == 5 * 10**39 + 1, (
         "an exact half cent of a price above forty significant digits must round away from zero, with no digits lost"
     )
+
+
+# Every test is wrapped after the last one is defined, so that the tests added above are wrapped too.
+for _name, _value in list(globals().items()):
+    if _name.startswith("test_") and callable(_value):
+        globals()[_name] = _named_when_unimplemented(_value)

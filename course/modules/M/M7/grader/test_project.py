@@ -245,13 +245,23 @@ HAND_CASES: dict[str, tuple[dict[str, Any], list[float]]] = {
         },
         [1.0],
     ),
-    # The second upper bound (0.3) binds: the unconstrained answer (0.35, 0.65) is cut to (0.7, 0.3).
+    # The second upper bound (0.3) binds. Without it, the turnover limit alone stops the answer at (0.55, 0.45); with
+    # it, the answer is (0.7, 0.3), and the turnover limit is slack there.
     "upper bound binding": (
         hand_case(mu=[0.2, 0.5], w0=[0.8, 0.2], upper=[1.0, 0.3], turnover_limit=0.5),
         [0.7, 0.3],
     ),
-    # The turnover limit binds: the unconstrained answer (0.7, 0.3) is cut to (0.6, 0.4), a change of 0.1 each way.
+    # The turnover limit binds: the budget-only answer (0.7, 0.3) is cut to (0.6, 0.4), a change of 0.1 each way.
     "turnover binding": (hand_case(mu=[0.4, 0.0], w0=[0.5, 0.5], turnover_limit=0.2), [0.6, 0.4]),
+    # Lower and upper bounds both equal the starting weights, so the box fixes the answer at the start, and the turnover
+    # limit is zero. The multipliers are not unique here: a set with every inequality multiplier positive is also
+    # valid, and for such an answer the dual residual must be floored at zero, so an unfloored report fails the check.
+    "degenerate box with zero turnover": (
+        hand_case(
+            mu=[0.3, 0.1], w0=[0.5, 0.5], lower=[0.5, 0.5], upper=[0.5, 0.5], turnover_limit=0.0, sector_caps=[1.0]
+        ),
+        [0.5, 0.5],
+    ),
 }
 
 
@@ -859,8 +869,10 @@ def test_empty_sector_caps_is_refused_with_an_exception() -> None:
 # ---------------------------------------------------------------------------------------------------------------------
 # Every position: each named condition at asset 0, asset 1, asset 2 and the last asset. N is at least 3 on every seed,
 # so these ids are the same on every seed and the collected count does not change with the seed.
-# Each test changes one thing only: the starting-sum and box tests also give the asset room in its box and its sector
-# cap, so that the named condition is the only one broken.
+# Each test breaks one named condition. The starting-sum tests also give the asset room in its box and its sector cap
+# (_make_room), so the sum is the only condition broken. The start-outside-a-bound and start-on-or-inside-a-bound tests
+# change only the bound they name, except that a lower-bound test also raises the upper bound above the start, so that
+# the order of the bounds is not what breaks.
 # ---------------------------------------------------------------------------------------------------------------------
 
 POSITIONS: tuple[int, ...] = (0, 1, 2, -1)

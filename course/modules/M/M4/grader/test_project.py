@@ -41,8 +41,10 @@ TOL_GAUSSIAN_VARIANCE = 0.10
 TOL_T_VARIANCE = 0.30
 MIN_NU_FOR_T_VARIANCE_CHECK = 5
 # The Student-t cross term: two assets with correlation 0.8, 100,000 draws, nu of 5. The reference's largest relative
-# error over seeds 0 to 49 is 0.024. A matched factor applied to one asset only, or one chi-square variable per asset,
-# moves the cross term by about 29 % and 15 % (measured at seeds 0 to 9). The tolerance 0.05 lies between them.
+# error over seeds 0 to 49 is 0.024. A matched factor applied to the first asset only moves the cross term by 7 % to
+# 9 %, and a separate chi-square variable for each asset after the first by 14 % to 16 % (both measured at seeds 0 to
+# 9, relative error 0.068 to 0.086 and 0.141 to 0.161). The tolerance 0.05 lies above the reference's 0.024 and below
+# both smallest mutant errors, 0.068 and 0.141.
 CROSS_TERM_NU = 5
 CROSS_TERM_DRAWS = 100_000
 TOL_CROSS_TERM = 0.05

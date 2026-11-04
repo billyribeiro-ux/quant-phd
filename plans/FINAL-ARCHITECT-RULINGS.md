@@ -20,3 +20,5 @@
    README proof. Never leave a survivor in `ledgers/<UNIT>/mutants/`. The first docstring line of a mutant names the student error.
 10. **Alternatives.** Every project grader needs five correct alternative implementations of different styles that pass
     seeds 0-49 (E3: seeds 0-9 because of run time). A float-based alternative that is wrong on a stated exact rule is a mutant, not an alternative.
+11. **Rung 2 completion labs.** The twin's docstring "Rung 2 completed solution" with the page showing the same program with
+    `___` blanks is the established convention of the program (M1, merged, and every module since). It is not a defect.

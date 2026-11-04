@@ -251,24 +251,38 @@ def test_loss_aversion_weights_losses_not_gains() -> None:
     got = sol.certainty_equivalent_cents(
         "prospect", [-100, 100], [Fraction(1, 2), Fraction(1, 2)], {"gamma": 0.0, "lambda": 2.0}, WEALTH
     )
-    expect(got == -25, "with lambda = 2 a loss weighs twice a gain: the sure amount of this lottery is -25 cents")
+    expect(
+        got == -25,
+        "with lambda = 2 a loss weighs more than a gain of the same size: follow the loss weight",
+    )
     got_mirror = sol.certainty_equivalent_cents(
         "prospect", [-100, 100], [Fraction(1, 2), Fraction(1, 2)], {"gamma": 0.0, "lambda": 0.5}, WEALTH
     )
-    expect(got_mirror == 25, "with lambda = 1/2 the same lottery's sure amount is +25 cents: the loss weight is lambda")
+    expect(got_mirror == 25, "with lambda = 1/2 the same lottery's sure amount must follow the loss weight lambda")
 
 
 def test_half_cent_goes_up_on_exact_halves() -> None:
     """An exact half cent goes toward plus infinity in both models. A rule that rounds halves to even fails."""
     half, wealth = Fraction(1, 2), 10
     got_up = sol.certainty_equivalent_cents("prospect", [2, 3], [half, half], {"gamma": 0.0, "lambda": 1.0}, WEALTH)
-    expect(got_up == 3, "a sure amount of 2.5 cents must round half up to 3")
+    expect(
+        got_up == 3,
+        "an exact half cent must go toward plus infinity: the rule is floor(c + 1/2), not rounding half to even",
+    )
     got_up_low = sol.certainty_equivalent_cents("prospect", [0, 1], [half, half], {"gamma": 0.0, "lambda": 1.0}, WEALTH)
-    expect(got_up_low == 1, "a sure amount of 0.5 cents must round half up to 1")
+    expect(
+        got_up_low == 1, "an exact half cent just above zero must go toward plus infinity: the rule is floor(c + 1/2)"
+    )
     got_neg = sol.certainty_equivalent_cents("prospect", [-1, 0], [half, half], {"gamma": 0.0, "lambda": 1.0}, WEALTH)
-    expect(got_neg == 0, "a sure amount of -0.5 cents must round half up to 0")
+    expect(
+        got_neg == 0,
+        "an exact half cent just below zero must go toward plus infinity: the rule is floor(c + 1/2)",
+    )
     got_crra = sol.certainty_equivalent_cents("crra", [2, 3], [half, half], {"gamma": 0.0}, wealth)
-    expect(got_crra == 3, "the CRRA certainty equivalent at gamma = 0 must round a 2.5-cent amount half up to 3")
+    expect(
+        got_crra == 3,
+        "at gamma = 0 the CRRA certainty equivalent must send an exact half cent toward plus infinity",
+    )
 
 
 def test_prizes_order_does_not_change_the_answer() -> None:

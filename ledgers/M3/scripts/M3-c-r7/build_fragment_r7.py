@@ -1,0 +1,185 @@
+"""Build ledgers/M3/M3-c.json (round 7) from the rows verified in this round. Run from the checkout root."""
+import json
+from pathlib import Path
+
+S = "ledgers/M3/scripts/M3-c-r7"
+O = f"{S}/out"
+
+
+def row(rid, check, location, status, evidence, fix=None):
+    r = {"id": rid, "check": check, "location": location, "status": status, "evidence": evidence}
+    if status != "PASS":
+        r["fix"] = fix
+    return r
+
+
+rows = [
+    row("GATE-01", "2.9-gate", "tools/check_pages.py --unit M3, --page L07/L08/L09", "PASS",
+        f"{O}/check_pages_M3.out: 'check_pages M3: PASS' EXIT=0; check_pages_L07/L08/L09.out PASS EXIT=0"),
+    row("GATE-02", "2.9-gate", "tools/check_dag.py --unit M3", "PASS", f"{O}/check_dag_M3.out: 'check_dag M3: PASS' EXIT=0"),
+    row("GATE-03", "2.6-gate", "tools/check_projects.py --unit M3", "PASS",
+        f"{O}/check_projects_M3.out: 'check_projects M3: PASS' EXIT=0 (unit-level gate; project content is another slice)"),
+    row("GATE-04", "2.5-labs", "tools/run_labs.py --unit M3 and --page L07/L08/L09", "PASS",
+        f"{O}/run_labs_M3.out 'run_labs M3: PASS (12/12)' EXIT=0; run_labs_L07/L08/L09.out '(1/1)' PASS EXIT=0"),
+    row("GATE-05", "2.5-labs", "tests/labs/M3/lab-M3-L07-1.py, lab-M3-L08-1.py, lab-M3-L09-1.py run alone", "PASS",
+        f"python -I -W error on each twin, cwd /tmp: {O}/twin_L07.out, twin_L08.out, twin_L09.out all EXIT=0, empty stderr"),
+    row("GATE-06", "2.5-labs", "ruff check and ruff format --check tests/labs/M3", "PASS",
+        f"{O}/ruff_check.out 'All checks passed!' EXIT=0; ruff_format.out '12 files already formatted' EXIT=0"),
+    row("GATE-07", "2.4-gate", "mypy --no-incremental (repository configuration)", "PASS",
+        f"{O}/mypy.out 'Success: no issues found in 385 source files' EXIT=0"),
+    row("GATE-08", "2.9-gate", "tools/page_smoke.py --unit M3 --page L07, then L08, then L09 (each alone)", "PASS",
+        f"{O}/page_smoke_L07.out, page_smoke_L08.out, page_smoke_L09.out: 'page_smoke ... PASS' EXIT=0; lab timings 0.0 s after 1.0 s boot"),
+    row("GATE-09", "2.1-citations", "tools/verify_refs.py --offline", "PASS",
+        f"{O}/verify_refs_offline.out 'offline integrity: 560 entries, 0 problems' EXIT=0 (no live run; offline only)"),
+    row("GATE-10", "2.5-labs", "pytest tests/test_labs.py tests/test_run_labs.py tests/test_page_checks.py -k 'M3 or run_labs or page'", "PASS",
+        f"{O}/pytest_relevant.out: 100% dots, EXIT=0 (selection only; full suite not run)"),
+    row("LAB-L07-EMBED", "2.5-labs", "course/modules/M/M3/L07.html section#lab-M3-L07-1 vs tests/labs/M3/lab-M3-L07-1.py", "PASS",
+        f"{S}/page_vs_twin.py output {O}/page_vs_twin.out: PAGE_CODE_EQ=True, EXPECTED_EQ_OUTPUT=True lines=11/11"),
+    row("LAB-L08-EMBED", "2.5-labs", "course/modules/M/M3/L08.html section#lab-M3-L08-1 vs twin", "PASS",
+        f"{O}/page_vs_twin.out: PAGE_CODE_EQ=True, EXPECTED_EQ_OUTPUT=True lines=14/14"),
+    row("LAB-L09-EMBED", "2.5-labs", "course/modules/M/M3/L09.html section#lab-M3-L09-1 vs twin", "PASS",
+        f"{O}/page_vs_twin.out: PAGE_CODE_EQ=True, EXPECTED_EQ_OUTPUT=True lines=13/13"),
+    row("LABSTMT-L07", "2.5-labs", "L07.html line 125 (hypothesis), code 126-192, expected 193-203, interpretation 204", "PASS",
+        "Hypothesis tolerance 1e-9 matches TOL = 1e-9 in the twin (line 146 of the page code block); A^T y printed to 2dp (twin line 181); duplicated column gives rank 2 of 3 (twin output line 10); the interpretation values match the expected block; see page_vs_twin.out and twin_L07.out"),
+    row("LABSTMT-L08", "2.5-labs", "L08.html line 146 (hypothesis), code 147-269, expected 270-283, interpretation 284", "PASS",
+        "Hypothesis: shares from unrounded eigenvalues (twin lines 231-236), matches by argmax of |cos| (242-246), doubling (248-253), 0.25-year column times ten (254-259), E1 bound inputs m11 and trace printed (260-266); all printed by out/twin_L08.out"),
+    row("LABSTMT-L09", "2.5-labs", "L09.html line 193 (hypothesis), code 194-335, expected 336-348, interpretation 349", "PASS",
+        "Hypothesis: 40 seeded 5x5 matrices, W check symmetric and unit diagonal to 1e-12 and eigenvalue at least -1e-8 (TOL, FEASIBLE_TOL lines 223-224), counts of non-PSD (eigenvalue below -1e-9, NONPSD_TOL line 225) and closer (lines 306-331) match code"),
+    row("LABDOC-L09", "2.2-lab-prose", "tests/labs/M3/lab-M3-L09-1.py docstring lines 194-214 vs code 232-335", "PASS",
+        "Docstring claims 1-4 checked: C0 witness -2.4 (line 291 output), ||C0-B||_F^2 = sum of squared negative eigenvalues 0.64 (line 298 output), R correlation (line 301), generator: off-diagonal 0.5, symmetrised N(0,0.35) before symmetrising, seed 20261028 (lines 202-204 vs SEED line 229 and seeded_matrices lines 272-282)"),
+    row("LABDOC-L09-TOL", "2.2-lab-prose", "L09.html line 193 and 349; twin lines 223-225", "PASS",
+        "Tolerances 1e-12 (TOL), -1e-8 (FEASIBLE_TOL), -1e-9 (NONPSD_TOL) stated in hypothesis and interpretation match the code constants exactly"),
+    row("LABSTMT-RUNTIME", "2.5-labs", "tests/labs/M3/lab-M3-L07-1.py, lab-M3-L08-1.py, lab-M3-L09-1.py (imports, seeds, runtime)", "PASS",
+        "Imports: numpy only (plus numpy.typing) in all three twins; RNGs seeded: default_rng(7), default_rng(8), default_rng(seed=20261028); page_smoke runtime 1.0 s boot, lab 0.0 s"),
+    row("NUM-L07", "2.2-numbers", "L07.html line 302 (A^T y), line 307-309 (intercept 1.3325), lines 199-203 expected block",
+        "PASS", f"{S}/m3c_r7_numbers.py via QR (independent of normal equations): {O}/m3c_r7_numbers.out: beta 1.332519 0.848811 -0.411964 -> 1.3325 0.8488 -0.4120; A^T y = 18.379697, 3.095863, -17.603498 -> 18.38, 3.10, -17.60"),
+    row("NUM-L07-M", "2.2-numbers", "L07.html line 222 (residual norm 0.8951), line 350 (rank 2 of 3)", "PASS",
+        f"{O}/m3c_r7_numbers.out: residual norm 0.895128 -> 0.8951; matrix_rank(A^T A with duplicated column) = 2 of 3; max |A^T resid| 4e-15"),
+    row("NUM-L08", "2.2-numbers", "L08.html lines 284, 290-291, 377 (E1), 342 (E3), 433-434", "PASS",
+        f"{S}/m3c_r7_numbers.py: unrounded shares 75.872815, 18.088840, 5.161927 % -> 75.9, 18.1, 5.2; |cos| 0.999381, 0.998544, 0.999019 -> 0.9994, 0.9985, 0.9990; 0.7587 -> 0.979145 -> 0.9791; E1 bound 0.948346 from unrounded M11, trace = 0.948346 from printed 13.6818, 88.2028; sum of printed shares 99.2 vs unrounded top-3 sum 99.1236, gap 0.076 <= 0.15 (E3). Output in {O}/m3c_r7_numbers.out"),
+    row("NUM-L09", "2.2-numbers", "L09.html lines 52, 107, 336-348, 349, 447-448 (E2), 499-500", "PASS",
+        f"{S}/m3c_r7_numbers.py: 23 of 40 non-PSD (eigenvalue below -1e-9); first matrix ||A-R||_F = 0.17552673, ||A-W||_F = 0.16328044; C0 witness -2.4; ||C0-B||^2 = 0.64; ||C0-R||_F = sqrt(0.96) = 0.979796 -> 0.9798; C0 eigenvalues -0.8, 1.9, 1.9 (out/twin_L09.out)"),
+    row("ALT-L09", "2.5-labs (robustness)", "tests/labs/M3/lab-M3-L09-1.py repair procedure vs alternative correct procedures", "PASS",
+        f"{S}/m3c_r7_numbers.py run section 3: default alternating projections (page rule) 23/23 in both counts, long run (tol 1e-14, 20000 steps) 23/23 with same first-matrix distances, Dykstra-corrected projections 23/23 and closer in 23/23 (first distance 0.163184); min margin ||A-R||-||A-W|| = 3.9e-5 for all three, so the strict comparison is not a rounding artefact"),
+    row("MATH-L07", "2.4-math", "L07.html Definition 1.1 (60), Theorem 1.2 (64-71) and proof (75-81), Theorem 1.3 (84-85) and proof (90), Remark 1.4 (95), Definition 2.1 (104), Theorem 2.2 (108-113) and proof (119-120)", "PASS",
+        "Re-derived: G invertible via v^T G v = ||Av||^2 > 0 and G V Lambda^-1 V^T = I (Fact 1.2 of L06 used for V V^T = I, confirmed at L06 line 64-65); P symmetric and idempotent; closest point via cross-term zero; Pythagorean identity; normal equations iff least squares. No gap found"),
+    row("MATH-L08", "2.4-math", "L08.html Proposition 1.1 (61-62), Proposition 1.2 (71-72), Definition 1.3 (82), Theorem 1.4 (86-93), Theorem 2.1 and proof (100-113), Corollary 2.2 (116-117), Proposition 2.3 and proof (121-127), Remark 2.4 (131-133), Problems P1-P3, R1-R3", "PASS",
+        "Re-derived: M symmetric PSD; tr(M) identity (checked on M1 example: centred squared norms 13,1,20 over 2 = 17); Z^TZ/(T-1)=Lambda; Theorem 2.1 cases a,b with orthogonal V; Prop 2.3 (c^2 scaling preserves order); Remark 2.4 argument (kappa = c forced by off-diagonal; c^2 != c). Theorem 2.1 hypotheses list symmetry and PSD; T grade present on all theorems. The definition-level hypothesis gap in Definition 3.1 is row HYP-L08-DEF31"),
+    row("MATH-L09", "2.4-math", "L09.html Definition 1.1 (59-60), Definition 1.2 (64-65), Lemma 1.3 and proof (74-84), Definition 2.1 (92-93), Remark 2.2 (97-99), Example 2.3 (102-107), Definition 3.1 (115-118), Propositions 3.2-3.5 and proofs (121-174), Example 3.6 (177-180), Method 1 and 2 (185-187), Problems M1-M3, P1-P3, R1-R3, E1-E3", "PASS",
+        "Re-derived: Example 2.3 witness -2.4; Prop 3.2 (a),(b) and Prop 3.3 (a),(b) proofs; Prop 3.4 congruence; Prop 3.5 quadratic form with delta = |b_ij|/(1+b_jj) gives x^T B x < 0; Example 3.6 A_0 = [[1.1,1.1],[1.1,1.1]], R = ones matrix, ||A-A_0||^2 = 0.04, ||A-R||^2 = 0.08; M2 4.88; M3 eigenvalues (13 +- sqrt 41)/2, C off-diagonal 1/3; E2 0.9798; E3 0.5. The duplicated definition of orthogonal matrix is row PLAIN-REDEF"),
+    row("PROP23-HYP", "2.4-math", "L08.html Proposition 2.3 statement (122), proof (127), E2 (384), key row 432", "PASS",
+        "Statement lists c nonzero and sum of eigenvalues > 0; proof and E2 solution use the same hypothesis; key row 432 says positive eigenvalue sum"),
+    row("KEY-L08-430", "2.9-key-results", "course/modules/M/M3/L08.html key-results row line 430 against Theorem 1.4 (line 87)", "PASS",
+        "Row now reads 'the shares sum to 1 whenever the eigenvalue sum is positive' (diff 142ecfc2..9373ef39 line 430), matching Theorem 1.4's statement; round-6 FAIL is fixed. Verified by reading both lines"),
+    row("PROB-L07", "2.4-math", "L07.html problems M1-M3, P1-P3, E1-E3, R1-R3 (241-336)", "PASS",
+        "Worked solutions re-computed: M1 P = (1/2)[[1,1],[1,1]], p=(1,1), residual (1,-1); M2 beta1=1/2, beta0=7/6, residuals -1/6,1/3,-1/6; M3 P=diag(1,0); R1 existence via independent list of maximal length (Theorem 3.7 of L01, verified at L01 line listing); R3 Q^2=Q and A^T Q y = 0"),
+    row("PROB-L08", "2.4-math", "L08.html problems M1-M3, P1-P3, E1-E3, R1-R3 (323-419)", "PASS",
+        "M1 centred rows (-2,-3),(0,-1),(2,4); X~^T X~ = [[8,14],[14,26]]; M = [[4,7],[7,13]]; trace 17; det 3; eigenvalues (17 +- sqrt 277)/2 verified; E1 bound formula checked; R1 eigenspace claim; R3 identities verified; E3 bound 0.15 arithmetic verified"),
+    row("PROB-L09", "2.4-math", "L09.html problems M1-M3, P1-P3, E1-E3, R1-R3 (387-479)", "PASS",
+        "M1 eigenvalues 1.6 and 0.4; M2 squared norm 4.88; M3 B PSD with roots (13 +- sqrt 41)/2; P1-P3 proofs valid; E1 -2.4; E2 0.9798; E3 0.5; R1 split identities; R2 C = identity; R3 norm identity"),
+    row("GRADE-L07", "2.3-grades", "L07.html grade spans (block titles 64, 84, 108) and key-results table (346-350)", "PASS",
+        "Theorems 1.2, 1.3, 2.2 and Remark 1.4 are T with complete proofs; row 350 is C with the lab named as basis; no claim over-graded"),
+    row("GRADE-L08", "2.3-grades", "L08.html grade spans (61, 71, 86, 100, 116, 121) and key-results table (428-434)", "PASS",
+        "Props 1.1, 1.2, Thm 1.4, Thm 2.1, Cor 2.2, Prop 2.3 are T with proofs; rows 433-434 are C and name Lab 1 output; Definition 3.1 is not graded (its hypothesis gap is HYP-L08-DEF31)"),
+    row("GRADE-L09", "2.3-grades", "L09.html grade spans (74, 122, 151, 163) and key-results table (491-500)", "PASS",
+        "Lemma 1.3 and Props 3.2-3.5 are T with proofs; rows 499-500 are C naming Lab 1; Example 3.6 row 498 is T and its numbers are re-derived (NUM-L09 and MATH-L09)"),
+    row("CITE-L07-L09", "2.1-citations", "L07.html, L08.html, L09.html (no data-cite, data-locator; empty data-references lists; references sections at L07 line 428, L08 line 516, L09 line 592)", "PASS",
+        f"{O}/static_checks.out: citations and outside names (Higham, Litterman, Scheinkman, Eckart, Nelson, Gurkaynak, Axler, Strang, data-cite, data-locator): 0 hits; no registry key is cited, consistent with plan section 12 and the architect decision Q9"),
+    row("XREF-EARLIER", "2.9-xref", "cross-references to L01 Thm 3.7, L04 F1-F4 (assumptions at L04 line 56-62), L04 Def 1.1-1.2 and Thm 2.3 (line 130-131), L05 Def 1.4 (line 71-72) and Thm 2.1 (line 108-109), L06 Def 1.1 (line 59-60), Fact 1.2 (64-65), Remark 2.5 (228-229), L07 Thm 1.2 (cited from L08 line 137)", "PASS",
+        "Each cited label exists with the cited content, read in full at the listed lines; L06 Remark 2.5 supports 'same sign freedom for the singular vectors' (L08 line 244)"),
+    row("DAG-PSD-REDEF", "2.9-dag", "course/modules/M/M3/L09.html line 56 versus L05.html line 71-72 (Definition 1.4)", "PASS",
+        "L09 line 56 links positive semidefinite to L05 (href L05.html#def-positive-semidefinite-matrix) and does not redefine it; round-5 DAG-PSD-REDEF is fixed"),
+    row("NOTATION-R", "2.9-notation", "L07, L08, L09 math using \\R", "PASS", "Macro \\R is registered (notation/notation.json macros: \\R = \\mathbb{R})"),
+    row("NOTATION-OPNAME", "2.9-notation", "L08.html line 402 \\operatorname{span}; L09.html line 171 \\mathrm{sign}; \\tr and \\diag on all three pages",
+        "PASS", f"{O}/static_checks.out macro counts: L08 has 1 raw \\operatorname, L09 has 1 raw \\mathrm; neither span nor sign is a registered symbol, so no collision; \\tr and \\diag are registered macros and are used. Note: an architect may request NOTATION_REQUESTS for span and sign (not a failure)"),
+    row("NOTATION-T", "2.9-notation", "L08.html Section 1 (line 56, T x n matrix, T >= 2; Lab 1 T = 750)", "PASS",
+        "Registry symbol T means number of observations in a sample (notation/notation.json symbols list); L08 uses T for the number of rows, the same meaning"),
+    row("NOTATION-AST", "2.9-notation", "L09.html line 93 (C^{\\ast} nearest correlation matrix)", "PASS",
+        "The registered \\ast symbol is R^\\ast (SDF return); C^{\\ast} is a different, unregistered symbol, so no reuse of a registered meaning"),
+    row("NOTATION-Q", "2.9-notation", "L07.html and L09.html orthogonal Q; \\mathbb{Q} registered for a probability measure", "PASS",
+        "Plain Q and the registered \\mathbb{Q} are different symbols; neither page uses \\mathbb{Q}"),
+    row("NOTATION-OTHER", "2.9-notation", "all control sequences on the three pages", "PASS",
+        f"{O}/static_checks.out and macro counts: \\top, \\lVert, \\varepsilon, \\beta, \\gamma, \\kappa, \\tau, \\iota, \\alpha, \\Gamma are plain or local letters (notation.json: greek letters local to each lesson); no unregistered program-wide symbol"),
+    row("DEF-L08-CLOSE", "2.9-structure", "L08.html Definition 3.1 (141), quiz item L08q9 (507), explanation (511)", "PASS",
+        "Quiz answer 'level-like' matches the definition's largest-|cos| rule with ties excluded"),
+    row("DEF-L08-MATCH", "2.2-lab-prose", "L08.html Definition 3.1 (141); canon-break (292); quiz explanation (511); twin lines 242-246", "PASS",
+        "The lab picks argmax |cos| and reports distinct matches; the tie rule of Definition 3.1 is not implemented by the lab, and the page does not claim the lab tests it. Ties are discussed in canon-break (292)"),
+    row("DAG-LINKS", "2.9-dag", "L07.html, L08.html, L09.html meta rows (L07 38-39; L08 38-39; L09 38-39)", "PASS",
+        "Each link target exists: L01 def-vector-space (L01 line listing), L03 def-eigendecomposition, L04 def-spectral-theorem, L05 def-positive-semidefinite-matrix; plus the in-lesson dfn ids def-orthogonal-projection, def-least-squares-projection, def-principal-component-analysis, def-level-slope-curvature, def-nearest-correlation-matrix, def-eigenvalue-clipping"),
+    row("DAG-M4", "2.9-dag", "L07, L08, L09 covariance, variance, correlation wording", "PASS",
+        f"{O}/static_checks.out and grep: no 'covariance' or 'variance' word on the three pages; L08 uses the formula X~^T X~/(T-1) with no concept link (architect decision B1/Q2); 'correlation matrix' is a plain descriptor defined in L09 Definition 1.1, no M4 link (plan section 2.3, B1 option (a))"),
+    row("DAG-PROSE-UNLINKED", "2.9-dag", "L09.html line 60 and other unlinked uses of positive semidefinite", "PASS",
+        "Unlinked later uses refer to the term already linked on line 56 and in the meta row; no concept owned outside the closure is named"),
+    row("PLAIN-REDEF", "2.9-dag", "course/modules/M/M3/L09.html Definition 1.2a (line 69-71, 'orthogonal matrix') versus course/modules/M/M3/L06.html Definition 1.1 (line 59-60); restatements at L09 line 56 ('The transpose ... swaps rows and columns', 'the trace ... is the sum of the diagonal entries')",
+        "FAIL",
+        f"grep in {O}/static_checks.out: 'Definition 1.1 (orthogonal matrix)' in L06 and 'Definition 1.2a (orthogonal matrix)' in L09 are two formal definitions of one term in the same course; BUILDER_RULES 1.10 says no concept defined twice and to link to the prerequisite definition. L09 line 56 also restates transpose (L04 Definition 1.1) and trace (L08 line 58)",
+        "Delete the Definition 1.2a block on L09 (line 69-71) and write 'orthogonal, as in Lesson 6, Definition 1.1' before Lemma 1.3; delete the restated transpose and trace sentence on L09 line 56 or replace it with 'as in Lesson 4 and Lesson 8'. Lemma 1.3 and Proposition 3.2 wording then stays unchanged"),
+    row("DEFINE-BEFORE-USE", "2.9-prose", "first uses of tenor, trace, cosine, PSD, eigenvalue clipping, orthogonal, Frobenius, correlation matrix, nearest correlation matrix in the three pages",
+        "PASS",
+        "Forward references appear only in why-it-matters paragraphs and name the defining item ('Definition 1.3 of this lesson', 'Method 1, Section 4'); in-body uses come after definitions (cosine line 137 before Definition 3.1; orthogonal after line 69); congruence is defined inline before use (L09 line 371); positive definite is defined in L05 Definition 1.4"),
+    row("PROSE-PROCESS", "2.9-prose", "L07, L08, L09 learner text", "PASS",
+        "Case-insensitive grep for covariance, variance, correlation, builder, verifier, ledger, fragment, checkpoint, TODO, TBD, placeholder, pending, honest, audit on the three pages: the only substring hit is 'appending' (L07 line 320), which is not a process word"),
+    row("PROSE-ELLIPSIS", "2.9-prose", "quiz stems ending in an ellipsis: L07 lines 398, 412; L08 lines 445, 459, 505; L09 lines 530, 539",
+        "PASS", f"{O}/static_checks.out: these are fill-in stems completed by the listed options, not omitted content; banned-phrase grep (BUILDER_RULES 1.3) returns 0 hits"),
+    row("PROSE-SCOPE", "2.9-prose", "scope words on the three pages (every, always, only, any, all, exactly, typically)", "PASS",
+        "Each universal claim is either proved (T) or limited to the tested seeds ('for these 40 matrices', 'on this one seeded design', 'for the planted panel'); 'always diagonal' and 'always invertible' occur only as wrong quiz options"),
+    row("PROSE-REMARK-2.4", "2.9-prose", "L08.html Remark 2.4 (131-133) and its last sentences", "PASS",
+        "Argument re-derived: M_jj>0 via x = e_j + t e_l; M' = kappa M forces kappa = c from the off-diagonal entry, then c^2 M_jj = c M_jj contradicts c^2 != c. The remark carries no grade; its key consequence is not claimed in the key table"),
+    row("STRUCT-WHY", "2.9-structure", "L07, L08, L09 why-it-matters (L07 line 52; L08 line 52; L09 line 52)", "PASS",
+        "Each opens with the problem and names the lesson's results; one paragraph, no motivational opener"),
+    row("STRUCT-ORDER", "2.9-structure", "L07, L08, L09 section order and counts (BUILDER_RULES section 4)", "PASS",
+        "Order: why-it-matters, sections, lab, canon-breaks, misconceptions (3 each), problem set (mechanics 3, proof 3, empirical 3, research 3), key results, quiz (9, 9, 11 items), references, lesson-nav"),
+    row("HOURS", "2.9-hours", "L07.html data-hours 11, L08.html 12, L09.html 12 (line 2)", "PASS",
+        "Plan section 2.2 hour split: 11, 12, 12 for these lessons; plan section 2.2 gives the nine lesson hours as 105 and the project as 45 (total 150); the hub's data-hours attributes are not in this slice and were not read"),
+    row("DATA-CLAIM", "2.8-data", "L08.html canon-break (line 291) and Lab 1 heading (line 145)", "PASS",
+        f"{O}/static_checks.out MANIFEST: ust_daily columns ['tbill_3m', 'cmt_10y'] (two series); fx datasets are currencies, not tenors; so 'does not yet embed a multi-tenor series from which three or more tenors can be read' is true"),
+    row("HONEST-GAP", "2.8-data", "L08.html canon-break (line 291) and Section 1 note (line 52)", "PASS",
+        "The curriculum's Treasury lab is stated as not run here; L08 uses a SIMULATED panel and says it makes no claim about any real curve"),
+    row("SIMULATED-LABELS", "2.8-data", "L07 lab (lines 124-128), L08 lines 145-151 and twin docstring (147-151), L09 lines 52, 193, 202 and twin docstring", "PASS",
+        "SIMULATED label present on each lab heading, hypothesis and twin docstring"),
+    row("DELTA-READ", "2.0-delta", "delta 142ecfc2..9373ef39 for slice c files (course/modules/M/M3/L07-L09.html, tests/labs/M3/lab-M3-L07/08/09-1.py, notation/notation.json)", "PASS",
+        "git diff --stat: L08.html (6 lines: line 97 wording; key rows 430 and 433) is the only slice change; L07, L09 and the three twins are byte-identical; every L08 hunk read in full (lines 94-97, 427-434). Out-of-slice hunks (cards.json, project.html, lab-M3-project-3.py, tools, tests) not read in this slice"),
+    row("HYP-L08-DEF31", "2.4-math/2.9-structure", "course/modules/M/M3/L08.html Section 3 line 137 and Definition 3.1 line 141 ('normalized to norm 1 ... orthonormal by construction')",
+        "FAIL",
+        f"{S}/l08_definition31_degenerate.py output {O}/l08_definition31_degenerate.out: tenors (1,2) give curvature shape norm 3.1e-16; (1,1,2) give 4.7e-16; (1,2,3) give 0.8165; the six lab tenors give 21.07. The curvature shape is zero, hence cannot be normalized, whenever there are fewer than three distinct tenor values. The lesson states no such hypothesis for n, so Definition 3.1's normalization and 'orthonormal by construction' claim are not valid for every n",
+        "In Section 3 (line 137) and Definition 3.1 (line 141) add the hypothesis: 'assume at least three distinct tenors (n >= 3 with three distinct values), so that the curvature shape is nonzero'. The six tenors of Lab 1 satisfy it"),
+    row("CONCEPT-L08-LSC", "2.9-dag/2.3-grades", "course/modules/M/M3/L08.html line 39 ('Introduces' names 'level, slope and curvature factors of the yield curve', concept name in curriculum.json) versus line 141 (definition: 'labels for shapes', 'no claim about the shape of any observed yield curve'), line 284 and line 291",
+        "FAIL",
+        f"{O}/static_checks.out: curriculum.json concepts['level-slope-curvature'] = 'Level, slope and curvature factors of the yield curve'; L08 line 141 defines only level-like, slope-like and curvature-like labels of principal directions and disclaims yield-curve content; line 291 says the curriculum's yield-curve lab is not run. The introduced concept therefore is not what the definition establishes",
+        "Either (a) change the Introduces text on L08 line 39 to the defined object ('level-like, slope-like and curvature-like principal directions') and say on line 141 that the yield-curve factors named by the curriculum are not defined here (B2), or (b) file a curriculum change request to rename the concept (the builder may not edit curriculum/*.yaml). Option (a) is needed for this slice to pass"),
+]
+
+fragment = {
+    "unit": "M3",
+    "slice": "c",
+    "round": 7,
+    "verifier": "independent Haiku verifier (round 7), checkout verifyD7-M3-c",
+    "pin": "9373ef398589097500ea849e30ff9da423b98943",
+    "base": "142ecfc2bd27061de18bd67e83df81e69f5c249d",
+    "checkout": "/Users/billyribeiro/.fanout/wt/verifyD7-M3-c",
+    "scratch": "subprocess cwd /tmp for twin runs (no files left behind); no other scratch directory",
+    "verified_at": "2026-11-04",
+    "verdict": "FAIL",
+    "rows": rows,
+    "mutants": [],
+    "registry_flags": [],
+    "freshness_flags": [],
+    "notes": (
+        "Delta 142ecfc2..9373ef39 (the round-6 pin is 142ecfc2; base set to it). Re-verified from scratch, NOT carried from round 6: every row re-run or re-read, per the orchestration note. "
+        "Read in full: L07.html (443 lines), L08.html (531 lines), L09.html (606 lines), the three twins, plans/M3-build-plan.md (binding, with Architect decisions), VERIFIER_RULES.md, BUILDER_RULES.md sections 1-4. "
+        "Scripts (repository paths): ledgers/M3/scripts/M3-c-r7/page_vs_twin.py, m3c_r7_numbers.py, l08_definition31_degenerate.py, static_checks.sh, build_fragment_r7.py; outputs under ledgers/M3/scripts/M3-c-r7/out/. "
+        "Mutation testing: not applicable to this slice (lab twins are demonstrations; mutants are for project graders only, VERIFIER rulings), so mutants is empty. "
+        "Alternative implementations (L09 repairs) were run as a robustness check, not as a grader test. "
+        "Not checked: the full pytest suite (only the selected M3/run_labs/page tests); run_graders (no grader row in this slice); a live verify_refs run; a light and dark 360 px screenshot (page_smoke only); cards.json entries (not in this slice's brief); project.html, index.html and the grader (other slices); "
+        "Pyodide runtime was not separately run beyond page_smoke's boot; labs run under CPython 3.14.8 (venv). The L08 concept (CONCEPT-L08-LSC) and definition hypothesis (HYP-L08-DEF31) are flagged as builder fixes; the L09 duplicate definition (PLAIN-REDEF) is a fix too."
+    ),
+    "summary": (
+        "M3 slice c round 7 at pin 9373ef3: 64 rows (pass=61, fail=3, unverifiable=0). Non-PASS: PLAIN-REDEF (L09 Definition 1.2a re-defines orthogonal matrix from L06 Definition 1.1), "
+        "HYP-L08-DEF31 (L08 Definition 3.1 curvature shape is zero for fewer than three distinct tenors; hypothesis omitted), CONCEPT-L08-LSC (L08 introduces 'level, slope and curvature factors of the yield curve' but defines only shape labels that disclaim yield-curve content). "
+        "All gates pass; all three twins match their pages and run clean under -I -W error; every number re-derived by independent QR/SVD and alternative repair implementations; the round-6 KEY-L08-430 FAIL is fixed."
+    ),
+}
+
+out = Path("ledgers/M3/M3-c.json")
+out.write_text(json.dumps(fragment, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print("rows", len(rows), "pass", sum(r["status"] == "PASS" for r in rows), "fail", sum(r["status"] == "FAIL" for r in rows))

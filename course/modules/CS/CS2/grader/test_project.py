@@ -869,7 +869,7 @@ def test_sketch_rank_guarantee_at_wide_epsilon(eps: float) -> None:
             v = sketch.quantile(q)
             if not guarantee_holds(stream, v, q, eps):
                 pytest.fail(
-                    "the rank guarantee fails at an epsilon between 0.2 and 1, on a stream of two to five values."
+                    "the rank guarantee fails at a wide epsilon (0.3, 0.5 or 0.9), on a stream of two to five values."
                 )
 
 
