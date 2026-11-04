@@ -11,6 +11,8 @@ over the 2**n walks, from a quadrature written in this file, or from identities.
 functions against another: the srw reflection identity, the one-step estimate against reflection_tail, the nested counts
 against discrete_max_exceedance, and the coarse count against the fine count. One test calls discrete_max_exceedance
 twice on the same instance and requires the same answer. One test pins the one-step draws to random.Random(seed).gauss.
+Two tests put the level exactly on a path's maximum and just
+above it, which checks the "at least a" rule in both directions.
 A seeded-simulation check against a known target p uses a band of five standard errors of p, sqrt(p (1 - p) / N), plus
 one path (1/N). The band takes the target's standard error, not the sample's: the sample's is zero when no path hits,
 which would shrink the band to 1/N and fail a correct engine. A failing test names the property it checks and the idea
@@ -336,6 +338,34 @@ def test_one_step_draws_are_the_seeded_gaussians() -> None:
     within(estimate, hits / INST["n_paths"], 1e-12, "one grid step must draw random.Random(seed).gauss(0, sqrt(H))")
 
 
+def one_step_draws(inst: dict[str, Any]) -> list[float]:
+    """The n_paths one-step Gaussian draws of an instance, in the order random.Random(seed).gauss(0, sqrt(H)) gives."""
+    rng = random.Random(int(inst["seed"]))
+    return [rng.gauss(0.0, math.sqrt(inst["H"])) for _ in range(int(inst["n_paths"]))]
+
+
+def level_on_a_path_maximum() -> float:
+    """A positive level equal to one path's maximum. With one grid step the maximum of a path is its draw, exactly,
+    because 0.0 + x == x in floats."""
+    return next(x for x in one_step_draws(INST) if x > 0.0)
+
+
+def test_path_whose_maximum_equals_the_level_counts_as_reaching_it() -> None:
+    # The specification counts a path when its grid maximum is at least a, so a path exactly at the level counts.
+    level = level_on_a_path_maximum()
+    expected = sum(1 for x in one_step_draws(INST) if x >= level) / INST["n_paths"]
+    estimate, _ = sol.discrete_max_exceedance(with_(INST, a=level), 1)
+    within(estimate, expected, 1e-12, "a path whose grid maximum equals a must count as reaching the level")
+
+
+def test_path_just_below_the_level_is_not_counted() -> None:
+    # The same path with the level moved up by one float step: its maximum is now below a, so it must not count.
+    level = math.nextafter(level_on_a_path_maximum(), math.inf)
+    expected = sum(1 for x in one_step_draws(INST) if x >= level) / INST["n_paths"]
+    estimate, _ = sol.discrete_max_exceedance(with_(INST, a=level), 1)
+    within(estimate, expected, 1e-12, "a path whose grid maximum lies below a must not count as reaching the level")
+
+
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["student seed", "second seed"])
 def test_grid_estimate_does_not_exceed_the_continuous_tail(inst: dict[str, Any]) -> None:
     tail = sol.reflection_tail(inst["a"], inst["H"])
@@ -409,6 +439,15 @@ def test_fine_count_is_the_discrete_estimate_times_n() -> None:
     fine, _ = sol.nested_grid_counts(INST, 8, 4)
     estimate, _ = sol.discrete_max_exceedance(INST, 8)
     within(estimate, fine / INST["n_paths"], 1e-12, "the fine count must equal the discrete estimate times N")
+
+
+def test_nested_counts_include_a_path_whose_maximum_equals_the_level() -> None:
+    # One grid step: the fine and coarse grids are the same single point, so both counts must include the path at a.
+    level = level_on_a_path_maximum()
+    expected = sum(1 for x in one_step_draws(INST) if x >= level)
+    fine, coarse = sol.nested_grid_counts(with_(INST, a=level), 1, 1)
+    expect(fine == expected, "a path whose fine grid maximum equals a must be counted in the fine count")
+    expect(coarse == expected, "a path whose coarse grid maximum equals a must be counted in the coarse count")
 
 
 def test_equal_grids_give_equal_counts() -> None:

@@ -1,11 +1,12 @@
 """BK4 lab L03: the CCP default waterfall and margin cover, in integer cents.
 
-Standard library only; no network. Every input is generated from a fixed seed, so the inputs are SIMULATED and
-every run prints the same numbers. All money is an int in cents, and every cover is an integer count of basis
-points. Part A runs the layer order of Definition 1.1 on a fixture with hand-checkable amounts, on the remainder
-rule with a three-survivor fixture, and on three seeded scenarios. Part B sizes the defaulter's margin for two cover
-targets from seeded scenario losses with the order statistic of Proposition 2.3, then checks each sized margin by a
-brute-force search over the integer margins 0, 1, 2, and so on.
+Standard library only; no network. The inputs of Parts A3 and B come from a fixed seed, so they are SIMULATED and
+every run prints the same numbers. The inputs of Parts A1 and A2 are the fixtures stated on the page. All money is
+an int in cents, and every cover is an integer count of basis points. Part A runs the layer order of Definition 1.1
+on a fixture with hand-checkable amounts, on the remainder rule with a three-survivor fixture, and on three seeded
+scenarios. Part B sizes the defaulter's margin for two cover targets from seeded scenario losses with the order
+statistic of Proposition 2.3, then checks each sized margin by a brute-force search over the integer margins 0, 1, 2,
+and so on.
 """
 
 from __future__ import annotations

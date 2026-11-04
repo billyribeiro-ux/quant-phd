@@ -1,0 +1,170 @@
+"""Round-6 writer for the LX1-d fragment. Rows are the verifier's own findings; every card row cites its lesson section and the check that was run."""
+import json, sys
+BASE = sys.argv[1]
+CK = "course/modules/LX/LX1/cards.json"
+card_rows = {
+ 1: ("L01 Def 1.2 (Section 1): F_t = sum_k d_(t+k)/(1+r)^k whenever convergent; a benchmark, not a forecast. Front/back match. Ungraded definition.", None),
+ 2: ("L01 Thm 1.3 statement and proof: F_t = d_1(1+g)^t/(r-g) = d_(t+1)/(r-g); F_0 = d_1/(r-g). Hypotheses A0, A1 as stated. rederive.py: F_0 = 20000/3, rounded 6667. T.", "PASS"),
+ 3: ("L01 Thm 1.3: S_N(t)=F_t(1-q^N) exactly for every N>=1. rederive.py: identity True for N=10,60,200 (exact Fractions); twin Part A prints True for N=10,60,200. T.", "PASS"),
+ 4: ("L01 Thm 1.3 proof: 1+g>0 and 1+r>1+g give 0<q<1; q^N->0. rederive.py: q=103/109, 0<q<1 True. T.", "PASS"),
+ 5: ("L01 Prop 1.4: hypotheses (A1) d_1>0, 1+g>0; (A2) r>-1, g>=r; conclusion S_N(0)->+inf; proof bound S_N(0)>=N d_1/(1+r). Card matches; T.", "PASS"),
+ 6: ("L01 Def 2.1: B_t=P_t-F_t counted only when B_t>0, measured in cents. Matches. Ungraded definition.", "PASS"),
+ 7: ("L01 Prop 2.2 hypotheses (A3) d_1>0; (A4) g<g', r>g, r>g', 1+g>0, 1+g'>0; conclusion F_0(g)<F_0(g'), gap split. rederive.py: F_0(1%)=5000 < 20000/3. T.", "PASS"),
+ 8: ("L01 Def 3.1 (Section 3): mechanism only; no frequency, trigger or size. Matches; definition.", "PASS"),
+ 9: ("L01 Lab 1 Part B prints 'periods with price above fundamental: 9 of 13' (run_labs twin output, PASS 7/7). rederive.py with seed 20261103: 9 of 13. C, SIMULATED.", "PASS"),
+ 10: ("L01 Lab 1 Part C prints 13 of 13 for growth 1%. rederive.py: 13 of 13 at 1%. C, SIMULATED.", "PASS"),
+ 11: ("L01 Prop 2.2 witness (d_1=400, r=9%, P_0=6000): gaps +1000 and -2000/3. rederive.py: 1000.0 and -666.67. T.", "PASS"),
+ 12: ("L01 Section 5 canon-breaks: 400/1.09 = 40000/109 = 366.97 -> 367 cents. rederive.py: 40000/109 check True, rounded 367. Card back dropped 6667 (matches lesson's own list). T.", "PASS"),
+ 13: ("L01 Prop 1.4 proof (each discounted term >= d_1/(1+r)) and misconception 3 (Section 6). Matches; T.", "PASS"),
+ 14: ("L02 Def 1.1 (Section 1): parity kappa>0 grams per unit, convertibility on demand. Matches. Ungraded definition.", "PASS"),
+ 15: ("L02 Prop 1.2 (A1 parity kept at every date); conclusion 1/kappa units per gram at every date. Matches; T.", "PASS"),
+ 16: ("L02 Remark 1.3 (Section 1): Prop 1.2 says nothing about P_t; (A1) does not involve P_t. Card back now says 'Section 2 of L02'; lesson Section 2 defines P_t. Matches; T.", "PASS"),
+ 17: ("L02 Section 2: V_t = D P_0/P_t, D nominal in integer cents, P_0 base value. Matches. Ungraded definition.", "PASS"),
+ 18: ("L02 Prop 2.1(a) hypotheses (A2) D positive integer cents, paid in full, not renegotiated; (A3) P_t>0; conclusion V_t/V_(t-1)=P_(t-1)/P_t. Matches; T.", "PASS"),
+ 19: ("L02 Prop 2.1(b): V_H/V_0 = P_0/P_H for every H>=1, telescoping proof. Matches; T.", "PASS"),
+ 20: ("L02 Def 3.1 (Section 3): debt deflation is the arithmetic rise in V_t implied by a fall in P_t with D fixed; not a claim about cause. Matches; definition.", "PASS"),
+ 21: ("L02 Cor 3.2: V_t > V_(t-1) iff P_t < P_(t-1); proof from Prop 2.1(a). Matches; T.", "PASS"),
+ 22: ("L02 Prop 2.1(a) factor P_(t-1)/P_t, larger than one in a fall; Remark 3.3 gives direction only. Matches; T.", "PASS"),
+ 23: ("L02 Cor 3.2 (direction of real value) and misconception 1 (Section 5): a fall in P_t raises V_t. Matches; T.", "PASS"),
+ 24: ("L02 Section 2: V_t constant iff P_t constant (algebra). Lab 1 Part B prints 13 real values; rederive.py: consecutive values all differ. C, Part B.", "PASS"),
+ 25: ("L02 Lab 1 Part B prints 'identity V_t / V_(t-1) = P_(t-1) / P_t holds exactly for t = 1 to 12: True' (twin output line 257). Card basis cites 'Parts B and C', but Part C (twin output lines 258-261) prints only falling/rising counts and their set equality, not the identity. Wrong locator; C.", "FAIL"),
+ 26: ("L03 Assumption 1.1: P_t=(1-delta)^min(t,m), P_0=1, 0<=m<=H, 0<delta<1; flat after m. Matches; definition.", "PASS"),
+ 27: ("L03 Def 2.1: L_t = V_t/N_t. Matches; definition.", "PASS"),
+ 28: ("L03 Assumption 1.3: psi_t = phi(L_t-L_0), phi>0. Matches; definition.", "PASS"),
+ 29: ("L03 Def 2.2 (Section 2): chain A1+A2 debt, A2 net worth, A3 premium and output; describes the model only. Matches; definition.", "PASS"),
+ 30: ("L03 Lemma 3.1: ell(x)=x/(C-x) strictly increasing on [D,C); L_t=ell(V_t) when V_t<C; L_0=D/N_0. Matches; T.", "PASS"),
+ 31: ("L03 Prop 3.2(a) (Section 3): V_t<=V_m for 0<=t<=H; V_t=D(1-delta)^(-t) for t<=m, strictly increasing when m>=1; V_t=V_m for t>=m. Hypothesis V_m<N_0+D of Assumption 1.2 stated. Matches; T.", "PASS"),
+ 32: ("L03 Prop 3.2(b): depth(m)=beta phi(ell(V_m)-ell(D)) = beta phi(V_m/(N_0+D-V_m) - D/N_0). rederive.py: closed form equals direct max over t (m=4: 0.0268671310; m=12: 0.0920459718). T.", "PASS"),
+ 33: ("L03 Prop 3.2(c): first maximiser at t=m; no earlier period attains the maximum when m>=1. rederive.py: depth strictly rising in m. Matches; T.", "PASS"),
+ 34: ("L03 Prop 3.2(c) and Problem P2: depth(0)=0 since P_t=1, V_t=D, premium zero. Matches; T.", "PASS"),
+ 35: ("L03 Cor 3.3 hypotheses (Assumptions 1.1 to 1.3, 0<=m'<m<=H) and conclusion depth(m')<depth(m); X (m=12) deeper than Y (m'=4). rederive.py: depth(4)<depth(12) True. T.", "PASS"),
+ 36: ("L03 Cor 3.4 (hypothesis 1<=m'<m<=H): ratio = (ell(V_m)-ell(D))/(ell(V_m')-ell(D)). rederive.py (Fraction version): the card's right-hand side equals the depth ratio exactly, True. T.", "PASS"),
+ 37: ("L03 Lab 1 Part B prints 'economy X depth 9.20 percent ... first reached at t = 12' (twin). rederive.py: 9.2046 -> 9.20, t=12. C, SIMULATED.", "PASS"),
+ 38: ("L03 Lab 1 Part B prints 'economy Y depth 2.69 percent ... t = 4' (twin). rederive.py: 2.6867 -> 2.69, t=4. C, SIMULATED.", "PASS"),
+ 39: ("L03 Lab 1 Part D prints 'phi = 1, beta = 1, product 1: ratio of depths X to Y 3.4260' (twin). rederive.py: 3.42597 -> 3.4260. C, SIMULATED.", "PASS"),
+ 40: ("L03 Def 4.1 (Section 4): lends against collateral to institutions solvent but illiquid; solvent and illiquid defined as in card. Matches; definition.", "PASS"),
+ 41: ("L03.html line 390 (Def 4.1) states 'A central bank is the public institution that issues the monetary base'; card LX1-c041 back (cards.json line 346) repeats it. 'monetary base' appears only at L03.html:390 and cards.json:346. grep over course/, curriculum/, notation/, references/, tools/ finds no <dfn>, glossary entry or definition of it. Term used before, and without, its definition (defect class 5; BUILDER_RULES define-before-use). Unchanged since round 5.", "FAIL"),
+ 42: ("L03 Remark 4.2: Assumption 1.2 has no lending term; Assumption 1.3 has no term through which a facility changes a solvent borrower's premium. Matches; T.", "PASS"),
+ 43: ("L03 Assumption 1.2 (no default, no repricing, no other balance-sheet change), misconception 1 (Section 6); proof of Prop 3.2 uses none of these events. Matches; T.", "PASS"),
+ 44: ("L03 misconception 2 (Section 6): ordering follows from durations 12 and 4 under Assumption 1.1; model cannot say causation. Matches; T.", "PASS"),
+ 45: ("L03 Def 4.1 (collateral; solvent but illiquid), Remark 4.2 (no facility), misconception 3 (Section 6). Matches; T.", "PASS"),
+ 46: ("L03 Prop 3.2(b) (depth proportional to beta phi); Lab 1 Part A prints 'phi = 1; beta = 1'; no output series read (lab code, twin). Matches; T.", "PASS"),
+ 47: ("L03 Section 1 honest-pending note; course/assets/data/market/MANIFEST.json lists fx_daily, fx_monthly, ust_daily only (no gold-adherence or output series). Matches. Ungraded fact about course data.", "PASS"),
+ 48: ("L04 Def 1.1 (Section 1): ell_t = ln(x_t/x_(t-1)), per month, not annualized. Matches; definition.", "PASS"),
+ 49: ("L04 Def 1.1: dispersion = sample sd, denominator n-1; defined only for n>=2. Matches; definition.", "PASS"),
+ 50: ("L04 Prop 1.2 (A1 positive rates, a<b): sum of ell_t for t=a+1..b = ln(x_b/x_a); b-a terms. Matches; T.", "PASS"),
+ 51: ("L04 Remark 1.3 (exact in reals, checked to tolerance); twin defines SUM_TOLERANCE = 1e-12 (lab-LX1-L04-1.py). Matches; T.", "PASS"),
+ 52: ("L04 Prop 2.2 hypotheses (A2) x_t=kappa over the window, kappa>0, n>=2; conclusions (a) zero log changes, (b) zero dispersion. Matches; T.", "PASS"),
+ 53: ("L04 Def 2.1 (Section 2): anchor currency, one foreign currency, kappa>0, x_t>0; fixed-parity model adds (A2). Matches; definition.", "PASS"),
+ 54: ("L04 Lab 1 Part B prints 'months with an exactly zero change: 3: 1976-07, 2012-07, 2019-11' (twin). rederive via fx_recheck.py from fx_monthly.csv: identical three months. C.", "PASS"),
+ 55: ("L04 Lab 1 Part C prints 'window one (1971-02 to 2026-09): changes 668; standard deviation 0.027935' (twin). fx_recheck.py: 0.0279352779. C.", "PASS"),
+ 56: ("L04 Lab 1 Part C prints 'window two (2000-01 to 2026-09): changes 321; standard deviation 0.024700'. fx_recheck.py: 0.0246995014 -> 0.024700. C.", "PASS"),
+ 57: ("L04 Lab 1 Part D prints 'ratio ... four decimals: 0.8842'. fx_recheck.py: 0.8841688084 -> 0.8842. C.", "PASS"),
+ 58: ("L04 Lab 1 Part C prints 'largest absolute change 0.096575 at 2008-10 (signed -0.096575)' for window two. fx_recheck.py: 2008-10, -0.0965747. C.", "PASS"),
+ 59: ("L04 Prop 2.2 (model) and Remark 2.3 ('need not equal its parity at any month'); misconception 1 (Section 5) says (A2) describes the model, not a recorded series. Grade T on the model result, 'Not necessarily' on the recorded series. Matches.", "PASS"),
+ 60: ("L04 misconception 2 (Section 5) and Part D of Lab 1; code computes two sample sds and their difference and no test (twin main(), Part D; no test statistic in the code). Problem E3 states it. Matches; C.", "PASS"),
+ 61: ("L04 misconception 3 (Section 5) and Problem M1: 1.00 to 1.10 gives simple 0.10 and log ln 1.1 = 0.0953101798 -> 0.095310; difference 0.004690 (computed: 0.0046898202). T.", "PASS"),
+ 62: ("L04 Def 2.1 defines a model class; 'Bretton Woods system: definition pending' (Section 2); Section 4 lists open items. Matches; T.", "PASS"),
+ 63: ("L04 Section 3 and twin docstring: window two starts 2000-01 because fx_daily and ust_daily begin 2000-01-03 (MANIFEST first field for both = 2000-01-03, verified). Start is a convention; no test of survival under another start. Matches.", "PASS"),
+ 64: ("L04 Section 1 and Lab 1 Part B: fx_monthly.csv, GBP column, G.5/H.10 noon buying rates in New York, USD per pound (MANIFEST transform: GBP direct quote). Matches.", "PASS"),
+ 65: ("L04 Lab 1 Part D prints 'difference in standard deviation: -0.003236'; Section 3 states it is computed from unrounded sds. fx_recheck.py: -0.003236. C.", "PASS"),
+ 66: ("L02 Lab 1 Part C prints '6 of 12' falling and '6 of 12' rising and 'real value rises exactly in the periods where the index falls: True'. C.", "PASS"),
+ 67: ("L03 Lab 1 Part D prints ratio 3.4260 for products 1/2, 1 and 3; Cor 3.4 (T). rederive.py: 3.425969... for all three. C.", "PASS"),
+ 68: ("L04 Lab 1 Part B: 3 zero changes of 668, so 665 nonzero (fx_recheck.py: 665). C.", "PASS"),
+ 69: ("L04 Section 1 / twin docstring: 669 months, 1971-01 to 2026-09 (Lab Part B prints 669; MANIFEST rows 669, first 1971-01). Matches. Ungraded fact.", "PASS"),
+ 70: ("L04 Section 4 'Exchange rates only' and twin docstring: no interest-rate or forward-rate column; MANIFEST fx_monthly columns are ten exchange rates only. Matches.", "PASS"),
+ 71: ("L03 Assumption 1.2: N_t = N_0-(V_t-V_0); whole rise in real debt falls on net worth. Matches; definition.", "PASS"),
+ 72: ("L03 Assumption 1.3: depth(m)=max over 0<=t<=H of f_t, f_t=beta psi_t. Matches; definition.", "PASS"),
+ 73: ("L02 Section 2: nominal debt definition, 'Here the amount is D cents'. Matches verbatim; definition.", "PASS"),
+ 74: ("L02 Section 2: price index P_t at date t, base date 0, positive values, P_0 base value. Matches verbatim; definition.", "PASS"),
+ 75: ("L04 Section 1/twin docstring: snapshot retrieved 2026-10-19; MANIFEST fx_monthly entry 'retrieved': '2026-10-19' (read). Matches.", "PASS"),
+}
+rows = []
+for n, (ev, st) in sorted(card_rows.items()):
+    cid = f"card-c{n:03d}"
+    if st is None:
+        st = "PASS"
+    row = {"id": cid, "check": "2.7-card-vs-lesson", "location": f"{CK} (LX1-c{n:03d})", "status": st, "evidence": ev}
+    if st != "PASS":
+        if n == 25:
+            row["fix"] = "Card-side (course/modules/LX/LX1/cards.json LX1-c025 basis): change 'Lab 1 Parts B and C (SIMULATED, one seeded path)' to 'Lab 1 Part B (SIMULATED, one seeded path)'. The identity line is printed only in Part B."
+        else:
+            row["fix"] = ("Lesson-side (outside this slice): in course/modules/LX/LX1/L03.html Definition 4.1 (line 390), define 'monetary base' with a <dfn> where it first appears, or replace it with a term already defined in the course; then change the back of LX1-c041 (cards.json:346) to name the defined term. Re-run tools/check_pages.py --unit LX1 and this verifier's card check.")
+    rows.append(row)
+
+def g(id_, check, loc, ev, st="PASS"):
+    r = {"id": id_, "check": check, "location": loc, "status": st, "evidence": ev}
+    if st != "PASS":
+        r["fix"] = "see card row"
+    return r
+
+rows += [
+ g("card-basis-l04-manifest", "plan-section-9-basis-retrieved-date", f"{CK} (LX1-c054 to c058, c060, c065, c068) vs course/assets/data/market/MANIFEST.json",
+   "Every fx_monthly-based basis names 'MANIFEST retrieved 2026-10-19'; MANIFEST fx_monthly 'retrieved': '2026-10-19' (read). c059 basis no longer cites fx_monthly (now a model result), so it is not an fx row. PASS."),
+ g("card-struct-ids-lessons", "2.7-structure", CK,
+   "ids LX1-c001..LX1-c075 contiguous and unique (python -I check: ids == [f'LX1-c{i:03d}' for i in 1..75] True); lessons L01 13, L02 15, L03 25, L04 22; all in L01-L04. check_pages.py --unit LX1: PASS (check_cards included)."),
+ g("card-numeric-tokens", "2.7-numbers-in-lesson", f"{CK} vs L01-L04.html (extracted text in /tmp/lx1d6_scratch)",
+   "ledgers/LX1/scripts/LX1-d-r6/card_numbers.py: 75 cards, 0 number tokens absent from their lesson text."),
+ g("card-lab-outputs-verbatim", "2.7-lab-expected-vs-output", "tools/run_labs.py --unit LX1; tests/labs/LX1/lab-LX1-L01-1.py .. lab-LX1-L04-1.py",
+   "run_labs --unit LX1: 'run_labs LX1: PASS (7/7)', exit 0. Each card lab number equals its twin output line (line numbers of the lesson text extracts /tmp/lx1d6_scratch/L01..L04.txt: L01 249-266, L02 257-266, L03 334-357, L04 277-287)."),
+ g("card-twins-standalone", "2.7-lab-twins-alone", "tests/labs/LX1/lab-LX1-L01-1.py .. lab-LX1-L04-1.py",
+   "Each twin run alone with python3 -I -W error in a scratch dir (L04 with data/fx_monthly.csv only): exit 0; grep for warn/error/traceback in outputs: 0 hits."),
+ g("card-recomputed-numbers", "2.7-independent-recompute", "ledgers/LX1/scripts/LX1-d-r6/rederive.py; ledgers/LX1/scripts/LX1-d-r6/fx_recheck.py",
+   "Own Fraction/float code, python3 -I: F_0 20000/3 -> 6667; q 103/109; S_N identities True; seeded draws 9 of 13 and 13 of 13; 1000 and -666.67; 40000/109 -> 367; V_1=1010101; V_12/V_0 6dp 1.055909; depth X 0.0920460 (9.20), Y 0.0268671 (2.69), ratio 3.4259695 (3.4260); fx_recheck: 668 changes, 3 zeros, sd 0.027935 / 0.024700, ratio 0.8841688 (0.8842), diff -0.003236, max 0.135846 at 1985-03, 0.096575 at 2008-10. Also h=tanh(L/2)=0.067819 and ln(1.0678/0.9322)=0.135808 (lesson R2), 2175/8698=0.250057, g*=0.023333, ln1.1=0.0953102, E2 simple change -0.092058. All agree with cards."),
+ g("card-duplicates", "2.7-duplicates", CK,
+   "Full scan: 75 unique ids; 0 duplicate fronts; 0 duplicate backs (python -I)."),
+ g("card-grades-basis", "2.7-grades", f"{CK}; BUILDER_RULES section 7; plans/LX1-build-plan.md section 9",
+   "Grades: T 34, C 17, ungraded 24. Every T or C card carries a basis (51 = 34+17); no ungraded card carries a basis; check_pages PASS. Every C card names a SIMULATED lab output or fx_monthly basis."),
+ g("card-misconception-and-concept-coverage", "2.7-coverage", f"{CK}; L01-L04 Section 6 (L01-L03) and Section 5 (L02, L04)",
+   "Misconceptions covered: L01 1-3 (c011, c012, c013); L02 1-3 (c023, c016, c024); L03 1-4 (c043, c044, c045, c046); L04 1-4 (c059, c060, c061, c062). Core definitions covered (speculative bubble c006, financial panic c008, gold standard c014, debt deflation c020, credit channel c029, lender of last resort c040, Bretton Woods model c062)."),
+ g("card-notation", "2.7-notation", "notation/notation.json (8 registered symbols: T, \\Phi, \\gamma_3, \\gamma_4, R^\\ast, R^{e\\ast}, R_f, \\mathbb{Q}); cards.json",
+   "No card uses a registered symbol (checked: cards contain only local letters). Local symbols are defined in their lessons (notation.json 'about': N, m, S and similar are lesson-local). Lesson-local P_t/N_t/ell are not program-wide symbols. PASS."),
+ g("card-dag-concepts", "2.7-dag-concepts", f"{CK}; plans/LX1-build-plan.md section 4; tools/check_dag.py --unit LX1",
+   "check_dag.py --unit LX1: PASS. Cards name no concept outside the unit closure by link (no class=concept links on cards)."),
+ g("card-banned-words", "2.7-process-words", f"{CK}; tools/check_pages.py BANNED list",
+   "python -I scan of front/back/basis for verif*, builder, build, round, fragment, pending, draft, TODO, reword*, audit*, reviewer, pass, fail: 0 hits. check_pages --unit LX1: PASS."),
+ g("card-scope-words", "2.7-scope-words", CK,
+   "Every scope word (only, all, always, every, any, same, exactly) was read in context: universals are proved (c003 every N; c007 every price; c015 every date; c019; c034 P_t=1 every period; c052 every change) or computed (c025 all 12 dates; c054 all 668 changes); 'only' qualifiers are definitional (c006, c011, c021, c022, c049, c051, c070); c059 'every month' is the (A2) hypothesis; c024 'exactly when' is algebra. No unsupported scope word."),
+ g("card-registry-offline", "2.7-registry", "references/references.json; tools/verify_refs.py --offline",
+   "verify_refs.py --offline: 'offline integrity: 560 entries, 0 problems', exit 0. All 75 cards have cite [] (python -I check)."),
+ g("card-data-manifest", "2.7-data", "course/assets/data/market/MANIFEST.json; fx_monthly.csv; fx_daily.csv; ust_daily.csv",
+   "fx_monthly rows 669, first 1971-01, last 2026-09, retrieved 2026-10-19; fx_daily and ust_daily first 2000-01-03; fx_monthly columns are ten exchange rates, no interest-rate or forward column; datasets are fx_daily, fx_monthly, ust_daily only (no gold-adherence or output series, so c047 holds)."),
+ g("card-gates-ruff-mypy-pytest", "2.7-gates-code", "ruff check / format --check tests/labs/LX1; mypy --no-incremental tests/labs/LX1; pytest tests/test_labs.py tests/test_page_checks.py -k 'LX1 or card'",
+   "ruff check: All checks passed; ruff format: 7 files already formatted; mypy: Success, no issues in 7 source files; pytest: 7 passed."),
+ g("card-page-smoke-lessons", "2.7-page-smoke", "tools/page_smoke.py --unit LX1 --pages L01 L02 L03 L04 --skip-sweep",
+   "page_smoke L01, L02, L03, L04 each PASS (including each lab); 'page_smoke LX1: PASS', exit 0. Run alone."),
+ g("card-check-pages-dag-projects", "2.7-gates-structure", "tools/check_pages.py --unit LX1; tools/check_dag.py --unit LX1; tools/check_projects.py --unit LX1",
+   "check_pages LX1: PASS; check_dag LX1: PASS; check_projects LX1: PASS (all exit 0)."),
+ g("card-delta-readthrough", "2.7-delta", "git diff 7376a5e2..4bd8cb94 -- course/modules/LX/LX1/cards.json L03.html L04.html",
+   "Every hunk in the slice read: cards c012, c016, c024, c035, c046, c053, c059 (grade C->T, basis changed), c062, c069, c073, c074, new c075; L03 why-it-matters and Prop 3.2 paragraph; L04 why-it-matters, Remark 2.3, Section 3 window text, Section 4 'Exchange rates only', P2 (A3) wording, key-results row. Every card whose subject changed was re-derived above (no PASS carried forward)."),
+ g("card-verify-cards-lessons-subject", "2.7-subject-identity", "course/modules/LX/LX1/L01.html, L02.html (unchanged since 7376a5e2)",
+   "git diff 7376a5e2..4bd8cb94 touches no L01.html or L02.html in LX1 (diff stat listed L03, L04, cards.json, project.html, LX2 files only). L01 and L02 cards were nonetheless re-derived from the current text."),
+]
+frag = {
+ "unit": "LX1",
+ "slice": "LX1-d",
+ "round": 6,
+ "verifier": "Claude Haiku 5.5, independent verifier for LX1-d (ALL cards.json against L01-L04), round 6. Did not build LX1. Round-5 fragment read as context only; no PASS row carried forward; every card re-derived from the current lesson text.",
+ "pin": "4bd8cb94a8e171e80c4c34da1b3f32be7cb93f07",
+ "base": "7376a5e216c1e6d99becc76b4cd64028f5b55d3f (round-5 pin)",
+ "checkout": BASE,
+ "scratch": "/tmp/lx1d6_scratch",
+ "verified_at": "2026-11-04T16:00:00+00:00",
+ "verdict": "FAIL",
+ "rows": rows,
+ "mutants": [],
+ "registry_flags": [],
+ "freshness_flags": [],
+ "notes": [
+  "Slice: all 75 cards in course/modules/LX/LX1/cards.json, read in full (python dump), each checked against L01.html to L04.html (read as full text extracts, plus the four lab twins, run alone). Pin 4bd8cb94 (detached), checkout clean except .venv symlink.",
+  "Delta since round 5 (7376a5e2..4bd8cb94) in this slice: cards.json (c012, c016, c024, c035, c046, c053, c059, c062, c069, c073, c074, new c075) and L03.html / L04.html hunks; all read. L01.html and L02.html are unchanged in this delta. Every card was re-derived anyway.",
+  "Mutants: none written. Rules section on mutation applies to project graders, not to a cards slice; the lab twins were run standalone and their numbers recomputed independently (rederive.py, fx_recheck.py).",
+  "Two non-PASS rows: card-c041 (undefined term 'monetary base', unchanged from round 5; lesson-side fix) and card-c025 (basis cites Lab 1 Part C for an identity printed only in Part B; card-side fix). The round-5 non-blocking note on c025 is upgraded to FAIL because the locator is wrong.",
+  "Not run: verify_refs without --offline (no live access run needed for a cards slice; card cite fields are empty); run_graders (no project grader in this slice); mutate_graders (project slices only); pytest outside 'LX1 or card'; ruff/mypy on other units.",
+  "Not checked: the full text of the Garber and Eichengreen and Friedman references (cited for title only in the lessons; no passage is read, so no card attributes content to them).",
+ ],
+ "summary": "Round 6 of LX1-d: 75 cards and 16 gate/structure rows. 73 card rows PASS, 2 card rows FAIL (card-c041: 'monetary base' used in L03 Definition 4.1 and never defined; lesson-side fix. card-c025: basis cites Part C for the identity printed only in Part B; card-side fix). All gate rows PASS. Verdict FAIL.",
+}
+out = f"{BASE}/ledgers/LX1/LX1-d.json"
+json.dump(frag, open(out, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+print("wrote", out, len(rows), "rows")

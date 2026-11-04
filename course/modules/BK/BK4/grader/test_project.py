@@ -578,6 +578,18 @@ def test_defaulter_inside_the_id_range_but_not_a_member_is_refused() -> None:
     )
 
 
+def test_defaulter_with_a_margin_but_no_default_fund_is_refused_and_the_message_names_it() -> None:
+    """The member ids are the keys of the default funds, so a defaulter with a margin and no default fund is refused."""
+    __tracebackhide__ = True
+    margins = {1: 500, 2: 500, 3: 100}
+    funds = {1: 40, 2: 60}
+    must_refuse(
+        lambda: sol.waterfall(10, 3, margins, funds, FIX_CAPITAL),
+        "waterfall with a defaulter present in the margins but not in the default funds",
+        naming="defaulter_id",
+    )
+
+
 def test_defaulter_that_is_a_member_of_a_non_contiguous_set_is_accepted() -> None:
     """In the same non-contiguous set, id 4 is a member, so it is accepted: the accepted side of that limit."""
     __tracebackhide__ = True
@@ -721,9 +733,9 @@ def test_the_order_of_the_losses_does_not_change_the_margin() -> None:
 
 
 def test_margin_is_non_decreasing_in_the_target() -> None:
-    """A higher target cover never needs a smaller margin, on both instances."""
+    """A higher target cover never needs a smaller margin, on each seed from 0 to 49 and on the two cases of the run."""
     __tracebackhide__ = True
-    for case in (INST, INST2):
+    for case in [make_instance(seed) for seed in range(50)] + [INST, INST2]:
         previous = -1
         for target in range(1, 10_001, 250):
             got = checked_int(sol.margin_for_cover(case["losses_cents"], target), "margin_for_cover")

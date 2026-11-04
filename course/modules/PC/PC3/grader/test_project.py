@@ -6,8 +6,9 @@ Runs identically in the browser (Pyodide) and locally:
 
 with your market_maker.py, engine.py and instance.py next to this file. Warnings are failures, as in the browser.
 
-Each test checks a property or a number of the game defined in Lesson 4 and in the project specification. Two instances
-are used, seed SEED and seed SEED + 7919, so a fixed answer for one seed must also match the other. Every expected value
+Each test checks a property or a number of the game defined in Lesson 4 and in the project specification. The checks
+that depend on the seed run on the fixed seeds 0 to 49, on the learner's seed SEED and on seed SEED + 7919, so a fixed
+answer for one seed must also match the others. Every expected value
 is computed here, from the log's own fields and this file's own oracle, never from the student's module. A failing test
 names the property it checks and the idea to revisit; it never prints the value the property should have.
 
@@ -18,7 +19,9 @@ property check.
 
 from __future__ import annotations
 
+import logging
 import os
+import warnings
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -30,7 +33,8 @@ from instance import make_instance
 pytestmark = pytest.mark.filterwarnings("error")
 
 SEED = int(os.environ.get("QF_SEED", "0"))
-SEEDS = (SEED, SEED + 7_919)
+FIXED_SEEDS = tuple(range(50))
+SEEDS = tuple(dict.fromkeys((*FIXED_SEEDS, SEED, SEED + 7_919)))
 HORIZON = 20
 MONEY_AND_UNITS = ("cash_flow_cents", "inventory_end", "inventory_mark_cents", "pnl_cents")
 FLAT_PATH = [10_000] * (HORIZON + 1)
@@ -267,6 +271,22 @@ def test_replay_sums_the_fills_not_the_running_totals() -> None:
     )
 
 
+def test_stale_totals_on_the_last_filled_turn_are_not_used() -> None:
+    """A hand-built log with two fills: a sale at the ask on turn 1 and a purchase at the bid on turn 3. The running
+    totals recorded on turn 3 are wrong on purpose. The cash flow and the inventory must be the sums over the two fills,
+    so the totals of the last filled turn are not the answer."""
+    turns = [turn_record(1, filled=True, arrival="uninformed-buy", price=10_010, inventory=-1, cash=10_010)]
+    turns += [turn_record(2, size=0, inventory=-1, cash=10_010)]
+    turns += [turn_record(3, filled=True, arrival="uninformed-sell", price=9_990, inventory=5, cash=0)]
+    turns += [turn_record(t, size=0, inventory=0, cash=20) for t in range(4, HORIZON + 1)]
+    log = hand_log(turns, 10_000)
+    expect(
+        sol.replay(log) == oracle(log),
+        "the cash flow and the inventory must be the sums over the fills, "
+        "not the totals recorded on the last filled turn",
+    )
+
+
 def test_a_fill_is_one_unit_whatever_its_quoted_size() -> None:
     """A hand-built log: a sale at the ask on turn 1 quoted at size 3. A fill is one unit, so the cash flow is one ask
     and the inventory moves by one unit, not by the quoted size."""
@@ -355,11 +375,18 @@ def test_a_log_carries_its_own_seed_and_settlement(seed: int) -> None:
     )
 
 
-def test_no_function_prints(capsys: pytest.CaptureFixture[str]) -> None:
-    """The quote and the replay print nothing: the constraints of the specification name no function that prints."""
-    log = engine.play(sol.quote, SEED)
-    sol.replay(log)
-    expect(capsys.readouterr().out == "", "no function may print")
+def test_no_function_prints_or_warns(capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture) -> None:
+    """The quote and the replay print nothing on stdout or stderr, log no record and raise no warning. Each channel is
+    checked on its own, because the specification forbids each of them."""
+    caplog.set_level(logging.DEBUG)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        log = engine.play(sol.quote, SEED)
+        sol.replay(log)
+    captured = capsys.readouterr()
+    expect(captured.out == "" and captured.err == "", "neither quote nor replay may print or write to stderr")
+    expect(not caplog.records, "neither quote nor replay may log a message")
+    expect(not caught, "neither quote nor replay may warn")
 
 
 # The instance: deterministic, valid, and different across seeds.

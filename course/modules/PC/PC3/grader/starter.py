@@ -6,7 +6,7 @@ or locally with the browser's flags:
     QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
 
 Use the standard library only. Money is an integer number of cents. Every input the specification names as invalid must
-raise ValueError. No function may print or warn.
+raise ValueError. Neither quote nor replay may print or warn.
 """
 
 from __future__ import annotations

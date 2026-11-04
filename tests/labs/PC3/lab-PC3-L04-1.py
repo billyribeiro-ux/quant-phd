@@ -16,7 +16,7 @@ a the ask and b the bid.
 Part 3 computes the exact mean and variance of the mark change caused by one fair-value move, for several inventories.
 
 The checks test this one seed and this one grid. They are not a proof for other seeds or other fair values; the lesson
-proves the closed form of Part 2 for every fair value.
+proves the closed form of Part 2 for every fair value, with the quote held fixed at 9990 and 10010 cents.
 """
 
 from __future__ import annotations

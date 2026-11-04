@@ -40,7 +40,10 @@ TOLERANCE = 0.02
 
 
 class Coefficients(NamedTuple):
-    """The linear price p = theta_s * s - theta_u * u, with the variance of the uninformed signal sig_eta2."""
+    """The linear price p = theta_s * s - theta_u * u.
+
+    sig_eta2 is the variance of eta = eps - kappa * u, the noise in p / theta_s.
+    """
 
     sig_eta2: Fraction
     theta_s: Fraction

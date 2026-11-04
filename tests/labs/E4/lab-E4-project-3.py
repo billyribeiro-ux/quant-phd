@@ -5,7 +5,7 @@ constants are a = 2, tau_v = 1 and tau_e = 1. The function solve is the referenc
 and replace the body of solve with a call to your module's solve_model; the file must then print the same lines.
 
 Each row gives the informed fraction (bisection on the gap, with the stated tolerance), the price informativeness, the
-gap at the reported fraction, and the closed-form fraction of the report's appendix. The last line checks the box of
+gap at the reported fraction, and the closed-form fraction of Proposition 4. The last line checks the box of
 the autograder's generator on a 22 by 22 grid, which includes the four corners: the gap must be positive at fraction 0
 and negative at fraction 1 at every grid point.
 """
@@ -49,7 +49,7 @@ def gap_at_zero(sd: float, cost: float) -> float:
 
 def closed_form_fraction(sd: float, cost: float) -> float:
     """The root in closed form: tau_y(lam) = tau_bar = (tau_v + tau_e) exp(-2 a c) - tau_v, solved for lam, with
-    the same boundary rule as solve. Valid as an appendix check of the bisection, not as the solver."""
+    the same boundary rule as solve. Valid as a check of the bisection, not as the solver."""
     t = (TAU_V + TAU_E) * math.exp(-2.0 * A * cost) - TAU_V
     if t <= 0.0:
         return 0.0

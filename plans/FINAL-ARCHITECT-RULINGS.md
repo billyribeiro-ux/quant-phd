@@ -22,3 +22,6 @@
     seeds 0-49 (E3: seeds 0-9 because of run time). A float-based alternative that is wrong on a stated exact rule is a mutant, not an alternative.
 11. **Rung 2 completion labs.** The twin's docstring "Rung 2 completed solution" with the page showing the same program with
     `___` blanks is the established convention of the program (M1, merged, and every module since). It is not a defect.
+12. **M3 concept `level-slope-curvature`.** L08 labels principal directions of simulated yield changes and defines no yield-curve
+    factor, so the registered concept name was changed in `curriculum/01-foundations.yaml` to "Level-like, slope-like and
+    curvature-like principal directions" (the id is unchanged) and the generated outputs were regenerated.

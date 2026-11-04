@@ -356,6 +356,24 @@ def test_unit_fraction_is_reported_at_zero_cost() -> None:
     )
 
 
+def test_unit_fraction_is_reported_with_a_positive_cost() -> None:
+    """The boundary fraction 1 at a positive cost: the cost enters the gap as exp(a c) and the informativeness at 1 has
+    no cost term, so both are checked where the cost is not zero."""
+    out = run(0.6, 0.05)
+    expect(
+        out["informed_fraction"] == 1.0,
+        "the informed fraction must be 1 when the gap at 1 is nonnegative: check the boundary rule",
+    )
+    expect(
+        abs(out["price_informativeness"] - oracle_informativeness(1.0, 0.6)) <= TOL_MOMENT,
+        "the informativeness at fraction 1 should be the squared correlation of the payoff and the price, at any cost",
+    )
+    expect(
+        abs(out["indifference_gap"] - oracle_gap(1.0, 0.6, 0.05)) <= TOL_GAP,
+        "the reported gap at fraction 1 must be the informed-minus-uninformed expected utility there, net of the cost",
+    )
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Hard-coded answers, determinism and the solver's conduct.
 # ---------------------------------------------------------------------------------------------------------------------
