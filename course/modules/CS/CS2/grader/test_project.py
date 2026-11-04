@@ -847,6 +847,21 @@ def test_sketch_rank_guarantee_with_ties(eps: float) -> None:
             pytest.fail("the rank guarantee fails on a stream with repeated values.")
 
 
+@pytest.mark.parametrize("eps", [0.3, 0.5, 0.9])
+def test_sketch_rank_guarantee_at_wide_epsilon(eps: float) -> None:
+    """An epsilon anywhere strictly between 0 and 1 is valid (Constraints), and the guarantee of Conventions holds for
+    it. With epsilon 0.3 on the two values 1.0 and 2.0, quantile(1.0) must be 2.0: the value 1.0 has one value at or
+    below it, which is less than qn - epsilon n = 2 - 0.6 = 1.4."""
+    for stream in ([1.0, 2.0], [3.0, 1.0, 2.0, 5.0, 4.0]):
+        sketch = sketch_of(stream, eps)
+        for q in (0.0, 0.25, 0.5, 0.75, 1.0):
+            v = sketch.quantile(q)
+            if not guarantee_holds(stream, v, q, eps):
+                pytest.fail(
+                    "the rank guarantee fails at an epsilon between 0.2 and 1, on a stream of two to five values."
+                )
+
+
 def test_sketch_rank_target_is_exact_where_a_float_target_is_one_short() -> None:
     """Fixed witness, the same for every seed: q = 0.1, n = 20, epsilon = 0.05 on the stream 1 to 20.
 

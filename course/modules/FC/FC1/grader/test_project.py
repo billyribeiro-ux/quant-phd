@@ -452,6 +452,15 @@ def test_bond_price_exact_half_cent_at_400_bps_uses_the_exact_yield() -> None:
     )
 
 
+def test_bond_price_just_under_a_half_cent_rounds_down() -> None:
+    """Zero-coupon bond, face 300075005 cents, three periods, yield 1 bps: the exact price is 299985000 plus 1/2 minus
+    1/(2 * 1000300030001) cents, a hair under a half cent, which rounds down to 299985000 (the nearest cent)."""
+    __tracebackhide__ = True
+    assert sol.bond_price_cents(sol.Bond(300_075_005, 0, 3), 1) == 299_985_000, (
+        "a price a hair under a half cent must round down to the nearest cent, with no tolerance"
+    )
+
+
 def test_bond_price_falls_as_the_yield_rises() -> None:
     """Discounting harder gives a lower price: for a bond with positive cash flows, a higher yield lowers the price."""
     low = sol.bond_price_cents(bond_of(INST), 100)
@@ -496,6 +505,15 @@ def test_yield_just_above_minus_one_is_accepted() -> None:
     """The boundary yield_bps = -9999 is valid and gives an int price."""
     value = must_accept(lambda: sol.bond_price_cents(bond_of(INST), -9_999), "yield_bps = -9999")
     checked_int(value, "bond_price_cents")
+
+
+def test_yield_above_one_hundred_percent_is_accepted() -> None:
+    """The page names one yield limit, yield_bps at or below -10000. A yield of 15000 bps (150 % per period) is valid:
+    Bond(10000, 500, 1) at 15000 bps has the one event (1, 10500), and its price is 10500 / 2.5 = 4200 cents exactly."""
+    __tracebackhide__ = True
+    assert sol.bond_price_cents(sol.Bond(10_000, 500, 1), 15_000) == 4_200, (
+        "a yield above 100 % per period is not named as refused; the price is the discounted event"
+    )
 
 
 # ---------------------------------------------------------------------------------------------------------------
