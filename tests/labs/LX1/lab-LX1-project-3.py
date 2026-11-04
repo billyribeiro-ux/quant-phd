@@ -23,7 +23,8 @@ to 1e-9 percent per month, or the lab raises. A blank or non-decimal cell raises
 does not follow the previous one. No row is skipped or filled.
 
 Rounding. Every printed value is the exact binary value of its float, rounded half up (a tie away from zero) to two
-decimals. The ratio of the two standard deviations is taken from their unrounded values.
+decimals. The ratio of the two standard deviations, and their difference, window one minus window two, are taken from
+their unrounded values.
 """
 
 from __future__ import annotations
@@ -121,6 +122,8 @@ def main() -> None:
     print(f"Window three, {window_three[0][0]} to {window_three[-1][0]}:")
     window_report(window_three)
     print(f"ratio of window two to window one sd, two decimals: {show(sd_two / sd_one, 2)}")
+    difference = show(100 * (sd_one - sd_two), 2)
+    print(f"difference of window one minus window two sd, percent per month, two decimals: {difference}")
     print("two-pass and statistics.stdev agree in all three windows: True")
 
 

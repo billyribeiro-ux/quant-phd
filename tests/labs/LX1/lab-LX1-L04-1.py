@@ -20,12 +20,12 @@ the previous one, or a missing column raises ValueError. No row is skipped or fi
 Rounding. Log changes are floats computed from exact ratios. Printed values are the exact binary value of each float,
 rounded half away from zero (Decimal ROUND_HALF_UP) to the number of places stated on the line.
 
-Part A is a SIMULATED model check, not data: a parity held at 2.0000 dollars per pound for 12 months gives zero
-monthly log changes and zero dispersion, which is the model's claim in Proposition 2.2 of the lesson. Part B reads
-the GBP column and counts its changes and its exactly zero changes. Part C prints the count, the dispersion and the
-largest absolute change for each window, and checks the telescoping identity of Proposition 1.2 of the lesson: the
-sum of a window's log changes equals the log of its last rate over the rate before the window. Part D prints the
-difference and the ratio of the two windows' dispersions.
+Part A is a SIMULATED model check, not data: a parity held at 2.0000 dollars per pound for 12 months (11 monthly
+changes) gives zero monthly log changes and zero dispersion, which is the model's claim in Proposition 2.2 of the
+lesson. Part B reads the GBP column and counts its changes and its exactly zero changes. Part C prints the count, the
+dispersion and the largest absolute change for each window, and checks the telescoping identity of Proposition 1.2 of
+the lesson: the sum of a window's log changes equals the log of its last rate over the rate before the window. Part D
+prints the difference and the ratio of the two windows' dispersions.
 """
 
 from __future__ import annotations

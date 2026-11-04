@@ -15,9 +15,9 @@ the marginal probability p:
 
 Part A prints the parameters. Part B lists the eight fail patterns under independent failures, with their
 probabilities and costs, and compares the enumerated expected cost with the closed form p * kappa * (sum of the
-delays). Part C takes equal delays ell and compares the enumeration with 3 * p * kappa * ell. Part D gives the mean
-and the variance of the cost under both joint laws. Standard library only; no randomness and no network, so every run
-prints the same lines.
+delays). Part C takes equal delays ell and compares the enumeration with 3 * p * kappa * ell. Part D gives the
+probability of no cost, the mean and the variance of the cost under both joint laws. Standard library only; no
+randomness and no network, so every run prints the same lines.
 """
 
 from __future__ import annotations

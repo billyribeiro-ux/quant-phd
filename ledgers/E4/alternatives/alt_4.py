@@ -1,4 +1,4 @@
-"""Alternative 4: damped fixed-point iteration on the informed fraction, with a convergence check.
+"""Alternative 4: secant steps on the gap, safeguarded by the sign-change bracket, with a relative stop.
 
 Correct alternative implementation of the E4 solver (ruling 10). Standard library only.
 """
@@ -28,19 +28,19 @@ def _tau_y(lam: float, sd: float) -> float:
 
 def _gap(lam: float, sd: float, cost: float) -> float:
     if lam == 0.0:
-        fu0 = (1.0 + A * A * sd * sd / TAU_V) ** -0.5
-        fi0 = (1.0 + TAU_E / TAU_V + (TAU_V + TAU_E) * A * A * sd * sd / (TAU_V * TAU_V)) ** -0.5
+        fu0 = math.pow(1.0 + A * A * sd * sd / TAU_V, -0.5)
+        fi0 = math.pow(1.0 + TAU_E / TAU_V + (TAU_V + TAU_E) * A * A * sd * sd / (TAU_V * TAU_V), -0.5)
         return fu0 - math.exp(A * cost) * fi0
     ty = _tau_y(lam, sd)
     denom = lam * (TAU_V + TAU_E) + (1.0 - lam) * (TAU_V + ty)
     bs = (lam * TAU_E + (1.0 - lam) * ty) / denom
     bu = -A * bs / (lam * TAU_E)
     r = ty / (TAU_V + ty) - bs
-    fu = (1.0 + r * r * (TAU_V + ty) * (1.0 / TAU_V + 1.0 / ty)) ** -0.5
+    fu = math.pow(1.0 + r * r * (TAU_V + ty) * (1.0 / TAU_V + 1.0 / ty), -0.5)
     prec = TAU_V + TAU_E
     slope = TAU_E / prec - bs
     varg = slope * slope * (1.0 / TAU_V + 1.0 / TAU_E) + bu * bu * sd * sd
-    fi = (1.0 + prec * varg) ** -0.5
+    fi = math.pow(1.0 + prec * varg, -0.5)
     return fu - math.exp(A * cost) * fi
 
 
@@ -68,18 +68,28 @@ def _result(lam: float, sd: float, cost: float) -> dict[str, float]:
         "indifference_gap": _gap(lam, sd, cost),
     }
 
+
 def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     sd, cost = _check(noise_sd, info_cost)
     edge = _boundary(sd, cost)
     if edge is not None:
         lam, gap, pi = edge
         return {"informed_fraction": lam, "price_informativeness": pi, "indifference_gap": gap}
-    eta = 0.5
-    lam = 0.5
-    for _ in range(200000):
-        nxt = min(max(lam + eta * _gap(lam, sd, cost), 1e-12), 1.0 - 1e-16)
-        if abs(nxt - lam) <= 1e-15:
-            lam = nxt
+    lo, hi = 0.0, 1.0
+    f_lo, f_hi = _gap(lo, sd, cost), _gap(hi, sd, cost)  # the gap is positive at lo and negative at hi
+    x_prev, f_prev = lo, f_lo
+    x, fx = hi, f_hi
+    for _ in range(200):
+        cand = x - fx * (x - x_prev) / (fx - f_prev) if fx != f_prev else 0.5 * (lo + hi)
+        if not lo < cand < hi:
+            cand = 0.5 * (lo + hi)
+        f_cand = _gap(cand, sd, cost)
+        if f_cand > 0.0:
+            lo, f_lo = cand, f_cand
+        else:
+            hi, f_hi = cand, f_cand
+        x_prev, f_prev = x, fx
+        x, fx = cand, f_cand
+        if abs(x - x_prev) <= 1e-13 * x:
             break
-        lam = nxt
-    return _result(lam, sd, cost)
+    return _result(x, sd, cost)

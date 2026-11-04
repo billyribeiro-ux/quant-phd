@@ -133,9 +133,9 @@ def oracle_price(lam: float, sd: float) -> tuple[float, float]:
 def oracle_gap(lam: float, sd: float, cost: float) -> float:
     """The expected-utility difference E[U_I] - E[U_U] at informed fraction lam, net of the cost.
 
-    For an agent with conditional mean m and variance V at the optimal demand,
-    E[U | info] = -exp(a c) exp(-(m - p)^2 / (2 V)), where m - p is the agent's conditional mean less the price.
-    At lam = 0 the informed term is the limit as lam tends to 0.
+    For an informed agent, with conditional mean m and variance V at the optimal demand, E[U | info] is
+    -exp(a c) exp(-(m - p)^2 / (2 V)), where m - p is the conditional mean less the price. An uninformed agent pays no
+    cost, so the factor exp(a c) is absent for it. At lam = 0 the informed term is the limit as lam tends to 0.
     """
     bs, bu = oracle_price(lam, sd)
     m = oracle_regressions(bs, bu, sd)
@@ -416,3 +416,29 @@ def test_solver_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:
     run(SD, COST)
     run(SD, 0.0)
     expect(capsys.readouterr().out == "", "no function may print: remove the print call from solver.py")
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The stop rule is relative to the bracket's upper end, so a small root is as accurate as a large one.
+# ---------------------------------------------------------------------------------------------------------------------
+
+
+def closed_form_root(sd: float, cost: float) -> float:
+    """The informed fraction of Proposition 4 in closed form, from the page's formula (not from reference.py)."""
+    t = (TAU_V + TAU_E) * math.exp(-2.0 * A_CARA * cost) - TAU_V
+    if t <= 0.0:
+        return 0.0
+    if t >= TAU_E * TAU_E / (TAU_E + A_CARA * A_CARA * sd * sd):
+        return 1.0
+    return A_CARA * sd * math.sqrt(t / (TAU_E * (TAU_E - t)))
+
+
+@pytest.mark.parametrize("sd", [1e-6, 1e-9])
+def test_small_noise_root_is_relatively_accurate(sd: float) -> None:
+    """The bisection stops at a relative width of 1e-12, so a root near 1e-9 is as precise as one near 0.5."""
+    lam = run(sd, 0.13)["informed_fraction"]
+    exact = closed_form_root(sd, 0.13)
+    expect(
+        exact > 0.0 and abs(lam - exact) <= 1e-8 * exact,
+        "the informed fraction must be accurate relative to its size: check the stop rule of the bisection",
+    )

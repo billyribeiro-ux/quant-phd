@@ -6,7 +6,8 @@ project.html, where Propositions 1 to 4 give the formulas below (the numbers in 
 Standard library only.
 
 Units: the payoff and the price are in the same units; prices and payoffs are dimensionless in this model. Precisions
-are inverse variances. Utilities are in the units of -exp(-a W), so an expected utility lies in [-1, 0).
+are inverse variances. Utilities are in the units of -exp(-a W), so an uninformed expected utility lies in [-1, 0).
+An informed one also carries the factor exp(a c) for the cost, so it can lie below -1.
 """
 
 from __future__ import annotations

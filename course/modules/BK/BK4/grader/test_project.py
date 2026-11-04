@@ -418,6 +418,17 @@ def test_a_member_with_no_default_fund_is_skipped_by_the_remainder_rule() -> Non
     )
 
 
+def test_leftover_cent_goes_to_the_lowest_id_when_the_dictionaries_list_members_out_of_order() -> None:
+    """The dictionaries list members 3, 1, 2, 4; the leftover cent still goes to member 1, the lowest id, not to 3."""
+    __tracebackhide__ = True
+    margins = {3: 1, 1: 1, 2: 1, 4: 0}
+    funds = {3: 1, 1: 1, 2: 1, 4: 0}
+    result = sol.waterfall(1, 4, margins, funds, 0)
+    assert result.survivor_cents == {1: 1, 2: 0, 3: 0}, (
+        "the leftover cent goes to the first survivor in ascending id order, whatever the order of the dictionaries"
+    )
+
+
 def test_no_survivor_has_a_fund_so_the_whole_residual_is_uncovered() -> None:
     """With every survivor's default fund at zero, the residual is entirely uncovered and each survivor pays zero."""
     __tracebackhide__ = True
@@ -969,9 +980,10 @@ def test_seeded_cases_give_different_margins_across_seeds() -> None:
 
 
 def test_the_module_prints_nothing_on_valid_inputs(capsys: pytest.CaptureFixture[str]) -> None:
-    """The module prints nothing and warns nothing on valid inputs."""
+    """The module prints nothing and warns nothing on valid inputs, including a waterfall with an uncovered loss."""
     __tracebackhide__ = True
     sol.waterfall(120, 3, FIX_MARGINS, FIX_FUNDS, FIX_CAPITAL)
+    sol.waterfall(300, 3, FIX_MARGINS, FIX_FUNDS, FIX_CAPITAL)
     sol.margin_for_cover(INST["losses_cents"], 9_950)
     sol.cover_bps(INST["losses_cents"], 1_000)
     captured = capsys.readouterr()
@@ -979,19 +991,53 @@ def test_the_module_prints_nothing_on_valid_inputs(capsys: pytest.CaptureFixture
 
 
 def test_refused_inputs_print_nothing_before_they_raise(capsys: pytest.CaptureFixture[str]) -> None:
-    """Each named refusal raises ValueError and prints nothing on the way."""
+    """Each of the thirteen named refusals raises ValueError and prints nothing on the way."""
     __tracebackhide__ = True
     refusals: list[tuple[str, Callable[[], object]]] = [
-        ("no scenarios", lambda: sol.margin_for_cover([], 9_950)),
-        ("target 0", lambda: sol.margin_for_cover([1], 0)),
-        ("target 10001", lambda: sol.margin_for_cover([1], 10_001)),
-        ("negative loss", lambda: sol.cover_bps([-1], 0)),
-        ("negative waterfall loss", lambda: sol.waterfall(-1, 3, FIX_MARGINS, FIX_FUNDS, FIX_CAPITAL)),
+        ("margin_for_cover with no scenarios", lambda: sol.margin_for_cover([], 9_950)),
+        ("margin_for_cover with target 0", lambda: sol.margin_for_cover([1], 0)),
+        ("margin_for_cover with target 10001", lambda: sol.margin_for_cover([1], 10_001)),
+        ("margin_for_cover with a negative loss", lambda: sol.margin_for_cover([10, -1], 9_950)),
+        ("cover_bps with no scenarios", lambda: sol.cover_bps([], 10)),
+        ("cover_bps with a negative loss", lambda: sol.cover_bps([10, -1], 5)),
+        ("waterfall with a negative loss", lambda: sol.waterfall(-1, 3, FIX_MARGINS, FIX_FUNDS, FIX_CAPITAL)),
+        (
+            "waterfall with a negative initial margin for a survivor",
+            lambda: sol.waterfall(10, 3, {1: -1, 2: 500, 3: 100}, FIX_FUNDS, FIX_CAPITAL),
+        ),
+        (
+            "waterfall with a negative initial margin for the defaulter",
+            lambda: sol.waterfall(10, 3, {1: 500, 2: 500, 3: -1}, FIX_FUNDS, FIX_CAPITAL),
+        ),
+        (
+            "waterfall with a negative default fund for a survivor",
+            lambda: sol.waterfall(10, 3, FIX_MARGINS, {1: 40, 2: -1, 3: 50}, FIX_CAPITAL),
+        ),
+        (
+            "waterfall with a negative default fund for the defaulter",
+            lambda: sol.waterfall(10, 3, FIX_MARGINS, {1: 40, 2: 60, 3: -1}, FIX_CAPITAL),
+        ),
+        ("waterfall with a negative CCP capital", lambda: sol.waterfall(10, 3, FIX_MARGINS, FIX_FUNDS, -1)),
+        ("waterfall with a defaulter above the members", lambda: sol.waterfall(10, 9, FIX_MARGINS, FIX_FUNDS, 30)),
+        ("waterfall with a defaulter below the members", lambda: sol.waterfall(10, 0, FIX_MARGINS, FIX_FUNDS, 30)),
+        (
+            "waterfall with a defaulter between two members",
+            lambda: sol.waterfall(10, 3, {1: 500, 2: 500, 4: 100}, {1: 40, 2: 60, 4: 50}, 30),
+        ),
     ]
     for condition, call in refusals:
         must_refuse(call, condition)
         captured = capsys.readouterr()
         assert captured.out == "" and captured.err == "", f"{condition}: a refused input must print nothing"
+
+
+def test_margin_for_cover_and_cover_bps_do_not_change_their_list_argument() -> None:
+    """The sizing and the cover read their scenario list and never reorder it or write to it."""
+    __tracebackhide__ = True
+    losses = [30, 10, 20]
+    sol.margin_for_cover(losses, 5_000)
+    sol.cover_bps(losses, 20)
+    assert losses == [30, 10, 20], "margin_for_cover and cover_bps must not change the list they are given"
 
 
 def test_repeated_calls_agree() -> None:

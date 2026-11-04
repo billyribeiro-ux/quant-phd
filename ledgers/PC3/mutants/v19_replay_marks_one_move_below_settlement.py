@@ -1,4 +1,4 @@
-"""Student error: the quote takes the mid from the first fill in the history, not the last, so it never follows the market.
+"""Student error: replay marks the ending inventory at the settlement value less one 5-cent move, not at v_20.
 
 Excluded from deployment (BLUEPRINT section 7): the suites are public, the reference solutions are not.
 """
@@ -13,7 +13,6 @@ def quote(state: dict[str, object]) -> tuple[int, int, int]:
     for record in cast(list[dict[str, object]], state["history"]):
         if record["filled"] is True:
             mid = cast(int, record["fill_price_cents"])
-            break
     return mid - 10, mid + 10, 1
 
 
@@ -33,7 +32,7 @@ def replay(log: dict[str, object]) -> dict[str, int]:
         side = -1 if price == record["ask_cents"] else 1
         cash_flow += -side * price
         inventory += side
-    mark = inventory * settlement
+    mark = inventory * (settlement - 5)
     return {
         "cash_flow_cents": cash_flow,
         "inventory_end": inventory,

@@ -7,12 +7,12 @@ The walk is S_0 = 0 and S_k is the sum of the steps e_1 through e_k, each e_i eq
 For an integer level a >= 1, the first passage index nu_a is the smallest k with S_k >= a, and it is None
 when no k <= n has this property.
 
-Part A enumerates all 2**n step sequences for n = 1 to 12 and every level a from 1 to n. For each sequence it
-compares the event {nu_a <= n} with the event {running maximum over S_0 .. S_n is at least a}. Because the walk
-moves by one step at a time, the two events agree on every sequence, and the lab checks this for every sequence in
-the enumeration. It
-also checks the count of such sequences against the walk identity of Lesson 6, and prints the first-passage counts
-for n = 12 and a = 3, and two probabilities for that case.
+Part A enumerates all 2**n step sequences for n = 1 to 12 and every level a from 1 to n. For each sequence and each
+level it compares the event {nu_a <= n} with the event {running maximum over S_0 .. S_n is at least a}. Because the
+walk moves by one step at a time, the two events agree on every (sequence, level) pair, and the lab checks this for
+every such pair in the enumeration. It also checks the count of sequences with {nu_a <= n} for each (n, a) pair
+against the walk identity of Lesson 6, and prints the first-passage counts for n = 12 and a = 3, and two
+probabilities for that case.
 
 Part B computes the truncated mean E[min(nu_1, N)] exactly, from the identity E[min(nu, N)] = sum over k < N of
 P(nu > k), with P(nu_1 > k) = 1 - P(max over S_0 .. S_k is at least 1). The values are exact fractions printed
@@ -69,8 +69,9 @@ def enumerated_paths(n: int, a: int) -> list[tuple[int | None, int]]:
 
 
 def part_a() -> None:
-    """Compare the first-passage event with the maximum event on every sequence, for n <= 12 and a <= n."""
+    """Compare the first-passage event with the maximum event on every (sequence, level) pair, for n <= 12, a <= n."""
     sequences = 0
+    distinct = 0
     pathwise_agree = 0
     counts_agree = 0
     pairs = 0
@@ -79,12 +80,18 @@ def part_a() -> None:
             paths = enumerated_paths(n, a)
             pairs += 1
             sequences += len(paths)
+            if a == 1:
+                distinct += len(paths)
             hits_by_n = sum(1 for hit, _ in paths if hit is not None and hit <= n)
             pathwise_agree += sum(1 for hit, top in paths if (hit is not None) == (top >= a))
             counts_agree += hits_by_n == max_at_least(n, a)
     print(f"Part A: pairs (n, a) checked: {pairs}; counts agree with the walk identity for {counts_agree} of {pairs}")
-    print(f"Part A: sequences checked: {sequences}; {{nu_a <= n}} equals {{maximum >= a}} on {pathwise_agree} of them")
-    print(f"Part A: pathwise agreement holds for every sequence: {pathwise_agree == sequences}")
+    print(f"Part A: step sequences of length 1 to {MAX_ENUM}: {distinct}")
+    print(
+        f"Part A: (sequence, level) pairs checked: {sequences}; "
+        f"{{nu_a <= n}} equals {{maximum >= a}} on {pathwise_agree} of them"
+    )
+    print(f"Part A: pathwise agreement holds for every (sequence, level) pair: {pathwise_agree == sequences}")
 
     n, a = MAX_ENUM, 3
     paths = enumerated_paths(n, a)

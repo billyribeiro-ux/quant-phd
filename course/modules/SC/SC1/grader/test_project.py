@@ -354,10 +354,11 @@ def test_estimate_is_reproducible_for_the_same_instance() -> None:
 
 
 def test_draws_depend_on_the_instance_seed() -> None:
-    other = with_(INST, seed=INST["seed"] + 7_919)
-    changed = [
-        sol.discrete_max_exceedance(INST, g) != sol.discrete_max_exceedance(other, g) for g in (4, 8, 16, 32, 64)
-    ]
+    # A level near zero, so that paths reach it on every grid and the estimates can differ. At the instance's
+    # own level the tail is so small for some seeds that no path reaches it, and both estimates are 0.
+    low = with_(INST, a=1e-9)
+    other = with_(low, seed=INST["seed"] + 7_919)
+    changed = [sol.discrete_max_exceedance(low, g) != sol.discrete_max_exceedance(other, g) for g in (4, 8, 16, 32, 64)]
     expect(
         any(changed), "changing only the instance seed must change the sampled paths, so a grid estimate must change"
     )

@@ -28,19 +28,19 @@ def _tau_y(lam: float, sd: float) -> float:
 
 def _gap(lam: float, sd: float, cost: float) -> float:
     if lam == 0.0:
-        fu0 = (1.0 + A * A * sd * sd / TAU_V) ** -0.5
-        fi0 = (1.0 + TAU_E / TAU_V + (TAU_V + TAU_E) * A * A * sd * sd / (TAU_V * TAU_V)) ** -0.5
+        fu0 = math.pow(1.0 + A * A * sd * sd / TAU_V, -0.5)
+        fi0 = math.pow(1.0 + TAU_E / TAU_V + (TAU_V + TAU_E) * A * A * sd * sd / (TAU_V * TAU_V), -0.5)
         return fu0 - math.exp(A * cost) * fi0
     ty = _tau_y(lam, sd)
     denom = lam * (TAU_V + TAU_E) + (1.0 - lam) * (TAU_V + ty)
     bs = (lam * TAU_E + (1.0 - lam) * ty) / denom
     bu = -A * bs / (lam * TAU_E)
     r = ty / (TAU_V + ty) - bs
-    fu = (1.0 + r * r * (TAU_V + ty) * (1.0 / TAU_V + 1.0 / ty)) ** -0.5
+    fu = math.pow(1.0 + r * r * (TAU_V + ty) * (1.0 / TAU_V + 1.0 / ty), -0.5)
     prec = TAU_V + TAU_E
     slope = TAU_E / prec - bs
     varg = slope * slope * (1.0 / TAU_V + 1.0 / TAU_E) + bu * bu * sd * sd
-    fi = (1.0 + prec * varg) ** -0.5
+    fi = math.pow(1.0 + prec * varg, -0.5)
     return fu - math.exp(A * cost) * fi
 
 
@@ -68,6 +68,7 @@ def _result(lam: float, sd: float, cost: float) -> dict[str, float]:
         "indifference_gap": _gap(lam, sd, cost),
     }
 
+
 def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     sd, cost = _check(noise_sd, info_cost)
     nu = 1.0 / (sd * sd)
@@ -83,11 +84,11 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
         bs = (lam * TAU_E + (1.0 - lam) * ty) / denom
         bu = -A * bs / (lam * TAU_E)
         r = ty / (TAU_V + ty) - bs
-        fu = (1.0 + r * r * (TAU_V + ty) * (1.0 / TAU_V + 1.0 / ty)) ** -0.5
+        fu = math.pow(1.0 + r * r * (TAU_V + ty) * (1.0 / TAU_V + 1.0 / ty), -0.5)
         prec = TAU_V + TAU_E
         slope = TAU_E / prec - bs
         varg = slope * slope * (1.0 / TAU_V + 1.0 / TAU_E) + bu * bu / nu
-        fi = (1.0 + prec * varg) ** -0.5
+        fi = math.pow(1.0 + prec * varg, -0.5)
         return fu - math.exp(A * cost) * fi
 
     g0, g1 = gap_prec(0.0), gap_prec(1.0)

@@ -2,7 +2,7 @@
 
 The parameters are illustrative constants, not data: CARA coefficient a = 2, prior variance of the payoff
 sigma_v^2 = 1, signal-noise variance sigma_eps^2 = 1, noise-trader supply variance sigma_u^2 = 1, prior mean 0.
-Parts B to D evaluate exact population formulas in double precision. Part A uses seeded draws and is SIMULATED.
+Parts B to D evaluate population formulas in double precision. Part A uses seeded draws and is SIMULATED.
 The informed fraction lam lies in [0, 1]. The price is p = (1 - beta) * prior mean + beta * s - kappa * beta * u,
 with kappa = a * sigma_eps^2 / lam, where s = v + eps is the signal and u is the noise-trader supply.
 The gain from information is the cost at which an informed and an uninformed trader are equally well off.

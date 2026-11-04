@@ -1,14 +1,14 @@
 """E4 L04 lab 1: rank of a payoff matrix by exact Gaussian elimination, and the completeness test.
 
 Inputs are illustrative numbers, not data. A payoff matrix has one row per traded security and one column per state.
-Entry (j, s) is the payoff of security j in state s, in whole units of one common payoff unit. Two matrices are used: an
+Entry (j, k) is the payoff of security j in state k, in whole units of one common payoff unit. Two matrices are used: an
 incomplete market with two securities in three states, and a complete market with four securities in three states,
 one of which is a redundant combination of the other three.
 
 The rank of a matrix is the number of pivots that exact Gaussian elimination produces. The market is complete when the
-rank equals the number of states S. A payoff vector x in the states is attainable when some portfolio theta reproduces
-it, that is, when x lies in the row space of the matrix. That holds exactly when the rank of the matrix with x appended
-as one more row equals the rank of the matrix.
+rank equals the number of states S. A payoff vector xi in the states is attainable when some portfolio zeta reproduces
+it, that is, when xi lies in the row space of the matrix. That holds exactly when the rank of the matrix with xi
+appended as one more row equals the rank of the matrix.
 
 Part A: the rank of each matrix, computed in exact Fractions.
 Part B: the completeness test, rank equal to the number of states, for each matrix.
@@ -115,7 +115,7 @@ def main() -> None:
     print("Part E: the redundant fourth security leaves the rank unchanged")
     print(f"first_three_rows_rank {rank(COMPLETE[:3])} all_four_rows_rank {rank(COMPLETE)}")
     weights = (Fraction(1), Fraction(2), Fraction(3))
-    combo = [sum((w * COMPLETE[j][s] for j, w in enumerate(weights)), Fraction(0)) for s in range(states)]
+    combo = [sum((w * COMPLETE[j][k] for j, w in enumerate(weights)), Fraction(0)) for k in range(states)]
     print(f"weighted_sum_of_first_three_rows {tup(combo)} equals_fourth_row {combo == COMPLETE[3]}")
 
 

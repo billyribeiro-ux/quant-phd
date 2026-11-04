@@ -360,10 +360,11 @@ def test_instance_is_deterministic_and_well_formed(seed: int) -> None:
     expect(first["settlement_cents"] == path[HORIZON], "the settlement value is the last fair value")
 
 
-def test_twenty_consecutive_seeds_give_twenty_different_paths() -> None:
-    """The fair paths differ across seeds, so a policy tuned to one path does not pass every instance."""
-    paths = {tuple(make_instance(s)["fair_path_cents"]) for s in range(SEED, SEED + 20)}
-    expect(len(paths) == 20, "twenty consecutive seeds must give twenty different fair paths")
+def test_fixed_seeds_0_to_49_give_fifty_different_paths() -> None:
+    """The fair paths differ across the fixed seeds 0 to 49, so a policy tuned to one path does not pass every instance.
+    The seeds are fixed, not the learner's, so the result is the same for every learner."""
+    paths = {tuple(make_instance(s)["fair_path_cents"]) for s in range(50)}
+    expect(len(paths) == 50, "fifty fixed seeds must give fifty different fair paths")
 
 
 # The engine's rules for the arrivals, checked on hand-built instances (the engine's instance source is replaced).

@@ -27,7 +27,7 @@ def hat(m: int, j: int, t: float) -> float:
 
 
 def partial_sum(xi0: float, coeffs: list[list[float]], levels: int, t: float) -> float:
-    """S_levels(t) = xi0 t + the sum over m = 1..levels and j of coeffs[m-1][j-1] 2**(-(m+1)/2) hat(m, j, t)."""
+    """Sigma_levels(t) = xi0 t + the sum over m = 1..levels and j of coeffs[m-1][j-1] 2**(-(m+1)/2) hat(m, j, t)."""
     total = xi0 * t
     for m in range(1, levels + 1):
         scale = 2 ** (-(m + 1) / 2)
@@ -86,7 +86,10 @@ def main() -> None:
 
     tail_grid_sup = max(abs(partial_sum(xi0, coeffs, LEVELS, t) - partial_sum(xi0, coeffs, 4, t)) for t in grid)
     tail_bound = sum(bound(m) for m in range(5, LEVELS + 1))
-    print(f"grid supremum of |S_8 - S_4|: {tail_grid_sup:.6f}; sum of the bounds for levels 5 to 8: {tail_bound:.6f}")
+    print(
+        f"grid supremum of |Sigma_8 - Sigma_4|: {tail_grid_sup:.6f}; "
+        f"sum of the bounds for levels 5 to 8: {tail_bound:.6f}"
+    )
 
 
 main()
