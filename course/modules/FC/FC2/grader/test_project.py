@@ -7,8 +7,9 @@ Runs identically in the browser (Pyodide) and locally:
 with your scanner.py next to this file. Warnings are failures, as in the browser.
 
 Each test checks a property or a number against the definitions of the FC2 lessons and the project specification.
-Money is integer cents and every money value is compared exactly. The specification fixes one rounding rule (a tie
-going toward plus infinity, applied once to an exact value), so a correct implementation returns the same integers.
+Money is integer cents and every money value is compared exactly. The specification fixes two tie rules, each applied
+once to an exact value: a signed parity gap rounds a tie toward plus infinity, and a gross amount (the magnitude of the
+gap) rounds a tie up in magnitude. A correct implementation therefore returns the same integers.
 A failing test names the property it checks and never prints the value it expected.
 """
 
@@ -559,6 +560,46 @@ def test_negative_half_spread_is_rejected_and_zero_is_accepted() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         sol.scan(hand_chain([100], [5], [1], spread=-1))
     assert isinstance(sol.scan(hand_chain([100], [5], [1], spread=0)), list), "a half-spread of zero is valid"
+
+
+def test_negative_cost_is_rejected_even_when_no_finding_is_kept() -> None:
+    __tracebackhide__ = True
+    # gap 0, so the gross is 0 and the net is -9 at a fee of -1 and a half-spread of 4: no finding is kept,
+    # and the cost terms are still checked
+    with pytest.raises(ValueError, match="non-negative"):
+        sol.scan(hand_chain([100], [0], [0], spot=100, df=PPM, fee=-1, spread=4))
+    # the same chain with the half-spread negative and the fee zero or more
+    with pytest.raises(ValueError, match="non-negative"):
+        sol.scan(hand_chain([100], [0], [0], spot=100, df=PPM, fee=0, spread=-4))
+
+
+def test_two_strike_chain_still_checks_df_and_strikes_for_convexity() -> None:
+    __tracebackhide__ = True
+    # a two-strike chain has no interior index, but the named conditions apply to its inputs all the same
+    with pytest.raises(ValueError, match="df_ppm"):
+        sol.convexity_violations([100, 110], [5, 5], 0)
+    with pytest.raises(ValueError, match="df_ppm"):
+        sol.convexity_violations([100, 110], [5, 5], PPM + 1)
+    with pytest.raises(ValueError, match="strictly increasing"):
+        sol.convexity_violations([110, 100], [5, 5], PPM)
+
+
+def test_two_strike_chain_still_checks_the_call_count_for_convexity() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError):
+        sol.convexity_violations([100, 110], [5], PPM)
+    with pytest.raises(ValueError):
+        sol.convexity_violations([100, 110], [5, 5, 5], PPM)
+
+
+def test_one_strike_chain_checks_the_quote_lengths() -> None:
+    __tracebackhide__ = True
+    # one strike with two puts: the message names the lengths, so it names the two puts
+    with pytest.raises(ValueError) as caught:
+        sol.scan(hand_chain([100], [5], [0, 0]))
+    assert "2" in str(caught.value), "the message must name the two puts"
+    with pytest.raises(ValueError):
+        sol.scan(hand_chain([100], [5, 5], [0]))
 
 
 # ---------------------------------------------------------------------------

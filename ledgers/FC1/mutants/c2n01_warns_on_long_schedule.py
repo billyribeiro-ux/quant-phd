@@ -1,4 +1,4 @@
-"""Bond warns (a UserWarning) when it has more than eight periods, although the page says no function warns on a valid input.
+"""Bond warns (a UserWarning) when it has more than eight periods, although the page says no function warns on the inputs the suite checks for silence.
 
 Written by the verifier for FC1 slice c, round 2: a student-error mutant of reference.py.
 """

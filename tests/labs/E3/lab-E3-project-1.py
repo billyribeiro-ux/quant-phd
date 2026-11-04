@@ -14,7 +14,7 @@ WEALTH = 100_000  # starting wealth in cents ($1,000.00); used by the CRRA model
 
 
 def nearest_cent(amount: float) -> int:
-    """The nearest whole cent of a float, with an exact half going up (toward plus infinity)."""
+    """The nearest whole cent of a float amount in cents, with an exact half going up (toward plus infinity)."""
     return math.floor(amount + 0.5)
 
 

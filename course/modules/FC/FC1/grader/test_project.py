@@ -691,9 +691,9 @@ def test_trade_amount_is_an_int_in_cents() -> None:
 
 
 def test_the_module_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:
-    """No function prints on a valid input: the captured standard output and error are empty after each run, on the
-    learner's case and on the valid boundary inputs (negative yield, zero yield, zero coupon, zero price, sell side,
-    quantity 1, settlement period 1, one cent of face, one period, twelve periods)."""
+    """On each valid input listed here, the captured standard output and error are empty after the run: the learner's
+    case, then negative yield, zero yield, zero coupon, zero price, sell side, quantity 1, settlement period 1, one cent
+    of face, one period and twelve periods. These are the inputs checked, not every valid input."""
     runs: list[tuple[str, Callable[[], object]]] = [
         ("the seeded case", lambda: sol.bond_price_cents(bond_of(INST), INST["yield_bps"])),
         ("the seeded case's events", lambda: bond_of(INST).events()),
@@ -804,9 +804,9 @@ def test_bond_schedule_of_one_hundred_periods_is_complete_and_discounted_by_its_
 
 
 def test_bond_schedule_of_one_thousand_and_one_periods_is_accepted() -> None:
-    """Accepted-input check: the page refuses only periods below 1 and gives every period 1..periods a coupon, so a
-    1001-period bond has one event per period 1..1001, and its price at 400 bps is the exact sum of those events,
-    rounded once."""
+    """Accepted-input check: the page names only periods below 1 as a refused period count, and gives every period
+    1..periods a coupon, so a 1001-period bond has one event per period 1..1001, and its price at 400 bps is the exact
+    sum of those events, rounded once."""
     __tracebackhide__ = True
     bond = sol.Bond(10_000, 500, 1_001)
     rows = checked_events(bond.events(), "Bond.events")
@@ -844,6 +844,38 @@ def test_bond_price_exact_half_above_forty_significant_digits_is_exact() -> None
     assert sol.bond_price_cents(sol.Bond(10**40 + 1, 0, 1), 10_000) == 5 * 10**39 + 1, (
         "an exact half cent of a price above forty significant digits must round away from zero, with no digits lost"
     )
+
+
+def test_bond_yield_of_one_thousand_percent_per_period_is_accepted() -> None:
+    """Accepted-input check: a yield of 200000 bps (2000 % per period) is not named as refused, and the price is the
+    discounted event: 10500 / 21 = 500 cents exactly."""
+    __tracebackhide__ = True
+    value = checked_int(
+        must_accept(lambda: sol.bond_price_cents(sol.Bond(10_000, 500, 1), 200_000), "yield_bps = 200000"),
+        "bond_price_cents",
+    )
+    assert value == 500, (
+        "a yield above 100 % per period is not refused; the price is the discounted event, rounded once"
+    )
+
+
+def test_bond_events_of_five_thousand_and_one_periods_are_accepted() -> None:
+    """Accepted-input check: the page names no upper limit on periods, so a 5001-period bond has one event per period
+    1..5001, with the face in period 5001."""
+    __tracebackhide__ = True
+    rows = checked_events(must_accept(lambda: sol.Bond(10_000, 500, 5_001).events(), "periods = 5001"), "Bond.events")
+    assert rows == oracle_events(10_000, 500, 5_001), (
+        "every period 1..5001 must carry its coupon, and the face the last one"
+    )
+
+
+def test_trade_settling_in_period_five_thousand_and_one_is_accepted() -> None:
+    """Accepted-input check: the page names only settlement_day < 1; a trade settling in period 5001 is valid."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(10, 9_850, 1, 5_001).events(), "settlement_day = 5001"), "CashTrade.events"
+    )
+    assert rows == [(5_001, -98_500)], "a trade's one event is in its settlement period, however late"
 
 
 # Every test is wrapped after the last one is defined, so that the tests added above are wrapped too.

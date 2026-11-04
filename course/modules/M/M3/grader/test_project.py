@@ -10,8 +10,8 @@ Each test checks a property or a number. Only the four conditions that project.h
 are asserted as ValueError: a matrix that is not square, a matrix that is not symmetric to 1e-9, a volatility that
 is not strictly positive, and a volatility list whose length differs from the correlation matrix's. Every other
 test asserts a property of a correct answer. Positive semidefiniteness of a result is checked by an independent
-Cholesky bisection, not by the eigenvalue routine under test. A failing test names the property it checks and
-never prints the value it expected.
+bisection on a pivot-sign test, not by the eigenvalue routine under test. A failing test names the property it
+checks and never prints the value it expected.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ PSD_CORR_AT_IMPORT: Matrix = copy.deepcopy(INST["psd_corr"])
 
 
 def _is_pd(m: Matrix) -> bool:
-    """True when the symmetric matrix is positive definite, by Cholesky with strictly positive pivots."""
+    """True when the symmetric matrix is positive definite, by elimination with strictly positive pivots."""
     n = len(m)
     low = [[0.0] * n for _ in range(n)]
     for i in range(n):
@@ -70,7 +70,8 @@ def _is_pd(m: Matrix) -> bool:
 
 
 def min_eig(m: Matrix) -> float:
-    """The smallest eigenvalue, by bisection on the sign of Cholesky pivots of m - t I (no eigenvalue routine)."""
+    """The smallest eigenvalue, by bisection on the sign of the elimination pivots of m - t I (no eigenvalue
+    routine)."""
     n = len(m)
     radius = math.sqrt(sum(x * x for row in m for x in row)) + 1.0
     lo, hi = -radius, radius
@@ -267,7 +268,7 @@ def test_min_eigenvalue_all_negative_spectrum() -> None:
 
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["seed", "second_seed"])
 def test_min_eigenvalue_agrees_with_independent_bisection(inst: dict[str, Any]) -> None:
-    """On the seeded pairwise matrix, the routine agrees with the Cholesky bisection to 1e-9."""
+    """On the seeded pairwise matrix, the routine agrees with the independent pivot bisection to 1e-9."""
     value = as_number(sol.min_eigenvalue(inst["corr"]))
     assert abs(value - min_eig(inst["corr"])) <= 1e-9, (
         "min_eigenvalue disagrees with an independent check of the same matrix"

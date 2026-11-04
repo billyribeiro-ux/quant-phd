@@ -30,13 +30,13 @@ N_DRAWS: int = INST["n_draws"]
 
 # Relative tolerances on the loss variance. The Gaussian is held tight. The Student-t variance is checked only for
 # nu of 5 or more: the fourth moment of the Student-t is infinite at nu = 3 and 4, so a sample variance there can miss
-# its target by more than any fixed tolerance (the reference fails at seed 1093 with nu = 3). Over seeds 0 to 1999 the
-# reference's largest relative error was 0.126 at nu = 5, 0.097 at nu = 6, 0.073 at nu = 7 and 0.062 at nu = 8 (the
-# unrounded maxima are 0.1259, 0.0967, 0.0728 and 0.0624, from the seed-by-seed sweep of the reference against
-# make_instance). The tolerance 0.30 is about 2.4 times the largest of these (0.30 / 0.1259 = 2.38). Against a missing
-# matched factor (an inflation of nu / (nu - 2), which is 1.67, 1.50, 1.40 and 1.33 at nu = 5 to 8), the check fails on
-# every seed tested at nu = 5 and 6 (347 and 317 seeds, seeds 0 to 1999), and on 342 of 343 seeds at nu = 7 and 288 of
-# 317 at nu = 8.
+# its target by more than any fixed tolerance (the reference's relative error is 1.022 at seed 1093 with nu = 3).
+# Over seeds 0 to 1999 the reference's largest relative error was 0.126 at nu = 5, 0.097 at nu = 6, 0.073 at nu = 7
+# and 0.062 at nu = 8 (the unrounded maxima are 0.1259, 0.0967, 0.0728 and 0.0624, from the seed-by-seed sweep of the
+# reference against make_instance). The tolerance 0.30 is about 2.4 times the largest of these (0.30 / 0.1259 = 2.38).
+# Against a missing matched factor (an inflation of nu / (nu - 2), which is 1.67, 1.50, 1.40 and 1.33 at nu = 5 to 8),
+# the check fails on every seed tested at nu = 5 and 6 (347 and 317 seeds, seeds 0 to 1999), and on 342 of 343 seeds
+# at nu = 7 and 288 of 317 at nu = 8.
 TOL_GAUSSIAN_VARIANCE = 0.10
 TOL_T_VARIANCE = 0.30
 MIN_NU_FOR_T_VARIANCE_CHECK = 5
@@ -114,7 +114,7 @@ def test_matched_scale_is_nu_minus_two_over_nu() -> None:
 
 
 def test_matched_scale_accepts_nu_just_above_two() -> None:
-    check(abs(sol.matched_scale(3) - 1 / 3) <= 1e-12, "matched_scale(3) must return 1/3, the boundary above nu = 2")
+    check(abs(sol.matched_scale(3) - (3 - 2) / 3) <= 1e-12, "matched_scale must return (nu - 2) / nu at nu = 3")
 
 
 def test_matched_scale_rejects_nu_equal_to_two() -> None:
@@ -209,9 +209,11 @@ def test_student_t_draws_do_not_share_chi_square() -> None:
     # (i, i + 1), two apart (i, i + 2) and three apart (i, i + 3) is independent, and P(both |loss| above the median)
     # is 1/4 for each pair. The pairs are taken in non-overlapping blocks: for lag d, the offsets 0 to 2d - 1 each give
     # the pairs (i, i + d) with i stepping by 2d. The test accepts 1/4 within five standard errors for every block of
-    # lags 1 to 3, over 40,000 draws at nu = 3. A chi-square variable shared by draws i and i + 1 moves the lag-1 share
-    # away from 1/4; one shared by draws i and i + 2 moves the lag-2 share away from 1/4; one shared by draws i and
-    # i + 3 moves the lag-3 share away from 1/4. A sharing at a lag of four or more is not read here.
+    # lags 1 to 3, over 40,000 draws at nu = 3. The sharings measured on seeds 0 to 49 fail it as follows: draws 2k and
+    # 2k + 1 sharing one variable fails on 50 of 50 seeds (lag 1), draws 4j and 4j + 2 on 50 of 50 (lag 2), and draws
+    # 6j and 6j + 3 on 39 of 50 (lag 3). A sharing of one pair of draws at a lag of four or more is not read here:
+    # disjoint pairs of that kind pass on all 50 seeds, while a chain with draws 4j and 4j + 4 sharing one variable
+    # fails on 38 of 50.
     n = 40_000
     losses = sol.simulate_losses([1_000_000], [[4e-4]], n, SEED, "student_t", 3)
     magnitudes = [abs(x) for x in losses]
@@ -458,6 +460,18 @@ def test_covariance_symmetry_is_checked_for_every_pair(pair: tuple[int, int], up
     )
 
 
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_covariance_must_be_symmetric_at_a_tiny_scale(family: str, nu: int | None) -> None:
+    # Entries of order 1e-14. The two off-diagonal entries differ by 1e-15, a tenth of the first variance, so the matrix
+    # is asymmetric at this scale. Both pivots are positive, so only the symmetry condition is violated. A symmetry
+    # check with an absolute tolerance above 1e-15 would accept it.
+    cov = [[1e-14, 1e-15], [2e-15, 9e-14]]
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000, 1_000], cov, 10, SEED, family, nu),
+        "cov must be symmetric at every scale: entries of order 1e-14 that differ by a tenth are not symmetric",
+    )
+
+
 @pytest.mark.parametrize(
     "ragged",
     [
@@ -612,10 +626,13 @@ def test_quantile_99_is_the_exact_order_statistic() -> None:
 
 
 def test_quantile_99_convention_on_small_lists() -> None:
-    check(sol.quantile_99(list(range(1, 100))) == 99, "for n = 99 the index is ceil(98.01) = 99, the largest value")
-    check(sol.quantile_99(list(range(1, 101))) == 99, "for n = 100 the index is ceil(99) = 99, the 99th smallest")
-    check(sol.quantile_99(list(range(1, 102))) == 100, "for n = 101 the index is ceil(99.99) = 100, not 99")
-    check(sol.quantile_99(list(range(1, 3))) == 2, "for n = 2 the index is ceil(1.98) = 2, the largest value")
+    check(sol.quantile_99(list(range(1, 100))) == 99, "quantile_99 must use the ceiling index ceil(0.99 n) at n = 99")
+    check(sol.quantile_99(list(range(1, 101))) == 99, "quantile_99 must use the ceiling index ceil(0.99 n) at n = 100")
+    check(
+        sol.quantile_99(list(range(1, 102))) == 100,
+        "quantile_99 must use the ceiling index ceil(0.99 n) at n = 101, where the floor index is one lower",
+    )
+    check(sol.quantile_99(list(range(1, 3))) == 2, "quantile_99 must use the ceiling index ceil(0.99 n) at n = 2")
 
 
 def test_quantile_99_returns_a_tied_value_when_losses_tie() -> None:
@@ -630,7 +647,7 @@ def test_quantile_99_ignores_the_input_order() -> None:
 
 
 def test_quantile_99_of_one_loss_is_that_loss() -> None:
-    check(sol.quantile_99([7]) == 7, "for n = 1 the index is ceil(0.99) = 1, the only value")
+    check(sol.quantile_99([7]) == 7, "quantile_99 of a list of one loss must return that loss")
 
 
 def test_quantile_99_rejects_an_empty_list() -> None:

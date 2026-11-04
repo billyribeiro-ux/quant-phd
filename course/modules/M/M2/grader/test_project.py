@@ -397,6 +397,10 @@ def test_forward_mode_matches_the_analytic_derivative(inst: dict[str, Any]) -> N
     coeffs, x0 = inst["cubic"], inst["x0"]
     value = sol.ad_derivative(lambda x: cubic(coeffs, x), x0)
     require(
+        isinstance(value, float),
+        "ad_derivative must return a float, as the page states (hint: return the dot part as a float)",
+    )
+    require(
         close(value, cubic_prime(coeffs, x0), 1e-9),
         "forward-mode AD must return f'(x) to 1e-9 relative (hint: Lesson 14, forward-mode automatic differentiation)",
     )
@@ -473,6 +477,10 @@ def test_plain_numbers_on_either_side_of_plus_and_minus(inst: dict[str, Any]) ->
 def test_constant_function_has_zero_derivative() -> None:
     # A function written with numbers only does not depend on x, so its derivative is 0 at every point.
     value = sol.ad_derivative(lambda x: 5.0, 0.7)
+    require(
+        isinstance(value, float),
+        "ad_derivative must return a float, as the page states (hint: return the dot part as a float)",
+    )
     require(
         value == 0.0,
         "the derivative of a constant function must be 0 (hint: Lesson 14, constants have zero derivative)",

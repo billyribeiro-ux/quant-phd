@@ -57,6 +57,52 @@ def changed(mutate: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
     return case
 
 
+def _observed_call(real: Callable[[Any], Any], instance: Any) -> tuple[str, Any]:
+    """One call to allocate, with its prints, warnings and changes to its argument checked. A refusal is returned."""
+    __tracebackhide__ = True
+    before = repr(instance)
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer), warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            outcome: tuple[str, Any] = ("ok", real(instance))
+        except Exception as exc:
+            outcome = ("refused", exc)
+    if repr(instance) != before:
+        raise AssertionError("allocate must not change the case it is given.")
+    if buffer.getvalue():
+        raise AssertionError("allocate must not print.")
+    if caught:
+        raise AssertionError("allocate must not emit warnings.")
+    return outcome
+
+
+@pytest.fixture(autouse=True)
+def every_allocate_call_is_pure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Check every call the suite makes to allocate, in every test, against the purity the page states.
+
+    The page's purity sentence is universal, so a check that runs allocate on one case is not enough: an input-specific
+    print or an in-place change to a boundary input would pass it. Each call is therefore run twice, once on its
+    argument and once on a copy taken before the first run. A call fails if it changes its argument, prints or emits a
+    warning, or returns a different answer (or refusal) for the same input. A refusal is allowed, and these checks still
+    apply to it. A failure names the property and never shows a value.
+    """
+    real = sol.allocate
+
+    def checked(instance: Any) -> Any:
+        __tracebackhide__ = True
+        snapshot = copy.deepcopy(instance)
+        first = _observed_call(real, instance)
+        second = _observed_call(real, copy.deepcopy(snapshot))
+        if repr(first) != repr(second):
+            raise AssertionError("allocate must return the same output, or the same refusal, for the same input.")
+        if first[0] == "refused":
+            raise first[1]
+        return first[1]
+
+    monkeypatch.setattr(sol, "allocate", checked)
+
+
 def sector_sum(case: Mapping[str, Any], w: list[float], k: int) -> float:
     return sum(w[i] for i in range(len(w)) if case["sector"][i] == k)
 
