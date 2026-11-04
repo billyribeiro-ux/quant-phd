@@ -3,7 +3,7 @@
 Inputs are illustrative numbers, plus one seeded simulation that is labelled SIMULATED. The model has one risky asset
 with payoff v of prior mean zero and variance SIG_V2, a signal s = v + eps with noise variance SIG_E2, and a
 noise-trader supply u with mean zero and variance SIG_U2. A mass LAM of CARA investors with coefficient A_CARA observes
-s; the rest observe only the price p. Market clearing requires total demand to equal the supply u.
+s and the price p; the rest observe only the price p. Market clearing requires total demand to equal the supply u.
 
 Part A: the closed-form coefficients of the linear price p = THETA_S * s - THETA_U * u, as exact Fractions.
 Part B: exact population moments of (s, p), the projection coefficient of v on p, and the posterior variance of an
@@ -15,9 +15,10 @@ Part E: SIMULATED. A seeded sample of N_DRAWS draws of (v, eps, u). The sample s
 within three estimated standard errors of the population value.
 
 Units: the payoff, the signal and the price are in price units per unit of the asset, so their variances are in squared
-price units. The supply u is in units of the asset. The coefficient theta_s is dimensionless. The coefficients kappa and
-theta_u have units of price per unit of the asset, because theta_u * u is a price. The sample uses floating point and
-prints six decimals. Every other value is an exact Fraction.
+price-per-asset units. The supply u is in units of the asset. The coefficient theta_s is dimensionless. The coefficients
+kappa and theta_u have units of price per unit of the asset squared, because kappa * u and theta_u * u are prices per
+unit of the asset and u is in units of the asset. The sample uses floating point and prints six decimals. Every other
+value is an exact Fraction.
 """
 
 from __future__ import annotations

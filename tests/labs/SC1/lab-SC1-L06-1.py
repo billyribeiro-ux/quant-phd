@@ -1,7 +1,8 @@
 """SC1 lab L06: exact enumeration of the discrete reflection identity for the symmetric simple random walk.
 
 Standard library only. Nothing is random: the lab enumerates all 2**N step sequences for each N from 1 to 12,
-so every count is an exact integer and every probability is an exact fraction. The walk starts at S_0 = 0, and
+so every count is an exact integer and every probability in Parts A to D is an exact fraction; Part E evaluates a
+closed form in floating point. The walk starts at S_0 = 0, and
 S_k is the sum of the steps e_1 to e_k, where each step e_i is +1 or -1. For an integer level a >= 1, M_N is
 the largest of S_0 to S_N. Proposition 1.3 of the page proves, for every N, every integer a >= 1 and every
 integer b < a, that the number of paths with M_N >= a and S_N = b equals the number of paths with S_N = 2a - b.

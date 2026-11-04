@@ -8,7 +8,8 @@ integral by composite Simpson's rule with PANELS panels on [-LIMIT, LIMIT].
 
 For each theta the lab prints two checks. First, the quadrature of E[exp(theta * B_t)] against the closed form
 exp(theta**2 * t / 2). Second, the quadrature of E[Z_t] for Z_t = exp(theta * B_t - theta**2 * t / 2) against Z_0 = 1.
-Agreement with the closed form also tests that the truncation at LIMIT is harmless for these integrands.
+Agreement with the closed form to the stated tolerance is consistent with the truncation at LIMIT being negligible
+for these integrands; the lab does not compute the mass beyond LIMIT.
 
 These are finite computations for three values of theta and one value of t. They are not a proof for all theta and t.
 """

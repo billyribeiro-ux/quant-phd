@@ -6,8 +6,9 @@ Money is an integer number of cents, and every accounting value is an int.
 
 The quoting rule is fixed: bid and ask sit 10 cents either side of the last filled price, or of 10000 cents before any
 fill, and each side is for one unit. The log has the fields the project specifies. The replay below computes the cash
-flow, the ending inventory, the mark at the settlement value and the P&L from the fills of the log, and then checks the
-identity P&L = cash flow + inventory x settlement exactly. The numbers describe this one seed and this one rule.
+flow, the ending inventory, the mark at the settlement value and the P&L from the fills of the log. Then main checks the
+identity P&L = cash flow + inventory x settlement, in integer cents. The numbers describe this one seed and this one
+rule.
 """
 
 from __future__ import annotations
@@ -111,15 +112,12 @@ def replay(log: dict[str, Any]) -> dict[str, int]:
     for record in turns:
         if record["filled"] is not True:
             continue
+        if record["fill_price_cents"] is None:
+            raise ValueError("a filled turn needs a fill price")
         price = int(record["fill_price_cents"])
         side = -1 if price == record["ask_cents"] else 1
-        step = -side * price
-        cash_flow += step
+        cash_flow += -side * price
         inventory += side
-        print(
-            f"  turn {record['turn']:>2}: maker {'sells at the ask' if side < 0 else 'buys at the bid'} "
-            f"{price} cents, cash flow {step:+d} cents, inventory {inventory:+d}"
-        )
     # Step 5. The inventory is marked at the settlement value, not at the last quote, because the game is settled there.
     mark = inventory * int(log["settlement_cents"])
     return {
@@ -136,6 +134,15 @@ def main() -> None:
     settlement = log["settlement_cents"]
     print(f"settlement v_{HORIZON} = {settlement} cents")
     print("replay of the fills:")
+    for record in log["turns"]:
+        if record["filled"]:
+            price = int(record["fill_price_cents"])
+            side = -1 if price == record["ask_cents"] else 1
+            step = -side * price
+            print(
+                f"  turn {record['turn']:>2}: maker {'sells at the ask' if side < 0 else 'buys at the bid'} "
+                f"{price} cents, cash flow {step:+d} cents, inventory {record['inventory_after']:+d}"
+            )
     result = replay(log)
     final = log["turns"][-1]
     fills = sum(1 for record in log["turns"] if record["filled"])

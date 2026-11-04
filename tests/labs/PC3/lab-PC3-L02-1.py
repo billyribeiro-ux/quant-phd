@@ -5,7 +5,7 @@ items on every run. Each item's exact answer is computed twice: by counting the 
 flips (exact enumeration) and by a closed-form formula. The score counts the items on which the two agree. The
 items are generated items, not data, and no file is read. Every probability is a fractions.Fraction.
 
-Part 2 enumerates every (car door, picked door, host door) triple. Part 3 enumerates every (bag, ball) pair.
+Part 2 enumerates every (car door, picked door, host door) triple. Part 3 enumerates every (bag, colour) pair.
 Part 4 enumerates two fair coins and every ordered pair of balls drawn without replacement from an urn. A finite
 enumeration computes each stated probability exactly. The lab does not estimate any probability by simulation.
 """
@@ -130,7 +130,7 @@ def part_two() -> None:
 
 
 def part_three() -> None:
-    print("Part 3 · Bayes' rule on two bags, exact enumeration of (bag, ball)")
+    print("Part 3 · Bayes' rule on two bags, exact enumeration of (bag, colour)")
     bags = {"bag 1": (3, 1), "bag 2": (1, 3)}  # (red, blue) counts
     joint: dict[tuple[str, str], Fraction] = {}
     for bag, (red, blue) in bags.items():

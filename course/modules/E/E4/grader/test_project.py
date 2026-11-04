@@ -17,15 +17,20 @@ expected value.
 from __future__ import annotations
 
 import ast
+import importlib
 import math
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import cast
+from typing import Any
 
 import pytest
-import solver as sol  # type: ignore[import-not-found]
-from instance import make_instance  # type: ignore[import-not-found]
+
+# The solver and the instance generator sit next to this file in both layouts (browser and local run), so they are
+# loaded by name at run time: no import statement needs a stub for a module that a type checker cannot see.
+sol: Any = importlib.import_module("solver")
+make_instance: Callable[[int], dict[str, float]] = importlib.import_module("instance").make_instance
 
 pytestmark = pytest.mark.filterwarnings("error")
 
@@ -38,7 +43,6 @@ KEYS = {"informed_fraction", "price_informativeness", "indifference_gap"}
 TOL_GAP = 1e-8  # the indifference gap, and the agreement of the gap with the oracle, in expected-utility units
 TOL_ROOT = 1e-6  # the agreement of the informed fraction with the oracle's root
 TOL_MOMENT = 1e-8  # the agreement of the price informativeness with the oracle's moment formula
-ALLOWED_IMPORTS = {"__future__", "math", "fractions", "random", "itertools", "functools", "typing", "dataclasses"}
 
 
 def expect(ok: bool, hint: str) -> None:
@@ -169,10 +173,10 @@ def oracle_root(sd: float, cost: float) -> float:
 def run(noise_sd: float, info_cost: float) -> dict[str, float]:
     """The solver's answer for one input, with its shape checked: exactly the three named keys, all floats."""
     __tracebackhide__ = True
-    out = sol.solve_model(noise_sd, info_cost)
+    out: dict[str, float] = sol.solve_model(noise_sd, info_cost)
     expect(isinstance(out, dict) and set(out) == KEYS, "solve_model must return exactly the three named keys")
     expect(all(isinstance(out[k], float) for k in KEYS), "every returned value must be a float")
-    return cast(dict[str, float], out)
+    return out
 
 
 INSTANCES = {"first": INST, "second": INST2}
@@ -404,7 +408,7 @@ def test_solver_imports_only_the_standard_library() -> None:
             names.update(alias.name.split(".")[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
             names.add(node.module.split(".")[0])
-    extra = sorted(names - ALLOWED_IMPORTS)
+    extra = sorted(names - set(sys.stdlib_module_names))
     expect(not extra, "the solver may use only the standard library: remove the import of a package outside it")
 
 

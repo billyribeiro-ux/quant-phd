@@ -4,8 +4,8 @@ Standard library only. No randomness and no network. Every factor range below is
 this example. It is not an estimate of any market, and the lab reads no data file. Bounds and products are
 fractions.Fraction, so every printed bound, every grid check and every Part 3 inequality is exact. The log-error
 widths are floats. The one float check, that the factor widths sum to the product width, uses a tolerance of 1e-12.
-Decimal columns print to ten places and are used only for the log-error widths and for the displayed values of the
-Taylor bound.
+Decimal values print to ten places: the ratio and the geometric midpoint in Part 1, the log-error widths, and the
+Taylor values in Part 3.
 
 The product bounds rest on the monotonicity argument of Theorem 1.2 on the page. The lab checks that every
 product over a regular grid of factor values lies inside them. A finite grid is a check, not a proof.

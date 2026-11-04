@@ -1,7 +1,7 @@
-"""SC1 lab L02: a seeded Levy-Ciesielski partial sum on [0, 1], with exact checks on dyadic points.
+"""SC1 lab L02: a seeded partial sum of hat functions on [0, 1], with exact checks on dyadic points.
 
-SIMULATED. The coefficients are standard normal draws from random.Random(SEED). The printed numbers describe one
-seeded sample. No printed number is a property of the construction for every seed. Standard library only; no
+SIMULATED. The coefficients are standard normal draws from random.Random(SEED). The dyadic count and the grid-supremum
+line are identities that hold for every seed; the bound lines describe one seeded sample. Standard library only; no
 network; nothing is read from a file. The hat functions are evaluated at dyadic points, which binary floats
 represent exactly, so the dyadic checks compare exact values. Numbers are printed to six decimal places from
 unrounded values.

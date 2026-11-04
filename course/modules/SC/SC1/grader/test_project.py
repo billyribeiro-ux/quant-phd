@@ -7,11 +7,12 @@ Runs identically in the browser (Pyodide) and locally:
 with your bm_checks.py next to this file. Warnings are failures, as in the browser.
 
 Each test checks a property or an exact number. The expected numbers come from closed forms, from exact enumeration
-over the 2**n walks, from a quadrature written in this file, or from identities. Two tests compare two of the engine's
-own functions with each other, as an identity that must hold on the same paths, and no test compares the engine with
-its own earlier output. A seeded-simulation check uses a band of five standard errors plus one path (1/N), so that a
-target near zero is not a false failure. A failing test names the property it checks and the idea to revisit.
-It never prints the expected value.
+over the 2**n walks, from a quadrature written in this file, or from identities. Several tests check one of the engine's
+functions against another: the srw reflection identity, the one-step estimate against reflection_tail, the nested counts
+against discrete_max_exceedance, and the coarse count against the fine count. One test calls discrete_max_exceedance
+twice on the same instance and requires the same answer. A seeded-simulation check uses a band of five standard errors
+plus one path (1/N), so that a target near zero is not a false failure. A failing test names the property it checks and
+the idea to revisit. It never prints the expected value.
 """
 
 from __future__ import annotations
@@ -339,6 +340,16 @@ def test_estimate_is_reproducible_for_the_same_instance() -> None:
     first = sol.discrete_max_exceedance(INST, INST["n_steps"])
     second = sol.discrete_max_exceedance(INST, INST["n_steps"])
     expect(first == second, "the same instance and grid must give the same estimate and standard error")
+
+
+def test_draws_depend_on_the_instance_seed() -> None:
+    other = with_(INST, seed=INST["seed"] + 7_919)
+    changed = [
+        sol.discrete_max_exceedance(INST, g) != sol.discrete_max_exceedance(other, g) for g in (4, 8, 16, 32, 64)
+    ]
+    expect(
+        any(changed), "changing only the instance seed must change the sampled paths, so a grid estimate must change"
+    )
 
 
 def test_two_paths_give_an_estimate_and_a_standard_error() -> None:

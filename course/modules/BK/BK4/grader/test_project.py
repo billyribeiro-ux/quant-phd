@@ -25,9 +25,9 @@ from collections.abc import Callable
 from fractions import Fraction
 from typing import Any
 
-import clearing_house as sol
+import clearing_house as sol  # type: ignore[import-not-found]  # the learner's module, beside this file at run time
 import pytest
-from instance import make_instance
+from instance import make_instance  # type: ignore[import-not-found]  # beside this file; not on the repository's path
 
 pytestmark = pytest.mark.filterwarnings("error")
 
@@ -314,7 +314,7 @@ def test_fixture_loss_151_is_the_first_cent_of_capital() -> None:
 
 
 def test_fixture_loss_170_uses_part_of_the_capital_and_no_survivor_pays() -> None:
-    """The capital pays only what the loss needs; survivors pay nothing while any layer of the capital is left."""
+    """The capital pays only what the loss still needs; survivors pay nothing while the capital covers the loss."""
     __tracebackhide__ = True
     want_layers, want_survivors, want_uncovered = (100, 50, 20), (0, 0), 0
     expect_fixture(170, want_layers, want_survivors, want_uncovered)
@@ -429,7 +429,7 @@ def test_no_survivor_has_a_fund_so_the_whole_residual_is_uncovered() -> None:
 
 
 def test_large_cent_shares_are_floored_in_integers() -> None:
-    """Survivor shares are exact integer floors, with the leftover cent to the first survivor, above 2**53 cents."""
+    """Survivor shares are exact integer floors, leftover cent to the first survivor; residual * fund exceeds 2**53."""
     __tracebackhide__ = True
     margins = {1: 0, 2: 0, 3: 0}
     funds = {1: 6_692_931_089_932_558, 2: 585_467_024_498_971, 3: 0}
@@ -437,7 +437,7 @@ def test_large_cent_shares_are_floored_in_integers() -> None:
     want_survivors = {1: 6_055_950_114_045_320, 2: 529_746_839_784_068}
     want = (0, 0, 0, want_survivors, 0)
     result = sol.waterfall(loss, 3, margins, funds, 0)
-    check_waterfall(result, want, "a scenario with cents above 2**53")
+    check_waterfall(result, want, "a scenario whose products exceed 2**53")
 
 
 # ---------------------------------------------------------------------------------------------------------------------

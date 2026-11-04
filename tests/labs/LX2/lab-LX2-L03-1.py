@@ -9,6 +9,16 @@ Each trader has a cancel rate, a whole percentage that the generator uses as its
 remaining quantity of one of that trader's resting orders. A market order's unfilled remainder is cancelled by the
 book, and that cancellation is not counted as a trader cancel.
 
+The cancel choice: a trader cancel removes the whole remaining quantity of one of that trader's resting orders, chosen
+uniformly from the list of those orders in this order: the trader's bids, highest price first and then earliest arrival,
+followed by the trader's asks, lowest price first and then earliest arrival.
+
+The draws are made in this order for each event. First the trader, uniformly over the six traders. If that trader has a
+resting order, a draw from 0 to 99 is compared with its cancel rate. A draw below the rate makes the event a cancel, of
+the order at a uniform index in the list just described. Otherwise, including when the trader has no resting order, the
+event is a submission, and its side, quantity, market flag and limit price (ignored for a market order) are drawn in
+that order.
+
 For each trader the lab prints the cancel count, the fill count and the exact ratio cancels / fills. A fill is one
 execution in which one of the trader's orders takes part. An execution between two orders of the same trader counts
 twice for that trader. A trader with no fills has no ratio, and the lab prints "none" for it.

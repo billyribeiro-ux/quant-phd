@@ -48,8 +48,8 @@ def gap_at_zero(sd: float, cost: float) -> float:
 
 
 def closed_form_fraction(sd: float, cost: float) -> float:
-    """The root in closed form: tau_y(lam) = T = (tau_v + tau_e) exp(-2 a c) - tau_v, solved for lam, with the same
-    boundary rule as solve. Valid as an appendix check of the bisection, not as the solver."""
+    """The root in closed form: tau_y(lam) = tau_bar = (tau_v + tau_e) exp(-2 a c) - tau_v, solved for lam, with
+    the same boundary rule as solve. Valid as an appendix check of the bisection, not as the solver."""
     t = (TAU_V + TAU_E) * math.exp(-2.0 * A * cost) - TAU_V
     if t <= 0.0:
         return 0.0

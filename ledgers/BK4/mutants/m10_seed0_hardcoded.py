@@ -1,4 +1,4 @@
-"""Student error: the sizing returns the seed-0 margin (73529 cents) for every instance and target.
+"""Student error: the sizing returns the seed-0 margin for 9500 bps (73529 cents) for every instance and target.
 
 A single-change copy of grader/reference.py. Read with the reference beside it.
 """

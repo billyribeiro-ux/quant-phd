@@ -9,7 +9,7 @@ The file has no interest-rate column.
 
 Windows. Windows one and two are the two windows of LX1 Lesson 4. That lesson's lab reads the same column with the
 same windows and prints the same counts; its standard deviations are decimals (0.027935 and 0.024700), which are
-2.79 and 2.47 percent per month here. Window one holds every monthly change in the file, dated 1971-02 to
+2.79 and 2.47 percent per month here. Window one holds every monthly change of the GBP column, dated 1971-02 to
 2026-09 (668 changes). Window two holds the changes dated 2000-01 to 2026-09 (321 changes); its first change
 uses the rate of 1999-12. Window three holds the changes dated 2025-10 to 2026-09 (12 changes), the twelve months
 to the snapshot's last month; it is the current window of this project's brief.
@@ -102,7 +102,7 @@ def window_report(window: Sequence[tuple[str, float]]) -> float:
     print(f"  changes: {len(values)}")
     print(f"  exact zero changes: {zeros}")
     print(f"  sample sd, percent per month: {show(100 * sd, 2)}")
-    print(f"  largest absolute monthly log change, percent: {show(100 * biggest, 2)} ({biggest_month})")
+    print(f"  largest monthly log change by size, percent, with its sign: {show(100 * biggest, 2)} ({biggest_month})")
     return sd
 
 

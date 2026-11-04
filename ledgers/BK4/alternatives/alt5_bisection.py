@@ -1,4 +1,4 @@
-"""Alternative correct implementation 5: no sort; a bisection over integer margins on the cover predicate."""
+"""Alternative correct implementation 5: no sort of the losses; a bisection over integer margins on the cover predicate."""
 
 from __future__ import annotations
 

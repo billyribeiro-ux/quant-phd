@@ -416,7 +416,7 @@ the M1 block; closure member); M2 `derivative` (closure member).
 - **Inputs.** Generated SIMULATED inputs from `grader/instance.py` (no data files, §6): a member set `{1..N}` with
   `N` from 4 to 6; for each member, an initial margin `IM_i` and a default-fund contribution `DF_i` (integer cents, `DF_i >= 1`);
   the clearing house capital `K` (integer cents, `K >= 0`); the defaulting member's id; a list of `S` scenario losses
-  `L_s` (integer cents, `L_s >= 0`, `S` from 40 to 80); a target cover `target_bps` from {9900, 9950, 9975}.
+  `L_s` (integer cents, `L_s >= 0`, `S` from 40 to 80); a target cover `target_bps` from {9000, 9500, 9750} (the set the page, `instance.py` and `test_project.py` use; see `plans/BK4-open-items.md`, decision 1).
 - **Interface (frozen before building; Q9).** `clearing_house.py` exposes:
   - `waterfall(loss_cents: int, defaulter_id: int, initial_margin_cents: dict[int, int], default_fund_cents: dict[int, int], ccp_capital_cents: int) -> Waterfall`.
   - `Waterfall`, a frozen dataclass with fields `margin_cents: int`, `default_fund_cents: int`, `ccp_capital_cents: int`,
@@ -475,10 +475,10 @@ down to 1 (`check_projects.py:58-73`). Every level descriptor is observable.
 4. **Interpretation and recommendation.** L4: recommends one margin with the cover it achieves and the count of scenarios
    that reach the surviving members or leave an uncovered loss, and compares one alternative. L1: "makes a recommendation".
 5. **Limits and evidence.** L4: names the model limits used (one default at a time, a fixed scenario set, no close-out
-   period, no procyclicality), and for each claim graded B or C names its counter-evidence or the REFERENCE_REQUEST
+   period, no change in margins in stress), and for each claim graded B or C names its counter-evidence or the REFERENCE_REQUEST
    status. L1: "notes some caveats".
 
-Exemplars: **exemplar-a (`data-level="4"`)** and **exemplar-b (`data-level="2"`)**, fully written memos on a SIMULATED
+Exemplars: **exemplar-a (`data-level="2"`)** and **exemplar-b (`data-level="4"`)** (as the page states them; see `plans/BK4-open-items.md`, decision 2), fully written memos on a SIMULATED
 instance, each passage annotated with the descriptors it meets or misses (`check_projects.py` requires levels 1-4 and at
 least two). Self-assessment form (`section.rubric-self`, `data-rubric="rubric"`, `data-exemplars="exemplar-a exemplar-b"`,
 as in M1, E1 and E5). The page shows where the student's scores diverge from the exemplar scores. Calibration: the verifier
@@ -512,7 +512,7 @@ BLUEPRINT §7; FINAL-ARCHITECT-RULINGS 4 for the deploy rule), `starter.py` (stu
   - a loss equal to the margin is covered (`L = M`), an isolated test (kills a strict-inequality cover);
   - sizing fixtures: losses `[10, 20, 30, 40, 50]` with `target_bps` 8000 give 40, with 8001 give 50, with 10000 give 50;
     losses `[10, 20, 30, 40]` with 5000 give 20 (kills an off-by-one and a strict count); `S = 1` returns the one loss;
-  - sizing against a brute-force search over integer margins on every seed (minimal `M` with `cover_bps(L, M) >= target`);
+  - sizing against a brute-force search over integer margins on the two seeded cases `INST` (seed) and `INST2` (seed + 7919), for each target (minimal `M` with `cover_bps(L, M) >= target`; see `plans/BK4-open-items.md`, decision 4);
   - cover fixtures: one of three losses covered gives 3333; the cover is floored;
   - monotonicity: `margin_for_cover` is non-decreasing in `target_bps` on each seed;
   - integer output: every money field is an `int`;

@@ -5,8 +5,8 @@ instance generator. No data file is read and there is no network access. Standar
 number of cents, and every accounting value is an int.
 
 The reference rule quotes around the last filled price, or around 10000 cents before any fill, for one unit. Its
-half-spread is 10 cents. The counterfactual is the same game with a half-spread of 15 cents, which is the change the
-analysis is asked to test. The numbers below describe this one seed. They are not an estimate for any market.
+half-spread is 10 cents. The counterfactual is the same game with a half-spread of 15 cents, one change of the rule that
+the lab uses to show the rerun. The numbers below describe this one seed. They are not an estimate for any market.
 """
 
 from __future__ import annotations
@@ -98,6 +98,8 @@ def replay(log: dict[str, Any]) -> dict[str, int]:
     fills: list[tuple[int, int]] = []
     for record in turns:
         if record["filled"] is True:
+            if record["fill_price_cents"] is None:
+                raise ValueError("a filled turn needs a fill price")
             price = int(record["fill_price_cents"])
             fills.append((1 if price == record["bid_cents"] else -1, price))
     inventory = sum(side for side, _ in fills)

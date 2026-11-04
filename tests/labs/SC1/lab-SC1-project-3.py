@@ -1,13 +1,14 @@
 """Rung 3 reference numbers: the values the report quotes for the seed-0 instance. SIMULATED.
 
 The instance is the one the project's generator gives seed 0, drawn in the same fixed order. For a grid of n steps
-the lab draws N paths, each a sum of n Gaussian increments N(0, H / n), taken path by path and step by step from
-random.Random(seed). The estimate is the fraction of paths whose grid maximum reaches the level a, and its standard
-error is the sample standard deviation of the 0/1 indicators (divisor N - 1) divided by sqrt(N). The coarse grids in
-the nested check are every (256 / n)-th point of the same 256-step paths, so each coarse maximum is at most the fine
-one. The continuous tail erfc(a / sqrt(2 H)) is the reflection principle's value for the continuous maximum on [0, H].
-Every printed number is rounded to six decimal places by Python's own formatting, from the unrounded value. The walk
-line is an exact count. Standard library only.
+the lab draws N paths, each a sum of n Gaussian increments with mean 0 and variance H / n, taken path by path and
+step by step from random.Random(seed). The estimate is the fraction of paths whose grid maximum reaches the level a,
+and its standard error is the sample standard deviation of the 0/1 indicators (divisor N - 1) divided by sqrt(N). The
+coarse grids in the nested check are every (256 / n)-th point of the same 256-step paths, so each coarse maximum is at
+most the fine one. The continuous tail erfc(a / sqrt(2 H)) is the reflection principle's value for the continuous
+maximum on [0, H]. Every computed decimal is rounded to six decimal places by Python's own formatting, from the
+unrounded value. The horizon H and the level a are printed as generated, to three decimals, and N and the hit counts
+are integers. The walk line is an exact count. Standard library only.
 """
 
 from __future__ import annotations

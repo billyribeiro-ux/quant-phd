@@ -1,11 +1,11 @@
-"""LX1 L04 lab 1: spot-rate dispersion of one embedded H.10 column, in two windows, against a parity model.
+"""LX1 L04 lab 1: exchange-rate dispersion of one embedded H.10 column, in two windows, against a parity model.
 
-Data. The lab reads data/fx_monthly.csv, the spot exchange rates of the Board of Governors of the Federal Reserve
-System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), one per month. Each value is the last noon
-rate of its month, as the note in tools/data_sources.yaml states. The snapshot was retrieved 2026-10-19 and holds
-669 months, 1971-01 to 2026-09. The column read is GBP, in US dollars per pound sterling. The MANIFEST transform
-inverts CAD, CHF, DKK, JPY, NOK and SEK only, so GBP is a direct quote. Spot rates only: the file has no interest
-rates and no forward rates.
+Data. The lab reads data/fx_monthly.csv, the exchange rates of the Board of Governors of the Federal Reserve
+System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), one per month. Each value is the column's
+last value in its month, as the MANIFEST transform states (month-end, each column's last value in the month). The
+snapshot was retrieved 2026-10-19 and holds 669 months, 1971-01 to 2026-09. The column read is GBP, in US dollars per
+pound sterling. The MANIFEST transform inverts CAD, CHF, DKK, JPY, NOK and SEK only, so GBP is a direct quote. The
+file holds exchange-rate columns only: it has no interest-rate column and no forward-rate column.
 
 Conventions. A monthly log change at month m is ln(x_m / x_(m-1)), with x_m the rate of month m, the natural
 logarithm, per month, and no annualization. A window's dispersion is the sample standard deviation of its monthly log
@@ -149,7 +149,7 @@ def main() -> None:
     rows = load_column(DATA_PATH, COLUMN)
     changes = log_changes(rows)
     zero = [month for (_, previous), (month, rate) in itertools.pairwise(rows) if rate == previous]
-    print(f"Part B: {DATA_PATH.name}, column {COLUMN} (USD per pound sterling), spot rates")
+    print(f"Part B: {DATA_PATH.name}, column {COLUMN} (USD per pound sterling), exchange rates")
     print(f"months read: {len(rows)}, from {rows[0][0]} to {rows[-1][0]}; cells read as decimal rates: {len(rows)}")
     print(f"monthly log changes: {len(changes)}, dated {changes[0][0]} to {changes[-1][0]}")
     print(f"months with an exactly zero change: {len(zero)}: {', '.join(zero)}")

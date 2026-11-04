@@ -4,7 +4,7 @@ Standard library only. Nothing is random and nothing is read from a file, so eve
 The transition density is p_u(x, y) = (2 pi u)^(-1/2) exp(-(y - x)^2 / (2 u)) for u > 0. For each case the lab
 approximates the integral over the intermediate point z of p_s(x, z) p_t(z, y) by a composite Simpson rule on
 [-12, 12] and compares it with p_(s+t)(x, y). The mass of the integrand for 12 <= |z| <= 40 is computed and printed,
-so the truncation can be compared with the gaps. The gaps are quadrature errors of a numerical rule, not exact
+so the truncation can be compared with the gaps. The gaps are at the scale of double-precision rounding, not exact
 values; the exact identity is proved on the page.
 """
 

@@ -92,13 +92,13 @@ def duty_13(state: tuple[str, str]) -> bool:
 
 def duty_15d(state: tuple[str, str]) -> bool:
     """The lesson's reading of section 15(d)(1) under Assumption A1: the duty applies while the 1933 registration has
-    become effective and no section 12 registration is in force."""
+    become effective, which under A1 includes a stop order, and no section 12 registration is in force."""
     return state[0] in ("effective", "stop_order") and state[1] == "not_listed"
 
 
 def offer_permitted(state: tuple[str, str]) -> bool:
-    """The lesson's reading of section 5(c): an offer is lawful when a statement is filed and no refusal or stop order
-    applies."""
+    """The lesson's reading of section 5(c): an offer is permitted when the statement is filed or in effect, and not
+    when it is refused or under a stop order."""
     return state[0] in ("filed", "effective")
 
 

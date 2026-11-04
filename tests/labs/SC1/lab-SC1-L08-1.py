@@ -4,22 +4,22 @@ Standard library only. Parts A, B and D use no randomness. Part C is SIMULATED: 
 walk paths from random.Random(SEED), so every run prints the same lines.
 
 The walk is S_0 = 0 and S_k is the sum of the steps e_1 through e_k, each e_i equal to +1 or -1.
-For an integer level a >= 1, the first passage index kappa_a is the smallest k with S_k >= a, and it is None
+For an integer level a >= 1, the first passage index nu_a is the smallest k with S_k >= a, and it is None
 when no k <= n has this property.
 
 Part A enumerates all 2**n step sequences for n = 1 to 12 and every level a from 1 to n. For each sequence it
-compares the event {kappa_a <= n} with the event {running maximum over S_0 .. S_n is at least a}. Because the walk
+compares the event {nu_a <= n} with the event {running maximum over S_0 .. S_n is at least a}. Because the walk
 moves by one step at a time, the two events agree on every sequence, and the lab checks this for every sequence in
 the enumeration. It
 also checks the count of such sequences against the walk identity of Lesson 6, and prints the first-passage counts
 for n = 12 and a = 3, and two probabilities for that case.
 
-Part B computes the truncated mean E[min(kappa_1, N)] exactly, from the identity E[min(kappa, N)] = sum over k < N of
-P(kappa > k), with P(kappa_1 > k) = 1 - P(max over S_0 .. S_k is at least 1). The values are exact fractions printed
+Part B computes the truncated mean E[min(nu_1, N)] exactly, from the identity E[min(nu, N)] = sum over k < N of
+P(nu > k), with P(nu_1 > k) = 1 - P(max over S_0 .. S_k is at least 1). The values are exact fractions printed
 to six decimals.
 
-Part C is SIMULATED. It draws SIM_PATHS seeded walks of length SIM_STEPS, records min(kappa_1, SIM_STEPS) on each, and
-compares the sample mean of min(kappa_1, N) with the exact value from Part B for N = 16, 64 and 256.
+Part C is SIMULATED. It draws SIM_PATHS seeded walks of length SIM_STEPS, records min(nu_1, SIM_STEPS) on each, and
+compares the sample mean of min(nu_1, N) with the exact value from Part B for N = 16, 64 and 256.
 
 Part D evaluates the first-passage distribution function of Brownian motion, erfc(a / sqrt(2 t)), and its density,
 a / (sqrt(2 pi) t^(3/2)) exp(-a^2 / (2 t)), at a = 1 and t = 1 and t = 2. The density is compared with a central
@@ -83,9 +83,7 @@ def part_a() -> None:
             pathwise_agree += sum(1 for hit, top in paths if (hit is not None) == (top >= a))
             counts_agree += hits_by_n == max_at_least(n, a)
     print(f"Part A: pairs (n, a) checked: {pairs}; counts agree with the walk identity for {counts_agree} of {pairs}")
-    print(
-        f"Part A: sequences checked: {sequences}; {{kappa_a <= n}} equals {{maximum >= a}} on {pathwise_agree} of them"
-    )
+    print(f"Part A: sequences checked: {sequences}; {{nu_a <= n}} equals {{maximum >= a}} on {pathwise_agree} of them")
     print(f"Part A: pathwise agreement holds for every sequence: {pathwise_agree == sequences}")
 
     n, a = MAX_ENUM, 3
@@ -95,12 +93,12 @@ def part_a() -> None:
     hits = sum(by_step)
     walk_count = max_at_least(n, a)
     print(f"Part A: sum of the counts equals the walk identity count {walk_count}: {hits == walk_count}")
-    print(f"Part A: P(kappa_{a} <= {n}) = {hits} / {2**n} = {hits / 2**n:.6f}")
+    print(f"Part A: P(nu_{a} <= {n}) = {hits} / {2**n} = {hits / 2**n:.6f}")
     print(f"Part A: P(S_{n} >= {a}) = {end_at_least(n, a)} / {2**n} = {end_at_least(n, a) / 2**n:.6f}")
 
 
 def part_b() -> None:
-    """Print the exact truncated means E[min(kappa_1, N)] for the horizons in EXACT_HORIZONS."""
+    """Print the exact truncated means E[min(nu_1, N)] for the horizons in EXACT_HORIZONS."""
     largest = max(EXACT_HORIZONS)
     tail_above = [Fraction(max_at_least(k, 1), 2**k) for k in range(largest)]
     survive = [1 - tail for tail in tail_above]
@@ -110,15 +108,13 @@ def part_b() -> None:
         running += survive[k]
         if k + 1 in EXACT_HORIZONS:
             truncated[k + 1] = running
-    print(
-        "Part B: exact truncated means E[min(kappa_1, N)] = sum over k < N of P(kappa_1 > k) for the simple random walk"
-    )
+    print("Part B: exact truncated means E[min(nu_1, N)] = sum over k < N of P(nu_1 > k) for the simple random walk")
     for n in EXACT_HORIZONS:
-        print(f"Part B: N = {n:4d}: E[min(kappa_1, N)] = {float(truncated[n]):.6f}")
+        print(f"Part B: N = {n:4d}: E[min(nu_1, N)] = {float(truncated[n]):.6f}")
 
 
 def simulated_first_passage(rng: random.Random) -> list[int]:
-    """For each of SIM_PATHS seeded walks of length SIM_STEPS, the value min(kappa_1, SIM_STEPS), in steps."""
+    """For each of SIM_PATHS seeded walks of length SIM_STEPS, the value min(nu_1, SIM_STEPS), in steps."""
     capped: list[int] = []
     for _ in range(SIM_PATHS):
         position = 0
@@ -141,7 +137,7 @@ def mean_and_standard_error(values: list[float]) -> tuple[float, float]:
 
 
 def part_c() -> None:
-    """Compare the seeded sample mean of min(kappa_1, N) with the exact truncated mean from Part B."""
+    """Compare the seeded sample mean of min(nu_1, N) with the exact truncated mean from Part B."""
     capped = simulated_first_passage(random.Random(SEED))
     print(f"Part C: {SIM_PATHS} seeded simple random walk paths (SIMULATED), each followed for {SIM_STEPS} steps")
     largest = max(EXACT_HORIZONS)

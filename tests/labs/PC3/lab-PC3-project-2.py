@@ -97,6 +97,8 @@ def replay(log: dict[str, Any]) -> dict[str, int]:
     fills: list[tuple[int, int]] = []
     for record in turns:
         if record["filled"] is True:
+            if record["fill_price_cents"] is None:
+                raise ValueError("a filled turn needs a fill price")
             price = int(record["fill_price_cents"])
             fills.append((1 if price == record["bid_cents"] else -1, price))
     inventory = sum(side for side, _ in fills)

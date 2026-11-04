@@ -8,7 +8,7 @@ blanked, and the printed output of this file is the expected output of the insta
 
 The case model and both definitions are those of rung 1 (lab 1 of this page). The case model forecasts
 forecast(t) = 100 + 2 * t units for month index t (assumption M1; the forecast for month t uses no information from
-month t, assumption M2). The validation window is months 13 to 18, so H = 6 months.
+month t, assumption M2). The six-month window is months 13 to 18, so H = 6 months.
 
 A month is a hit when |e| <= 2 units, with error e = forecast - realised. The hit rate is hits / H. The bias is
 (1 / H) times the sum of e, in units per month.
@@ -55,7 +55,7 @@ def decimal_text(value: Fraction, places: int) -> str:
 
 
 def main() -> None:
-    print("SIMULATED case model: forecast(t) = 100 + 2t units; validation months 13 to 18, H = 6; band 2 units")
+    print("SIMULATED case model: forecast(t) = 100 + 2t units; six-month window, months 13 to 18, H = 6; band 2 units")
     print("Part A: month, forecast, realised, error (forecast - realised), hit")
     errors: list[int] = []
     hits = 0

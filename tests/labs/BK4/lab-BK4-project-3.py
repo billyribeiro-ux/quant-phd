@@ -1,7 +1,7 @@
 """Rung 3 check: the reference instance of the project page, its waterfall rows and its sizing table.
 
 Standard library only. The inputs are SIMULATED: illustrative values, not market data. Every amount is an int in cents,
-and every ratio is an int in basis points, floored. The scenario losses are the seeded set of Lab 1. The brute-force
+and every cover is an int in basis points, floored. The scenario losses are the seeded set of Lab 1. The brute-force
 search below is a check on the sizing rule, not a proof of it.
 """
 
