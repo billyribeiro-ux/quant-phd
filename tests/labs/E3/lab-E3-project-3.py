@@ -2,8 +2,8 @@
 
 Standard library only. The twelve answers are fixed SIMULATED data, printed here as data; this file does not record how
 they were drawn, and the participant is not a real person. The estimates below are the numbers your elicit.py must
-reproduce for this case (copy this file as run_case.py, then replace the estimate function with a call to your module;
-it must print the same lines).
+reproduce for this case (copy this file as run_case.py, then replace grid_start and second_order_search with a call to
+your module's estimate; it must print the same lines).
 
 Each answer is (pair_id, choice, prizes of A, probabilities of A, prizes of B, probabilities of B). Prizes are whole
 cents and probabilities are exact fractions, read with Fraction. The model is the prospect model of the

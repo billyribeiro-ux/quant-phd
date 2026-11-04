@@ -1,0 +1,248 @@
+"""Round-6 verifier (slice d): build ledgers/M4/M4-d.json from the rows and the final mutation output.
+
+Mutant rows are parsed from gates/../mutate_M4_0-9_final_r6.txt (the output of tools/mutate_graders.py --unit M4
+--seeds 0-9 at this checkout). Row evidence cites the scripts and outputs under ledgers/M4/scripts/M4-d-r6/.
+"""
+import json
+import re
+import subprocess
+from datetime import UTC, datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[4]
+S = "ledgers/M4/scripts/M4-d-r6"
+P = lambda status, id_, check, location, evidence, fix=None: dict(  # noqa: E731
+    id=id_, check=check, location=location, status=status, evidence=evidence, **({"fix": fix} if fix else {})
+)
+rows = [
+    # ---- round-5 row ids, all re-verified at 142ecfc
+    P("PASS", "d1-2.6-ladder", "2.6 ladder: rung 1 solved, rung 2 instant, rung 3 scope, rung 4 open",
+      "course/modules/M/M4/project.html:40-49 (ladder), :51-192 (rungs 1-2)",
+      "Read project.html lines 40-192 in full. Rung 1 (Lab 1) annotated step by step; rung 2 (Lab 2) is class lab completion graded by run_labs (13/13 PASS, " + S + "/gates/run_labs_M4.out)."),
+    P("PASS", "d1-2.6-spec-questions", "2.6 spec: questions a competent student would have to ask",
+      "course/modules/M/M4/project.html:194-229 (Rung 3 spec)",
+      "Read in full. Questions I would have had to ask, none blocking: (a) whether simulate_losses must reject a float nu for student_t (the conditions name nu only through matched_scale, which rejects floats; the suite does not test it); (b) how the Student-t normals and chi-square draws are ordered (stated as not fixed, item 5); (c) whether positions may be empty in quantile (stated: raises). Frozen signatures match grader/starter.py:15-34."),
+    P("PASS", "d1-2.6-hours", "2.6 hours: component sum and own estimate within 30 %",
+      "course/modules/M/M4/project.html:234-245 (table#hours); :33 data-hours-project=30",
+      "Components 2+2+12+8+4+2 = 30 = data-hours-project. My own estimate: rung 1 1.5 h, rung 2 1.5 h, simulator 10-14 h, appendix A1-A4 8-12 h, report and self-assessment 4-6 h, self-check 2-3 h; total 27-38 h, inside 21-39 h (30 +/- 30 %)."),
+    P("PASS", "d1-2.6-autograder-reference", "2.6 autograder: run_graders seeds 0-49 on reference.py",
+      "course/modules/M/M4/grader/reference.py", "run_graders.py --unit M4 --seeds 0-49: 'run_graders M4: PASS (reference 50/50 seeds, slowest 0.9 s)' (" + S + "/gates/run_graders_M4_0-49.out)."),
+    P("PASS", "d1-2.6-instances", "2.6 instances: valid, and answers change across seeds",
+      "course/modules/M/M4/grader/instance.py; " + S + "/instance_sample_20.py",
+      "instance_sample_20.py: seeds 0-19 all valid (positions whole cents in [1e5, 5e6], cov symmetric with positive pivots, nu in 3..8, n_draws <= 20000 and not a multiple of 100). 20 of 20 distinct gaussian 99% losses and 20 of 20 distinct first positions."),
+    P("PASS", "d1-2.6-mut-own", "2.6 mutation: at least 3 verifier-written student-error mutants, all killed (earlier rounds)",
+      "ledgers/M4/mutants/v1_01..v9_04 (names in " + S + "/mutate_M4_0-9_final_r6.txt)",
+      "Final run: every v1_*..v9_* mutant is KILLED (grep of mutate_M4_0-9_final_r6.txt). The round-6 mutants are rows d6-2.6-*."),
+    P("PASS", "d1-2.6-mut-existing", "2.6 mutation: the existing mutants re-run on seeds 0-9",
+      "ledgers/M4/mutants/*.py",
+      "tools/mutate_graders.py --unit M4 --seeds 0-9 (" + S + "/mutate_M4_0-9_final_r6.txt): 136 of 138 killed; the only two SURVIVED lines are the round-6 mutants r6d_01 and r6d_03 (rows d6-2.6-mut-pivot-tolerance and d6-2.6-mut-lag3-sharing). All 135 pre-existing mutants are KILLED."),
+    P("PASS", "d1-2.6-mut-m11", "2.6 mutation: m11 loss sign flipped",
+      "ledgers/M4/mutants/m11_loss_sign_flipped.py", "KILLED by test_gaussian_stream_is_frozen_and_the_loss_is_minus_the_weighted_return (final run output)."),
+    P("PASS", "d1-2.6-mut-r9_03", "2.6 mutation: r9_03 chi-square reused on alternate draws",
+      "ledgers/M4/mutants/r9_03_student_t_chi_square_reused_every_second_draw.py", "KILLED by test_student_t_draws_do_not_share_chi_square (final run output)."),
+    P("PASS", "d1-2.6-mut-v4_m02", "2.6 mutation: v4_m02 matched factor skipped for small nu",
+      "ledgers/M4/mutants/v4_m02_matched_factor_skipped_for_small_nu.py", "KILLED by test_student_t_mean_absolute_loss_matches_the_matched_scale (final run output)."),
+    P("PASS", "d1-2.6-mut-m17", "2.6 mutation: m17 is an equivalent (conforming) mutant, not a fault",
+      "ledgers/M4/equivalent/m17_student_t_second_seed.py; ledgers/M4/equivalent/README.md",
+      "run_equivalent_m17.py: m17 passes all of grader/test_project.py on seeds 0-49 (50 of 50). Conventions item 5 (project.html:215) says the Student-t normal source and draw order are not fixed, so m17 violates no stated sentence. Not listed in mutants/."),
+    P("FAIL", "d1-2.6-alternatives", "2.6 alternatives: five alternative correct implementations pass",
+      "ledgers/M4/scripts/M4-d-r6/alts/alt1_box_muller.py, alt2_polar_marsaglia.py; plans/M4-build-plan.md:246-257",
+      "run_alts_r6.py 0-9 (" + S + "/run_alts_r6_0-9.txt): alt1 (Box-Muller) 0/10 seeds and alt2 (polar Marsaglia) 0/10 seeds FAIL test_gaussian_stream_is_frozen_and_the_loss_is_minus_the_weighted_return. Both draw Gaussians with rng.random(), not random.Random(seed).gauss, so the frozen Gaussian stream of project.html:215 (Conventions item 5) is not met. Plan 5.5 (plans/M4-build-plan.md:246-257) and Architect Q5 require the five alternatives to pass and say they differ in their random stream. The page and the plan contradict each other on the Gaussian stream.",
+      "Architect decision required (I cannot pick one): either (a) keep the frozen Gaussian stream and replace alt1/alt2 in plans/M4-build-plan.md section 5.5 with stream-preserving alternatives, amending the plan; or (b) drop the frozen-stream test and the Gaussian sign check that depends on it, state the sign check another way, and amend Conventions item 5 (project.html:215) and the contract note (project.html:228). Either way the suite and the plan must agree."),
+    P("PASS", "d1-2.6-starter", "2.6 starter: an empty implementation fails the suite",
+      "course/modules/M/M4/grader/starter.py:15-34", "run_graders.py --unit M4 checks that starter.py fails the suite; it passed (" + S + "/gates/run_graders_M4_0-49.out). starter.py raises NotImplementedError in all three functions."),
+    P("PASS", "d1-2.6-messages", "2.6 messages: failure messages name the property and give a hint",
+      "course/modules/M/M4/grader/test_project.py (all check() and expect_value_error() messages)",
+      "Read all 616 lines. Messages are fixed strings naming the property (e.g. line 152, 163, 179, 272, 389); none prints a computed value. Quantile messages (lines 584-586) state the convention for named n values from project.html Conventions item 4, not the instance answer."),
+    P("PASS", "d1-2.6-count-and-pyodide", "2.6 count and pyodide: page count equals collect-only, and 137 + 1 at nu 3 or 4",
+      "course/modules/M/M4/grader/test_project.py; project.html:206",
+      "collect_and_nu_runs.sh (" + S + "/collect_and_nu_runs.out): '138 tests collected'; QF_SEED=0 (nu 4): '137 passed, 1 skipped'; QF_SEED=1093 (nu 3): '137 passed, 1 skipped'. page_smoke.py --unit M4 --pages project: 'All 138 tests pass on seed 1440692269' (" + S + "/gates/page_smoke_project.out)."),
+    P("PASS", "d1-2.6-grader-comment-numbers", "2.6 grader comments: the numbers in the grader comments match the code",
+      "course/modules/M/M4/grader/test_project.py:31-48, 168-170, 184-187, 344-348, 205-226; project.html:228",
+      "sweep_variance_tolerance.py + summarize_variance_sweep.py (seeds 0-1999): max matched relative error 0.1259 (nu 5), 0.0967 (6), 0.0728 (7), 0.0624 (8); unmatched failures 347/347 (nu 5), 317/317 (6), 342 of 343 (7), 288 of 317 (8); seed 1093 nu 3 rel error 1.022. cross_term_sweep.py: reference max 0.0239 over seeds 0-49; matched on one asset with unmatched sqrt(nu/W) on the other: median 29 %; one chi-square per asset: median 15.5 %. sharing_families_sweep.py: lag-1 and lag-2 families fail 50/50 seeds, even-indexed shared fails 44/50. truncation: variance of int(2Z) is 2.69 (card_and_prose_checks.py section 5). Reading note: the comment at test lines 44-45 ('a matched factor applied to one asset only') matches the 29 % only when the other asset carries the unmatched factor sqrt(nu/W); with a Gaussian other asset the shift is 8 %. Wording, not a number, is off; no fix required."),
+    P("PASS", "d1-rubric-observable", "2.6 rubric: every criterion descriptor is observable from the report",
+      "course/modules/M/M4/project.html:330-343 (table#rubric)", "Read all five criteria at four levels. Every descriptor names a checkable element (for example C1 level 3 'states nu > 2 as the hypothesis of A1 and derives E[W^-1]'; C5 'a body of 300 to 700 words; a Summary of at most 80 words'). No vague descriptor found."),
+    P("PASS", "d1-rubric-calibration", "2.6 rubric calibration: exemplar annotations match the descriptors within one level",
+      "course/modules/M/M4/project.html:348-462 (exemplar-a, exemplar-b)",
+      "Blind scoring from the rubric alone (my scores): Exemplar A C1 2, C2 2, C3 2, C4 2, C5 2 (annotations 2,2,2,2,2). Exemplar B C1 4, C2 4, C3 4, C4 4, C5 3 (annotations 4,4,4,4,3). All within one level. Exemplar word counts (card_and_prose_checks.py section 4): A body 90 words, 100 with headings (annotation says 90 and 100); B Summary 70 words (<= 80)."),
+    P("PASS", "d1-rubric-question-bank", "2.6 rubric question bank: every question is answered by the page",
+      "course/modules/M/M4/project.html (no question-bank section); plans/M4-build-plan.md section 5.7 and Architect Q13",
+      "The page has no question bank and the plan (Architect Q13) excludes one; check_projects applies the 15-angle rule only to a question-bank section and passes (" + S + "/gates/check_projects_M4.out). Nothing to check."),
+    P("PASS", "d1-atlas", "2.6 atlas: the project's atlas entries match the curriculum",
+      "curriculum/meta.yaml:194-276; course/modules/M/M4/project.html", "No atlas key in the project block (curriculum/01-foundations.yaml:222-229) and no atlas reference on project.html; check_projects (" + S + "/gates/check_projects_M4.out) passes. Plan section 'Atlas' says none."),
+    P("PASS", "d1-studio", "2.6 studio: the studio entry is correct",
+      "curriculum/01-foundations.yaml:73-76", "curriculum/01-foundations.yaml:73-76 reads requires: [M7, M8] for STUDIO-M; no studio requires M4. Nothing to check for M4."),
+    P("PASS", "d1-lab-project-1", "2.6 labs: Lab 1 runs and its page code equals its twin",
+      "course/modules/M/M4/project.html:55-145 (lab-M4-project-1); tests/labs/M4/lab-M4-project-1.py",
+      "run_labs.py --unit M4: 13/13 PASS (" + S + "/gates/run_labs_M4.out), which checks page code byte-equal to the twin, the twin under python -I -W error, and stdout against expected. Printed values re-read: 8400000000.0, 19800, 210946, 243004, 1.0017, 1.0447, 1.6667; the interpretation's 1.152 (243004/210946 = 1.1520) and 5/3 are correct."),
+    P("PASS", "d1-lab-project-2", "2.6 labs: Lab 2 runs and its page code equals its twin",
+      "course/modules/M/M4/project.html:147-191; tests/labs/M4/lab-M4-project-2.py",
+      "run_labs.py completion check passes (13/13). Completed twin returns (nu-2)/nu and (99n+99)//100; expected block 0.600000, 0.333333, 19800, 100, True matches; interpretation's 'index is 100 and not 99' is correct (ceil(99.99)=100)."),
+    P("PASS", "d1-lab-project-3", "2.6 labs: Lab 3 runs and its page code equals its twin",
+      "course/modules/M/M4/project.html:266-314; tests/labs/M4/lab-M4-project-3.py",
+      "run_labs.py passes. Recomputed: sqrt(8.4e9) = 91651.514; z = 2.326348; round(z*sd) = 213213; 0.99*19987 = 19787.13; 2267 = 213213-210946; 32058 = 243004-210946; 15.2 % = 32058/210946."),
+    P("PASS", "d1-prose-numbers", "2.6 prose numbers: every number in the project prose matches its computation",
+      "course/modules/M/M4/project.html (Lab 1, Lab 2, Lab 3 interpretations; Constraints; Grading mode; What the suite does not test; exemplars)",
+      "Recomputed every prose number: 0.6, 5/3 = 1.6667, 1.152, 4.5 % of 1 from 1.0447, 2267, 32058, 15.2 %, 0.063451 and 2/pi-limit gap (test_project and cards), 138 and 137 + 1, 0.30 / 0.1259 = 2.38, 0.024, 29 %, 15 %, 347/317/343/342/317/288 seed counts, 44 of 50, 50 of 50. All match (sweep and cross_term outputs under " + S + ")."),
+    P("PASS", "d1-prose-scope", "2.6 prose scope words: each universal is backed by a computation or a hypothesis",
+      "course/modules/M/M4/project.html:215, 228 (Conventions item 5; What the suite does not test)",
+      "Re-verified the rewritten claims: lag-1 (2k, 2k+1) and lag-2 (4j, 4j+2) sharing fail 50 of 50 seeds; even-indexed sharing fails 44 of 50 (sharing_families_sweep.py). The sentence 'checks the independence of the chi-square variables' in item 5 is qualified by 'see what the suite does not test' and the lag-3 limit is stated. The residual gap is recorded as row d6-2.6-mut-lag3-sharing, not here."),
+    P("PASS", "d1-prose-process-words", "2.6 prose: no process words in learner text",
+      "course/modules/M/M4/project.html; cards.json; grader/*.py; tests/labs/M4/lab-M4-project-*.py",
+      "/usr/bin/grep -i -E 'builder|verifier|round [0-9]|ledger|fragment|the agent|reviewer|audit' over those files: no matches."),
+    P("PASS", "d1-prose-banned-phrases", "2.6 prose: banned phrases absent",
+      "course/modules/M/M4/project.html", "check_pages --unit M4 passes (" + S + "/gates/check_pages_M4.out); grep for clearly, obviously and '...' in project.html and cards.json: 0 matches."),
+    P("PASS", "d1-dag", "2.6 DAG: concepts used are in the prerequisite closure",
+      "course/modules/M/M4/project.html", "check_dag --unit M4 passes (" + S + "/gates/check_dag_M4.out). Project prose uses only M4 concepts (covariance, Student-t, chi-square, quantile, order statistic) and M2/M1 facts; no M3 or M5 concept."),
+    P("PASS", "d1-notation", "2.6 notation: symbols match notation/notation.json and are not reused",
+      "notation/notation.json (8 registered symbols); course/modules/M/M4/project.html; L03.html; L09.html",
+      "Registered: T, Phi, Phi^-1, gamma_3, gamma_4, R*, R^e*, R_f, Q-blackboard. M4 uses gamma_3/gamma_4 as skewness/kurtosis (L03) and Phi as the normal cdf (L09), consistent. project.html uses T only as transpose (L^T), not the registered T. L as a Cholesky factor is local (Conventions item 1)."),
+    P("PASS", "d1-cites", "2.6 citations: every cited source is a registry key",
+      "course/modules/M/M4/project.html:482-486 (Reading)", "The only cited key is blitzstein2019introduction (data-cite); verify_refs --offline reports 560 entries, 0 problems (" + S + "/gates/verify_refs_offline.out)."),
+    P("PASS", "d1-structure", "2.6 structure: sections, headings and the proof appendix are in place",
+      "course/modules/M/M4/project.html", "Read in full. Ladder, spec (conditions, conventions, contract notes), budget, autograder panel, local run, report (lab 3, brief, appendix A1-A4, rubric, exemplars, self-assessment), stretch, reading, references. check_projects passes (" + S + "/gates/check_projects_M4.out)."),
+    P("PASS", "d1-cards-schema", "2.6 cards schema: every entry has id, lesson, front, back, grade",
+      "course/modules/M/M4/cards.json", "220 cards; keys = back, basis, front, grade, id, lesson on every entry; 200 grade T, 20 grade C with a basis; every lesson L01-L10 has at least one card; no duplicate ids."),
+    P("PASS", "d1-cards-numbers-in-lesson", "2.6 cards: every card number appears in its lesson",
+      "course/modules/M/M4/cards.json vs course/modules/M/M4/L01..L10.html (text in " + S + "/card_and_prose_checks.out)",
+      "card_and_prose_checks.py section 2: every decimal and 4+-digit number on every card back appears in the card's own lesson text (0 misses across 220 cards)."),
+    P("PASS", "d1-cards-labs", "2.6 cards: the C cards match their labs",
+      "course/modules/M/M4/cards.json (20 C cards); expected blocks in L02..L10.html",
+      "All 20 C cards compared with the page's expected output. c030 3.469; c033 489 = count of x>0 with p=0.05 over 10000 (lab code); c047 2.065 and c183 5.580 (seed 2026, n 20000); c082 0.00002223 and 0.00016257; c083 0.592936 and -0.007064; c098 1.669114 and 0.001469 (seed 20260602+nu, n 100000); c112 7.11e-13 and 244.69193226; c113 -0.062124 and -0.062110; c126 0.0187; c143 0.8552 and SE 0.0056 (4000 reps); c162 1.8220 and 1.8838 (400 reps); c166 3.4689; c167 0.8548 and 0.8518; c169 +0.9919; c170 1.0211 and 0.9396; c171 0.8807 and 1.1987; c188 (0.9770, -2.0055); c189 +0.0031; c190 -0.0235. c183 prints 5.625 where the lab prints 5.6254 (149461/26569 = 5.62539): both are correct roundings; no fix needed."),
+    P("PASS", "d1-cards-math", "2.6 cards math: every card's claim is correct",
+      "course/modules/M/M4/cards.json (sampled, see d6-cards-sample)",
+      "Recomputed with fractions/floats: c011 198; c015 149; c025 7/2; c028 35/3; c029 91/6, 35/12; c042 7/4; c043 5/3; c045 73/9 and 7/3; c048 64/9; c063 1/4; c064 -ab; c074 2/9; c081 4 > 1; c094 5/3; c122 P(X+Y=0) >= 1/2; c125; c141 7/60; c142 40.4006 -> 40; c147 and c149 closed forms checked numerically (" + S + "/t3_cdf_tail_check.out); c157 (2/pi)arctan(0.1)=0.063451; c160 IQR 2; c168 0.002128; c172/c187 limit 4 sqrt3/pi; c200 2157/32; c208 BB^T = Sigma; c209 density; c216 integral. All correct."),
+    P("PASS", "d1-cards-lesson-statements", "2.6 cards vs lesson: each card agrees with the current lesson statement and its hypotheses",
+      "course/modules/M/M4/cards.json (M4-c037, M4-c220 and the sampled cards); L01-L10.html",
+      "The round-5 defect (c037, c219) is fixed: c037 now defines gamma_3 from Definitions 2.1 and 2.2 and cites no Assumption; c220 states Assumption 2.6 as the lesson does (L03 lines 49-52). Lesson statements checked by targeted reads: L01 Example 3.6 table and F values (3/10, 3/5, 4/5, 9/10), Remark 3.3, Proposition 3.4; L04 Example 1.9, Example 2.5 (E[X|Y=0]=1, E[X|Y=1]=2/3, E[X]=4/5); L09 Proposition 2.2 (bound with /3, as the card says); L07 Assumption 1(c); L10 Assumption 1 density. Sampled, not every lesson line re-read (see d6-cards-sample)."),
+    P("PASS", "d1-cards-hypotheses", "2.6 cards: hypotheses are the ones the lesson states",
+      "course/modules/M/M4/cards.json (M4-c140, M4-c038, M4-c225 and the Proposition cards)",
+      "Checked M4-c140 (CLT without normality: L09 Section 4 and Proposition 2.3(b)), M4-c038 and M4-c225 (at least two values, positive weights; L03 Proposition 2.2), M4-c133 (|s| <= 1/M, E[Y]=0, E[Y^2]=1, M>0; L09 Proposition 2.2), M4-c105 (finitely many values or a density; L07 Assumption 1(c)). Consistent."),
+    P("PASS", "d1-cards-duplicates", "2.6 cards: no duplicate cards",
+      "course/modules/M/M4/cards.json; " + S + "/card_and_prose_checks.out",
+      "Full scan: 0 duplicate ids, 0 duplicate fronts. Token-overlap scan (Jaccard >= 0.6, 27 pairs): each pair asks a different fact (for example c128 mean vs c217 variance of the sample mean). M4-c008 and M4-c009 restate the same quantile rule under Proposition 3.2 and Remark 3.3 from different angles; they are not verbatim duplicates."),
+    P("PASS", "d1-cards-c191-grade", "2.6 cards: M4-c191 grade and hypotheses",
+      "course/modules/M/M4/cards.json (M4-c191, grade T)",
+      "Front: covariance of X1 = S1 Z1, X2 = S2(rho Z1 + sqrt(1 - rho^2) Z2). Back: [[S1^2, rho S1 S2],[rho S1 S2, S2^2]] (recomputed: Var X2 = S2^2, Cov = rho S1 S2). Hypotheses and Assumption 1 are stated on the back; T is conditional on the stated assumption."),
+    P("PASS", "d1-data", "2.6 data: inputs are SIMULATED and labelled",
+      "course/modules/M/M4/project.html:37, 200, 271-275; grader/instance.py:1-14, 42",
+      "'Every input is SIMULATED' on the page; instance dict label = 'SIMULATED'; grader and lab docstrings say SIMULATED. No data-files attribute; no snapshot read."),
+    P("PASS", "d1-freshness-registry", "2.6 freshness: registry entries are current",
+      "references/references.json (blitzstein2019introduction); " + S + "/gates/verify_refs_offline.out",
+      "verify_refs --offline: 560 entries, 0 problems. The only entry the page uses is the course text; the page attributes no statement to it. No registry flag."),
+    P("PASS", "d1-gates-repo", "2.6 gates: the repository gates for the slice pass",
+      "pyproject.toml; tests/labs/M4; tests/test_labs.py; tests/test_run_labs.py; tests/test_memo_exemplars.py",
+      "ruff check tests/labs/M4 course/modules/M/M4: pass; ruff format --check: 17 files already formatted; mypy --no-incremental: 'Success: no issues found in 331 source files'; pytest tests/test_labs.py tests/test_run_labs.py tests/test_memo_exemplars.py -k 'M4 or memo or exemplar or lab': all pass (" + S + "/gates/)."),
+    P("PASS", "d1-tools-structure", "2.6 tools: the tooling that checks the unit is intact",
+      "tools/*.py", "check_pages, check_dag, check_projects, run_labs, run_graders, mutate_graders and verify_refs all ran on this pin and behaved as documented (" + S + "/gates/)."),
+    P("PASS", "d2-2.6-constraints-exceptions", "2.6 constraints: the page names what the suite does not test",
+      "course/modules/M/M4/project.html:203-206 (Constraints, Grading mode), :228 (What the suite does not test)",
+      "Round-5 defect fixed. Constraints names the non-graded items: Student-t variance at nu 3 and 4 (item 1, test skipped), sign of the Student-t loss (item 2), the round() call and integer formula (item 2, item 4: only values checked), Student-t draw source and order (item 5). Each is true of test_project.py (skip at line 158; no sign test for student_t; value-only checks)."),
+    P("PASS", "d3-2.6-mut-new-student-error", "2.6 mutation: this verifier's new student-error mutants, all killed (round 5)",
+      "ledgers/M4/mutants/v9_01..v9_04 and d5_01",
+      "Final run: v9_01, v9_02, v9_03, v9_04 and d5_01 all KILLED."),
+    P("PASS", "d1-2.6-contract-notes-chi-claim", "2.6 contract notes: the chi-square check's stated outcome for each family is correct",
+      "course/modules/M/M4/project.html:228; grader/test_project.py:205-226",
+      "sharing_families_sweep.py (seeds 0-49, test run through pytest with QF_SEED = seed): lag-1 (2k,2k+1) fails 50 of 50; lag-2 (4j,4j+2) fails 50 of 50; even-indexed share fails 44 of 50. The page's three sentences match exactly."),
+    P("PASS", "d1-2.6-mut-pairwise-survivor", "2.6 mutation: the pairwise (lag-2) survivor is now killed",
+      "ledgers/M4/mutants/d5_01_chi_square_shared_by_draws_two_apart.py; test_project.py:205-226",
+      "d5_01 KILLED by test_student_t_draws_do_not_share_chi_square; sharing_families_sweep.py: the lag-2 family fails on 50 of 50 seeds, so the round-5 survivor (S3) is killed."),
+    P("FAIL", "d1-cards-forward-reference", "2.6 cards and lesson order: a term is defined before it is used, and the DAG lists the prerequisite",
+      "course/modules/M/M4/cards.json (M4-c220, lesson L03); course/modules/M/M4/L03.html:118 ('defined in Lesson 6, Definition 1.1')",
+      "Card M4-c220 is in L03 and its front asks about 'a standard normal variable', a term defined in L06 (M4-c221, L06). L03.html:118 points forward to Lesson 6 Definition 1.1 for the standard normal law. The card is therefore a use before definition inside its lesson (BUILDER_RULES 2.9 / VERIFIER 2.6 rule 5).",
+      "Reword M4-c220's front to avoid the term: 'What is the kurtosis of a Gaussian law with mean 0 and variance 1, under Assumption 2.6?' (the back already uses Assumption 2.6 and Proposition 2.7 of L03). The forward pointer on L03 (slice a owner) must also be removed or moved to L06 so the lesson uses no later definition."),
+    # ---- round-6 new rows
+    P("PASS", "d6-2.6-mut-integer-division-chi", "2.6 mutation (new, round 6): chi-square shape nu // 2 killed",
+      "ledgers/M4/mutants/r6d_02_integer_division_chi_shape.py",
+      "KILLED by test_student_t_cross_term_matches_matched_covariance (seed 0) (run_round6_mutants.py and final mutate run)."),
+    P("FAIL", "d6-2.6-mut-pivot-tolerance", "2.6 mutation (new, round 6): a pivot tolerance of 1e-15 survives",
+      "ledgers/M4/mutants/r6d_01_pivot_tolerance_1e15_rejects_tiny_variance.py; course/modules/M/M4/grader/test_project.py:541-558; project.html:223",
+      "The mutant replaces 'pivot > 0' by 'pivot > 1e-15' in the Cholesky check. A one-position variance of 1e-16 is positive, so it must be accepted; the mutant raises ValueError. project.html:223 states that simulate_losses 'accepts ... a one-position portfolio with a positive variance'. No test uses a variance below 1e-14 (tests at lines 541-548 and 551-558 use 1e-14), so it survives seeds 0-9 (run_round6_mutants.py: SURVIVED). The suite does not enforce the stated acceptance below 1e-14.",
+      "Add a case to test_one_position_with_a_tiny_positive_variance_is_accepted (and the 2 x 2 case) with variances 1e-16 and 1e-30, asserting the loss list length and int type (acceptance only, no tolerance). Re-run mutate_graders --unit M4 --seeds 0-9 and confirm r6d_01 is KILLED."),
+    P("FAIL", "d6-2.6-mut-lag3-sharing", "2.6 mutation (new, round 6): a chi-square shared at lag three survives",
+      "ledgers/M4/mutants/r6d_03_chi_square_shared_by_draws_six_apart_lag_three.py; project.html:215 (Conventions item 5), :228 (contract note); test_project.py:205-226",
+      "The mutant makes draws 6j and 6j+3 share one chi-square variable. Conventions item 5 states that the Student-t draws use 'one chi-square variable per draw, independent of the chi-square variables of the other draws'; the contract note says only lags 1 and 2 are read. The mutant survives seeds 0-9 (SURVIVED in mutate_M4_0-9_final_r6.txt). The page discloses the gap in project.html:228, but a disclosed gap does not satisfy the stated convention; the same reasoning failed round-5 mutant S3 (lag 2), which the builder fixed by adding a lag-2 block.",
+      "Either (a) extend test_student_t_draws_do_not_share_chi_square to lag 3 (blocks of 6 offsets, same 5-SE rule; the reference passes by construction) and re-verify the reference on seeds 0-49, or (b) narrow Conventions item 5 (project.html:215) and the contract note to the lags tested, and say explicitly that sharing at a lag of three or more is not graded. Architect to choose; then re-run mutate_graders."),
+    P("PASS", "d6-2.6-equivalence-float-ceil", "2.6 equivalence (considered, not a mutant): math.ceil(0.99*n) equals (99n+99)//100",
+      "course/modules/M/M4/grader/reference.py:95-100; project.html:214 (Conventions item 4)",
+      "Argument: 0.99 as a double is below 0.99, so fl(0.99*n) <= 99n/100 (the exact product); when 99n/100 is an integer the rounded product is at most that integer and ceil returns it, and otherwise the fractional part of 99n/100 is at least 0.01, far above the double error for n below 2^40. Check: no mismatch for n in 1..2,000,000 (run in this round). Not listed in mutants/."),
+    P("PASS", "d6-2.6-alt-root-set", "2.6 alternatives (round 6): root alt_1..alt_5 and alts 3, 4, 5 pass",
+      "ledgers/M4/scripts/alt_1..alt_5.py; ledgers/M4/scripts/M4-d-r6/alts/alt3_column_cholesky.py, alt4_chi_square_sum_of_normals.py, alt5_heapq_quantile.py",
+      "run_alternatives.py --seeds 0-9 (" + S + "/run_alternatives_0-9_scripts_alt.txt) and run_alts_r6.py 0-9 (" + S + "/run_alts_r6_0-9.txt): all PASS 10/10 seeds. Note: alt_1..alt_5 are small algorithm variants (LDL^T, column Cholesky, sum-of-squares chi-square, heapq, counting quantile); they do not include the Box-Muller or polar generators named in the plan."),
+    P("FAIL", "d6-gate-mutate-m4", "2.6 gate: mutate_graders --unit M4 --seeds 0-9 exits 0",
+      "tools/mutate_graders.py; ledgers/M4/mutants/ (138 files)",
+      "Final run (" + S + "/mutate_M4_0-9_final_r6.txt, EXIT 1): 'mutate_graders M4: FAIL (136/138 killed)'. The two survivors are r6d_01 and r6d_03 (rows d6-2.6-mut-pivot-tolerance and d6-2.6-mut-lag3-sharing). The earlier run with 135 mutants (" + S + "/mutate_M4_0-9_run.txt) exited 0 with 135/135, so the gate now fails only because of the two new survivors.",
+      "Fix the two grader gaps in rows d6-2.6-mut-pivot-tolerance and d6-2.6-mut-lag3-sharing; then re-run and expect exit 0 with 138/138 killed."),
+    P("PASS", "d6-gate-unit-checks", "gates: check_pages, check_dag, check_projects --unit M4",
+      S + "/gates/check_pages_M4.out, check_dag_M4.out, check_projects_M4.out", "All three print '... M4: PASS' with exit 0 on this pin."),
+    P("PASS", "d6-gate-labs", "gates: run_labs --unit M4 (13 labs, twins alone under python -I -W error)",
+      S + "/gates/run_labs_M4.out", "'run_labs M4: PASS (13/13)' with exit 0."),
+    P("PASS", "d6-gate-grader-reference", "gates: run_graders --unit M4 --seeds 0-49",
+      S + "/gates/run_graders_M4_0-49.out", "'run_graders M4: PASS (reference 50/50 seeds, slowest 0.9 s)' with exit 0."),
+    P("PASS", "d6-gate-lint-types", "gates: ruff check, ruff format --check, mypy --no-incremental",
+      S + "/gates/ruff_check.out, ruff_format.out, mypy.out", "ruff: All checks passed; ruff format: 17 files already formatted; mypy: 'Success: no issues found in 331 source files' (exit 0)."),
+    P("PASS", "d6-gate-tests", "gates: relevant pytest (labs, run_labs, memo exemplars)",
+      S + "/gates/pytest_relevant.out", "All selected tests pass (exit 0)."),
+    P("PASS", "d6-gate-refs", "gates: verify_refs --offline",
+      S + "/gates/verify_refs_offline.out", "offline integrity: 560 entries, 0 problems (exit 0)."),
+    P("PASS", "d6-gate-page-smoke", "gates: page_smoke --unit M4 --pages project (alone)",
+      S + "/gates/page_smoke_project.out", "in-browser grader: All 138 tests pass on seed 1440692269 (2.1 s); lab timings 0.0-0.1 s; 'page_smoke modules/M/M4/project.html: PASS'."),
+    P("PASS", "d6-cards-sample", "2.6 cards (sampled, one per ten, plus cross-checks): each sampled card agrees with its lesson",
+      "course/modules/M/M4/cards.json: M4-c001, c011, c030, c040, c063, c074, c098, c105, c120, c133, c141, c149, c157, c162, c172, c186, c193, c209, c220, c226",
+      "Each sampled card: lesson reference resolves (card_and_prose_checks.py section 1), numbers appear in its lesson (section 2), and the claim was recomputed or compared with the lesson text and the lab output. Honest limit: not every lesson line behind all 200 T cards was re-read; the full scan covered references, numbers, duplicates, and the card-to-lab match of all 20 C cards."),
+    P("PASS", "d6-prose-exemplar-words", "2.6 prose: exemplar and report word bars",
+      "course/modules/M/M4/project.html:348-462 (exemplars), :319-326 (brief)", "card_and_prose_checks.py section 4: Exemplar A body 90 words (100 with headings); Exemplar B Summary 70 words (<= 80). Brief limits (300-700 body words; 80-word Summary) are for the learner's report, not checkable on the exemplars."),
+]
+
+# ---- mutants: parsed from the final mutate run
+text = Path(ROOT / S / "mutate_M4_0-9_final_r6.txt").read_text(encoding="utf-8")
+mutants = []
+for line in text.splitlines():
+    m = re.match(r"^(KILLED|SURVIVED) (\S+?): (.*) -> (.*)$", line)
+    if not m:
+        continue
+    status, name, desc, killer = m.groups()
+    killer = killer.strip()
+    mutants.append({
+        "name": name,
+        "description": desc.strip(),
+        "killed_by": None if killer == "None" else killer,
+    })
+# every mutant in the directory must appear
+on_disk = sorted(p.name for p in (ROOT / "ledgers/M4/mutants").glob("*.py"))
+assert sorted(m["name"] for m in mutants) == on_disk, "mutant list mismatch"
+
+fragment = {
+    "unit": "M4",
+    "slice": "d",
+    "round": 6,
+    "verifier": "independent verifier (Haiku), unit M4, slice d, round 6; not a builder of M4",
+    "pin": "142ecfc2bd27061de18bd67e83df81e69f5c249d (checkout detached at the pin)",
+    "base": "440ed3c8 (round-5 pin). Delta: git diff 440ed3c8 142ecfc for course/modules/M/M4 (project.html 4 lines, grader/test_project.py 28 lines, cards.json 57 lines, L01-L03 lines); mutants d5_01 and v9_01..v9_04 added in round 5",
+    "checkout": str(ROOT),
+    "scratch": "/tmp/M4-d-r6/txt (lesson text), /tmp/M4-d-r6-count (collect-only copy of grader and reference)",
+    "verified_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+    "verdict": "FAIL",
+    "rows": rows,
+    "mutants": mutants,
+    "registry_flags": [],
+    "freshness_flags": [],
+    "notes": [
+        "All 49 round-5 row ids are kept. Every row was re-verified at this pin; none is carried forward unchanged.",
+        "Round-5 FAILs now PASS: d1-prose-scope, d2-2.6-constraints-exceptions, d1-2.6-contract-notes-chi-claim, d1-2.6-mut-pairwise-survivor, d1-cards-lesson-statements.",
+        "Round-5 FAIL still open: d1-cards-forward-reference (M4-c220 uses the standard normal before Lesson 6).",
+        "Pre-existing files: ledgers/M4/scripts/M4-d-r6/alts/ and commands_round6_output.txt, labout/, mutate_graders_M4_seeds0-9*.txt were already in the pin (commit 7aa909e9, not this verifier); I ran alts/ as they are and did not rely on the other outputs. My files: the *.py, *.sh, *.jsonl, *.out and gates/ outputs named in the rows.",
+        "Not checked: every lesson line behind the 200 T cards (sampled, see d6-cards-sample); pytest over the full suite (only the M4-relevant selection and the gates listed); page_smoke for other pages (not in slice); the 2000-seed sweep was run once.",
+        "Equivalent mutant m17 and the float-ceiling equivalence are argued and checked, not listed in mutants/.",
+    ],
+    "summary": "",
+}
+rows_fail = [r for r in rows if r["status"] != "PASS"]
+passes = sum(1 for r in rows if r["status"] == "PASS")
+fragment["summary"] = (
+    f"Slice d round 6: {len(rows)} rows, {passes} PASS, {len(rows_fail)} non-PASS. Mutants: {sum(1 for m in mutants if m['killed_by'])}"
+    f"/{len(mutants)} killed (survivors r6d_01 and r6d_03). Non-PASS: " + "; ".join(r["id"] for r in rows_fail) + "."
+)
+out = ROOT / "ledgers/M4/M4-d.json"
+out.write_text(json.dumps(fragment, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print("wrote", out, len(rows), "rows", len(mutants), "mutants")

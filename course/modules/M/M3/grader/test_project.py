@@ -479,7 +479,7 @@ def test_projection_repair_is_a_valid_repair(inst: dict[str, Any]) -> None:
 
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["seed", "second_seed"])
 def test_projection_repair_is_no_farther_than_clipping(inst: dict[str, Any]) -> None:
-    """The Frobenius-nearest repair is no farther from the input than any other valid repair, clipping included."""
+    """The projection repair is no farther from the input than clip_repair, to 1e-6, on each seeded instance."""
     y = as_matrix(sol.projection_repair(inst["corr"]), inst["k"])
     clip = as_matrix(sol.clip_repair(inst["corr"]), inst["k"])
     assert frob(y, inst["corr"]) <= frob(clip, inst["corr"]) + 1e-6, (
@@ -489,8 +489,8 @@ def test_projection_repair_is_no_farther_than_clipping(inst: dict[str, Any]) -> 
 
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["seed", "second_seed"])
 def test_projection_repair_is_no_farther_than_shrunk_clipping(inst: dict[str, Any]) -> None:
-    """Every t * clip + (1 - t) * identity, t in [0, 1], is valid; the nearest repair is no farther than the
-    nearest of them."""
+    """Every t * clip + (1 - t) * identity, t in [0, 1], is valid; the projection repair is no farther from the
+    input than the nearest of them, to 1e-6."""
     y = as_matrix(sol.projection_repair(inst["corr"]), inst["k"])
     clip = as_matrix(sol.clip_repair(inst["corr"]), inst["k"])
     best = min(frob(shrunk(clip, t / 200.0), inst["corr"]) for t in range(201))
@@ -637,8 +637,8 @@ def test_weights_sum_to_one(inst: dict[str, Any]) -> None:
 
 
 def test_weights_two_asset_closed_form() -> None:
-    """With Sigma = D C D and two assets, Sigma^-1 1 is proportional to (b(b - rho a), a(a - rho b)), with a, b
-    the vols."""
+    """With Sigma = S C S (S = diag of the vols) and two assets, Sigma^-1 1 is proportional to
+    (b(b - rho a), a(a - rho b)), with a, b the vols."""
     a, b = INST["vols"][0], INST["vols"][1]
     rho = INST["psd_corr"][0][1]
     w = sol.comparison_weights([[1.0, rho], [rho, 1.0]], [a, b])
@@ -663,7 +663,7 @@ def test_weights_with_identity_correlation_are_inverse_variance(inst: dict[str, 
 
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["seed", "second_seed"])
 def test_weights_solve_sigma_times_weights_proportional_to_ones(inst: dict[str, Any]) -> None:
-    """The defining property: Sigma w is a constant vector, where Sigma = D C D."""
+    """The defining property: Sigma w is a constant vector, where Sigma = S C S."""
     k = inst["k"]
     c, v = inst["psd_corr"], inst["vols"]
     sigma = [[v[i] * c[i][j] * v[j] for j in range(k)] for i in range(k)]

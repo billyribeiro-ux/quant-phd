@@ -61,7 +61,7 @@ def _second_difference(strikes: list[int], calls: list[int], j: int) -> Fraction
 
 
 def convexity_violations(strikes_cents: list[int], calls_cents: list[int], df_ppm: int) -> list[int]:
-    """The interior indices j at which the second difference in strike is negative (a convexity failure).
+    """The interior indices j, in increasing order, at which the call lies strictly above the chord (convexity fails).
 
     The quotes are present values at the valuation date, so the test compares them without discounting, and the
     sign does not depend on df_ppm. df_ppm is validated and not used otherwise.

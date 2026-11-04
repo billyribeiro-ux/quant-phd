@@ -47,7 +47,7 @@ def jacobi_eigen(a: Matrix) -> tuple[list[float], Matrix]:
 
 
 def psd_projection(a: Matrix) -> Matrix:
-    """The nearest positive semidefinite matrix in the Frobenius norm: negative eigenvalues set to 0, then rebuilt."""
+    """Negative eigenvalues set to 0, then the matrix rebuilt from its eigenvectors; no rescaling."""
     n = len(a)
     values, vectors = jacobi_eigen(a)
     clipped = [max(x, 0.0) for x in values]

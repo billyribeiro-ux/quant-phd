@@ -20,7 +20,7 @@ def parity_gap_cents(call_cents: int, put_cents: int, spot_cents: int, strike_ce
 
 
 def convexity_violations(strikes_cents: list[int], calls_cents: list[int], df_ppm: int) -> list[int]:
-    """The interior indices j at which the second difference of the calls in strike is negative."""
+    """The interior indices j, in increasing order, at which the call lies above the chord of its two neighbours."""
     raise NotImplementedError("convexity_violations is not written yet")
 
 

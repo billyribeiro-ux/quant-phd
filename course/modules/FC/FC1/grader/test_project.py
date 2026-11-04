@@ -786,3 +786,43 @@ def _named_when_unimplemented(test: Callable[..., None]) -> Callable[..., None]:
 for _name, _value in list(globals().items()):
     if _name.startswith("test_") and callable(_value):
         globals()[_name] = _named_when_unimplemented(_value)
+
+
+def test_bond_schedule_of_one_hundred_periods_is_complete_and_discounted_by_its_own_period() -> None:
+    """Accepted-input check: a 100-period bond has one event per period 1..100, the face in period 100, and its price at
+    400 bps is the exact sum of all 100 events, each discounted by its own period, rounded once."""
+    __tracebackhide__ = True
+    bond = sol.Bond(10_000, 500, 100)
+    rows = checked_events(bond.events(), "Bond.events")
+    assert rows == oracle_events(10_000, 500, 100), (
+        "every period 1..100 must carry its coupon, and the face the last one"
+    )
+    got = checked_int(sol.bond_price_cents(bond, 400), "bond_price_cents")
+    assert got == oracle_price(oracle_events(10_000, 500, 100), 400), (
+        "all 100 events must be discounted by (1 + y) ** -t for their own periods, and the sum rounded once"
+    )
+
+
+def test_yield_of_three_hundred_percent_per_period_is_accepted() -> None:
+    """Accepted-input check: a yield of 30000 bps (300 % per period) is not named as refused: 10500 / 4 = 2625 cents."""
+    __tracebackhide__ = True
+    assert sol.bond_price_cents(sol.Bond(10_000, 500, 1), 30_000) == 2_625, (
+        "a yield above 100 % per period is not named as refused; the price is the discounted event"
+    )
+
+
+def test_trade_settling_after_period_one_hundred_is_accepted() -> None:
+    """Accepted-input check: the page names only settlement_day < 1; a trade settling in period 1000 is valid."""
+    __tracebackhide__ = True
+    assert checked_events(sol.CashTrade(10, 9_850, 1, 1_000).events(), "CashTrade.events") == [(1_000, -98_500)], (
+        "a trade's one event is in its settlement period, however late"
+    )
+
+
+def test_bond_price_exact_half_above_forty_significant_digits_is_exact() -> None:
+    """Accepted-input check: Bond(10**40 + 1, 0, 1) at 10000 bps has exact present value 5 * 10**39 + 1/2 cents
+    (forty-one significant digits), which rounds away from zero to 5 * 10**39 + 1."""
+    __tracebackhide__ = True
+    assert sol.bond_price_cents(sol.Bond(10**40 + 1, 0, 1), 10_000) == 5 * 10**39 + 1, (
+        "an exact half cent of a price above forty significant digits must round away from zero, with no digits lost"
+    )

@@ -1,4 +1,6 @@
-"""Reference solution for the M4 project: tail_risk.py, the tail-risk simulator. All inputs are SIMULATED.
+"""Round-6 alternative (plan 5.5 item 1), scoped: Box-Muller normals for the Student-t family only.
+
+Reference solution for the M4 project: tail_risk.py, the tail-risk simulator. All inputs are SIMULATED.
 
 Standard library only. Every function validates its inputs and raises ValueError for the conditions named in
 project.html, Rung 3 · Specification. Losses are integer cents, rounded once with round() at the output.
@@ -79,14 +81,17 @@ def simulate_losses(
     rng = random.Random(seed)
     losses: list[int] = []
     for _ in range(n_draws):
-        z = []
-        while len(z) < n:
-            u1 = 1.0 - rng.random()
-            u2 = rng.random()
-            radius = math.sqrt(-2.0 * math.log(u1))
-            z.append(radius * math.cos(2.0 * math.pi * u2))
-            if len(z) < n:
-                z.append(radius * math.sin(2.0 * math.pi * u2))
+        if student:
+            z = []
+            while len(z) < n:
+                u1 = 1.0 - rng.random()
+                u2 = rng.random()
+                radius = math.sqrt(-2.0 * math.log(u1))
+                z.append(radius * math.cos(2.0 * math.pi * u2))
+                if len(z) < n:
+                    z.append(radius * math.sin(2.0 * math.pi * u2))
+        else:
+            z = [rng.gauss(0.0, 1.0) for _ in range(n)]
         scale = 1.0
         if student and nu is not None:
             chi_square = rng.gammavariate(nu / 2, 2.0)

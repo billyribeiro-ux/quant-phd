@@ -37,5 +37,5 @@ def projection_repair(matrix: list[list[float]], tol: float = 1e-10, max_iter: i
 
 
 def comparison_weights(corr: list[list[float]], vols: list[float]) -> list[float]:
-    """Weights proportional to the inverse covariance matrix times the ones vector, normalised to sum to 1."""
+    """Weights proportional to Sigma^-1 times the ones vector, Sigma = S C S, S = diag(vols), summing to 1."""
     raise NotImplementedError("comparison_weights is not written yet")

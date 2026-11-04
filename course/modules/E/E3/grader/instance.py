@@ -8,14 +8,16 @@ SIMULATED participant and a questionnaire, and then simulates that participant's
 * a starting wealth in whole cents, from $50,000.00 to $200,000.00 (the "crra" model uses it, the prospect model
   does not);
 * 200 choice pairs. Each lottery has 2 or 3 prizes in whole cents, between $5.00 and $500.00 in magnitude, with exact
-  probabilities that are positive and sum to 1 (denominators 4, 5, 10 and 20). A lottery is mixed (it has a gain and a
-  loss, each with positive probability) or pure (all its prizes are gains);
+  probabilities that are positive and sum to 1 (drawn with denominators 4, 5, 10 and 20 and written in lowest terms,
+  so 1/2 also occurs). A lottery is mixed (it has a gain and a loss, each with positive probability) or pure (all its
+  prizes are gains);
 * the answers. The chosen alternative is drawn with ``random.Random(seed)`` from the logit probability
   P(A) = 1 / (1 + exp(-kappa (CE_A - CE_B) / 10000)), where CE is the prospect certainty equivalent in cents, so the
   difference is taken in units of $100.
 
 The instance is returned as JSON text (``responses_json``), which is the form the in-browser questionnaire exports.
-Probabilities are written as "numerator/denominator" strings, which ``Fraction`` reads back exactly.
+Probabilities are written as ``str(Fraction)`` text: "numerator/denominator", or "1" or "0" for a whole number, which
+``Fraction`` reads back exactly.
 
 A draw is rejected, and the next draw taken, unless all of the following hold:
 

@@ -200,6 +200,17 @@ def test_welford_sample_variance_of_two_values_is_defined() -> None:
         pytest.fail("the sample variance of the two values 1 and 3 is not the value that Conventions defines.")
 
 
+def test_welford_variance_default_ddof_is_sample() -> None:
+    """The signature variance(ddof: int = 1) makes ddof 1 the default, so variance() is the sample variance."""
+    acc = WelfordAccumulator()
+    acc.update(1.0)
+    acc.update(3.0)
+    if not close(acc.variance(), 2.0):
+        pytest.fail("variance() with no argument must be the sample variance (ddof 1), as the signature states.")
+    if not close(acc.variance(), acc.variance(1)):
+        pytest.fail("variance() with no argument must equal variance(1), the default ddof the signature states.")
+
+
 def test_welford_nan_update_raises() -> None:
     acc = WelfordAccumulator()
     acc.update(VALUES[0])

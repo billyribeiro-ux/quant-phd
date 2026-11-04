@@ -1,7 +1,7 @@
 """Reference solution for the M3 project, covariance_doctor.py. Not shipped to learners.
 
-Pure Python, standard library only. Eigenvalues come from cyclic Jacobi rotations; the Frobenius-nearest repair is
-Alternating projections, with correction terms, between the positive semidefinite and the unit-diagonal matrices.
+Pure Python, standard library only. Eigenvalues come from cyclic Jacobi rotations; the projection repair is computed by
+alternating projections, with correction terms, between the positive semidefinite and the unit-diagonal matrices.
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ def _rebuild(values: list[float], vectors: Matrix) -> Matrix:
 
 
 def _psd_projection(a: Matrix) -> Matrix:
-    """The nearest positive semidefinite matrix in the Frobenius norm: negative eigenvalues set to zero."""
+    """Negative eigenvalues set to zero, then the matrix rebuilt from its eigenvectors; no rescaling."""
     values, vectors = _eigh(a)
     return _rebuild([max(x, 0.0) for x in values], vectors)
 

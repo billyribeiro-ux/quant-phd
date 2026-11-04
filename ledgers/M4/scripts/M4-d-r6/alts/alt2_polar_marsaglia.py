@@ -1,4 +1,6 @@
-"""Reference solution for the M4 project: tail_risk.py, the tail-risk simulator. All inputs are SIMULATED.
+"""Round-6 alternative (plan 5.5 item 2), scoped: polar Marsaglia normals for the Student-t family only.
+
+Reference solution for the M4 project: tail_risk.py, the tail-risk simulator. All inputs are SIMULATED.
 
 Standard library only. Every function validates its inputs and raises ValueError for the conditions named in
 project.html, Rung 3 · Specification. Losses are integer cents, rounded once with round() at the output.
@@ -79,16 +81,19 @@ def simulate_losses(
     rng = random.Random(seed)
     losses: list[int] = []
     for _ in range(n_draws):
-        z = []
-        while len(z) < n:
-            x = 2.0 * rng.random() - 1.0
-            y = 2.0 * rng.random() - 1.0
-            s = x * x + y * y
-            if 0.0 < s < 1.0:
-                radius = math.sqrt(-2.0 * math.log(s) / s)
-                z.append(x * radius)
-                if len(z) < n:
-                    z.append(y * radius)
+        if student:
+            z = []
+            while len(z) < n:
+                x = 2.0 * rng.random() - 1.0
+                y = 2.0 * rng.random() - 1.0
+                s = x * x + y * y
+                if 0.0 < s < 1.0:
+                    radius = math.sqrt(-2.0 * math.log(s) / s)
+                    z.append(x * radius)
+                    if len(z) < n:
+                        z.append(y * radius)
+        else:
+            z = [rng.gauss(0.0, 1.0) for _ in range(n)]
         scale = 1.0
         if student and nu is not None:
             chi_square = rng.gammavariate(nu / 2, 2.0)

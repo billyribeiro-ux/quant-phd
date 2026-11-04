@@ -693,6 +693,28 @@ def test_estimate_needs_a_mixed_sign_lottery() -> None:
         },
     ]
     must_raise(lambda: sol.estimate(zero_prize), "a zero prize is neither a gain nor a loss")
+    zero_prize_gain_only = [
+        {
+            "pair_id": 0,
+            "choice": "A",
+            "prizes_a": [300, 0],
+            "probs_a": ["1/2", "1/2"],
+            "prizes_b": [200],
+            "probs_b": ["1"],
+        },
+        {
+            "pair_id": 1,
+            "choice": "B",
+            "prizes_a": [500],
+            "probs_a": ["1"],
+            "prizes_b": [50, 900],
+            "probs_b": ["1/2", "1/2"],
+        },
+    ]
+    must_raise(
+        lambda: sol.estimate(zero_prize_gain_only),
+        "a lottery of a gain and a zero prize is not mixed: a zero prize is neither a gain nor a loss",
+    )
     expect(
         mixed([-100, 300], [Fraction(1, 2), Fraction(1, 2)]), "a lottery with a loss of positive probability is mixed"
     )
@@ -781,6 +803,32 @@ def test_estimate_accepts_a_mixed_lottery_on_the_b_side_alone() -> None:
     )
 
 
+def test_estimate_counts_a_mixed_lottery_whether_or_not_it_was_chosen() -> None:
+    """Named condition: the set is refused only when no response has a lottery that mixes a gain and a loss, each with
+    positive probability, and a lottery counts whether or not the participant chose it. Here every choice is A, so no
+    chosen lottery mixes (the A lotteries are pure), but every B lottery, which was not chosen, mixes. The condition is
+    met, so the estimate must not raise ValueError. The page names no outcome for this set beyond that. Every choice is
+    A, so the reference's maximum is degenerate (choice precision near 925, standard errors above 10^5), and an
+    implementation may return or raise another exception."""
+    responses: list[dict[str, object]] = [
+        {
+            "pair_id": i,
+            "choice": "A",
+            "prizes_a": [B_SIDE_SURE_A[i]],
+            "probs_a": ["1"],
+            "prizes_b": B_SIDE_LOTTERIES[i][0],
+            "probs_b": B_SIDE_LOTTERIES[i][1],
+        }
+        for i in range(len(B_SIDE_SURE_A))
+    ]
+    try:
+        sol.estimate(responses)
+    except ValueError:
+        expect(False, "a mixed lottery that was not chosen still satisfies the mixed-sign condition")
+    except Exception:  # any other exception is not checked: the page names no outcome for this set
+        return
+
+
 def test_estimate_refuses_probabilities_that_sum_below_one() -> None:
     """Named condition, in a response: the probabilities of a lottery must sum to exactly 1. This response is otherwise
     valid (mixed-sign, non-negative), and its probabilities sum to 999/1000."""
@@ -843,8 +891,8 @@ RESPONSES_BASE: dict[str, Any] = {
 
 def test_prospect_gain_branch_is_the_power_inverse_without_a_loss_weight() -> None:
     """Exact case at gamma = 1/2, lambda = 2. Gains: v(x) = sqrt(x). The lottery of 100 and 400, each with probability
-    1/2, has value (10 + 20) / 2 = 15, and the sure amount with value 15 is 15^2 = 225 cents. A loss weight in this
-    branch would give 225 / 2 instead."""
+    1/2, has value (10 + 20) / 2 = 15, and the sure amount with value 15 is 15^2 = 225 cents. A loss weight applied to
+    the value would give 30 and then 900 cents instead; dividing the sure amount by lambda would give 225 / 2."""
     got = sol.certainty_equivalent_cents(
         "prospect", [100, 400], [Fraction(1, 2), Fraction(1, 2)], {"gamma": 0.5, "lambda": 2.0}, WEALTH
     )

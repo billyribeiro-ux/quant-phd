@@ -204,17 +204,18 @@ def _mean_abs_t(nu: int) -> float:
 
 def test_student_t_draws_do_not_share_chi_square() -> None:
     # Each Student-t draw has its own chi-square variable (Conventions item 5). Then every pair of draws one apart
-    # (i, i + 1) and every pair two apart (i, i + 2) is independent, and P(both |loss| above the median) is 1/4 for each
-    # pair. The pairs are taken in non-overlapping blocks: for lag d, the offsets 0 to 2d - 1 each give the pairs
-    # (i, i + d) with i stepping by 2d. The test accepts 1/4 within five standard errors for every block, over 40,000
-    # draws at nu = 3. A chi-square variable shared by draws i and i + 1 moves the lag-1 share away from 1/4; one shared
-    # by draws i and i + 2 moves the lag-2 share away from 1/4. A sharing at a lag of three or more is not read here.
+    # (i, i + 1), two apart (i, i + 2) and three apart (i, i + 3) is independent, and P(both |loss| above the median)
+    # is 1/4 for each pair. The pairs are taken in non-overlapping blocks: for lag d, the offsets 0 to 2d - 1 each give
+    # the pairs (i, i + d) with i stepping by 2d. The test accepts 1/4 within five standard errors for every block of
+    # lags 1 to 3, over 40,000 draws at nu = 3. A chi-square variable shared by draws i and i + 1 moves the lag-1 share
+    # away from 1/4; one shared by draws i and i + 2 moves the lag-2 share away from 1/4; one shared by draws i and
+    # i + 3 moves the lag-3 share away from 1/4. A sharing at a lag of four or more is not read here.
     n = 40_000
     losses = sol.simulate_losses([1_000_000], [[4e-4]], n, SEED, "student_t", 3)
     magnitudes = [abs(x) for x in losses]
     median = sorted(magnitudes)[n // 2]
     above = [m > median for m in magnitudes]
-    for lag in (1, 2):
+    for lag in (1, 2, 3):
         for offset in range(2 * lag):
             pairs = [(above[i], above[i + lag]) for i in range(offset, n - lag, 2 * lag)]
             share = sum(a and b for a, b in pairs) / len(pairs)
@@ -555,6 +556,34 @@ def test_one_position_with_a_tiny_positive_variance_has_the_right_loss_variance(
     check(
         relative_error(sample_variance(losses), 1e12) <= TOL_GAUSSIAN_VARIANCE,
         "the loss variance of a one-position portfolio must be w' Sigma w, also for a tiny positive variance",
+    )
+
+
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+@pytest.mark.parametrize("variance", [1e-16, 1e-30])
+def test_one_position_with_a_variance_of_1e16_or_1e30_is_accepted(family: str, nu: int | None, variance: float) -> None:
+    # A variance of 1e-16 or 1e-30 is positive, so the one-position portfolio is valid. A pivot check with an absolute
+    # tolerance above these values (for example pivot > 1e-15) would wrongly reject it.
+    losses = sol.simulate_losses([1_000_000], [[variance]], 100, SEED, family, nu)
+    check(
+        len(losses) == 100 and all(type(x) is int for x in losses),
+        "a one-position covariance with a tiny positive variance must be accepted",
+    )
+
+
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+@pytest.mark.parametrize("scale", [1e-16, 1e-30])
+def test_two_positions_with_covariance_of_order_1e16_or_1e30_are_accepted(
+    family: str, nu: int | None, scale: float
+) -> None:
+    # Entries of order scale, both pivots (scale and 0.89 scale) positive: a valid input that a pivot tolerance above
+    # 1e-15 would wrongly reject.
+    off = scale / 10
+    cov = [[scale, off], [off, 0.9 * scale]]
+    losses = sol.simulate_losses([1_000_000, 1_000_000], cov, 100, SEED, family, nu)
+    check(
+        len(losses) == 100 and all(type(x) is int for x in losses),
+        "a 2 x 2 positive definite covariance with tiny entries must be accepted",
     )
 
 

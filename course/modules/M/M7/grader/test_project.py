@@ -37,6 +37,7 @@ SEED = int(os.environ.get("QF_SEED", "0"))
 TOL = 1e-8  # the tolerance for feasibility, stationarity and complementary slackness; agreement uses 1e-9
 FIELDS = ("gamma", "mu", "sigma", "w0", "lower", "upper", "sector", "sector_caps", "turnover_limit")
 CERTIFICATE_KEYS = ("primal_residual", "stationarity_residual", "dual_residual", "complementary_slackness")
+MULTIPLIER_LISTS = ("lower", "upper", "sector", "turnover_plus", "turnover_minus")
 PRISTINE: dict[str, Any] = json.loads(make_instance(SEED)["payload"])
 N: int = len(PRISTINE["mu"])
 Z: int = len(PRISTINE["sector_caps"])
@@ -124,7 +125,7 @@ def objective(case: Mapping[str, Any], w: list[float]) -> float:
 
 
 def output_shape(case: Mapping[str, Any], out: Any) -> None:
-    """The returned object has the fields, names and lengths of the page's contract."""
+    """The returned object has the fields, names, types and lengths of the page's contract."""
     __tracebackhide__ = True
     assert isinstance(out, Mapping), "allocate must return a mapping with the three fields of the page."
     assert set(out) == {"weights", "multipliers", "certificate"}, (
@@ -144,6 +145,10 @@ def output_shape(case: Mapping[str, Any], out: Any) -> None:
             f"multipliers[{key!r}] must be a list with one entry per "
             + ("sector cap." if key == "sector" else "asset.")
         )
+    for key in ("budget", "turnover_total"):
+        assert is_real_number(mult[key]), f"multipliers[{key!r}] must be a real number."
+    for key in MULTIPLIER_LISTS:
+        assert all(is_real_number(v) for v in mult[key]), f"every entry of multipliers[{key!r}] must be a real number."
     assert isinstance(out["certificate"], Mapping) and set(out["certificate"]) == set(CERTIFICATE_KEYS), (
         "the certificate must carry the four residual fields of the page."
     )
@@ -295,6 +300,14 @@ def test_weights_and_multipliers_are_real_numbers() -> None:
     for value in (*out["weights"], *out["certificate"].values()):
         assert is_real_number(value), "every returned number must be real."
         assert math.isfinite(value), "every returned number must be finite."
+    mult = out["multipliers"]
+    multiplier_values = [
+        mult["budget"],
+        mult["turnover_total"],
+        *(value for key in MULTIPLIER_LISTS for value in mult[key]),
+    ]
+    for value in multiplier_values:
+        assert is_real_number(value), "every multiplier must be a real number, not text, a boolean or a complex number."
 
 
 # ---------------------------------------------------------------------------------------------------------------------
