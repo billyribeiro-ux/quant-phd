@@ -203,24 +203,26 @@ def _mean_abs_t(nu: int) -> float:
 
 
 def test_student_t_draws_do_not_share_chi_square() -> None:
-    # Each Student-t draw has its own chi-square variable (Conventions item 5). Then the pairs of draws (2k, 2k + 1) and
-    # (2k + 1, 2k + 2) are each independent, and P(both |loss| above the median) is 1/4 for each pair. The test accepts
-    # 1/4 within five standard errors, for both pairings, over 40,000 draws at nu = 3. A chi-square variable shared by
-    # draws 2k and 2k + 1 makes the offset-0 pairs dependent and moves their share away from 1/4. One shared by draws 2k
-    # and 2k + 2 leaves every consecutive pair independent, so this check does not see it.
+    # Each Student-t draw has its own chi-square variable (Conventions item 5). Then every pair of draws one apart
+    # (i, i + 1) and every pair two apart (i, i + 2) is independent, and P(both |loss| above the median) is 1/4 for each
+    # pair. The pairs are taken in non-overlapping blocks: for lag d, the offsets 0 to 2d - 1 each give the pairs
+    # (i, i + d) with i stepping by 2d. The test accepts 1/4 within five standard errors for every block, over 40,000
+    # draws at nu = 3. A chi-square variable shared by draws i and i + 1 moves the lag-1 share away from 1/4; one shared
+    # by draws i and i + 2 moves the lag-2 share away from 1/4. A sharing at a lag of three or more is not read here.
     n = 40_000
     losses = sol.simulate_losses([1_000_000], [[4e-4]], n, SEED, "student_t", 3)
     magnitudes = [abs(x) for x in losses]
     median = sorted(magnitudes)[n // 2]
     above = [m > median for m in magnitudes]
-    standard_error = math.sqrt(0.25 * 0.75 / (n // 2))
-    for offset in (0, 1):
-        pairs = [(above[i], above[i + 1]) for i in range(offset, n - 1, 2)]
-        share = sum(a and b for a, b in pairs) / len(pairs)
-        check(
-            abs(share - 0.25) <= 5 * standard_error,
-            "each student_t draw must have its own chi-square variable: draws must not share one across pairs",
-        )
+    for lag in (1, 2):
+        for offset in range(2 * lag):
+            pairs = [(above[i], above[i + lag]) for i in range(offset, n - lag, 2 * lag)]
+            share = sum(a and b for a, b in pairs) / len(pairs)
+            standard_error = math.sqrt(0.25 * 0.75 / len(pairs))
+            check(
+                abs(share - 0.25) <= 5 * standard_error,
+                "each student_t draw must have its own chi-square variable: draws must not share one across pairs",
+            )
 
 
 @pytest.mark.parametrize("family, nu", FAMILY_CASES)

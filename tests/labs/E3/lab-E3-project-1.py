@@ -49,22 +49,32 @@ def choice_probability_a(ce_a: float, ce_b: float, kappa: float) -> float:
 
 
 def main() -> None:
+    # Each pair: A's prizes in cents and their probabilities, B's prizes and probabilities, and the answer given.
+    # The probabilities are exact fractions, so each lottery's probabilities sum to exactly 1.
     pairs = [
         ("pair 1", [2000, -1000], [Fraction(1, 2), Fraction(1, 2)], [500], [Fraction(1)], "A"),
         ("pair 2", [3000], [Fraction(1)], [4000, -2000], [Fraction(1, 4), Fraction(3, 4)], "B"),
         ("pair 3", [1500, 2500], [Fraction(1, 3), Fraction(2, 3)], [-500, 3000], [Fraction(1, 2), Fraction(1, 2)], "A"),
     ]
+    # The log-likelihood starts at zero and gains one term for each pair.
     total = 0.0
     for name, pa, qa, pb, qb, chosen in pairs:
+        # The CRRA values are printed for comparison only: the likelihood does not use them. Each is rounded to a
+        # whole cent, with an exact half going up.
         crra_a = nearest_cent(crra_certainty_equivalent(pa, qa, GAMMA, WEALTH))
         crra_b = nearest_cent(crra_certainty_equivalent(pb, qb, GAMMA, WEALTH))
+        # The prospect values are unrounded floats. The logit rule below uses them directly, so the likelihood
+        # never sees a rounded amount.
         ce_a = prospect_certainty_equivalent(pa, qa, GAMMA, LAMBDA)
         ce_b = prospect_certainty_equivalent(pb, qb, GAMMA, LAMBDA)
         print(
             name, "| CRRA cents A, B:", crra_a, crra_b, "| prospect cents A, B:", nearest_cent(ce_a), nearest_cent(ce_b)
         )
+        # The logit rule gives P(A) from the difference of the two unrounded certainty equivalents.
         p_a = choice_probability_a(ce_a, ce_b, KAPPA)
+        # A response contributes the probability of the alternative it chose: P(A) if A was chosen, 1 - P(A) if B.
         p_chosen = p_a if chosen == "A" else 1.0 - p_a
+        # The log of that probability is this pair's term in the log-likelihood; the three terms add.
         total += math.log(p_chosen)
         print(name, "| P(A):", f"{p_a:.6f}", "| chosen:", chosen, "| log P(chosen):", f"{math.log(p_chosen):.6f}")
     print("log-likelihood of the three choices:", f"{total:.6f}")

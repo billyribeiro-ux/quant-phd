@@ -1,4 +1,5 @@
-"""Rung 3 reference numbers: the repairs, their distances from the input, and the determinant and weights of the input.
+"""Rung 3 reference numbers: the repairs, their distances from the input, their smallest eigenvalues,
+and the determinant and weights of the input.
 
 SIMULATED: the four-by-four matrix and the volatilities are set by hand for this run. They are not estimated from data.
 Standard library only. Copy this file into report/run_report.py, delete the six functions jacobi_eigen, psd_projection,
@@ -165,6 +166,8 @@ def main() -> None:
     print("determinant of the input:", f"{determinant(corr):.6f}")
     w_input = comparison_weights(corr, vols)
     print("weights, input:", " ".join(f"{x:.6f}" for x in w_input), "| sum", f"{sum(w_input):.6f}")
+    print("smallest eigenvalue of the clipped repair:", f"{min_eigenvalue(clip):.6f}")
+    print("smallest eigenvalue of the projection:", f"{min_eigenvalue(proj):.6f}")
 
 
 main()

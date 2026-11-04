@@ -385,9 +385,27 @@ def test_crra_requires_wealth_plus_every_prize_to_stay_positive() -> None:
 def test_wrong_types_never_return_money_as_a_float() -> None:
     """Inputs of the wrong type may raise any exception. If one returns, the result must be an int."""
     wrong_inputs: list[Callable[[], object]] = [
-        lambda: sol.certainty_equivalent_cents("crra", [100.0], [Fraction(1)], {"gamma": 0.5}, WEALTH),
-        lambda: sol.certainty_equivalent_cents("prospect", [100], [0.5, 0.5], {"gamma": 0.0, "lambda": 1.0}, WEALTH),
-        lambda: sol.certainty_equivalent_cents("crra", [100], [Fraction(1)], {"gamma": 0.5}, 1000.0),
+        lambda: sol.certainty_equivalent_cents(
+            "crra",
+            [100.0],  # type: ignore[list-item]
+            [Fraction(1)],
+            {"gamma": 0.5},
+            WEALTH,
+        ),
+        lambda: sol.certainty_equivalent_cents(
+            "prospect",
+            [100],
+            [0.5, 0.5],  # type: ignore[list-item]
+            {"gamma": 0.0, "lambda": 1.0},
+            WEALTH,
+        ),
+        lambda: sol.certainty_equivalent_cents(
+            "crra",
+            [100],
+            [Fraction(1)],
+            {"gamma": 0.5},
+            1000.0,  # type: ignore[arg-type]
+        ),
     ]
     for call in wrong_inputs:
         try:
@@ -616,7 +634,8 @@ def test_estimate_needs_responses() -> None:
 
 def test_estimate_needs_a_mixed_sign_lottery() -> None:
     """Named condition: loss aversion is identified only by a lottery with a gain and a loss, each with positive
-    probability. Pure lotteries alone are refused; a loss with probability zero does not count as a loss."""
+    probability. Pure lotteries alone are refused; a loss with probability zero does not count as a loss; a zero prize
+    is neither a gain nor a loss, so a set in which the only prize that is not a loss is a zero prize is refused too."""
     pure = [
         {
             "pair_id": 0,
@@ -655,11 +674,34 @@ def test_estimate_needs_a_mixed_sign_lottery() -> None:
         },
     ]
     must_raise(lambda: sol.estimate(zero_loss), "a loss with probability zero is not a loss")
+    zero_prize = [
+        {
+            "pair_id": 0,
+            "choice": "A",
+            "prizes_a": [0, -100],
+            "probs_a": ["1/2", "1/2"],
+            "prizes_b": [200],
+            "probs_b": ["1"],
+        },
+        {
+            "pair_id": 1,
+            "choice": "B",
+            "prizes_a": [500],
+            "probs_a": ["1"],
+            "prizes_b": [50, 900],
+            "probs_b": ["1/2", "1/2"],
+        },
+    ]
+    must_raise(lambda: sol.estimate(zero_prize), "a zero prize is neither a gain nor a loss")
     expect(
         mixed([-100, 300], [Fraction(1, 2), Fraction(1, 2)]), "a lottery with a loss of positive probability is mixed"
     )
     expect(
         not mixed([-100, 300], [Fraction(0), Fraction(1)]), "a loss of zero probability does not make a lottery mixed"
+    )
+    expect(
+        not mixed([0, -100], [Fraction(1, 2), Fraction(1, 2)]),
+        "a zero prize is neither a gain nor a loss, so it does not make a lottery mixed",
     )
 
 

@@ -59,7 +59,8 @@ def log_likelihood(xi: list[float]) -> float:
 
 
 def grid_start() -> list[float]:
-    """The best point of a small grid over gamma, lambda and kappa, used to start the search."""
+    """The best of the point (0, 0, 0) in the coordinates (gamma 0.5, lambda 1, kappa 1) and a small grid over gamma,
+    lambda and kappa, used to start the search."""
     best = [0.0, 0.0, 0.0]
     best_value = log_likelihood(best)
     for gamma in (0.05, 0.25, 0.45, 0.65, 0.85):
