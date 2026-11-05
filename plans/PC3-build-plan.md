@@ -412,7 +412,7 @@ must fail on it), `test_project.py`.
   - **Legality.** For seeds 0–49, the student's `quote` returns three integers for every turn, `bid < ask`, `0 <= size <= 5`.
     A crossed quote raises `ValueError` naming "bid must be below ask" (isolated test, hand-built quote). A size of 6 raises
     `ValueError` naming "size must lie in 0..5" (isolated test).
-  - **Log shape.** `play(policy, seed)` returns exactly 20 turn records; a log of 19 turns raises `ValueError` ("a log has exactly 20
+  - **Log shape.** `play(quote, seed)` returns exactly 20 turn records; a log of 19 turns raises `ValueError` ("a log has exactly 20
     turns") in `replay` (isolated test). A filled turn with `fill_price_cents = None` raises `ValueError` ("a filled turn needs a fill
     price") (isolated test).
   - **Replay.** For seeds 0–49, the fills in the student's log equal the engine's fills under the stated rules (buy at the ask, sell at the

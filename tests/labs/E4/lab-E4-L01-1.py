@@ -90,8 +90,8 @@ def main() -> None:
 
     print("Part E: invalid probability vectors are rejected")
     negative = (Fraction(1, 2), Fraction(1, 2), Fraction(1, 2), Fraction(-1, 2))
-    short = (Fraction(1, 8), Fraction(3, 8), Fraction(3, 8), Fraction(1, 4))
-    for label, bad in (("negative", negative), ("short", short)):
+    overweight = (Fraction(1, 8), Fraction(3, 8), Fraction(3, 8), Fraction(1, 4))
+    for label, bad in (("negative", negative), ("overweight", overweight)):
         try:
             check_probabilities(bad)
         except ValueError as exc:

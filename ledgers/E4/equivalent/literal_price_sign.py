@@ -1,13 +1,6 @@
-"""Literal price-sign error: the noise coefficient b_u is given the wrong sign, b_u = +a b_s / (lam tau_e).
+"""Variant of the reference: the noise coefficient of the price has the wrong sign (equivalent on the outputs).
 
-Reference solution for the E4 project: the solver for the noisy rational-expectations model with costly information.
-
-This file is the full solution. It is excluded from deployment (BLUEPRINT section 7); the suite in test_project.py is
-public and does not import it. The model, its derivation and every formula below are stated on project.html, section
-"Rung 3 · Specification", and the derivation of each formula is numbered there. Standard library only.
-
-Units: the payoff and the price are in the same units; prices and payoffs are dimensionless in this model. Precisions
-are inverse variances. Utilities are in the units of -exp(-a W), so an expected utility lies in [-1, 0).
+Single change to grader/reference.py, regenerated for the cap of 240 halvings (round 11).
 """
 
 from __future__ import annotations
@@ -18,7 +11,8 @@ RISK_AVERSION = 2.0  # a: the CARA coefficient of U(W) = -exp(-a W), fixed for e
 PRIOR_PRECISION = 1.0  # tau_v: the precision of the payoff's prior, 1 / Var(v), fixed for every instance
 SIGNAL_PRECISION = 1.0  # tau_e: the precision of the signal s = v + eps, 1 / Var(eps), fixed for every instance
 BISECTION_TOLERANCE = 1e-12  # the search stops when the bracket is narrower than this times its upper end
-MAX_BISECTION_STEPS = 200  # a safety bound; the bracket halves each step, so 200 halvings exceed any relative tolerance
+MAX_BISECTION_STEPS = 240  # a safety bound: each halving halves the bracket, so 240 halvings reach the relative
+# tolerance for every root above about 6e-61 (2^-240 is about 6.2e-73); 200 halvings do not reach it at a root near 2e-51
 
 
 def _check_inputs(noise_sd: float, info_cost: float) -> tuple[float, float]:
@@ -33,7 +27,7 @@ def _check_inputs(noise_sd: float, info_cost: float) -> tuple[float, float]:
 
 
 def price_precision(lam: float, noise_sd: float) -> float:
-    """The precision tau_y of the price signal y = p / b_s, for an informed fraction lam in (0, 1] (derivation step 2).
+    """The precision tau_y of the price signal y = p / b_s, for an informed fraction lam in (0, 1] (Proposition 1).
 
     y = s + kappa u with kappa = -a / (lam tau_e), so y = v + (eps + kappa u) and the noise has variance
     1 / tau_e + kappa^2 sd^2. Its precision is lam^2 tau_e^2 / (lam^2 tau_e + a^2 sd^2). Returns 0 at lam = 0.
@@ -43,9 +37,10 @@ def price_precision(lam: float, noise_sd: float) -> float:
 
 
 def price_coefficients(lam: float, noise_sd: float) -> tuple[float, float, float]:
-    """The linear equilibrium price p = b_s s + b_u u for lam in (0, 1], and the precision tau_y of its signal.
+    """The linear equilibrium price p = b_s s + b_u u for lam in (0, 1] (Proposition 1), and the precision tau_y of
+    its signal.
 
-    Returns (b_s, b_u, tau_y). The two coefficient equations of derivation step 3 give b_u / b_s = -a / (lam tau_e),
+    Returns (b_s, b_u, tau_y). The two coefficient equations of Proposition 1 give b_u / b_s = -a / (lam tau_e),
     and b_s = (lam tau_e + (1 - lam) tau_y) / (lam (tau_v + tau_e) + (1 - lam) (tau_v + tau_y)).
     """
     tau_v, tau_e = PRIOR_PRECISION, SIGNAL_PRECISION
@@ -57,7 +52,7 @@ def price_coefficients(lam: float, noise_sd: float) -> tuple[float, float, float
 
 
 def informed_term(lam: float, noise_sd: float) -> float:
-    """F_I(lam) = (1 + P S_I)^(-1/2), the Gaussian integral of the informed agent's utility (derivation step 5).
+    """F_I(lam) = (1 + P S_I)^(-1/2), the Gaussian integral of the informed agent's utility (Proposition 3).
 
     P = tau_v + tau_e is the precision of the informed agent's posterior, and S_I is the variance of m_I - p, where
     m_I = tau_e s / P is the informed agent's conditional mean.
@@ -72,7 +67,7 @@ def informed_term(lam: float, noise_sd: float) -> float:
 
 
 def uninformed_term(lam: float, noise_sd: float) -> float:
-    """F_U(lam) = (1 + r^2 (tau_v + tau_y)(1/tau_v + 1/tau_y))^(-1/2), for lam in (0, 1] (derivation step 5).
+    """F_U(lam) = (1 + r^2 (tau_v + tau_y)(1/tau_v + 1/tau_y))^(-1/2), for lam in (0, 1] (Proposition 3).
 
     r = tau_y / (tau_v + tau_y) - b_s, so that the uninformed agent's conditional mean minus the price is r y, with
     Var(y) = 1/tau_v + 1/tau_y, and the posterior variance of v given p is 1 / (tau_v + tau_y).
@@ -84,7 +79,7 @@ def uninformed_term(lam: float, noise_sd: float) -> float:
 
 
 def gap_at_zero(noise_sd: float, info_cost: float) -> float:
-    """The limit of the gap as the informed fraction tends to 0 (derivation step 6).
+    """The limit of the gap as the informed fraction tends to 0 (Proposition 3, the limit G(0+)).
 
     At lam -> 0 the price tends to -a u / tau_v, so the uninformed term tends to (1 + a^2 sd^2 / tau_v)^(-1/2), and the
     informed term tends to (1 + tau_e / tau_v + (tau_v + tau_e) a^2 sd^2 / tau_v^2)^(-1/2).
@@ -120,7 +115,7 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     """The informed fraction, the price informativeness and the indifference gap of the model at (noise_sd, info_cost).
 
     Boundary rule: the informed fraction is 0 when the gap at 0 is nonpositive, 1 when the gap at 1 is nonnegative, and
-    otherwise the root of the gap in (0, 1), found by bisection on the sign change with the stated tolerance.
+    otherwise the root of the gap in (0, 1), found by bisection on the sign change with BISECTION_TOLERANCE.
     """
     sd, cost = _check_inputs(noise_sd, info_cost)
     gap_0 = gap_at_zero(sd, cost)

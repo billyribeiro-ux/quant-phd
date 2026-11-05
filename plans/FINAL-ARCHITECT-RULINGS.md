@@ -25,3 +25,7 @@
 12. **M3 concept `level-slope-curvature`.** L08 labels principal directions of simulated yield changes and defines no yield-curve
     factor, so the registered concept name was changed in `curriculum/01-foundations.yaml` to "Level-like, slope-like and
     curvature-like principal directions" (the id is unchanged) and the generated outputs were regenerated.
+13. **T versus C for worked values.** A value that the page derives by hand in a numbered Example (with its hypotheses) is
+    graded T with the Example as basis, even when a lab also prints it. A value that appears only in lab output, or that
+    rests on SIMULATED data the page does not derive, is graded C naming the lab. A card and the key-results row it mirrors
+    carry the same grade and basis.

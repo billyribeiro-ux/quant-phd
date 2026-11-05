@@ -116,7 +116,8 @@ def hand_log(turns: list[dict[str, Any]], settlement: int) -> dict[str, Any]:
 
 
 def custom_instance(path: list[int], arrivals: list[str]) -> dict[str, Any]:
-    """An instance the suite writes out in full, for the rules of the engine. It replaces make_instance in one test."""
+    """An instance the suite writes out in full, for the rules of the engine. It replaces make_instance in each test
+    that calls play_custom."""
     return {
         "seed": SEED,
         "label": "SIMULATED",
@@ -426,11 +427,11 @@ def test_the_quote_depends_only_on_the_state_it_is_given() -> None:
 
 
 def test_a_direct_call_on_a_hand_built_state_ignores_an_earlier_game() -> None:
-    """A direct call, with no engine. The state is at turn 5: the history holds a fill at 10020 on turn 2 and no fill on
-    turns 3 and 4, so a quote that reads only the last turn record (turn 4) has no fill to read. The module is reloaded
-    and the state is quoted on the fresh module; then one other game is played and the same state is quoted again. A
-    quote that keeps a value between calls, for example the last fill in a module global, answers the second time from
-    what that game left, so the two answers differ."""
+    """A direct call on a hand-built state; the engine plays one other game in between. The state is at turn 5: the
+    history holds a fill at 10020 on turn 2 and no fill on turns 3 and 4, so a quote that reads only the last turn
+    record (turn 4) has no fill to read. The module is reloaded and the state is quoted on the fresh module; then one
+    other game is played and the same state is quoted again. A quote that keeps a value between calls, for example the
+    last fill in a module global, answers the second time from what that game left, so the two answers differ."""
     history = [
         turn_record(1, bid=9_990, ask=10_010, size=1, inventory=0, cash=0),
         turn_record(
@@ -455,6 +456,24 @@ def test_a_direct_call_on_a_hand_built_state_ignores_an_earlier_game() -> None:
         fresh == after,
         "a quote on a given state must not depend on an earlier game: the same state must give the same quote",
     )
+
+
+def test_a_direct_quote_is_legal_at_every_inventory_within_the_limit() -> None:
+    """A direct call on hand-built states with no history, on turns 1 and 20, at every inventory from -10 to 10: each
+    quote has its bid below its ask and its size in 0..5, whatever the inventory."""
+    for turn in (1, HORIZON):
+        for inventory in range(-10, 11):
+            state: dict[str, object] = {
+                "turn": turn,
+                "inventory": inventory,
+                "cash_cents": 0,
+                "max_size": 5,
+                "limit": 10,
+                "history": [],
+            }
+            bid, ask, size = sol.quote(state)
+            expect(bid < ask, f"turn {turn}, inventory {inventory}: every quote needs a bid below its ask")
+            expect(0 <= size <= 5, f"turn {turn}, inventory {inventory}: a quoted size must lie in 0..5")
 
 
 # The instance: deterministic, valid, and different across seeds.

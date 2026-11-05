@@ -1,14 +1,7 @@
-"""Variant of the reference: reports the lower end of the final bracket instead of its midpoint.
+"""Variant of the reference: reports the lower end of the final bracket instead of its midpoint (equivalent).
 
-This file is a one-edit variant of the reference solution, not the solution. It is excluded from deployment (BLUEPRINT
-section 7); the suite in test_project.py is public and does not import it. The model and its derivation are in the
-section "The model and its equilibrium" of project.html, where Propositions 1 to 4 give the formulas below (the
-numbers in each docstring name the proposition). Standard library only.
-
-Units: the model is written in one normalization, so the payoff, the price and the noise supply are plain numbers and
-carry no unit here. Precisions are inverse variances. Utilities are in the units of -exp(-a W), so an uninformed
-expected utility lies in [-1, 0). An informed one also carries the factor exp(a c) for the cost, so it can lie below
--1."""
+Single change to grader/reference.py, regenerated for the cap of 240 halvings (round 11).
+"""
 
 from __future__ import annotations
 
@@ -18,8 +11,8 @@ RISK_AVERSION = 2.0  # a: the CARA coefficient of U(W) = -exp(-a W), fixed for e
 PRIOR_PRECISION = 1.0  # tau_v: the precision of the payoff's prior, 1 / Var(v), fixed for every instance
 SIGNAL_PRECISION = 1.0  # tau_e: the precision of the signal s = v + eps, 1 / Var(eps), fixed for every instance
 BISECTION_TOLERANCE = 1e-12  # the search stops when the bracket is narrower than this times its upper end
-MAX_BISECTION_STEPS = 200  # a safety bound: each halving halves the bracket, so 200 halvings reach the relative
-# tolerance for every root above about 6e-49 (2^-200 is about 6.2e-61)
+MAX_BISECTION_STEPS = 240  # a safety bound: each halving halves the bracket, so 240 halvings reach the relative
+# tolerance for every root above about 6e-61 (2^-240 is about 6.2e-73); 200 halvings do not reach it at a root near 2e-51
 
 
 def _check_inputs(noise_sd: float, info_cost: float) -> tuple[float, float]:
@@ -122,7 +115,7 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     """The informed fraction, the price informativeness and the indifference gap of the model at (noise_sd, info_cost).
 
     Boundary rule: the informed fraction is 0 when the gap at 0 is nonpositive, 1 when the gap at 1 is nonnegative, and
-    otherwise the root of the gap in (0, 1), found by bisection on the sign change with the stated tolerance.
+    otherwise the root of the gap in (0, 1), found by bisection on the sign change with BISECTION_TOLERANCE.
     """
     sd, cost = _check_inputs(noise_sd, info_cost)
     gap_0 = gap_at_zero(sd, cost)

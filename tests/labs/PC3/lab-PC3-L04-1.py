@@ -1,4 +1,4 @@
-"""PC3 lab L04: the market-making game on seed 0, one fixed quoting rule, and two exact checks.
+"""PC3 lab L04: the market-making game on seed 0, one fixed quoting rule, and exact checks.
 
 SIMULATED. The fair path and the arrivals are model inputs drawn from random.Random(0). No data file is read and there
 is no network access. Standard library only. Quotes, cash flows and inventory marks are integer numbers of cents.

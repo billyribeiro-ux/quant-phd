@@ -398,6 +398,24 @@ def test_gap_at_zero_fraction_is_the_limit_to_full_precision() -> None:
         )
 
 
+@pytest.mark.parametrize("which", list(INSTANCES))
+def test_gap_at_an_interior_fraction_is_the_oracle_gap_to_full_precision(which: str) -> None:
+    """The page states that the solver works at full precision, and that the gap it reports agrees with the gap of
+    Proposition 3 to 1e-14 relative to the larger of 1 and the gap's size at fraction 0. At an interior fraction the
+    same statement holds: the reported gap agrees with the oracle's gap at the reported fraction to that precision."""
+    inst = INSTANCES[which]
+    sd, cost = float(inst["noise_sd"]), float(inst["info_cost"])
+    out = run(sd, cost)
+    lam = out["informed_fraction"]
+    if 0.0 < lam < 1.0:
+        limit = oracle_gap(lam, sd, cost)
+        expect(
+            abs(out["indifference_gap"] - limit) <= 1e-14 * max(1.0, abs(limit)),
+            "at an interior fraction the reported gap must agree with the gap of Proposition 3 at that fraction, to "
+            "full precision: check the expression of the gap, not only the root",
+        )
+
+
 def test_unit_fraction_is_reported_at_zero_cost() -> None:
     out = run(2.0, 0.0)
     expect(
@@ -513,11 +531,11 @@ def closed_form_root(sd: float, cost: float) -> float:
 @pytest.mark.parametrize("sd", [1e-6, 1e-9])
 def test_small_noise_root_is_relatively_accurate(sd: float) -> None:
     """At a cost where tau-bar is at least 1e-2, the page requires accuracy relative to the root, so a root near 1e-9 is
-    as precise as one near 0.5."""
+    as precise as one near 0.5: within 1e-10 times the root."""
     lam = run(sd, 0.13)["informed_fraction"]
     exact = closed_form_root(sd, 0.13)
     expect(
-        exact > 0.0 and abs(lam - exact) <= 1e-8 * exact,
+        exact > 0.0 and abs(lam - exact) <= 1e-10 * exact,
         "the informed fraction must be accurate relative to its size: check the bisection's accuracy near the root",
     )
 
@@ -529,6 +547,19 @@ def test_tiny_noise_root_is_relatively_accurate(sd: float) -> None:
     lam = run(sd, 0.15)["informed_fraction"]
     exact = closed_form_root(sd, 0.15)
     expect(
-        exact > 0.0 and abs(lam - exact) <= 1e-8 * exact,
+        exact > 0.0 and abs(lam - exact) <= 1e-10 * exact,
         "the informed fraction must be accurate relative to its size: check the bracket and the bisection's accuracy",
+    )
+
+
+def test_corner_root_meets_the_relative_accuracy_at_the_domain_edge() -> None:
+    """At the edge of the page's domain, a noise volume of 1e-50 and tau-bar just above 1e-2, the root is about 2e-51.
+    A search that stops after 200 halvings leaves a bracket wider than 1e-10 times that root, so the reported fraction
+    misses the requirement; the search must reach its relative tolerance there."""
+    sd, cost = 1e-50, 0.1707691121
+    lam = run(sd, cost)["informed_fraction"]
+    exact = closed_form_root(sd, cost)
+    expect(
+        exact > 0.0 and abs(lam - exact) <= 1e-10 * exact,
+        "at a tiny root the bisection must still reach the relative tolerance: check the number of halvings",
     )

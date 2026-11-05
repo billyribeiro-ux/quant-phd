@@ -3,9 +3,10 @@
 Every input is an assumption made for this example. None is a market quote, a market rate or a company's figure, and the
 lab reads no data file. Standard library only, with no randomness and no network access.
 
-Prices, cash flows and the outlay are integer numbers of cents. Every value is held as a fractions.Fraction, so every
-identity is exact. Display is the only place a value is changed: a displayed value is the exact value taken half up,
-toward plus infinity, to the stated number of decimal places, applied once to the exact value.
+Prices and the outlay are integer numbers of cents. A cash flow at a fractional number of units, such as the break-even,
+is an exact fraction of a cent. Every value is held as a fractions.Fraction, so every identity is exact. Display is the
+only place a value is changed: a displayed value is the exact value taken half up, toward plus infinity, to the stated
+number of decimal places, applied once to the exact value.
 
 Part 1 is a forward-price check. A discount factor D = 97/100 for the expiry is an input, with D = exp(-r tau) in the
 convention of the lesson. The no-arbitrage forward price is F = S / D. The portfolio of a long asset, a loan of S repaid

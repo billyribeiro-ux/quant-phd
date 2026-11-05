@@ -18,7 +18,7 @@ TAU_E = 1.0  # the precision of the signal s = v + eps
 NOISE_GRID = (0.500, 0.625, 0.750)  # the noise volumes the report uses
 COST_GRID = (0.120, 0.135, 0.150)  # the information costs the report uses
 TOLERANCE = 1e-12  # the bisection stops when the bracket is narrower than this times its upper end
-MAX_HALVINGS = 200  # a cap on the halvings: 200 halvings reach the tolerance for every root above about 6e-49
+MAX_HALVINGS = 240  # a cap on the halvings: 240 halvings reach the tolerance for every root above about 6e-61
 
 
 def price_precision(lam: float, sd: float) -> float:

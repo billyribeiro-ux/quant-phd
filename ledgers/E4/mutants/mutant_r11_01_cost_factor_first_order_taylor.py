@@ -1,15 +1,7 @@
-"""Variant of the reference: runs the 200 halvings and never applies the relative stop rule.
+"""Student shortcut: the cost factor exp(a c) is replaced by its first-order Taylor term 1 + a c, in both the gap at 0 and the gap at a fraction.
 
-This file is a one-edit variant of the reference solution, not the solution. It is excluded from deployment (BLUEPRINT
-section 7); the suite in test_project.py is public and does not import it. The model and its derivation are in the
-section "The model and its equilibrium" of project.html, where Propositions 1 to 4 give the formulas below (the
-numbers in each docstring name the proposition). Standard library only.
-
-Units: the model is written in one normalization, so the payoff, the price and the noise supply are plain numbers and
-carry no unit here. Precisions are inverse variances. Utilities are in the units of -exp(-a W), so an uninformed
-expected utility lies in [-1, 0). An informed one also carries the factor exp(a c) for the cost, so it can lie below
--1."""
-
+Round-11 verifier mutant (E4 slice e). Derived from grader/reference.py by one edit.
+"""
 from __future__ import annotations
 
 import math
@@ -95,7 +87,7 @@ def gap_at_zero(noise_sd: float, info_cost: float) -> float:
     a2 = RISK_AVERSION * RISK_AVERSION * noise_sd * noise_sd
     uninformed = math.pow(1.0 + a2 / tau_v, -0.5)
     informed = math.pow(1.0 + tau_e / tau_v + (tau_v + tau_e) * a2 / (tau_v * tau_v), -0.5)
-    return uninformed - math.exp(RISK_AVERSION * info_cost) * informed
+    return uninformed - (1.0 + RISK_AVERSION * info_cost) * informed
 
 
 def indifference_gap(lam: float, noise_sd: float, info_cost: float) -> float:
@@ -107,7 +99,7 @@ def indifference_gap(lam: float, noise_sd: float, info_cost: float) -> float:
     """
     if lam == 0.0:
         return gap_at_zero(noise_sd, info_cost)
-    return uninformed_term(lam, noise_sd) - math.exp(RISK_AVERSION * info_cost) * informed_term(lam, noise_sd)
+    return uninformed_term(lam, noise_sd) - (1.0 + RISK_AVERSION * info_cost) * informed_term(lam, noise_sd)
 
 
 def price_informativeness(lam: float, noise_sd: float) -> float:
@@ -122,7 +114,7 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     """The informed fraction, the price informativeness and the indifference gap of the model at (noise_sd, info_cost).
 
     Boundary rule: the informed fraction is 0 when the gap at 0 is nonpositive, 1 when the gap at 1 is nonnegative, and
-    otherwise the root of the gap in (0, 1), found by bisection on the sign change with the stated tolerance.
+    otherwise the root of the gap in (0, 1), found by bisection on the sign change with BISECTION_TOLERANCE.
     """
     sd, cost = _check_inputs(noise_sd, info_cost)
     gap_0 = gap_at_zero(sd, cost)
@@ -134,7 +126,7 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     else:
         low, high = 0.0, 1.0  # invariant: the gap is positive at low (its limit, at 0) and negative at high
         steps = 0
-        while steps < MAX_BISECTION_STEPS:
+        while high - low > BISECTION_TOLERANCE * high and steps < MAX_BISECTION_STEPS:
             mid = 0.5 * (low + high)
             if indifference_gap(mid, sd, cost) > 0.0:
                 low = mid

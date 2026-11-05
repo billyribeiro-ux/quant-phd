@@ -1,7 +1,8 @@
 # E4 project: literal price-sign variant (not counted in mutants/)
 
 File: `literal_price_sign.py`. It is the reference solver with one change: the noise coefficient of the linear price is
-given the wrong sign, `b_u = +a b_s / (lambda tau_e)` in place of `b_u = -a b_s / (lambda tau_e)`.
+given the wrong sign, `b_u = +a b_s / (lambda tau_e)` in place of `b_u = -a b_s / (lambda tau_e)`. It is regenerated from
+the current `grader/reference.py` in round 11 (script `ledgers/E4/scripts/E4-d-fix-r11/regen_equivalent_fix11.py`).
 
 ## Why it is not in `mutants/`
 
@@ -20,59 +21,50 @@ It is therefore recorded here as an open item for the architect, not as a surviv
    no other value that depends on the sign of `b_u`. The informativeness uses only `tau_y`, and `tau_y` does not involve `b_u`.
 4. Check: the variant and the reference were compared on 3000 random inputs with `noise_sd` in [0.05, 3.0] and
    `info_cost` in [0, 0.4]. The largest absolute difference in any of the three outputs was 0.0.
+5. Round 11: the regenerated variant passes the suite on seeds 0 to 49 (50/50).
 
 ## What the architect must decide
 
 Either (a) keep Proposition 1's sign statement, which the suite cannot test, and record this as a known limit, or
 (b) remove the sign from Proposition 1, which changes no output. The builder did not edit the proposition on its own.
 
-# Stop-rule variants (rounds 6 to 10)
+# Stop-rule variants (rounds 6 to 11)
 
-These files differ from `reference.py` only in the bisection loop of `solve_model`. Round 10 reworded the page's
-Constraints (project.html): the page no longer states a stop rule, a number of halvings, or that the reported fraction
-lies in the final bracket. It states one accuracy requirement instead: for an interior root, when the noise volume is at
-least 1e-50 and tau-bar at least 1e-2, the reported fraction agrees with the root of Proposition 4 to within the smaller of
-1e-10 and 1e-8 times the root. Each variant below keeps the sign-change invariant, so its final bracket contains the root,
-and each meets that requirement on the page's domain. None is killed by the suite, because the suite checks outputs only
-and the page no longer states the behaviour the variants change.
+Round 11 changed the reference and the page. The reference now takes at most 240 halvings (it was 200), and
+`project.html` Constraints states the stop rule as a documented constant: the search stops when the bracket is no wider
+than 1e-12 times its upper end, and at most 240 halvings are taken. The page also states the accuracy at the edge of its
+domain: for a noise volume of at least 1e-50 and tau-bar of at least 1e-2, the reported fraction agrees with the root of
+Proposition 4 to within 1e-10 times the root.
 
-Accuracy of the reference on the domain (round 10, script `ledgers/E4/scripts/E4-d-r10/check_accuracy_r10.py`, log
-`ledgers/E4/scripts/E4-d-r10/logs/check_accuracy_r10.txt`): random cases with noise volume from 1e-50 to 1e3 and cost
-such that tau-bar is at least 1e-2. The largest error is 0.0084 of the allowed tolerance, so the reference has a wide
-margin. The domain's lower bound makes the cap harmless: for tau-bar at least 1e-2 the root is at least 0.2 times the
-noise volume, so it is at least 2e-51 when the noise volume is 1e-50, and 200 halvings leave a width of 2^-200 (about
-6.2e-61), which is far below 1e-8 times that root.
+The 200-halving cap missed that requirement. Measured on 90000 cases in the domain's corner (noise volume 1e-50 to
+1.06e-50, cost with tau-bar at least 1e-2): 11598 cases exceed 1e-10 relative, and the largest relative error is
+1.53e-10 at noise volume 1e-50 and cost 0.17076911209 (logs `ledgers/E4/scripts/E4-d-fix-r11/logs/check_corner_cap200_fix11.txt`).
+With the cap of 240 the same scan has no case above 1e-10, and its largest relative error is 5.1e-13
+(`ledgers/E4/scripts/E4-d-fix-r11/logs/check_corner_accuracy_fix11.txt`). A search that stops at the tolerance reaches a
+width of 1e-12 times the root by about 209 halvings at a root near 2e-51, so 240 halvings are enough at every root above
+about 6e-61.
 
-## `mutant_v9_02_stop_rule_relative_to_lower_end.py`: the stop test uses the lower end (moved from `mutants/` in round 10)
+## `mutant_r6_09_always_200_halvings.py`: moved to `mutants/` in round 11
 
-One edit: the loop condition is `high - low > BISECTION_TOLERANCE * low` in place of `... * high`. Since `low <= high`,
-the variant's condition holds whenever the reference's holds, and both take the same decisions, so the variant follows
-the reference's path and keeps halving at least as long. Its final bracket therefore lies inside the reference's, and its
-midpoint differs from the reference's by at most the reference's final width, at most `1e-12 * high`. That meets the
-requirement on the page's domain. Round 10 counted it as the only survivor of the mutation gate; it is an equivalent
-variant on the page's domain, so it is recorded here and not in `mutants/`.
+The variant never applies the relative stop rule and takes 200 halvings. At a root near 2e-51 its bracket is 2^-200
+(about 6.2e-61) wide, against a requirement of 1e-10 times the root (about 2.0e-61). It violates a behaviour the page now
+states, and the suite kills it on the corner test (`test_corner_root_meets_the_relative_accuracy_at_the_domain_edge`,
+seed 0). Its file is `ledgers/E4/mutants/mutant_r6_09_always_200_halvings.py`; the copy that was here is removed.
 
-## `mutant_r6_08_reports_lower_end.py`: reports the lower end of the final bracket
+## Variants that are equivalent on the page's domain (round 11)
 
-One edit: `lam = low` in place of `lam = 0.5 * (low + high)`.
+These variants differ from the reference only in the stop test or in the reported point of the final bracket. Each one
+keeps the sign-change invariant, so its final bracket contains the root, and its reported fraction differs from the
+reference's by at most the final bracket width, which is at most 1e-12 times the root. That is inside the page's
+accuracy requirement, so no output test can separate them. Each passes the suite on seeds 0 to 49 (50/50, round 11, log
+`ledgers/E4/scripts/E4-d-fix-r11/logs/equiv_0-49.txt`).
 
-The variant runs the same bisection as the reference, with the same gap signs, so both end with the same bracket
-`[low, high]`. The reference reports its midpoint and the variant reports `low`, so the two differ by at most
-`high - low`. At a tolerance stop `high - low <= 1e-12 * high`. At the 200-halving cap `high - low = 2^-200` (about
-6.2e-61), and on the page's domain that is far below 1e-8 times the root. Both differences meet the requirement, and no
-test can separate the variant from the reference. This is the same variant as
-`mutant_r7_01_reports_bracket_lower_end.py` below, re-created in round 8 and kept under its round-6 name because the
-round-6 citation points here.
+- `mutant_v9_02_stop_rule_relative_to_lower_end.py`: the stop test uses the lower end of the bracket. Since `low <= high`,
+  the variant keeps halving at least as long as the reference, so its final bracket lies inside the reference's.
+- `mutant_r6_08_reports_lower_end.py` and `mutant_r7_01_reports_bracket_lower_end.py` (the same edit): the reported
+  fraction is the lower end of the final bracket, not its midpoint. The two differ by at most the final width.
 
-## `mutant_r6_09_always_200_halvings.py`: never stops early
-
-One edit: the loop is `while steps < 200` with no relative-tolerance test.
-
-The variant follows the reference's path until the reference would stop. From then on it keeps halving inside the
-reference's final bracket, which contains the root, so the variant's final bracket lies inside the reference's. Both
-midpoints lie in that bracket, so they differ by at most the reference's final width, which meets the requirement on the
-page's domain as above. No test can see the number of halvings: the suite checks outputs only.
-
-Status (round 10): the page no longer states a stop rule or a step count, so this variant is output-equivalent on the
-page's domain and is accepted here as equivalent. The round-9 status ("documented interpretation, not a killed mutant")
-is superseded by the reworded Constraints.
+**Open item for the architect (ruling 9).** The page now states the stop rule, so these variants do violate a stated
+behaviour (the stop test and the reported point). They are output-equivalent within the stated accuracy, which no
+output test can distinguish. Whether "equivalent within the stated accuracy" is enough to keep them here, or whether
+the page must state the reported point, is the architect's call. The fixer does not decide it.

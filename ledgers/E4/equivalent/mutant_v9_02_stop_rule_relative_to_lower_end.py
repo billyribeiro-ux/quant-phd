@@ -1,8 +1,7 @@
-"""Bisection stop rule measured against the lower end of the bracket instead of its upper end.
+"""Variant of the reference: the stop test is measured against the lower end of the bracket (equivalent).
 
-Round-9 verifier mutant (E4 slice d). Derived from grader/reference.py by one edit.
+Single change to grader/reference.py, regenerated for the cap of 240 halvings (round 11).
 """
-
 
 from __future__ import annotations
 
@@ -12,8 +11,8 @@ RISK_AVERSION = 2.0  # a: the CARA coefficient of U(W) = -exp(-a W), fixed for e
 PRIOR_PRECISION = 1.0  # tau_v: the precision of the payoff's prior, 1 / Var(v), fixed for every instance
 SIGNAL_PRECISION = 1.0  # tau_e: the precision of the signal s = v + eps, 1 / Var(eps), fixed for every instance
 BISECTION_TOLERANCE = 1e-12  # the search stops when the bracket is narrower than this times its upper end
-MAX_BISECTION_STEPS = 200  # a safety bound: each halving halves the bracket, so 200 halvings reach the relative
-# tolerance for every root above about 6e-49 (2^-200 is about 6.2e-61)
+MAX_BISECTION_STEPS = 240  # a safety bound: each halving halves the bracket, so 240 halvings reach the relative
+# tolerance for every root above about 6e-61 (2^-240 is about 6.2e-73); 200 halvings do not reach it at a root near 2e-51
 
 
 def _check_inputs(noise_sd: float, info_cost: float) -> tuple[float, float]:
@@ -116,7 +115,7 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     """The informed fraction, the price informativeness and the indifference gap of the model at (noise_sd, info_cost).
 
     Boundary rule: the informed fraction is 0 when the gap at 0 is nonpositive, 1 when the gap at 1 is nonnegative, and
-    otherwise the root of the gap in (0, 1), found by bisection on the sign change with the stated tolerance.
+    otherwise the root of the gap in (0, 1), found by bisection on the sign change with BISECTION_TOLERANCE.
     """
     sd, cost = _check_inputs(noise_sd, info_cost)
     gap_0 = gap_at_zero(sd, cost)
