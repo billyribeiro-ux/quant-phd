@@ -1,4 +1,4 @@
-"""LX1 L04 lab 1: exchange-rate dispersion of one embedded H.10 column, in two windows, against a parity model.
+"""LX1 L04 lab 1: dispersion of one embedded H.10 column in two windows, against a fixed-exchange-rate model.
 
 Data. The lab reads data/fx_monthly.csv, the exchange rates of the Board of Governors of the Federal Reserve
 System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York), one per month. Each value is the column's
@@ -20,12 +20,12 @@ the previous one, or a missing column raises ValueError. No row is skipped or fi
 Rounding. Log changes are floats computed from exact ratios. Printed values are the exact binary value of each float,
 rounded half away from zero (Decimal ROUND_HALF_UP) to the number of places stated on the line.
 
-Part A is a SIMULATED model check, not data: a parity held at 2.0000 dollars per pound for 12 months (11 monthly
-changes) gives zero monthly log changes and zero dispersion, which is the model's claim in Proposition 2.2 of the
-lesson. Part B reads the GBP column and counts its changes and its exactly zero changes. Part C prints the count, the
-dispersion and the largest absolute change for each window, and checks the telescoping identity of Proposition 1.2 of
-the lesson: the sum of a window's log changes equals the log of its last rate over the rate before the window. Part D
-prints the difference and the ratio of the two windows' dispersions.
+Part A is a SIMULATED model check, not data: a fixed exchange rate of 2.0000 dollars per pound held for 12 months (11
+monthly changes) gives zero monthly log changes and zero dispersion, which is the model's claim in Proposition 2.2 of
+the lesson. Part B reads the GBP column and counts its changes and its exactly zero changes. Part C prints the count,
+the dispersion and the largest absolute change for each window, and checks the telescoping identity of Proposition 1.2
+of the lesson: the sum of a window's log changes equals the log of its last rate over the rate before the window. Part
+D prints the difference and the ratio of the two windows' dispersions.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from pathlib import Path
 DATA_PATH = Path("data") / "fx_monthly.csv"
 COLUMN = "GBP"
 WINDOW_TWO_FROM = "2000-01"
-MODEL_PARITY = Fraction(2)
+MODEL_RATE = Fraction(2)
 MODEL_MONTHS = 12
 SUM_TOLERANCE = 1e-12
 
@@ -139,10 +139,13 @@ def largest_move(changes: Sequence[tuple[str, float]]) -> tuple[str, float]:
 def main() -> None:
     """Print Parts A to D in a fixed order."""
     # Part A: a SIMULATED model check, not data.
-    model_rows = [(month_label(month_index("2000-01") + i), MODEL_PARITY) for i in range(MODEL_MONTHS)]
+    model_rows = [(month_label(month_index("2000-01") + i), MODEL_RATE) for i in range(MODEL_MONTHS)]
     model = log_changes(model_rows)
     model_values = [c for _, c in model]
-    print(f"Part A: SIMULATED model check, not data: a parity held at {show(float(MODEL_PARITY), 4)} dollars per pound")
+    print(
+        "Part A: SIMULATED model check, not data: a fixed exchange rate held at "
+        f"{show(float(MODEL_RATE), 4)} dollars per pound"
+    )
     print(f"model monthly log changes: {len(model)}; all exactly zero: {all(c == 0.0 for c in model_values)}")
     print(f"model sample standard deviation: {show(sample_sd(model_values), 6)}")
 

@@ -8,9 +8,10 @@ and the information cost ``info_cost`` (c, in units of terminal wealth):
 * ``info_cost`` is drawn uniformly from [0.120, 0.150] and rounded to three decimals.
 
 The other parameters of the model (risk aversion 2, prior precision 1 and signal precision 1) are fixed in solver.py,
-so every instance uses them. The box is chosen so that every instance has one interior informed fraction. With these
-constants, the interior root is the unique solution of tau_y(lambda) = tau_bar, where tau_bar = 2 exp(-4c) - 1 and tau_y
-is strictly increasing in lambda, with tau_y(1) = 1 / (1 + 4 sigma_u^2) (project page, Propositions 3 and 4).
+so every instance uses them. The box is chosen so that every instance has one interior informed fraction; Assumption A6
+of project.html (the sign change of the gap) gives that root. With these constants, the interior root is the unique
+solution of tau_y(lambda) = tau_bar, where tau_bar = 2 exp(-4c) - 1 and tau_y is strictly increasing in lambda,
+with tau_y(1) = 1 / (1 + 4 sigma_u^2) (project page, Propositions 3 and 4).
 Over the box, tau_bar decreases in c, so it lies between tau_bar(0.150) = 0.09762327... and
 tau_bar(0.120) = 0.23756678... (both unrounded), while tau_y(1) >= 1 / (1 + 4 * 0.75^2) = 0.30769... .
 So 0 < tau_bar < 0.237567 < 0.30769 <= tau_y(1) for every instance in the box. This bound is derived

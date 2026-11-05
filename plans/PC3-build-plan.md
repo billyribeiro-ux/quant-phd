@@ -316,7 +316,7 @@ verifier reads every lesson for these terms (VERIFIER §2.9).
    line or contains a blank (`tools/run_labs.py` completion rule). `tools/check_projects.py:89-90` requires a completion lab or a quiz.
 3. **Rung 3, independent project** (graded `both`): (a) `market_maker.py`, holding `quote` (the quoting rule) and `replay` (the replay and the
    decomposition), graded by the autograder on seeds 0–49; (b) `analysis.md`, graded by the rubric (§5.4).
-   `lab-PC3-project-3` is the rung-3 check: it runs the reference `play(seed=0)` and prints the record's P&L and the identity
+   `lab-PC3-project-3` is the rung-3 check: it runs the reference game on seed 0 through its own `play(seed, half_spread)`, at half-spread 10 and then 15, and prints the record's P&L and the identity
    the student's `replay` must reproduce.
 4. **Rung 4, stretch** (optional, not graded): run the policy on seeds 0–199 and report the distribution of the P&L in cents
    (exact quantiles, the method stated), with the question "what changes when the informed share is 0.6". No ceiling.

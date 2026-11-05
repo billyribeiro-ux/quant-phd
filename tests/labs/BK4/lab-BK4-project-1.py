@@ -5,6 +5,7 @@ scenario losses come from a seeded generator, so every run prints the same lines
 """
 
 import random
+from fractions import Fraction
 
 MARGIN = {1: 30_000, 2: 50_000, 3: 40_000, 4: 20_000}  # initial margin of each member, in cents (SIMULATED)
 FUND = {1: 4_000, 2: 6_000, 3: 5_000, 4: 3_000}  # default-fund contribution of each member, in cents (SIMULATED)
@@ -51,11 +52,11 @@ def main() -> None:
     losses = [rng.randint(0, 120_000) for _ in range(40)]
     count = len(losses)
     target = 9_550  # basis points: the cover we want, 95.50 % of scenarios
-    # The exact position of the target in the sorted losses is target * count / 10000, which is 38.2 here. The
-    # margin must cover at least that many scenarios, so the position is rounded up: k = 39.
-    exact_position = target * count / 10_000
+    # The exact position of the target in the sorted losses is target * count / 10000, a fraction: here 191/5, which
+    # is 38.2. The margin must cover at least that many scenarios, so the position is rounded up: k = 39.
+    exact_position = Fraction(target * count, 10_000)
     k = -((-target * count) // 10_000)
-    print(f"target {target} bps of {count} scenarios: exact position {exact_position:.1f} | k {k}")
+    print(f"target {target} bps of {count} scenarios: exact position {exact_position} | k {k}")
     margin = sorted(losses)[k - 1]
     print(f"margin: the {k}th smallest loss = {margin}")
     # Step 6. The cover at the margin, and one cent below it. Both are floored counts in basis points.

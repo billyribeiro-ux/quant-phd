@@ -248,6 +248,27 @@ def test_reflection_tail_tiny_level_gives_a_tail_near_one() -> None:
     within(sol.reflection_tail(1e-9, INST["H"]), 1.0, 1e-8, "a tail at a level near zero must be near one")
 
 
+def test_reflection_tail_small_levels_match_the_closed_form() -> None:
+    for t in (INST["H"], 2.0):
+        for a in (1e-7, 1e-6, 1e-4, 1e-3):
+            within(
+                sol.reflection_tail(a, t),
+                math.erfc(a / math.sqrt(2.0 * t)),
+                1e-10,
+                "the tail must equal erfc(a / sqrt(2 t)) to 1e-10 at every small positive level",
+            )
+
+
+def test_reflection_tail_small_times_match_the_closed_form() -> None:
+    for t in (1e-7, 1e-6, 1e-4):
+        within(
+            sol.reflection_tail(1e-3, t),
+            math.erfc(1e-3 / math.sqrt(2.0 * t)),
+            1e-10,
+            "the tail must equal erfc(a / sqrt(2 t)) to 1e-10 at every small positive time",
+        )
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # srw_max_count and srw_terminal_count: exact integers over the 2**n simple random walks.
 

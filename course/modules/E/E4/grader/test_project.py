@@ -563,3 +563,16 @@ def test_corner_root_meets_the_relative_accuracy_at_the_domain_edge() -> None:
         exact > 0.0 and abs(lam - exact) <= 1e-10 * exact,
         "at a tiny root the bisection must still reach the relative tolerance: check the number of halvings",
     )
+
+
+@pytest.mark.parametrize(("sd", "cost"), [(1e-50, 1e-6), (1e-40, 1e-4)])
+def test_root_is_relatively_accurate_at_a_cost_near_zero(sd: float, cost: float) -> None:
+    """At a cost near zero, tau-bar is near 1 and the root is small. The page's accuracy clause covers a noise volume
+    of at least 1e-50 and tau-bar of at least 1e-2, so the root must agree with Proposition 4 to within 1e-10 times the
+    root. A stop rule on the gap at the midpoint does not meet it."""
+    lam = run(sd, cost)["informed_fraction"]
+    exact = closed_form_root(sd, cost)
+    expect(
+        exact > 0.0 and abs(lam - exact) <= 1e-10 * exact,
+        "the informed fraction must be accurate relative to its size at a cost near zero: check the stop rule",
+    )

@@ -115,6 +115,26 @@ def hand_log(turns: list[dict[str, Any]], settlement: int) -> dict[str, Any]:
     return {"seed": SEED, "settlement_cents": settlement, "turns": turns}
 
 
+def direct_states() -> list[dict[str, object]]:
+    """The hand-built states of the direct sweep: turns 1 and 20, at every inventory from -10 to 10. Each state holds
+    the earlier turn records of its turn, as the engine passes them: none on turn 1, and 19 unfilled records on
+    turn 20."""
+    states: list[dict[str, object]] = []
+    for turn in (1, HORIZON):
+        for inventory in range(-10, 11):
+            states.append(
+                {
+                    "turn": turn,
+                    "inventory": inventory,
+                    "cash_cents": 0,
+                    "max_size": 5,
+                    "limit": 10,
+                    "history": [turn_record(t, size=1, filled=False) for t in range(1, turn)],
+                }
+            )
+    return states
+
+
 def custom_instance(path: list[int], arrivals: list[str]) -> dict[str, Any]:
     """An instance the suite writes out in full, for the rules of the engine. It replaces make_instance in each test
     that calls play_custom."""
@@ -393,15 +413,31 @@ def test_no_function_prints_or_warns(
     seed: int, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
 ) -> None:
     """On every seed, the quote and the replay print nothing on stdout or stderr, log no record and raise no warning.
-    The replay of a log with no fill is included, because a replay can print on a branch that a game with fills never
-    takes. Each channel is checked on its own, because the specification forbids each of them."""
+    The checks reach branches that a game of the fixed seeds never takes: a log with no fill, a fill at price 0, a log
+    that ends at inventory -10, and the quotes of the direct states at every inventory from -10 to 10 on turns 1 and 20.
+    Each channel is checked on its own, because the specification forbids each of them."""
     caplog.set_level(logging.DEBUG)
     no_fill = hand_log([turn_record(t, size=1, filled=False) for t in range(1, HORIZON + 1)], 10_000)
+    zero_fill = hand_log(
+        [turn_record(1, bid=0, ask=10, filled=True, arrival="uninformed-sell", price=0, inventory=1, cash=0)]
+        + [turn_record(t, bid=0, ask=10, size=0, inventory=1, cash=0) for t in range(2, HORIZON + 1)],
+        10_000,
+    )
+    ends_at_minus_ten = hand_log(
+        [
+            turn_record(t, filled=True, arrival="uninformed-buy", price=10_010, inventory=-t, cash=10_010 * t)
+            for t in range(1, 11)
+        ]
+        + [turn_record(t, size=0, inventory=-10, cash=100_100) for t in range(11, HORIZON + 1)],
+        10_000,
+    )
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         log = engine.play(sol.quote, seed)
-        sol.replay(log)
-        sol.replay(no_fill)
+        for built in (log, no_fill, zero_fill, ends_at_minus_ten):
+            sol.replay(built)
+        for state in direct_states():
+            sol.quote(state)
     captured = capsys.readouterr()
     expect(captured.out == "" and captured.err == "", "neither quote nor replay may print or write to stderr")
     expect(not caplog.records, "neither quote nor replay may log a message")
@@ -459,21 +495,15 @@ def test_a_direct_call_on_a_hand_built_state_ignores_an_earlier_game() -> None:
 
 
 def test_a_direct_quote_is_legal_at_every_inventory_within_the_limit() -> None:
-    """A direct call on hand-built states with no history, on turns 1 and 20, at every inventory from -10 to 10: each
-    quote has its bid below its ask and its size in 0..5, whatever the inventory."""
-    for turn in (1, HORIZON):
-        for inventory in range(-10, 11):
-            state: dict[str, object] = {
-                "turn": turn,
-                "inventory": inventory,
-                "cash_cents": 0,
-                "max_size": 5,
-                "limit": 10,
-                "history": [],
-            }
-            bid, ask, size = sol.quote(state)
-            expect(bid < ask, f"turn {turn}, inventory {inventory}: every quote needs a bid below its ask")
-            expect(0 <= size <= 5, f"turn {turn}, inventory {inventory}: a quoted size must lie in 0..5")
+    """A direct call on hand-built states, on turn 1 with no earlier record and on turn 20 with the 19 earlier records
+    of the log, at every inventory from -10 to 10: each quote has its bid below its ask and its size in 0..5, whatever
+    the inventory."""
+    for state in direct_states():
+        turn = state["turn"]
+        inventory = state["inventory"]
+        bid, ask, size = sol.quote(state)
+        expect(bid < ask, f"turn {turn}, inventory {inventory}: every quote needs a bid below its ask")
+        expect(0 <= size <= 5, f"turn {turn}, inventory {inventory}: a quoted size must lie in 0..5")
 
 
 # The instance: deterministic, valid, and different across seeds.

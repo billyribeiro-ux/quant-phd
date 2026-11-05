@@ -675,6 +675,18 @@ def test_fixture_four_losses_at_5000_bps_uses_the_exact_position() -> None:
     assert got == want, "half of four scenarios is an exact position, and a strict count gives a different margin"
 
 
+def test_exact_position_is_an_integer_index_not_a_rounded_float() -> None:
+    """Fifty scenarios at 2800 bps: the position is a whole number, and the index must be computed in integers."""
+    __tracebackhide__ = True
+    losses = list(range(1, 51))
+    want = 14
+    got = sol.margin_for_cover(losses, 2_800)
+    assert got == want, (
+        "the index is the exact ceiling of target * S / 10000, computed in integers: a whole-number position is "
+        "not rounded up, and a float product of the target and the count can round it up by one"
+    )
+
+
 def test_repeated_losses_each_count_as_a_scenario_in_the_sizing() -> None:
     """A repeated loss is one scenario per occurrence, so the count S includes every repeat, not the distinct losses."""
     __tracebackhide__ = True
