@@ -123,7 +123,7 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     """The informed fraction, the price informativeness and the indifference gap of the model at (noise_sd, info_cost).
 
     Boundary rule: the informed fraction is 0 when the gap at 0 is nonpositive, 1 when the gap at 1 is nonnegative, and
-    otherwise the root of the gap in (0, 1), found by bisection on the sign change with the stated tolerance.
+    otherwise the root of the gap in (0, 1), found by bisection on the sign change with BISECTION_TOLERANCE.
     """
     sd, cost = _check_inputs(noise_sd, info_cost)
     gap_0 = gap_at_zero(sd, cost)

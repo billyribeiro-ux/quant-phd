@@ -1,0 +1,549 @@
+6: PC3 Project · Market-making game
+17: Skip to content
+19: Quant PhD Program
+21: Program map ›
+22: PC3 Quant & Finance Interviews ›
+23: Project
+26: Review deck
+27: Theme: system
+32: On this page
+35: PC3 project · 14 hours · an autograded quoting rule and replay, and a rubric-graded analysis
+36: Market-making game
+37: You write the quoting rule of a market maker for one asset over 20 turns, and the replay of the game log that the rule produces. Some counterparties trade on information the maker does not see. The engine plays the market-making game for your seed, and your replay (specified under Rung 3 ) turns the log into a decomposition of the P&L into cash flow and inventory mark, in integer cents; the terms are defined under Conventions . The analysis then says where the result came from and what would change it. Play is by code, not by clicking. Every instance is SIMULATED.
+41: The ladder
+42: Rungs 1 and 2 are at full length. If you reached the placement bar and answered both skill checks on the module page , skip rungs 1 and 2 and start at rung 3.
+44: Rung 1 · Worked example Lab 1 below: one seeded game under one fixed quoting rule, with each fill (defined under Rungs 1 and 2, below) and each step of the replay annotated.
+45: Rung 2 · Completion problem Lab 2 below: the same replay with the two lines that give the cash flow and the mark (defined under Conventions) left blank. It is graded instantly.
+46: Rung 3 · Independent project The specification in the specification section : the module market_maker.py , autograded in the autograder section , and an analysis, scored against the rubric in the analysis section with annotated exemplars and a self-assessment.
+47: Rung 4 · Stretch Open-ended extensions in the stretch section , for your portfolio.
+52: Rungs 1 and 2
+53: Both labs play the same game: seed 0, the fair path and arrivals that grader/instance.py generates for seed 0, and one fixed quoting rule. The rule takes the mid (the price its quote is centred on) to be the last filled price, or 10000 cents before any fill, and quotes a half-spread of 10 cents (the distance of each quote from the mid), for one unit: a bid 10 cents below the mid and an ask 10 cents above it. A fill is a trade of one unit at the bid or at the ask. The game is SIMULATED: its fair path (the fair value v 0 to v 20 , which the maker does not see) and its arrivals (one per turn: an uninformed buy, an uninformed sell or an informed trader) are generated, and no data file is read. The turn-by-turn rules are those of Lesson 4 , and they are restated in the conventions below, where the cash flow, the settlement value, the inventory mark, the P&L and the identity that links them are defined. The labs show the replay that your replay function must reproduce.
+56: Lab 1 · Worked example: one seeded game and its replay
+57: Stated before running. On seed 0 the game has 9 fills in 20 turns. The fills sum to a cash flow of \(-9950\) cents, the maker ends with an inventory of 1 unit, the settlement value is 9980 cents, so the inventory mark is 9980 cents and the P&L is \(30\) cents. The identity P&L = cash flow + inventory \(\times\) settlement holds, and no inventory passes the limit of 10 units.
+58: """PC3 project, rung 1: a worked example. One seeded game, one fixed quoting rule, and the replay of its log.
+60: SIMULATED. The fair path and the arrivals are generated from random.Random(0), in the order of the project's instance
+61: generator, which is the order of Lesson 4. No data file is read and there is no network access. Standard library only.
+62: Money is an integer number of cents, and every accounting value is an int.
+64: The quoting rule is fixed: bid and ask sit 10 cents either side of the last filled price, or of 10000 cents before any
+65: fill, and each side is for one unit. The log has the fields the project specifies. The replay below computes the cash
+66: flow, the ending inventory, the mark at the settlement value and the P&L from the fills of the log. Then main checks the
+67: identity P&L = cash flow + inventory x settlement, in integer cents. The numbers describe this one seed and this one
+68: rule.
+69: """
+71: from __future__ import annotations
+73: import random
+74: from typing import Any
+76: HORIZON = 20 # turns
+77: START_CENTS = 10_000 # v_0, in cents
+78: MOVE_CENTS = 5 # the fair value moves by +5 or -5 cents each turn
+79: HALF_SPREAD = 10 # cents either side of the mid
+80: SIZE = 1 # units quoted on each side
+81: LIMIT = 10 # inventory limit: a fill is refused when |inventory| would exceed it
+82: SEED = 0
+85: def draw_game(seed: int) -> tuple[list[int], list[str]]:
+86: """The fair path v_0 .. v_20 in cents and the 20 arrivals. Turn t draws its move first, then its arrival."""
+87: rng = random.Random(seed)
+88: path = [START_CENTS]
+89: arrivals: list[str] = []
+90: for _ in range(HORIZON):
+91: # Step 1a. The fair value moves by +5 cents when the draw is below 0.5, otherwise by -5 cents.
+92: move = MOVE_CENTS if rng.random() < 0.5 else -MOVE_CENTS
+93: path.append(path[-1] + move)
+94: # Step 1b. The arrival: an uninformed buy below 0.25, an uninformed sell below 0.5, else an informed trader.
+95: draw = rng.random()
+96: if draw < 0.25:
+97: arrivals.append("uninformed-buy")
+98: elif draw < 0.5:
+99: arrivals.append("uninformed-sell")
+100: else:
+101: arrivals.append("informed")
+102: return path, arrivals
+105: def quote(last_fill: int | None) -> tuple[int, int, int]:
+106: """The fixed rule: the mid is the last filled price, or 10000 cents before any fill. Returns (bid, ask, size)."""
+107: # Step 2. Quote HALF_SPREAD cents either side of the mid: the last filled price, or 10000 before any fill.
+108: mid = START_CENTS if last_fill is None else last_fill
+109: return mid - HALF_SPREAD, mid + HALF_SPREAD, SIZE
+112: def maker_side(arrival: str, fair: int, bid: int, ask: int) -> int:
+113: """+1 when the maker buys one unit at the bid, -1 when it sells one at the ask, 0 when there is no trade."""
+114: if arrival == "uninformed-buy":
+115: return -1 # the customer buys, so the maker sells at the ask
+116: if arrival == "uninformed-sell":
+117: return 1 # the customer sells, so the maker buys at the bid
+118: if fair > ask:
+119: return -1 # an informed trader buys when the fair value is strictly above the ask
+120: if fair < bid:
+121: return 1 # and sells when the fair value is strictly below the bid
+122: return 0
+125: def play(seed: int) -> dict[str, Any]:
+126: """Play the 20 turns and return the log: the seed, the settlement value and the turn records."""
+127: path, arrivals = draw_game(seed)
+128: inventory = 0
+129: cash = 0
+130: last_fill: int | None = None
+131: turns: list[dict[str, Any]] = []
+132: for turn in range(1, HORIZON + 1):
+133: bid, ask, size = quote(last_fill)
+134: arrival = arrivals[turn - 1]
+135: side = maker_side(arrival, path[turn], bid, ask)
+136: # Step 3. A fill needs a size of at least 1, a trade on the arrival, and |inventory| within the limit after it.
+137: filled = side != 0 and size >= 1 and abs(inventory + side) <= LIMIT
+138: price: int | None = None
+139: if filled:
+140: price = ask if side < 0 else bid
+141: inventory += side
+142: cash += -side * price
+143: last_fill = price
+144: turns.append(
+145: {
+146: "turn": turn,
+147: "bid_cents": bid,
+148: "ask_cents": ask,
+149: "size": size,
+150: "arrival": arrival,
+151: "filled": filled,
+152: "fill_price_cents": price,
+153: "inventory_after": inventory,
+154: "cash_after_cents": cash,
+155: }
+156: )
+157: return {"seed": seed, "settlement_cents": path[HORIZON], "turns": turns}
+160: def replay(log: dict[str, Any]) -> dict[str, int]:
+161: """Replay the fills of a log: the cash flow, the ending inventory, the mark at settlement and the P&L, in cents."""
+162: turns: list[dict[str, Any]] = log["turns"]
+163: # Step 4. A log has exactly 20 turns. Every fill is one unit: a fill at the ask is a sale by the maker, a fill at
+164: # the bid is a purchase by the maker. The cash flow of a sale is +price, and of a purchase is -price.
+165: if len(turns) != HORIZON:
+166: raise ValueError("a log has exactly 20 turns")
+167: cash_flow = 0
+168: inventory = 0
+169: for record in turns:
+170: if record["filled"] is not True:
+171: continue
+172: if record["fill_price_cents"] is None:
+173: raise ValueError("a filled turn needs a fill price")
+174: price = int(record["fill_price_cents"])
+175: side = -1 if price == record["ask_cents"] else 1
+176: cash_flow += -side * price
+177: inventory += side
+178: # Step 5. The inventory is marked at the settlement value, not at the last quote, because the game is settled there.
+179: mark = inventory * int(log["settlement_cents"])
+180: return {
+181: "cash_flow_cents": cash_flow,
+182: "inventory_end": inventory,
+183: "inventory_mark_cents": mark,
+184: "pnl_cents": cash_flow + mark,
+185: }
+188: def main() -> None:
+189: print("Rung 1 worked example · seed 0 · SIMULATED · quote 10 cents either side of the last fill, size 1")
+190: log = play(SEED)
+191: settlement = log["settlement_cents"]
+192: print(f"settlement v_{HORIZON} = {settlement} cents")
+193: print("replay of the fills:")
+194: for record in log["turns"]:
+195: if record["filled"]:
+196: price = int(record["fill_price_cents"])
+197: side = -1 if price == record["ask_cents"] else 1
+198: step = -side * price
+199: print(
+200: f" turn {record['turn']:>2}: maker {'sells at the ask' if side < 0 else 'buys at the bid'} "
+201: f"{price} cents, cash flow {step:+d} cents, inventory {record['inventory_after']:+d}"
+202: )
+203: result = replay(log)
+204: final = log["turns"][-1]
+205: fills = sum(1 for record in log["turns"] if record["filled"])
+206: print(f"fills = {fills} of {HORIZON} turns")
+207: print(f"cash_flow_cents = {result['cash_flow_cents']}")
+208: print(f"inventory_end = {result['inventory_end']}")
+209: print(f"inventory_mark_cents = {result['inventory_mark_cents']}")
+210: print(f"pnl_cents = {result['pnl_cents']}")
+211: identity = result["pnl_cents"] == result["cash_flow_cents"] + result["inventory_end"] * settlement
+212: print(f"identity P&L = cash flow + inventory x settlement holds: {identity}")
+213: print(f"cash flow equals the cash after the last turn: {result['cash_flow_cents'] == final['cash_after_cents']}")
+214: largest = max(abs(record["inventory_after"]) for record in log["turns"])
+215: print(f"largest |inventory| over the run = {largest} (limit {LIMIT}): {largest <= LIMIT}")
+218: main()
+219: Rung 1 worked example · seed 0 · SIMULATED · quote 10 cents either side of the last fill, size 1
+220: settlement v_20 = 9980 cents
+221: replay of the fills:
+222: turn 2: maker buys at the bid 9990 cents, cash flow -9990 cents, inventory +1
+223: turn 3: maker buys at the bid 9980 cents, cash flow -9980 cents, inventory +2
+224: turn 4: maker buys at the bid 9970 cents, cash flow -9970 cents, inventory +3
+225: turn 5: maker sells at the ask 9980 cents, cash flow +9980 cents, inventory +2
+226: turn 7: maker sells at the ask 9990 cents, cash flow +9990 cents, inventory +1
+227: turn 8: maker buys at the bid 9980 cents, cash flow -9980 cents, inventory +2
+228: turn 13: maker sells at the ask 9990 cents, cash flow +9990 cents, inventory +1
+229: turn 18: maker sells at the ask 10000 cents, cash flow +10000 cents, inventory +0
+230: turn 19: maker buys at the bid 9990 cents, cash flow -9990 cents, inventory +1
+231: fills = 9 of 20 turns
+232: cash_flow_cents = -9950
+233: inventory_end = 1
+234: inventory_mark_cents = 9980
+235: pnl_cents = 30
+236: identity P&L = cash flow + inventory x settlement holds: True
+237: cash flow equals the cash after the last turn: True
+238: largest |inventory| over the run = 3 (limit 10): True
+239: Step 1 draws the game, and step 2 is the quoting rule. Step 3 plays each turn: a fill needs a size of at least 1, a trade on the arrival, and an inventory within the limit after it. Step 4 replays the fills, and main then prints one line for each fill: the side (a fill at the ask is a sale by the maker, a fill at the bid a purchase), the price read from the log, the cash flow of that fill (minus the side times the price), and the inventory after it, read from the log. The cash flow and the ending inventory come from step 4, the mark from step 5, and the P&L is their sum; the identity line checks P&L = cash flow + inventory \(\times\) settlement exactly, in integer cents. The printed numbers describe seed 0 under this one rule. They say nothing about another seed, another rule or a real market.
+243: Lab 2 · Completion problem: the cash flow and the mark
+244: Replace each ___ with the expression that the line describes. The cash flow is the sum over the fills of minus the side times the price, where the side is \(+1\) for a purchase by the maker at the bid and \(-1\) for a sale at the ask. The mark is the ending inventory times the settlement value. Expected when both lines are right: a cash flow of \(-9950\) cents, an ending inventory of 1 unit, a mark of 9980 cents, a P&L of \(30\) cents, and the identity holds.
+245: """PC3 project, rung 2: the completed replay. The seeded game of rung 1, with the two lines the completion removes.
+247: SIMULATED. The fair path and the arrivals come from random.Random(0), in the order of Lesson 4 and of the project's
+248: instance generator. No data file is read and there is no network access. Standard library only. Money is an integer
+249: number of cents.
+251: The quoting rule is the rung 1 rule: 10 cents either side of the last filled price, or of 10000 cents before any
+252: fill, for one unit. This file is the completed solution. On the page, the lines that define cash_flow and mark are
+253: blanked with ___, and every other line is the same as here.
+254: """
+256: from __future__ import annotations
+258: import random
+259: from typing import Any
+261: HORIZON = 20 # turns
+262: START_CENTS = 10_000 # v_0, in cents
+263: MOVE_CENTS = 5 # the fair value moves by +5 or -5 cents each turn
+264: HALF_SPREAD = 10 # cents either side of the mid
+265: SIZE = 1 # units quoted on each side
+266: LIMIT = 10 # inventory limit
+267: SEED = 0
+270: def draw_game(seed: int) -> tuple[list[int], list[str]]:
+271: """The fair path v_0 .. v_20 in cents and the 20 arrivals, drawn in the order of Lesson 4."""
+272: rng = random.Random(seed)
+273: path = [START_CENTS]
+274: arrivals: list[str] = []
+275: for _ in range(HORIZON):
+276: move = MOVE_CENTS if rng.random() < 0.5 else -MOVE_CENTS
+277: path.append(path[-1] + move)
+278: draw = rng.random()
+279: if draw < 0.25:
+280: arrivals.append("uninformed-buy")
+281: elif draw < 0.5:
+282: arrivals.append("uninformed-sell")
+283: else:
+284: arrivals.append("informed")
+285: return path, arrivals
+288: def maker_side(arrival: str, fair: int, bid: int, ask: int) -> int:
+289: """+1 when the maker buys one unit at the bid, -1 when it sells one at the ask, 0 when there is no trade."""
+290: if arrival == "uninformed-buy":
+291: return -1
+292: if arrival == "uninformed-sell":
+293: return 1
+294: if fair > ask:
+295: return -1
+296: if fair < bid:
+297: return 1
+298: return 0
+301: def play(seed: int) -> dict[str, Any]:
+302: """Play the 20 turns with the rung 1 rule and return the log."""
+303: path, arrivals = draw_game(seed)
+304: inventory = 0
+305: cash = 0
+306: last_fill: int | None = None
+307: turns: list[dict[str, Any]] = []
+308: for turn in range(1, HORIZON + 1):
+309: mid = START_CENTS if last_fill is None else last_fill
+310: bid, ask, size = mid - HALF_SPREAD, mid + HALF_SPREAD, SIZE
+311: arrival = arrivals[turn - 1]
+312: side = maker_side(arrival, path[turn], bid, ask)
+313: filled = side != 0 and size >= 1 and abs(inventory + side) <= LIMIT
+314: price: int | None = None
+315: if filled:
+316: price = ask if side < 0 else bid
+317: inventory += side
+318: cash += -side * price
+319: last_fill = price
+320: turns.append(
+321: {
+322: "turn": turn,
+323: "bid_cents": bid,
+324: "ask_cents": ask,
+325: "size": size,
+326: "arrival": arrival,
+327: "filled": filled,
+328: "fill_price_cents": price,
+329: "inventory_after": inventory,
+330: "cash_after_cents": cash,
+331: }
+332: )
+333: return {"seed": seed, "settlement_cents": path[HORIZON], "turns": turns}
+336: def replay(log: dict[str, Any]) -> dict[str, int]:
+337: """Replay the fills of a log: the cash flow, the ending inventory, the mark at settlement and the P&L, in cents."""
+338: turns: list[dict[str, Any]] = log["turns"]
+339: if len(turns) != HORIZON:
+340: raise ValueError("a log has exactly 20 turns")
+341: fills: list[tuple[int, int]] = []
+342: for record in turns:
+343: if record["filled"] is True:
+344: if record["fill_price_cents"] is None:
+345: raise ValueError("a filled turn needs a fill price")
+346: price = int(record["fill_price_cents"])
+347: fills.append((1 if price == record["bid_cents"] else -1, price))
+348: inventory = sum(side for side, _ in fills)
+349: cash_flow = ___
+350: mark = ___
+351: return {
+352: "cash_flow_cents": cash_flow,
+353: "inventory_end": inventory,
+354: "inventory_mark_cents": mark,
+355: "pnl_cents": cash_flow + mark,
+356: }
+359: def main() -> None:
+360: print("Rung 2 completed replay · seed 0 · SIMULATED · quote 10 cents either side of the last fill, size 1")
+361: log = play(SEED)
+362: result = replay(log)
+363: fills = sum(1 for record in log["turns"] if record["filled"])
+364: print(f"settlement v_{HORIZON} = {log['settlement_cents']} cents, fills = {fills} of {HORIZON} turns")
+365: print(f"cash_flow_cents = {result['cash_flow_cents']}")
+366: print(f"inventory_end = {result['inventory_end']}")
+367: print(f"inventory_mark_cents = {result['inventory_mark_cents']}")
+368: print(f"pnl_cents = {result['pnl_cents']}")
+369: identity = result["pnl_cents"] == result["cash_flow_cents"] + result["inventory_end"] * log["settlement_cents"]
+370: print(f"identity P&L = cash flow + inventory x settlement holds: {identity}")
+373: main()
+374: Rung 2 completed replay · seed 0 · SIMULATED · quote 10 cents either side of the last fill, size 1
+375: settlement v_20 = 9980 cents, fills = 9 of 20 turns
+376: cash_flow_cents = -9950
+377: inventory_end = 1
+378: inventory_mark_cents = 9980
+379: pnl_cents = 30
+380: identity P&L = cash flow + inventory x settlement holds: True
+381: The output is the rung 1 result, reached by the replay of the same log. The completed lines are the two that Lab 1 computes in steps 4 and 5: the cash flow is a sum over the fills, and the mark is marked at the settlement value, not at the last quote. With an inventory of 1 unit, a mark at any price other than the settlement value of 9980 cents changes the P&L on this seed, so the blank for the mark is the check that the settlement value is the one used.
+386: Rung 3 · Specification
+388: Context
+389: Play is by code, not by clicking. You write a quoting rule for a market maker who posts a bid and an ask for one asset over 20 turns, and a replay of the log that the engine writes. Some counterparties trade on information the maker does not see. From the log you must explain the result as its cash flow and its inventory mark (both defined under Conventions ), and say what would change the result. The log is the evidence: the numbers that describe your result are numbers of the log or of your replay, and the model's constants are taken from the conventions. The engine that writes the log is described under Inputs.
+390: Inputs
+391: No data file. The game for your workspace seed comes from grader/instance.py , which holds make_instance(seed) : a fair path of 21 integers in cents (v 0 to v 20 , starting at 10000) and 20 arrivals. Every instance is SIMULATED, and the seed is derived from your workspace ID. The rules are those of Lesson 4 , restated exactly in the conventions . The engine is grader/engine.py , which plays one game for a quoting rule and a seed, and returns the log.
+392: Required outputs
+393: In a folder of your own: market_maker.py at its root. It defines two functions. quote(state: dict[str, object]) -> tuple[int, int, int] returns (bid_cents, ask_cents, size) for the current turn; its state holds exactly the keys turn (1 to 20), inventory , cash_cents , max_size (5), limit (10) and history (the earlier turn records of the log). replay(log: dict[str, object]) -> dict[str, int] returns exactly the keys cash_flow_cents , inventory_end , inventory_mark_cents and pnl_cents , with pnl_cents = cash_flow_cents + inventory_mark_cents and inventory_mark_cents = inventory_end × settlement_cents . Start from the starter file , whose signatures are complete. Also analysis.md , the analysis described in the brief . For the analysis you need a log of your own rule. Run this in the folder that holds engine.py , instance.py and market_maker.py , and it writes game_log.json for the seed shown in the autograder panel: python3 -c "import json, engine, market_maker; print(json.dumps(engine.play(market_maker.quote, <your seed>)))" > game_log.json In the browser a log is not saved as a file. The autograder replays the logs of your rule inside its run. A log is the dict that engine.play(quote, seed) returns. Its keys are seed (an int), settlement_cents (an int, the value \(v_{20}\)) and turns , a list of 20 records. Each record has the keys turn (1 to 20), bid_cents , ask_cents , size , arrival (one of uninformed-buy , uninformed-sell or informed ), filled ( true or false ), fill_price_cents , inventory_after and cash_after_cents . When filled is false , fill_price_cents is None . A fill at the bid is a purchase by the maker, and a fill at the ask is a sale by the maker.
+394: Constraints
+395: Standard library only. Money is an integer number of cents everywhere, and inventory is an integer number of units. A quote must have its bid below its ask, and its size must lie in 0 to 5; the engine refuses a quote that breaks either rule with ValueError , as the named conditions below state. A fill is one unit. A fill needs a size of at least 1 and an inventory within the limit of 10 units after the fill: an order that would take the inventory past the limit is not filled, and its record says filled: false . Neither quote nor replay prints or warns. A quote depends only on the state it is given: it keeps nothing between turns or games outside that state. The analysis does not claim a result for real market makers: the model has one asset, and its arrival probabilities are the ones the rules set. Known limitation. The instance is in grader/instance.py , and a student who reads it can see the fair path. A log shows only the settlement value, at the end, and not the fair path; the autograder cannot check that a rule avoids the fair path. A static site cannot keep its tests secret. Integrity rests on the per-seed instances, on the checks that run on the fixed seeds 0 to 49 and on a second seed (see Grading mode), and on the analysis.
+396: Grading mode
+397: The grade has two parts. The autograder runs 484 checks, with warnings as errors, from grader/test_project.py : 484 for any seed from 0 to 49, and 493 for any other seed. Nine checks run on each distinct seed of the set, which holds the fixed seeds 0 to 49, your seed and your seed plus 7919: 51 seeds when your seed is one of 0 to 49, and 52 otherwise. The nine checks are: the legality of your quote on every turn, the replay against the fills of the log, the agreement of the replay with the engine's final cash and inventory, the P&L identity (defined under Conventions ) exact in cents, integer money, the cash change on each turn, the seed and settlement of a log, the instance, and that neither quote nor replay prints or warns, checked on the game and on a log with no fill. Twenty-four checks run on your seed only: the refusals and boundaries of the quote, the named refusals of the replay, the replay of hand-built logs (its sums, its stale totals, a log with no fill, a fill as one unit, a fill at price 0 and the mark at the settlement value), the fill rules of the engine (the size rule, the inventory limit and the informed-trader rule), and that a quote depends only on the state it is given, so a game played after another game gives the same log. One further check uses no seed of yours: it checks that the fixed seeds 0 to 49 give fifty different fair paths, so it is the same for every learner. The total is therefore 9 × 51 + 24 + 1 = 484 when your seed is one of 0 to 49, and 9 × 52 + 24 + 1 = 493 otherwise. The analysis is scored against the rubric, which has five criteria, each with four observable levels. This page does not collect analysis.md and names no reviewer: you score your analysis yourself with the form in the self-assessment section , calibrated on two annotated exemplars, and you keep the summary the form produces as self_assessment.md . The analysis meets the bar at level 3 or above on every criterion.
+400: Conventions
+402: The game. There are \(N = 20\) turns, indexed \(t = 1, \dots, 20\). The fair value starts at \(v_0 = 10000\) cents. Each turn it moves by \(+5\) or \(-5\) cents with probability \(1/2\) each, and the path \(v_0, \dots, v_{20}\) is hidden from the maker. These constants are the model's choices, not facts about any market.
+403: The quote. Each turn the maker posts a bid \(b_t\) and an ask \(a_t\) in cents, with \(b_t < a_t\), and a size \(q_t\) in units, with \(0 \le q_t \le 5\). The quote sees the state listed under Required outputs. Its state holds no entry for \(v_t\).
+404: The arrival. Each turn one arrival comes. With probability \(1/4\) it is an uninformed buy of one unit, with probability \(1/4\) an uninformed sell of one unit, and with probability \(1/2\) an informed trader. The arrival probabilities are assumptions of the model, not estimates.
+405: Trades. An uninformed buy takes one unit from the maker at the ask, so the maker sells. An uninformed sell gives one unit to the maker at the bid, so the maker buys. An informed trader buys one unit at the ask when \(v_t \gt a_t\), sells one unit at the bid when \(v_t \lt b_t\), and otherwise does not trade. A trade fills only when \(q_t \ge 1\) and the inventory after the fill satisfies \(|I| \le 10\), where \(I\) is the inventory in units.
+406: Cash and inventory. A maker purchase at the bid \(b\) changes cash by \(-b\) and inventory by \(+1\). A maker sale at the ask \(a\) changes cash by \(+a\) and inventory by \(-1\). Cash starts at zero.
+407: The P&L. The settlement value is \(v_{20}\), and the inventory mark is \(I_{20} \times v_{20}\). The P&L of a log is \(\mathrm{pnl} = \mathrm{cash\ flow} + I_{20} \times v_{20}\), in cents, with the cash flow the sum of the fill cash flows. The identity is exact: the cash flow, the inventory and the settlement value are integers, so the product and the sum carry no rounding.
+410: Named invalid inputs
+411: The engine raises ValueError for the first two conditions, and your replay for the last two, each with the message named here.
+413: A quote whose bid is not below its ask. The engine refuses it, and the message names “bid must be below ask”.
+414: A quote whose size is not in 0 to 5. The engine refuses it, and the message names “size must lie in 0..5”.
+415: A log given to replay with a turns list whose length is not 20. The message names “a log has exactly 20 turns”.
+416: A turn marked filled with a fill_price_cents of None , given to replay . The message names “a filled turn needs a fill price”.
+418: Any other invalid input may raise any exception or return a value. The autograder requires no exception type for those.
+422: Time budget
+425: Component Hours Rationale
+427: Rung 1 worked example: read and annotate Lab 1 1 One seed and one rule; each step of the replay is explained in the lab's comments, and each fill is printed on its own line.
+428: Rung 2 completion problem and its instant check 1 Two blanks, each one expression; the time goes into why each expression is the right one.
+429: Quoting rule: quote in market_maker.py 3 A quoting rule in market_maker.py that is legal on every turn for the fixed seeds 0 to 49 and for your seed.
+430: Replay: replay in market_maker.py 2 The fills, the cash flow, the mark and the named refusals; the time goes into the sign of each fill.
+431: Autograder runs on the fixed seeds 0 to 49 and on your seed, and a local run with the same flags 2 Each failing check names the property it checks.
+432: Analysis: the decomposition, the counterfactual and the limits, in analysis.md 4 Every number is taken from your own log and replay, and each limit is tied to the result it affects.
+433: Self-assessment against the two exemplars 1 Score the exemplars with their annotations hidden, then compare the scores with the official scoring.
+434: Total 14 Equals the project hours in the hub: 14 of the module's 50, or 28.0 %.
+441: Autograder
+442: Paste or load your market_maker.py and run the suite on your own seed. Your code is saved in this browser as you type. The suite replays your rule and your replay on the games of the fixed seeds 0 to 49, on your seed and on seed plus 7919, and reports each check.
+447: Running the suite locally
+448: Copy test_project.py , engine.py and instance.py next to your market_maker.py , then run, with the seed shown in the autograder panel:
+449: QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
+450: --assert=plain turns off pytest's rewriting of assert statements, and the suite uses none: each failing check calls pytest.fail with its own message, which names the property and does not print the expected value. -W error turns warnings into failures, as in the browser. The browser runs the same files.
+454: Rung 3 · The analysis
+455: The analysis explains one game of your rule from its log. Its numbers are the ones your replay returns for your log. Lab 3 prints the four numbers of the reference rule on seed 0, so you can check your replay against them before you use it on your own log.
+458: Lab 3 · The rung 3 check: the reference rule, its replay and one counterfactual
+459: Stated before running. For the reference rule on seed 0, the replay gives the four numbers of Lab 1: a cash flow of \(-9950\) cents, an ending inventory of 1 unit, an inventory mark of 9980 cents and a P&L of \(30\) cents, with 9 fills. The counterfactual is the same seed and the same arrivals, with the half-spread widened from 10 cents to 15 cents. It has 9 fills too, and its P&L is 55 cents, which is 25 cents more. Your replay , run on the log of the reference rule for seed 0, must return the same four numbers.
+460: """PC3 project, rung 3 check: the reference game on seed 0, its replay, and one counterfactual on the same seed.
+462: SIMULATED. The fair path and the arrivals come from random.Random(0), in the order of Lesson 4 and of the project's
+463: instance generator. No data file is read and there is no network access. Standard library only. Money is an integer
+464: number of cents, and every accounting value is an int.
+466: The reference rule quotes around the last filled price, or around 10000 cents before any fill, for one unit. Its
+467: half-spread is 10 cents. The counterfactual is the same game with a half-spread of 15 cents, one change of the rule that
+468: the lab uses to show the rerun. The numbers below describe this one seed. They are not an estimate for any market.
+469: """
+471: from __future__ import annotations
+473: import random
+474: from typing import Any
+476: HORIZON = 20 # turns
+477: START_CENTS = 10_000 # v_0, in cents
+478: MOVE_CENTS = 5 # the fair value moves by +5 or -5 cents each turn
+479: SIZE = 1 # units quoted on each side
+480: LIMIT = 10 # inventory limit
+481: REFERENCE_HALF_SPREAD = 10 # cents, the reference rule
+482: COUNTERFACTUAL_HALF_SPREAD = 15 # cents, the counterfactual
+483: SEED = 0
+486: def draw_game(seed: int) -> tuple[list[int], list[str]]:
+487: """The fair path v_0 .. v_20 in cents and the 20 arrivals, drawn in the order of Lesson 4."""
+488: rng = random.Random(seed)
+489: path = [START_CENTS]
+490: arrivals: list[str] = []
+491: for _ in range(HORIZON):
+492: move = MOVE_CENTS if rng.random() < 0.5 else -MOVE_CENTS
+493: path.append(path[-1] + move)
+494: draw = rng.random()
+495: if draw < 0.25:
+496: arrivals.append("uninformed-buy")
+497: elif draw < 0.5:
+498: arrivals.append("uninformed-sell")
+499: else:
+500: arrivals.append("informed")
+501: return path, arrivals
+504: def maker_side(arrival: str, fair: int, bid: int, ask: int) -> int:
+505: """+1 when the maker buys one unit at the bid, -1 when it sells one at the ask, 0 when there is no trade."""
+506: if arrival == "uninformed-buy":
+507: return -1
+508: if arrival == "uninformed-sell":
+509: return 1
+510: if fair > ask:
+511: return -1
+512: if fair < bid:
+513: return 1
+514: return 0
+517: def play(seed: int, half_spread: int) -> dict[str, Any]:
+518: """Play the 20 turns; quote half_spread cents either side of the last filled price (10000 before any fill)."""
+519: path, arrivals = draw_game(seed)
+520: inventory = 0
+521: cash = 0
+522: last_fill: int | None = None
+523: turns: list[dict[str, Any]] = []
+524: for turn in range(1, HORIZON + 1):
+525: mid = START_CENTS if last_fill is None else last_fill
+526: bid, ask, size = mid - half_spread, mid + half_spread, SIZE
+527: arrival = arrivals[turn - 1]
+528: side = maker_side(arrival, path[turn], bid, ask)
+529: filled = side != 0 and size >= 1 and abs(inventory + side) <= LIMIT
+530: price: int | None = None
+531: if filled:
+532: price = ask if side < 0 else bid
+533: inventory += side
+534: cash += -side * price
+535: last_fill = price
+536: turns.append(
+537: {
+538: "turn": turn,
+539: "bid_cents": bid,
+540: "ask_cents": ask,
+541: "size": size,
+542: "arrival": arrival,
+543: "filled": filled,
+544: "fill_price_cents": price,
+545: "inventory_after": inventory,
+546: "cash_after_cents": cash,
+547: }
+548: )
+549: return {"seed": seed, "settlement_cents": path[HORIZON], "turns": turns}
+552: def replay(log: dict[str, Any]) -> dict[str, int]:
+553: """Replay the fills of a log: the cash flow, the ending inventory, the mark at settlement and the P&L, in cents."""
+554: turns: list[dict[str, Any]] = log["turns"]
+555: if len(turns) != HORIZON:
+556: raise ValueError("a log has exactly 20 turns")
+557: fills: list[tuple[int, int]] = []
+558: for record in turns:
+559: if record["filled"] is True:
+560: if record["fill_price_cents"] is None:
+561: raise ValueError("a filled turn needs a fill price")
+562: price = int(record["fill_price_cents"])
+563: fills.append((1 if price == record["bid_cents"] else -1, price))
+564: inventory = sum(side for side, _ in fills)
+565: cash_flow = sum(-side * price for side, price in fills)
+566: mark = inventory * int(log["settlement_cents"])
+567: return {
+568: "cash_flow_cents": cash_flow,
+569: "inventory_end": inventory,
+570: "inventory_mark_cents": mark,
+571: "pnl_cents": cash_flow + mark,
+572: }
+575: def main() -> None:
+576: print("Rung 3 check · seed 0 · SIMULATED · reference rule: 10 cents either side of the last fill, size 1")
+577: log = play(SEED, REFERENCE_HALF_SPREAD)
+578: result = replay(log)
+579: fills = sum(1 for record in log["turns"] if record["filled"])
+580: settlement = int(log["settlement_cents"])
+581: print(f"settlement v_{HORIZON} = {settlement} cents, fills = {fills} of {HORIZON} turns")
+582: print(f"cash_flow_cents = {result['cash_flow_cents']}")
+583: print(f"inventory_end = {result['inventory_end']}")
+584: print(f"inventory_mark_cents = {result['inventory_mark_cents']}")
+585: print(f"pnl_cents = {result['pnl_cents']}")
+586: identity = result["pnl_cents"] == result["cash_flow_cents"] + result["inventory_end"] * settlement
+587: print(f"identity P&L = cash flow + inventory x settlement holds: {identity}")
+588: last_cash = log["turns"][-1]["cash_after_cents"]
+589: print(f"cash flow equals the cash after the last turn: {result['cash_flow_cents'] == last_cash}")
+590: # The counterfactual: the same seed and arrivals, with the half-spread widened by 5 cents.
+591: wider = play(SEED, COUNTERFACTUAL_HALF_SPREAD)
+592: wider_result = replay(wider)
+593: wider_fills = sum(1 for record in wider["turns"] if record["filled"])
+594: print(f"counterfactual half-spread {COUNTERFACTUAL_HALF_SPREAD} cents: fills = {wider_fills} of {HORIZON} turns")
+595: print(f"counterfactual pnl_cents = {wider_result['pnl_cents']}")
+596: print(f"change in pnl_cents from the wider half-spread = {wider_result['pnl_cents'] - result['pnl_cents']} cents")
+599: main()
+600: Rung 3 check · seed 0 · SIMULATED · reference rule: 10 cents either side of the last fill, size 1
+601: settlement v_20 = 9980 cents, fills = 9 of 20 turns
+602: cash_flow_cents = -9950
+603: inventory_end = 1
+604: inventory_mark_cents = 9980
+605: pnl_cents = 30
+606: identity P&L = cash flow + inventory x settlement holds: True
+607: cash flow equals the cash after the last turn: True
+608: counterfactual half-spread 15 cents: fills = 9 of 20 turns
+609: counterfactual pnl_cents = 55
+610: change in pnl_cents from the wider half-spread = 25 cents
+611: The first block of lines is the reference output: the settlement, the fills, the four numbers, the identity, and the agreement of the cash flow with the cash after the last turn. For the reference log, your replay must return the four numbers in that block. The last three lines are the counterfactual. It changes one number of the policy, the half-spread, and reruns the same game, so the change in the P&L of 25 cents is a difference on one seed. It is not an estimate of how a wider spread performs on other seeds, and the lab does not test any other seed.
+614: The brief
+615: Write the analysis in analysis.md , with these sections in this order: P&L decomposition, Evidence from the log, Counterfactual, Assumptions and limits, and Self-review. Each section answers the criterion of the same name in the rubric below. Use your own seed and your own log, and cite the turn number and the field of every value you quote.
+617: The rubric
+620: The analysis: five criteria, four levels each, scored by the descriptors below. The analysis meets the bar at level 3 or above on every criterion.
+621: Criterion 4 · Exemplary 3 · Proficient 2 · Developing 1 · Beginning
+623: C1 · P&L decomposition States cash_flow_cents , inventory_mark_cents and pnl_cents for the submitted log, each equal to the output of your replay on that log, and names the turns that produced the cash flow and the inventory. States the three values, each equal to the output of replay , and names the turns that produced the cash flow only. States two or more of cash_flow_cents , inventory_mark_cents and pnl_cents , each equal to the output of replay , and no value that replay does not return. States fewer than two of the three values, or a value that replay does not return.
+624: C2 · Evidence from the log Cites at least three turns by number and field ( bid_cents , ask_cents , fill_price_cents , inventory_after ), each with its value from the log, and every cited value matches the log. Cites two turns by number and field, each with its value from the log, and every cited value matches the log. Cites one or more turns by number, with at least one value from the log, or with a cited value that does not match the log. Asserts that the log shows the rule works, with no turn cited, or cites turns and gives no value from the log for any of them.
+625: C3 · Counterfactual States one change to the rule with its amount in cents, reruns the engine for the same seed, and reports the change in pnl_cents in cents. States one change with its amount, reruns the same seed, and gives the P&L of both runs without their difference. States one change with its amount in cents, and either gives no rerun, reruns another seed, or reruns the same seed and gives the P&L of at most one run without the difference. Gives no counterfactual, or states a change without its amount in cents (for example, a wider spread would help).
+626: C4 · Assumptions and limits Names the arrival probabilities, the inventory limit and the settlement rule, says which result each one moves, and states what the model leaves out (the queue of resting orders and a trader who learns from the fills, both set aside in Lesson 4 , latency, more than one asset). Names three of the four items (the arrival probabilities, the inventory limit, the settlement rule, and what the model leaves out) with the result each one moves. Names one or more of the model's parameters, limits or omissions, with or without the result each one moves. Names none of the items, or states only that the model is simple.
+627: C5 · Self-review Names one check run on your own replay , such as the identity in the conventions or the agreement with the engine's final cash, and gives the number that the check computed or printed (for example, on the reference log, 30 = -9950 + 1 × 9980). Names one check and its result as a word (it holds or it fails), with no number. Names one check, without its result. Names no self-review, or states only that the result was checked, with no check named.
+632: Two exemplars
+633: Two analyses of the reference rule on seed 0, at different levels. Each exemplar uses only the numbers that Lab 1 and Lab 3 print, sums of their fill prices, and the model's arrival probabilities from the conventions. Their annotations mark where a passage meets or misses the descriptors. Each exemplar carries the official scoring after its annotations. Reveal it after you have scored the exemplar yourself.
+636: Exemplar A
+637: Official scoring: C1 4 · C2 4 · C3 4 · C4 3 · C5 4. Every criterion is met at level 4 except the assumptions, where the settlement rule is not named as a source of the result.
+640: P&L decomposition
+641: For the submitted log, replay returns a cash flow of \(-9950\) cents, an ending inventory of 1 unit, an inventory mark of 9980 cents and a P&L of 30 cents. The nine fills are at turns 2, 3, 4, 5, 7, 8, 13, 18 and 19 (the fill lines that Lab 1 prints). The purchases by the maker at the bid (turns 2, 3, 4, 8 and 19) cost 49910 cents in total, and the sales at the ask (turns 5, 7, 13 and 18) bring in 39960 cents, so the cash flow is \(39960 - 49910 = -9950\) cents. The inventory after turn 19 is 1 unit, and the mark is \(1 \times 9980 = 9980\) cents.
+642: Evidence from the log
+643: Turn 2 bought at the bid of 9990 cents, a fill at 9990. Turn 5 sold at the ask of 9980 cents, a fill at 9980 with inventory 2 after it. Turn 18 sold at the ask of 10000 cents, a fill at 10000 that leaves the inventory at 0.
+644: Counterfactual
+645: Lab 3 reruns seed 0 with the half-spread widened from 10 cents to 15 cents, and the arrivals are the same. The fills stay at 9, and the P&L rises from 30 cents to 55 cents, a change of \(+25\) cents on this seed. One seed is one sample, so this is a difference on the game of seed 0, not an estimate for other seeds.
+646: Assumptions and limits
+647: The arrival probabilities of 1/4, 1/4 and 1/2 set the thresholds that turn each draw into an arrival. Lab 1 does not vary them, so the printed run does not measure their effect on the fills or the P&L. The inventory limit of 10 units does not bind in this run, whose largest inventory is 3 units (Lab 1 prints it). The model leaves out the queue of resting orders and a trader who learns from the fills (both set aside in Lesson 4), latency, and more than one asset, so it does not describe a real market maker.
+648: Self-review
+649: The identity holds for the submitted log: \(30 = -9950 + 1 \times 9980\), and the identity line of Lab 1 prints True . The cash flow also equals the cash after the last turn, which Lab 1 checks on the same log.
+653: Meets C1 level 4: states the cash flow, the mark and the P&L, each equal to the output of replay , and names the turns of the fills that produce the cash flow and the inventory.
+654: Meets C2 level 4: cites turns 2, 5 and 18 by number and field, each with its value from the log, and every cited value matches the log.
+655: Meets C3 level 4: states the change with its amount, reruns seed 0, and reports the change in pnl_cents in cents.
+656: Meets C4 level 3: names the arrival probabilities and the inventory limit, and what the model leaves out, with the result each one moves.
+657: Misses C4 level 4: the settlement rule is not named as one of the items the result depends on.
+658: Meets C5 level 4: names the identity and gives its computed number (30 = -9950 + 1 × 9980). The agreement with the final cash is also named, without a number.
+665: Exemplar B
+666: Official scoring: C1 2 · C2 2 · C3 1 · C4 2 · C5 1. The P&L and the cash flow are stated, the mark is not; one turn is cited; the counterfactual names no amount; the arrival probabilities are named without their effect; the self-review names no check.
+669: P&L decomposition
+670: The P&L is 30 cents, and the cash flow is \(-9950\) cents. Both come from the replay.
+671: Evidence from the log
+672: Turn 5 sold at the ask of 9980 cents.
+673: Counterfactual
+674: On seed 0, a wider spread would have helped.
+675: Assumptions and limits
+676: The arrival probabilities of 1/4, 1/4 and 1/2 are the model's choices.
+677: Self-review
+678: I checked it.
+682: Meets C1 level 2: states the P&L and one component, the cash flow, each equal to the output of replay .
+683: Misses C1 level 3: the inventory mark is not stated, and no turn is named as the source of the cash flow.
+684: Meets C2 level 2: cites one turn by number and field, with its value from the log.
+685: Misses C2 level 3: only one turn is cited, and level 3 needs two turns, each with its value from the log, and every cited value matching the log.
+686: Meets C3 level 1: states a change, a wider spread, without its amount in cents, and says it would help.
+687: Meets C4 level 2: names the arrival probabilities without saying which result depends on them.
+688: Meets C5 level 1: states that the result was checked, with no check named.
+695: Self-assessment and calibration
+696: Score your own analysis on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. The table then shows, criterion by criterion, where your scoring of each exemplar diverged from it, next to your own scores. A criterion on which you were more generous to an exemplar than the rubric is one on which to re-read your own analysis. Your scores stay in this browser. Keep the summary the form produces as self_assessment.md .
+697: The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.
+702: Rung 4 · Stretch
+704: The distribution. Run your rule and the reference rule on seeds 0 to 199, and report the distribution of pnl_cents in cents, with the quantiles and the method for them stated exactly. Say whether the two rules' P&L differ on the same seeds, and how often.
+705: The informed share. Change the probability of an informed arrival from \(1/2\) to \(0.6\), with the uninformed arrivals split evenly. Rerun the same seeds and report what changes, in cents, and why the change is the one the replay shows.
+706: The inventory limit. Change the limit from 10 units to 5 units and rerun seed 0. State which fills are refused, by turn, and what the refusals do to the cash flow.
+711: Reading
+712: The two books below are the curriculum's reading for this unit, cited by key only. This page attributes no problem, answer, page or edition to either book. The game in this project is a model with its own rules, defined on this page and in Lesson 4.
+720: References
+725: Previous L06 · Technical finance questions and case interviews
+726: Module PC3 overview
+730: PC3 project · Market-making game · The autograder and the self-assessment run in your browser.

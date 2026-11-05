@@ -1,4 +1,4 @@
-"""Alternative 1: bisection with the page's stop rule (relative bracket width 1e-12, or 200 halvings).
+"""Alternative 1: bisection with a relative bracket width of 1e-12, or at most 200 halvings.
 
 Correct alternative implementation of the E4 solver (ruling 10). Standard library only.
 """

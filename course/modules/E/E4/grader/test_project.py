@@ -496,7 +496,7 @@ def test_solver_prints_nothing(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# The stop rule is relative to the bracket's upper end, so a small root is as accurate as a large one.
+# Accuracy relative to the root: at a cost where tau-bar is at least 1e-2, a small root is as accurate as a large one.
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -512,23 +512,23 @@ def closed_form_root(sd: float, cost: float) -> float:
 
 @pytest.mark.parametrize("sd", [1e-6, 1e-9])
 def test_small_noise_root_is_relatively_accurate(sd: float) -> None:
-    """The bisection stops at a relative width of 1e-12, so a root near 1e-9 is as precise as one near 0.5."""
+    """At a cost where tau-bar is at least 1e-2, the page requires accuracy relative to the root, so a root near 1e-9 is
+    as precise as one near 0.5."""
     lam = run(sd, 0.13)["informed_fraction"]
     exact = closed_form_root(sd, 0.13)
     expect(
         exact > 0.0 and abs(lam - exact) <= 1e-8 * exact,
-        "the informed fraction must be accurate relative to its size: check the stop rule of the bisection",
+        "the informed fraction must be accurate relative to its size: check the bisection's accuracy near the root",
     )
 
 
 @pytest.mark.parametrize("sd", [1e-11, 1e-12, 1e-30, 1e-40])
 def test_tiny_noise_root_is_relatively_accurate(sd: float) -> None:
-    """A root near 1e-12 is as precise as one near 0.5: the bracket starts at 0, and its stop rule is relative to its
-    upper end, so an absolute width does not limit the accuracy of a small root. The 200-halving cap of the stop rule
-    reaches the relative tolerance for every root above about 6e-49."""
+    """A root near 1e-12 is as precise as one near 0.5 when the noise volume is at least 1e-50 and tau-bar is at least
+    1e-2, as in every case here: the accuracy must not depend on the size of the root."""
     lam = run(sd, 0.15)["informed_fraction"]
     exact = closed_form_root(sd, 0.15)
     expect(
         exact > 0.0 and abs(lam - exact) <= 1e-8 * exact,
-        "the informed fraction must be accurate relative to its size: check the bracket and the bisection stop rule",
+        "the informed fraction must be accurate relative to its size: check the bracket and the bisection's accuracy",
     )

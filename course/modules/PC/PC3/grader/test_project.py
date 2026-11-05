@@ -425,6 +425,38 @@ def test_the_quote_depends_only_on_the_state_it_is_given() -> None:
     )
 
 
+def test_a_direct_call_on_a_hand_built_state_ignores_an_earlier_game() -> None:
+    """A direct call, with no engine. The state is at turn 5: the history holds a fill at 10020 on turn 2 and no fill on
+    turns 3 and 4, so a quote that reads only the last turn record (turn 4) has no fill to read. The module is reloaded
+    and the state is quoted on the fresh module; then one other game is played and the same state is quoted again. A
+    quote that keeps a value between calls, for example the last fill in a module global, answers the second time from
+    what that game left, so the two answers differ."""
+    history = [
+        turn_record(1, bid=9_990, ask=10_010, size=1, inventory=0, cash=0),
+        turn_record(
+            2, bid=10_010, ask=10_020, filled=True, arrival="uninformed-buy", price=10_020, inventory=-1, cash=10_020
+        ),
+        turn_record(3, bid=10_010, ask=10_030, size=1, inventory=-1, cash=10_020),
+        turn_record(4, bid=10_010, ask=10_030, size=1, inventory=-1, cash=10_020),
+    ]
+    state: dict[str, object] = {
+        "turn": 5,
+        "inventory": -1,
+        "cash_cents": 10_020,
+        "max_size": 5,
+        "limit": 10,
+        "history": history,
+    }
+    importlib.reload(sol)
+    fresh = sol.quote(state)
+    engine.play(sol.quote, 0)  # a fixed game, whatever the learner's seed, leaves its own state in the module if any
+    after = sol.quote(state)
+    expect(
+        fresh == after,
+        "a quote on a given state must not depend on an earlier game: the same state must give the same quote",
+    )
+
+
 # The instance: deterministic, valid, and different across seeds.
 
 

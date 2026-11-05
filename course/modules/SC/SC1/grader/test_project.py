@@ -11,8 +11,9 @@ over the 2**n walks, from a quadrature written in this file, or from identities.
 functions against another: the srw reflection identity, the one-step estimate against reflection_tail, the nested counts
 against discrete_max_exceedance, and the coarse count against the fine count. One test calls discrete_max_exceedance
 twice on the same instance and requires the same answer. One test pins the one-step draws to random.Random(seed).gauss.
-Two tests put the level exactly on a path's maximum and just
-above it, which checks the "at least a" rule in both directions.
+Two tests regenerate the seeded paths by hand, path by path and step by step, and require the grid counts of
+discrete_max_exceedance and nested_grid_counts to equal the explicit counts exactly. Two tests put the level exactly
+on a path's maximum and just above it, which checks the "at least a" rule in both directions.
 A seeded-simulation check against a known target p uses a band of five standard errors of p, sqrt(p (1 - p) / N), plus
 one path (1/N). The band takes the target's standard error, not the sample's: the sample's is zero when no path hits,
 which would shrink the band to 1/N and fail a correct engine. A failing test names the property it checks and the idea
@@ -597,3 +598,47 @@ def test_count_functions_return_integers() -> None:
     expect(isinstance(sol.srw_terminal_count(6, 2), int), "srw_terminal_count must return an exact integer")
     fine, coarse = sol.nested_grid_counts(INST, 4, 2)
     expect(isinstance(fine, int) and isinstance(coarse, int), "nested counts must be integers")
+
+
+def _explicit_paths(inst: dict[str, Any], n_steps: int) -> list[list[float]]:
+    # The paths of the page's draw order: path by path, step by step, from random.Random(seed).gauss.
+    rng = random.Random(int(inst["seed"]))
+    sd = math.sqrt(inst["H"] / n_steps)
+    paths = []
+    for _ in range(int(inst["n_paths"])):
+        position = 0.0
+        values = []
+        for _ in range(n_steps):
+            position += rng.gauss(0.0, sd)
+            values.append(position)
+        paths.append(values)
+    return paths
+
+
+def test_discrete_estimate_matches_an_explicit_count_on_the_stated_draws() -> None:
+    for inst in (INST, INST2):
+        for n_steps in (1, 3, 8, inst["n_steps"]):
+            paths = _explicit_paths(inst, n_steps)
+            hits = sum(1 for values in paths if max(values) >= inst["a"])
+            estimate, _ = sol.discrete_max_exceedance(inst, n_steps)
+            within(
+                estimate,
+                hits / inst["n_paths"],
+                1e-12,
+                "the grid estimate must count the grid maxima on the stated draws",
+            )
+
+
+def test_nested_counts_match_an_explicit_subsample_of_the_fine_paths() -> None:
+    for inst in (INST, INST2):
+        for n_fine, n_coarse in GRID_PAIRS:
+            stride = n_fine // n_coarse
+            fine_hits = 0
+            coarse_hits = 0
+            for values in _explicit_paths(inst, n_fine):
+                fine_hits += max(values) >= inst["a"]
+                coarse_hits += max(values[k * stride - 1] for k in range(1, n_coarse + 1)) >= inst["a"]
+            expect(
+                sol.nested_grid_counts(inst, n_fine, n_coarse) == (fine_hits, coarse_hits),
+                "the coarse grid is every n_fine / n_coarse-th point of the fine grid, on the same paths",
+            )

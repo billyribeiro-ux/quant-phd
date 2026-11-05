@@ -10,8 +10,8 @@ Each test checks one property or one number against the conventions of the proje
 the page fixes integer cents and the layer order, so a correct implementation returns the same integers. Only the
 conditions the page names with ValueError are required to raise it, and each named condition has its own test on
 both sides of its limit. Any other invalid input may raise any exception or return. A failing test names the property
-it checks and the idea to revisit, and it never prints an expected value: each expected value is held in a named
-variable, so a failing line shows the name and not the value.
+it checks and the idea to revisit, and it never prints an expected value. Each expected result (an amount, a count, a
+list or a mapping) is held in a named variable, so a failing line shows the name and not the value.
 """
 
 from __future__ import annotations
@@ -201,13 +201,8 @@ def test_waterfall_is_a_frozen_dataclass_with_the_named_fields() -> None:
     is_dataclass_class = dataclasses.is_dataclass(cls)
     assert is_dataclass_class, "Waterfall must be a dataclass"
     names = {field.name for field in dataclasses.fields(cls)}
-    assert names == {
-        "margin_cents",
-        "default_fund_cents",
-        "ccp_capital_cents",
-        "survivor_cents",
-        "uncovered_cents",
-    }, "Waterfall must have exactly the five fields named on the project page"
+    want_names = {"margin_cents", "default_fund_cents", "ccp_capital_cents", "survivor_cents", "uncovered_cents"}
+    assert names == want_names, "Waterfall must have exactly the five fields named on the project page"
     sample: Any = cls(0, 0, 0, {}, 0)
     try:
         sample.margin_cents = 1
@@ -424,7 +419,8 @@ def test_leftover_cent_goes_to_the_lowest_id_when_the_dictionaries_list_members_
     margins = {3: 1, 1: 1, 2: 1, 4: 0}
     funds = {3: 1, 1: 1, 2: 1, 4: 0}
     result = sol.waterfall(1, 4, margins, funds, 0)
-    assert result.survivor_cents == {1: 1, 2: 0, 3: 0}, (
+    want = {1: 1, 2: 0, 3: 0}
+    assert result.survivor_cents == want, (
         "the leftover cent goes to the first survivor in ascending id order, whatever the order of the dictionaries"
     )
 
@@ -684,11 +680,13 @@ def test_repeated_losses_each_count_as_a_scenario_in_the_sizing() -> None:
     __tracebackhide__ = True
     got_four = sol.margin_for_cover([5, 5, 10, 20], 5_000)
     got_five = sol.margin_for_cover([5, 5, 5, 9, 12], 6_000)
-    assert got_four == 5, (
+    want_four = 5
+    want_five = 5
+    assert got_four == want_four, (
         "the scenario count S counts every occurrence of a loss, repeats included: k is the ceiling of "
         "target * S / 10000, counted from the smallest of all S losses"
     )
-    assert got_five == 5, (
+    assert got_five == want_five, (
         "the scenario count S counts every occurrence of a loss, repeats included: k is the ceiling of "
         "target * S / 10000, counted from the smallest of all S losses"
     )
@@ -698,7 +696,8 @@ def test_zero_losses_are_scenarios_in_the_sizing() -> None:
     """A zero loss is one of the S scenarios, so the sizing counts it: with four scenarios, k = 2 gives the second."""
     __tracebackhide__ = True
     got = sol.margin_for_cover([0, 10, 20, 30], 5_000)
-    assert got == 10, (
+    want = 10
+    assert got == want, (
         "a zero loss is a scenario: S counts it, and the margin is the k-th smallest of all S losses, zeros included"
     )
 
@@ -806,14 +805,16 @@ def test_repeated_losses_each_count_in_the_cover() -> None:
     """Each of the S scenarios counts once, repeats included: two of four scenarios at or below 5 cents is 5000 bps."""
     __tracebackhide__ = True
     got = sol.cover_bps([5, 5, 10, 20], 5)
-    assert got == 5_000, "the cover counts every scenario, repeated losses included, and divides by all S scenarios"
+    want = 5_000
+    assert got == want, "the cover counts every scenario, repeated losses included, and divides by all S scenarios"
 
 
 def test_zero_losses_are_in_the_cover_denominator() -> None:
     """A zero loss is a scenario: two zero losses of four scenarios, at a zero margin, give a cover of 5000 bps."""
     __tracebackhide__ = True
     got = sol.cover_bps([0, 0, 5, 9], 0)
-    assert got == 5_000, "the cover divides by all S scenarios, and the zero losses are among them, so they count"
+    want = 5_000
+    assert got == want, "the cover divides by all S scenarios, and the zero losses are among them, so they count"
 
 
 def test_cover_matches_the_oracle_on_both_instances() -> None:
@@ -1063,9 +1064,10 @@ def test_margin_for_cover_and_cover_bps_do_not_change_their_list_argument() -> N
     """The sizing and the cover read their scenario list and never reorder it or write to it."""
     __tracebackhide__ = True
     losses = [30, 10, 20]
+    want = [30, 10, 20]
     sol.margin_for_cover(losses, 5_000)
     sol.cover_bps(losses, 20)
-    assert losses == [30, 10, 20], "margin_for_cover and cover_bps must not change the list they are given"
+    assert losses == want, "margin_for_cover and cover_bps must not change the list they are given"
 
 
 def test_repeated_calls_agree() -> None:

@@ -108,7 +108,8 @@ def load_column(path: Path, column: str) -> list[tuple[str, Fraction]]:
 def log_changes(rows: Sequence[tuple[str, Fraction]]) -> list[tuple[str, float]]:
     """Return (month, ln(x_m / x_(m-1))) for every month after the first, in file order.
 
-    The ratio is an exact Fraction; only the logarithm is a float. Each change is dated by the later month.
+    The ratio is an exact Fraction, converted once to a float before the logarithm.
+    Each change is dated by the later month.
     """
     return [(month, math.log(float(rate / previous))) for (_, previous), (month, rate) in itertools.pairwise(rows)]
 

@@ -64,9 +64,9 @@ the planner did not read it in full and makes no claim from it.
   §0 cites the same default).
 - A turn-by-turn clickable game would need a new JS kernel with tests (BUILDER_RULES §6.4).
 - **Plan's default (recommended, for the architect to confirm or replace):** the game is a deterministic Python engine
-  (`grader/engine.py`) that runs in Pyodide. The student writes `policy.py` (a function `quote(state)` that returns a
+  (`grader/engine.py`) that runs in Pyodide. The student writes `market_maker.py` (a function `quote(state)` that returns a
   bid, an ask and a size for each turn). The page runs the engine for the workspace seed and writes `game_log.json`. The
-  student writes `pnl.py` to replay the log and compute cash flow, inventory and mark-to-market P&L. The post-game analysis
+  student writes `replay(log)`, in the same `market_maker.py`, to replay the log and compute cash flow, inventory and mark-to-market P&L. The post-game analysis
   is `analysis.md`. Play is by code, not by clicking. The project spec says so on its first line.
 
 **B2. "Timed" in the lab and in the coding lesson needs a timer, and the static pages have none.**
@@ -157,7 +157,7 @@ for the layout and the hub and project grammar. `course/templates/` holds the fo
    before the statement. Examples: the expectation of a sum needs finite expectations; Bayes' rule needs P(B) > 0; the
    fair-game definition needs a finite game with a finite number of turns.
 7. **Grader rule.** The grader rules of BUILDER_RULES §5.3 apply in full (§5.3–§5.6 of this plan).
-8. **Money.** Every money value in the game, the log, `pnl.py` and any prose figure is an integer number of cents (`int`
+8. **Money.** Every money value in the game, the log, `replay` and any prose figure is an integer number of cents (`int`
    in Python). Expected values in the labs are `Fraction` in cents, rounded half up once, at display, with the rule stated.
 9. **No horizontal scroll at 360 px.** Tables wrap or sit in a scrolling container; code blocks scroll inside their own
    container; no element forces the page wider than 360 px.
@@ -308,16 +308,16 @@ verifier reads every lesson for these terms (VERIFIER §2.9).
 
 ### 5.1 Ladder (BLUEPRINT §5.1; `tools/check_projects.py:33` lists the rungs in order)
 
-1. **Rung 1, worked example** (`lab-PC3-project-1`, SIMULATED, skippable on placement): the reference `pnl.replay` applied to the
+1. **Rung 1, worked example** (`lab-PC3-project-1`, SIMULATED, skippable on placement): the reference `replay` applied to the
    seed-0 log of a fixed symmetric policy, annotated line by line with a "why" note at each step (the cash flow of each fill, the
    inventory after each turn, the mark at the settlement value). Full length (tier U).
 2. **Rung 2, completion** (`lab-PC3-project-2`, `class="lab completion"`, SIMULATED): the same replay with the cash-flow line
    and the mark line replaced by `___`. Graded instantly. The twin is the completed solution; every page line equals the twin
    line or contains a blank (`tools/run_labs.py` completion rule). `tools/check_projects.py:89-90` requires a completion lab or a quiz.
-3. **Rung 3, independent project** (graded `both`): (a) `policy.py` (the quoting rule) and `pnl.py` (the replay and the
+3. **Rung 3, independent project** (graded `both`): (a) `market_maker.py`, holding `quote` (the quoting rule) and `replay` (the replay and the
    decomposition), graded by the autograder on seeds 0–49; (b) `analysis.md`, graded by the rubric (§5.4).
    `lab-PC3-project-3` is the rung-3 check: it runs the reference `play(seed=0)` and prints the record's P&L and the identity
-   the student's `pnl.py` must reproduce.
+   the student's `replay` must reproduce.
 4. **Rung 4, stretch** (optional, not graded): run the policy on seeds 0–199 and report the distribution of the P&L in cents
    (exact quantiles, the method stated), with the question "what changes when the informed share is 0.6". No ceiling.
 
@@ -334,10 +334,10 @@ The spec's terms, in this order: **Context**, **Inputs**, **Required outputs**, 
   limit); arrivals: uninformed order (1 unit, buy or sell with probability 1/2 each) with probability 1/2, otherwise informed
   trader. No dataset is used (§6).
 - **Required outputs.**
-  - `policy.py` with `quote(state: dict[str, object]) -> tuple[int, int, int]`, returning `(bid_cents, ask_cents, size)`
+  - `market_maker.py` with `quote(state: dict[str, object]) -> tuple[int, int, int]`, returning `(bid_cents, ask_cents, size)`
     for the current turn. The `state` keys are exactly `turn` (int, 1 to 20), `inventory` (int), `cash_cents` (int),
     `max_size` (int, `5`), `limit` (int, `10`), and `history` (list of the earlier turn records, §5.3).
-  - `pnl.py` with `replay(log: dict[str, object]) -> dict[str, int]`, returning exactly the keys `cash_flow_cents`,
+  - `market_maker.py` with `replay(log: dict[str, object]) -> dict[str, int]`, returning exactly the keys `cash_flow_cents`,
     `inventory_end`, `inventory_mark_cents` and `pnl_cents`, with `pnl_cents = cash_flow_cents + inventory_mark_cents` and
     `inventory_mark_cents = inventory_end × settlement_cents`.
   - `game_log.json`, written by the page's runner for the workspace seed (the engine's output; the student does not edit it).
@@ -345,7 +345,7 @@ The spec's terms, in this order: **Context**, **Inputs**, **Required outputs**, 
 - **Constraints.** Integer cents everywhere. Standard library only. The same code runs in Pyodide and under pytest. Invalid
   input raises the exception types in §5.5. The analysis states its numbers with the turn index or field that produced them.
   The analysis does not claim a result for real market makers.
-- **Grading.** `both`: the autograder (`grader/test_project.py`, dual mode: `policy.py` and `pnl.py` on seeds 0–49) and the rubric
+- **Grading.** `both`: the autograder (`grader/test_project.py`, dual mode: `market_maker.py` on seeds 0–49) and the rubric
   (`analysis.md`, §5.4). Adversarial question bank: not required (Q6).
 - **Reading list.** `ol.reading-list`: the two curriculum books as registry keys, `zhou2008practical` and `crack2015heard`, at
   book level, with no page, problem or edition typed (§7).
@@ -354,7 +354,7 @@ The spec's terms, in this order: **Context**, **Inputs**, **Required outputs**, 
 
 `grader/engine.py` is the public engine, run in Pyodide and under pytest. Its functions:
 - `make_instance(seed)` is in `instance.py` (§5.6).
-- `play(policy_module, seed) -> dict` runs the 20 turns. It calls `policy.quote(state)` once per turn before the arrival is
+- `play(quote, seed) -> dict` runs the 20 turns. It calls `quote(state)` once per turn before the arrival is
   resolved. It returns the log: `seed`, `settlement_cents` (`v_N`, revealed at the end), `turns` (a list of 20 records), where a
   turn record has the keys `turn`, `bid_cents`, `ask_cents`, `size`, `arrival` (`"uninformed-buy"`, `"uninformed-sell"`,
   `"informed"` or `"none"`), `filled` (bool), `fill_price_cents` (int or `null`), `inventory_after` (int), `cash_after_cents` (int).
@@ -367,14 +367,14 @@ Learner text calls the time index a **turn** (§2.1 item 11). The code may use `
 Five criteria, four observable levels each (level 4 down to level 1; `tools/check_projects.py:58-75` counts four `td` cells per row):
 
 1. **Decomposition of the P&L.** Level 4: states `cash_flow_cents`, `inventory_mark_cents` and `pnl_cents` for the submitted
-   log, each equal to the `pnl.py` output, with the turns that produced each part. Level 1: "the P&L is positive".
+   log, each equal to the `replay` output, with the turns that produced each part. Level 1: "the P&L is positive".
 2. **Evidence from the log.** Level 4: cites at least three specific turns by number and field (`bid_cents`, `fill_price_cents`,
    `inventory_after`). Level 1: "the log shows the policy works".
 3. **Counterfactual.** Level 4: states one change to the policy (for example, the half-spread widened by 5 cents), reruns the engine
    for the same seed, and reports the change in `pnl_cents` in cents. Level 1: "a wider spread would help".
 4. **Assumptions and limits.** Level 4: names the arrival probabilities, the inventory limit and the settlement rule the result depends
    on, and states what the model leaves out (adverse selection in its real form, latency, multiple assets). Level 1: "the model is simple".
-5. **Self-review.** Level 4: names one check the student ran on their own `pnl.py` (for example the identity in §5.2) and the result of
+5. **Self-review.** Level 4: names one check the student ran on their own `replay` (for example the identity in §5.2) and the result of
    that check. Level 1: "I checked it".
 
 Exemplars: **exemplar-a (`data-level="4"`)** and **exemplar-b (`data-level="2"`)**, fully written on a SIMULATED seed, each annotated
@@ -396,8 +396,7 @@ the page and tested (§5.6).
 
 ### 5.6 Grader design (Builder C)
 
-Files: `course/modules/PC/PC3/grader/`: `engine.py` (public), `instance.py` (public), `reference.py` (the reference `policy.py` and
-`pnl.py`; excluded from deployment, BLUEPRINT §7), `starter.py` (`NotImplementedError` stubs for `quote` and `replay`; the suite
+Files: `course/modules/PC/PC3/grader/`: `engine.py` (public), `instance.py` (public), `reference.py` (the reference `quote` and `replay` in `market_maker.py`; excluded from deployment, BLUEPRINT §7), `starter.py` (`NotImplementedError` stubs for `quote` and `replay`; the suite
 must fail on it), `test_project.py`.
 
 - **`instance.py`**: `make_instance(seed: int) -> dict[str, object]`. Deterministic from `random.Random(seed)`, with the draws in a fixed
@@ -410,7 +409,7 @@ must fail on it), `test_project.py`.
   passes every test on seeds 0–49.
 - **`test_project.py`** (properties and numbers; no hard-coded answers; each test recomputes the expected value from the instance's
   own parameters by an oracle written apart from `reference.py`):
-  - **Legality.** For seeds 0–49, the student's `policy.quote` returns three integers for every turn, `bid < ask`, `0 <= size <= 5`.
+  - **Legality.** For seeds 0–49, the student's `quote` returns three integers for every turn, `bid < ask`, `0 <= size <= 5`.
     A crossed quote raises `ValueError` naming "bid must be below ask" (isolated test, hand-built quote). A size of 6 raises
     `ValueError` naming "size must lie in 0..5" (isolated test).
   - **Log shape.** `play(policy, seed)` returns exactly 20 turn records; a log of 19 turns raises `ValueError` ("a log has exactly 20
@@ -430,26 +429,26 @@ must fail on it), `test_project.py`.
   - Failure messages name the violated property and hint at the concept. They never print the expected value; each failing check sets
     `__tracebackhide__ = True` (fixer-rule 19).
 - **Dual mode.** The same suite runs in Pyodide and under pytest; each test under 5 s in Pyodide; the suite under 60 s.
-- **Five alternative correct implementations** (pairs `policy.py` + `pnl.py`, all must pass seeds 0–49; the verifier writes them as
+- **Five alternative correct implementations** (each a `market_maker.py` with `quote` and `replay`, all must pass seeds 0–49; the verifier writes them as
   scratch fixtures and archives the scripts under `ledgers/PC3/scripts/`):
   1. integer-only accounting with a class-based policy (`class Maker`, its `quote` method);
-  2. closures: `make_quoter()` returns `quote`; `pnl.replay` written as one fold over the turns;
+  2. closures: `make_quoter()` returns `quote`; `replay` written as one fold over the turns;
   3. inventory-skewed quotes (both sides shifted by minus one cent per unit of inventory), with the replay written from the cash identity;
   4. size scaled down as `|inventory|` grows (size 0 at the limit), replay with an explicit list accumulator;
   5. threshold quoting (quote only when the spread is at least 10 cents, otherwise size 0), replay with a `dataclasses` record per turn.
   Each alternative is correct by the rules of §5.2; none is required to earn a particular P&L.
 - **Mutants (ten, each a complete module under `ledgers/PC3/mutants/`; VERIFIER §2.6 asks for at least three; ten is the bar).** Each
   is a single-change copy of the reference. The first docstring line names the student error.
-  1. `pnl.py`: the inventory mark is omitted (P&L is cash only).
-  2. `pnl.py`: the sell cash flow sign is flipped.
-  3. `pnl.py`: unfilled orders are counted (the `filled` flag is ignored).
-  4. `pnl.py`: the mark uses the last quoted mid, not `settlement_cents`.
-  5. `pnl.py`: the settlement is rounded to the nearest dime before marking.
-  6. `pnl.py`: the last turn is omitted from the loop.
-  7. `pnl.py`: a sell adds to inventory (the sign of the inventory update is flipped).
-  8. `pnl.py`: a hard-coded result for seed 0 is returned for any log.
-  9. `policy.py`: the quoted size is 6 (above the maximum), so the engine raises `ValueError`.
-  10. `policy.py`: a crossed quote (`bid == ask`) is posted on turn 1 only; the engine raises `ValueError`.
+  1. `replay`: the inventory mark is omitted (P&L is cash only).
+  2. `replay`: the sell cash flow sign is flipped.
+  3. `replay`: unfilled orders are counted (the `filled` flag is ignored).
+  4. `replay`: the mark uses the last quoted mid, not `settlement_cents`.
+  5. `replay`: the settlement is rounded to the nearest dime before marking.
+  6. `replay`: the last turn is omitted from the loop.
+  7. `replay`: a sell adds to inventory (the sign of the inventory update is flipped).
+  8. `replay`: a hard-coded result for seed 0 is returned for any log.
+  9. `quote`: the quoted size is 6 (above the maximum), so the engine raises `ValueError`.
+  10. `quote`: a crossed quote (`bid == ask`) is posted on turn 1 only; the engine raises `ValueError`.
   `tools/mutate_graders.py --unit PC3 --seeds 0-9` (default 0–9, `tools/mutate_graders.py:30-32`) must report every mutant killed,
   and `tools/ledger.py` counts each listed mutant (`tools/ledger.py:47-91`). A mutant that survives and violates a stated rule is killed by
   a new test (architect rule 9). Mutants that need the hidden fair value (for example "the policy reads the fair value") are not in the
@@ -574,7 +573,7 @@ architect's, once, before merge.
 
 ## 12. Open questions for the architect (numbered; each needs a decision before the builders start)
 
-1. **B1, the play interface (BLOCKING).** Confirm the default: a Pyodide engine played by code (`policy.py`, `pnl.py`, `game_log.json`,
+1. **B1, the play interface (BLOCKING).** Confirm the default: a Pyodide engine played by code (`market_maker.py`, `game_log.json`,
    `analysis.md`), no JavaScript game. Alternative: a clickable game, which needs a new JS kernel with tests (BUILDER_RULES §6.4), not
    recommended because the architect default bars new kernels for modules.
 2. **B2, timing (BLOCKING for L02 and L05 wording only).** Confirm: no JavaScript timer; "timed" means a stated per-item time budget kept by

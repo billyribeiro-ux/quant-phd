@@ -4,7 +4,7 @@ Standard library only. The grid values are stated parameters of the model, not a
 constants are a = 2, tau_v = 1 and tau_e = 1. The function solve is the reference: copy this file as report/run_case.py
 and replace the body of solve with a call to your module's solve_model; the file must then print the same lines.
 
-Each row gives the informed fraction (bisection on the gap, with the stated tolerance), the price informativeness, the
+Each row gives the informed fraction (bisection on the gap, with TOLERANCE), the price informativeness, the
 gap at the reported fraction, and the closed-form fraction of Proposition 4. The last line checks the box of
 the autograder's generator on a 22 by 22 grid, which includes the four corners: the gap must be positive at fraction 0
 and negative at fraction 1 at every grid point.
@@ -18,7 +18,7 @@ TAU_E = 1.0  # the precision of the signal s = v + eps
 NOISE_GRID = (0.500, 0.625, 0.750)  # the noise volumes the report uses
 COST_GRID = (0.120, 0.135, 0.150)  # the information costs the report uses
 TOLERANCE = 1e-12  # the bisection stops when the bracket is narrower than this times its upper end
-MAX_HALVINGS = 200  # or after this many halvings, the second limb of the stop rule
+MAX_HALVINGS = 200  # a cap on the halvings: 200 halvings reach the tolerance for every root above about 6e-49
 
 
 def price_precision(lam: float, sd: float) -> float:

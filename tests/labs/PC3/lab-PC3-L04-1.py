@@ -1,8 +1,9 @@
 """PC3 lab L04: the market-making game on seed 0, one fixed quoting rule, and two exact checks.
 
 SIMULATED. The fair path and the arrivals are model inputs drawn from random.Random(0). No data file is read and there
-is no network access. Standard library only. Money is an integer number of cents. Expectations and variances are
-fractions.Fraction, so every printed value is exact; a printed fraction such as 5/2 is 2.5 cents.
+is no network access. Standard library only. Quotes, cash flows and inventory marks are integer numbers of cents.
+Expectations and variances are fractions.Fraction, so every printed value is exact; a printed fraction such as 5/2 is
+2.5 cents.
 
 Part 1 plays the 20-turn game on seed 0 with the lesson's rule: quote symmetrically on the last filled price, or
 at 10000 cents before any fill, with a half-spread of 10 cents and a size of 1. It prints the turn log and the
