@@ -82,7 +82,7 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
     for _ in range(400):
         c = (a * fb - b * fa) / (fb - fa)
         fc = _gap(c, sd, cost)
-        if abs(fc) <= 1e-15 or b - a <= 1e-15:
+        if fc == 0.0 or b - a <= 1e-12 * b:
             break
         if fc * fb > 0.0:
             b, fb = c, fc

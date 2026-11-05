@@ -25,3 +25,36 @@ It is therefore recorded here as an open item for the architect, not as a surviv
 
 Either (a) keep Proposition 1's sign statement, which the suite cannot test, and record this as a known limit, or
 (b) remove the sign from Proposition 1, which changes no output. The builder did not edit the proposition on its own.
+
+# Stop-rule variants (round 8 fixer)
+
+These two files differ from `reference.py` only in the bisection loop of `solve_model`. The page states the stop rule
+(project.html, Constraints: stop when the bracket is narrower than 1e-12 times its upper end, or after 200 halvings;
+the reported fraction lies in the final bracket). Both variants keep the sign-change invariant, so the root stays in the
+bracket. Each passes the whole suite on seeds 0 to 49 (run this round), so no output test separates them from the reference.
+
+## `mutant_r6_08_reports_lower_end.py`: reports the lower end of the final bracket
+
+One edit: `lam = low` in place of `lam = 0.5 * (low + high)`.
+
+Proof that the outputs differ only inside the stated tolerance. The variant runs the same bisection as the reference,
+with the same gap signs, so both end with the same bracket `[low, high]`. The reference reports its midpoint and the
+variant reports `low`, so the two differ by at most `high - low`. At a tolerance stop `high - low <= 1e-12 * high`. At the
+200-halving cap `high - low = 2^-200` (about 6e-61). The page allows any point of the final bracket (Constraints). The suite
+tolerances (1e-10 absolute on the root, 1e-8 relative on the tiny-root checks) are larger than either difference.
+This is the same variant as `mutant_r7_01_reports_bracket_lower_end.py` above, re-created in round 8 and kept under its
+round-6 name because the round-6 citation points here.
+
+## `mutant_r6_09_always_200_halvings.py`: never stops early
+
+One edit: the loop is `while steps < 200` with no relative-tolerance test.
+
+Proof that the outputs differ only inside the stated tolerance. The variant follows the reference's path until the
+reference would stop. From then on it keeps halving inside the reference's final bracket, which contains the root, so the
+variant's final bracket lies inside the reference's. Both midpoints lie in that bracket, so they differ by at most the
+reference's final width, which is at most `1e-12 * high` when the reference stops on tolerance. No test can see the
+number of halvings: the suite checks outputs only.
+
+Status: the variant violates the first limb of the page's stop rule (it does not stop at the tolerance), and no output
+test can observe that. It is therefore a documented interpretation, not a killed mutant. The architect may either accept
+it as an output-equivalent implementation or reword the stop rule so that the step count is not a stated behaviour.

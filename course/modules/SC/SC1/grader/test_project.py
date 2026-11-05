@@ -25,6 +25,8 @@ import itertools
 import math
 import os
 import random
+import sys
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -76,6 +78,35 @@ def within(value: float, target: float, tolerance: float, message: str) -> None:
     """Fail unless |value - target| is at most the tolerance. The message never holds a value."""
     __tracebackhide__ = True
     expect(abs(value - target) <= tolerance, message)
+
+
+class _BudgetExceeded(BaseException):
+    """Raised inside a call that runs past its time budget. A BaseException, so that a student's except Exception
+    cannot swallow it."""
+
+
+def within_budget(call: Callable[[], Any], seconds: float, message: str) -> Any:
+    """Return call()'s value. Fail with the test's own message if the call runs longer than the budget.
+
+    A trace hook checks the clock at every call and line event, so a loop that lists the walks is stopped in the same
+    thread. The browser runs the suite in Pyodide, a single-threaded runtime, so the check does not rely on threads.
+    """
+    __tracebackhide__ = True
+    deadline = time.perf_counter() + seconds
+
+    def check(frame: Any, event: str, arg: Any) -> Any:
+        if time.perf_counter() > deadline:
+            raise _BudgetExceeded()
+        return check
+
+    previous = sys.gettrace()
+    sys.settrace(check)
+    try:
+        return call()
+    except _BudgetExceeded:
+        pytest.fail(message)
+    finally:
+        sys.settrace(previous)
 
 
 def simulation_band(target: float, n_paths: int) -> float:
@@ -252,10 +283,26 @@ def test_srw_level_beyond_the_length_counts_nothing() -> None:
 
 
 def test_srw_integers_are_exact_for_a_long_odd_walk() -> None:
+    # 2**41 walks: a count that lists them cannot finish inside the budget, so the budget is the failure.
+    endpoint = within_budget(
+        lambda: sol.srw_terminal_count(41, 1),
+        1.0,
+        "the endpoint count for n = 41 must follow from the symmetry of the steps or a binomial sum, "
+        "not from listing the walks",
+    )
     expect(
-        sol.srw_terminal_count(41, 1) == 2**40,
+        endpoint == 2**40,
         "the endpoint count at level 1 for n = 41 must follow from the symmetry of the steps, "
         "not from listing the walks",
+    )
+    maximum = within_budget(
+        lambda: sol.srw_max_count(41, 1),
+        1.0,
+        "the maximum count for n = 41 must follow from the reflection identity, not from listing the walks",
+    )
+    expect(
+        maximum == 2**41 - math.comb(41, 20),
+        "the maximum count at level 1 for n = 41 must follow from the reflection identity, not from listing the walks",
     )
 
 
@@ -505,9 +552,21 @@ def test_one_fine_step_and_one_coarse_step_are_accepted() -> None:
 
 
 def test_no_function_prints_or_warns(capsys: pytest.CaptureFixture[str]) -> None:
+    # Every public function, on its boundary inputs as well as on typical ones. Warnings are errors in this file.
     sol.reflection_tail(INST["a"], INST["H"])
+    sol.reflection_tail(1e-9, INST["H"])
+    sol.reflection_tail(INST["a"], 1e-9)
     sol.discrete_max_exceedance(INST, 4)
+    sol.discrete_max_exceedance(INST, 1)
+    sol.discrete_max_exceedance(with_(INST, n_paths=2), 4)
     sol.nested_grid_counts(INST, 4, 2)
+    sol.nested_grid_counts(INST, 6, 6)
+    sol.nested_grid_counts(INST, 1, 1)
+    for n in range(1, 13):
+        sol.srw_max_count(n, n)
+        sol.srw_terminal_count(n, n)
+        sol.srw_max_count(n, 1)
+        sol.srw_terminal_count(n, 1)
     sol.srw_max_count(6, 2)
     sol.srw_terminal_count(6, 2)
     expect(capsys.readouterr().out == "", "no function may print")

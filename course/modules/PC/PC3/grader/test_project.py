@@ -386,18 +386,38 @@ def test_a_log_carries_its_own_seed_and_settlement(seed: int) -> None:
     )
 
 
-def test_no_function_prints_or_warns(capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture) -> None:
-    """The quote and the replay print nothing on stdout or stderr, log no record and raise no warning. Each channel is
-    checked on its own, because the specification forbids each of them."""
+@pytest.mark.parametrize("seed", SEEDS)
+def test_no_function_prints_or_warns(
+    seed: int, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+) -> None:
+    """On every seed, the quote and the replay print nothing on stdout or stderr, log no record and raise no warning.
+    The replay of a log with no fill is included, because a replay can print on a branch that a game with fills never
+    takes. Each channel is checked on its own, because the specification forbids each of them."""
     caplog.set_level(logging.DEBUG)
+    no_fill = hand_log([turn_record(t, size=1, filled=False) for t in range(1, HORIZON + 1)], 10_000)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        log = engine.play(sol.quote, SEED)
+        log = engine.play(sol.quote, seed)
         sol.replay(log)
+        sol.replay(no_fill)
     captured = capsys.readouterr()
     expect(captured.out == "" and captured.err == "", "neither quote nor replay may print or write to stderr")
     expect(not caplog.records, "neither quote nor replay may log a message")
     expect(not caught, "neither quote nor replay may warn")
+
+
+def test_the_quote_depends_only_on_the_state_it_is_given() -> None:
+    """Playing another game between two games on SEED must not change the second log. A quote that keeps a value
+    between calls, for example the last fill in a module global, starts its first turn from the earlier game, so the
+    logs differ."""
+    other = next(seed for seed in FIXED_SEEDS if seed != SEED)
+    first = engine.play(sol.quote, SEED)
+    engine.play(sol.quote, other)
+    again = engine.play(sol.quote, SEED)
+    expect(
+        first == again,
+        "a quote must depend only on the state it is given: after another game, the same seed must give the same log",
+    )
 
 
 # The instance: deterministic, valid, and different across seeds.

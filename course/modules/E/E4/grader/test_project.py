@@ -240,8 +240,8 @@ def test_info_cost_zero_is_accepted() -> None:
 
 
 def test_info_cost_above_one_is_accepted() -> None:
-    """The page names only a negative cost as invalid, so a cost above 1 is valid. Here the gap at 0 is negative, so the
-    fraction is 0 and the gap is the oracle's gap at 0."""
+    """The exception table names only a negative cost as invalid, so a cost above 1 is valid. Here the gap at 0 is
+    negative, so the fraction is 0 and the gap is the oracle's gap at 0."""
     out = run(0.6, 2.0)
     expect(
         out["informed_fraction"] == 0.0,
@@ -251,6 +251,31 @@ def test_info_cost_above_one_is_accepted() -> None:
         abs(out["indifference_gap"] - oracle_gap(0.0, 0.6, 2.0)) <= TOL_GAP,
         "the reported gap at fraction 0 must be the limit of the gap as the fraction tends to 0",
     )
+
+
+@pytest.mark.parametrize("sd", [50.0, 1000.0])
+def test_noise_volume_far_above_one_is_accepted(sd: float) -> None:
+    """The page names no upper bound on the noise volume inside its range, so a noise volume far above 1 returns
+    the three keys, with the informed fraction in [0, 1] and every output finite."""
+    out = run(sd, COST)
+    expect(0.0 <= out["informed_fraction"] <= 1.0, "the informed fraction must lie in [0, 1] for a large noise volume")
+    expect(
+        0.0 <= out["price_informativeness"] <= 1.0, "the informativeness must lie in [0, 1] for a large noise volume"
+    )
+    expect(all(math.isfinite(out[k]) for k in KEYS), "every output must be finite for a large noise volume")
+
+
+@pytest.mark.parametrize("cost", [10.0, 50.0])
+def test_info_cost_far_above_one_is_accepted(cost: float) -> None:
+    """The page names no upper bound on the information cost inside its range, so a cost far above 1 returns the three
+    keys. At such a cost the gap at 0 is negative, so the fraction is 0 and the informativeness is 0."""
+    out = run(0.6, cost)
+    expect(
+        out["informed_fraction"] == 0.0,
+        "the informed fraction must be 0 when the gap at 0 is nonpositive: check the boundary rule",
+    )
+    expect(abs(out["price_informativeness"]) <= 1e-12, "with no informed investors the price carries no signal")
+    expect(all(math.isfinite(out[k]) for k in KEYS), "every output must be finite for a large information cost")
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -477,7 +502,7 @@ def test_small_noise_root_is_relatively_accurate(sd: float) -> None:
     )
 
 
-@pytest.mark.parametrize("sd", [1e-11, 1e-12])
+@pytest.mark.parametrize("sd", [1e-11, 1e-12, 1e-30, 1e-40])
 def test_tiny_noise_root_is_relatively_accurate(sd: float) -> None:
     """A root near 1e-12 is as precise as one near 0.5: the bracket starts at 0, and its stop rule is relative to its
     upper end, so an absolute width does not limit the accuracy of a small root. The 200-halving cap of the stop rule

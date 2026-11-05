@@ -6,7 +6,8 @@ fractions.Fraction, so every printed value is exact; a printed fraction such as 
 
 Part 1 plays the 20-turn game on seed 0 with the lesson's rule: quote symmetrically on the last filled price, or
 at 10000 cents before any fill, with a half-spread of 10 cents and a size of 1. It prints the turn log and the
-settlement, then checks the identity P&L = cash flow + inventory x settlement exactly for this run.
+settlement, then checks the identity P&L = cash flow + inventory x settlement exactly for this run. It also prints the
+number of informed arrivals on seed 0, and a one-line summary of the same rule played on seed 1.
 
 Part 2 enumerates the three arrival outcomes of one turn, for a grid of fair values, from inventory 0 and with the quote
 fixed at 9990 and 10010 cents. Its exact expectation of the one-turn change in cash plus inventory times the fair value
@@ -166,6 +167,18 @@ def part_one() -> None:
     print(f"every quote has bid < ask and 0 <= size <= {MAX_SIZE}: {quotes_valid}")
     fills_at_quote = all(r.fill_price_cents in (r.bid_cents, r.ask_cents) for r in fills)
     print(f"every fill price is the bid or the ask of its own turn: {fills_at_quote}")
+    informed = sum(1 for r in turns if r.arrival == "informed")
+    print(f"informed arrivals on seed 0 = {informed} of {HORIZON} turns")
+    path_one, turns_one = play(1)
+    fills_one = [r for r in turns_one if r.filled]
+    cash_flow_one = sum(r.cash_flow_cents for r in fills_one)
+    inventory_one = turns_one[-1].inventory_after
+    settlement_one = path_one[HORIZON]
+    pnl_one = turns_one[-1].cash_after_cents + inventory_one * settlement_one
+    print(
+        f"seed 1, same rule: fills {len(fills_one)} of {HORIZON} turns, cash flow {cash_flow_one} cents, "
+        f"inventory at the end {inventory_one} units, settlement {settlement_one} cents, P&L {pnl_one} cents"
+    )
 
 
 def one_turn_change(fair_cents: int, bid_cents: int, ask_cents: int) -> Fraction:

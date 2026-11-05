@@ -7,7 +7,8 @@ Every count below is an operation count: comparisons of stored values, and pushe
 wall-clock time, and none is a claim about how long an interview allows.
 
 Part 1 runs both methods at window size 8 and prints the operation counts. The naive scan makes k - 1 comparisons per
-window, so its count is (n - k + 1)(k - 1), which the lab prints beside the measured count.
+window, so its count is (n - k + 1)(k - 1), which the lab prints beside the measured count. It then runs both methods
+on the seed-6 sequence of the same length at the same window and prints that sequence's counts.
 
 Part 2 compares the two outputs for every window size from 1 to 20, and checks the edge cases: window size 1, a window
 equal to the length, a window longer than the sequence, and an empty sequence. A match is a check on this sequence only.
@@ -96,6 +97,14 @@ def part_one() -> None:
     print(f"deque comparisons = {ops.comparisons}, pushes = {ops.pushes}, pops = {ops.pops}")
     print(f"deque comparisons at most 2n = {2 * LENGTH}: {ops.comparisons <= 2 * LENGTH}")
     print(f"each index pushed once: {ops.pushes == LENGTH}")
+    seed_six = make_sequence(6, LENGTH)
+    naive_six, naive_six_count = naive_maxima(seed_six, WINDOW)
+    fast_six, ops_six = deque_maxima(seed_six, WINDOW)
+    print(f"seed 6 at window {WINDOW}: outputs equal: {naive_six == fast_six}")
+    print(
+        f"seed 6: naive comparisons = {naive_six_count}, deque comparisons = {ops_six.comparisons}, "
+        f"pushes = {ops_six.pushes}, pops = {ops_six.pops}"
+    )
 
 
 def part_two() -> None:

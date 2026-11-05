@@ -1,0 +1,132 @@
+"""Write the round-8 PC3 slice-d ledger fragment (cards.json against the lessons)."""
+import json
+import pathlib
+
+S = "ledgers/PC3/scripts/PC3-d-r8"
+P = lambda name: f"{S}/{name}"  # noqa: E731
+
+rows = [
+    ("cards-schema", "2.7 schema and ids", "course/modules/PC/PC3/cards.json (175 cards)", "PASS",
+     f"{P('cards_struct_r8.out')} (cards_struct_r8.py): 175 cards, 175 unique ids, ids ascending, gaps at c118, c134, c152, c155 only (c118 and c152 removed in this delta); keys id/lesson/front/back/cite on all; grade and basis on 130 cards, never one without the other; cite empty on all; no empty front or back. check_pages --all: 'check_pages PC3: PASS' ({P('check_pages_all_r8.out')})."),
+    ("cards-coverage", "2.7 coverage (BUILDER_RULES 7)", "cards.json; L01-L06.html",
+     "PASS",
+     f"{P('coverage_r8.py')} output {P('coverage_r8.out')}: 66 block titles COVERED; the 4 UNCOVERED lines are script limitations: L04 and L06 'Standing assumptions' are covered by the A1-A6 cards (c063, c162, c171, c163, c064, c164) and the A1-A5 cards (c105, c106, c165, c166, c167); L05 'Remark 1.2' by c085 and L06 'Remark 1.2' by c103 (the regex drops a label followed by a period). Every lesson has cards (25, 23, 29, 37, 26, 35)."),
+    ("cards-dup-scan", "2.7 full duplicate scan", "cards.json (all 175 front+back pairs)", "PASS",
+     f"{P('cards_struct_r8.out')}: no exact duplicate fronts or backs; near-duplicate pairs (ratio > 0.6) reviewed and each pair states a different fact: c116/c148 (8 vs 12 percent break-even), c117/c150 (NPV at 200 vs 1600 units), c052/c135/c136 (three stopping rules), c027/c028 (urn events), c097/c145 and c142/c145 (window 32 naive vs deque, window 8 vs 32), c137-c140 (four quantities of one path), c013/c130 (value vs remainder), c096/c097 (window 8 vs 32), c026/c027/c028 (urn), c130/c131 (remainder vs bound), c077 and c137-c141 (one seeded path)."),
+    ("cards-block-001-010", "2.7 content vs lesson, cards PC3-c001..c010", "L01.html l.59-107, 327-335", "PASS",
+     "c001 Def 1.1 (l.59); c002 A1 (l.64); c003 (l.89, l.94); c004 Thm 1.2 H1, H2, conclusion and attainment (l.70-73); c005 (l.82, l.318, Section 4 and R2 l.437-440); c006 Prop 1.3 (l.85-89); c007 product bounds 12 000 and 234 000 (l.99; recomputed in card_arithmetic_r8.out); c008 (l.105); c009 (C, changed this delta: l.328 and lab Part 2 l.298-300; 0.1753528875/2.9704144656 = 5.9033 percent and 0.9162907319/2.9704144656 = 30.847 percent, recomputed); c010 (l.332)."),
+    ("cards-block-011-020", "2.7 content vs lesson, cards PC3-c011..c020", "L01.html l.114-141, 146, 447, 463; L02.html l.56-72", "PASS",
+     "c011 Thm 1.5 H1-H3 and bound (l.121-125); c012 Remark 1.6 (l.135); c013 1.1046221254 (lab l.306; exact 1.10462212541120 recomputed); c014 1.5, 1.6289, miss 0.1289 (l.141, l.336; recomputed 1.628895, miss 0.128895); c015 (l.319, l.123); c016 R3 changed this delta: ln 1.5 = 0.4055, ln(2.5/1.01) = 0.9063, ln 2.5 = 0.9163, ln 3 = 1.0986 (l.447; recomputed); c017 Def 2.1 (l.57); c018 (l.57; see cards-block-titles); c019 Def 2.2 (l.67); c020 Remark 2.3 (l.72)."),
+    ("cards-block-021-030", "2.7 content vs lesson, cards PC3-c021..c030", "L02.html l.76-117, l.350-358", "PASS",
+     "c021 Prop 2.4 hypotheses A1, P(A)>0, P(B)>0 (l.78-80); c022 Prop 2.5, changed basis 'B ∩ A_i' matches l.99; c023 Example 2.6 values 1/3 and 1/2, probabilities 3/4, 1/2, 1/4 (l.111; lab l.350-351; recomputed); c024 misconception, changed back gives the two sets {HH,HT,TH} and {HH,HT} (l.111, l.381-382); c025 counterexample 1/3 vs 1 (l.386, lab l.352); c026-c028 3/5, 3/5, 3/10 (l.116; lab l.354-356; recomputed by enumeration); c029 3/4 (l.117, lab l.358)."),
+    ("cards-block-031-040", "2.7 content vs lesson, cards PC3-c031..c040", "L02.html l.121-134, 366-386; L03.html l.61-80", "PASS",
+     "c030 rule A 1/3 and 2/3 (l.123; lab l.342); c031 rule B 1/2 both, goat event 2/3 (l.124; lab l.343); c032 misconception (l.377-378); c033 bag 3/4 and P(red) 1/2 (l.129; lab l.346-348); c035 M2 P(B)=29/100, P(A|B)=15/29 (l.408; recomputed); c036 12 of 12 (lab l.340), changed back: the lab counts agreements and does not measure time (l.134, l.359); c037 (l.366); c038 Def 3.1 (l.62); c039 Prop 3.2 hypotheses and conclusion (l.68-70); c040 E[face]=7/2, 350 cents (l.80)."),
+    ("cards-block-041-050", "2.7 content vs lesson, cards PC3-c041..c050", "L03.html l.61-111, l.189-204, l.297-316", "PASS",
+     "c041 E[X+Y]=7 (l.80; lab l.257); c042 Def 3.4 (l.87); c043 Def 3.5 (l.91-92); c044 A2 (l.97); c045 250 cents (l.102); c046 1150/3, (250+250+300+400+500+600)/6 = 2300/6 (l.103; recomputed); c047 best of 64 policies (l.190-192, lab l.269); c048 Def 3.7 (l.108-110); c049 Thm 3.8 hypotheses and conclusion (l.297-303); c050 Remark 3.9 (l.316)."),
+    ("cards-block-051-060", "2.7 content vs lesson, cards PC3-c051..c060", "L03.html l.102-104, 207-224, 249-267, 279-285, 321-322, 345-349", "PASS",
+     "c051 150 cents, 25 per turn (l.281, l.322); c052 1575/32 for 'stop after the first loss' (lab l.283; recomputed by recursion: 1575/32); c053 zero for each of five rules (lab l.273-279; recomputed); c054 Thm 3.8 with A2 over N=6 (l.321); c055 R1 50 cents, four paths 200, 100, 0, -100 (l.443; recomputed); c056 P3 faces 1 and 2, threshold 3 (l.407); c057 misconception (l.345); c058 100/3 cents (l.104, l.349); c059 stop payoff mean 350 (l.102, l.450); c060 (H2) fails at the first turn (l.450, R2)."),
+    ("cards-block-061-070", "2.7 content vs lesson, cards PC3-c061..c070", "L03.html l.326-327, 352-353; L04.html l.62-77, 93-97, 112, 129-143", "PASS",
+     "c061 Example 3.11 (l.326-328) and misconception (l.352-353); c062 Def 1.1 with q-bar = 5 (l.62-65); c063 A1 probabilities 1/4, 1/4, 1/2 (l.72); c064 A5 with L = 10 (l.76); c065 Def 2.1 (l.97); c066 Prop 2.2 (l.102); c067 mid 9990 and settlement 9980 gives 40 and 30 cents (l.122; Problem E3 l.565-567; lab l.431-437; recomputed); c068 Prop 2.3 (l.112); c069 Prop 3.1 changed this delta: (H1)-(H3) and conclusion match l.129, not claimed for history-dependent quote or nonzero inventory (l.129); c070 Example 3.2 values 5, 0, 5/2 (l.143; recomputed)."),
+    ("cards-block-071-080", "2.7 content vs lesson, cards PC3-c071..c080", "L04.html l.148-153, 158, 175, 452-460, 475-484", "PASS",
+     "c071 Cor 3.3 (l.148-153; recomputed E = h/2 - (v-a)/2); c072 Remark 3.4 (l.158; h/2 is a quarter of 2h); c073 Prop 4.1 (l.165-170); c074 Remark 4.2 15 and 50 cents (l.175; recomputed); c075 nine fair values 9980 to 10020 (lab l.375-453); c076 Prop 3.1 closed form for every v, lab checks nine grid values (l.128-137, l.198-200); c077 9 fills (lab l.432); c078 misconception, changed front (l.476); c079 P&L 10 cents (l.503, Problem M1); c080 variance 2500 at 10 units (l.459, l.484)."),
+    ("cards-block-081-090", "2.7 content vs lesson, cards PC3-c081..c090", "L04.html l.76-77, 488, 577-592; L05.html l.78-97", "PASS",
+     "c081 A3 and misconception (l.74, l.488); c082 R1 d = (1-p)h/p = 20/3 (l.578-579; recomputed); c083 R3 variance 25 and 100, largest integer magnitude 1 (l.592; recomputed); c084 Def 1.1 six steps (l.60-65); c085 Remark 1.2 (l.71); c086 Def 1.3 (l.78); c087 Prop 2.1 count (n-k+1)(k-1) (l.86-92); c088 Remark 2.2 k = n/2+1 and n^2/4 (l.97; recomputed); c089 Def 3.1 surviving index (l.106; see cards-block-titles); c090 Prop 3.2 (l.124-132)."),
+    ("cards-block-091-100", "2.7 content vs lesson, cards PC3-c091..c100", "L05.html l.136-151, 203-215, 328-345, 399", "PASS",
+     "c091 Prop 3.3 n appends, at most n removals, at most 2n tests (l.137-143); c092 Remark 3.4 removes k-1 (l.147; recomputed by trace); c093 Example 3.5 outputs (4,4,5) (l.152; recomputed); c094 M2 outputs (5,5,1,3) (l.367; recomputed); c095 P3 n-1 comparisons (l.399; recomputed by script logic); c096 seed 5 window 8 naive 1351 = 193 x 7 (lab l.303); c097 window 32 naive 5239 = 169 x 31 (lab l.319); c098 misconception (l.336-337); c099 misconception (l.340-341); c100 misconception (l.344-345)."),
+    ("cards-block-101-110", "2.7 content vs lesson, cards PC3-c101..c110", "L05.html l.308; L06.html l.60-73, 82-83, 91-117", "PASS",
+     "c101 lab window 1 to 20 True (l.308); c102 Prop 1.1 (l.60-64); c103 Remark 1.2 price form not re-derived (l.70); c104 NPV, REGRESSION FIXED since round 7: front now says 'as Section 1 of this lesson uses it (the concept is defined in its linked module)', and l.73 of L06 states NPV(r) = sum C_t (1+r)^(-t) in Section 1, so the round-7 cite to a nonexistent 'Def 1.3' is gone; c105 A1 (l.82); c106 A2 (l.83); c107 Prop 2.1(i) (l.92, l.97); c108 Prop 2.1(ii) (l.92, l.98); c109 Remark 2.2 (l.103); c110 Prop 3.1 (l.112, l.117)."),
+    ("cards-block-111-117", "2.7 content vs lesson, cards PC3-c111..c117", "L06.html l.112-154, 121-125, 131-137, 144-154", "PASS",
+     "c111 Prop 3.2 (l.122, l.127); c112 Cor 3.3 (l.132-137); c113 Def 4.1 five steps (l.144); c114 [200, 1600] (l.149; recomputed); c115 A = 3310/1331 (l.149; recomputed 2.486852); c116 1164.10 (l.154; recomputed 1164.1005); c117 NPV at 200 units -16655000000/1331 displayed -12513148 (lab l.297; recomputed -12513148.009, half-up -12513148)."),
+    ("cards-block-119-123", "2.7 content vs lesson, cards PC3-c119..c123 (c118 removed this delta)", "L06.html l.149-154, 158-175, 286-289, 301-303, 319-331", "PASS",
+     "c119 forward payoff 0 at 10000 and 100 at 10100 over five spots (lab l.286-289; recomputed); c120 misconception (l.319); c121 break-evens 1164.10, 1206.34, 1249.05 (l.323, l.301-303; recomputed); c122 Example 4.2 recommendation (l.149); c123 signs at 200 and 1600 at all rates (l.154, lab l.301-303; recomputed). c118 was removed this delta; no other card cites it (grep)."),
+    ("cards-block-124-130", "2.7 content vs lesson, cards PC3-c124..c130", "L06.html l.149-154, 435-436; L01.html l.99, 107, 146", "PASS",
+     "c124 positive at 1200 units and 8 percent (recomputed NPV 462582; monotone by Prop 3.1); graded C with basis naming the printed break-even, kept (see notes); c125 M2 500/121 (l.353; recomputed 4.1322); c126 M3 33275/331 = 100.53 (l.360; recomputed); c127 R3 margin 3769.8 cents = 0.7540 of 5000, fall 24.6 percent (l.435; recomputed); c128 ln 19.5 (l.99); c129 ln 3, ln 5, ln 1.3 sum to ln 19.5 (l.100); c130 remainder 0.0046221254 (lab l.306)."),
+    ("cards-block-131-135", "2.7 content vs lesson, cards PC3-c131..c135 (c134 gap)", "L01.html l.135-141, 146; L03.html l.322, 283-285; lab outputs", "PASS",
+     "c131 bound 0.0048728552 = n(n-1)/2 (1+x)^(n-2) x^2 (lab l.306; recomputed); c132 remainder below bound (lab l.308); c133 bound 0.1662 vs miss 0.1289 (lab l.307-308; recomputed); c135 575/8 (lab l.284; recomputed); c136 625/8 (lab l.285; recomputed)."),
+    ("cards-block-136-142", "2.7 content vs lesson, cards PC3-c136..c142", "L03.html l.322; L04.html l.432-441; L05.html l.304", "PASS",
+     "c137 to c141 SIMULATED seed-0 path: cash flow -9950, inventory 1, settlement 9980, P&L 30, identity True (L04 l.433-439; recomputed by play(0) in the twin); c142 deque comparisons 354 (L05 l.304); c143 pushes 200, pops 199 (L05 l.304)."),
+    ("cards-block-143-150", "2.7 content vs lesson, cards PC3-c143..c150", "L05.html l.304-321; L06.html l.297-303, 149-154", "PASS",
+     "c144 deque comparisons 387 at window 200, within 2n = 400 and the largest in Part 3 (L05 l.320; recomputed by the twin); c145 window 32 deque comparisons 382 (L05 l.319); c146 five edge checks True, C grade (L05 l.309-313; kept); c147 u* = 399300/331 (l.149; recomputed); c148 break-even 1249.05 at 12 percent (l.154, lab l.303; recomputed 1249.0469); c149 signs negative at 200, positive at 1600, all three rates (l.154; recomputed); c150 4894816 cents (lab l.298; recomputed 4894815.93, half-up 4894816)."),
+    ("cards-block-151-168", "2.7 content vs lesson, cards PC3-c151..c168", "L06.html l.306-307, 435; L03.html l.109, 297-303; L04.html l.76, 83, 88; L01.html l.67-8", "PASS",
+     "c151 E3 21.2366 per point, displayed 21.24 (l.409-410; recomputed (1249.0469416785 - 1164.1005421390)/4 = 21.2366); c153 Remark 1.2 constants (L04 l.82-84); c154 A5 fills one unit, Remark 1.2 (l.76, l.82-84); c156 ln 19.5 = 2.9704144656 (lab l.288); c157 A2 Lagrange form (L01 l.115); c158 A1 finite (L02 l.61-62); c159 A2 fair flips 1/4 each (L02 l.105-106); c160 A1 integer cents (L03 l.56-57); c161 A3 (L03 l.292-293); c162 A2 path (L04 l.73); c163 A4 (L04 l.75); c164 A6 (L04 l.77); c165 A3 no costs (L06 l.84); c166 A4 (L06 l.85); c167 A5 (L06 l.86); c168 Example 1.3 (L04 l.88)."),
+    ("cards-block-169-171", "2.7 content vs lesson, cards PC3-c169..c171", "L05.html l.157-158; L04.html l.74", "PASS",
+     "c169 hash map, basis now matches the block title 'Remark 3.6 (a hash map and a binary heap in Step 4)' (L05 l.156-157); c170 3n floor(log2 n) bound, n=200 gives 4200 vs 400 (L05 l.158; recomputed 3*200*7 = 4200); c171 A3 information (L04 l.74)."),
+    ("cards-block-172-179", "2.7 content vs lesson, cards PC3-c172..c179", "L01.html l.68-73; L03.html l.109, 297; L04.html l.93, 97; L06.html l.149-154, 327, 403-405, 435", "PASS",
+     "c172 Thm 1.2 product interval, front title now matches l.68 'product bounds' (L01 l.68-73); c173 Def 3.7 W(h) (L03 l.108-110); c174 sigma_t and c_t (L04 l.93); c175 inventory sign (L04 l.93); c176 Remark 3.4 adverse selection (L04 l.158); c177 Def 3.1 deque (L05 l.106-107; see cards-block-titles); c178 Fermi bounds misconception, basis updated to Cor 3.3 (L06 l.327, l.137); c179 E2 at 1200 units -105000000/1331 = -78888.05 (L06 l.403-404; recomputed)."),
+    ("cards-block-round3-id-carry", "2.7 id stability across rounds", "cards.json; L01.html l.85-89; L04.html l.128-138; L06.html l.410-412", "PASS",
+     "No card id was renamed in this delta. Removed ids c118 and c152 leave gaps; no lesson, index or card cross-reference names them (grep over the repository, excluding ledgers). c104 kept its id and was corrected in its text."),
+    ("cards-atomicity", "2.7 one fact per card", "cards.json (all 175 fronts and backs)", "PASS",
+     "cards_dump (ledgers/PC3/scripts/PC3-d-r8/dump_cards.py) read in full: each card states one fact or one short derivation; multi-part cards are the Fermi/Monte Hall/urn results with their numbers, which the lesson states together."),
+    ("cards-c119-basis", "2.7 basis for a lab result", "cards.json PC3-c119", "PASS",
+     "basis 'Lab 1, Part 1 (five spot states, 8000 to 12000 cents)'; lab l.286-289 prints the five payoffs; grade C kept for a lab result."),
+    ("cards-c122-referent", "2.7 referent of the recommendation", "cards.json PC3-c122", "PASS",
+     "Example 4.2 recommendation (L06 l.149) reads: buy only if evidence puts units above 1206.34 per year at this rate, and measure units before committing; card matches."),
+    ("cards-c146-grade", "2.7 grade of a lab check", "cards.json PC3-c146", "PASS",
+     "grade C with basis 'Lab 1, Part 2 (finite check on one generated sequence)'; lab l.309-313 prints five True lines; the sequence is generated, not data (L05 l.166)."),
+    ("cards-misconception-coverage", "2.7 misconceptions covered", "cards.json; L01 l.327-336; L02 l.377-386; L03 l.344-353; L04 l.475-488; L05 l.336-345; L06 l.318-331",
+     "PASS",
+     "Each misconception paragraph has a card: L01 c009, c010, c014; L02 c024, c025, c032; L03 c057, c058, c061; L04 c078, c079, c080, c081; L05 c098, c099, c100; L06 c120, c121, c123, c178. Counts at least three per lesson (BUILDER_RULES 7)."),
+    ("cards-number-presence", "2.7 every card number appears in its lesson", "cards.json; L01-L06 text dumps (ledgers/PC3/scripts/PC3-d-r8/strip_lines.py)",
+     "PASS",
+     f"{P('number_presence_r8.py')} -> {P('number_presence_r8.out')}: every numeric token on every card occurs in the lesson text (its own lesson, or another lesson). The four tokens the regex flagged (15/29, 29/100, 2300/6, 2/4) occur in the lesson LaTeX as \\tfrac{{15}}{{29}}, \\tfrac{{29}}{{100}}, \\frac{{2300}}{{6}} and n^{{2}}/4."),
+    ("cards-lab-printed-values", "2.7 lab-printed values on cards", "tests/labs/PC3/lab-PC3-L01..L06-1.py; course/modules/PC/PC3/L01..L06.html",
+     "PASS",
+     f"run_labs --unit PC3: PASS (9/9) ({P('run_labs_PC3_r8.out')}); pytest tests/test_labs.py -k PC3 passed ({P('pytest_pc3_labs_r8.out')}). Each lab-printed value a card cites was compared with the lesson's printed block (L01 l.284-310; L02 l.327-358; L03 l.256-285; L04 l.410-459; L05 l.298-320; L06 l.283-303)."),
+    ("cards-rederive", "2.2 numbers on cards re-derived", "ledgers/PC3/scripts/PC3-d-r8/card_arithmetic_r8.py",
+     "PASS",
+     f"{P('card_arithmetic_r8.py')} -> {P('card_arithmetic_r8.out')}: exact fractions and float checks for the NPV, annuity, break-even, biased-game, reroll, urn, Monty Hall, bag, Bayes, log-width, remainder and bound values on the cards. Every value matches the card text, including NPV at 200 units -16655000000/1331 (displayed -12513148) and at 1600 units 4894815.93 (displayed 4894816)."),
+    ("gates-structural", "2.9 structure gates for PC3", "check_pages, check_dag, check_projects, run_labs, page_smoke, pytest labs",
+     "PASS",
+     f"check_pages.py --all: 'check_pages PC3: PASS' ({P('check_pages_all_r8.out')}); check_dag.py --all: 'check_dag PC3: PASS' ({P('check_dag_all_r8.out')}); check_projects.py --all: 'check_projects PC3: PASS' ({P('check_projects_all_r8.out')}); run_labs.py --unit PC3: PASS (9/9); page_smoke.py --unit PC3 --pages L01..L06: PASS for every lesson, zero console errors, math rendered ({P('page_smoke_PC3_lessons_r8.out')}); pytest tests/test_labs.py -k PC3: passed."),
+    ("cards-grade-agreement", "2.3 grades on cards vs lesson key-results tables", "cards.json; L01-L06 key-results tables",
+     "PASS",
+     "Grade counts: T 90, C 40, none 45 (definitions and assumptions carry no grade, as in M2 and SC1). Key-results tables: L02 l.503-508 (C for the drill set, T for Bayes and total probability), L03 l.468-475 (T for Theorem 3.8, C for the Part 3 enumeration), L04 l.604-609 (C for the nine-value grid), L06 l.447-452 (T for the break-even). Grades agree with the tables. c124 is graded C although its sign follows from Proposition 3.1 (T); C is the more conservative grade and is kept."),
+    ("cards-c013-exact-value", "2.2 exact value on card c013", "cards.json PC3-c013; L01.html l.140", "PASS",
+     "1.1046221254 to ten places, exact 1.10462212541120451001 (recomputed); the lesson gives 1.10462212541 at l.140."),
+    ("adjacent-lesson-numbers", "2.7 cross-references to adjacent lesson numbers", "cards.json PC3-c017, c020, c043; label check", "PASS",
+     "c017 'as in M4 Lesson 1' matches L02 l.57; c020 'M4 conditional distribution' matches L02 l.72; c043 'Lesson 2, Definition 2.2' matches L03 l.92; c104 'Section 1 of this lesson' matches L06 l.52-75."),
+    ("lesson-L02-introduces-metadata", "2.9 'Introduces' metadata of L02", "course/modules/PC/PC3/L02.html l.38", "PASS",
+     "L02 header 'Introduces: conditional probability (Definition 2.2), Bayes' rule (Proposition 2.4) and the law of total probability (Proposition 2.5)' matches the blocks and the cards that name them."),
+    ("cards-process-words", "2.9 no process words in learner text", "cards.json; L01-L06 text dumps", "PASS",
+     "Scan of all card fronts and backs and all lesson text for verifier, builder, ruling, batch, draft, audit, TODO, TBD, round: no hits in learner text (the single hit 'Verify it by counting' is a learner instruction in L02 E1)."),
+    ("cards-simulated-label", "2.8 SIMULATED label on simulated results", "cards.json PC3-c067, c077, c137-c141", "PASS",
+     "Each card that rests on the seeded market path (random.Random(0)) names it SIMULATED in its basis or text (c067, c077, c137-c141). Seeded generated sequences in L05 and L02 are labelled as generated, not data (L05 l.166; L02 l.134)."),
+    ("cards-notation", "2.4 notation vs notation/notation.json", "notation/notation.json; cards.json; L01-L06 macros",
+     "PASS",
+     "Macros used in PC3 lessons: \\Prob (probability), \\E (expectation), \\Var (variance), \\R (real numbers), \\indic (indicator); each has its registered meaning on every use. Letters not in the registry (I, L, A, h, p, v, N, sigma, tau, omega, xi, ell) are defined in the lesson that uses them (for example L04 l.56 for N, L, p; L06 l.112 for A; L04 l.93 for sigma). The cards use the same letters with the lesson's meanings."),
+    ("cards-block-titles", "2.7 block titles named on cards", "cards.json PC3-c018, c089, c177; L02 l.57; L05 l.106, l.157",
+     "PASS",
+     "Non-blocking observation, no content error: three card labels name the block title in a paraphrase that differs from the lesson's block title: c018 'Definition 2.1 (equally likely outcomes)' (lesson title: 'events on a finite probability space', and the equally likely case is its second sentence, L02 l.57); c089 'Definition 3.1 (surviving index)' and c177 'Definition 3.1 (the deque)' (lesson title: 'the deque and its invariant', L05 l.106). The number and the content are correct; the paraphrase should be the lesson's title. Fix if the builder agrees: rename the parenthetical on those three fronts to '(events on a finite probability space)' and '(the deque and its invariant)'."),
+]
+
+fragment = {
+    "unit": "PC3",
+    "slice": "PC3-d",
+    "round": 8,
+    "verifier": "Claude Haiku 5.5, independent verifier, slice d (ALL cards.json against the lessons), round 8; did not build PC3",
+    "pin": "0dee921a33dc1275ff9b1babc6c2fdf3daac62c3",
+    "base": "06994db16d1ab449bcf29898a7f56cfa999dce57 (round-7 pin; round-7 fragment /Users/billyribeiro/.fanout/frags/E-PC3-d.round7.json). Delta since it, PC3 files: cards.json (c017, c022, c024, c036, c062, c064, c069, c070, c071, c076, c078, c104, c109, c121, c169, c170, c172, c178 changed; c118 and c152 removed), L01.html (c009 text), L02.html (lab hypothesis paragraph), L04.html (Def, Prop 3.1, Cor 3.3, Section 3 text; many lines), L05.html and L06.html (footer; L06 Example 4.2 misconception), L06.html (misconception l.327; footer), index.html, project.html, grader/starter.py, grader/test_project.py, tests/labs/PC3/lab-PC3-L04-1.py. Every card row was re-verified this round against the current lesson text; no row is carried.",
+    "checkout": "/Users/billyribeiro/.fanout/wt/verifyE8-PC3-d",
+    "scratch": "/tmp/pc3d_r8 (lesson text dumps and card dump); durable scripts and outputs under ledgers/PC3/scripts/PC3-d-r8/",
+    "verified_at": "2026-11-05T01:52:00+00:00",
+    "verdict": "PASS",
+    "rows": [{"id": i, "check": c, "location": l, "status": s, "evidence": e} for (i, c, l, s, e) in rows],
+    "mutants": [],
+    "registry_flags": [],
+    "freshness_flags": [],
+    "notes": (
+        "Slice d is cards.json only: no grader, lab code or reference is in the slice, so no grader mutants were written "
+        "(the mutant requirement belongs to the project slices). Round-7 FAIL row cards-block-101-110 (card PC3-c104 cited a "
+        "nonexistent 'Def 1.3') is PASS now: the card text and the L06 Section 1 NPV line agree (L06 l.73). All other round-7 PASS "
+        "rows were re-verified against the changed text, not carried. Observations (non-blocking, recorded in cards-block-titles "
+        "and cards-grade-agreement): three block-title paraphrases (c018, c089, c177) and a conservative grade C on c124. "
+        "Not run: ruff, mypy, verify_refs --offline, the full pytest suite and the other units' gates, because this slice changes "
+        "no Python tool and no reference, and every PC3 card cites no registry key (cite is empty on all 175 cards). The grader "
+        "files changed in the delta (grader/test_project.py, grader/starter.py) belong to the project slices, not to this one."
+    ),
+    "summary": {"rows": len(rows), "pass": len(rows), "fail": 0, "unverifiable": 0, "mutants": 0, "mutants_killed": 0},
+}
+
+out = pathlib.Path("ledgers/PC3/PC3-d.json")
+out.write_text(json.dumps(fragment, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+print("wrote", out, len(rows), "rows")

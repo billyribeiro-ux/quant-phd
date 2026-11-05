@@ -51,7 +51,8 @@ def end_at_least(n: int, m: int) -> int:
 def max_at_least(n: int, m: int) -> int:
     """The number of length-n step sequences whose running maximum over S_0 to S_n is at least m.
 
-    By the walk identity, this equals the count with endpoint at least m plus the count with endpoint above m.
+    By the discrete tail identity of Lesson 6, this equals the count with endpoint at least m plus the count with
+    endpoint above m.
     """
     return end_at_least(n, m) + end_at_least(n, m + 1)
 
@@ -70,7 +71,7 @@ def enumerated_pairs(n: int) -> list[tuple[int, int]]:
 
 
 def part_a() -> None:
-    """Check the walk identity by enumeration for N <= 12, then print exact tails for the larger N."""
+    """Check the discrete tail identity of Lesson 6 by enumeration for N <= 12, then print exact tails for larger N."""
     checked = 0
     identity_holds = 0
     formula_agrees = 0
@@ -83,7 +84,10 @@ def part_a() -> None:
             checked += 1
             identity_holds += reached == at_least + above
             formula_agrees += reached == max_at_least(n, m)
-    print(f"Part A: walk identity (maximum >= a) = (endpoint >= a) + (endpoint > a): {identity_holds} of {checked}")
+    print(
+        "Part A: discrete tail identity of Lesson 6 (maximum >= a) = (endpoint >= a) + (endpoint > a): "
+        f"{identity_holds} of {checked}"
+    )
     print(f"Part A: counting formula agrees with the enumeration: {formula_agrees} of {checked}")
     print(f"Part A: pairs (N, a), N = 1 to {MAX_ENUM} and a = 1 to N; each count is exact")
     print("Part A: exact tails P(M_N >= m) at m = sqrt(N), so that m / sqrt(N) = 1")

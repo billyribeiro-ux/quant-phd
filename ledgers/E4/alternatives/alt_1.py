@@ -1,4 +1,4 @@
-"""Alternative 1: bisection with a fixed 120 halvings and no tolerance check.
+"""Alternative 1: bisection with the page's stop rule (relative bracket width 1e-12, or 200 halvings).
 
 Correct alternative implementation of the E4 solver (ruling 10). Standard library only.
 """
@@ -76,10 +76,12 @@ def solve_model(noise_sd: float, info_cost: float) -> dict[str, float]:
         lam, gap, pi = edge
         return {"informed_fraction": lam, "price_informativeness": pi, "indifference_gap": gap}
     lo, hi = 0.0, 1.0
-    for _ in range(120):
+    halvings = 0
+    while hi - lo > 1e-12 * hi and halvings < 200:
         mid = 0.5 * (lo + hi)
         if _gap(mid, sd, cost) > 0.0:
             lo = mid
         else:
             hi = mid
+        halvings += 1
     return _result(0.5 * (lo + hi), sd, cost)

@@ -1,26 +1,30 @@
-"""Student uses the simple return x_m / x_(m-1) - 1 in place of the log change. LX1 project lab 3 (rung 3 check): the dispersion of the GBP spot rate in the embedded H.10 snapshot.
+"""Student uses the simple return x_m / x_(m-1) - 1 in place of the log change. LX1 project lab 3 (rung 3 check): the dispersion of the GBP exchange rate in the embedded H.10 snapshot.
 
-Data. The lab reads data/fx_monthly.csv, the month-end spot exchange rates of the Board of Governors of the Federal
+Data. The lab reads data/fx_monthly.csv, the month-end exchange rates of the Board of Governors of the Federal
 Reserve System, G.5/H.10 Foreign Exchange Rates (noon buying rates in New York). The snapshot was retrieved 2026-10-19
-and holds 669 months, 1971-01 to 2026-09. Each value is the last noon rate of its month, as the MANIFEST note states.
-The column read is GBP, in US dollars per pound sterling, a direct quote. The file holds spot rates only.
+and holds 669 months, 1971-01 to 2026-09. Each value is the column's last value in its month, as the MANIFEST
+transform field states. The column read is GBP. The MANIFEST title gives US dollars per unit of foreign currency,
+and the transform inverts only CAD, CHF, DKK, JPY, NOK and SEK, so GBP is in US dollars per pound sterling.
+The file has no interest-rate column.
 
-Windows. They are the two windows of LX1 Lesson 4. That lesson's lab reads the same column with the same
-windows and prints the same counts; its standard deviations are decimals (0.027935 and 0.024700), which are
-2.79 and 2.47 percent per month here. Window one holds every monthly change in the file, dated 1971-02 to
-2026-09 (668 changes). Window two holds the changes dated 2000-01 to 2026-09 (321 changes); its first change
-uses the rate of 1999-12.
+Windows. Windows one and two are the two windows of LX1 Lesson 4. That lesson's lab reads the same column with the same
+windows and prints the same change counts (668 and 321); its standard deviations are decimals (0.027935 and 0.024700),
+which are 2.79 and 2.47 percent per month here. Window one holds every monthly change of the GBP column, dated 1971-02
+to 2026-09 (668 changes). Window two holds the changes dated 2000-01 to 2026-09 (321 changes); its first change uses the
+rate of 1999-12. Window three holds the changes dated 2025-10 to 2026-09 (12 changes), the twelve months to the
+snapshot's last month; it is the current window of this project's brief.
 
-Conventions. A monthly log change at month m is ln(x_m / x_(m-1)), per month, with no annualization. A window's
+Conventions. A monthly log change at month m is ln(S_m / S_(m-1)), per month, with no annualization. A window's
 dispersion is the sample standard deviation of its changes, with denominator n - 1, reported in percent per month as
 100 times that standard deviation.
 
 Check. Each standard deviation is computed twice: by the two-pass formula, and with statistics.stdev. The two must agree
-to 1e-9 percent per month, or the lab raises. A blank or non-decimal cell raises ValueError, and so does a month that
-does not follow the previous one. No row is skipped or filled.
+to 1e-9 percent per month, or the lab raises. A blank or non-decimal cell in the GBP column raises ValueError, and so
+does a month that does not follow the previous one. No row is skipped or filled.
 
 Rounding. Every printed value is the exact binary value of its float, rounded half up (a tie away from zero) to two
-decimals. The ratio of the two standard deviations is taken from their unrounded values.
+decimals. The ratio of the two standard deviations, and their difference, window one minus window two, are taken from
+their unrounded values.
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ from pathlib import Path
 DATA_PATH = Path("data") / "fx_monthly.csv"
 COLUMN = "GBP"
 WINDOW_TWO_FROM = "2000-01"
+WINDOW_THREE_FROM = "2025-10"
 AGREEMENT = 1e-9  # percent per month
 MONTH_PATTERN = re.compile(r"(\d{4})-(\d{2})")
 DECIMAL_PATTERN = re.compile(r"\d+(\.\d+)?")
@@ -71,7 +76,7 @@ def load_column(path: Path, column: str) -> list[tuple[str, Fraction]]:
 
 
 def log_changes(rows: Sequence[tuple[str, Fraction]]) -> list[tuple[str, float]]:
-    """The monthly log change ln(x_m / x_(m-1)), labelled by its month m, for every month after the first."""
+    """The monthly log change ln(S_m / S_(m-1)), labelled by its month m, for every month after the first."""
     return [(month, float(rate / previous - 1)) for (_, previous), (month, rate) in itertools.pairwise(rows)]
 
 
@@ -98,23 +103,28 @@ def window_report(window: Sequence[tuple[str, float]]) -> float:
     print(f"  changes: {len(values)}")
     print(f"  exact zero changes: {zeros}")
     print(f"  sample sd, percent per month: {show(100 * sd, 2)}")
-    print(f"  largest absolute monthly log change, percent: {show(100 * biggest, 2)} ({biggest_month})")
+    print(f"  largest monthly log change by size, percent, with its sign: {show(100 * biggest, 2)} ({biggest_month})")
     return sd
 
 
 def main() -> None:
     rows = load_column(DATA_PATH, COLUMN)
-    print(f"{COLUMN} spot rate, US dollars per pound, H.10 snapshot retrieved 2026-10-19")
+    print(f"{COLUMN} exchange rate, US dollars per pound, H.10 snapshot retrieved 2026-10-19")
     print(f"months in file: {len(rows)}, {rows[0][0]} to {rows[-1][0]}")
     changes = log_changes(rows)
     window_one = changes
     window_two = [item for item in changes if item[0] >= WINDOW_TWO_FROM]
+    window_three = [item for item in changes if item[0] >= WINDOW_THREE_FROM]
     print(f"Window one, {window_one[0][0]} to {window_one[-1][0]}:")
     sd_one = window_report(window_one)
     print(f"Window two, {window_two[0][0]} to {window_two[-1][0]}:")
     sd_two = window_report(window_two)
+    print(f"Window three, {window_three[0][0]} to {window_three[-1][0]}:")
+    window_report(window_three)
     print(f"ratio of window two to window one sd, two decimals: {show(sd_two / sd_one, 2)}")
-    print("two-pass and statistics.stdev agree in both windows: True")
+    difference = show(100 * (sd_one - sd_two), 2)
+    print(f"difference of window one minus window two sd, percent per month, two decimals: {difference}")
+    print("two-pass and statistics.stdev agree in all three windows: True")
 
 
 main()
