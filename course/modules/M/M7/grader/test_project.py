@@ -22,7 +22,7 @@ import os
 import sys
 import warnings
 from collections.abc import Callable, Mapping
-from functools import cache
+from functools import cache, wraps
 from numbers import Real
 from pathlib import Path
 from typing import Any
@@ -69,11 +69,11 @@ def _observed_call(real: Callable[[Any], Any], instance: Any) -> tuple[str, Any]
         except Exception as exc:
             outcome = ("refused", exc)
     if repr(instance) != before:
-        raise AssertionError("allocate must not change the case it is given.")
+        pytest.fail("allocate must not change the case it is given.", pytrace=False)
     if buffer.getvalue():
-        raise AssertionError("allocate must not print.")
+        pytest.fail("allocate must not print.", pytrace=False)
     if caught:
-        raise AssertionError("allocate must not emit warnings.")
+        pytest.fail("allocate must not emit warnings.", pytrace=False)
     return outcome
 
 
@@ -89,13 +89,14 @@ def every_allocate_call_is_pure(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     real = sol.allocate
 
+    @wraps(real)
     def checked(instance: Any) -> Any:
         __tracebackhide__ = True
         snapshot = copy.deepcopy(instance)
         first = _observed_call(real, instance)
         second = _observed_call(real, copy.deepcopy(snapshot))
         if repr(first) != repr(second):
-            raise AssertionError("allocate must return the same output, or the same refusal, for the same input.")
+            pytest.fail("allocate must return the same output, or the same refusal, for the same input.", pytrace=False)
         if first[0] == "refused":
             raise first[1]
         return first[1]

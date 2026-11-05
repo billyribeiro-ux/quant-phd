@@ -846,7 +846,7 @@ def test_bond_price_exact_half_above_forty_significant_digits_is_exact() -> None
     )
 
 
-def test_bond_yield_of_one_thousand_percent_per_period_is_accepted() -> None:
+def test_bond_yield_of_two_thousand_percent_per_period_is_accepted() -> None:
     """Accepted-input check: a yield of 200000 bps (2000 % per period) is not named as refused, and the price is the
     discounted event: 10500 / 21 = 500 cents exactly."""
     __tracebackhide__ = True
@@ -876,6 +876,50 @@ def test_trade_settling_in_period_five_thousand_and_one_is_accepted() -> None:
         must_accept(lambda: sol.CashTrade(10, 9_850, 1, 5_001).events(), "settlement_day = 5001"), "CashTrade.events"
     )
     assert rows == [(5_001, -98_500)], "a trade's one event is in its settlement period, however late"
+
+
+def test_bond_yield_of_ten_thousand_percent_per_period_is_accepted() -> None:
+    """Accepted-input check: a yield of 1000000 bps (10000 % per period) is not named as refused. Bond(10000, 500, 1) at
+    that yield has the one event (1, 10500), and its price is 10500 / 101 = 103.96 cents, which rounds once to 104."""
+    __tracebackhide__ = True
+    value = checked_int(
+        must_accept(lambda: sol.bond_price_cents(sol.Bond(10_000, 500, 1), 1_000_000), "yield_bps = 1000000"),
+        "bond_price_cents",
+    )
+    assert value == 104, (
+        "a yield above 100 % per period is not refused; the price is the discounted event, rounded once"
+    )
+
+
+def test_bond_events_of_one_hundred_thousand_and_one_periods_are_accepted() -> None:
+    """Accepted-input check, events only: the page names no upper limit on periods, so a 100001-period bond has one
+    event per period 1..100001, with the face in period 100001. Only the event list is checked here."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.Bond(10_000, 500, 100_001).events(), "periods = 100001"), "Bond.events"
+    )
+    assert rows == oracle_events(10_000, 500, 100_001), (
+        "every period 1..100001 must carry its coupon, and the face the last one"
+    )
+
+
+def test_trade_settling_in_period_one_million_is_accepted() -> None:
+    """Accepted-input check: the page names only settlement_day < 1; a trade settling in period 10**6 is valid."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(10, 9_850, 1, 10**6).events(), "settlement_day = 10**6"), "CashTrade.events"
+    )
+    assert rows == [(10**6, -98_500)], "a trade's one event is in its settlement period, however late"
+
+
+def test_trade_quantity_of_ten_to_the_thirtieth_is_accepted() -> None:
+    """Accepted-input check: the page names only quantity < 1 as refused, so a trade of 10**30 units is valid, and its
+    one settlement event is the exact product, quantity times price."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(10**30, 9_850, 1, 2).events(), "quantity = 10**30"), "CashTrade.events"
+    )
+    assert rows == [(2, -(10**30) * 9_850)], "the cash flow must be the exact product of quantity and price"
 
 
 # Every test is wrapped after the last one is defined, so that the tests added above are wrapped too.

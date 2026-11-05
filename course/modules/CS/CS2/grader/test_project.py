@@ -241,17 +241,20 @@ def test_welford_count_is_read_only_int() -> None:
 
 
 def test_classes_never_print(capsys: pytest.CaptureFixture[str]) -> None:
+    # The whole stream plus a deterministic 150-value tail: at least 120 operations per class, so a print
+    # that fires on a later update (for example every hundredth value) is reached.
+    stream = VALUES + [round(((k * 7919) % 1000) / 10.0 + 1e4, 1) for k in range(150)]
     acc = WelfordAccumulator()
-    for x in VALUES[:5]:
+    for x in stream:
         acc.update(x)
     acc.mean()
     acc.variance(1)
     rolling = RollingMinMax(WINDOW)
-    for x in VALUES[:5]:
+    for x in stream:
         rolling.push(x)
     rolling.minimum()
     rolling.maximum()
-    sketch = sketch_of(VALUES[:5], EPS)
+    sketch = sketch_of(stream, EPS)
     sketch.quantile(0.5)
     captured = capsys.readouterr()
     if captured.out or captured.err:
@@ -417,8 +420,8 @@ def test_welford_infinite_input_gives_no_finite_answer(infinite: float) -> None:
         raise
     except Exception:
         return
-    if math.isfinite(mean) and math.isfinite(var):
-        pytest.fail("an infinite value cannot produce a finite mean and variance: the call must fail or say so.")
+    if math.isfinite(mean) or math.isfinite(var):
+        pytest.fail("an infinite value must make the mean and the variance non-finite, or the call must raise.")
 
 
 # ------------------------------------------------------------------ rolling minimum and maximum

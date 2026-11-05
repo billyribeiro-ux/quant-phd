@@ -358,6 +358,17 @@ def test_forward_quotient_at_a_tiny_step_is_the_quotient() -> None:
     )
 
 
+def test_forward_zero_numerator_at_the_origin_returns_a_float() -> None:
+    # For f(x) = 5 at x = 0 the forward numerator f(x+h) - f(x) is 0, so the quotient is 0. The page states that
+    # fd_derivative returns a float, and a zero quotient is still a float: 0.0, not the int 0.
+    value = sol.fd_derivative(lambda x: 5.0, 0.0, 1e-3, "forward")
+    require(
+        isinstance(value, float) and value == 0.0,
+        "fd_derivative must return a float, as the page states, also for a zero forward quotient at x = 0 "
+        "(hint: return the quotient as a float, 0.0 and not 0)",
+    )
+
+
 def test_forward_and_central_schemes_are_accepted() -> None:
     coeffs, x0 = INST["cubic"], INST["x0"]
     for scheme in ("forward", "central"):
@@ -484,6 +495,17 @@ def test_constant_function_has_zero_derivative() -> None:
     require(
         value == 0.0,
         "the derivative of a constant function must be 0 (hint: Lesson 14, constants have zero derivative)",
+    )
+
+
+def test_ad_derivative_at_the_origin_returns_a_float() -> None:
+    # d/dx x*x = 2x is 0 at x = 0. The page states that ad_derivative returns a float, so the zero derivative at the
+    # origin must be 0.0, not the int 0.
+    value = sol.ad_derivative(lambda x: x * x, 0.0)
+    require(
+        isinstance(value, float) and value == 0.0,
+        "ad_derivative must return a float, as the page states, also for a zero derivative at x = 0 "
+        "(hint: return the dot part as a float)",
     )
 
 

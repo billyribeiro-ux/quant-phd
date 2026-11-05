@@ -4,11 +4,11 @@ Four mutants survive the project grader on seeds 0-9 and are kept here, outside 
 `tools/mutate_graders.py` measures only student errors that the specification forbids. Each file is
 a single-change copy of the reference `course/modules/CS/CS2/grader/reference.py`.
 
-The specification (`course/modules/CS/CS2/project.html`, Constraints and Conventions) states outcomes only for: the
-ten named `ValueError` conditions, the Welford statistics against the exact `Fraction` reference, the rolling
-minimum and maximum against brute force, and the rank guarantee of Conventions at every probe quantile q, with the
-quantile non-decreasing in q. It states no bound on the memory of the sketch (Conventions: "the autograder does not
-test memory") and no internal invariant of the sketch.
+The specification (`course/modules/CS/CS2/project.html`, Constraints and Conventions) states, for the sketch, the rank
+guarantee of Conventions at every probe quantile q with the quantile non-decreasing in q; the named `ValueError`
+conditions (7) to (10) for the sketch (epsilon, `add` with NaN, `quantile` with q outside [0, 1], and `quantile` on an
+empty sketch); and the grader's other sketch checks, which the variants below pass. It states no bound on the memory
+of the sketch (Conventions: "the autograder does not test memory") and no internal invariant of the sketch.
 
 ## Shared notation for the sketch
 
@@ -88,10 +88,13 @@ every probe q. None of them violates the specification, so none is a student err
 the cap and to ties, and the only cap property used above is `max(1, C_n) <= floor(2 eps n) + 1`. d9_04 has C_n one smaller than the
 reference, and d8_01 has C_n no larger than the reference at every n.
 
-Scratch check (not committed). On 200 random streams of up to 60 values, with heavy ties, sorted runs and rounded
-uniform values, epsilon in {0.05, 0.1, 0.2, 0.3}, the code checked after every add: the sum of g, the first tuple, the band
-bound of Lemma 2, the copy invariant of Lemma 1, and both inequalities at 41 probes (q = k/40). Each variant gave 0
-violations over about 250,000 (add, probe) pairs. This is a sanity check on the lemmas, not a substitute for them.
+Scratch check. `ledgers/CS2/scripts/CS2-d-r9/readme_guarantee_check.py` (output in `readme_guarantee_check.out.txt`)
+runs the reference and the three variants on 200 seeded streams of up to 60 values, with ties, sorted and reversed
+runs and values rounded to one decimal, and epsilon in {0.05, 0.1, 0.2, 0.3}. After every add it checks the sum of the
+g values against n, the first tuple (g = 1, Delta = 0), and both inequalities of Conventions at 41 probes (q = k/40),
+with exact Fraction counts. Each of the four sketches gave 0 rank violations over 252,437 (add, probe) pairs and 0
+bookkeeping failures. The script does not check the band bound of Lemma 2 or the copy invariant of Lemma 1; those rest
+on the proofs above only. This is a sanity check on the lemmas, not a substitute for them.
 
 ## rank_target_without_clamp.py (m14_01): the rank target is not clamped to at least 1
 

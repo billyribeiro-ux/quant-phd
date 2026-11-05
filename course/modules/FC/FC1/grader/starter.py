@@ -6,8 +6,8 @@ locally with the browser's flags:
     QF_SEED=<your seed> pytest -q -p no:cacheprovider --assert=plain -W error test_project.py
 
 Conventions: money is a whole number of cents (int), periods are whole numbers from 1, and rates are basis points
-(int). Every object validates its inputs and raises ValueError for the conditions the page names. Nothing may print,
-warn or change its arguments. Use the standard library only.
+(int). Every object validates its inputs and raises ValueError for the conditions the page names. On the inputs the
+suite checks for silence, nothing prints or warns. Use the standard library only.
 """
 
 from __future__ import annotations

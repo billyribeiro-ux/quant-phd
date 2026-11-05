@@ -1,7 +1,7 @@
 """Rung 1 worked example: the 99% loss of a two-asset portfolio, Gaussian and matched Student-t, for one seeded run.
 
 Standard library only. Every input is SIMULATED: the positions and the covariance are illustrative numbers, not market
-data. Losses are whole cents, rounded once with round(). The 99% loss is the order statistic with 1-based index
+data. Losses are whole cents, rounded once with round(). The 99% loss is the smallest loss with 1-based rank
 ceil(0.99 n), computed in exact integers. The Student-t draws are scaled by sqrt((NU - 2) / W), the square root of the
 matched factor (NU - 2) / NU times sqrt(NU / W), where W is the chi-square draw.
 """
@@ -49,7 +49,7 @@ def simulate(family: str) -> list[int]:
 
 
 def quantile_99(losses: list[int]) -> int:
-    """The order statistic with 1-based index ceil(0.99 n), computed in exact integers."""
+    """The ceil(0.99 n)-th smallest loss (1-based rank), computed in exact integers."""
     index = (99 * len(losses) + 99) // 100
     return sorted(losses)[index - 1]
 

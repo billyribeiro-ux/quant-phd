@@ -34,6 +34,7 @@ SEED = int(os.environ.get("QF_SEED", "0"))
 INST = make_instance(SEED)
 INST2 = make_instance(SEED + 7_919)  # a second participant, so a fixed answer for one seed must also match another
 LOW_KAPPA = make_instance(30)  # fixed, with kappa below 1, in every seed window: a clamp of kappa_hat must fail
+LARGE_LAMBDA = make_instance(49)  # fixed, with lambda_hat above 10 (20.69 on the reference): a clamp at 10 fails
 TRUE = {"gamma": float(INST["gamma"]), "lambda": float(INST["lambda"]), "kappa": float(INST["kappa"])}
 WEALTH: int = int(INST["wealth_cents"])
 RESPONSES: list[dict[str, Any]] = json.loads(str(INST["responses_json"]))
@@ -161,7 +162,7 @@ def test_crra_within_half_cent_of_oracle_for_instance_lotteries() -> None:
 
 
 def test_crra_log_case_matches_the_limit_gamma_to_one() -> None:
-    """At gamma = 1 the utility is ln W. The oracle's power form at gamma = 1 - 1e-6 must agree with the log form to
+    """At gamma = 1 the utility is ln w. The oracle's power form at gamma = 1 - 1e-6 must agree with the log form to
     0.01 cent plus 1e-5 relative, and the integer answer at gamma = 1 must be within half a cent of the log form."""
     for pa, qa, _, _, _ in PARSED[:20]:
         log_form = oracle_crra(pa, qa, 1.0, WEALTH)
@@ -371,7 +372,7 @@ def test_probabilities_must_be_nonnegative_and_sum_to_exactly_one() -> None:
 
 
 def test_crra_requires_wealth_plus_every_prize_to_stay_positive() -> None:
-    """Boundary cases for final wealth W + x: exactly 1 cent is allowed; exactly 0 and -1 cents are not. The prospect
+    """Boundary cases for final wealth w + x: exactly 1 cent is allowed; exactly 0 and -1 cents are not. The prospect
     model does not use wealth, so it accepts any wealth."""
     got_one = sol.certainty_equivalent_cents("crra", [-999], [Fraction(1)], {"gamma": 0.5}, 1000)
     expect(got_one == -999, "final wealth of one cent is positive and must be accepted")
@@ -583,14 +584,14 @@ def test_score_is_zero_at_the_estimate() -> None:
 
 
 def test_estimate_is_a_local_maximum() -> None:
-    """Moving gamma or kappa a little, in either direction, does not raise the likelihood. Lambda is not moved: the
-    likelihood has kinks in lambda where a certainty equivalent changes sign, so the estimate there can be a kink point
-    whose neighbours are higher; the score test is the condition the page states."""
+    """Moving each of gamma, lambda and kappa by 0.1 percent of its value, in either direction, does not raise the
+    likelihood by more than 1e-9. This is the local maximum check that the page states."""
     gamma, lam, kappa = est()["gamma_hat"], est()["lambda_hat"], est()["kappa_hat"]
     here = oracle_loglik(PARSED, gamma, lam, kappa)
     for step in (1e-3, -1e-3):
         moved = [
             oracle_loglik(PARSED, gamma * (1 + step), lam, kappa),
+            oracle_loglik(PARSED, gamma, lam * (1 + step), kappa),
             oracle_loglik(PARSED, gamma, lam, kappa * (1 + step)),
         ]
         for value in moved:
@@ -619,9 +620,8 @@ def test_estimate_on_a_second_participant_is_also_a_maximum() -> None:
     """A second SIMULATED participant (another seed, INST2), and the fixed participant LOW_KAPPA, whose precision is
     below 1 so that the reported kappa is the one a clamp would change: the reported likelihood is the likelihood at
     the estimate, the standard errors are positive and finite, and no move of gamma or kappa by 0.1 percent in either
-    direction raises the likelihood. Lambda is not moved in this check: the score condition of
-    test_score_is_zero_at_the_estimate is the check the page states for lambda, and the first participant's check moves
-    all three parameters."""
+    direction raises the likelihood. Lambda is not moved in this check; the first participant's check in
+    test_estimate_is_a_local_maximum moves all three parameters."""
     for participant in (INST2, LOW_KAPPA):
         parsed2 = [parse(r) for r in json.loads(str(participant["responses_json"]))]
         est2 = sol.estimate(json.loads(str(participant["responses_json"])))
@@ -640,6 +640,59 @@ def test_estimate_on_a_second_participant_is_also_a_maximum() -> None:
             ]
             for value in moved:
                 expect(value <= here + 1e-9, "the second estimate is not a maximum: a nearby parameter does better")
+
+
+def _largest_score_component(
+    parsed: list[tuple[Any, ...]], gamma: float, lam: float, kappa: float, step: float
+) -> float:
+    """The largest central-difference partial derivative of the oracle log-likelihood at (gamma, lambda, kappa), in the
+    coordinates zeta = log(gamma/(1-gamma)), log(lambda) and log(kappa), at the given step."""
+    theta = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
+
+    def ll(t: list[float]) -> float:
+        return oracle_loglik(parsed, 1.0 / (1.0 + math.exp(-t[0])), math.exp(t[1]), math.exp(t[2]))
+
+    worst = 0.0
+    for i in range(3):
+        up, down = list(theta), list(theta)
+        up[i] += step
+        down[i] -= step
+        worst = max(worst, abs((ll(up) - ll(down)) / (2 * step)))
+    return worst
+
+
+def test_estimate_on_a_large_loss_aversion_participant_is_also_a_maximum() -> None:
+    """A fixed SIMULATED participant (generator seed 49, LARGE_LAMBDA) whose loss-aversion estimate is above 10, so
+    that a reported lambda clamped at 10 fails: the reported likelihood is the likelihood at the estimate, the standard
+    errors are positive and finite, the score is below 2e-5 at step 1e-5 or 1e-6 (whichever is smaller), and no move of
+    gamma, lambda or kappa by 0.1 percent in either direction raises the likelihood by more than 1e-9. A search that
+    rejects lambda above 10 stops at that boundary, where the score is not zero, so the score check fails it."""
+    parsed3 = [parse(r) for r in json.loads(str(LARGE_LAMBDA["responses_json"]))]
+    est3 = sol.estimate(json.loads(str(LARGE_LAMBDA["responses_json"])))
+    gamma, lam, kappa = est3["gamma_hat"], est3["lambda_hat"], est3["kappa_hat"]
+    here = oracle_loglik(parsed3, gamma, lam, kappa)
+    expect(
+        abs(est3["log_likelihood"] - here) <= 1e-7 * max(1.0, abs(here)),
+        "the reported likelihood on the large-lambda participant is not at its estimate",
+    )
+    for key in ("se_gamma", "se_lambda", "se_kappa"):
+        expect(est3[key] > 0.0 and math.isfinite(est3[key]), "standard errors must be positive and finite")
+    expect(
+        min(
+            _largest_score_component(parsed3, gamma, lam, kappa, 1e-5),
+            _largest_score_component(parsed3, gamma, lam, kappa, 1e-6),
+        )
+        <= 2e-5,
+        "the score is not zero at the large-lambda estimate: the estimate is not a stationary point of the likelihood",
+    )
+    for step in (1e-3, -1e-3):
+        moved = [
+            oracle_loglik(parsed3, gamma * (1 + step), lam, kappa),
+            oracle_loglik(parsed3, gamma, lam * (1 + step), kappa),
+            oracle_loglik(parsed3, gamma, lam, kappa * (1 + step)),
+        ]
+        for value in moved:
+            expect(value <= here + 1e-9, "the large-lambda estimate is not a maximum: a nearby parameter does better")
 
 
 def test_estimate_needs_responses() -> None:
@@ -823,8 +876,9 @@ def test_estimate_counts_a_mixed_lottery_whether_or_not_it_was_chosen() -> None:
     positive probability, and a lottery counts whether or not the participant chose it. Here every choice is A, so no
     chosen lottery mixes (the A lotteries are pure), but every B lottery, which was not chosen, mixes. The condition is
     met, so the estimate must not raise ValueError. The page names no outcome for this set beyond that. Every choice is
-    A, so the reference's maximum is degenerate (choice precision near 925, standard errors above 10^5), and an
-    implementation may return or raise another exception."""
+    A, so the reference's maximum is degenerate (choice precision near 925, and the standard errors of lambda and
+    kappa above 10^5; the standard error of gamma is about 692), and an implementation may return or raise another
+    exception."""
     responses: list[dict[str, object]] = [
         {
             "pair_id": i,

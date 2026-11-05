@@ -532,6 +532,38 @@ def test_singular_covariance_with_a_zero_second_pivot_is_rejected(family: str, n
     )
 
 
+@pytest.mark.parametrize(
+    "cov",
+    [
+        # Only the last pivot fails: the first two are 1e-4 and 1e-4, above zero.
+        [[1e-4, 0.0, 0.0], [0.0, 1e-4, 0.0], [0.0, 0.0, -1e-4]],
+        # Only the last pivot fails: the first two are 1 and 1, the last is 1 - (1 + 1) = -1.
+        [[1.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+        # Singular: the last pivot is 2 - (1 + 1) = 0, which is not above zero.
+        [[1.0, 0.0, 1.0], [0.0, 1.0, 1.0], [1.0, 1.0, 2.0]],
+    ],
+)
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_three_position_covariance_must_be_positive_definite(
+    cov: list[list[float]], family: str, nu: int | None
+) -> None:
+    expect_value_error(
+        lambda: sol.simulate_losses([1_000, 1_000, 1_000], cov, 10, SEED, family, nu),
+        "cov must be positive definite: the last Cholesky pivot of a three-position covariance must be above zero",
+    )
+
+
+@pytest.mark.parametrize("family, nu", FAMILY_CASES)
+def test_three_position_positive_definite_covariance_is_accepted(family: str, nu: int | None) -> None:
+    # Tridiagonal with diagonal 4e-4 and off-diagonal 1e-4: eigenvalues 4e-4 and 4e-4 +/- 1.41e-4, all positive.
+    cov = [[4e-4, 1e-4, 0.0], [1e-4, 4e-4, 1e-4], [0.0, 1e-4, 4e-4]]
+    losses = sol.simulate_losses([1_000, 1_000, 1_000], cov, 100, SEED, family, nu)
+    check(
+        len(losses) == 100 and all(type(x) is int for x in losses),
+        "a 3 x 3 positive definite covariance must be accepted",
+    )
+
+
 @pytest.mark.parametrize("cov", [[[0.0, 0.0], [0.0, 4e-4]], [[-4e-4, 0.0], [0.0, 4e-4]]])
 @pytest.mark.parametrize("family, nu", FAMILY_CASES)
 def test_first_pivot_must_be_positive(cov: list[list[float]], family: str, nu: int | None) -> None:
