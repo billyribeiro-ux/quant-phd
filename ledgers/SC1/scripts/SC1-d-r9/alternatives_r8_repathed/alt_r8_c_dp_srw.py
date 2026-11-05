@@ -1,12 +1,63 @@
-"""Alternative C (round 8): srw counts by dynamic programming over (position, running maximum capped at a)."""
+"""Alternative C (round 8): srw counts by dynamic programming over (position, running maximum capped at a).
+
+The normal-distribution tail and the grid functions are written out in this file, so it does not import the reference.
+"""
 from __future__ import annotations
 
-import importlib.util
+import math
+import random
+import statistics
+from typing import Any
 
-_spec = importlib.util.spec_from_file_location("ref_r8c", "/Users/billyribeiro/.fanout/wt/verifyE9-SC1-d/course/modules/SC/SC1/grader/reference.py")
-_ref = importlib.util.module_from_spec(_spec)
-assert _spec is not None and _spec.loader is not None
-_spec.loader.exec_module(_ref)
+_STD = statistics.NormalDist()
+
+
+def reflection_tail(a: float, t: float) -> float:
+    if a <= 0:
+        raise ValueError("a must be positive")
+    if t <= 0:
+        raise ValueError("t must be positive")
+    return 2.0 * (1.0 - _STD.cdf(a / math.sqrt(t)))
+
+
+def _grid_paths(instance: dict[str, Any], n_steps: int) -> list[list[float]]:
+    rng = random.Random(int(instance["seed"]))
+    sd = math.sqrt(float(instance["H"]) / n_steps)
+    paths = []
+    for _ in range(int(instance["n_paths"])):
+        position = 0.0
+        values = []
+        for _ in range(n_steps):
+            position += rng.gauss(0.0, sd)
+            values.append(position)
+        paths.append(values)
+    return paths
+
+
+def discrete_max_exceedance(instance: dict[str, Any], n_steps: int) -> tuple[float, float]:
+    if n_steps < 1:
+        raise ValueError("n_steps must be at least 1")
+    if int(instance["n_paths"]) < 2:
+        raise ValueError("n_paths must be at least 2")
+    level = float(instance["a"])
+    hits = [1.0 if max(v) >= level else 0.0 for v in _grid_paths(instance, n_steps)]
+    p = statistics.fmean(hits)
+    se = statistics.stdev(hits) / math.sqrt(len(hits))
+    return p, se
+
+
+def nested_grid_counts(instance: dict[str, Any], n_fine: int, n_coarse: int) -> tuple[int, int]:
+    if n_fine < 1:
+        raise ValueError("n_fine must be at least 1")
+    if n_coarse < 1 or n_fine % n_coarse:
+        raise ValueError("n_coarse must be a positive divisor of n_fine")
+    level = float(instance["a"])
+    stride = n_fine // n_coarse
+    fine = coarse = 0
+    for v in _grid_paths(instance, n_fine):
+        fine += max(v) >= level
+        coarse += max(v[i] for i in range(stride - 1, n_fine, stride)) >= level
+    return fine, coarse
 
 
 def _dp(n: int, a: int) -> tuple[int, int]:
@@ -35,8 +86,3 @@ def srw_terminal_count(n: int, a: int) -> int:
     if n < 1 or a < 1:
         raise ValueError("n and a must be at least 1")
     return _dp(n, a)[1]
-
-
-reflection_tail = _ref.reflection_tail
-discrete_max_exceedance = _ref.discrete_max_exceedance
-nested_grid_counts = _ref.nested_grid_counts

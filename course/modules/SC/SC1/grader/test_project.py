@@ -13,7 +13,8 @@ against discrete_max_exceedance, and the coarse count against the fine count. On
 twice on the same instance and requires the same answer. One test pins the one-step draws to random.Random(seed).gauss.
 Two tests regenerate the seeded paths by hand, path by path and step by step, and require the grid counts of
 discrete_max_exceedance and nested_grid_counts to equal the explicit counts exactly. Two tests put the level exactly
-on a path's maximum and just above it, which checks the "at least a" rule in both directions.
+on a path's maximum, one for the discrete estimate and one for the nested counts, and one puts it just above a path's
+maximum, which checks the "at least a" rule in both directions.
 A seeded-simulation check against a known target p uses a band of five standard errors of p, sqrt(p (1 - p) / N), plus
 one path (1/N). The band takes the target's standard error, not the sample's: the sample's is zero when no path hits,
 which would shrink the band to 1/N and fail a correct engine. A failing test names the property it checks and the idea
@@ -469,7 +470,8 @@ def test_estimate_is_reproducible_for_the_same_instance() -> None:
 
 def test_draws_depend_on_the_instance_seed() -> None:
     # A level near zero, so that paths reach it on every grid and the estimates can differ. At the instance's
-    # own level the tail is so small for some seeds that no path reaches it, and both estimates are 0.
+    # own level the tail can be so small that no path reaches it (seed 32 at grids 16, 32 and 64), and then the
+    # estimates are 0 and cannot differ.
     low = with_(INST, a=1e-9)
     other = with_(low, seed=INST["seed"] + 7_919)
     changed = [sol.discrete_max_exceedance(low, g) != sol.discrete_max_exceedance(other, g) for g in (4, 8, 16, 32, 64)]

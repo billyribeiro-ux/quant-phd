@@ -422,13 +422,17 @@ def test_unit_fraction_is_reported_at_zero_cost() -> None:
         out["informed_fraction"] == 1.0,
         "the informed fraction must be 1 when the gap at 1 is nonnegative: check the boundary rule",
     )
+    limit_info = oracle_informativeness(1.0, 2.0)
     expect(
-        abs(out["price_informativeness"] - oracle_informativeness(1.0, 2.0)) <= TOL_MOMENT,
-        "the informativeness at fraction 1 should be the squared correlation of the payoff and the price",
+        abs(out["price_informativeness"] - limit_info) <= 1e-14 * max(1.0, abs(limit_info)),
+        "the informativeness at fraction 1 should be the squared correlation of the payoff and the price, to full "
+        "precision",
     )
+    limit = oracle_gap(1.0, 2.0, 0.0)
     expect(
-        abs(out["indifference_gap"] - oracle_gap(1.0, 2.0, 0.0)) <= TOL_GAP,
-        "the reported gap at fraction 1 must be the informed-minus-uninformed expected utility there",
+        abs(out["indifference_gap"] - limit) <= 1e-14 * max(1.0, abs(limit)),
+        "the reported gap at fraction 1 must be the informed-minus-uninformed expected utility there, to full "
+        "precision: evaluate the gap at fraction 1, not at a nearby fraction",
     )
 
 
@@ -440,13 +444,17 @@ def test_unit_fraction_is_reported_with_a_positive_cost() -> None:
         out["informed_fraction"] == 1.0,
         "the informed fraction must be 1 when the gap at 1 is nonnegative: check the boundary rule",
     )
+    limit_info = oracle_informativeness(1.0, 0.6)
     expect(
-        abs(out["price_informativeness"] - oracle_informativeness(1.0, 0.6)) <= TOL_MOMENT,
-        "the informativeness at fraction 1 should be the squared correlation of the payoff and the price, at any cost",
+        abs(out["price_informativeness"] - limit_info) <= 1e-14 * max(1.0, abs(limit_info)),
+        "the informativeness at fraction 1 should be the squared correlation of the payoff and the price, at any cost, "
+        "to full precision",
     )
+    limit = oracle_gap(1.0, 0.6, 0.05)
     expect(
-        abs(out["indifference_gap"] - oracle_gap(1.0, 0.6, 0.05)) <= TOL_GAP,
-        "the reported gap at fraction 1 must be the informed-minus-uninformed expected utility there, net of the cost",
+        abs(out["indifference_gap"] - limit) <= 1e-14 * max(1.0, abs(limit)),
+        "the reported gap at fraction 1 must be the informed-minus-uninformed expected utility there, net of the cost, "
+        "to full precision: evaluate the gap at fraction 1, not at a nearby fraction",
     )
 
 

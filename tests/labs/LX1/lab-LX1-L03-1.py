@@ -6,7 +6,7 @@ stated number of periods. The printed depths are the model's own values, so they
 assumptions and not about any country.
 
 Units and conventions. The nominal debt D is fixed in integer cents. The price index P_t is dimensionless with P_0 = 1,
-so the real value of the debt, V_t = D / P_t, is in cents. Leverage L_t = V_t / N_t is a dimensionless ratio. The
+so the real value of the debt, V_t = D / P_t, is in cents. Leverage L_t = V_t / A_t is a dimensionless ratio. The
 premium psi_t and the output fall f_t are dimensionless fractions; a percentage is a fraction times 100. Every quantity
 is an exact Fraction. Each value is rounded once, half up, only when it is printed.
 
@@ -14,8 +14,8 @@ Model, for t = 0, 1, ..., H with H = 12 periods:
     P_t = (1 - delta) ** min(t, m)     the price index: it falls by the fraction delta in each period on parity,
                                        and is flat after the economy leaves parity; m is the number of periods on parity
     V_t = D / P_t                      the real value of the fixed nominal debt, in cents
-    N_t = N_0 - (V_t - V_0)            borrower net worth, in cents: it falls one for one with the rise in V_t
-    L_t = V_t / N_t                    leverage, a dimensionless ratio
+    A_t = A_0 - (V_t - V_0)            borrower net worth, in cents: it falls one for one with the rise in V_t
+    L_t = V_t / A_t                    leverage, a dimensionless ratio
     psi_t = phi * (L_t - L_0)          the external-finance premium above its baseline, a dimensionless fraction
     f_t = beta * psi_t                the fall in output, as a fraction of baseline output
     depth(m) = max over t of f_t       the output depth for a parity duration m
@@ -76,7 +76,7 @@ def real_debt(parity_periods: int, t: int) -> Fraction:
 
 
 def leverage(real: Fraction) -> Fraction:
-    """Leverage L = V / N for a real debt V in cents, with N = N_0 - (V - V_0) the borrower's net worth in cents.
+    """Leverage L = V / A for a real debt V in cents, with A = A_0 - (V - V_0) the borrower's net worth in cents.
 
     Raises ValueError when the net worth is not positive, because the leverage ratio is then undefined.
     """
@@ -87,7 +87,7 @@ def leverage(real: Fraction) -> Fraction:
 
 
 def baseline_leverage() -> Fraction:
-    """Leverage at t = 0, where V_0 = D and N_0 is the baseline net worth."""
+    """Leverage at t = 0, where V_0 = D and A_0 is the baseline net worth."""
     return leverage(Fraction(DEBT_CENTS))
 
 
@@ -138,10 +138,10 @@ def main() -> None:
     """Print Parts A to D in a fixed order."""
     print("Part A: SIMULATED model, parameters and paths")
     print(
-        f"D = {DEBT_CENTS} cents; N_0 = {NET_WORTH_CENTS} cents; deflation per period on parity = 1/50; "
+        f"D = {DEBT_CENTS} cents; A_0 = {NET_WORTH_CENTS} cents; deflation per period on parity = 1/50; "
         f"H = {HORIZON} periods; phi = {PHI}; beta = {BETA}"
     )
-    print(f"baseline leverage L_0 = V_0 / N_0 = {fixed_decimal(baseline_leverage(), 4)}")
+    print(f"baseline leverage L_0 = V_0 / A_0 = {fixed_decimal(baseline_leverage(), 4)}")
     print_economy("X", PARITY_X)
     print_economy("Y", PARITY_Y)
 

@@ -417,15 +417,19 @@ must fail on it), `test_project.py`.
     price") (isolated test).
   - **Replay.** For seeds 0–49, the fills in the student's log equal the engine's fills under the stated rules (buy at the ask, sell at the
     bid, one unit, inventory limit).
-  - **Inventory limit.** No `inventory_after` exceeds `|10|`. A hand-built order that would breach the limit is recorded `filled: false`
-    (both directions of the inequality: an order that reaches 10 fills; one that would reach 11 does not).
+  - **Inventory limit.** A hand-built order that would breach the limit is recorded `filled: false`
+    (both directions of the inequality: an order that reaches 10 fills; one that would reach 11 does not;
+    `test_fills_stop_at_the_inventory_limit_in_each_direction`). The suite does not assert `|inventory_after| <= 10` on the
+    game logs; the engine's refusal is what the hand-built test checks.
   - **Cash identity.** `cash_after` changes by exactly `−ask` on a buy fill and `+bid` on a sell fill (integers).
   - **P&L identity.** `replay(log)` returns `pnl_cents == cash_flow_cents + inventory_end × settlement_cents` exactly, and
     `cash_flow_cents` equals the sum of the fill cash flows from the log (integers).
   - **Mark uses settlement.** A hand-built log whose last quote mid differs from `settlement_cents` gives the mark at `settlement_cents`
     (not at the mid).
   - **Money is integer.** Every money key in `replay` is an `int` (type check, all seeds).
-  - **Seed consistency.** The log's `seed` equals the seed the grader ran; a log copied from seed 0 fails for seed 7 (the replay differs).
+  - **Seed consistency.** The log's `seed` equals the seed the grader ran, and its settlement is the last fair value of its own
+    instance (`test_a_log_carries_its_own_seed_and_settlement`, on engine-produced logs of each seed). The suite does not replay a
+    log copied from another seed; a copied log carries the other seed in its `seed` field, so this check is what would refuse it.
   - Failure messages name the violated property and hint at the concept. They never print the expected value; each failing check sets
     `__tracebackhide__ = True` (fixer-rule 19).
 - **Dual mode.** The same suite runs in Pyodide and under pytest; each test under 5 s in Pyodide; the suite under 60 s.

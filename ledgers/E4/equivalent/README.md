@@ -36,9 +36,13 @@ than 1e-12 times its upper end, and at most 240 halvings are taken. The page als
 domain: for a noise volume of at least 1e-50 and tau-bar of at least 1e-2, the reported fraction agrees with the root of
 Proposition 4 to within 1e-10 times the root.
 
-The 200-halving cap missed that requirement. Measured on 90000 cases in the domain's corner (noise volume 1e-50 to
-1.06e-50, cost with tau-bar at least 1e-2): 11598 cases exceed 1e-10 relative, and the largest relative error is
-1.53e-10 at noise volume 1e-50 and cost 0.17076911209 (logs `ledgers/E4/scripts/E4-d-fix-r11/logs/check_corner_cap200_fix11.txt`).
+The 200-halving cap missed that requirement. Measured on 90000 cases in the domain's corner, a 300 by 300 grid: noise
+volume 1e-50 * (1 + 0.002 i) for i = 0 to 299 (1e-50 to 1.598e-50), and cost from 0.1702992124 to 0.1707992124, which gives
+tau-bar from 0.010000 to 0.012022 (script `ledgers/E4/scripts/E4-d-fix-r11/check_corner_accuracy_fix11.py`). With the cap
+of 200, 11598 cases exceed 1e-10 relative, and the largest relative error is 1.5322e-10 at noise volume 1e-50 and cost
+0.17076911209224613 (tau-bar 0.0101216, root 2.0224e-51; logs `ledgers/E4/scripts/E4-d-fix-r11/logs/check_corner_cap200_fix11.txt`
+and `ledgers/E4/scripts/E4-d-r13/readme_corner_repro_r13.txt`). At the truncated cost 0.17076911209 the cap-200 error is
+8.0e-12, so the cost is written at full digits.
 With the cap of 240 the same scan has no case above 1e-10, and its largest relative error is 5.1e-13
 (`ledgers/E4/scripts/E4-d-fix-r11/logs/check_corner_accuracy_fix11.txt`). A search that stops at the tolerance reaches a
 width of 1e-12 times the root by about 209 halvings at a root near 2e-51, so 240 halvings are enough at every root above

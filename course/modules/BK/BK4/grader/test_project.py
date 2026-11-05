@@ -350,6 +350,18 @@ def test_fixture_loss_300_reports_the_uncovered_loss() -> None:
     expect_fixture(300, want_layers, want_survivors, want_uncovered)
 
 
+def test_default_fund_pays_in_full_when_the_survivors_pool_is_smaller_than_it() -> None:
+    """The default fund pays min(L - a1, DF_d) even when the survivors' pool is smaller than DF_d."""
+    __tracebackhide__ = True
+    want_layers, want_survivors, want_uncovered = (100, 50, 30), {1: 7, 2: 13}, 0
+    result = sol.waterfall(200, 3, {1: 0, 2: 0, 3: 100}, {1: 10, 2: 20, 3: 50}, 30)
+    check_waterfall(
+        result,
+        (*want_layers, want_survivors, want_uncovered),
+        "the default fund pays min(L - a1, DF_d) when the survivors' pool is smaller than DF_d",
+    )
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Waterfall: the remainder rule, zero contributions and the uncovered loss
 # ---------------------------------------------------------------------------------------------------------------------
