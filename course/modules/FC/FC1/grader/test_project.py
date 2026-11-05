@@ -922,6 +922,41 @@ def test_trade_quantity_of_ten_to_the_thirtieth_is_accepted() -> None:
     assert rows == [(2, -(10**30) * 9_850)], "the cash flow must be the exact product of quantity and price"
 
 
+# Accepted-input checks at values the page leaves unbounded: a yield above 100 % per period, a settlement period
+# above 10**6, and a bond of 1001 periods at zero yield (its last event counts).
+
+
+def test_bond_yield_of_ten_million_bps_is_accepted() -> None:
+    """Accepted-input check: a yield of 10000000 bps (100000 % per period) is not named as refused. Bond(10000, 500, 1)
+    at that yield has the one event (1, 10500), and its price is 10500 / 1001 = 10.49 cents, which rounds to 10."""
+    __tracebackhide__ = True
+    value = checked_int(
+        must_accept(lambda: sol.bond_price_cents(sol.Bond(10_000, 500, 1), 10_000_000), "yield_bps = 10000000"),
+        "bond_price_cents",
+    )
+    assert value == 10, "a yield above 100 % per period is not refused; the price is the discounted event, rounded once"
+
+
+def test_trade_settling_in_period_ten_million_is_accepted() -> None:
+    """Accepted-input check: the page names only settlement_day < 1 as refused, so a trade in period 10**7 is valid."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(10, 9_850, 1, 10**7).events(), "settlement_day = 10**7"), "CashTrade.events"
+    )
+    assert rows == [(10**7, -98_500)], "a trade's one event is in its settlement period, however late"
+
+
+def test_bond_price_at_zero_yield_counts_the_events_after_period_one_thousand() -> None:
+    """Accepted-input check: a bond of 1001 periods with no coupon, priced at zero yield, is its face, so every event
+    counts, including the one in period 1001."""
+    __tracebackhide__ = True
+    value = checked_int(
+        must_accept(lambda: sol.bond_price_cents(sol.Bond(10_000, 0, 1_001), 0), "periods = 1001, yield 0"),
+        "bond_price_cents",
+    )
+    assert value == 10_000, "at zero yield the price is the undiscounted total: the face, however many periods"
+
+
 # Every test is wrapped after the last one is defined, so that the tests added above are wrapped too.
 for _name, _value in list(globals().items()):
     if _name.startswith("test_") and callable(_value):

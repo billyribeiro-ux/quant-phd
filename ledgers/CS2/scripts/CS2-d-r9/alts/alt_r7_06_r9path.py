@@ -2,8 +2,9 @@
 import importlib.util
 import math
 from fractions import Fraction
+from pathlib import Path
 
-_REF_PATH = "/Users/billyribeiro/.fanout/wt/verifyB9-CS2-d/course/modules/CS/CS2/grader/reference.py"
+_REF_PATH = str(Path(__file__).resolve().parents[5] / "course/modules/CS/CS2/grader/reference.py")  # repo root, relative to this file
 _spec = importlib.util.spec_from_file_location("ref_for_sketch_r6", _REF_PATH)
 _ref = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_ref)

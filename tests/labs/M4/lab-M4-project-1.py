@@ -1,9 +1,9 @@
 """Rung 1 worked example: the 99% loss of a two-asset portfolio, Gaussian and matched Student-t, for one seeded run.
 
 Standard library only. Every input is SIMULATED: the positions and the covariance are illustrative numbers, not market
-data. Losses are whole cents, rounded once with round(). The 99% loss is the smallest loss with 1-based rank
-ceil(0.99 n), computed in exact integers. The Student-t draws are scaled by sqrt((NU - 2) / W), the square root of the
-matched factor (NU - 2) / NU times sqrt(NU / W), where W is the chi-square draw.
+data. Losses are whole cents, rounded once with round(). The 99% loss is the loss of 1-based rank ceil(0.99 n) in
+ascending order, computed in exact integers. The Student-t draws are scaled by sqrt((NU - 2) / W), the square root of
+the matched factor (NU - 2) / NU times sqrt(NU / W), where W is the chi-square draw.
 """
 
 import math

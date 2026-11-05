@@ -23,6 +23,7 @@ import json
 import math
 import os
 import sys
+import warnings
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
@@ -247,18 +248,37 @@ def test_classes_never_print(capsys: pytest.CaptureFixture[str]) -> None:
     acc = WelfordAccumulator()
     for x in stream:
         acc.update(x)
+    # every public method, both ends of each range, and the refused calls on fresh objects; a refused call may
+    # raise, and any exception it raises is suppressed here because only its output and its warnings are checked
     acc.mean()
     acc.variance(1)
+    acc.variance(0)
+    _ = acc.count
     rolling = RollingMinMax(WINDOW)
     for x in stream:
         rolling.push(x)
     rolling.minimum()
     rolling.maximum()
     sketch = sketch_of(stream, EPS)
+    sketch.quantile(0.0)
     sketch.quantile(0.5)
+    sketch.quantile(1.0)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        refused: tuple[Callable[[], object], ...] = (
+            lambda: WelfordAccumulator().mean(),
+            lambda: WelfordAccumulator().variance(0),
+            lambda: RollingMinMax(WINDOW).minimum(),
+            lambda: QuantileSketch(EPS).quantile(0.5),
+        )
+        for call in refused:
+            with contextlib.suppress(Exception):
+                call()
     captured = capsys.readouterr()
     if captured.out or captured.err:
         pytest.fail("the three classes must never print: the output of a call to them is not empty.")
+    if caught:
+        pytest.fail("the three classes must never warn: a call to them issued a warning.")
 
 
 def test_welford_bool_input_is_refused_or_denotes_one() -> None:

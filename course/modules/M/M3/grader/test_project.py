@@ -111,11 +111,11 @@ def shrunk(clip: Matrix, t: float) -> Matrix:
 def as_matrix(rows: object, shape: int) -> Matrix:
     """The returned matrix as a list of shape rows of numbers; any other form fails with the rule it breaks."""
     __tracebackhide__ = True
-    if not isinstance(rows, (list, tuple)) or len(rows) != shape:
+    if not isinstance(rows, (list, tuple, np.ndarray)) or len(rows) != shape:
         pytest.fail("a repair must return a square matrix with one row per input row")
     out: Matrix = []
     for row in rows:
-        if not isinstance(row, (list, tuple)) or len(row) != shape:
+        if not isinstance(row, (list, tuple, np.ndarray)) or len(row) != shape:
             pytest.fail("a repair must return a square matrix with one row per input row")
         for x in row:
             if isinstance(x, bool) or not isinstance(x, (int, float)):
@@ -129,6 +129,14 @@ def as_number(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         pytest.fail("the function must return a real number")
     return float(value)
+
+
+def as_verdict(value: object) -> bool:
+    """The verdict of is_psd: True or False, as a Python bool or a NumPy boolean. Any other value fails."""
+    __tracebackhide__ = True
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    pytest.fail("is_psd must return True or False")
 
 
 def must_raise(call: Callable[[], object], condition: str) -> None:
@@ -283,10 +291,10 @@ def test_is_psd_accepts_planted_zero_eigenvalue() -> None:
     default tolerance."""
     for inst in (INST, INST2):
         a = from_spectrum(inst["psd_spectrum"], inst["eigenvectors"])
-        assert sol.is_psd(a) is True, (
+        assert as_verdict(sol.is_psd(a)) is True, (
             "is_psd must accept a positive semidefinite matrix whose smallest eigenvalue is zero"
         )
-        assert sol.is_psd(inst["psd_corr"]) is True, "is_psd must accept a positive definite matrix"
+        assert as_verdict(sol.is_psd(inst["psd_corr"])) is True, "is_psd must accept a positive definite matrix"
 
 
 @pytest.mark.parametrize(("value", "expected"), [(-0.05, False), (0.05, True)], ids=["negative", "positive"])
@@ -294,29 +302,31 @@ def test_is_psd_sign_of_smallest_eigenvalue(value: float, expected: bool) -> Non
     """Planted smallest eigenvalue -0.05 is not positive semidefinite; +0.05 is, on both sides of zero."""
     spectrum = [*INST["psd_spectrum"][1:], value]
     a = from_spectrum(spectrum, INST["eigenvectors"])
-    assert sol.is_psd(a) is expected, "is_psd does not give the right verdict for the planted smallest eigenvalue"
+    assert as_verdict(sol.is_psd(a)) is expected, (
+        "is_psd does not give the right verdict for the planted smallest eigenvalue"
+    )
 
 
 def test_is_psd_tolerance_boundary_on_both_sides() -> None:
     """A smallest eigenvalue of -1e-6 passes a tolerance of 1e-5 and fails a tolerance of 1e-8."""
     a = from_spectrum([*INST["psd_spectrum"][1:], -1e-6], INST["eigenvectors"])
-    assert sol.is_psd(a, tol=1e-5) is True, "is_psd must accept an eigenvalue above -tol"
-    assert sol.is_psd(a, tol=1e-8) is False, "is_psd must reject an eigenvalue below -tol"
+    assert as_verdict(sol.is_psd(a, tol=1e-5)) is True, "is_psd must accept an eigenvalue above -tol"
+    assert as_verdict(sol.is_psd(a, tol=1e-8)) is False, "is_psd must reject an eigenvalue below -tol"
 
 
 def test_is_psd_threshold_is_minus_tol_on_a_diagonal_matrix() -> None:
     """diag(-0.5, 1, 1) has smallest eigenvalue -0.5: accepted at tol 0.5 + 1e-6, refused at tol 0.5 - 1e-6."""
     a = [[-0.5, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    assert sol.is_psd(a, tol=0.5 + 1e-6) is True, "is_psd must accept a smallest eigenvalue above -tol"
-    assert sol.is_psd(a, tol=0.5 - 1e-6) is False, "is_psd must reject a smallest eigenvalue below -tol"
+    assert as_verdict(sol.is_psd(a, tol=0.5 + 1e-6)) is True, "is_psd must accept a smallest eigenvalue above -tol"
+    assert as_verdict(sol.is_psd(a, tol=0.5 - 1e-6)) is False, "is_psd must reject a smallest eigenvalue below -tol"
 
 
 def test_is_psd_default_tolerance_is_1e_minus_10() -> None:
     """The page signature is is_psd(matrix, tol=1e-10). Without tol, -1e-11 is accepted and -5e-9 is refused."""
-    assert sol.is_psd([[-1e-11, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]) is True, (
+    assert as_verdict(sol.is_psd([[-1e-11, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])) is True, (
         "is_psd with the default tolerance must accept a smallest eigenvalue of -1e-11"
     )
-    assert sol.is_psd([[-5e-9, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]) is False, (
+    assert as_verdict(sol.is_psd([[-5e-9, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])) is False, (
         "is_psd with the default tolerance must reject a smallest eigenvalue of -5e-9"
     )
 
@@ -328,25 +338,29 @@ def test_is_psd_accepts_eigenvalue_exactly_at_minus_tol() -> None:
     a = [[-0.5, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
     lam = as_number(sol.min_eigenvalue(a))
     assert abs(lam + 0.5) <= 1e-12, "min_eigenvalue must return the smallest eigenvalue of diag(-0.5, 1, 1)"
-    assert sol.is_psd(a, tol=-lam) is True, "is_psd must accept a smallest eigenvalue exactly equal to -tol"
+    assert as_verdict(sol.is_psd(a, tol=-lam)) is True, "is_psd must accept a smallest eigenvalue exactly equal to -tol"
 
 
 def test_is_psd_default_tolerance_accepts_just_above_minus_tol() -> None:
     """A smallest eigenvalue of -0.9e-10 lies above -1e-10, so the default tolerance accepts it."""
     a = [[-0.9e-10, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    assert sol.is_psd(a) is True, "is_psd with the default tolerance must accept a smallest eigenvalue of -0.9e-10"
+    assert as_verdict(sol.is_psd(a)) is True, (
+        "is_psd with the default tolerance must accept a smallest eigenvalue of -0.9e-10"
+    )
 
 
 def test_is_psd_default_tolerance_refuses_just_below_minus_tol() -> None:
     """A smallest eigenvalue of -1.1e-10 lies below -1e-10, so the default tolerance refuses it."""
     a = [[-1.1e-10, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    assert sol.is_psd(a) is False, "is_psd with the default tolerance must refuse a smallest eigenvalue of -1.1e-10"
+    assert as_verdict(sol.is_psd(a)) is False, (
+        "is_psd with the default tolerance must refuse a smallest eigenvalue of -1.1e-10"
+    )
 
 
 def test_is_psd_tolerance_is_not_scaled_by_the_diagonal() -> None:
     """diag(100, -5e-9): the smallest eigenvalue -5e-9 is below -1e-10 (the default tol), so it is refused."""
     a = [[100.0, 0.0], [0.0, -5e-9]]
-    assert sol.is_psd(a) is False, (
+    assert as_verdict(sol.is_psd(a)) is False, (
         "is_psd must apply -tol to every eigenvalue; a large diagonal does not loosen the tolerance"
     )
 
@@ -354,23 +368,27 @@ def test_is_psd_tolerance_is_not_scaled_by_the_diagonal() -> None:
 def test_is_psd_accepts_small_negative_eigenvalue_on_large_diagonal() -> None:
     """diag(100, -5e-11): the smallest eigenvalue -5e-11 is above -1e-10, so it is accepted at the default tolerance."""
     a = [[100.0, 0.0], [0.0, -5e-11]]
-    assert sol.is_psd(a) is True, "is_psd must accept a smallest eigenvalue above -1e-10 on a large-diagonal matrix"
+    assert as_verdict(sol.is_psd(a)) is True, (
+        "is_psd must accept a smallest eigenvalue above -1e-10 on a large-diagonal matrix"
+    )
 
 
 def test_is_psd_zero_tolerance_refuses_negative_eigenvalue() -> None:
     """With tol=0.0 a smallest eigenvalue of -1e-12 is below 0, so it is refused."""
     a = [[-1e-12, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
-    assert sol.is_psd(a, tol=0.0) is False, "is_psd with tol=0.0 must refuse a smallest eigenvalue of -1e-12"
+    assert as_verdict(sol.is_psd(a, tol=0.0)) is False, (
+        "is_psd with tol=0.0 must refuse a smallest eigenvalue of -1e-12"
+    )
 
 
 def test_is_psd_one_by_one() -> None:
-    assert sol.is_psd([[0.0]]) is True, "the zero matrix is positive semidefinite"
-    assert sol.is_psd([[-0.1]]) is False, "a negative one-by-one matrix is not positive semidefinite"
+    assert as_verdict(sol.is_psd([[0.0]])) is True, "the zero matrix is positive semidefinite"
+    assert as_verdict(sol.is_psd([[-0.1]])) is False, "a negative one-by-one matrix is not positive semidefinite"
 
 
 def test_is_psd_rejects_pairwise_matrix() -> None:
     """The seeded pairwise matrix is not positive semidefinite by a margin of 0.02 (the instance guarantees it)."""
-    assert sol.is_psd(INST["corr"]) is False, "is_psd must reject the seeded pairwise matrix"
+    assert as_verdict(sol.is_psd(INST["corr"])) is False, "is_psd must reject the seeded pairwise matrix"
 
 
 # --- clip_repair
@@ -512,7 +530,7 @@ LAB3_VOLS: list[float] = [0.10, 0.20, 0.15, 0.30]
 
 def as_number_list(values: object, n: int) -> list[float]:
     __tracebackhide__ = True
-    if not isinstance(values, (list, tuple)) or len(values) != n:
+    if not isinstance(values, (list, tuple, np.ndarray)) or len(values) != n:
         pytest.fail("comparison_weights must return one weight per asset")
     return [as_number(x) for x in values]
 
@@ -864,7 +882,9 @@ def test_repeated_calls_agree() -> None:
     assert as_number(sol.min_eigenvalue(INST["corr"])) == as_number(sol.min_eigenvalue(INST["corr"])), (
         "min_eigenvalue must give the same answer on repeated calls"
     )
-    assert sol.is_psd(INST["corr"]) is sol.is_psd(INST["corr"]), "is_psd must give the same answer on repeated calls"
+    assert as_verdict(sol.is_psd(INST["corr"])) is as_verdict(sol.is_psd(INST["corr"])), (
+        "is_psd must give the same answer on repeated calls"
+    )
     w_a = as_number_list(sol.comparison_weights(INST["psd_corr"], INST["vols"]), K)
     w_b = as_number_list(sol.comparison_weights(INST["psd_corr"], INST["vols"]), K)
     assert w_a == w_b, "comparison_weights must give the same answer on repeated calls"

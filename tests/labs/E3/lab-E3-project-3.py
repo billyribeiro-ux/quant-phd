@@ -2,8 +2,9 @@
 
 Standard library only. The twelve answers are fixed SIMULATED data, printed here as data; this file does not record how
 they were drawn, and the participant is not a real person. The estimates below are the numbers your elicit.py must
-reproduce for this case (copy this file as run_case.py, then replace grid_start and second_order_search with a call to
-your module's estimate; it must print the same lines).
+reproduce for this case. Copy this file as run_case.py, replace the body of estimate with a call to your module's
+estimate on the same answers (written as the response dicts of the specification), and keep main: it must print the
+same lines.
 
 Each answer is (pair_id, choice, prizes of A, probabilities of A, prizes of B, probabilities of B). Prizes are whole
 cents and probabilities are exact fractions, read with Fraction. The model is the prospect model of the
@@ -15,8 +16,10 @@ zeta = log(gamma / (1 - gamma)), inverted and carried to the parameters by the d
 import math
 from fractions import Fraction
 
+Answer = tuple[int, str, list[int], list[str], list[int], list[str]]
+
 # (pair_id, choice, prizes of A, probabilities of A, prizes of B, probabilities of B)
-ANSWERS: list[tuple[int, str, list[int], list[str], list[int], list[str]]] = [
+ANSWERS: list[Answer] = [
     (0, "B", [6200, -15100], ["9/10", "1/10"], [3300, -3000, -700], ["1/20", "7/20", "3/5"]),
     (1, "B", [-9400, -10100, 19000], ["2/5", "3/10", "3/10"], [-12200, 17000, -1100], ["1/2", "1/4", "1/4"]),
     (2, "A", [10700, -3400, -13400], ["7/10", "1/10", "1/5"], [-14900, -13600, 15200], ["9/20", "2/5", "3/20"]),
@@ -47,43 +50,43 @@ def certainty_equivalent(prizes: list[int], probs: list[str], gamma: float, lam:
     return -math.pow(-total / lam, 1.0 / (1.0 - gamma))
 
 
-def log_likelihood(xi: list[float]) -> float:
+def log_likelihood(xi: list[float], answers: list[Answer]) -> float:
     """The logit log-likelihood at xi = (zeta, log lambda, log kappa); each answer contributes log P(chosen)."""
     gamma = 1.0 / (1.0 + math.exp(-xi[0]))
     lam, kappa = math.exp(xi[1]), math.exp(xi[2])
     total = 0.0
-    for _, choice, pa, qa, pb, qb in ANSWERS:
+    for _, choice, pa, qa, pb, qb in answers:
         z = kappa * (certainty_equivalent(pa, qa, gamma, lam) - certainty_equivalent(pb, qb, gamma, lam)) / 10_000.0
         total += -math.log1p(math.exp(-z)) if choice == "A" else -math.log1p(math.exp(z))
     return total
 
 
-def grid_start() -> list[float]:
+def grid_start(answers: list[Answer]) -> list[float]:
     """The best of the point (0, 0, 0) in the coordinates (gamma 0.5, lambda 1, kappa 1) and a small grid over gamma,
     lambda and kappa, used to start the search."""
     best = [0.0, 0.0, 0.0]
-    best_value = log_likelihood(best)
+    best_value = log_likelihood(best, answers)
     for gamma in (0.05, 0.25, 0.45, 0.65, 0.85):
         for lam in (1.0, 2.0, 4.0):
             for kappa in (0.5, 2.0, 5.0):
                 start = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
-                if log_likelihood(start) > best_value:
-                    best, best_value = start, log_likelihood(start)
+                if log_likelihood(start, answers) > best_value:
+                    best, best_value = start, log_likelihood(start, answers)
     return best
 
 
-def second_order_search(xi: list[float]) -> list[float]:
+def second_order_search(xi: list[float], answers: list[Answer]) -> list[float]:
     """A second-derivative search on the log-likelihood, with central differences of step 1e-6 and step halving."""
     h = 1e-6
     for _ in range(100):
-        f0 = log_likelihood(xi)
+        f0 = log_likelihood(xi, answers)
         grad = [0.0, 0.0, 0.0]
         neg_hess = [[0.0] * 3 for _ in range(3)]
         for i in range(3):
             up = [x + (h if k == i else 0.0) for k, x in enumerate(xi)]
             down = [x - (h if k == i else 0.0) for k, x in enumerate(xi)]
-            grad[i] = (log_likelihood(up) - log_likelihood(down)) / (2 * h)
-            neg_hess[i][i] = -(log_likelihood(up) - 2 * f0 + log_likelihood(down)) / (h * h)
+            grad[i] = (log_likelihood(up, answers) - log_likelihood(down, answers)) / (2 * h)
+            neg_hess[i][i] = -(log_likelihood(up, answers) - 2 * f0 + log_likelihood(down, answers)) / (h * h)
         for i in range(3):
             for j in range(i + 1, 3):
                 pp = [x + (h if k in (i, j) else 0.0) for k, x in enumerate(xi)]
@@ -91,11 +94,14 @@ def second_order_search(xi: list[float]) -> list[float]:
                 mp = [x - (h if k == i else 0.0) + (h if k == j else 0.0) for k, x in enumerate(xi)]
                 mm = [x - (h if k in (i, j) else 0.0) for k, x in enumerate(xi)]
                 neg_hess[i][j] = neg_hess[j][i] = -(
-                    log_likelihood(pp) - log_likelihood(pm) - log_likelihood(mp) + log_likelihood(mm)
+                    log_likelihood(pp, answers)
+                    - log_likelihood(pm, answers)
+                    - log_likelihood(mp, answers)
+                    + log_likelihood(mm, answers)
                 ) / (4 * h * h)
         step = solve3(neg_hess, grad)
         scale = 1.0
-        while scale > 1e-14 and log_likelihood([x + scale * d for x, d in zip(xi, step, strict=True)]) <= f0:
+        while scale > 1e-14 and log_likelihood([x + scale * d for x, d in zip(xi, step, strict=True)], answers) <= f0:
             scale /= 2.0
         if scale <= 1e-14:
             break
@@ -125,15 +131,15 @@ def inverse3(matrix: list[list[float]]) -> list[list[float]]:
     return [[columns[j][i] for j in range(3)] for i in range(3)]
 
 
-def observed_information(xi: list[float]) -> list[list[float]]:
+def observed_information(xi: list[float], answers: list[Answer]) -> list[list[float]]:
     """The negative Hessian of the log-likelihood at xi, by central differences of step 1e-5."""
     h = 1e-5
-    f0 = log_likelihood(xi)
+    f0 = log_likelihood(xi, answers)
     info = [[0.0] * 3 for _ in range(3)]
     for i in range(3):
         up = [x + (h if k == i else 0.0) for k, x in enumerate(xi)]
         down = [x - (h if k == i else 0.0) for k, x in enumerate(xi)]
-        info[i][i] = -(log_likelihood(up) - 2 * f0 + log_likelihood(down)) / (h * h)
+        info[i][i] = -(log_likelihood(up, answers) - 2 * f0 + log_likelihood(down, answers)) / (h * h)
     for i in range(3):
         for j in range(i + 1, 3):
             pp = [x + (h if k in (i, j) else 0.0) for k, x in enumerate(xi)]
@@ -141,40 +147,57 @@ def observed_information(xi: list[float]) -> list[list[float]]:
             mp = [x - (h if k == i else 0.0) + (h if k == j else 0.0) for k, x in enumerate(xi)]
             mm = [x - (h if k in (i, j) else 0.0) for k, x in enumerate(xi)]
             info[i][j] = info[j][i] = -(
-                log_likelihood(pp) - log_likelihood(pm) - log_likelihood(mp) + log_likelihood(mm)
+                log_likelihood(pp, answers)
+                - log_likelihood(pm, answers)
+                - log_likelihood(mp, answers)
+                + log_likelihood(mm, answers)
             ) / (4 * h * h)
     return info
 
 
-def main() -> None:
-    xi = second_order_search(grid_start())
-    gamma = 1.0 / (1.0 + math.exp(-xi[0]))
-    lam, kappa = math.exp(xi[1]), math.exp(xi[2])
-    cov = inverse3(observed_information(xi))
-    se_gamma = gamma * (1.0 - gamma) * math.sqrt(cov[0][0])
-    se_lambda = lam * math.sqrt(cov[1][1])
-    se_kappa = kappa * math.sqrt(cov[2][2])
-    print("answers:", len(ANSWERS), "| mixed-sign answers:", sum(1 for a in ANSWERS if mixed_pair(a)))
-    print("gamma_hat:", f"{gamma:.4f}", "| se_gamma:", f"{se_gamma:.2f}")
-    print("lambda_hat:", f"{lam:.4f}", "| se_lambda:", f"{se_lambda:.2f}")
-    print("kappa_hat:", f"{kappa:.4f}", "| se_kappa:", f"{se_kappa:.2f}")
-    print("log-likelihood at the estimate:", f"{log_likelihood(xi):.4f}")
-    print("largest score component at the estimate:", f"{largest_score(xi):.2e}")
-    print("every parameter lies in its domain:", 0.0 < gamma < 1.0 and lam > 0.0 and kappa > 0.0)
-
-
-def largest_score(xi: list[float]) -> float:
+def largest_score(xi: list[float], answers: list[Answer]) -> float:
     """The largest absolute partial derivative of the log-likelihood at xi, in its three coordinates."""
     h = 1e-5
     values = []
     for i in range(3):
         up = [x + (h if k == i else 0.0) for k, x in enumerate(xi)]
         down = [x - (h if k == i else 0.0) for k, x in enumerate(xi)]
-        values.append(abs(log_likelihood(up) - log_likelihood(down)) / (2 * h))
+        values.append(abs(log_likelihood(up, answers) - log_likelihood(down, answers)) / (2 * h))
     return max(values)
 
 
-def mixed_pair(answer: tuple[int, str, list[int], list[str], list[int], list[str]]) -> bool:
+def estimate(answers: list[Answer]) -> dict[str, float]:
+    """The estimates of the prospect model on the answers: gamma, lambda and kappa, their standard errors from the
+    observed information at the estimate, the log-likelihood there, and the largest score component there."""
+    xi = second_order_search(grid_start(answers), answers)
+    gamma = 1.0 / (1.0 + math.exp(-xi[0]))
+    lam, kappa = math.exp(xi[1]), math.exp(xi[2])
+    cov = inverse3(observed_information(xi, answers))
+    return {
+        "gamma_hat": gamma,
+        "lambda_hat": lam,
+        "kappa_hat": kappa,
+        "se_gamma": gamma * (1.0 - gamma) * math.sqrt(cov[0][0]),
+        "se_lambda": lam * math.sqrt(cov[1][1]),
+        "se_kappa": kappa * math.sqrt(cov[2][2]),
+        "log_likelihood": log_likelihood(xi, answers),
+        "largest_score": largest_score(xi, answers),
+    }
+
+
+def main() -> None:
+    result = estimate(ANSWERS)
+    gamma, lam, kappa = result["gamma_hat"], result["lambda_hat"], result["kappa_hat"]
+    print("answers:", len(ANSWERS), "| mixed-sign answers:", sum(1 for a in ANSWERS if mixed_pair(a)))
+    print("gamma_hat:", f"{gamma:.4f}", "| se_gamma:", f"{result['se_gamma']:.2f}")
+    print("lambda_hat:", f"{lam:.4f}", "| se_lambda:", f"{result['se_lambda']:.2f}")
+    print("kappa_hat:", f"{kappa:.4f}", "| se_kappa:", f"{result['se_kappa']:.2f}")
+    print("log-likelihood at the estimate:", f"{result['log_likelihood']:.4f}")
+    print("largest score component at the estimate:", f"{result['largest_score']:.2e}")
+    print("every parameter lies in its domain:", 0.0 < gamma < 1.0 and lam > 0.0 and kappa > 0.0)
+
+
+def mixed_pair(answer: Answer) -> bool:
     """A question is mixed when one of its two lotteries has a gain and a loss, each with positive probability."""
     _, _, pa, qa, pb, qb = answer
     for prizes, probs in ((pa, qa), (pb, qb)):

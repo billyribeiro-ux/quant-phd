@@ -665,8 +665,7 @@ def test_estimate_on_a_large_loss_aversion_participant_is_also_a_maximum() -> No
     """A fixed SIMULATED participant (generator seed 49, LARGE_LAMBDA) whose loss-aversion estimate is above 10, so
     that a reported lambda clamped at 10 fails: the reported likelihood is the likelihood at the estimate, the standard
     errors are positive and finite, the score is below 2e-5 at step 1e-5 or 1e-6 (whichever is smaller), and no move of
-    gamma, lambda or kappa by 0.1 percent in either direction raises the likelihood by more than 1e-9. A search that
-    rejects lambda above 10 stops at that boundary, where the score is not zero, so the score check fails it."""
+    gamma, lambda or kappa by 0.1 percent in either direction raises the likelihood by more than 1e-9."""
     parsed3 = [parse(r) for r in json.loads(str(LARGE_LAMBDA["responses_json"]))]
     est3 = sol.estimate(json.loads(str(LARGE_LAMBDA["responses_json"])))
     gamma, lam, kappa = est3["gamma_hat"], est3["lambda_hat"], est3["kappa_hat"]
@@ -868,6 +867,36 @@ def test_estimate_accepts_a_mixed_lottery_on_the_b_side_alone() -> None:
     expect(
         all(isinstance(v, float) and math.isfinite(v) for v in result.values()),
         "a set with a mixed B lottery is valid: every field must be a finite float",
+    )
+
+
+def test_estimate_accepts_a_mixed_lottery_on_the_a_side_alone() -> None:
+    """Named condition: the set is refused only when no response has a lottery that mixes a gain and a loss, each with
+    positive probability. This is the mirror of the B-side test: every B lottery is a sure amount, every A lottery
+    mixes a gain and a loss, and the choices are the B-side choices with A and B exchanged. The condition is met on
+    the A side, so the estimate must not raise ValueError; it must return the seven named fields as finite floats."""
+    responses: list[dict[str, object]] = [
+        {
+            "pair_id": i,
+            "choice": "A" if B_SIDE_CHOICES[i] == "B" else "B",
+            "prizes_a": B_SIDE_LOTTERIES[i][0],
+            "probs_a": B_SIDE_LOTTERIES[i][1],
+            "prizes_b": [B_SIDE_SURE_A[i]],
+            "probs_b": ["1"],
+        }
+        for i in range(len(B_SIDE_CHOICES))
+    ]
+    try:
+        result = sol.estimate(responses)
+    except ValueError:
+        expect(False, "a set with a mixed A lottery must not be refused for want of a mixed-sign lottery")
+    expect(
+        set(result) == {"gamma_hat", "lambda_hat", "kappa_hat", "se_gamma", "se_lambda", "se_kappa", "log_likelihood"},
+        "estimate must return exactly the seven named fields",
+    )
+    expect(
+        all(isinstance(v, float) and math.isfinite(v) for v in result.values()),
+        "a set with a mixed A lottery is valid: every field must be a finite float",
     )
 
 

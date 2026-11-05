@@ -438,7 +438,7 @@ For one asset class, produce a complete field guide covering venues, participant
   - *Introduces:* Arbitrage opportunity; Forward contract; No-arbitrage forward price (cost of carry); Futures contract; Futures margining and marking to market; Interest-rate swap; Call and put payoffs; American vs. European exercise; Put–call parity; Model-free option bounds and convexity in strike; Binomial option pricing; Risk-neutral probability (binomial); Black–Scholes formula; Implied volatility
   - *Sources:* Hull, Options, Futures, and Other Derivatives, 11th ed. (2021); Stoll (1969), JF 24(5); Cox, Ross & Rubinstein (1979), JFE 7(3)
   - *Lab:* Binomial price converging to Black–Scholes.
-  - *Project — Arbitrage scanner* (`both`): Given an embedded option-chain snapshot, detect put–call parity and convexity violations net of a stated cost model, and explain each one found. *Deliverable:* Scanner plus a findings note.
+  - *Project — Arbitrage scanner* (`both`): Given a SIMULATED option-chain snapshot, detect put–call parity and convexity violations net of a stated cost model, and explain each one found. *Deliverable:* Scanner plus a findings note.
 - **FC3 · Market Efficiency: The Evidence Primer** · U · 45 h · ← AP2
   - *Core:* The efficient-markets hypothesis and its forms, the arithmetic of active management, luck vs. skill, the anomalies preview, behavioral explanations.
   - *Introduces:* Efficient-markets hypothesis; Weak, semi-strong and strong forms of efficiency; Joint-hypothesis problem; Arithmetic of active management; Luck vs. skill in performance; Return anomaly; Behavioral vs. risk-based explanations

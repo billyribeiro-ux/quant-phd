@@ -70,7 +70,7 @@ def linear(x: int) -> Fraction:
 
 
 def quadratic(x: int) -> Fraction:
-    """u(x) = x^2 / 10000: a convex utility, in cents squared over 10000."""
+    """u(x) = x^2 / 10000: a quadratic utility, in cents squared over 10000."""
     return Fraction(x * x, 10000)
 
 

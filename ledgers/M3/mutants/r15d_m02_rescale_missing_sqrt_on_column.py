@@ -1,4 +1,6 @@
-"""Reference solution for the M3 project, covariance_doctor.py. Not shipped to learners.
+"""clip_repair divides entry (i, j) by sqrt(d_i) * d_j, so the rescaled matrix is not symmetric.
+
+Reference solution for the M3 project, covariance_doctor.py. Not shipped to learners.
 
 Pure Python, standard library only. Eigenvalues come from cyclic Jacobi rotations; the Frobenius-nearest repair is
 Dykstra's alternating projections between the positive semidefinite matrices and the unit-diagonal matrices.

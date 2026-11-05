@@ -53,7 +53,8 @@ def main() -> None:
     rebuilt = [[sum(vectors[i][k] * clipped[k] * vectors[j][k] for k in range(n)) for j in range(n)] for i in range(n)]
     print("rebuilt diagonal:", " ".join(f"{rebuilt[i][i]:.6f}" for i in range(n)))
     # Step 5. Rescaling: entry (i, j) is divided by sqrt(d_i d_j), where d is the diagonal of the rebuilt matrix.
-    # The diagonal becomes 1, and D^(-1/2) X D^(-1/2) stays positive semidefinite when every d_i is positive (A2).
+    # The diagonal becomes 1, and D^(-1/2) X D^(-1/2) stays positive semidefinite when every d_i is positive
+    # (result A2 of the appendix).
     d = [rebuilt[i][i] for i in range(n)]
     repaired = [[rebuilt[i][j] / math.sqrt(d[i] * d[j]) for j in range(n)] for i in range(n)]
     for row in repaired:
