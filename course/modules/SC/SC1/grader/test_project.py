@@ -27,7 +27,7 @@ import os
 import random
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import bm_checks as sol
@@ -35,6 +35,14 @@ import pytest
 from instance import make_instance
 
 pytestmark = pytest.mark.filterwarnings("error")
+
+
+@pytest.fixture(autouse=True)
+def _no_stray_output(capsys: pytest.CaptureFixture[str]) -> Iterator[None]:
+    """After every test, no output may have been printed by the engine."""
+    yield
+    expect(capsys.readouterr().out == "", "no function may print")
+
 
 SEED = int(os.environ.get("QF_SEED", "0"))
 INST: dict[str, Any] = make_instance(SEED)
@@ -567,6 +575,18 @@ def test_no_function_prints_or_warns(capsys: pytest.CaptureFixture[str]) -> None
         sol.srw_terminal_count(n, n)
         sol.srw_max_count(n, 1)
         sol.srw_terminal_count(n, 1)
+    for t in (1e-9, 0.5, 2.0, 2.5, 3.0, 4.0):
+        sol.reflection_tail(0.5, t)
+    for a in (1e-9, 0.25, 1.0, 2.5, 10.0):
+        sol.reflection_tail(a, 1.0)
+    for n_steps in range(1, 9):
+        sol.discrete_max_exceedance(INST, n_steps)
+    for n_fine, n_coarse in GRID_PAIRS:
+        sol.nested_grid_counts(INST, n_fine, n_coarse)
+    for n in range(1, 13):
+        for a in range(1, n + 2):
+            sol.srw_max_count(n, a)
+            sol.srw_terminal_count(n, a)
     sol.srw_max_count(6, 2)
     sol.srw_terminal_count(6, 2)
     expect(capsys.readouterr().out == "", "no function may print")

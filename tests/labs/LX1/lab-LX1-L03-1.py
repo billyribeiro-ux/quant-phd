@@ -168,7 +168,7 @@ def main() -> None:
     print(f"depth never falls as the parity duration rises: {never_falls}")
     print(f"depth rises at every step from m to m + 1 for m = 0 to {HORIZON - 1}: {strict_steps}")
 
-    print("Part D: the ratio of the two depths does not depend on the product beta * phi")
+    print("Part D: the ratio of the two depths for three values of the product beta * phi")
     for phi, beta in ((Fraction(1, 2), Fraction(1)), (Fraction(1), Fraction(1)), (Fraction(3), Fraction(1))):
         ratio = depth(PARITY_X, phi, beta) / depth(PARITY_Y, phi, beta)
         print(f"phi = {phi}, beta = {beta}, product {phi * beta}: ratio of depths X to Y {fixed_decimal(ratio, 4)}")

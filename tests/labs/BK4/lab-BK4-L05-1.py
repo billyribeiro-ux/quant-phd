@@ -78,7 +78,8 @@ def variance(outcomes: Outcomes) -> Fraction:
 
 
 def closed_form_mean(p: Fraction, delays: tuple[int, ...], cost_per_day: int) -> Fraction:
-    """The closed form p * kappa * (sum of the delays), in cents. It uses only the marginal probability p."""
+    """The closed form p * kappa * (sum of the delays), in cents. It depends on the marginal probability p,
+    the cost per day and the delays, and on no joint law."""
     return p * cost_per_day * sum(delays)
 
 

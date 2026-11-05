@@ -19,6 +19,7 @@ property check.
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import warnings
@@ -407,15 +408,19 @@ def test_no_function_prints_or_warns(
 
 
 def test_the_quote_depends_only_on_the_state_it_is_given() -> None:
-    """Playing another game between two games on SEED must not change the second log. A quote that keeps a value
-    between calls, for example the last fill in a module global, starts its first turn from the earlier game, so the
-    logs differ."""
+    """Playing another game between two games on SEED must not change the second log. The module is reloaded before
+    the first game, so a value kept at module level by an earlier test or game is cleared, and again before the other
+    game, so the first log is played from a fresh module. A quote that keeps a value between calls, for example the
+    last fill in a module global or the mid of each turn in a module dict, starts the second game from the state the
+    other game left, so the two logs differ."""
     other = next(seed for seed in FIXED_SEEDS if seed != SEED)
-    first = engine.play(sol.quote, SEED)
+    importlib.reload(sol)
+    alone = engine.play(sol.quote, SEED)
+    importlib.reload(sol)
     engine.play(sol.quote, other)
-    again = engine.play(sol.quote, SEED)
+    after = engine.play(sol.quote, SEED)
     expect(
-        first == again,
+        alone == after,
         "a quote must depend only on the state it is given: after another game, the same seed must give the same log",
     )
 

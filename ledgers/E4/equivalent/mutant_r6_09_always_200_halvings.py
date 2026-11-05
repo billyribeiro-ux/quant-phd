@@ -1,15 +1,14 @@
-"""Reference solution for the E4 project: the solver for the noisy rational-expectations model with costly information.
+"""Variant of the reference: runs the 200 halvings and never applies the relative stop rule.
 
-This file is the full solution. It is excluded from deployment (BLUEPRINT section 7); the suite in test_project.py is
-public and does not import it. The model and its derivation are in the section "The model and its equilibrium" of
-project.html, where Propositions 1 to 4 give the formulas below (the numbers in each docstring name the proposition).
-Standard library only.
+This file is a one-edit variant of the reference solution, not the solution. It is excluded from deployment (BLUEPRINT
+section 7); the suite in test_project.py is public and does not import it. The model and its derivation are in the
+section "The model and its equilibrium" of project.html, where Propositions 1 to 4 give the formulas below (the
+numbers in each docstring name the proposition). Standard library only.
 
 Units: the model is written in one normalization, so the payoff, the price and the noise supply are plain numbers and
 carry no unit here. Precisions are inverse variances. Utilities are in the units of -exp(-a W), so an uninformed
-expected utility lies in [-1, 0).
-An informed one also carries the factor exp(a c) for the cost, so it can lie below -1.
-"""
+expected utility lies in [-1, 0). An informed one also carries the factor exp(a c) for the cost, so it can lie below
+-1."""
 
 from __future__ import annotations
 

@@ -441,6 +441,7 @@ the M1 block; closure member); M2 `derivative` (closure member).
 | `margin_for_cover`: `losses_cents` empty | `ValueError` | "at least one scenario is needed" |
 | `margin_for_cover`: `target_bps` outside 1 to 10000 | `ValueError` | the allowed range |
 | `margin_for_cover` or `cover_bps`: a negative loss | `ValueError` | "losses cannot be negative" |
+| `cover_bps`: `losses_cents` empty | `ValueError` | "at least one scenario is needed" |
 | `waterfall`: a negative amount or a negative loss | `ValueError` | the amount that is negative |
 | `waterfall`: `defaulter_id` not among the member ids | `ValueError` | the defaulter id |
 
@@ -455,7 +456,6 @@ the M1 block; closure member); M2 `derivative` (closure member).
 
 ### 5.3 Rounding and conventions (stated once; used in every output)
 
-- Period convention: the settlement date is period 0; the scenario index starts at 1.
 - Money: integer cents throughout. A share is `(R · DF_i) // T` (floor on a non-negative integer); the remainder rule of §5.2
   makes the shares sum exactly to `R`. No rounding of an intermediate value.
 - Cover: integer basis points, floored; a target is compared as `10000 · count >= target_bps · S` (no division).

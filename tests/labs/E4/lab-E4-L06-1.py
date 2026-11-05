@@ -5,7 +5,8 @@ with payoff v of prior mean zero and variance SIG_V2, a signal s = v + eps with 
 noise-trader supply u with mean zero and variance SIG_U2. A mass LAM of CARA investors with coefficient A_CARA observes
 s and the price p; the rest observe only the price p. Market clearing requires total demand to equal the supply u.
 
-Part A: the closed-form coefficients of the linear price p = THETA_S * s - THETA_U * u, as exact Fractions.
+Part A: the closed-form coefficients of the linear price p = theta_s * s - theta_u * u, with theta_s and
+theta_u from closed_form(), as exact Fractions.
 Part B: exact population moments of (s, p), the projection coefficient of v on p, and the posterior variance of an
 uninformed investor, each computed from the moments and not from the closed form.
 Part C: market clearing checked exactly on a grid of (s, u). Demands come from the Gaussian conditional formulas,

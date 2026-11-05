@@ -379,6 +379,25 @@ def test_zero_fraction_is_reported_above_the_cost_threshold() -> None:
     )
 
 
+def test_gap_at_zero_fraction_is_the_limit_to_full_precision() -> None:
+    """At a zero fraction the reported gap is the limit of Proposition 3, not the gap at a small positive fraction. The
+    check is relative to the larger of 1 and the limit, at 1e-14. The gap at fraction 1e-12 differs from the limit by
+    1e-13 to 4e-13 at these inputs, and the oracle agrees with the limit to at most 1.1e-16 at them, so the reference
+    passes."""
+    for sd, cost in [(0.5, 0.30), (0.6, 0.30), (0.75, 0.30), (0.5, 0.50), (0.6, 0.50), (0.75, 0.50)]:
+        out = run(sd, cost)
+        expect(
+            out["informed_fraction"] == 0.0,
+            "the informed fraction must be 0 when the gap at 0 is nonpositive: check the boundary rule",
+        )
+        limit = oracle_gap(0.0, sd, cost)
+        expect(
+            abs(out["indifference_gap"] - limit) <= 1e-14 * max(1.0, abs(limit)),
+            "the reported gap at fraction 0 must be the limit of the gap as the fraction tends to 0, to full "
+            "precision: do not report the gap at a small fraction",
+        )
+
+
 def test_unit_fraction_is_reported_at_zero_cost() -> None:
     out = run(2.0, 0.0)
     expect(
