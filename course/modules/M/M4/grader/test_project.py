@@ -609,7 +609,9 @@ def test_one_position_with_a_tiny_positive_variance_has_the_right_loss_variance(
 
 @pytest.mark.parametrize("family, nu", FAMILY_CASES)
 @pytest.mark.parametrize("variance", [1e-16, 1e-30])
-def test_one_position_with_a_variance_of_1e16_or_1e30_is_accepted(family: str, nu: int | None, variance: float) -> None:
+def test_one_position_with_a_variance_of_1e_minus16_or_1e_minus30_is_accepted(
+    family: str, nu: int | None, variance: float
+) -> None:
     # A variance of 1e-16 or 1e-30 is positive, so the one-position portfolio is valid. A pivot check with an absolute
     # tolerance above these values (for example pivot > 1e-15) would wrongly reject it.
     losses = sol.simulate_losses([1_000_000], [[variance]], 100, SEED, family, nu)
@@ -621,7 +623,7 @@ def test_one_position_with_a_variance_of_1e16_or_1e30_is_accepted(family: str, n
 
 @pytest.mark.parametrize("family, nu", FAMILY_CASES)
 @pytest.mark.parametrize("scale", [1e-16, 1e-30])
-def test_two_positions_with_covariance_of_order_1e16_or_1e30_are_accepted(
+def test_two_positions_with_covariance_of_order_1e_minus16_or_1e_minus30_are_accepted(
     family: str, nu: int | None, scale: float
 ) -> None:
     # Entries of order scale, both pivots (scale and 0.89 scale) positive: a valid input that a pivot tolerance above

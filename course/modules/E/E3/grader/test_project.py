@@ -900,6 +900,101 @@ def test_estimate_accepts_a_mixed_lottery_on_the_a_side_alone() -> None:
     )
 
 
+# A fixed SIMULATED participant of 26 responses, written out as data (it is not drawn from instance.py). Its curvature
+# estimate lies near the lower end of the domain. Fields: pair_id, choice, prizes of A, probabilities of A, prizes of B,
+# probabilities of B.
+FIXED_26_ANSWERS: list[tuple[int, str, list[int], list[str], list[int], list[str]]] = [
+    (0, "A", [-16600], ["1"], [-18600], ["1"]),
+    (1, "B", [-18900], ["1"], [-18900, 4100], ["13/20", "7/20"]),
+    (2, "A", [-300], ["1"], [-14000, -8700, -7800], ["3/5", "7/20", "1/20"]),
+    (3, "A", [19200, 2000], ["3/20", "17/20"], [4000], ["1"]),
+    (4, "A", [1600, 14300, 3500], ["9/20", "9/20", "1/10"], [15300, -3800], ["13/20", "7/20"]),
+    (5, "A", [4200, -17000, 14800], ["7/20", "3/10", "7/20"], [-13000, -19300], ["9/20", "11/20"]),
+    (6, "B", [-200], ["1"], [4400, 3200, 15700], ["3/10", "3/10", "2/5"]),
+    (7, "B", [-100, 5600, 17700], ["17/20", "1/10", "1/20"], [15000, 12200, -10900], ["7/20", "3/5", "1/20"]),
+    (8, "A", [7700, 14800], ["19/20", "1/20"], [-1100], ["1"]),
+    (9, "A", [-6900], ["1"], [5100, -6700, 3000], ["2/5", "1/10", "1/2"]),
+    (10, "A", [5700], ["1"], [-13600, 3200], ["3/5", "2/5"]),
+    (11, "B", [-15800, 5000], ["13/20", "7/20"], [3000], ["1"]),
+    (12, "A", [500, -2800], ["9/10", "1/10"], [-11600], ["1"]),
+    (13, "B", [-10900, 16500], ["17/20", "3/20"], [5200, 900], ["17/20", "3/20"]),
+    (14, "B", [-7200, 10300, -20000], ["1/10", "1/4", "13/20"], [7500, -7200], ["19/20", "1/20"]),
+    (15, "B", [3700], ["1"], [18900, 7400, 12900], ["3/5", "1/4", "3/20"]),
+    (16, "B", [-14300], ["1"], [17300, 3400, -10000], ["13/20", "1/20", "3/10"]),
+    (17, "B", [-19800, -6500, -20000], ["9/10", "1/20", "1/20"], [9400, -18900, -5600], ["3/4", "1/20", "1/5"]),
+    (18, "A", [8100, 9400], ["1/4", "3/4"], [10200, 3700, 18700], ["1/20", "7/10", "1/4"]),
+    (19, "A", [8200, 18300], ["9/10", "1/10"], [-6300, 13900, -8500], ["3/20", "2/5", "9/20"]),
+    (20, "A", [7500, 16400], ["1/20", "19/20"], [100, 11200, 6100], ["3/10", "1/5", "1/2"]),
+    (21, "A", [2600], ["1"], [-4000, 8300], ["7/20", "13/20"]),
+    (22, "B", [-4000, 10200, 9200], ["3/5", "1/10", "3/10"], [19500], ["1"]),
+    (23, "B", [5400, -1600, 8500], ["9/20", "1/4", "3/10"], [15500, 5800], ["9/10", "1/10"]),
+    (24, "A", [500, -4400, -6900], ["3/4", "1/20", "1/5"], [-16500, 16600], ["1/5", "4/5"]),
+    (25, "A", [7200], ["1"], [17100, -5700, 1300], ["1/5", "1/10", "7/10"]),
+]
+
+
+def _assert_estimate_is_a_maximum(responses: list[dict[str, Any]]) -> None:
+    """The estimate on these responses passes the page's checks: the reported likelihood is the likelihood at the
+    estimate, the standard errors are positive and finite, the score is below 2e-5 at step 1e-5 or 1e-6 (whichever is
+    smaller), and no move of gamma, lambda or kappa by 0.1 percent in either direction raises the likelihood by more
+    than 1e-9."""
+    __tracebackhide__ = True
+    parsed = [parse(r) for r in responses]
+    fit = sol.estimate(responses)
+    gamma, lam, kappa = fit["gamma_hat"], fit["lambda_hat"], fit["kappa_hat"]
+    here = oracle_loglik(parsed, gamma, lam, kappa)
+    expect(
+        abs(fit["log_likelihood"] - here) <= 1e-7 * max(1.0, abs(here)),
+        "the reported likelihood is not the likelihood at the estimate",
+    )
+    for key in ("se_gamma", "se_lambda", "se_kappa"):
+        expect(fit[key] > 0.0 and math.isfinite(fit[key]), "standard errors must be positive and finite")
+    expect(
+        min(
+            _largest_score_component(parsed, gamma, lam, kappa, 1e-5),
+            _largest_score_component(parsed, gamma, lam, kappa, 1e-6),
+        )
+        <= 2e-5,
+        "the score is not zero at the estimate: the estimate is not a stationary point of the likelihood",
+    )
+    for step in (1e-3, -1e-3):
+        moved = [
+            oracle_loglik(parsed, gamma * (1 + step), lam, kappa),
+            oracle_loglik(parsed, gamma, lam * (1 + step), kappa),
+            oracle_loglik(parsed, gamma, lam, kappa * (1 + step)),
+        ]
+        for value in moved:
+            expect(value <= here + 1e-9, "a nearby parameter has a higher likelihood: the estimate is not the maximum")
+
+
+def test_estimate_on_a_fixed_26_response_participant_is_a_maximum() -> None:
+    """The fixed 26-response participant FIXED_26_ANSWERS: the estimate passes the score and local-maximum checks. A
+    search that stops before the stationary point, or that returns an unconverged point, can pass every seed of
+    instance.py that the verifier scanned (seeds 0 to 399) and still fail here."""
+    responses: list[dict[str, Any]] = [
+        {"pair_id": i, "choice": c, "prizes_a": pa, "probs_a": qa, "prizes_b": pb, "probs_b": qb}
+        for i, c, pa, qa, pb, qb in FIXED_26_ANSWERS
+    ]
+    _assert_estimate_is_a_maximum(responses)
+
+
+def test_estimate_on_the_b_side_twelve_response_set_is_a_maximum() -> None:
+    """The twelve-response B-side set of the test above (every A lottery pure, every B lottery mixed): the estimate
+    passes the score and local-maximum checks. Its estimates are not compared with any stated value."""
+    responses: list[dict[str, Any]] = [
+        {
+            "pair_id": i,
+            "choice": B_SIDE_CHOICES[i],
+            "prizes_a": [B_SIDE_SURE_A[i]],
+            "probs_a": ["1"],
+            "prizes_b": B_SIDE_LOTTERIES[i][0],
+            "probs_b": B_SIDE_LOTTERIES[i][1],
+        }
+        for i in range(len(B_SIDE_CHOICES))
+    ]
+    _assert_estimate_is_a_maximum(responses)
+
+
 def test_estimate_counts_a_mixed_lottery_whether_or_not_it_was_chosen() -> None:
     """Named condition: the set is refused only when no response has a lottery that mixes a gain and a loss, each with
     positive probability, and a lottery counts whether or not the participant chose it. Here every choice is A, so no

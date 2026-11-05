@@ -168,7 +168,7 @@ def largest_score(xi: list[float], answers: list[Answer]) -> float:
 
 def estimate(answers: list[Answer]) -> dict[str, float]:
     """The estimates of the prospect model on the answers: gamma, lambda and kappa, their standard errors from the
-    observed information at the estimate, the log-likelihood there, and the largest score component there."""
+    observed information at the estimate, and the log-likelihood there."""
     xi = second_order_search(grid_start(answers), answers)
     gamma = 1.0 / (1.0 + math.exp(-xi[0]))
     lam, kappa = math.exp(xi[1]), math.exp(xi[2])
@@ -181,19 +181,21 @@ def estimate(answers: list[Answer]) -> dict[str, float]:
         "se_lambda": lam * math.sqrt(cov[1][1]),
         "se_kappa": kappa * math.sqrt(cov[2][2]),
         "log_likelihood": log_likelihood(xi, answers),
-        "largest_score": largest_score(xi, answers),
     }
 
 
 def main() -> None:
     result = estimate(ANSWERS)
     gamma, lam, kappa = result["gamma_hat"], result["lambda_hat"], result["kappa_hat"]
+    # The score is taken at the estimate, in the three coordinates of the search, from the estimated parameters.
+    xi = [math.log(gamma / (1.0 - gamma)), math.log(lam), math.log(kappa)]
+    score = largest_score(xi, ANSWERS)
     print("answers:", len(ANSWERS), "| mixed-sign answers:", sum(1 for a in ANSWERS if mixed_pair(a)))
     print("gamma_hat:", f"{gamma:.4f}", "| se_gamma:", f"{result['se_gamma']:.2f}")
     print("lambda_hat:", f"{lam:.4f}", "| se_lambda:", f"{result['se_lambda']:.2f}")
     print("kappa_hat:", f"{kappa:.4f}", "| se_kappa:", f"{result['se_kappa']:.2f}")
     print("log-likelihood at the estimate:", f"{result['log_likelihood']:.4f}")
-    print("largest score component at the estimate:", f"{result['largest_score']:.2e}")
+    print("largest score component at the estimate:", f"{score:.2e}")
     print("every parameter lies in its domain:", 0.0 < gamma < 1.0 and lam > 0.0 and kappa > 0.0)
 
 

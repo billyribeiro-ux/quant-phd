@@ -20,6 +20,7 @@ MODELS: tuple[str, str] = ("crra", "prospect")
 CENTS_PER_UNIT = 10_000.0  # the logit uses differences in units of $100: z = kappa * dCE / 10000
 _H = 1e-5  # finite-difference step in the transformed coordinates
 _MAX_ITER = 200
+_STATIONARY = 1e-5  # the score (per unit of its coordinate) counts as zero below this, inside the suite's 2e-5
 _BOUND = 40.0  # |c|, |a|, |b| beyond this are far outside any sensible parameter range; such points get -infinity
 
 Parsed = tuple[list[int], list[Fraction], list[int], list[Fraction], str]
@@ -270,11 +271,18 @@ def _maximise(parsed: list[Parsed]) -> list[float]:
                     break
             mu = max(mu * 4.0, 1e-9)
             if mu > 1e12:
-                return xi
+                # No step raises the likelihood in floating point. That is a stop only at a stationary point.
+                if max(abs(g) for g in grad) < _STATIONARY:
+                    return xi
+                raise RuntimeError("no damped Newton step raises the likelihood: the maximisation did not converge")
         xi, value = trial, new_value
         mu = max(mu / 3.0, 1e-12)
         if max(abs(s) for s in step) < 1e-10:
-            return xi
+            # A negligible step is a stop only at a stationary point; otherwise the search has stalled and is raised.
+            grad_end, _ = _gradient_and_hessian(f, xi)
+            if max(abs(g) for g in grad_end) < _STATIONARY:
+                return xi
+            raise RuntimeError("the step became negligible before the score did: the maximisation did not converge")
     raise RuntimeError("the likelihood maximisation did not converge")
 
 

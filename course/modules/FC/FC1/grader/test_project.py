@@ -922,8 +922,8 @@ def test_trade_quantity_of_ten_to_the_thirtieth_is_accepted() -> None:
     assert rows == [(2, -(10**30) * 9_850)], "the cash flow must be the exact product of quantity and price"
 
 
-# Accepted-input checks at values the page leaves unbounded: a yield above 100 % per period, a settlement period
-# above 10**6, and a bond of 1001 periods at zero yield (its last event counts).
+# Accepted-input checks at values the page does not name as refused: a yield above 100 % per period, a settlement
+# period above 10**6, and a bond of 1001 periods at zero yield (its last event counts).
 
 
 def test_bond_yield_of_ten_million_bps_is_accepted() -> None:
@@ -944,6 +944,40 @@ def test_trade_settling_in_period_ten_million_is_accepted() -> None:
         must_accept(lambda: sol.CashTrade(10, 9_850, 1, 10**7).events(), "settlement_day = 10**7"), "CashTrade.events"
     )
     assert rows == [(10**7, -98_500)], "a trade's one event is in its settlement period, however late"
+
+
+def test_trade_settling_in_period_ten_to_the_eighteenth_is_accepted() -> None:
+    """Accepted-input check: the page names only settlement_day < 1 as refused, so a trade in period 10**18 is valid,
+    and its one event is the settlement event in that period."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(10, 9_850, 1, 10**18).events(), "settlement_day = 10**18"), "CashTrade.events"
+    )
+    assert rows == [(10**18, -98_500)], "a trade's one event is in its settlement period, however late"
+
+
+def test_trade_quantity_of_ten_to_the_sixtieth_is_accepted() -> None:
+    """Accepted-input check: the page names only quantity < 1 as refused, so a trade of 10**60 units is valid, and its
+    one settlement event is the exact product, quantity times price."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(10**60, 9_850, 1, 2).events(), "quantity = 10**60"), "CashTrade.events"
+    )
+    assert rows == [(2, -(10**60) * 9_850)], "the cash flow must be the exact product of quantity and price"
+
+
+def test_bond_yield_of_ten_to_the_eighteenth_bps_is_accepted() -> None:
+    """Accepted-input check: a yield of 10**18 bps (10**16 % per period) is not named as refused. Bond(10**30, 0, 1) has
+    the one event (1, 10**30), and its exact price is 9999999999999900 + 100/(10**14 + 1) cents, which rounds once to
+    9999999999999900."""
+    __tracebackhide__ = True
+    value = checked_int(
+        must_accept(lambda: sol.bond_price_cents(sol.Bond(10**30, 0, 1), 10**18), "yield_bps = 10**18"),
+        "bond_price_cents",
+    )
+    assert value == 9_999_999_999_999_900, (
+        "a yield above 100 % per period is not refused; the price is the discounted event, rounded once"
+    )
 
 
 def test_bond_price_at_zero_yield_counts_the_events_after_period_one_thousand() -> None:
