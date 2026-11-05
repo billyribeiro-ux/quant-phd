@@ -747,3 +747,10 @@ that the lesson builders do not start before Q1 and Q2 are decided.
 
 ## Architect decisions (2026-11-03, binding). Where the plan states a recommendation for an open question, follow it. Defaults for every module: concepts outside the prerequisite closure are plain prose with no link and no dfn; registry keys whose record conflicts with the curriculum string are cited by key with the registry's own fields only or not at all (never edit a record, never type bibliographic data); no real data unless a redistributable source with a quoted reuse statement exists, otherwise SIMULATED with an honest-pending note and a DATA_REQUEST in plans/<UNIT>-open-items.md; no figures or new JS kernels; ten student-error mutants and five alternative correct implementations for every grader; not adversarial, no question bank. plans/FINAL-ARCHITECT-RULINGS.md and ~/.fanout/fixer-rules.md bind every builder. No reference is admitted in this batch: a statement whose source is a REFERENCE_REQUEST is not made, or it is taught as a model result with no attribution.
 Module specifics: 5 lessons x 7 h + 15 h project; builders A: L01, L02, index; B: L03; C: L04; D: L05; E: project, grader, project labs; F: cards. FC2 is not added as a prerequisite. The settlement period is a lab parameter, with no statement of the SEC T+1 rule until a record is admitted.
+
+## Architect ruling on the project (2026-11-04, binding; supersedes the plan text it names)
+The built project (project.html, grader) is authoritative where it is internally consistent. Specifically: (1) the target set is
+9000/9500/9750 bps and exemplar A is level 2, exemplar B level 4, as built; criterion 5 and the brute-force scope are as built;
+(2) the empty-losses condition on cover_bps stays on the page and in the grader, and section 5.2 is amended to list it; (3) the
+period-convention sentence of section 5.3 is struck: the project states no period convention beyond Assumption 1.3. Every
+"Pending" line about these points in plans/BK4-open-items.md is closed by this ruling.

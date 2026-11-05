@@ -1,8 +1,8 @@
 """LX2 project lab 2 (rung 2, completion problem): the outcomes analysis of the case model on a second SIMULATED window.
 
 SIMULATED. The realised values below are illustrative numbers written into this file, not data. No random draws are
-used. This file is the completed solution: the page shows the same program with the hit-rate line and the bias line
-blanked, and the printed output of this file is the expected output of the instant check.
+used. The completed solution fills in the hit-rate line and the bias line. This page shows it with those two lines
+blanked (___), and the printed output of the completed solution is the expected output of the instant check.
 
 The case model and both definitions are those of rung 1 (lab 1 of this page). The case model forecasts
 forecast(t) = 100 + 2 * t units for month index t (assumption M1; the forecast for month t uses no information from

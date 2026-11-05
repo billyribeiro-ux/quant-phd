@@ -311,6 +311,17 @@ def test_a_fill_at_price_zero_is_a_legal_fill() -> None:
     )
 
 
+def test_a_log_with_no_fill_replays_to_zero() -> None:
+    """A hand-built log in which no turn is filled: no cash moves and no inventory is held. No named condition covers
+    it, so replay must return zero cash flow, zero inventory, zero mark and zero P&L, without raising."""
+    turns = [turn_record(t, size=1, filled=False, inventory=0, cash=0) for t in range(1, HORIZON + 1)]
+    log = hand_log(turns, 10_000)
+    expect(
+        sol.replay(log) == oracle(log),
+        "a log with no fill must replay to zero cash flow, zero ending inventory, zero mark and zero P&L",
+    )
+
+
 @pytest.mark.parametrize("seed", SEEDS)
 def test_pnl_is_cash_flow_plus_inventory_times_settlement(seed: int) -> None:
     """The P&L identity holds exactly, in integer cents: P&L = cash flow + ending inventory x settlement value."""

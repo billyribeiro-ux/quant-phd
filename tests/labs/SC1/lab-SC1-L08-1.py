@@ -10,9 +10,9 @@ when no k <= n has this property.
 Part A enumerates all 2**n step sequences for n = 1 to 12 and every level a from 1 to n. For each sequence and each
 level it compares the event {nu_a <= n} with the event {running maximum over S_0 .. S_n is at least a}. Because the
 walk moves by one step at a time, the two events agree on every (sequence, level) pair, and the lab checks this for
-every such pair in the enumeration. It also checks the count of sequences with {nu_a <= n} for each (n, a) pair
-against the walk identity of Lesson 6, and prints the first-passage counts for n = 12 and a = 3, and two
-probabilities for that case.
+every such pair in the enumeration. It also checks the count of sequences with {nu_a <= n} for each (n, a) pair against
+the discrete tail identity of Lesson 6, and prints the first-passage counts for n = 12 and a = 3, and two probabilities
+for that case.
 
 Part B computes the truncated mean E[min(nu_1, N)] exactly, from the identity E[min(nu, N)] = sum over k < N of
 P(nu > k), with P(nu_1 > k) = 1 - P(max over S_0 .. S_k is at least 1). The values are exact fractions printed

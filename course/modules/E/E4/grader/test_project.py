@@ -239,6 +239,20 @@ def test_info_cost_zero_is_accepted() -> None:
     expect(all(math.isfinite(out[k]) for k in KEYS), "every output must be finite at zero information cost")
 
 
+def test_info_cost_above_one_is_accepted() -> None:
+    """The page names only a negative cost as invalid, so a cost above 1 is valid. Here the gap at 0 is negative, so the
+    fraction is 0 and the gap is the oracle's gap at 0."""
+    out = run(0.6, 2.0)
+    expect(
+        out["informed_fraction"] == 0.0,
+        "the informed fraction must be 0 when the gap at 0 is nonpositive: check the boundary rule",
+    )
+    expect(
+        abs(out["indifference_gap"] - oracle_gap(0.0, 0.6, 2.0)) <= TOL_GAP,
+        "the reported gap at fraction 0 must be the limit of the gap as the fraction tends to 0",
+    )
+
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Properties on the instance (run for the first and the second instance).
 # ---------------------------------------------------------------------------------------------------------------------
@@ -466,7 +480,8 @@ def test_small_noise_root_is_relatively_accurate(sd: float) -> None:
 @pytest.mark.parametrize("sd", [1e-11, 1e-12])
 def test_tiny_noise_root_is_relatively_accurate(sd: float) -> None:
     """A root near 1e-12 is as precise as one near 0.5: the bracket starts at 0, and its stop rule is relative to its
-    upper end, so no absolute width (such as a fixed number of halvings) limits the accuracy of a small root."""
+    upper end, so an absolute width does not limit the accuracy of a small root. The 200-halving cap of the stop rule
+    reaches the relative tolerance for every root above about 6e-49."""
     lam = run(sd, 0.15)["informed_fraction"]
     exact = closed_form_root(sd, 0.15)
     expect(

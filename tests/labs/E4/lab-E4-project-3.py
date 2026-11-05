@@ -18,6 +18,7 @@ TAU_E = 1.0  # the precision of the signal s = v + eps
 NOISE_GRID = (0.500, 0.625, 0.750)  # the noise volumes the report uses
 COST_GRID = (0.120, 0.135, 0.150)  # the information costs the report uses
 TOLERANCE = 1e-12  # the bisection stops when the bracket is narrower than this times its upper end
+MAX_HALVINGS = 200  # or after this many halvings, the second limb of the stop rule
 
 
 def price_precision(lam: float, sd: float) -> float:
@@ -67,12 +68,14 @@ def solve(sd: float, cost: float) -> dict[str, float]:
         lam = 1.0
     else:
         low, high = 0.0, 1.0
-        while high - low > TOLERANCE * high:
+        halvings = 0
+        while high - low > TOLERANCE * high and halvings < MAX_HALVINGS:
             mid = 0.5 * (low + high)
             if indifference_gap(mid, sd, cost) > 0.0:
                 low = mid
             else:
                 high = mid
+            halvings += 1
         lam = 0.5 * (low + high)
     if lam == 0.0:
         gap, pi = g_0, 0.0

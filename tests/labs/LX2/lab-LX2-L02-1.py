@@ -4,7 +4,7 @@ HYPOTHETICAL. The eight patterns are authored for this lab. None describes a rea
 court case, and nothing on the page says that a pattern happened.
 
 Standard library only. No randomness, no network and no data. The classifier applies, in order, the elements that the
-lesson quotes from two admitted opinions: Dirks v. SEC (key gpo1983dirks) and United States v. O'Hagan (key
+lesson states from two admitted opinions: Dirks v. SEC (key gpo1983dirks) and United States v. O'Hagan (key
 gpo1997united). For each pattern it stops at the first element the pattern does not state, and reports that element
 with the registry key and the printed page it rests on. A pattern that states every element of a branch fires it.
 

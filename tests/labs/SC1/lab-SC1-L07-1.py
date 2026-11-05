@@ -3,11 +3,11 @@
 Standard library only. Part A and Part D use no randomness. Parts B and C are SIMULATED: they draw PATHS Brownian
 paths on [0, 1] from random.Random(SEED), so every run prints the same lines.
 
-Part A enumerates all 2**N step sequences for N = 1 to 12 and checks, for every level a from 1 to N, the walk identity
-of Lesson 6: the number of sequences with running maximum at least a equals the number with endpoint at least a plus
-the number with endpoint above a. It then evaluates the same counts with math.comb for N = 4, 16, 64, 256 and 1024, at
-the level m = sqrt(N), so that m / sqrt(N) = 1 on the scale of the Brownian path. The walk identity holds for all
-pairs in the enumerated range. The probabilities are exact integer counts divided by 2**N, computed as floats
+Part A enumerates all 2**N step sequences for N = 1 to 12 and checks, for every level a from 1 to N, the discrete tail
+identity of Lesson 6: the number of sequences with running maximum at least a equals the number with endpoint at least a
+plus the number with endpoint above a. It then evaluates the same counts with math.comb for N = 4, 16, 64, 256 and 1024,
+at the level m = sqrt(N), so that m / sqrt(N) = 1 on the scale of the Brownian path. The discrete tail identity holds
+for all pairs in the enumerated range. The probabilities are exact integer counts divided by 2**N, computed as floats
 and printed to six decimals.
 
 Part B uses FINE = 256 equal steps on [0, 1]. The grids with N = 4, 16, 64 and 256 steps are subsets of the fine grid,

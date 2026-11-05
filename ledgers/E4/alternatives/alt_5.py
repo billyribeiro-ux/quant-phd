@@ -1,4 +1,4 @@
-"""Alternative 5: the same model parameterised by the noise precision, with a different bracket.
+"""Alternative 5: the same model parameterised by the noise precision, with the same bracket [0, 1].
 
 Correct alternative implementation of the E4 solver (ruling 10). Standard library only.
 """

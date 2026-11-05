@@ -240,7 +240,10 @@ def test_srw_max_count_bounds(n: int) -> None:
 @pytest.mark.parametrize("n", list(range(1, 13)))
 def test_srw_level_one_terminal_count_by_symmetry(n: int) -> None:
     ties = 0 if n % 2 else math.comb(n, n // 2)
-    expect(sol.srw_terminal_count(n, 1) == (2**n - ties) // 2, "#{S_n >= 1} must equal (2**n - #{S_n = 0}) / 2")
+    expect(
+        sol.srw_terminal_count(n, 1) == (2**n - ties) // 2,
+        "#{S_n >= 1} must follow from the symmetry of the steps, not from listing the walks",
+    )
 
 
 def test_srw_level_beyond_the_length_counts_nothing() -> None:
@@ -249,7 +252,11 @@ def test_srw_level_beyond_the_length_counts_nothing() -> None:
 
 
 def test_srw_integers_are_exact_for_a_long_odd_walk() -> None:
-    expect(sol.srw_terminal_count(41, 1) == 2**40, "for odd n the endpoint count at level 1 is 2**(n-1)")
+    expect(
+        sol.srw_terminal_count(41, 1) == 2**40,
+        "the endpoint count at level 1 for n = 41 must follow from the symmetry of the steps, "
+        "not from listing the walks",
+    )
 
 
 @pytest.mark.parametrize("name", ["srw_max_count", "srw_terminal_count"])
