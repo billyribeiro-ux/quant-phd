@@ -2,7 +2,7 @@
 
 Inputs. Part A uses SIMULATED permutations of 0..n-1 drawn from a seeded generator (seed 20261028).
 Part B uses every permutation of 0..n-1 for n = 2 to 7. Part C uses the integers n = 2 to 1000.
-Part D uses sorted lists of integers that the code builds.
+Part D uses sorted lists of integers that the code constructs.
 No market data, no network, standard library only. Every count is a number of key comparisons. No time is
 measured, so every run prints the same lines.
 

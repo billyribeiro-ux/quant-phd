@@ -2,7 +2,7 @@
 
 For a European call with spot 100.00, strike K, r = 0.05 continuously compounded and
 tau = 1 year, the Black-Scholes price C(sigma) is strictly increasing in sigma (Lesson 8,
-Lemma 2.1), so the volatility that reproduces a quoted price is found by bisection.
+Lemma 2.1), so the volatility that reproduces a price is found by bisection.
 The inputs are stated model parameters, not market data. Nothing is random and no file
 is read.
 

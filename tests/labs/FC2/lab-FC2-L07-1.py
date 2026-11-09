@@ -1,6 +1,6 @@
 """Lab FC2-L07-1: binomial call prices against the Black-Scholes closed form.
 
-The curriculum lab for FC2: a Cox-Ross-Rubinstein style tree (up factor exp(sigma sqrt h),
+The curriculum lab for FC2: a recombining binomial tree (up factor exp(sigma sqrt h),
 down factor its reciprocal, gross return exp(r h) per period, h = tau / n) is priced for
 each step count in STEPS, and each price is compared with the closed-form Black-Scholes
 call under assumption A7. The inputs are model parameters (spot 100.00, strike 100.00,

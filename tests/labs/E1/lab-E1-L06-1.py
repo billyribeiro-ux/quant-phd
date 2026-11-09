@@ -6,9 +6,9 @@ equals marginal cost. Three cases are run: the reference case (a, b, c) = (120, 
 same structure. No random draws are used, and no file is read.
 
 Part A: the Cournot best response max(0, (d - q_j) / 2) is compared with the output that maximises an exchange's profit
-q_i (d - q_i - q_j) / b over the grid of outputs i / 12 units, for each rival output q_j in a fixed list that does not
-exceed d. Profit is in cents. The lab asserts that the closed form lies on the grid for each rival output tested, and
-that the grid maximiser equals it; the printed counts are the rival outputs that passed both assertions.
+q_i (d - q_i - q_j) / b over the grid of outputs i / 12 units, for each rival output q_j in a fixed list, skipping
+any that exceeds d. Profit is in cents. The lab asserts that the closed form lies on the grid for each rival output
+tested, and that the grid maximiser equals it; the printed counts are the rival outputs that passed both assertions.
 Part B: simultaneous best responses are iterated from zero output for 30 steps, in exact Fractions. The lab checks that
 the symmetric iterate equals (d / 3) (1 - (-1/2)^t) at every step t, and prints the first step at which the iterate is
 within 10^-6 units of d / 3.

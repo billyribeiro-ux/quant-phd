@@ -3,7 +3,7 @@
 Standard library only (fractions). No randomness and no network. Money is in cents and quantities are in units, so
 every price is in cents per unit. Part A is a market with linear inverse demand P(q) = 1000 - 10 q, a constant
 private marginal cost of 200 cents per unit, and a constant marginal external damage of 120 cents per unit. Part A
-finds the private quantity, the efficient quantity, the tax that makes them equal, and the deadweight loss without
+finds the private quantity, the efficient quantity, the tax that makes them equal, and the efficiency loss without
 the tax, by two exact methods. It then checks every integer tax from 0 to 200 cents, and the integer quantity from 0
 to 100 that maximises total surplus. Part B is a public good with
 two consumers and a constant marginal cost of 400 cents per unit. Its willingness to pay is summed vertically, at
@@ -59,9 +59,9 @@ def part_a() -> None:
     by_wedge = (welfare_loss_wedge(efficient) + welfare_loss_wedge(private)) / 2 * (private - efficient)
     by_surplus = social_surplus(efficient) - social_surplus(private)
     print(
-        f"part A: deadweight loss of the untaxed market, by the wedge over [{efficient}, {private}] = {by_wedge} cents"
+        f"part A: efficiency loss of the untaxed market, by the wedge over [{efficient}, {private}] = {by_wedge} cents"
     )
-    print(f"part A: deadweight loss of the untaxed market, by the surplus difference = {by_surplus} cents")
+    print(f"part A: efficiency loss of the untaxed market, by the surplus difference = {by_surplus} cents")
     grid = [Fraction(q) for q in range(0, 101)]
     best = max(grid, key=social_surplus)
     print(f"part A: integer quantity from 0 to 100 that maximises total surplus = {best} units")

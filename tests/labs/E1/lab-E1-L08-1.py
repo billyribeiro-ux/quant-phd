@@ -11,7 +11,7 @@ off the diagonal and exhibits an exact rational allocation that strictly raises 
 amount. Part D shows that two diagonal allocations with unequal utilities are both grid-efficient. Part E checks, in
 integers, the bound sqrt(uA) + sqrt(uB) <= sqrt(X_TOTAL * Y_TOTAL) at every grid point, and finds the points
 where it holds with equality. The checks are finite and exact; they test these instances only, and the
-proof for every economy is on the page.
+proof for every economy with product utilities and positive totals is on the page.
 """
 
 from __future__ import annotations

@@ -8,8 +8,9 @@ of x_n = (n^2 mod 1000)/1000 in [0, 1). At each of 8 steps the current interval 
 more of the remaining prefix indices inside the current interval is kept. The output gives each interval, the chosen
 index, and whether every chosen value from step j on lies in the interval of step j. A finite prefix is not
 an infinite sequence, so this illustrates the construction and proves nothing about the infinite sequence.
-Part B: f(x) = x(1 - x) on two grids of [0, 1]: k/10 (which contains the maximiser 1/2) and k/7 (which does not). The
-grid maxima are exact, and the printed values show that a grid maximum is a lower bound for the true maximum 1/4.
+Part B: f(x) = x(1 - x) on two grids of [0, 1]: k/10 (which contains 1/2, where f is largest) and k/7 (which does
+not contain 1/2). The grid maxima are exact, and the printed values show that a grid maximum is a lower bound for
+the true maximum 1/4.
 Part C: the unit vectors e_0, ..., e_9 truncated to length 20 in the sup distance. Every pair of distinct vectors
 has distance exactly 1. The output reports the minimum and maximum pairwise distance over all 45 pairs.
 """

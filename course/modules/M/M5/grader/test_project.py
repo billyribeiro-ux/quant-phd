@@ -121,6 +121,7 @@ def as_value_list(out: Mapping[str, Any], size: int) -> list[float]:
 @pytest.mark.parametrize("which", [0, 1])
 def test_operator_matches_its_definition(which: int) -> None:
     """(B V)(k) is the maximum over feasible k' <= k**alpha of sqrt(k**alpha - k') + beta V(k'), on seeded vectors."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     p = params_of(inst)
     grid = inst["grid"]
@@ -143,6 +144,7 @@ def test_operator_matches_its_definition(which: int) -> None:
 @pytest.mark.parametrize("which", [0, 1])
 def test_operator_is_a_contraction_in_the_sup_norm(which: int) -> None:
     """sup|BV - BW| <= beta * sup|V - W| on seeded pairs: the contraction property of the discounted operator."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     p = params_of(inst)
     grid = inst["grid"]
@@ -164,6 +166,7 @@ def test_operator_is_a_contraction_in_the_sup_norm(which: int) -> None:
 @pytest.mark.parametrize("which", [0, 1])
 def test_operator_is_monotone(which: int) -> None:
     """V <= W componentwise implies BV <= BW componentwise, on seeded pairs."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     p = params_of(inst)
     grid = inst["grid"]
@@ -182,6 +185,7 @@ def test_operator_is_monotone(which: int) -> None:
 @pytest.mark.parametrize("which", [0, 1])
 def test_successors_above_the_resources_are_infeasible(which: int) -> None:
     """A successor k' above k**alpha cannot be chosen, however large its value is."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     p = params_of(inst)
     grid = inst["grid"]
@@ -200,6 +204,7 @@ def test_successors_above_the_resources_are_infeasible(which: int) -> None:
 
 def test_operator_does_not_change_its_inputs() -> None:
     """Neither the grid nor the values are changed by the call."""
+    __tracebackhide__ = True
     inst = INSTANCES[0]
     grid = list(inst["grid"])
     values = [0.5 * i for i in range(len(grid))]
@@ -215,6 +220,7 @@ def test_operator_does_not_change_its_inputs() -> None:
 @pytest.mark.parametrize("which", [0, 1])
 def test_solver_returns_the_four_fields(which: int) -> None:
     """solve returns value, iterations, certified_error and converged, with iterations a whole number of sweeps."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     out = sol.solve(params_of(inst), inst["grid"], inst["tol"], MAX_SWEEPS)
     expect(
@@ -237,6 +243,7 @@ def test_solver_returns_the_four_fields(which: int) -> None:
 @pytest.mark.parametrize("which", [0, 1])
 def test_certified_error_bounds_the_distance_to_the_fixed_point(which: int) -> None:
     """|value - V*| <= certified_error in the sup norm, with V* the fixed point of the grid operator."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     out = sol.solve(params_of(inst), inst["grid"], inst["tol"], MAX_SWEEPS)
     value = as_value_list(out, len(inst["grid"]))
@@ -252,6 +259,7 @@ def test_certified_error_bounds_the_distance_to_the_fixed_point(which: int) -> N
 @pytest.mark.parametrize("which", [0, 1])
 def test_residual_is_within_the_certified_bound(which: int) -> None:
     """|BV - V| <= (1 + beta) * |V - V*| <= (1 + beta) * certified_error: the residual is bounded by the certificate."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     p = params_of(inst)
     grid = inst["grid"]
@@ -268,6 +276,7 @@ def test_residual_is_within_the_certified_bound(which: int) -> None:
 @pytest.mark.parametrize("which", [0, 1])
 def test_converged_means_certified_within_tolerance(which: int) -> None:
     """converged is True exactly when certified_error is at most tol; the instance tolerance is reachable."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     out = sol.solve(params_of(inst), inst["grid"], inst["tol"], MAX_SWEEPS)
     expect(
@@ -289,6 +298,7 @@ def test_converged_means_certified_within_tolerance(which: int) -> None:
 def test_converged_is_true_when_the_budget_ends_on_the_certifying_sweep(which: int) -> None:
     """With max_iter equal to the sweeps the solver needs to certify tol, the last allowed sweep certifies tol, so
     converged is True: budget exhaustion alone does not make a result unconverged."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     full = sol.solve(params_of(inst), inst["grid"], inst["tol"], MAX_SWEEPS)
     expect(full["converged"] is True, "the instance tolerance must be reachable within the sweep budget")
@@ -314,6 +324,7 @@ def test_certified_error_is_beta_over_one_minus_beta_times_the_last_change(which
     """After n sweeps from zero, certified_error is beta / (1 - beta) times the sup-norm change of the last sweep.
 
     The tolerance is far below any certificate here, so the solver makes exactly the requested sweeps."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     beta, alpha, grid = inst["beta"], inst["alpha"], inst["grid"]
     out = sol.solve(params_of(inst), grid, 1e-300, sweeps)
@@ -334,6 +345,7 @@ def test_certified_error_is_beta_over_one_minus_beta_times_the_last_change(which
 @pytest.mark.parametrize("which", [0, 1])
 def test_iterations_within_the_a_priori_count(which: int) -> None:
     """iterations is at most the a priori count from beta, the grid and tol, plus one."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     n_apriori = a_priori_sweeps(inst["beta"], inst["alpha"], inst["grid"], inst["tol"])
     out = sol.solve(params_of(inst), inst["grid"], inst["tol"], MAX_SWEEPS)
@@ -347,6 +359,7 @@ def test_iterations_within_the_a_priori_count(which: int) -> None:
 @pytest.mark.parametrize("which", [0, 1])
 def test_values_are_finite_and_nonnegative(which: int) -> None:
     """Iteration from zero keeps every value finite and nonnegative, since utilities are nonnegative."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     out = sol.solve(params_of(inst), inst["grid"], inst["tol"], MAX_SWEEPS)
     value = as_value_list(out, len(inst["grid"]))
@@ -358,6 +371,7 @@ def test_values_are_finite_and_nonnegative(which: int) -> None:
 
 def test_budget_of_one_sweep_is_reported_as_not_converged() -> None:
     """With max_iter=1 and tol=1e-12, one sweep is made and the result is reported as not converged."""
+    __tracebackhide__ = True
     inst = INSTANCES[0]
     out = sol.solve(params_of(inst), inst["grid"], 1e-12, 1)
     expect(out["iterations"] == 1, "with a budget of one sweep, iterations must report exactly one sweep")
@@ -370,6 +384,7 @@ def test_converged_is_false_when_the_budget_ends_with_the_certificate_above_tol(
 
     The tolerance is a fifth of the solver's own certified error after three sweeps, so the certified error is above
     tol at the budget. With beta = 0.9 the last change is one ninth of the certified error, so it is below tol."""
+    __tracebackhide__ = True
     p = {"beta": 0.9, "alpha": 0.5}
     first = sol.solve(p, SMALL_GRID, 1e-12, 3)
     expect(
@@ -386,6 +401,7 @@ def test_converged_is_false_when_the_budget_ends_with_the_certificate_above_tol(
 
 def test_successor_exactly_at_the_resources_is_feasible() -> None:
     """A saving k' equal to k**alpha leaves zero consumption, which is allowed: k' <= k**alpha includes equality."""
+    __tracebackhide__ = True
     p = {"beta": 0.5, "alpha": 0.5}
     grid = [1.0, 2.0]
     got = sol.bellman_operator(p, grid, [2.0, 0.0])
@@ -409,6 +425,7 @@ def test_successor_exactly_at_the_resources_is_feasible() -> None:
 def test_successor_just_above_the_resources_is_infeasible() -> None:
     """Feasibility is exact: k' <= k**alpha. From k = 0.25 with alpha = 0.5 the resources are exactly 0.5, and a
     successor 1e-10 above them is infeasible, so only the successor 0.25 is available and the value is sqrt(0.25)."""
+    __tracebackhide__ = True
     p = {"beta": 0.5, "alpha": 0.5}
     grid = [0.25, 0.5 + 1e-10]
     got = sol.bellman_operator(p, grid, [0.0, 1.0e6])
@@ -423,10 +440,30 @@ def test_successor_just_above_the_resources_is_infeasible() -> None:
     )
 
 
+def test_successor_within_a_tie_tolerance_above_the_resources_is_infeasible() -> None:
+    """Feasibility is exact: a successor 5e-13 above k**alpha is infeasible, so no tie tolerance is allowed. From
+    k = 0.25 with alpha = 0.5 the resources are exactly 0.5, the successor 0.5 + 5e-13 is refused, and the value is
+    sqrt(0.5 - 0.25) = 0.5."""
+    __tracebackhide__ = True
+    p = {"beta": 0.5, "alpha": 0.5}
+    grid = [0.25, 0.5 + 5e-13]
+    got = sol.bellman_operator(p, grid, [0.0, 1.0e6])
+    expect(
+        isinstance(got, (list, tuple)) and len(got) == 2,
+        "bellman_operator must return one value per grid point",
+    )
+    expect(
+        close(float(got[0]), 0.5, 1e-12),
+        "a successor 5e-13 above k**alpha is infeasible: feasibility is the exact test k' <= k**alpha, with no "
+        "tie tolerance",
+    )
+
+
 def test_saving_above_the_current_capital_is_feasible_within_resources() -> None:
     """A saving k' above the current capital k is feasible whenever k' <= k**alpha: the rule is the resources
     test alone, not k' <= k. From k = 0.25 with alpha = 0.5 the resources are 0.5, so k' = 0.4 is feasible and
     the operator must take it: sqrt(0.5 - 0.4) + 0.9 * 10 = 9.316228, not the value 0.5 of k' = 0.25 alone."""
+    __tracebackhide__ = True
     p = {"beta": 0.9, "alpha": 0.5}
     grid = [0.25, 0.4, 1.0]
     got = sol.bellman_operator(p, grid, [0.0, 10.0, 0.0])
@@ -444,6 +481,7 @@ def test_saving_above_the_current_capital_is_feasible_within_resources() -> None
 @pytest.mark.parametrize("which", [0, 1])
 def test_the_first_sweep_starts_from_zero_and_is_synchronous(which: int) -> None:
     """solve starts from V0 = 0; one sweep of max_iter = 1 returns B(0), computed from the whole zero vector."""
+    __tracebackhide__ = True
     inst = INSTANCES[which]
     grid = inst["grid"]
     out = sol.solve(params_of(inst), grid, 1e-12, 1)
@@ -462,6 +500,7 @@ def test_certified_error_exactly_at_tol_stops_the_first_sweep() -> None:
 
     The tolerance is the solver's own certified error after one sweep, read from a run with a budget of one sweep,
     so the tie is exact: a correct solver must stop at sweep 1 with converged True."""
+    __tracebackhide__ = True
     p = {"beta": 0.5, "alpha": 0.5}
     grid = [0.75, 1.0]
     first = sol.solve(p, grid, 1e-12, 1)
@@ -481,6 +520,7 @@ def test_certified_error_exactly_at_tol_stops_the_first_sweep() -> None:
 def test_tolerance_just_below_the_first_certified_error_does_not_stop() -> None:
     """The stop is not looser than the definition: a tolerance just below the solver's own first certified error does
     not stop. The tolerance is read from the solver's certificate after one sweep."""
+    __tracebackhide__ = True
     p = {"beta": 0.5, "alpha": 0.5}
     grid = [0.75, 1.0]
     first = sol.solve(p, grid, 1e-12, 1)
@@ -500,6 +540,7 @@ def test_stop_uses_the_largest_absolute_change_over_the_grid() -> None:
 
     On this fixed instance the change at the last grid point alone certifies tol one sweep before the sup-norm change
     does. The expected stopping sweep is computed here, by the test's own loop over the whole grid."""
+    __tracebackhide__ = True
     p = {"beta": 0.8535397019795181, "alpha": 0.3276562928132905}
     grid = [0.23, 0.24, 0.98, 1.46]
     tol = 1.0119307470200622e-11
@@ -528,12 +569,14 @@ def test_stop_uses_the_largest_absolute_change_over_the_grid() -> None:
 
 def test_one_point_grid_is_accepted() -> None:
     """A grid with one point is non-empty and strictly increasing, so the page does not name it as invalid."""
+    __tracebackhide__ = True
     out = sol.solve({"beta": 0.9, "alpha": 0.5}, [0.5], 1e-6, 5)
     expect(isinstance(out, Mapping), "solve must return a mapping for a grid of one point")
 
 
 def test_tiny_positive_grid_point_is_accepted() -> None:
     """A grid point just above zero is a positive real number, so it is valid."""
+    __tracebackhide__ = True
     out = sol.solve({"beta": 0.9, "alpha": 0.5}, [1e-9, 0.5], 1e-6, 5)
     expect(
         isinstance(out, Mapping), "solve must return a mapping for a grid whose first point is a tiny positive number"
@@ -542,6 +585,7 @@ def test_tiny_positive_grid_point_is_accepted() -> None:
 
 def test_solver_does_not_change_its_inputs_or_print(capsys: pytest.CaptureFixture[str]) -> None:
     """The solver neither changes its grid nor prints anything."""
+    __tracebackhide__ = True
     inst = INSTANCES[1]
     grid = list(inst["grid"])
     before = list(grid)
@@ -557,6 +601,7 @@ def test_solver_does_not_change_its_inputs_or_print(capsys: pytest.CaptureFixtur
 @pytest.mark.parametrize("beta", [0.0, 1.0, -0.1, 1.2, math.nan, math.inf, -math.inf, True, False, "0.9"])
 def test_beta_outside_the_open_interval_is_refused(beta: Any) -> None:
     """beta must lie in the open interval (0, 1); a boolean or a non-finite number is refused."""
+    __tracebackhide__ = True
     params = {"beta": beta, "alpha": 0.5}
     must_raise(lambda: sol.bellman_operator(params, SMALL_GRID, [0.0, 0.0, 0.0]), "beta must lie in (0, 1)")
     must_raise(lambda: sol.solve(params, SMALL_GRID, 1e-6, 5), "beta must lie in (0, 1)")
@@ -565,6 +610,7 @@ def test_beta_outside_the_open_interval_is_refused(beta: Any) -> None:
 @pytest.mark.parametrize("alpha", [0.0, 1.0, -0.5, 1.5, math.nan, math.inf, -math.inf, True, False, "0.5"])
 def test_alpha_outside_the_open_interval_is_refused(alpha: Any) -> None:
     """alpha must lie in the open interval (0, 1); a boolean or a non-finite number is refused."""
+    __tracebackhide__ = True
     params = {"beta": 0.9, "alpha": alpha}
     must_raise(lambda: sol.bellman_operator(params, SMALL_GRID, [0.0, 0.0, 0.0]), "alpha must lie in (0, 1)")
     must_raise(lambda: sol.solve(params, SMALL_GRID, 1e-6, 5), "alpha must lie in (0, 1)")
@@ -572,6 +618,7 @@ def test_alpha_outside_the_open_interval_is_refused(alpha: Any) -> None:
 
 def test_beta_and_alpha_just_inside_the_interval_are_accepted() -> None:
     """Values just inside (0, 1) are valid inputs and return a result."""
+    __tracebackhide__ = True
     for params in ({"beta": 1e-9, "alpha": 0.001}, {"beta": 0.999999, "alpha": 0.999}):
         out = sol.solve(params, SMALL_GRID, 1e-6, 3)
         expect(isinstance(out, Mapping), "solve must return a mapping for beta and alpha inside (0, 1)")
@@ -580,6 +627,7 @@ def test_beta_and_alpha_just_inside_the_interval_are_accepted() -> None:
 @pytest.mark.parametrize("tol", [0.0, -1e-9, math.nan, math.inf, -math.inf, True, False, "1e-6"])
 def test_tolerance_must_be_positive_and_finite(tol: Any) -> None:
     """tol must be a finite real number above zero; zero, negative, non-finite and boolean values are refused."""
+    __tracebackhide__ = True
     must_raise(
         lambda: sol.solve({"beta": 0.9, "alpha": 0.5}, SMALL_GRID, tol, 5), "tol must be finite and greater than zero"
     )
@@ -587,6 +635,7 @@ def test_tolerance_must_be_positive_and_finite(tol: Any) -> None:
 
 def test_tolerance_above_one_is_accepted() -> None:
     """A tolerance above one is a finite real number greater than zero, so the page does not name it as invalid."""
+    __tracebackhide__ = True
     out = sol.solve({"beta": 0.9, "alpha": 0.5}, SMALL_GRID, 10.0, 5)
     expect(isinstance(out, Mapping), "solve must return a mapping for a tolerance above one")
     expect(out["converged"] is True, "a tolerance of 10 is above the certified error of the first sweep here")
@@ -594,6 +643,7 @@ def test_tolerance_above_one_is_accepted() -> None:
 
 def test_tolerance_just_above_zero_is_accepted() -> None:
     """A tiny positive tolerance is a valid input."""
+    __tracebackhide__ = True
     out = sol.solve({"beta": 0.9, "alpha": 0.5}, SMALL_GRID, 1e-300, 2)
     expect(isinstance(out, Mapping), "solve must return a mapping for a tolerance above zero")
 
@@ -601,6 +651,7 @@ def test_tolerance_just_above_zero_is_accepted() -> None:
 @pytest.mark.parametrize("max_iter", [0, -3, 2.0, 1.0, True, False, "5"])
 def test_budget_must_be_a_whole_number_of_sweeps_one_or_more(max_iter: Any) -> None:
     """max_iter must be a whole number of sweeps, one or more; zero, a negative, a float or a boolean is refused."""
+    __tracebackhide__ = True
     must_raise(
         lambda: sol.solve({"beta": 0.9, "alpha": 0.5}, SMALL_GRID, 1e-6, max_iter),
         "max_iter must be a whole number of sweeps, one or more",
@@ -609,6 +660,7 @@ def test_budget_must_be_a_whole_number_of_sweeps_one_or_more(max_iter: Any) -> N
 
 def test_budget_of_one_sweep_is_accepted() -> None:
     """A budget of exactly one sweep is valid."""
+    __tracebackhide__ = True
     out = sol.solve({"beta": 0.9, "alpha": 0.5}, SMALL_GRID, 1e-6, 1)
     expect(isinstance(out, Mapping), "solve must return a mapping for a budget of one sweep")
 
@@ -624,6 +676,7 @@ def test_budget_of_one_sweep_is_accepted() -> None:
         [0.0, 0.5],
         [-0.2, 0.5],
         [1.01, 2.0],
+        [1.5],
         [0.5, math.nan],
         [0.5, True],
         [0.5, math.inf],
@@ -638,6 +691,7 @@ def test_budget_of_one_sweep_is_accepted() -> None:
         "zero-point",
         "negative-point",
         "first-above-one",
+        "one-point-first-above-one",
         "nan-point",
         "boolean-point",
         "infinite-point",
@@ -646,6 +700,7 @@ def test_budget_of_one_sweep_is_accepted() -> None:
 )
 def test_grid_must_be_nonempty_positive_strictly_increasing_and_start_at_most_one(grid: list[Any]) -> None:
     """A grid is non-empty, strictly increasing, of positive real points, and its first point is at most 1."""
+    __tracebackhide__ = True
     p = {"beta": 0.9, "alpha": 0.5}
     must_raise(lambda: sol.bellman_operator(p, grid, [0.0] * len(grid)), "invalid grid")
     must_raise(lambda: sol.solve(p, grid, 1e-6, 5), "invalid grid")
@@ -654,6 +709,7 @@ def test_grid_must_be_nonempty_positive_strictly_increasing_and_start_at_most_on
 def test_grid_with_every_point_at_most_one_is_accepted() -> None:
     """Every grid point may lie at or below one: the page requires only a first point at most one, and no last point
     above one. A grid that lies wholly in (0, 1] is therefore valid."""
+    __tracebackhide__ = True
     out = sol.solve({"beta": 0.9, "alpha": 0.5}, [0.2, 0.5, 0.9], 1e-6, 5)
     expect(isinstance(out, Mapping), "solve must return a mapping for a grid whose points all lie in (0, 1]")
     value = as_value_list(out, 3)
@@ -663,6 +719,7 @@ def test_grid_with_every_point_at_most_one_is_accepted() -> None:
 def test_operator_uses_the_top_point_on_a_grid_inside_zero_one() -> None:
     """On a grid wholly in (0, 1] the top point is a feasible saving from the top state (k' = 1 <= 1**alpha), so the
     operator must consider it: the values are compared with the test's own sweep."""
+    __tracebackhide__ = True
     p = {"beta": 0.9, "alpha": 0.5}
     grid = [0.5, 1.0]
     values = [0.0, 10.0]
@@ -679,6 +736,7 @@ def test_operator_uses_the_top_point_on_a_grid_inside_zero_one() -> None:
 def test_solver_fixed_point_on_a_grid_inside_zero_one() -> None:
     """On a grid wholly in (0, 1] the solver's value must match the fixed point of the grid operator: the top point is
     a feasible saving from the top state, so it must enter the iteration. The reference is the test's own iteration."""
+    __tracebackhide__ = True
     p = {"beta": 0.83, "alpha": 0.53}
     grid = [0.06, 0.07, 0.24]
     out = sol.solve(p, grid, 1e-12, MAX_SWEEPS)
@@ -694,12 +752,14 @@ def test_solver_fixed_point_on_a_grid_inside_zero_one() -> None:
 
 def test_grid_starting_at_exactly_one_is_accepted() -> None:
     """A first grid point equal to 1 is valid: its resources are 1, so it can save everything."""
+    __tracebackhide__ = True
     out = sol.solve({"beta": 0.9, "alpha": 0.5}, [1.0, 2.0], 1e-6, 3)
     expect(isinstance(out, Mapping), "solve must return a mapping for a grid whose first point is exactly 1")
 
 
 def test_values_must_match_the_grid_length() -> None:
     """bellman_operator needs one value per grid point; a shorter or a longer vector is refused."""
+    __tracebackhide__ = True
     p = {"beta": 0.9, "alpha": 0.5}
     must_raise(lambda: sol.bellman_operator(p, SMALL_GRID, [0.0, 0.0]), "values must match the grid length")
     must_raise(lambda: sol.bellman_operator(p, SMALL_GRID, [0.0, 0.0, 0.0, 0.0]), "values must match the grid length")

@@ -68,7 +68,7 @@ def main() -> None:
     print(f"dp_da_implicit {dp_implicit:.10f}")
     print(f"dp_da_closed_form {dp_closed:.10f}")
     print(f"implicit_equals_closed_form {abs(dp_implicit - dp_closed) < Decimal('1e-30')}")
-    print(f"price_elasticity_of_equilibrium_in_a {A_INTERCEPT / p0 * dp_implicit:.10f}")
+    print(f"elasticity_of_equilibrium_price_in_a {A_INTERCEPT / p0 * dp_implicit:.10f}")
 
     print("Part C: finite-difference quotients of p(a) at a = 120 against dp/da")
     for h in STEPS:

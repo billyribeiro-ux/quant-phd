@@ -6,7 +6,7 @@ D stands for the discount factor exp(-r tau). The lab sets D to the exact ration
 every D by construction, and the convexity check holds for every D, because each call is a sum of two convex functions
 of the strike. The model-free bound checks fail at D = 1/100, where the call at 80 USD exceeds the spot and the
 put at 80 USD exceeds D K. So the lab sets D = 9/10, where every check holds, and no rate is needed. Calls are
-C(K) = max(S - D K, 0) + max(A - K, 0) / 10 with S = A = 100 USD. The puts follow from parity, P = C - S + D K. Every
+C(K) = max(S - D K, 0) + max(100 USD - K, 0) / 10 with S = 100 USD. The puts follow from parity, P = C - S + D K. Every
 price is an integer number of cents because each strike is a multiple of 10 USD.
 The lab first checks the set, then plants one parity violation and one convexity violation, and reports what each
 check finds. The lab draws no random numbers.
@@ -24,7 +24,7 @@ TEST_SPOTS_CENTS: tuple[int, ...] = (0, 5_000, 8_000, 9_000, 10_000, 11_000, 12_
 
 
 def synthetic_call(strike_cents: int) -> int:
-    """Call price in cents: max(S - D K, 0) + max(A - K, 0) / 10, with S = A = 100 USD. Raises if not an integer."""
+    """Call price in cents: max(S - D K, 0) + max(100 USD - K, 0) / 10, with S = 100 USD. Raises if not an integer."""
     price = max(SPOT_CENTS - DISCOUNT * strike_cents, Fraction(0)) + Fraction(max(10_000 - strike_cents, 0), 10)
     if price.denominator != 1:
         raise ValueError(f"the price at strike {strike_cents} is not an integer number of cents: {price}")
@@ -80,7 +80,7 @@ def convexity_violations(strikes: tuple[int, ...], calls: tuple[int, ...]) -> li
 
 
 def intrinsic_violations(strikes: tuple[int, ...], calls: tuple[int, ...]) -> list[int]:
-    """Strikes at which the call is below its intrinsic value S - K (the lower bound used in Lesson 5's theorem)."""
+    """Strikes at which the call is below its intrinsic value S - K (the lower bound in the proof of Theorem 4.1)."""
     return [k for k, c in zip(strikes, calls, strict=True) if c < SPOT_CENTS - k]
 
 
