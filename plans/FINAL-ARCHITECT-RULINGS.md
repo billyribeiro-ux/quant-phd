@@ -103,7 +103,7 @@
 31. **M5 project alternatives.** The page is authoritative: its sweep is synchronous (project.html:244) and the stop rule is
     the page's. An in-place (Gauss-Seidel) sweep or a residual-bound stop changes the iteration count the tests check, so
     they are not valid alternatives of this project. plans/M5-build-plan.md lines 304-306 and plans/M5-open-items.md
-    decision 3 are amended to say so; ledgers/M5/not_accepted/ keeps the two files as documented non-accepted variants.
+    decision 3 are amended to say so; ledgers/M5/alternatives/not_accepted/ keeps the two files as documented non-accepted variants.
 32. **E3 estimator range and half-up.** The stated range of the estimator is narrowed to gamma in [0.001, 0.99]: only there is
     the reference shown to reach a point that passes the local-maximum check (a fit at gamma_hat 0.994 stops on a flat
     direction). A clamp of the reported gamma at or above 0.99 is then a no-op inside the stated range, so the clamp mutants

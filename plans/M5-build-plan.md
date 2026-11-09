@@ -117,9 +117,10 @@ So the curriculum hours can satisfy the tool rules. **No STOP is required.**
   - Lab ids match `lab-M5-<page>-<n>` (`tools/check_pages.py` lab-id rule), numbered in display order on each page.
 - **Grader tests demand an exception type only for conditions the page names.** A test that expects `ValueError` checks
   only the invalid-input conditions the specification lists by name; any other failure is a plain assertion that names
-  the property. Five alternative correct implementations (for example: synchronous and in-place sweeps, loop and
-  vectorized forms, two tie-break rules for argmax, stopping on the a-posteriori bound and on a residual with the bound
-  reported) must all pass. A test may not depend on one iteration count or one floating-point ordering.
+  the property. Five alternative correct implementations (the accepted set alt1 to alt5 in ledgers/M5/alternatives: functional
+  reduce, a class with precomputed feasible tables, comprehensions over feasible index lists, bisect for feasible
+  successors, and a reverse-order synchronous sweep) must all pass. In-place (Gauss-Seidel) sweeps and residual-bound
+  stops are not valid alternatives of this project (ruling 31). A test may not depend on one iteration count or one floating-point ordering.
 - **Integer cents for money.** M5 has no currency quantity. The savings model is in dimensionless consumption units (§5.2).
   If any currency value enters a page or the grader, it is `int` cents (BUILDER_RULES money rule, Python form). Confirm
   in §11 Q9.
