@@ -124,3 +124,52 @@ difference is 3.66e-15, inside the tolerance. That is why the checks run before 
 
 The variant still breaks the `b_s` formula of Proposition 1 on the page. The suite now tests that formula at a domain
 point where the formula's error is visible.
+
+# `mutant_r19_02_price_denominator_drops_uninformed_posterior_precision.py`: equivalent within the stated accuracy (round 19, ruling 25)
+
+File: `mutant_r19_02_price_denominator_drops_uninformed_posterior_precision.py`. Student error: the denominator of the
+price coefficient `b_s` (Proposition 1, `price_coefficients`, reference.py:56) uses the prior precision `tau_v` in the
+uninformed part, not the uninformed posterior precision `tau_v + tau_y`. Its file was in `mutants/` and is moved here by
+ruling 25 of `plans/FINAL-ARCHITECT-RULINGS.md`.
+
+## Why it is not counted in `mutants/`
+
+Ruling 25 says a mutant whose every output stays within the page's stated accuracy of the reference, on all inputs
+searched, cannot be separated by a test the page justifies. The page states 1e-14 for the gap (ruling 22: the three
+listed comparisons use `1e-14 * max(1, |expected|)`). On the searched interior points the variant's gap differs from the
+exact Proposition 3 gap at its own reported fraction by at most 8.5e-15 in that measure. No searched point exceeds
+1e-14, so no test in the suite can separate it at the page's accuracy. Contrast ruling 24 and `mutant_v17_02`, which
+differs by up to 1.57e-14 at a domain point, beyond 1e-14, and is killed.
+
+## The sweep (measured, not proved)
+
+Script `ledgers/E4/scripts/E4-d-r25/sweep_r19_02_r25.py`, output `ledgers/E4/scripts/E4-d-r25/out/sweep_r19_02_r25.txt`.
+It runs the reference (as `solver.py`) and this variant on random interior points, and compares each gap with the suite's
+exact oracle `prop3_gap_exact` at the fraction each solver reports. The error is `|gap - exact| / max(1, |exact|)`.
+
+| Sample | Draws | Noise volume sd | Cost c | Interior points | Variant above 1e-14 | Worst variant error |
+|---|---|---|---|---|---|---|
+| A (seed 7) | 20000 | 10^-8 to 10^-0.5 (log-uniform) | 0 to 0.2 | 17194 | 0 | 8.273e-15 |
+| B (seed 99) | 60000 | 10^-6.5 to 10^-2.5 (log-uniform) | 0.03 to 0.12 | 60000 | 0 | 8.517e-15 |
+
+Together 77194 interior points; the worst error is 8.517e-15 (sample B, sd 2.5548e-4, cost 0.0331606). At the variant's
+worst point of each sample, the reference's own error against the same oracle is 5.7e-17 (sample A) and 3.1e-17 (sample B).
+
+This is a measurement on a sample. It is not a proof that the variant is equivalent on the page's whole domain. The
+samples do not cover noise volumes below 1e-8, the domain edge near 1e-50, or costs and noise volumes outside the two
+ranges above, so the bound 1e-14 is measured, not proved, outside them. A point with error above 1e-14 at any
+unsampled input would make the variant a student error, and the suite would then need a test at that point (ruling 24).
+
+## What is algebraically exact
+
+At `lam = 1` the uninformed part of the denominator is multiplied by `1 - lam = 0`, so the variant's `b_s` equals the
+reference's at `lam = 1`, and so does the gap there (`indifference_gap(1.0)` uses only `b_s` and `tau_y`, and `tau_y` does
+not depend on the denominator). The boundary rule of `solve_model` therefore decides `lam = 1` the same way for both.
+This is an algebraic fact about the formula, not a sweep result. The interior fractions are not claimed equal here.
+
+## Decision
+
+Ruling 25 (round 19, binding for fixers and verifiers) moves this variant to `ledgers/E4/equivalent/` with this section
+and the sweep as evidence. The round-19 driver `ledgers/E4/scripts/E4-d-r19/out/alts_driver.log` covers the other four
+equivalents, not this variant, because it was in `mutants/` then. Its seeds 0 to 49 result from the round-25 run is in
+`ledgers/E4/scripts/E4-d-r25/out/equiv_r19_02_0_49.txt`.
