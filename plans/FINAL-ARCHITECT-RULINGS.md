@@ -143,3 +143,13 @@
     result"), as in L05 and L06, with its data-grade and data-cite removed and the C rows of the grade table and the cards
     E3-c134, c157, c158 aligned. The footers of L05 to L08 then read "Each graded result carries a proof or a lab result
     labelled C." as ruling 33 states.
+38a. **Clarification of ruling 38.** The glyph-level rule covers every pair of a Greek capital and its lowercase form in E3
+    (Xi/xi, Omega/omega, Lambda/lambda): they are different symbols and need no further renaming. Ruling 39 stands: the
+    title-only registry sentences in L07 and L08 are ungraded naming sentences, so rows asking to restore a grade or a
+    registry key for them (E3g12-c134, c157, c158, E3g15-attributions, E3g18-grade-legend-footer in the form that restores
+    grades) are answered by ruling 39 and are verified against it.
+40. **Sketch-structure mutants (CS2 project).** For a mutant that changes only an internal constant of the quantile sketch (r15_04,
+    r15_06), exact equivalence cannot be proved without redoing the lesson's proof for each variant. It is accepted as equivalent
+    when no counterexample exists in an exhaustive search of all small streams and a large randomised battery checked after every
+    add, and the README says so in those words (measured, not proved). A mutant whose behaviour differs on a stated condition
+    (r15_07: after a refused NaN the state must still describe every value added, project.html:216) is killed by a test instead.
