@@ -19,7 +19,7 @@ dispersion is the sample standard deviation of its changes, with denominator n -
 100 times that standard deviation.
 
 Check. Each standard deviation is computed twice: by the two-pass formula, and with statistics.stdev. The two must agree
-to 1e-9 percent per month, or the lab raises. A blank or non-decimal cell in the GBP column raises ValueError, and so
+to 1e-9 percent per month. A blank or non-decimal cell in the GBP column raises ValueError, and so
 does a month that does not follow the previous one. No row is skipped or filled.
 
 Rounding. Every printed value is the exact binary value of its float, rounded half up (a tie away from zero) to two

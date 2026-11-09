@@ -68,7 +68,27 @@ accuracy requirement, so no output test can separate them. Each passes the suite
 - `mutant_r6_08_reports_lower_end.py` and `mutant_r7_01_reports_bracket_lower_end.py` (the same edit): the reported
   fraction is the lower end of the final bracket, not its midpoint. The two differ by at most the final width.
 
-**Open item for the architect (ruling 9).** The page now states the stop rule, so these variants do violate a stated
-behaviour (the stop test and the reported point). They are output-equivalent within the stated accuracy, which no
-output test can distinguish. Whether "equivalent within the stated accuracy" is enough to keep them here, or whether
-the page must state the reported point, is the architect's call. The fixer does not decide it.
+## Decision: ruling 17 (round 16)
+
+Ruling 17 of `plans/FINAL-ARCHITECT-RULINGS.md` (binding) settles the open item. The E4 page requires the reported root
+to lie within 1e-10 times the oracle's root, and the stop rule and the midpoint report are the reference's convention.
+The three variants above differ from the reference only inside the stop tolerance, so they are not student errors and
+they live in this directory with ruling 17 as their proof. The page says so in one sentence (project.html, Constraints):
+any reported fraction within 1e-10 times the oracle's root is accepted, whatever point of the final bracket the solver
+reports.
+
+Proof, with the reference's stop test `high - low > 1e-12 * high` (and at most 240 halvings) and its midpoint report:
+
+1. Every variant runs the same bisection step as the reference: the same `mid`, and the same update `low = mid` or
+   `high = mid` from the sign of the gap. Only the stop test or the reported point differs.
+2. The invariant `0 <= low <= high` holds, and the root lies in `[low, high]` (sign change). So any point of the final
+   bracket is within its width of the root.
+3. `mutant_v9_02` (stop test `high - low > 1e-12 * low`): since `low <= high`, `1e-12 * low <= 1e-12 * high`. The variant
+   therefore keeps halving at least as long as the reference, and its final bracket lies inside the reference's final
+   bracket, whose width is at most `1e-12 * high`, about `1e-12` times the root.
+4. `mutant_r6_08` and `mutant_r7_01` (report `low`, not `0.5 * (low + high)`): the reported point and the midpoint both
+   lie in the reference's final bracket, so they differ by at most that width, about `1e-12` times the root.
+5. Each passes the suite on seeds 0 to 49 (50/50): round 11, `ledgers/E4/scripts/E4-d-fix-r11/logs/equiv_0-49.txt`;
+   round 15, `ledgers/E4/scripts/E4-d-r15/out/alternatives_equivalents_0_49.txt`.
+
+`literal_price_sign.py` is not a stop-rule variant and is not covered by ruling 17; its proof is in the section above.

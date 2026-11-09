@@ -115,24 +115,52 @@ def hand_log(turns: list[dict[str, Any]], settlement: int) -> dict[str, Any]:
     return {"seed": SEED, "settlement_cents": settlement, "turns": turns}
 
 
+FILL_PRICES_CENTS = (9_980, 9_990, 10_000, 10_010, 10_020)
+
+
+def fill_record(turn: int, price: int, at_ask: bool) -> dict[str, Any]:
+    """A hand-built filled turn at ``price``: at the ask (a maker sale) or at the bid (a maker purchase), with the bid
+    and the ask of that turn set so that the price is one of its quotes."""
+    if at_ask:
+        return turn_record(
+            turn, bid=price - 20, ask=price, filled=True, arrival="uninformed-buy", price=price, inventory=0, cash=0
+        )
+    return turn_record(
+        turn, bid=price, ask=price + 20, filled=True, arrival="uninformed-sell", price=price, inventory=0, cash=0
+    )
+
+
 def direct_states() -> list[dict[str, object]]:
-    """The hand-built states of the direct sweep: every turn from 1 to 20, at every inventory from -10 to 10. Each state
-    holds the earlier turn records of its turn, as the engine passes them: none on turn 1, and the unfilled records of
-    turns 1 to t-1 on turn t."""
+    """The hand-built states of the direct sweep, at every inventory from -10 to 10. The first family has every turn
+    from 1 to 20, and each state holds records of the same shape as the engine passes them: none on turn 1, and
+    unfilled records for turns 1 to t-1 on turn t. The second family has every turn from 2 to 20, and each history
+    holds unfilled records for turns 1 to t-2 and a fill on turn t-1, at each price of FILL_PRICES_CENTS and at the
+    bid and at the ask, so every quote after a fill is checked."""
     states: list[dict[str, object]] = []
     for turn in range(1, HORIZON + 1):
+        history = [turn_record(t, size=1, filled=False) for t in range(1, turn)]
         for inventory in range(-10, 11):
-            states.append(
-                {
-                    "turn": turn,
-                    "inventory": inventory,
-                    "cash_cents": 0,
-                    "max_size": 5,
-                    "limit": 10,
-                    "history": [turn_record(t, size=1, filled=False) for t in range(1, turn)],
-                }
-            )
+            states.append(_state(turn, inventory, history))
+    for turn in range(2, HORIZON + 1):
+        for price in FILL_PRICES_CENTS:
+            for at_ask in (True, False):
+                history = [turn_record(t, size=1, filled=False) for t in range(1, turn - 1)]
+                history.append(fill_record(turn - 1, price, at_ask))
+                for inventory in range(-10, 11):
+                    states.append(_state(turn, inventory, history))
     return states
+
+
+def _state(turn: int, inventory: int, history: list[dict[str, Any]]) -> dict[str, object]:
+    """A direct state with its own copy of the history."""
+    return {
+        "turn": turn,
+        "inventory": inventory,
+        "cash_cents": 0,
+        "max_size": 5,
+        "limit": 10,
+        "history": list(history),
+    }
 
 
 def custom_instance(path: list[int], arrivals: list[str]) -> dict[str, Any]:
@@ -435,9 +463,9 @@ def test_no_function_prints_or_warns(
     seed: int, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
 ) -> None:
     """On every seed, the quote and the replay print nothing on stdout or stderr, log no record and raise no warning.
-    The checks reach branches that a game of the fixed seeds never takes: a log with no fill, a fill at price 0, a log
-    that ends at inventory -10, and the quotes of the direct states at every turn from 1 to 20 and every inventory from
-    -10 to 10. Each channel is checked on its own, because the specification forbids each of them."""
+    The checks reach branches that a game of the fixed seeds never takes: a log with no fill, a fill at price 0, logs
+    that end at inventory -10 and at inventory +10, and the quotes of the direct states (every turn and inventory, and
+    the states after a fill). Each channel is checked on its own, because the specification forbids each of them."""
     caplog.set_level(logging.DEBUG)
     no_fill = hand_log([turn_record(t, size=1, filled=False) for t in range(1, HORIZON + 1)], 10_000)
     zero_fill = hand_log(
@@ -453,10 +481,18 @@ def test_no_function_prints_or_warns(
         + [turn_record(t, size=0, inventory=-10, cash=100_100) for t in range(11, HORIZON + 1)],
         10_000,
     )
+    ends_at_plus_ten = hand_log(
+        [
+            turn_record(t, filled=True, arrival="uninformed-sell", price=9_990, inventory=t, cash=-9_990 * t)
+            for t in range(1, 11)
+        ]
+        + [turn_record(t, size=0, inventory=10, cash=-99_900) for t in range(11, HORIZON + 1)],
+        10_000,
+    )
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         log = engine.play(sol.quote, seed)
-        for built in (log, no_fill, zero_fill, ends_at_minus_ten):
+        for built in (log, no_fill, zero_fill, ends_at_minus_ten, ends_at_plus_ten):
             sol.replay(built)
         for state in direct_states():
             sol.quote(state)
@@ -518,8 +554,9 @@ def test_a_direct_call_on_a_hand_built_state_ignores_an_earlier_game() -> None:
 
 def test_a_direct_quote_is_legal_at_every_inventory_within_the_limit() -> None:
     """A direct call on hand-built states, on every turn from 1 to 20 (turn 1 with no earlier record, turn t with the
-    unfilled records of turns 1 to t-1), at every inventory from -10 to 10: each quote has its bid below its ask and its
-    size in 0..5, whatever the inventory."""
+    unfilled records of turns 1 to t-1), at every inventory from -10 to 10, and on turns 2 to 20 with a fill on the
+    turn before, at prices from 9980 to 10020 cents: each quote has its bid below its ask and its size in 0..5, whatever
+    the inventory and whatever the last fill."""
     for state in direct_states():
         turn = state["turn"]
         inventory = state["inventory"]

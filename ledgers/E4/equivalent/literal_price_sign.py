@@ -12,8 +12,7 @@ PRIOR_PRECISION = 1.0  # tau_v: the precision of the payoff's prior, 1 / Var(v),
 SIGNAL_PRECISION = 1.0  # tau_e: the precision of the signal s = v + eps, 1 / Var(eps), fixed for every instance
 BISECTION_TOLERANCE = 1e-12  # the search stops when the bracket is narrower than this times its upper end
 MAX_BISECTION_STEPS = 240  # a safety bound: each halving halves the bracket, so 240 halvings reach the relative
-# tolerance for every root above about 6e-61 (2^-240 is about 5.7e-73); 200 halvings do not reach it
-# at a root near 2e-51
+# tolerance for every root above about 6e-61 (2^-240 is about 5.7e-73). 200 halvings do not reach it near 2e-51.
 
 
 def _check_inputs(noise_sd: float, info_cost: float) -> tuple[float, float]:

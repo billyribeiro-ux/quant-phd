@@ -401,8 +401,9 @@ def test_gap_at_zero_fraction_is_the_limit_to_full_precision() -> None:
 @pytest.mark.parametrize("which", list(INSTANCES))
 def test_gap_at_an_interior_fraction_is_the_oracle_gap_to_full_precision(which: str) -> None:
     """The page states that the solver works at full precision, and that the gap it reports agrees with the gap of
-    Proposition 3 to 1e-14 relative to the larger of 1 and the gap's size at fraction 0. At an interior fraction the
-    same statement holds: the reported gap agrees with the oracle's gap at the reported fraction to that precision."""
+    Proposition 3 to 1e-14 relative to the larger of 1 and the oracle's gap at the reported fraction. At an interior
+    fraction the same statement holds: the reported gap agrees with the oracle's gap at the reported fraction to that
+    precision."""
     inst = INSTANCES[which]
     sd, cost = float(inst["noise_sd"]), float(inst["info_cost"])
     out = run(sd, cost)

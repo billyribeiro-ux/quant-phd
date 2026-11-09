@@ -36,3 +36,9 @@
     elements, the verdict lines and the `data-score(s)` attributes, scores that prose by the rubric descriptors, and only then
     compares with the official scores. The page keeps its annotations for learners; they are not moved out of the HTML.
 16. **LX1 notation.** `P_t` is the price level of L02, L03 and the project. L01's observed asset price is `A_t`.
+17. **E4 stop-rule and midpoint variants.** The E4 page requires the reported root and gap to lie within 1e-10 of the oracle.
+    The stop rule and the midpoint report described on the page are the reference's own convention. A variant that differs only
+    inside the 1e-12 stop tolerance (mutant_r6_08, mutant_r7_01, mutant_v9_02) is therefore indistinguishable at the stated accuracy
+    and is not a student error: it lives in ledgers/E4/equivalent with this ruling as its proof. The page says so in one sentence.
+18. **Retired alternatives.** Rows about alternative files that no longer exist (alt_r8_*, alt_v9_*) are retired; the current
+    alt_1 to alt_8 are the verified set.
