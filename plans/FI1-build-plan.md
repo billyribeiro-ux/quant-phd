@@ -501,3 +501,116 @@ Notation requests (NOTATION_REQUESTS, for the builder to report if needed): none
 4. The branch is merged only when the unit ledger is PASS or its remaining gaps are named and agreed. The Atlas-cumulative gap and the honest-pending GSW test are named gaps if they remain.
 
 Architect decisions: pending (§12). This plan is the planner's proposal.
+
+## Architect decisions (PROPOSED, to be confirmed by the architect)
+
+Written by the architect's assistant (Haiku) on 2026-11-09. Every item answers a blocking item, an open question or a
+request in this plan, in the plan's own numbering. Each decision cites its basis by file and line. Where a decision
+could not be made from the repository, it is marked **NOT DECIDED**. Numbers in §12 are the plan's numbers.
+
+### Blocking items (§0.1)
+
+- **B1 (Atlas contract): DRAFTED.** `atlas/A5.contract.md` is written, with the module `atlas/curves.py` (import
+  `atlas.curves`). Reason: the project's `atlas: A5` key (`curriculum/03-markets.yaml:56`) makes
+  `tools/check_projects.py:145-146` require the file, and `atlas/A15.contract.md` is the precedent for its layout.
+- **B2 (embedded curve for L06): option (b), SIMULATED fallback now.** L06 runs on a SIMULATED curve, labelled
+  SIMULATED, with an honest-pending note that names the real curve and why. Reason: the only embedded yield curve,
+  `ust_daily`, has two columns, `tbill_3m` and `cmt_10y` (`course/assets/data/market/MANIFEST.json`, entry `ust_daily`;
+  `tools/data_sources.yaml:113-116`), and a four-parameter Nelson–Siegel fit cannot be identified from two maturities.
+  DATA_REQUEST 1 is not raised by me (see §5.4 below).
+- **B3 (published GSW parameters): honest-pending test, no request.** The grader's "published parameters" test is
+  written, skipped, with the named reason on the page. Reason: `tools/data_sources.yaml` has no entry or rejected row
+  for a GSW parameter file (`grep -i gsw` finds none), and BUILDER_RULES §6.6 needs a quoted redistribution statement
+  that I do not have (`BUILDER_RULES.md` §6, item 6, lines 336-341).
+- **Non-blocking gap (Atlas cumulative suite): accepted as a named gap.** A1 to A4 are not built, as §0.1 states
+  (lines 78-79). Reason: BUILDER_RULES §5.5 item 3 requires the cumulative suite, and it cannot be green until those
+  milestones exist. The FI1 grader runs standalone.
+
+### Open questions (§12, numbered as in the plan)
+
+1. **Q1 (B1): draft `atlas/A5.contract.md`.** Chosen: the Atlas path, not a module-local `curve_engine.py`. Reason:
+   the A20 consumer reuses A5 (`curriculum/meta.yaml:274-278`), and a module-local file would change the curriculum's
+   "Atlas A5" wording, which this plan does not propose to change.
+2. **Q2 (B2): accept the SIMULATED fallback for L06** (see B2 above). The DATA_REQUEST is open, see §5.4.
+3. **Q3 (signatures): approve with four changes.** (i) `ns_yield`, `svensson_yield`, `bootstrap_zero_rates` return
+   `float`, not `Fraction`, because `exp` and roots are irrational in general; the precedent is A15's "Numbers are float
+   unless a function says otherwise" (`atlas/A15.contract.md:15-16`). (ii) The maturity argument is `tau` (years), the
+   Nelson–Siegel decay is `lam`, and the Svensson decays are `lam1` and `lam2`. This replaces the plan's `tau2`, so
+   `\tau` stays a maturity symbol, as §11 requires. (iii) `fit_svensson` is added, because the curriculum brief names
+   "NS / Svensson fitting" (`curriculum/03-markets.yaml:52-53`). (iv) Coupon rate and yield are per coupon period, and
+   the frequency is the caller's. The exception table §6.4 is kept. Precedent for freezing signatures: AC4 Q7
+   (`plans/AC4-build-plan.md:321`) and E1 Q5 (`plans/E1-build-plan.md:508`).
+4. **Q4 (hours): confirm 8 × 9 h lessons and an 18 h project.** Reason: the hub arithmetic (lessons 72 + project 18 = 90,
+   project 20 %, inside the 10-40 % band in §1) is the plan's own, and E1 Q1 (`plans/E1-build-plan.md:508`) used the
+   same kind of split. The 7-lesson alternative is not chosen, because NS and Svensson are separate labs.
+5. **Q5 (figures): no figures.** Reason: BUILDER_RULES §6, item 4 (`BUILDER_RULES.md:317-319`) requires a kernel and a
+   test before any figure, and the curriculum does not require one. CF1 Q6 made the same choice
+   (`plans/CF1-build-plan.md:249`).
+6. **Q6 (DAG defects): accept the plain-prose resolutions in §4** (least squares, root finding, expectations
+   hypothesis as a mention only). Do not add S2 as a prerequisite. Reason: the curriculum prerequisites are `[M2, CF1]`
+   (`curriculum/03-markets.yaml:23`), and adding S2 is a curriculum change that this plan does not propose. Plain
+   `<dfn>` without `data-concept` is allowed (§2.1 item 5; E1 Q10).
+7. **Q7 (Pyodide packages): `numpy` only, no SciPy.** Correction to the planner's UNREAD note: `tools/vendor_spec.yaml:59`
+   lists `numpy, scipy, pytest` as the Pyodide packages, so SciPy is available. It is not used because the methods need
+   only `lstsq` and bisection (§5.5), and A15 and A8 use NumPy alone (`requirements-dev.txt:6`). The grader panel's
+   `data-packages="numpy"` passes through unchanged (`tools/coursekit.py:290`).
+8. **Q8 (solution file): `curves.py` at the Atlas path `atlas/curves.py`.** Reason: follows Q1 and the A15 precedent
+   (`atlas/A15.contract.md:1`, `atlas.fundamentals`). The grader panel's `data-solution` is `curves.py`.
+9. **Q9 (mutants): write all twelve in §6.5.** Ten are the required kills; 11 (hard-coded seed-0 answer) and 12
+   (truncation instead of half-up) are plausible student errors. Any survivor that differs only where the page says
+   nothing goes to `ledgers/FI1/equivalent/` with a README proof, not to `mutants/` (FINAL-ARCHITECT-RULINGS.md:19-20,
+   ruling 9). Reason: BUILDER_RULES §5.2 requires at least three, and §6.5 of this plan requires ten.
+10. **Q10 (money): confirm integer cents, one half-up rounding.** Rule: for an exact non-negative `Fraction` `x`, cents
+    are `floor(x + 1/2)`. Quoted prices and yields are `Fraction` (exact) with the tolerance stated on the page. This is
+    the E1 Q6 precedent (`plans/E1-build-plan.md:508`).
+11. **Q11 (registry gaps): approve none of R1-R4 now.** Teach the day-count rules, the bond-math definitions and the
+    duration and convexity formulas as derivations (grade T), with no attribution. Name the 30/360 variant by its rule,
+    as `atlas/A5.contract.md` does. Reason: BUILDER_RULES §2, item 4 (`BUILDER_RULES.md:92-94`) forbids citing an
+    unregistered source, and CLAUDE.md rule 2 forbids typing bibliographic data from memory. The planner did not read
+    any authority for these topics. The architect may raise R1 to R3 with `tools/add_reference.py` if attribution is
+    wanted.
+12. **Q12 (GSW parameters, B3): honest-pending test.** See B3 above. The DATA_REQUEST is not raised by me, because no
+    source URL or licence statement exists in the repository.
+13. **Q13 (Svensson title, F1): NOT DECIDED.** The registry record `svensson1994estimating` reads "1992 - 1994"
+    (plan §0, row 3, with the registry line cited there), and the curriculum string reads "1992-1994"
+    (`curriculum/03-markets.yaml:46`). The difference is spacing only, but the CF1 Q3 rule (`plans/CF1-build-plan.md:249`)
+    says to cite only keys whose record matches. Proposed: keep the key, quote the record's title exactly, and let the
+    architect rule whether a spacing difference is acceptable or the record should be corrected with
+    `tools/add_reference.py`. I did not change the registry.
+
+### Data requests (§5.4) and references (§8.1)
+
+- **DATA_REQUEST 1 (H.15 constant-maturity series for NS and Svensson): NOT DECIDED; not raised.** The H.15 entry
+  quotes the Board's licence statement (`tools/data_sources.yaml:96-97`), and it names only two series,
+  `RIFSGFSM03_N.B` and `RIFLGFCY10_N.B` (`tools/data_sources.yaml:113-116`). The series identifiers for further
+  constant-maturity series are in the H.15 zip, which I did not read, and I will not type them from memory. The
+  architect must read them from the zip. The entry's own note (`tools/data_sources.yaml:101-105`) says the
+  constant-maturity series comes from the U.S. Treasury and rests on 17 U.S.C. 105(a); the architect must confirm that
+  the quoted Board statement covers any new constant-maturity series before the request is raised.
+- **DATA_REQUEST 2 (GSW parameter file, B3): NOT DECIDED; not raised.** No source URL and no licence statement is in the
+  repository, so the request cannot be made with the evidence §6.6 requires.
+- **Other data: none.** Reason: the lessons' examples are fixed date pairs and SIMULATED curves (§5.4, last bullet), and
+  `ust_daily` is not needed for L02, which avoids the discount-basis caveat in its MANIFEST note.
+- **REFERENCE_REQUESTS R1-R4 (§8.1): no request now.** See Q11.
+
+### Notation, mutants and tooling (§6, §11, §10)
+
+- **Notation (§11):** maturity is `\tau`; yield is `y`; the Nelson–Siegel decay is `\lambda` in the text and `lam` in code;
+  the Svensson decays are `\lambda_1` and `\lambda_2` (`lam1`, `lam2` in code). This departs from the plan's `\tau_1`,
+  `\tau_2` for the decays, so `\tau` is never a second meaning. Reason: §11 (`plans/FI1-build-plan.md:460-472`) forbids
+  `T` and asks for `\tau` for maturity. `r` is not used. The builder defines `m` per lesson if a frequency is needed.
+- **Five alternative correct implementations (§6.6): accepted as written** (closed form, Newton with bisection stop,
+  `Fraction` throughout, float with the same half-up rule, NumPy linear solve). Reason: FINAL-ARCHITECT-RULINGS.md:21-22
+  (ruling 10) requires five alternatives of different styles.
+- **Commands (§9): accepted.** `check_projects.py --unit FI1` passes the atlas check once `atlas/A5.contract.md` exists
+  (B1 above). The grader-panel and instance checks are at `tools/check_projects.py:122-137`.
+- **Hub and placement (§5.1): accepted as written.**
+
+### Not decided (for the architect)
+
+- Q13 (Svensson title spacing) and DATA_REQUEST 1 (the H.15 series identifiers and whether the Board's licence statement
+  covers new constant-maturity series). Both need the architect to read the H.15 zip or the registry, which I did not do.
+- The H.15 constant-maturity licence question in DATA_REQUEST 1 above.
+- The precedent named in the task, `plans/AC2-build-plan.md` "Architect decisions", does not exist: a search of that file
+  finds no such section. The precedents used here are AC4 (`plans/AC4-build-plan.md:320-321`), E1
+  (`plans/E1-build-plan.md:507-508`) and CF1 (`plans/CF1-build-plan.md:249`).

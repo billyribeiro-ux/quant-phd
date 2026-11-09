@@ -11,9 +11,9 @@
 | Graded projects | 157 (134 module projects + 23 studio projects) |
 | Atlas milestones | 20 |
 | Concepts (each introduced exactly once) | 1,138 |
-| Total design hours | 13,715 |
+| Total design hours | 13,737 |
 | Credit-hour equivalent | ≈305 credits (≈102 three-credit courses at 135 h each) |
-| Full-time equivalent | 6.35 years at 45 h/week × 48 weeks |
+| Full-time equivalent | 6.36 years at 45 h/week × 48 weeks |
 
 Hours are design targets that include each module's project. They are calibrated against the U.S. federal credit-hour definition (45 h of student work per credit, 135 h per three-credit course), will be recalibrated against pilot-learner data, and shrink for any student who tests out of material through placement.
 
@@ -23,9 +23,9 @@ Named credentials are explicit views over the curriculum graph. The validator pr
 
 | Credential | Modules | Studios | Graded projects | Hours | Credit equivalent | FTE years |
 |---|---|---|---|---|---|---|
-| **Finance Degree — Bachelor's Level** | 42 | 5 | 47 | 3,881 | ≈86 credits | 1.80 |
-| **Master's in Finance / Financial Engineering** | 78 | 8 | 86 | 7,736 | ≈172 credits | 3.58 |
-| **PhD in Finance** | 84 | 4 | 88 | 9,301 | ≈207 credits | 4.31 |
+| **Finance Degree — Bachelor's Level** | 42 | 5 | 47 | 3,891 | ≈86 credits | 1.80 |
+| **Master's in Finance / Financial Engineering** | 78 | 8 | 86 | 7,746 | ≈172 credits | 3.59 |
+| **PhD in Finance** | 84 | 4 | 88 | 9,311 | ≈207 credits | 4.31 |
 
 Credential hours include every prerequisite the credential pulls in. Credentials overlap: a student completing the Master's has already completed most of the Bachelor's.
 
@@ -134,7 +134,7 @@ Credential hours include every prerequisite the credential pulls in. Credentials
 
 | Tier | Standard | Modules | Module h | Studio h |
 |---|---|---|---|---|
-| **F** Foundations | Rigorous first-two-years university mathematics, computing, statistics and economics. | 13 | 1,420 | 0 |
+| **F** Foundations | Rigorous first-two-years university mathematics, computing, statistics and economics. | 13 | 1,442 | 0 |
 | **U** Major | Complete undergraduate finance major at a top program, plus the quantitative depth most majors skip. | 34 | 2,645 | 280 |
 | **M** Master's | MFE / MSF / MSc Economics level: continuous-time finance, econometrics, and production research. | 73 | 5,790 | 1,020 |
 | **D** Doctoral | First-year PhD coursework in asset pricing, econometrics and macro, then original research. | 14 | 2,490 | 70 |
@@ -143,23 +143,23 @@ Credential hours include every prerequisite the credential pulls in. Credentials
 
 | Milestone | Rule | Cumulative h | FTE years |
 |---|---|---|---|
-| **Major Complete** | Every F and U module project passed, plus every studio of tier F or U. | 4,345 | 2.01 |
-| **Master's-Equivalent** | MAJOR, plus every M module project and every M studio. | 11,155 | 5.16 |
-| **Doctoral Candidate** | MASTERS, plus every D module and studio, including the CAP3 qualifying exam. | 12,515 | 5.79 |
-| **Doctoral** | CANDIDATE, plus the CAP4 thesis defended against the rubric. | 13,715 | 6.35 |
+| **Major Complete** | Every F and U module project passed, plus every studio of tier F or U. | 4,367 | 2.02 |
+| **Master's-Equivalent** | MAJOR, plus every M module project and every M studio. | 11,177 | 5.17 |
+| **Doctoral Candidate** | MASTERS, plus every D module and studio, including the CAP3 qualifying exam. | 12,537 | 5.80 |
+| **Doctoral** | CANDIDATE, plus the CAP4 thesis defended against the rubric. | 13,737 | 6.36 |
 
 ## Career tracks (computed prerequisite closures)
 
 | Track | Targets | Modules required | Module hours | FTE years |
 |---|---|---|---|---|
-| Quantitative Researcher | F6, QR2, PR4, MS4, S7, CAP1 | 40 | 4,076 | 1.89 |
-| Global Macro Portfolio Manager | GM5, FI3, X2, DV5, PR3, PC2 | 56 | 5,166 | 2.39 |
-| Derivatives & Volatility | DV3, DV4, DV5, DV6, FI6 | 43 | 4,366 | 2.02 |
-| Corporate Finance / Investment Banking / Private Equity | CF5, CF6, CF7, CF9, PM1, PM2, AC3, PC2 | 42 | 3,756 | 1.74 |
-| Equity Research / Asset Management | FC4, CF7, F7, BK2, PR2, PC2 | 36 | 3,261 | 1.51 |
-| Quant Developer | CS6, QR2, MS2, DV4 | 38 | 3,966 | 1.84 |
-| Risk & Financial Stability | PR4, SR3, SR4, BK3 | 31 | 2,936 | 1.36 |
-| Research doctorate (minimum prerequisite path to thesis) | CAP4 | 47 | 6,096 | 2.82 |
+| Quantitative Researcher | F6, QR2, PR4, MS4, S7, CAP1 | 40 | 4,086 | 1.89 |
+| Global Macro Portfolio Manager | GM5, FI3, X2, DV5, PR3, PC2 | 56 | 5,176 | 2.40 |
+| Derivatives & Volatility | DV3, DV4, DV5, DV6, FI6 | 43 | 4,376 | 2.03 |
+| Corporate Finance / Investment Banking / Private Equity | CF5, CF6, CF7, CF9, PM1, PM2, AC3, PC2 | 42 | 3,766 | 1.74 |
+| Equity Research / Asset Management | FC4, CF7, F7, BK2, PR2, PC2 | 36 | 3,271 | 1.51 |
+| Quant Developer | CS6, QR2, MS2, DV4 | 38 | 3,976 | 1.84 |
+| Risk & Financial Stability | PR4, SR3, SR4, BK3 | 31 | 2,946 | 1.36 |
+| Research doctorate (minimum prerequisite path to thesis) | CAP4 | 47 | 6,106 | 2.83 |
 
 ## Atlas — the program-long build
 
@@ -192,13 +192,13 @@ Legend: tier **F/U/M/D** · hours · ← prerequisites · grading `auto` / `rubr
 
 ### Part 0 · Orientation & Learning System (`P0`)
 
-- **P0.1 · How to Study This Program** · F · 6 h · ← none
+- **P0.1 · How to Study This Program** · F · 16 h · ← none
   - *Core:* Evidence grades (T/A/B/C/D/X); how to read a paper (question, identification, data, inference, robustness); steelmanning; the project ladder; how Atlas compounds; the notation conventions.
   - *Introduces:* Evidence grade (T/A/B/C/D/X); Anatomy of a paper: question, identification, data, inference, robustness; Identification (the variation that pins down an estimate); Robustness check; Independent out-of-sample replication; Steelmanning; Four-rung project ladder; Prerequisite graph (DAG); Atlas, the program-long research platform; Verified citation registry and citation keys; Program notation conventions
   - *Sources:* Dunlosky et al. (2013), Psychological Science in the Public Interest 14(1); Keshav (2007), 'How to Read a Paper', ACM SIGCOMM CCR 37(3)
   - *Lab:* Navigate the prerequisite DAG; run a first Pyodide cell.
   - *Project — Paper teardown* (`rubric`): Take one assigned classic paper and produce a one-page structured teardown: question, mechanism, data, identification, main result with its locator, the weakest assumption, and the evidence grade it deserves. *Deliverable:* One-page teardown in the in-page template.
-- **P0.2 · Diagnostics, Mastery Gating & Spaced Retrieval** · F · 4 h · ← P0.1
+- **P0.2 · Diagnostics, Mastery Gating & Spaced Retrieval** · F · 16 h · ← P0.1
   - *Core:* How placement tests let you skip what you already know; mastery thresholds; the spaced-retrieval scheduler; interleaved review; why rereading is a weak strategy and retrieval is a strong one.
   - *Introduces:* Placement test (test-out diagnostic); Mastery threshold; Retrieval practice (the testing effect); Spaced retrieval practice; Interleaved practice; Expertise-reversal effect; FSRS-family spaced-repetition scheduler
   - *Sources:* Roediger & Karpicke (2006), Psychological Science 17(3); Cepeda et al. (2006), Psychological Bulletin 132(3); Rohrer & Taylor (2007), Instructional Science 35; Kalyuga, Ayres, Chandler & Sweller (2003), Educational Psychologist 38(1)
@@ -269,7 +269,7 @@ Build a price-time-priority matching engine (limit, market, cancel, modify) in C
 - **CS1 · Programming in Python from Zero** · F · 120 h · ← P0.1 · ⚑ A1
   - *Core:* Types, control flow, functions, data structures, classes and protocols, type hints, errors, files, modules, NumPy and pandas fundamentals.
   - *Introduces:* Functions and scope; Built-in data structures (list, dict, set, tuple); Classes and objects; Protocols (structural subtyping); Type hints and static type checking; Exceptions and error handling; Modules and packages; NumPy arrays and vectorization; pandas DataFrame and index alignment; Simple (arithmetic) return; Log (continuously compounded) return; Unit test (pytest)
-  - *Sources:* Python Software Foundation, The Python Language Reference, Python 3.13 (primary); Ramalho, Fluent Python, 2nd ed. (2022)
+  - *Sources:* Python Software Foundation, The Python Language Reference, Python 3.14 (primary); Ramalho, Fluent Python, 2nd ed. (2022)
   - *Lab:* Vectorized returns computation vs. loops: correctness and speed.
   - *Project — Atlas A1: repository skeleton* (`autograder`): Create the Atlas package with typed modules, a CLI, a pytest suite, formatting and linting config, and CI. Every later Atlas milestone builds on this repository. *Deliverable:* Atlas repository at milestone A1.
 - **CS2 · Algorithms & Data Structures** · F · 130 h · ← CS1, M1
@@ -309,7 +309,7 @@ Build a price-time-priority matching engine (limit, market, cancel, modify) in C
 Replicate the CAPE / dividend-yield return-predictability evidence on embedded Shiller data. Apply Stambaugh bias correction, HAC inference, out-of-sample R-squared, and multiple-testing adjustment across predictors. Write the referee-grade verdict.  
 *Deliverables:* Replication code, Referee-style report
 
-- **S0 · Exploratory Data Analysis & Visualization** · F · 50 h · ← CS1 · ⚑ A3
+- **S0 · Exploratory Data Analysis & Visualization** · F · 50 h · ← CS1, M4 · ⚑ A3
   - *Core:* Distributions, robust summaries, outliers, missing data, stale prices and splits, graphical perception, how charts mislead.
   - *Introduces:* Empirical distribution and histogram; Robust summary statistics (median, MAD, trimmed mean); Quantile–quantile plot; Outlier detection; Missing-data mechanisms (MCAR, MAR, MNAR); Stale price; Corporate-action break in a price series; Anscombe's quartet; Graphical perception ranking (Cleveland–McGill); Misleading chart devices
   - *Sources:* Tukey, Exploratory Data Analysis (1977); Anscombe (1973), The American Statistician 27(1); Cleveland & McGill (1984), JASA 79(387)

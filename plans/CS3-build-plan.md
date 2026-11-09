@@ -377,3 +377,90 @@ The planner did not execute any of these commands; flags are taken from the tool
 1. Orchestrator integrates; resolves BLOCK-1 and BLOCK-2 first (architect); runs the §9 commands once; fixes DAG, links, hours.
 2. Independent Haiku verifiers in fresh checkouts, slices: L01-L02, L03-L04, L05-L06, L07-L08, project.
 3. Ledger at `ledgers/CS3.verification.json`; the branch is merged only when the ledger is PASS or its gaps are named and agreed.
+
+## Architect decisions (PROPOSED, to be confirmed by the architect)
+
+Prepared 2026-11-09 by the architect's assistant (Haiku) from the files and lines cited. Nothing here is binding until the
+architect confirms it. Where the curriculum is silent, the Atlas contract labels its choice as the assistant's proposal
+(`atlas/A2.contract.md`).
+
+**Q1 · L04 runtime (BLOCK-2). Decision: option (b).** Keep L04's lab `python`. Run a pure-Python ASOF reference with the stated
+tie rule. Show the DuckDB-WASM SQL as a listing labelled "SQL, not run", and state on the page that the curriculum's
+DuckDB-WASM lab is not run. Reason: `tools/run_labs.py:70-71` returns "has no local runner yet" for every non-python runtime,
+and `course/assets/vendor/LOCK.json` has no DuckDB entry, so option (a) is a build-tool change outside CS3. This departs from
+the curriculum lab text at `curriculum/01-foundations.yaml:473`, which the architect must accept. The same blocker applies to
+QR1's lab (`curriculum/04-quant.yaml:585`, "DuckDB ASOF JOIN"), so this decision governs QR1 as well.
+
+**Q2 · Store engine (U-1). Decision: DuckDB locally, standard-library `sqlite3` on the grader path.** `open_store(path,
+*, engine="sqlite")` is the grader path and the default. `engine="duckdb"` is the local deliverable, with a DuckDB version
+the architect pins. Reason: the curriculum names "a DuckDB store" (`curriculum/01-foundations.yaml:477`), and
+`course/assets/vendor/LOCK.json` lists no `duckdb`, `pyarrow` or `sqlite` entry, so DuckDB cannot be assumed in Pyodide.
+Caveat: whether Pyodide provides `sqlite3` is also unverified here and must be checked in the browser. Making DuckDB the
+default locally is possible; the architect chooses. See `atlas/A2.contract.md`, section *Engines*.
+
+**Q3 · A2 contract (BLOCK-1). Decision: written, `atlas/A2.contract.md`, with names confirmed and one change.** Module
+`atlas.dataset`, file `atlas/dataset.py`, `open_store(path, *, engine="sqlite")`. The one change: `asof(source, series, t)`
+replaces the plan's `asof(key, t)` (plan §7.4, line 224), because one series id can occur in two sources. Reason for one module:
+each existing contract is one module (`atlas/A15.contract.md` names `atlas.fundamentals`; `atlas/A8.contract.md` names
+`atlas.integrity`). **A1 is not written.** `atlas/` has no A1 contract, and `curriculum/meta.yaml:199-202` names CS1 as its
+milestone, so the cumulative run and CS1's `check_projects.py` fail until the architect writes it. Q3 asked for A1 to be
+confirmed; this review did not draft it.
+
+**Q4 · Parquet lab (U-2). Decision: option (a).** The lab models row versus column layout by counted bytes of a generated table,
+and describes the Parquet footer in prose without reading a file. Reason: `references/references.json` has no Parquet entry and
+`course/assets/vendor/LOCK.json` has no `pyarrow`, so option (b) needs a file the lab cannot generate, and option (c) cannot be
+admitted under the current policy (Q10). **Consequence the plan missed:** plan §2 (lines 119-120) has L08 use "the Parquet file
+of L07 as a snapshot format". Under (a) no Parquet file exists, so L08 must use a CSV snapshot. The architect confirms that
+change to the outline.
+
+**Q5 · Solution file name. Decision: `atlas/dataset.py`.** Reason: the AC2 and S7 grader panels name the solution as the
+contract module (`course/modules/AC/AC2/project.html:286`, `data-solution="atlas/fundamentals.py"`; S7 `data-solution="atlas/integrity.py"`),
+so the plan's `atlas_a2_store.py` (plan §10 Q5) breaks the pattern. The reference stays in `grader/reference.py`, excluded from
+deployment (BLUEPRINT lines 400-401).
+
+**Q6 · Hours split. Decision: confirm eight lessons of 8 h and a 16 h project.** Reason: `tools/check_pages.py:227` requires 6-12 h
+per lesson, `:337` requires lessons plus project to equal the curriculum's 80 (`curriculum/01-foundations.yaml:455`), and `:339`
+requires the project at 10-40% of module hours (16/80 = 20%). The seven-lesson alternative (plan §10 Q6) is rejected because it
+puts two concepts in one lesson.
+
+**Q7 · Cross-unit DAG (`curriculum/04-quant.yaml:26` and `:572-585`). Decision: no DAG defect, no CS3 action.** Reason: the hits
+are F1 (`curriculum/04-quant.yaml:20-26`, prereqs `[S2, AP2, QR1, S5]` at line 24, "point-in-time discipline" at line 26, both
+text) and QR1 (`:566-585`, prereqs `[CS3, CS4, S0]`, text and lab at `:585`). F1 needs QR1, and QR1 needs CS3, so both follow CS3
+by the prerequisite chain. `check_dag.py` still decides, as the plan says.
+
+**Q8 · Undeclared terms and keys. Decision: keys, hashes and primary keys stay plain prose; `relational-model` covers keys.**
+Reason: the nine introduced concepts (`curriculum/01-foundations.yaml:460-468`) include no key concept, and the core text (`:458-459`)
+names only "the relational model", so a key definition would be a second, undeclared concept (BUILDER_RULES §1.10).
+
+**Q9 · Integer cents and Decimal prices. Decision: confirm, with the tick size left open.** Money is `int` cents, and quoted prices
+are `Decimal` strings. Reason: plan §1 (lines 78-79) states the rule, and the project's global money rule (i64, never float) is the
+same discipline; `atlas/A2.contract.md` *Units and formats* applies it. The tick size is not chosen here. The assistant proposes
+0.01 for generated fixtures, labelled SIMULATED, for the architect to confirm.
+
+**Q10 · Registry gaps. Decision: request, do not run.** Three sources are needed and none is in the registry: the Apache Parquet
+specification (L07, L08), ISO/IEC 9075 (SQL, joins and window functions) and DuckDB's documentation (ASOF and window frames, only if
+a page states DuckDB semantics). Reason for the blocker: `references/authorities.yaml` lists issuers (lines 9-31) and publishers
+(from line 32) with no Apache, ISO, DuckDB or SQLite domain, so `add_reference.py --url` cannot admit them under the current
+policy. The architect decides whether to add domains to that policy file first. The commands below need values the architect
+supplies from the authoritative record. The assistant types no bibliographic data, and nothing was run:
+
+```
+python3 tools/add_reference.py --list-editions --source "<citation string the architect supplies>"
+python3 tools/add_reference.py --isbn <ISBN> --source "<citation string>" --used-by CS3          # ISO/IEC 9075, if a book edition exists
+python3 tools/add_reference.py --doi <DOI> --source "<citation string>" --used-by CS3            # only if a DOI exists
+python3 tools/add_reference.py --url <issuer page URL> --source "<citation string>" --used-by CS3   # needs an allow-listed domain
+```
+
+Codd (1970) and Raasveldt & Mühleisen (2019) need no request: both are verified with `used_by: ["CS3"]`
+(`references/references.json`, keys `codd1970relational` and `raasveldt2019duckdb`).
+
+**Open items this review could not decide (for the architect):**
+1. The DuckDB version to pin (absent from the curriculum, the lock file and the registry).
+2. The default local engine: sqlite (as drafted) or DuckDB.
+3. Whether Pyodide provides `sqlite3` (unverified; needs a browser check).
+4. The tick size for generated fixture prices (proposed 0.01, labelled SIMULATED).
+5. The A1 contract (missing; not drafted here).
+6. A15 expects an A2 loader that downloads the company-facts JSON (`atlas/A15.contract.md` lines 8-9). The A2 contract stores bytes but does not download, because grading has no network.
+7. The plan's test "a negative row count raises ValueError" (plan §7.5) has no input in this contract. The page should not name that condition unless the architect adds a row-count input.
+8. The plan's invariant that the manifest's retrieval time is not earlier than the payload's own timestamp (plan §7.5) has no field in the contract, because CSV payloads carry no payload timestamp.
+9. The domain policy in `references/authorities.yaml` for Parquet, SQL-standard and DuckDB sources (Q10).

@@ -330,3 +330,119 @@ Verified flags: `check_pages.py --unit|--all --page` (`T:tools/check_pages.py:42
   allow-list entry; the architect checks it.
 - I did not run any gate. No check output is reported as PASS.
 - `course/templates/*.html` were listed, not read; the builder must read them before writing.
+
+## Architect decisions (PROPOSED, to be confirmed by the architect)
+
+Prepared by the architect's assistant (Haiku) on 2026-11-09. Nothing below has been applied. No registry command was run,
+no curriculum, generated or vendor file was edited. Each entry gives the option chosen, a one-sentence reason with its
+evidence locator, and what the architect must do.
+
+**Q1 (pandas not vendored). Proposed: keep the concept `pandas-index-alignment`; L08 stays `class="lab pending"` until the
+architect decides a vendor change.** pandas appears in neither `tools/vendor_spec.yaml:53-59` (packages are numpy, scipy,
+pytest), nor `course/assets/vendor/LOCK.json`, nor `requirements*.txt`; a NumPy-only alignment would teach a different
+thing from the concept name in `curriculum/01-foundations.yaml:400`. Architect action: confirm that pandas has a Pyodide
+314.0.7 wheel (not checkable offline here; `pyodide-lock.json` is listed in LOCK.json but not present in the repo), then add
+`pandas` to `tools/vendor_spec.yaml:59` and run `tools/fetch_vendor.py --relock`, checking the size and the licence. Until
+then L08 is pending with the honest note in CS1 Q1 (no claim that the lab runs in Pyodide).
+
+**Q2 (Python version). Proposed: teach and run on Python 3.14; ask the architect to change the curriculum source string
+from 3.13 to 3.14.** The labs and graders run on the Pyodide runtime, Pyodide 314.0.7 (`tools/vendor_spec.yaml:54`, and
+`course/assets/vendor/LOCK.json` `pyodide/numpy-2.4.6-cp314-cp314-...` at line 360), which is Python 3.14. The repo
+policy says 3.14+ (`CLAUDE.md:79`), and ten merged-module pages already state Python 3.14 (for example
+`course/modules/AC/AC2/project.html:293`). The curriculum string `curriculum/01-foundations.yaml:405` says 3.13 and the
+registry record `psfndpython` is the 3.13.16 reference (`references/references.json`, record `psfndpython`). I fetched
+`https://docs.python.org/3.14/reference/index.html` on 2026-11-09; its title is "The Python Language Reference" and its
+version is 3.14.10. Architect actions: (i) edit `curriculum/01-foundations.yaml:405` to 3.14 and regenerate with
+`tools/render_curriculum.py` (not done here); (ii) admit the 3.14 record, dry run first, NOT RUN:
+`python3 tools/add_reference.py --url https://docs.python.org/3.14/reference/index.html --source "Python Software Foundation, The Python Language Reference, Python 3.14 (primary)" --used-by CS1 --dry-run`
+(the `--url` mode requires the `docs.python.org` domain on the `psf` issuer list, `references/authorities.yaml:31`, and the
+page title to contain the citation's title words). Until the 3.14 key is admitted, CS1 pages must not cite
+`psfndpython` as the version of a 3.14 behaviour.
+
+**Q2b (Ramalho year: curriculum 2022, registry 2021). Proposed: cite the registry key `ramalho2021fluent` and print no
+year in the page text until the edition is resolved.** The registry record carries `notes.year` with curriculum "2022"
+and record "2021" (`references/references.json`, record `ramalho2021fluent`), and CLAUDE.md rule 2 makes the registry
+binding, so the page may not print the curriculum's year. Architect action, NOT RUN:
+`python3 tools/add_reference.py --list-editions --source "Ramalho, Fluent Python, 2nd ed. (2022)"` (this admits nothing);
+the architect then decides whether the ISBN for the 2nd edition needs a new record, or whether the existing record and its
+recorded mismatch stand.
+
+**Q3 (concepts the core names but no key assigns: control flow, files, types). Proposed: option (a), teach without a `<dfn>`
+and log them in `GLOSSARY_REQUESTS`.** No concept key exists for them: a search of `curriculum/*.yaml` finds no
+`control-flow`, `file` or `types` key (only `python-function-scope` at `curriculum/01-foundations.yaml:392` covers scope,
+and the `introduces` block ends at `:403`). Adding keys would change `curriculum.json` through the renderer and the DAG
+check, which is an architect change, and BUILDER_RULES §1.10 forbids a builder from defining a concept the unit does not
+introduce.
+
+**Q4 (timing in the lab). Proposed: no clock value in any expected output. Correctness is printed as `True`; speed is shown
+by a deterministic count (Python-level loop iterations in the loop version versus one vectorized call), and the page says
+the clock is not part of the expected output.** Lab output is compared token by token, with numbers tolerance-checked and
+other tokens exact (`tools/coursekit.py:321-335`), so a measured time cannot be byte-compared. A grep of `tests/labs` for
+`perf_counter`, `timeit` and `time.time` found no clock call in any lab twin. The plan's option ("vectorized_time <
+loop_time as True") is rejected because a wall-clock inequality can flip on a loaded machine and would make the lab flaky
+in CI.
+
+**Q5 (A1 contract missing). Proposed: accept the drafted `atlas/A1.contract.md`, which I wrote.** The file was
+absent (`ls atlas/` lists only `A8.contract.md` and `A15.contract.md`), and `check_projects.py:145-146` requires it. The
+draft follows the A15 structure and states that its status is "proposed by the architect's assistant, architect to
+confirm". Architect: confirm the package path `src/atlas/`, the signatures, the CLI exit codes, and `requires-python >= 3.14`.
+
+**Q6 (lesson count: 9 or 8). Proposed: keep 9 lessons (84 h).** The lesson rule is 6 to 12 study hours
+(`tools/check_pages.py:227-228`), and merging L03 with L04 gives a lesson of 19 h (10 + 9), which breaks it. The plan's
+alternative is also arithmetically wrong: merging L04 into L03 and L05 into L06 from nine lessons gives seven, not eight
+(plan lines 315-316). Precedent: AC2 has eight lessons of 76 h (`course/modules/AC/AC2/index.html`); nine lessons of 9 to 10 h
+sit inside the band.
+
+**Q7 (CI and pre-commit under the browser). Proposed: confirm.** The browser grader can only check these files structurally
+(`tomllib` parse, text search), because `pip install -e` and CI cannot run in Pyodide (plan "Tooling assumptions" item 2),
+and BLUEPRINT §5.1 says Atlas is developed locally under git, with the browser route for small early projects only
+(`BLUEPRINT.md:266-272`). The verifier runs the real gates on the student artifact. This repository has no
+`.pre-commit-config.yaml` (checked with `ls`), so nothing here is affected.
+
+**Q8 (cards format). Proposed: use the BUILDER_RULES §7 fields (`id`, `lesson`, `front`, `back`, plus `cite` or `grade`
+and `basis` as the rule requires).** BUILDER_RULES §7 defines the fields (`BUILDER_RULES.md:395-403`), and S7's
+`cards.json` carries all seven keys across 243 cards. AC2's cards omit `grade` and `cite`, which the checker accepts
+(`tools/check_pages.py:387-394`), but the rule is the binding form.
+
+**Q9 (licence quote for `fx_daily` and `ust_daily`). Proposed: the verifier opens `licence_url` and records the quote.** I
+fetched `https://www.federalreserve.gov/disclaimer.htm` on 2026-11-09 with WebFetch. It states "Unless otherwise indicated,
+information on Board's website is in the public domain and may be copied and distributed" and "Please cite to the Board as
+the source of the information." This matches the quote in `tools/data_sources.yaml:23-26` and `:95-98`. The same page says
+material from a non-Board source needs that source's permission. Therefore `ust_daily`'s `cmt_10y` column, which comes from
+the U.S. Treasury (`tools/data_sources.yaml`, the `note` at `:100-104`), must be cited to the Treasury, as BLUEPRINT §5.3
+allows (`BLUEPRINT.md:297-302`). The lab must not present it as Board data alone.
+
+### REFERENCE_REQUESTS (answers; no command was run)
+
+Note on all PEP, pytest and pandas entries: the URLs and numbers below come from the CS1 plan, not from a fetched page.
+Per CLAUDE.md, no bibliographic data is typed from memory, so the architect must first confirm the exact URL on the issuer
+site with a fetch, and then run the command.
+
+1. **PEP 484 and PEP 544 (L03, L05).** Proposed: request them, but only after the architect confirms each number on
+   `peps.python.org`. The registry has no PEP record (checked by title and key; none). Command, NOT RUN:
+   `python3 tools/add_reference.py --url <exact peps.python.org URL confirmed on the page> --source "<house-format citation confirmed on the page>" --used-by CS1 --dry-run`
+   Confidence: the number is not yet verified.
+2. **pytest documentation (L06).** Proposed: request it after the architect confirms the URL on `docs.pytest.org`. No pytest
+   record exists in the registry. Command, NOT RUN: same form, with `--url` set to the confirmed page and `--used-by CS1`.
+3. **pandas documentation on indexing and alignment (L08).** Proposed: request it after the architect confirms the URL on
+   `pandas.pydata.org`. No pandas record exists in the registry. Command, NOT RUN: same form.
+4. **pandas data-structures paper (L08 provenance).** Proposed: withdraw. The plan itself says the author was not identified
+   ("McKinney is a lead, not a source", plan line 228), and no DOI or URL is known. L08 can cite the pandas documentation
+   record in item 3 for the provenance it needs.
+5. **Campbell, Lo and MacKinlay, *The Econometrics of Financial Markets* (L09 definitions).** Proposed: request it through
+   the Open Library path. No record exists (the registry holds no MacKinlay entry). Command, NOT RUN, after the architect has
+   read the candidate list: `python3 tools/add_reference.py --list-editions --source "Campbell, Lo & MacKinlay, The Econometrics of Financial Markets"`
+   then `--isbn <ISBN chosen from the list> --source "<house-format citation from the list>" --used-by CS1`. The year and
+   edition must come from the list, not from memory.
+6. **"a published treatment of simple vs log returns in finance" (L09 grade-B statement).** Proposed: withdraw this request.
+   No source is identified, so it cannot be cited. The claim that log returns add across time is an identity,
+   `ln(prod(1 + r_t)) = sum ln(1 + r_t)`, which the page can derive (grade T with the derivation as basis) instead of citing.
+
+### Other checks the architect should know
+
+- The AC2 plan has no "Architect decisions" section (`grep -n -i "architect decision" plans/AC2-build-plan.md` returns no
+  match). The only precedent section is AC4's (`plans/AC4-build-plan.md:320`), which I followed for the layout.
+- `atlas/A1.contract.md` names the student's package path `src/atlas/`. This repository's `atlas/` folder holds contracts
+  only, so no Python package is created here.
+- Evidence limits: no gate was run; `tools/check_pages.py`, `check_projects.py` and the other checkers were not executed;
+  the WebFetch results are the only fetched evidence (the two pages named above).

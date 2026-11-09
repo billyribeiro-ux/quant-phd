@@ -71,9 +71,9 @@ three things about each:
 
 | Credential | What it covers | Modules | Graded projects | Hours | Credit equivalent | FTE years |
 |---|---|---|---|---|---|---|
-| **Finance Degree — Bachelor's Level** | Business and quantitative core (calculus, statistics, econometrics, programming, micro, macro, financial and managerial accounting, law and ethics, communication), plus the full finance major (corporate finance I–II, investments, markets and institutions, statement analysis, valuation, financial modeling, short-term finance, fixed income, derivatives, risk management and international finance, asset management, wealth management, financial history), plus a senior capstone | 42 | 47 | 3,881 | ≈86 credits | 1.80 |
-| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 78 | 86 | 7,736 | ≈172 credits | 3.58 |
-| **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 84 | 88 | 9,301 | ≈207 credits | 4.31 |
+| **Finance Degree — Bachelor's Level** | Business and quantitative core (calculus, statistics, econometrics, programming, micro, macro, financial and managerial accounting, law and ethics, communication), plus the full finance major (corporate finance I–II, investments, markets and institutions, statement analysis, valuation, financial modeling, short-term finance, fixed income, derivatives, risk management and international finance, asset management, wealth management, financial history), plus a senior capstone | 42 | 47 | 3,891 | ≈86 credits | 1.80 |
+| **Master's in Finance / Financial Engineering** | Stochastic calculus, derivatives pricing, computational finance, financial econometrics, asset pricing, portfolio and risk management, plus electives in rates, credit, factors, microstructure, ML, quant research, advanced corporate finance, alternatives, international finance, and volatility | 78 | 86 | 7,746 | ≈172 credits | 3.59 |
+| **PhD in Finance** | The first-year sequence (asset pricing theory, empirical asset pricing, continuous-time finance, corporate finance theory, econometrics, micro and macro theory), field courses, qualifying exams, replication, the great debates, and the dissertation | 84 | 88 | 9,311 | ≈207 credits | 4.31 |
 
 Some facts about these numbers:
 
@@ -111,10 +111,10 @@ replaces. Every hour figure includes the module's project.
 
 | Milestone | Cumulative hours | Full-time years* |
 |---|---|---|
-| All F + U tiers (whole major incl. economics & computing) | 4,345 | 2.01 |
-| + all M tier (Master's-equivalent breadth) | 11,155 | 5.16 |
-| + all D tier, quals (Doctoral Candidate) | 12,515 | 5.79 |
-| + thesis (Doctoral) | 13,715 | 6.35 |
+| All F + U tiers (whole major incl. economics & computing) | 4,367 | 2.02 |
+| + all M tier (Master's-equivalent breadth) | 11,177 | 5.17 |
+| + all D tier, quals (Doctoral Candidate) | 12,537 | 5.80 |
+| + thesis (Doctoral) | 13,737 | 6.36 |
 
 \*At 45 hours/week for 48 weeks/year. That is a full-time professional pace,
 not a student pace.

@@ -49,9 +49,9 @@ autograded projects and a program-long engineering build ("Atlas").
 
 | Credential (content-equivalent) | Modules | Graded projects | Hours | Full-time years |
 |---|---|---|---|---|
-| Finance Degree, bachelor's level | 42 | 47 | 3,881 | 1.80 |
-| Master's in Finance / Financial Engineering | 78 | 86 | 7,736 | 3.58 |
-| PhD in Finance | 84 | 88 | 9,301 | 4.31 |
+| Finance Degree, bachelor's level | 42 | 47 | 3,891 | 1.80 |
+| Master's in Finance / Financial Engineering | 78 | 86 | 7,746 | 3.59 |
+| PhD in Finance | 84 | 88 | 9,311 | 4.31 |
 
 These are content-equivalent credentials, not accredited degrees.
 

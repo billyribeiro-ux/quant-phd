@@ -290,3 +290,74 @@ Full gate (once, before merge; not per builder): `ruff check .`, `ruff format --
   quote, transform).
 - CONTRACT_CHANGE_REQUESTS: none yet; the A3 contract is missing rather than changed.
 - DAG_DEFECTS: Blocking 1 (M4 concepts not in S0's closure) and Blocking 2 (CS3 store not in S0's closure).
+
+## Architect decisions (PROPOSED, to be confirmed by the architect)
+
+Prepared by the architect's assistant on 2026-11-09 from the files cited. Each entry gives the option chosen and one
+sentence of evidence. Entries marked UNDECIDED could not be settled from the evidence. Precedents used: A15
+(`atlas/A15.contract.md`) and the AC4 decisions (`plans/AC4-build-plan.md` lines 320-321). The AC2 plan has no
+"Architect decisions" section.
+
+### Blocking issues
+
+- **B1 (prerequisite closure). Option (a): add `M4` to S0's prerequisites, so `prereqs: [CS1, M4]`.** The Q-Q plot's
+  normal reference needs `quantile-function` and `normal-distribution`, both assigned to M4 in `curriculum.json`
+  concepts, and S1 already lists `[M4, S0]` (`curriculum/01-foundations.yaml` line 623), so M4 before S0 is consistent.
+  The change is acyclic because the closure of M4 is {M1, M2, P0.1} and does not contain S0. Consequences the
+  architect must handle: S0's closure becomes {CS1, M1, M2, M4, P0.1}; `topological_order` moves S0 after M4 (today S0
+  is at index 9 and M4 at 12); credential totals may change, so `render_curriculum.py` and
+  `tests/test_docs_figures.py` must be re-run. Option (b) would still serve robust statistics (median and MAD need no
+  M4) but not the Q-Q plot against a normal reference, which the L02 lab needs.
+- **B2 (A3 input versus the CS3 store). Option (b): the A3 input is an in-memory dataset mapping; S0 does not depend on
+  CS3.** A15 takes the same route for the same reason (`atlas/A15.contract.md` lines 6-9), and the closure of CS3 is
+  {CS1, P0.1} (`curriculum/01-foundations.yaml` line 456), so option (a) would add an 80 h module without cause. This
+  departs from the curriculum's literal "dataset in the store" (`curriculum/01-foundations.yaml` line 614); the store
+  reader is a later addition. Option (a) remains acyclic if the architect wants the store dependency explicit.
+- **B3 (`atlas/A3.contract.md` missing). Decision: the contract is drafted** at `atlas/A3.contract.md`, marked PROPOSED.
+  `tools/check_projects.py` lines 144-146 fail without it. The cumulative suite A1-A3 cannot run because A1 and A2 code
+  does not exist (`atlas/` holds only A8 and A15 contracts), so the A3 suite tests A3 alone and this is recorded as a
+  known limitation (BUILDER_RULES §5.5.3).
+- **B4 (Anscombe values). UNDECIDED from the evidence; this is the same question as OQ3.**
+
+### Open questions
+
+- **OQ1 (DAG; and whether plain "median" and "mean" are elementary).** M4 is added (see B1). `mean`, `median`, `trimmed
+  mean` and MAD have no entries in `curriculum.json` concepts. Median, MAD and trimmed mean are taught inside the
+  `robust-statistics` definition (`curriculum/01-foundations.yaml` line 597), and `mean` stays plain prose with no
+  `<dfn>`, as AC4 decided for undeclared terms (`plans/AC4-build-plan.md` line 321).
+- **OQ2 (Atlas A3 dependency).** Same as B2: the A3 input is an in-memory mapping and CS3 is not added.
+- **OQ3 (Anscombe's quartet values). UNDECIDED: whether the table can be obtained.** Interim decision: the lab uses a
+  constructed set labelled SIMULATED, and the page says it is not Anscombe's data. The registry key
+  `anscombe1973graphs` is verified (`references/references.json`, status verified, DOI on record), but no table with a
+  locator exists in the repository, and builders may not type the values from memory (BUILDER_RULES §1.1 and §2.6).
+  Only the architect can close this, by reading pp. 17-21 of the paper (cited at `curriculum/01-foundations.yaml`
+  line 607) or by admitting a source that reproduces the table with a locator.
+- **OQ4 (Atlas A3 contract).** Decided: drafted at `atlas/A3.contract.md` (see B3). It takes the store-free input, the
+  `profile` signature, and the split input `split_ratio`; the curriculum states none of these, so they are proposals.
+- **OQ5 (equity data).** Decision: accept SIMULATED labs and a `DATA_REQUESTS` entry. `tools/data_sources.yaml` embeds
+  three datasets only (`fx_daily`, `fx_monthly`, `ust_daily`) and its `rejected` section names only the French library
+  and Open Source Asset Pricing, so no cleared equity series exists. The request must carry a source URL, a licence
+  quote and a transform, which the architect supplies.
+- **OQ6 (hours).** Decision: accept the 8 + 7 + 6 + 8 + 6 lesson split (35 h) and the 15 h project. S0 has 50 h
+  (`curriculum/01-foundations.yaml` line 590). Each lesson must fall in 6-12 h (`tools/check_pages.py` lines 221-228),
+  and the project at 30% sits inside 10-40% (`tools/check_pages.py` lines 339-340). Six lessons would need a concept
+  move, which the plan does not recommend.
+- **OQ7 (rung 4 hours). Decision: rung 4 is outside the 15 h and has no row in the `#hours` table.**
+  `tools/check_projects.py` lines 107-118 require the `#hours` components to sum to the declared project hours, and
+  rung 4 is optional and not graded (`BUILDER_RULES.md` §5.1, row 4).
+- **OQ8 (placement mastery bar). Decision: `data-mastery="0.8"`, the AC2 value.** The only built precedent is
+  `course/modules/AC/AC2/index.html` line 68, and no evidence in the repository supports another bar. This is an
+  architect choice taken without new evidence.
+- **OQ9 (registry requests). Decision: approve the list as requests for the architect to resolve through
+  `tools/add_reference.py`; no key is cited until it is admitted.** BLUEPRINT §3 ("memory is a lead, not a source") and
+  CLAUDE.md rule 2 require this. `shumway1997delisting` is in the registry and may serve L03 only after its paper is read
+  (plan line 185-187). **UNDECIDED:** no candidate title is known from the evidence for the robust-statistics or
+  missing-data sources, so those requests cannot be answered here.
+
+### Other findings
+
+- The curriculum uses both "splits" (`curriculum/meta.yaml` line 210) and "corporate-action breaks"
+  (`curriculum/01-foundations.yaml` line 614) for the A3 scope. `atlas/A3.contract.md` covers both with one rule: a
+  split reported in `split_ratio` is explained, and any other large step is a break.
+- Line references in the blocking section are off by two: the S0 prerequisite line is `curriculum/01-foundations.yaml`
+  line 591 (the plan says 589), and the S1 prerequisite line is line 623 (the plan says 621).
