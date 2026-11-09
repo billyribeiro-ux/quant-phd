@@ -268,13 +268,13 @@ def run_labs(page: Page, page_path: Path) -> list[str]:
         return problems
     print(f"  package preload ({', '.join(packages) or 'none'}): {time.perf_counter() - started:.1f} s")
     for lab in labs:
-        section = page.locator(f"#{lab.id}")
+        section = page.locator(f"[id='{lab.id}']")
         if lab.completion:
             section.locator("textarea").fill(lab.twin.read_text(encoding="utf-8").rstrip("\n"))
         started = time.perf_counter()
         section.get_by_role("button", name="Run").click()
         page.wait_for_function(
-            f"['ok','bad'].some(c => document.querySelector('#{lab.id} .status').classList.contains(c))",
+            f"['ok','bad'].some(c => Boolean(document.getElementById('{lab.id}')?.querySelector('.status')?.classList.contains(c)))",
             timeout=180000,
         )
         status = section.locator(".status").inner_text()
