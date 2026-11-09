@@ -13,10 +13,13 @@ Scope: `course/modules/M/M5/project.html`, `course/modules/M/M5/grader/`, `tests
      point, `k_1 <= k^alpha` for all `k` in the grid, so the feasible set is never empty);
    - a boolean or a non-finite number where a real number is meant.
    Each named condition has its own test in both directions (boundary values 0, 1, equal points, first point 1.01).
-3. **Certified error.** The contract is "a valid upper bound on the sup-norm distance to the grid's fixed point". The
-   Jacobi bound `beta/(1-beta) * max|V_n - V_{n-1}|` is one choice; the residual bound `max|BV - V|/(1-beta)` and the
-   in-place (Gauss-Seidel) sweep are also accepted, because the in-place sweep is a beta-contraction with the same fixed
-   point (so the same bound holds for it). The five alternatives in `ledgers/M5/alternatives/` pass seeds 0-49.
+3. **Certified error.** The contract is "a valid upper bound on the sup-norm distance to the grid's fixed point", and the
+   page states one bound: the Jacobi bound `beta/(1-beta) * max|V_n - V_{n-1}|`, with synchronous sweeps (project.html,
+   Conventions, Iteration and Certified error). The in-place (Gauss-Seidel) sweep and the residual-stop alternative are
+   not accepted under that page contract (0 of 50 seeds each; `ledgers/M5/alternatives/not_accepted/`). Open for the
+   architect (verifier row M5-d-r1-06): the plan's must-pass list (plans/M5-build-plan.md, the alternatives bullet)
+   names the in-place sweep, so either the plan is amended to the synchronous contract, or the page admits the in-place
+   sweep and its first-sweep test is restated. The five alternatives in `ledgers/M5/alternatives/` pass seeds 0-49.
 4. **Closed-form test (plan §5.3 item 5, "if kept") omitted.** No closed form is stated for `sqrt` utility with `k**alpha`
    production in the plan or the architect decisions.
 5. **Iteration budget.** The test allows `iterations <= a priori count + 1`, where the count is the least `n >= 0` with

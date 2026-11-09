@@ -25,3 +25,33 @@ Additional symbol collisions found by the whole-page scan of slice e, not in the
 - `W`: the L02 wealth lottery (Example 1.5, lab) and the L06 prospect value (Definition 1.3 and Remark 2.4).
 - `a`: the affine constant in L01 to L02 (Propositions 3.1, 3.3 and 2.2) and the Epstein–Zin exponent `a = 1 - 1/\psi` in L05 and L08.
 - `\tau`: the L01 mixture weight (Definition 2.1; ruling 29 renames it) and the L08 alpha-MEU weight (Definition 1.2).
+
+## Rubric calibration: blind scores within one level of the official scores (rulings 15, 23, 26)
+
+A dedicated scorer read only the stripped exemplar text. Differences from the official scores, all one level, accepted by the architect:
+
+| Unit | Exemplar | Criterion (blind vs official) |
+|---|---|---|
+| CS2 | B | C1, C2, C3 (3 vs 4 each; closing-sentence citation of hypotheses, unnamed identities, variance conversion not carried through) |
+| FC2 | B | C2 (3 vs 4; net amounts given, the gap to zero never stated as such) |
+| M5 | A | C2, C6 (1 vs 2 each) |
+| M5 | B | C2, C4, C5 (3 vs 4 each) |
+| E1 | A | C2 (1 vs 2), C5 (2 vs 1) |
+| E3 | A, B | C1 depends on counting example lotteries rather than pairs (ruling 29 and the E3 rubric wording); the C1 levels do not partition a memo that has a count and a unit but no loss reason and no example |
+
+## Notation and wording left as notes (LOW)
+
+- M2: the difference quotient is the plain `Q(h)` in L04 to L06 and the cards; the registered `\mathbb{Q}` does not occur in M2 and is a different symbol.
+- E4 project: grader gap checks at the boundary use an absolute tolerance of 1e-8 where the page states 1e-14; no mutant depends on it (ruling 25, verifier round 21 notes N4 and N10).
+- BK4: mutant r15c (a float floor equal to the integer quotient for every list that fits in memory) stays in `ledgers/BK4/equivalent/`; the page says no float appears.
+- Rubric exemplar B of BK4: its recommendation uses a defaulter margin of 111074 cents against the 50000 of its waterfall paragraph; the memo says so itself and the descriptors do not address consistency.
+
+## Registry and data gaps (unchanged, still open)
+
+- SEC reuse statement unread; the AC filers are SIMULATED.
+- Beneish constants rest on one secondary page.
+- Dechow (1995) author count: registry 2, curriculum 3.
+- Pending registry correction for `kao2025estimated`.
+- AP1 has five unverifiable paper rows.
+- The `grader/reference.py` files are tracked in the repository; excluding them from deployment is a deploy-time item for the owner (ruling 4).
+- Friedman (1963): the registry lists Friedman only; the curriculum source string says Friedman and Schwartz. Bernanke (1983) and Kindleberger and Aliber are not in the registry (LX1).

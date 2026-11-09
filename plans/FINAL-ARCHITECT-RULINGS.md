@@ -94,3 +94,9 @@
     else in E3 (grep pages, cards and twins first); update lessons, lab twins (re-embed), and cards together. Do not use
     "convex/convexity" as a term in L06: state u'' >= 0 as L02 states concavity. Forward-premise orderings in L03, L07 and
     L08 are LOW and go to plans/KNOWN-ISSUES.md.
+30. **Delta verification closes a fixed slice.** Ruling 26 stopped full re-verification, but a ledger can read PASS only
+    when a verifier sets every row to PASS. The closing step is therefore a delta verification: the verifier starts from the
+    last full fragment, re-verifies from scratch every non-PASS row and every row whose subject changed in
+    `git diff <pin of that fragment>..HEAD`, carries every other row with its evidence under the carry prefix of the
+    verifier rules, and does not hunt for new defects outside those rows (observations are notes). Its fragment becomes the
+    slice's ledger. A delta round that still returns a ruling-26 defect is fixed and delta-verified once more.
