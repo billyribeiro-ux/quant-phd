@@ -118,3 +118,15 @@
 34. **Free-text explanations (FC2 project).** The page states the labels an explanation must name, not its wording. Mutants
     that change only the wording (r15_a, r15_c, r15_d) violate no stated behaviour: they go to ledgers/FC2/equivalent/ with a
     README (ruling 9). The grader keeps the label-set check that kills r15_b.
+35. **M7 starting portfolio.** The page's tolerance of 1e-9 on the starting portfolio exists for float representation of
+    decimal data; a start that breaches a bound, a cap or the budget by a tolerance-level amount is not part of the contract.
+    The specification now says the starting portfolio is feasible exactly when its decimal values are read exactly
+    (weights sum to one, lie in their bounds, satisfy the sector caps) and the suite's starts are exact decimals. The hand
+    cases and sweep cases that exercise tolerance-level infeasible starts (B1, G, seed 16 index 15, and the reference
+    snapping that served them) are removed from the grader; the reference keeps the simplest correct treatment of a
+    feasible start. Mutants distinguishable only by such a start (r04 and kin) are equivalent under the exact-start
+    contract and their README proofs say so. The five alternatives must pass seeds 0-49 on the resulting suite.
+36. **Threshold mutants (FC1 project).** A mutant that refuses inputs above an arbitrary threshold (r16n01, r16n03 at 2^31)
+    is a member of an unbounded family. One accept test at a size beyond any realistic threshold kills the family: add
+    accept tests for a price and a coupon of 10**18. Mutants of this family that a verifier writes later are not
+    required to be killed unless the page states an upper limit.

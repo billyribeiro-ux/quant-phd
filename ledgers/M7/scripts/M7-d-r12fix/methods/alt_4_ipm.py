@@ -204,7 +204,7 @@ def _active_set(
     x = list(problem.w0)
     working: list[int] = []
     for j, (a, b, _) in enumerate(rows):
-        if b - _dot(a, x) <= TOL and _rank([budget, *(rows[k][0] for k in working), a]) > len(working) + 1:
+        if b - _dot(a, x) == 0 and _rank([budget, *(rows[k][0] for k in working), a]) > len(working) + 1:
             working.append(j)
     for _ in range(200):  # a cap far above the iterations the search uses on seeds 0 to 49 (at most 12)
         gradient = [_dot(hessian[i], x) - problem.mu[i] for i in range(n)]
@@ -396,6 +396,37 @@ def _front_end(problem: Problem, rows: list[tuple[list[float], float, tuple[obje
 
 
 
+def _certified(problem: Problem, found: tuple[list[float], dict[tuple[object, ...], float], float]) -> bool:
+    """The page's complementary slackness on a front-end answer: every product of a multiplier and its gap is at most
+    1e-10 in absolute value. An answer that fails it is not returned; the verified active-set search answers instead."""
+    x, mult, _ = found
+    n, g = problem.n, float(problem.gamma)
+    w0 = [float(v) for v in problem.w0]
+    lower = [float(v) for v in problem.lower]
+    upper = [float(v) for v in problem.upper]
+    caps = [float(v) for v in problem.caps]
+    tau = float(problem.tau)
+    d = [x[i] - w0[i] for i in range(n)]
+    t = [abs(v) for v in d]
+    sign_multipliers = {key[1]: value * g for key, value in mult.items() if key[0] == "turn"}
+    kappa = sum(sign_multipliers.values(), 0.0)
+    products = [
+        *(mult.get(("lower", i), 0.0) * g * (lower[i] - x[i]) for i in range(n)),
+        *(mult.get(("upper", i), 0.0) * g * (x[i] - upper[i]) for i in range(n)),
+        *(
+            mult.get(("sector", k), 0.0) * g * (sum(x[i] for i in range(n) if problem.sector[i] == k) - caps[k])
+            for k in range(len(caps))
+        ),
+        *(
+            (kappa + sum(eta * s[i] for s, eta in sign_multipliers.items())) / 2 * (d[i] - t[i])
+            for i in range(n)
+        ),
+        *((kappa - sum(eta * s[i] for s, eta in sign_multipliers.items())) / 2 * (-d[i] - t[i]) for i in range(n)),
+        kappa * (sum(t) - tau),
+    ]
+    return max(abs(p) for p in products) <= 1e-10
+
+
 def _solve(problem: Problem) -> dict[str, Any]:
     global LAST_PATH
     n = problem.n
@@ -411,6 +442,8 @@ def _solve(problem: Problem) -> dict[str, Any]:
         found = _polish(scaled, rows, _guess(rows, x0, lam0))
     except (ArithmeticError, StopIteration, RuntimeError):
         found = None  # a singular or non-finite front-end step: the verified active-set search below still answers
+    if found is not None and not _certified(problem, found):
+        found = None  # the front end's answer fails the page's complementary-slackness check: the search answers
     if found is None:
         LAST_PATH = "fallback"
         x, mult, budget_mult = _active_set(scaled, rows)

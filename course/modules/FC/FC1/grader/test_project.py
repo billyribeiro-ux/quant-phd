@@ -361,6 +361,16 @@ def test_bond_coupon_of_twenty_thousand_one_bps_is_accepted() -> None:
     assert rows == [(1, 30_001)], "a coupon of 200.01 % of face is paid in the one period, with the face"
 
 
+def test_bond_coupon_of_ten_to_the_eighteenth_bps_is_accepted() -> None:
+    """Accepted-input check: the page names only a negative coupon_bps as refused and no upper limit on the coupon, so a
+    coupon of 10**18 bps is valid: Bond(10000, 10**18, 1) has one event, (1, 10**18 + 10000), the coupon being exact."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.Bond(10_000, 10**18, 1).events(), "coupon_bps = 10**18"), "Bond.events"
+    )
+    assert rows == [(1, 10**18 + 10_000)], "a coupon of 10**18 bps is paid in the one period, with the face"
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # bond_price_cents: present value at a per-period yield
 # ---------------------------------------------------------------------------------------------------------------
@@ -648,6 +658,16 @@ def test_trade_price_of_ten_to_the_ninth_cents_is_accepted() -> None:
         must_accept(lambda: sol.CashTrade(10, 10**9, 1, 2).events(), "price_cents = 10**9"), "CashTrade.events"
     )
     assert rows == [(2, -(10 * 10**9))], "the settlement event is quantity times price, from the holder's side"
+
+
+def test_trade_price_of_ten_to_the_eighteenth_cents_is_accepted() -> None:
+    """Accepted-input check: the page names only price_cents < 0 as refused and no upper limit on a price, so a price of
+    10**18 cents per unit is valid: 10 units bought in period 2 settle as -(10 * 10**18) cents."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(10, 10**18, 1, 2).events(), "price_cents = 10**18"), "CashTrade.events"
+    )
+    assert rows == [(2, -(10 * 10**18))], "the settlement event is quantity times price, from the holder's side"
 
 
 def test_trade_side_zero_is_refused() -> None:

@@ -850,6 +850,16 @@ def test_convexity_half_cent_gross_rounds_once_up() -> None:
     )
 
 
+def test_convexity_half_cent_tie_at_a_non_dyadic_chord_weight_rounds_once_up() -> None:
+    __tracebackhide__ = True
+    # the chord at 2 weights its neighbours 5/6 and 1/6, not 1/2: (5 * 2 + 1 * 5) / 6 = 2.5, and the call 3 is half a
+    # cent above it, so the gross is 1 cent. The weights are not dyadic, so a float computation does not keep the tie.
+    chain = hand_chain([1, 2, 7], [2, 3, 5], [3, 5, 12], spot=0, df=PPM, fee=0, spread=0)
+    assert rows_of(sol.scan(chain)) == [("convexity", 2, 1, 1)], (
+        "an exact half-cent convexity gross at a non-dyadic chord weight rounds up once"
+    )
+
+
 def test_findings_are_in_parity_then_convexity_order() -> None:
     __tracebackhide__ = True
     chain = hand_chain([100, 110, 150], [50, 43, 10], [0, 0, 0], spot=10_000, df=PPM, fee=0, spread=0)

@@ -3,8 +3,9 @@
 Inputs. Part A uses SIMULATED permutations of 0..n-1 drawn from a seeded generator (seed 20261028).
 Part B uses every permutation of 0..n-1 for n = 2 to 7. Part C uses the integers n = 2 to 1000.
 Part D uses sorted lists of integers that the code constructs.
-No market data, no network, standard library only. Every count is a number of key comparisons. No time is
-measured, so every run prints the same lines.
+No market data, no network, standard library only. Every comparison count is a number of key comparisons;
+probe counts are binary-search probes; the other counts are of inputs, gaps and pairs. No time is measured,
+so every run prints the same lines.
 
 Part A: comparisons of insertion sort and merge sort on seeded random permutations, and on sorted input.
 Part B: the worst case over every permutation of n = 2 to 7 for insertion sort and merge sort,

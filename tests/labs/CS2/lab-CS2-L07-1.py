@@ -1,6 +1,8 @@
 """CS2 L07 lab 1: longest common subsequence and minimum-count coin change, three ways.
 
-SIMULATED: every instance is generated from a fixed seed by an integer generator; none is market data.
+SIMULATED: the seeded instances of Parts A and B are generated from a fixed seed by an integer generator.
+The Part C pair ACGTACG and TGCATGC, the coin set (1, 3, 4) and the amounts 6 and 20 are fixed values
+written out in the code. None is market data.
 Part A: the longest common subsequence (LCS) of 30 seeded string pairs, by memoized recursion, by table fill
 and by exhaustive search over all subsequences of the first string. Part B: the fewest coins summing to a
 seeded amount, for 30 seeded coin sets, by the same three methods (exhaustive search over all coin-count

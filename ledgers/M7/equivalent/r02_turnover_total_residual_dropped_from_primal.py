@@ -1,6 +1,16 @@
 """Student error r02: the turnover limit is left out of the primal residual of the certificate.
 
-Reference solution with one planted error (see the docstring line above).
+Reference solution for the M7 constrained allocator (constrained_allocator.py): an exact active-set solver.
+
+The problem is the one the project page states: minimize (gamma / 2) w' Sigma w - mu' w over the budget, the box, the
+sector caps and the turnover limit. Turnover is written in the linearized form of the page, with auxiliary variables
+t_i = |w_i - w0_i|. The solver works in exact rational arithmetic (fractions.Fraction read from the decimal text of each
+input), so every active-set decision is exact. The turnover limit enters the search as the 2**n sign constraints
+sum_i s_i (w_i - w0_i) <= tau, whose intersection is the same set; the multipliers of those constraints are then mapped
+back to the linearized form. The starting portfolio is feasible exactly when its decimal values are read exactly, so
+_parse refuses any start that breaks the budget, a bound or a sector cap, however small the breach; the search starts at
+that portfolio and every active-set decision is an exact comparison. Nothing here is a real portfolio: every input is
+SIMULATED.
 """
 
 from __future__ import annotations
@@ -13,7 +23,6 @@ from itertools import product
 from typing import Any, cast
 
 REQUIRED = ("gamma", "mu", "sigma", "w0", "lower", "upper", "sector", "sector_caps", "turnover_limit")
-TOL = Fraction(1, 10**9)  # the tolerance on the starting-portfolio checks (the active-set test is exact)
 
 
 @dataclass(frozen=True)
@@ -94,12 +103,12 @@ def _parse(instance: object) -> Problem:
         sector.append(label)
     if any(label not in sector for label in range(len(caps))):
         raise ValueError("every sector cap must belong to at least one asset")
-    if abs(sum(w0, Fraction(0)) - 1) > TOL:
+    if sum(w0, Fraction(0)) != 1:
         raise ValueError("the starting portfolio must sum to one")
-    if any(w0[i] < lower[i] - TOL or w0[i] > upper[i] + TOL for i in range(n)):
+    if any(w0[i] < lower[i] or w0[i] > upper[i] for i in range(n)):
         raise ValueError("the starting portfolio lies outside a box bound")
     for k, cap in enumerate(caps):
-        if sum(w0[i] for i in range(n) if sector[i] == k) > cap + TOL:
+        if sum(w0[i] for i in range(n) if sector[i] == k) > cap:
             raise ValueError("the starting portfolio breaks a sector cap")
     return Problem(n, gamma, mu, sigma, w0, lower, upper, sector, caps, tau)
 
@@ -187,39 +196,13 @@ def _inequalities(problem: Problem) -> list[tuple[list[Fraction], Fraction, tupl
     return rows
 
 
-def _snapped_start(problem: Problem) -> list[Fraction]:
-    """The starting portfolio, moved exactly onto each bound and sector cap it breaks by at most TOL.
-
-    A weight below its lower bound or above its upper bound is set onto that bound. A sector whose weight exceeds its
-    cap gives up the excess in proportion to each member's room above its lower bound, so every bound still holds and
-    the sector sum equals its cap. Sectors partition the assets, so the sectors do not interact. When a sector cannot
-    meet its cap inside its bounds, the problem is infeasible within the tolerance and the start is returned as it is.
-    The start is also returned as it is when the snap moves it further from w0 than the turnover limit allows, since
-    the turnover rows are measured from w0.
-    """
-    n = problem.n
-    x = [min(max(problem.w0[i], problem.lower[i]), problem.upper[i]) for i in range(n)]
-    for k, cap in enumerate(problem.caps):
-        members = [i for i in range(n) if problem.sector[i] == k]
-        excess = sum((x[i] for i in members), Fraction(0)) - cap
-        if excess <= 0:
-            continue
-        room = sum((x[i] - problem.lower[i] for i in members), Fraction(0))
-        if room < excess:
-            return list(problem.w0)
-        for i in members:
-            x[i] -= excess * (x[i] - problem.lower[i]) / room
-    moved = sum((abs(x[i] - problem.w0[i]) for i in range(n)), Fraction(0))
-    return x if moved <= problem.tau else list(problem.w0)
-
-
 def _active_set(
     problem: Problem, rows: list[tuple[list[Fraction], Fraction, tuple[object, ...]]]
 ) -> tuple[list[Fraction], dict[tuple[object, ...], Fraction], Fraction]:
     n = problem.n
     hessian = [[problem.gamma * problem.sigma[i][j] for j in range(n)] for i in range(n)]
     budget = [Fraction(1)] * n
-    x = _snapped_start(problem)
+    x = list(problem.w0)  # feasible exactly (checked in _parse), so the search starts at the start itself
     working: list[int] = []
     for j, (a, b, _) in enumerate(rows):
         if b - _dot(a, x) == 0 and _rank([budget, *(rows[k][0] for k in working), a]) > len(working) + 1:

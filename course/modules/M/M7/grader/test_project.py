@@ -22,6 +22,7 @@ import os
 import sys
 import warnings
 from collections.abc import Callable, Mapping
+from fractions import Fraction
 from functools import cache, wraps
 from numbers import Real
 from pathlib import Path
@@ -41,6 +42,11 @@ MULTIPLIER_LISTS = ("lower", "upper", "sector", "turnover_plus", "turnover_minus
 PRISTINE: dict[str, Any] = json.loads(make_instance(SEED)["payload"])
 N: int = len(PRISTINE["mu"])
 Z: int = len(PRISTINE["sector_caps"])
+
+
+def exact_sum(values: list[float]) -> float:
+    """The sum of decimal values read exactly, rounded to float, so a cap set to it sits exactly on the start."""
+    return float(sum((Fraction(repr(v)) for v in values), Fraction(0)))
 
 
 def case_copy(**changes: Any) -> dict[str, Any]:
@@ -324,68 +330,6 @@ HAND_CASES: dict[str, tuple[dict[str, Any], list[float]]] = {
         hand_case(mu=[1000.0, 0.0], w0=[0.5, 0.5], upper=[0.5 + 1e-9, 2.0]),
         [0.5 + 1e-9, 0.5 - 1e-9],
     ),
-    # A lower bound one billionth above the starting weight of asset 0, binding because the expected return of asset 0
-    # is -1000. The budget gives asset 1 the rest, so the answer is (0.5 + 5e-10, 0.5 - 5e-10). The turnover limit of 2
-    # is slack. The start is moved onto the lower bound before the search begins.
-    "lower bound one billionth above the start": (
-        hand_case(mu=[-1000.0, 0.0], w0=[0.5, 0.5], lower=[0.5 + 5e-10, -1.0]),
-        [0.5 + 5e-10, 0.5 - 5e-10],
-    ),
-    # Three assets in two sectors. The start breaches the cap of sector 0 by one billionth. Asset 0 sits on its lower
-    # bound of 0.3 (its expected return is -1000), so the cap binds on asset 1: 0.3 + w1 = 0.6 - 5e-10 gives
-    # w1 = 0.3 - 5e-10, and the budget gives asset 2 the rest, 0.4 + 5e-10.
-    "sector breach one billionth at a lower bound": (
-        {
-            "label": "SIMULATED hand case for the acceptance suite, not a real portfolio",
-            "gamma": 1.0,
-            "mu": [-1000.0, 0.0, 0.0],
-            "w0": [0.3, 0.3, 0.4],
-            "sigma": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-            "lower": [0.3, -1.0, -1.0],
-            "upper": [2.0, 2.0, 2.0],
-            "sector": [0, 0, 1],
-            "sector_caps": [0.6 - 5e-10, 1.0],
-            "turnover_limit": 2.0,
-        },
-        [0.3, 0.3 - 5e-10, 0.4 + 5e-10],
-    ),
-    # Zero turnover fixes the answer at the starting portfolio, (0.3, 0.3, 0.4). Sector 1 breaches its cap of 0.4 by one
-    # billionth at the start, and that breach is inside the tolerance, so the answer is the start. The cap of sector 1
-    # has a zero multiplier in the answer; the cap of sector 0 sits exactly on the start and carries a positive one.
-    "zero turnover with a sector breach one billionth": (
-        {
-            "label": "SIMULATED hand case for the acceptance suite, not a real portfolio",
-            "gamma": 1.0,
-            "mu": [1000.0, 0.0, 0.0],
-            "w0": [0.3, 0.3, 0.4],
-            "sigma": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-            "lower": [-1.0, -1.0, -1.0],
-            "upper": [2.0, 2.0, 2.0],
-            "sector": [0, 0, 1],
-            "sector_caps": [0.6, 0.4 - 5e-10],
-            "turnover_limit": 0.0,
-        },
-        [0.3, 0.3, 0.4],
-    ),
-    # Three assets in two sectors, with the cap of sector 0 breached by one billionth and binding: both assets of
-    # sector 0 have expected return 1000, so the cap binds and the two split it equally. The answer is
-    # (0.3 - 2.5e-10, 0.3 - 2.5e-10, 0.4 + 5e-10): the cap leaves 0.6 - 5e-10 for the two assets, and the budget gives
-    # asset 2 the rest.
-    "binding sector cap breached by one billionth": (
-        {
-            "label": "SIMULATED hand case for the acceptance suite, not a real portfolio",
-            "gamma": 1.0,
-            "mu": [1000.0, 1000.0, 0.0],
-            "w0": [0.3, 0.3, 0.4],
-            "sigma": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
-            "lower": [-1.0, -1.0, -1.0],
-            "upper": [2.0, 2.0, 2.0],
-            "sector": [0, 0, 1],
-            "sector_caps": [0.6 - 5e-10, 1.0],
-            "turnover_limit": 2.0,
-        },
-        [0.3 - 2.5e-10, 0.3 - 2.5e-10, 0.4 + 5e-10],
-    ),
 }
 
 
@@ -559,7 +503,7 @@ def test_hand_case_matches_its_worked_answer(name: str) -> None:
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Named ValueError conditions: each has an invalid case, and a valid case on or just inside its limit
+# Named ValueError conditions: each has an invalid case, and a valid case on its limit (or the seed case)
 # ---------------------------------------------------------------------------------------------------------------------
 
 
@@ -609,31 +553,17 @@ def _sigma_symmetric_exact(case: dict[str, Any]) -> None:
 
 
 def _start_sum_off(case: dict[str, Any]) -> None:
-    """Sum one-and-2e-9: outside the 1e-9 tolerance the page states for the starting portfolio, so refused."""
+    """Sum one-and-2e-9: not exactly one, so refused."""
     case["w0"][0] = case["w0"][0] + 0.000000002
 
 
 def _start_sum_low(case: dict[str, Any]) -> None:
-    """Sum one-less-2e-9: outside the tolerance on the low side, so refused."""
+    """Sum one-less-2e-9: not exactly one, so refused."""
     case["w0"][0] = case["w0"][0] - 0.000000002
-
-
-def _start_sum_within_tolerance(case: dict[str, Any]) -> None:
-    """Sum one-and-5e-10: inside the 1e-9 tolerance, so accepted."""
-    case["w0"][0] = case["w0"][0] + 0.0000000005
-
-
-def _start_sum_within_tolerance_low(case: dict[str, Any]) -> None:
-    """Sum one-less-5e-10: inside the 1e-9 tolerance on the low side, so accepted."""
-    case["w0"][0] = case["w0"][0] - 0.0000000005
 
 
 def _upper_below_start(case: dict[str, Any]) -> None:
     case["upper"][0] = case["w0"][0] - 0.000000002
-
-
-def _upper_within_tolerance(case: dict[str, Any]) -> None:
-    case["upper"][0] = case["w0"][0] - 0.0000000005
 
 
 def _lower_above_start(case: dict[str, Any]) -> None:
@@ -641,21 +571,10 @@ def _lower_above_start(case: dict[str, Any]) -> None:
     case["upper"][0] = max(case["upper"][0], case["w0"][0] + 0.000001)
 
 
-def _lower_within_tolerance(case: dict[str, Any]) -> None:
-    case["lower"][0] = case["w0"][0] + 0.0000000005
-    case["upper"][0] = max(case["upper"][0], case["w0"][0] + 0.000000001)
-
-
 def _cap_below_start(case: dict[str, Any]) -> None:
     k = case["sector"][0]
     in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
     case["sector_caps"][k] = in_sector - 0.000000002
-
-
-def _cap_within_tolerance(case: dict[str, Any]) -> None:
-    k = case["sector"][0]
-    in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
-    case["sector_caps"][k] = in_sector - 0.0000000005
 
 
 def _lower_over_upper(case: dict[str, Any]) -> None:
@@ -708,9 +627,24 @@ def _sigma_extra_row(case: dict[str, Any]) -> None:
     case["sigma"] = [*case["sigma"], case["sigma"][-1]]
 
 
+# The exact boundary values the page names as valid: a bound equal to the starting weight and a cap equal to the
+# starting sector weight. The starting sum is exactly one on the seed case, so it needs no boundary of its own.
+def _lower_equal_start(case: dict[str, Any]) -> None:
+    case["lower"][0] = case["w0"][0]
+
+
+def _upper_equal_start(case: dict[str, Any]) -> None:
+    case["upper"][0] = case["w0"][0]
+
+
+def _cap_equal_start(case: dict[str, Any]) -> None:
+    k = case["sector"][0]
+    case["sector_caps"][k] = exact_sum([case["w0"][i] for i in range(N) if case["sector"][i] == k])
+
+
 # (identifier, invalid mutation, valid mutation); the invalid mutation must be refused with ValueError and the valid
-# mutation must be accepted. Where the limit is a tolerance, the valid form sits just inside it; where it is an
-# equality, the valid form is the boundary itself; otherwise the valid form is the seed case.
+# mutation must be accepted. Where the limit is a bound or a cap, the valid form is the boundary itself (the starting
+# portfolio is feasible exactly, so no tolerance applies to it); otherwise the valid form is the seed case.
 NAMED_CONDITIONS: list[tuple[str, Callable[[dict[str, Any]], None], Callable[[dict[str, Any]], None]]] = [
     ("sigma-symmetric", _sigma_asymmetric, _sigma_symmetric_exact),
     ("sigma-positive-definite", _sigma_rank_one, _sigma_small_eigenvalue),
@@ -718,10 +652,10 @@ NAMED_CONDITIONS: list[tuple[str, Callable[[dict[str, Any]], None], Callable[[di
     ("gamma-positive-negative", _set(("gamma",), -1.0), _set(("gamma",), 0.000001)),
     ("turnover-limit-not-negative", _set(("turnover_limit",), -0.000001), _set(("turnover_limit",), 0.0)),
     ("lower-not-above-upper", _lower_over_upper, _lower_equal_upper),
-    ("start-sums-to-one", _start_sum_off, _start_sum_within_tolerance),
-    ("start-within-upper", _upper_below_start, _upper_within_tolerance),
-    ("start-within-lower", _lower_above_start, _lower_within_tolerance),
-    ("start-within-sector-cap", _cap_below_start, _cap_within_tolerance),
+    ("start-sums-to-one", _start_sum_off, lambda case: None),
+    ("start-within-upper", _upper_below_start, _upper_equal_start),
+    ("start-within-lower", _lower_above_start, _lower_equal_start),
+    ("start-within-sector-cap", _cap_below_start, _cap_equal_start),
     ("sector-label-in-range", _sector_label_out_of_range, lambda case: None),
     ("every-sector-has-an-asset", _sector_without_assets, lambda case: None),
     ("one-entry-per-asset", _one_entry_short, lambda case: None),
@@ -733,26 +667,10 @@ def _gamma_just_inside_zero(case: dict[str, Any]) -> None:
     case["gamma"] = 0.000000001
 
 
-# The exact boundary values the page names as valid: a bound equal to the starting weight, a cap equal to the starting
-# sector weight, and the starting sum just inside the 1e-9 tolerance on the low side.
-def _lower_equal_start(case: dict[str, Any]) -> None:
-    case["lower"][0] = case["w0"][0]
-
-
-def _upper_equal_start(case: dict[str, Any]) -> None:
-    case["upper"][0] = case["w0"][0]
-
-
-def _cap_equal_start(case: dict[str, Any]) -> None:
-    k = case["sector"][0]
-    case["sector_caps"][k] = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
-
-
 EXACT_BOUNDARIES: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
     ("lower-equals-start", _lower_equal_start),
     ("upper-equals-start", _upper_equal_start),
     ("cap-equals-start", _cap_equal_start),
-    ("start-sum-inside-low-side", _start_sum_within_tolerance_low),
     ("gamma-just-inside-zero", _gamma_just_inside_zero),
 ]
 
@@ -792,15 +710,16 @@ def _turnover_just_below_zero(case: dict[str, Any]) -> None:
 
 
 def _lower_just_above_upper(case: dict[str, Any]) -> None:
-    """Asset 0: upper bound equal to the start, lower bound one-trillionth above it. The start stays inside the box
-    within its tolerance, so the order of the two bounds is the only condition broken."""
+    """Asset 0: upper bound equal to the start, lower bound one-trillionth above it. The start lies below its lower
+    bound, so the start-box check refuses the same case; the test asserts the ValueError and nothing finer."""
     case["upper"][0] = case["w0"][0]
     case["lower"][0] = case["w0"][0] + 0.000000000001
 
 
 def _lower_above_upper_last_asset(case: dict[str, Any]) -> None:
     """The order check applies to every asset, not only the first: asset n-1 has its lower bound one-trillionth above
-    its upper bound, with the upper bound equal to the start so that no other condition is broken."""
+    its upper bound, with the upper bound equal to the start. The start then lies below its lower bound, so the
+    start-box check refuses the same case as well."""
     case["upper"][N - 1] = case["w0"][N - 1]
     case["lower"][N - 1] = case["w0"][N - 1] + 0.000000000001
 
@@ -822,7 +741,7 @@ def _sector_label_out_of_range_last_asset(case: dict[str, Any]) -> None:
 
 
 def _start_above_upper_last_asset(case: dict[str, Any]) -> None:
-    """The starting weight of asset n-1 lies 2e-9 above its upper bound, outside the 1e-9 tolerance."""
+    """The starting weight of asset n-1 lies 2e-9 above its upper bound, so the start is infeasible."""
     case["upper"][N - 1] = case["w0"][N - 1] - 0.000000002
 
 
@@ -994,9 +913,9 @@ def test_empty_sector_caps_is_refused_with_an_exception() -> None:
 # Every position: each named condition at asset 0, asset 1, asset 2 and the last asset. N is at least 3 on every seed,
 # so these ids are the same on every seed and the collected count does not change with the seed.
 # Each test breaks one named condition. The starting-sum tests also give the asset room in its box and its sector cap
-# (_make_room), so the sum is the only condition broken. The start-outside-a-bound and start-on-or-inside-a-bound tests
-# change only the bound they name, except that a lower-bound test also raises the upper bound above the start, so that
-# the order of the bounds is not what breaks.
+# (_make_room), so the sum is the only condition broken. The start-outside-a-bound and start-on-a-bound tests change
+# only the bound they name, except that a lower-bound test also raises the upper bound above the start, so that the
+# order of the bounds is not what breaks.
 # ---------------------------------------------------------------------------------------------------------------------
 
 POSITIONS: tuple[int, ...] = (0, 1, 2, -1)
@@ -1011,7 +930,7 @@ def _make_room(case: dict[str, Any], pos: int) -> None:
 
 @pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
 @pytest.mark.parametrize("delta", [0.000000002, -0.000000002], ids=["sum-high", "sum-low"])
-def test_start_sum_off_by_more_than_tolerance_is_refused_at_every_position(pos: int, delta: float) -> None:
+def test_start_sum_off_is_refused_at_every_position(pos: int, delta: float) -> None:
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
     case = case_copy()
     case["w0"][pos] = case["w0"][pos] + delta
@@ -1021,19 +940,8 @@ def test_start_sum_off_by_more_than_tolerance_is_refused_at_every_position(pos: 
 
 
 @pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
-@pytest.mark.parametrize("delta", [0.0000000005, -0.0000000005], ids=["sum-high-inside", "sum-low-inside"])
-def test_start_sum_inside_tolerance_is_accepted_at_every_position(pos: int, delta: float) -> None:
-    case = case_copy()
-    case["w0"][pos] = case["w0"][pos] + delta
-    _make_room(case, pos)
-    out = sol.allocate(case)
-    output_shape(case, out)
-    assert_kkt(case, out)
-
-
-@pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
 @pytest.mark.parametrize("bound", ["upper", "lower"])
-def test_start_outside_a_bound_by_more_than_tolerance_is_refused_at_every_position(pos: int, bound: str) -> None:
+def test_start_outside_a_bound_is_refused_at_every_position(pos: int, bound: str) -> None:
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
     case = case_copy()
     if bound == "upper":
@@ -1047,13 +955,12 @@ def test_start_outside_a_bound_by_more_than_tolerance_is_refused_at_every_positi
 
 @pytest.mark.parametrize("pos", POSITIONS, ids=POSITION_IDS)
 @pytest.mark.parametrize("bound", ["upper", "lower"])
-@pytest.mark.parametrize("offset", [0.0, 0.0000000005], ids=["on-limit", "inside-tolerance"])
-def test_start_on_or_inside_a_bound_is_accepted_at_every_position(pos: int, bound: str, offset: float) -> None:
+def test_start_on_a_bound_is_accepted_at_every_position(pos: int, bound: str) -> None:
     case = case_copy()
     if bound == "upper":
-        case["upper"][pos] = case["w0"][pos] - offset
+        case["upper"][pos] = case["w0"][pos]
     else:
-        case["lower"][pos] = case["w0"][pos] + offset
+        case["lower"][pos] = case["w0"][pos]
         case["upper"][pos] = max(case["upper"][pos], case["w0"][pos] + 0.000001)
     out = sol.allocate(case)
     output_shape(case, out)
@@ -1157,7 +1064,7 @@ def test_wrong_type_at_every_position_is_refused_with_an_exception(field: str, p
 # Each sector cap, both directions. The generator fixes two sectors on every seed (SECTOR_COUNT in instance.py), so the
 # ids below are the same on every seed.
 @pytest.mark.parametrize("k", [0, 1], ids=["sector-0", "sector-1"])
-def test_start_sector_cap_below_start_by_more_than_tolerance_is_refused(k: int) -> None:
+def test_start_sector_cap_below_start_is_refused(k: int) -> None:
     output_shape(PRISTINE, sol.allocate(case_copy()))  # control: the valid case is accepted first
     case = case_copy()
     in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
@@ -1167,11 +1074,9 @@ def test_start_sector_cap_below_start_by_more_than_tolerance_is_refused(k: int) 
 
 
 @pytest.mark.parametrize("k", [0, 1], ids=["sector-0", "sector-1"])
-@pytest.mark.parametrize("offset", [0.0, -0.0000000005], ids=["cap-on-start", "cap-inside-tolerance"])
-def test_start_sector_cap_on_or_inside_its_limit_is_accepted(k: int, offset: float) -> None:
+def test_start_sector_cap_on_its_limit_is_accepted(k: int) -> None:
     case = case_copy()
-    in_sector = sum(case["w0"][i] for i in range(N) if case["sector"][i] == k)
-    case["sector_caps"][k] = in_sector + offset
+    case["sector_caps"][k] = exact_sum([case["w0"][i] for i in range(N) if case["sector"][i] == k])
     out = sol.allocate(case)
     output_shape(case, out)
     assert_kkt(case, out)

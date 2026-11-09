@@ -1,6 +1,15 @@
-"""Student error s05: the starting-portfolio tolerance is 1e-10, so a sum off by 5e-10 is refused.
+"""Student error v16d_03: a sector's excess over its cap is taken entirely from its first member, without checking that member's room above its lower bound, so that member can be pushed below its bound.
 
-One change to grader/reference.py, written by the M7 fixer (round 4).
+Reference solution for the M7 constrained allocator (constrained_allocator.py): an exact active-set solver.
+
+The problem is the one the project page states: minimize (gamma / 2) w' Sigma w - mu' w over the budget, the box, the
+sector caps and the turnover limit. Turnover is written in the linearized form of the page, with auxiliary variables
+t_i = |w_i - w0_i|. The solver works in exact rational arithmetic (fractions.Fraction read from the decimal text of each
+input), so every active-set decision is exact. The turnover limit enters the search as the 2**n sign constraints
+sum_i s_i (w_i - w0_i) <= tau, whose intersection is the same set; the multipliers of those constraints are then mapped
+back to the linearized form. A starting portfolio that breaks a bound or a sector cap by at most the starting tolerance
+is first moved exactly onto that limit, so the search starts exactly feasible; every active-set decision after that is
+an exact comparison. Nothing here is a real portfolio: every input is SIMULATED.
 """
 
 from __future__ import annotations
@@ -13,7 +22,7 @@ from itertools import product
 from typing import Any, cast
 
 REQUIRED = ("gamma", "mu", "sigma", "w0", "lower", "upper", "sector", "sector_caps", "turnover_limit")
-TOL = Fraction(1, 10**10)  # the tolerance on the starting-portfolio checks and on the active-set test
+TOL = Fraction(1, 10**9)  # the tolerance on the starting-portfolio checks (the active-set test is exact)
 
 
 @dataclass(frozen=True)
@@ -187,16 +196,41 @@ def _inequalities(problem: Problem) -> list[tuple[list[Fraction], Fraction, tupl
     return rows
 
 
+def _snapped_start(problem: Problem) -> list[Fraction]:
+    """The starting portfolio, moved exactly onto each bound and sector cap it breaks by at most TOL.
+
+    A weight below its lower bound or above its upper bound is set onto that bound. A sector whose weight exceeds its
+    cap gives up the excess in proportion to each member's room above its lower bound, so every bound still holds and
+    the sector sum equals its cap. Sectors partition the assets, so the sectors do not interact. When a sector cannot
+    meet its cap inside its bounds, the problem is infeasible within the tolerance and the start is returned as it is.
+    The start is also returned as it is when the snap moves it further from w0 than the turnover limit allows, since
+    the turnover rows are measured from w0.
+    """
+    n = problem.n
+    x = [min(max(problem.w0[i], problem.lower[i]), problem.upper[i]) for i in range(n)]
+    for k, cap in enumerate(problem.caps):
+        members = [i for i in range(n) if problem.sector[i] == k]
+        excess = sum((x[i] for i in members), Fraction(0)) - cap
+        if excess <= 0:
+            continue
+        room = sum((x[i] - problem.lower[i] for i in members), Fraction(0))
+        if room < excess:
+            return list(problem.w0)
+        x[members[0]] -= excess
+    moved = sum((abs(x[i] - problem.w0[i]) for i in range(n)), Fraction(0))
+    return x if moved <= problem.tau else list(problem.w0)
+
+
 def _active_set(
     problem: Problem, rows: list[tuple[list[Fraction], Fraction, tuple[object, ...]]]
 ) -> tuple[list[Fraction], dict[tuple[object, ...], Fraction], Fraction]:
     n = problem.n
     hessian = [[problem.gamma * problem.sigma[i][j] for j in range(n)] for i in range(n)]
     budget = [Fraction(1)] * n
-    x = list(problem.w0)
+    x = _snapped_start(problem)
     working: list[int] = []
     for j, (a, b, _) in enumerate(rows):
-        if b - _dot(a, x) <= TOL and _rank([budget, *(rows[k][0] for k in working), a]) > len(working) + 1:
+        if b - _dot(a, x) == 0 and _rank([budget, *(rows[k][0] for k in working), a]) > len(working) + 1:
             working.append(j)
     for _ in range(200):  # a cap far above the iterations the search uses on seeds 0 to 49 (at most 12)
         gradient = [_dot(hessian[i], x) - problem.mu[i] for i in range(n)]
