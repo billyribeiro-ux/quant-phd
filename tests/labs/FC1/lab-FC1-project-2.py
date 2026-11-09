@@ -1,4 +1,4 @@
-"""Rung 2 completion: the worked example, with two blanks for you to fill in."""
+"""Rung 2 completed solution: the worked example with its two blanks filled in."""
 
 from fractions import Fraction
 

@@ -6,9 +6,9 @@ generator (seed 2604). A sample supports only the seeds and vectors it tests, so
 for Part C are about those 500 matrices and those 100000 quadratic forms, and about no other matrix or vector.
 
 The verdicts use numpy.linalg.eigvalsh, a floating-point solver, with tolerance 1e-10. For a singular
-matrix the solver may return a value near zero with either sign, so every test allows the tolerance. The lab
-prints verdicts, counts and eigenvalues rounded to four decimals. For the singular matrix, a value within
-1e-10 of zero is printed as 0.0000, so the sign that rounding would give it is never shown.
+matrix the computed smallest eigenvalue is a floating-point number near zero, so every test allows the tolerance.
+The lab prints verdicts, counts and eigenvalues rounded to four decimals. For the singular matrix, a value within
+1e-10 of zero is printed as 0.0000, so its unrounded value and its sign are never shown.
 Standard library apart from numpy. No network access.
 """
 

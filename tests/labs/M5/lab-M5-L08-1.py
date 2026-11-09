@@ -6,8 +6,8 @@ and utility is u(c) = sqrt(c). The operator is (B V)(k) = max over feasible k' o
 broken by the smallest feasible index. Part A iterates B from V_0 = 0 to a fixed point and prints the residual of
 the fixed point. Part B draws seeded pairs (V, W) with the standard random module and checks that the sup-norm
 ratio ||BV - BW|| / ||V - W|| does not exceed BETA by more than TOL. Part C applies B to a one-point grid, where
-the fixed point is u / (1 - BETA) = 5 at BETA = 0.9, and then iterates it at BETA = 1, where the iterates grow
-without bound.
+the fixed point is u / (1 - BETA) with u = u(1/4) = 1/2 (the utility of consumption 1/4), which is 5 at BETA = 0.9,
+and then iterates it at BETA = 1, where the iterates grow without bound.
 Standard library only; no network access. TOL = 1e-12 bounds the stopping gap, the ratio check of Part B and the
 iterate checks of Part C. The residual check of Part A and the one-point fixed-point check of Part C use 1e-9.
 """

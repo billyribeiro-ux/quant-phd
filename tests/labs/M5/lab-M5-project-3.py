@@ -2,9 +2,8 @@
 
 Standard library only. The inputs are illustrative, not data: beta = 0.9, alpha = 0.3, the ten grid points
 0.45, 0.70, 0.95 and so on up to 2.70, and the tolerance 1e-10. The model is the one in the specification: output
-k**alpha, feasible
-savings kp <= k**alpha, utility sqrt of consumption, and value iteration from the zero vector. The random pairs
-use the seed 7.
+k**alpha, feasible savings kp <= k**alpha, utility sqrt of consumption, and value iteration from the zero vector.
+The random pairs use the seed 7.
 
 Copy this file into report/run_report.py, replace the operator and solver calls with calls to your
 contraction_solver module, and print the same lines. The numbers are the ones the report quotes.

@@ -2,9 +2,10 @@
 
 The spot price, rate, expiry, quote and states are typed in for this lab; they describe no market. The conventions
 are those of the lesson: the asset pays no income, the rate r is continuously compounded and constant, and
-borrowing, lending and short sales are allowed at that rate. Prices are integer cents. Formula values are computed
-in floating point and printed to two decimals of a cent, so a printed cent value is a display rounding of an
-unrounded value. The replication check is printed as a boolean against a tolerance of 1e-6 cents.
+borrowing, lending and short sales are allowed at that rate. Typed-in prices are integer cents; formula prices are
+floating-point values in cents. Formula values are computed in floating point and printed to two decimals of a cent,
+so a printed cent value is a display rounding of an unrounded value. The replication check is printed as a boolean
+against a tolerance of 1e-6 cents.
 Standard library only; no network; no randomness.
 """
 

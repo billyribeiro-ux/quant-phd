@@ -5,9 +5,8 @@ that the quotient rule gives, at three rational points and for k = 0 to 8. Part 
 n = 0 to 10, and checks that the error f(x) - P_n(x) equals x^(n+1) / (1 - x) exactly, where P_n(x) is the Taylor
 polynomial of degree n at 0 (the sum of x^k for k = 0 to n, because f^(k)(0) = k!). Part C takes x = 2, outside
 the interval |x| < 1, and prints the errors for the same identity. Part D takes g(x) = x |x|. Its first derivative
-at 0 is computed from the definition; for x != 0 the page derives g'(x) = 2|x|, and the second derivative at 0 is
-tested through
-that formula.
+at 0 is computed from the definition; for x != 0 the page derives g'(x) = 2|x|, and the one-sided quotients of
+that formula at 0 are printed.
 
 Exact arithmetic uses fractions.Fraction throughout. Standard library only; no randomness and no network access.
 """
@@ -95,8 +94,8 @@ def g(x: Fraction) -> Fraction:
     return x * abs(x)
 
 
-def g_prime_for_x_nonzero(x: Fraction) -> Fraction:
-    """The derivative of g at x != 0, derived on the page: 2|x|."""
+def g_prime_formula(x: Fraction) -> Fraction:
+    """The formula g'(x) = 2|x| from Example 4.1, evaluated at x = 0 too, where it gives 0 = g'(0)."""
     return 2 * abs(x)
 
 
@@ -109,11 +108,11 @@ def part_d() -> None:
             raise AssertionError(f"quotient is not |h| at h = {h}")
         print(f"part D: h = 1e-{k}, quotient = {float(quotient):.1e}")
     print("part D: at the six steps printed the quotient equals |h|; Example 4.1 gives the limit 0, so g'(0) = 0")
-    print("part D: second derivative at 0 from g'(x) = 2|x|: (g'(h) - g'(0)) / h")
+    print("part D: one-sided quotients of g'(x) = 2|x| at 0: right (g'(h) - g'(0)) / h, left (g'(-h) - g'(0)) / (-h)")
     for k in range(1, 7):
         h = Fraction(1, 10**k)
-        right = (g_prime_for_x_nonzero(h) - g_prime_for_x_nonzero(Fraction(0))) / h
-        left = (g_prime_for_x_nonzero(-h) - g_prime_for_x_nonzero(Fraction(0))) / (-h)
+        right = (g_prime_formula(h) - g_prime_formula(Fraction(0))) / h
+        left = (g_prime_formula(-h) - g_prime_formula(Fraction(0))) / (-h)
         if right != 2 or left != -2:
             raise AssertionError(f"second-derivative quotients are not +2 and -2 at h = {h}")
         print(f"part D: h = 1e-{k}, right quotient = {int(right):2d}, left quotient = {int(left):2d}")

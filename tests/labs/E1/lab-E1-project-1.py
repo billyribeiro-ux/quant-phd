@@ -53,7 +53,7 @@ def main() -> None:
             f"{structure}: profit {profit} -> {half_up(profit)}; consumer surplus {consumer} -> {half_up(consumer)}; "
             f"welfare {welfare} -> {half_up(welfare)}; deadweight loss {deadweight} -> {half_up(deadweight)} cents"
         )
-    # Step 5. The Bertrand fee equals the cost, so the Bertrand exchanges earn nothing and the market is competitive.
+    # Step 5. The Bertrand fee equals the cost, so the Bertrand exchanges earn nothing, and the volume is the gap d.
     bertrand_volume, bertrand_fee = volume_and_fee("bertrand")
     print("bertrand fee equals cost:", bertrand_fee == C, "| volume equals the gap:", bertrand_volume == d)
 

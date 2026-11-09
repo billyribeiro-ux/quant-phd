@@ -265,6 +265,18 @@ def test_bond_zero_coupon_boundary_is_accepted() -> None:
     must_accept(lambda: sol.Bond(10_000, 0, 2).events(), "coupon_bps = 0")
 
 
+def test_bond_zero_coupon_periods_zero_is_refused() -> None:
+    """The page names periods < 1 as a ValueError for every bond, with or without a coupon: a zero-coupon bond with no
+    period is refused too."""
+    must_raise(lambda: sol.Bond(10_000, 0, 0).events(), "periods < 1, zero coupon")
+
+
+def test_bond_zero_coupon_face_zero_is_refused() -> None:
+    """The page names face_cents not positive as a ValueError for every bond, with or without a coupon: a zero-coupon
+    bond with no face is refused too."""
+    must_raise(lambda: sol.Bond(0, 0, 3).events(), "face_cents <= 0, zero coupon")
+
+
 def test_bond_with_twelve_periods_is_valid_and_silent() -> None:
     """The page refuses periods below 1 and names no upper limit, so a 12-period bond is valid: it gives one event per
     period, and neither events() nor bond_price_cents() warns on it."""
@@ -667,6 +679,21 @@ def test_trade_settlement_day_one_is_accepted() -> None:
     assert checked_events(sol.CashTrade(10, 9_850, 1, 1).events(), "CashTrade.events") == [(1, -98_500)], (
         "a settlement period of one must be accepted and carry the one event"
     )
+
+
+def test_sale_quantity_zero_is_refused() -> None:
+    """The page names quantity < 1 as a ValueError for either side: a sale of zero units is refused."""
+    must_raise(lambda: sol.CashTrade(0, 9_850, -1, 2).events(), "quantity < 1, sell")
+
+
+def test_sale_price_negative_is_refused() -> None:
+    """The page names price_cents < 0 as a ValueError for either side: a sale at a negative price is refused."""
+    must_raise(lambda: sol.CashTrade(10, -1, -1, 2).events(), "price_cents < 0, sell")
+
+
+def test_sale_settlement_day_zero_is_refused() -> None:
+    """The page names settlement_day < 1 as a ValueError for either side: a sale settling in period 0 is refused."""
+    must_raise(lambda: sol.CashTrade(10, 9_850, -1, 0).events(), "settlement_day < 1, sell")
 
 
 def test_trade_settlement_day_of_100_is_accepted() -> None:

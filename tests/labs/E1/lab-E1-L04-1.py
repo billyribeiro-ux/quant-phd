@@ -4,8 +4,8 @@ Inputs are illustrative parameters, not data. Demand is Q_d(p) = a - b p units, 
 cent. Supply is Q_s(p) = d p^2 units, with d = 1 unit per cent squared. The price p is in cents per unit. No random
 draws are used, and no file is read.
 
-The equilibrium price p(a) is the positive root of a - b p = d p^2, namely p(a) = (-b + S) / (2 d) with
-S = sqrt(b^2 + 4 a d). Part A prints the equilibrium at a = 120 and checks that demand equals supply there.
+The equilibrium price p(a) is the positive root of a - b p = d p^2, namely p(a) = (-b + delta) / (2 d) with
+delta = sqrt(b^2 + 4 a d). Part A prints the equilibrium at a = 120 and checks that demand equals supply there.
 Part B prints the implicit-function derivative dp/da = -F_a / F_p, for F(p, a) = a - b p - d p^2, beside the
 derivative of the closed form, and the elasticity of the equilibrium price with respect to a.
 Part C prints forward and central finite-difference quotients of p(a) at a = 120 for step sizes 1, 0.1, 0.01 and
@@ -48,7 +48,10 @@ def implicit_derivative(price: Decimal) -> Decimal:
 
 
 def closed_form_derivative(a: Decimal) -> Decimal:
-    """d/da of p(a) = (-b + S) / (2 d). Since dS/da = 2 d / S, the derivative is 1 / S with S = sqrt(b^2 + 4 a d)."""
+    """d/da of p(a) = (-b + delta) / (2 d), with delta = sqrt(b^2 + 4 a d).
+
+    Since d(delta)/da = 2 d / delta, the derivative is 1 / delta.
+    """
     return 1 / (B_SLOPE * B_SLOPE + 4 * a * D_SUPPLY).sqrt()
 
 

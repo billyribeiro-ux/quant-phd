@@ -45,7 +45,7 @@ def least_order_below(bound: Fraction, base: Fraction) -> int:
 
 
 def main() -> None:
-    """Print Parts A, B and C. Every value is an exact fraction or a float with ten decimals."""
+    """Print Parts A, B and C. Every value is an exact fraction, an integer, a boolean, or a float with ten decimals."""
     print("Part A: sup distance from x^n to 0 on [0, 1], grid k/100")
     unit = grid(Fraction(1), 100)
     for n in ORDERS:

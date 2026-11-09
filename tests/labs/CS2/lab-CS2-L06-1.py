@@ -37,14 +37,16 @@ def random_graph(rng: random.Random, n: int, p: float) -> Graph:
     return adj
 
 
-def bfs(adj: Graph, source: int) -> tuple[dict[int, int], dict[int, int], list[int], int]:
-    """Breadth-first search from source. Returns hop distances, parents, the dequeue order, and the number of
-    adjacency entries inspected. A FIFO queue holds the discovered vertices not yet dequeued."""
+def bfs(adj: Graph, source: int) -> tuple[dict[int, int], dict[int, int], list[int], int, int]:
+    """Breadth-first search from source. Returns hop distances, parents, the dequeue order, the number of
+    adjacency entries inspected, and the number of enqueue operations. A FIFO queue holds the discovered
+    vertices not yet dequeued."""
     dist: dict[int, int] = {source: 0}
     parent: dict[int, int] = {}
     order: list[int] = []
     queue: deque[int] = deque([source])
     inspections = 0
+    enqueues = 1
     while queue:
         v = queue.popleft()
         order.append(v)
@@ -54,7 +56,8 @@ def bfs(adj: Graph, source: int) -> tuple[dict[int, int], dict[int, int], list[i
                 dist[u] = dist[v] + 1
                 parent[u] = v
                 queue.append(u)
-    return dist, parent, order, inspections
+                enqueues += 1
+    return dist, parent, order, inspections, enqueues
 
 
 def brute_min_hops(adj: Graph, source: int) -> dict[int, int]:
@@ -140,7 +143,7 @@ def part_a(rng: random.Random) -> None:
         graphs += 1
         for source in range(n):
             sources += 1
-            dist, _, _, _ = bfs(adj, source)
+            dist, _, _, _, _ = bfs(adj, source)
             brute = brute_min_hops(adj, source)
             pairs += len(dist)
             unreachable += n - len(dist)
@@ -176,7 +179,7 @@ def part_c() -> None:
     names = ["s", "a", "b", "c"]
     adj: Graph = {0: [1, 2], 1: [0, 2, 3], 2: [0, 1], 3: [1]}
     weight = {(0, 1): 10, (0, 2): 1, (1, 2): 1, (1, 3): 1}
-    dist, parent, _, _ = bfs(adj, 0)
+    dist, parent, _, _, _ = bfs(adj, 0)
     light = weighted_paths(adj, weight, 0)
     for v in (1, 2, 3):
         path: list[int] = [v]
@@ -198,14 +201,15 @@ def part_d() -> None:
     n = 200
     adj = random_graph(rng, n, 0.03)
     edges = sum(len(adj[v]) for v in adj) // 2
-    dist, _, order, inspections = bfs(adj, 0)
+    dist, _, order, inspections, enqueues = bfs(adj, 0)
     reached = len(dist)
     degree_sum = sum(len(adj[v]) for v in order)
     print(f"vertices {n} edges {edges} reached_from_0 {reached}")
-    print(f"enqueues {reached} dequeues {len(order)} each_vertex_enqueued_once {len(set(order)) == len(order)}")
+    once = enqueues == reached and len(set(order)) == len(order)
+    print(f"enqueues {enqueues} dequeues {len(order)} each_vertex_enqueued_once {once}")
     print(f"adjacency_entries_inspected {inspections} equals_sum_of_degrees_of_reached {inspections == degree_sum}")
     print(f"matrix_row_reads_for_same_search {len(order) * n}")
-    print(f"list_work_enqueues_plus_inspections {reached + inspections}")
+    print(f"list_work_enqueues_plus_inspections {enqueues + inspections}")
 
 
 def main() -> None:
