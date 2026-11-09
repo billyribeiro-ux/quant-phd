@@ -130,3 +130,7 @@
     is a member of an unbounded family. One accept test at a size beyond any realistic threshold kills the family: add
     accept tests for a price and a coupon of 10**18. Mutants of this family that a verifier writes later are not
     required to be killed unless the page states an upper limit.
+37. **Closing round writes no new mutants.** A delta verification that closes a slice (ruling 30) re-verifies its listed rows
+    and the changed hunks and runs the standing mutant set; it does not author new mutants. New survivors found in an earlier
+    round are killed by tests the fixer adds (the verifier's candidate tests are used as written when it checked them), and
+    the closing round checks that they are killed.
