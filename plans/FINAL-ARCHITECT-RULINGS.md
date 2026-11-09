@@ -134,3 +134,12 @@
     and the changed hunks and runs the standing mutant set; it does not author new mutants. New survivors found in an earlier
     round are killed by tests the fixer adds (the verifier's candidate tests are used as written when it checked them), and
     the closing round checks that they are killed.
+38. **E3 notation, glyph level.** Ruling 33 asks for one meaning per symbol. Upper and lower case Greek letters are different
+    symbols, so Xi (L01 mixture weight) and Omega (L05 and L08 Epstein-Zin exponent) stay, although lowercase xi and omega occur
+    elsewhere in E3. The remaining rename is the exponent b of L03 Proposition 1.2 (it collides with the affine slope), to a
+    letter absent in E3 in either case.
+39. **Title-only registry records (E3 L07, L08).** A claim that names a registry record whose paper this page has not read is
+    not a graded result: it becomes an ungraded naming sentence ("this page has not read the paper and cites it for no
+    result"), as in L05 and L06, with its data-grade and data-cite removed and the C rows of the grade table and the cards
+    E3-c134, c157, c158 aligned. The footers of L05 to L08 then read "Each graded result carries a proof or a lab result
+    labelled C." as ruling 33 states.
