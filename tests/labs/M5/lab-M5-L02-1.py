@@ -40,7 +40,7 @@ def cauchy_test_fails_from(partial: Callable[[int], Fraction], start: int, eps: 
 
 
 def main() -> None:
-    # Harmonic series: the test with eps = 1/2 fails from every N, witnessed by the pair (N, 2N).
+    # Harmonic series: eps = 1/2 fails at each N in 1..HARMONIC_MAX_N; the pair (N, 2N) witnesses it.
     gaps = [harmonic_partial(2 * n) - harmonic_partial(n) for n in range(1, HARMONIC_MAX_N + 1)]
     print(f"harmonic partial sums, pairs (N, 2N) for N = 1 to {HARMONIC_MAX_N}")
     print(f"gaps S_2N - S_N that are at least 1/2: {sum(g >= EPS_HARMONIC for g in gaps)} of {len(gaps)}")

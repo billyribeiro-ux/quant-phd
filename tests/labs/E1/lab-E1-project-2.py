@@ -24,7 +24,7 @@ def half_up(x: Fraction) -> int:
 
 
 def reaction(d: Fraction, rival: Fraction) -> Fraction:
-    """The best quantity of one exchange against a rival quantity: q_i = (d - q_j) / 2."""
+    """The best quantity of one exchange against a rival quantity: q_i = (d - q_j) / 2, in trades."""
     return (d - rival) / 2
 
 

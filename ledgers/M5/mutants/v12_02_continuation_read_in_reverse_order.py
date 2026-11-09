@@ -1,5 +1,6 @@
-# Student-error mutant (verifier-written, M5 slice d round 12): the continuation values are read in reverse grid order, so each successor k' is paired with the value of the mirror-image grid point.
-"""Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
+"""Student-error mutant (M5 slice d round 12): the continuation values are read in reverse grid order, so each successor k' is paired with the value of the mirror-image grid point.
+
+Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
 
 It implements the contract in project.html, section "Rung 3 · Specification". Standard library only.
 

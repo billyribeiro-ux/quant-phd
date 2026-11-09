@@ -1,5 +1,6 @@
-# Student-error mutant (verifier-written, M5 slice d round 12): solve returns beta times the iterate as value, confusing the value with its continuation term; the certified error still refers to the iterate.
-"""Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
+"""Student-error mutant (M5 slice d round 12): solve returns beta times the iterate as value, confusing the value with its continuation term; the certified error still refers to the iterate.
+
+Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
 
 It implements the contract in project.html, section "Rung 3 · Specification". Standard library only.
 

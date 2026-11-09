@@ -1,5 +1,6 @@
-# Student-error mutant (verifier-written, M5 slice d round 12): the stop test compares beta times the change with tol, dropping the 1/(1 - beta) factor of the certificate, so the solver stops before the certified error is within tol.
-"""Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
+"""Student-error mutant (M5 slice d round 12): the stop test compares beta times the change with tol, dropping the 1/(1 - beta) factor of the certificate, so the solver stops before the certified error is within tol.
+
+Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
 
 It implements the contract in project.html, section "Rung 3 · Specification". Standard library only.
 

@@ -35,10 +35,13 @@ def _check_strikes(strikes: list[int]) -> None:
 
 def _check_lengths(strikes: list[int], calls: list[int], puts: list[int] | None) -> None:
     """Every quote list has one entry per strike; the message names the lengths."""
-    if len(calls) != len(strikes) or (puts is not None and len(puts) != len(strikes)):
+    if puts is None:
+        if len(calls) != len(strikes):
+            raise ValueError(f"calls need one quote per strike: {len(strikes)} strikes, {len(calls)} calls")
+        return
+    if len(calls) != len(strikes) or len(puts) != len(strikes):
         raise ValueError(
-            f"calls and puts need one quote per strike: {len(strikes)} strikes, {len(calls)} calls, "
-            f"{len(strikes) if puts is None else len(puts)} puts"
+            f"calls and puts need one quote per strike: {len(strikes)} strikes, {len(calls)} calls, {len(puts)} puts"
         )
 
 

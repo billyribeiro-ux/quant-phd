@@ -1,7 +1,8 @@
 """CS2 L09 lab 1: Welford's one-pass update against two-pass and naive variance, on streams with a large offset.
 
-Claim checked: for the same stream of n = 2000 values, the sample variance from Welford's update, from the
-two-pass formula and from the naive sum-of-squares formula is compared with an exact Fraction reference.
+Quantities printed: for the same stream of n = 2000 values, the sample variance from Welford's update, from the
+two-pass formula and from the naive sum-of-squares formula, each with its relative error against an exact Fraction
+reference. The script asserts nothing; the page reads the printed values against the claims.
 The stream is offset + u, where u is uniform on [0, 1) from random.Random(SEED). The offset is the
 variable under test: 0, 1e6 and 1e9. SIMULATED data, not market data.
 Each estimate is printed in scientific notation with six digits after the decimal point. Relative error is

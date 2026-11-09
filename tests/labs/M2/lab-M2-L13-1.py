@@ -2,7 +2,7 @@
 
 Standard library only. The function is exp and the point is x = 1, so the exact derivative is e.
 The step sizes h = 10^-k for k = 1 to 12 are evaluated in IEEE double precision. Nothing is random
-and nothing is fetched, so the output is the same on every run on the same Python installation. The
+and nothing is fetched, so repeated runs on one Python installation print the same output. The
 errors are measured against math.e, a value known in closed form, so the lab shows the errors as
 they happen and does not assume a shape for them.
 """

@@ -9,7 +9,8 @@ Second, on the grid p = i / 7 for i = 0 to 140 (prices 0 to 20), the excess dema
 below p*, zero at p* and negative above it. Third, it prints demand, market supply and excess demand at p = 20, the
 end of the grid, and at p* the ratio of market supply to one firm's supply, which is n = 10. Fourth, at p* a firm's
 grid maximiser, on output steps of 1 / 14 from 0 to 10, is 48 / 7 for fixed cost F = 0 and for F = 100. A grid is
-finite: it tests these inputs only, and the proofs for every linear case are on the page.
+finite: it tests these inputs only, and the proofs for the Setting of this lesson (a > 0, b > 0, a > bc,
+c >= 0, k > 0, n >= 1 identical firms) are on the page.
 """
 
 from __future__ import annotations
@@ -20,8 +21,8 @@ A = Fraction(100)  # demand intercept: D(p) = A - B p
 B = Fraction(2)  # demand slope
 N_FIRMS = 10
 UNIT_COST = Fraction(2)  # c
-CAPACITY_SLOPE = Fraction(1)  # k, in the firm's cost C(q) = F + c q + k q^2
-S_SLOPE = Fraction(N_FIRMS) / (2 * CAPACITY_SLOPE)  # s = n / (2 k): market supply is s (p - c) for p >= c
+QUADRATIC_COST = Fraction(1)  # k, in the firm's cost C(q) = F + c q + k q^2
+S_SLOPE = Fraction(N_FIRMS) / (2 * QUADRATIC_COST)  # s = n / (2 k): market supply is s (p - c) for p >= c
 
 
 def demand(p: Fraction) -> Fraction:
@@ -31,7 +32,7 @@ def demand(p: Fraction) -> Fraction:
 
 def firm_supply(p: Fraction) -> Fraction:
     """One firm's supply (p - c) / (2 k) at price p, zero below the unit cost c."""
-    return max(Fraction(0), (p - UNIT_COST) / (2 * CAPACITY_SLOPE))
+    return max(Fraction(0), (p - UNIT_COST) / (2 * QUADRATIC_COST))
 
 
 def supply(p: Fraction) -> Fraction:
@@ -51,7 +52,7 @@ def equilibrium_price() -> Fraction:
 
 def profit(q: Fraction, p: Fraction, fixed: Fraction) -> Fraction:
     """One firm's profit p q - F - c q - k q^2 at output q, price p and fixed cost F."""
-    return p * q - fixed - UNIT_COST * q - CAPACITY_SLOPE * q * q
+    return p * q - fixed - UNIT_COST * q - QUADRATIC_COST * q * q
 
 
 def firm_grid_maximiser(p: Fraction, fixed: Fraction) -> Fraction:

@@ -4,7 +4,7 @@ Standard library only. A dual number a + b*eps (with eps*eps = 0) carries a valu
 Each primitive operation updates both, so evaluating a function on a dual number a + 1*eps returns
 f(a) in the value part and f'(a) in the tangent part. No step size h appears anywhere. The test
 functions are evaluated on a grid of 251 points from 0.5 to 3.0 and compared with closed-form
-derivatives. Nothing is random and nothing is fetched, so the output is the same on every run.
+derivatives. Nothing is random and nothing is fetched, so repeated runs print the same output.
 """
 
 from __future__ import annotations

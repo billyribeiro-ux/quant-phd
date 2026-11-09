@@ -8,7 +8,8 @@ closed form q* = (p - c) / (2 k), the output at which price equals marginal cost
 has q* on the grid. The lab also computes the profit at q = 0 (shutdown, profit -F), and it prints whether cases
 1 and 4 share p, c and k, with the grid output of each. Last, for case 1 it computes the profit at sqrt(F/k),
 the output that minimises average cost C(q) / q, in floating point to four decimals, and compares it with the
-profit at q*. The check is finite: it tests these cases only, and the proof for every input is on the page.
+profit at q*. The check is finite: it tests these cases only, and the proof for every input in the Setting
+(p > 0, F >= 0, c >= 0, k > 0) is on the page.
 """
 
 from __future__ import annotations

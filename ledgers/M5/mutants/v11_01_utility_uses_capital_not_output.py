@@ -1,5 +1,6 @@
-# Student-error mutant (verifier-written, M5 slice d round 11): student-error: utility is sqrt(k - k') while feasibility still uses k**alpha, so the consumption in the utility ignores the production exponent.
-"""Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
+"""Student-error mutant (M5 slice d round 11): utility is sqrt(k - k') while feasibility still uses k**alpha, so the consumption in the utility ignores the production exponent.
+
+Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
 
 It implements the contract in project.html, section "Rung 3 · Specification". Standard library only.
 

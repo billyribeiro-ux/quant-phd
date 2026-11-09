@@ -1,5 +1,6 @@
-# Student-error mutant (verifier-written, M5 slice d round 11): student-error: converged is read off the loop (iterations below the budget) instead of the certified error being within tol.
-"""Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
+"""Student-error mutant (M5 slice d round 11): converged is read off the loop (iterations below the budget) instead of the certified error being within tol.
+
+Reference solution for the M5 project: contraction_solver.py, the discounted Bellman operator and its solver.
 
 It implements the contract in project.html, section "Rung 3 · Specification". Standard library only.
 

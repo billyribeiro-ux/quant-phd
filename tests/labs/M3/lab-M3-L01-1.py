@@ -1,5 +1,6 @@
 """M3 L01 lab 1: rank, independence and span of integer vectors, in exact rational arithmetic.
 
+SIMULATED: yes; the inputs are seeded integer vectors.
 Claims checked, on seeded integer vectors with entries from -3 to 3:
   (a) a list of k vectors is linearly independent exactly when the matrix having them as columns has
       rank k, where rank is the number of pivots that Gauss-Jordan elimination finds (Proposition 3.5

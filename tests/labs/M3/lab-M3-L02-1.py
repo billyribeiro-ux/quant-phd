@@ -1,5 +1,6 @@
 """M3 L02 lab 1: the matrix of a linear map in a new basis, and the change-of-basis identity.
 
+SIMULATED: yes; the inputs are seeded integer matrices.
 For 50 seeded pairs (A, M) of 3 by 3 integer matrices and a seeded invertible 3 by 3 integer matrix P
 whose columns form a basis of R^3, the lab checks:
   (a) the matrix of x -> A x in the basis of the columns of P, built column by column from coordinates

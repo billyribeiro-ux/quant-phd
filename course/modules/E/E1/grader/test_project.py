@@ -6,10 +6,10 @@ Runs identically in the browser (Pyodide) and locally:
 
 with your market_structure.py next to this file. Warnings are failures, as in the browser.
 
-Every expected value is computed here from the inputs a, b and c by a separate route: the volume and fee come from the
-closed forms of the specification, and the surpluses come from the integral of the inverse demand, evaluated exactly by
-the trapezoid rule, which is exact for a linear function. The oracle does not call the reference. A failure names the
-property it checks and the idea to revisit; it never prints the expected value.
+Every expected value is computed here from the inputs a, b and c by a separate route: the volume comes from the closed
+forms of the specification, the fee is the inverse demand at that volume, and the surpluses come from the integral of
+the inverse demand, evaluated exactly by the trapezoid rule, which is exact for a linear function. The oracle does not
+call the reference. A failure names the property it checks and the idea to revisit; it never prints the expected value.
 """
 
 from __future__ import annotations

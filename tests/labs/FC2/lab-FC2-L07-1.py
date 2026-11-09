@@ -8,8 +8,9 @@ r = 0.05 continuously compounded, sigma = 0.20, tau = 1 year), not market data a
 a forecast. Nothing is random and no file is read.
 
 Money is printed in integer cents. Each price is the unrounded model value rounded half
-up to the cent for display. The error column is the unrounded difference, rounded half
-up, so it can differ by one cent from the difference of the two printed columns. The
+up to the cent for display (the prices are positive). The error column is the unrounded
+difference, rounded half away from zero, so it can differ by one cent from the difference
+of the two printed columns. The
 standard normal distribution function is computed from math.erf (standard library only).
 The lab shows numbers; it does not prove that the binomial price converges to the
 closed form.
@@ -28,7 +29,7 @@ STEPS = (1, 2, 5, 10, 25, 50, 100, 200, 400)
 
 
 def cents(amount: float) -> int:
-    """Integer cents of a currency amount, rounded half up (away from zero for negatives)."""
+    """Integer cents of a currency amount, rounded half away from zero."""
     sign = -1 if amount < 0 else 1
     return sign * math.floor(abs(amount) * 100 + 0.5)
 

@@ -12,10 +12,10 @@ Each F(k) contains 0.25, because 0.25 <= k ** ALPHA for every k in GRID, so each
 This is the operator of Lesson 8 of this unit, with the same grid and parameters as its Lab 1.
 
 The iteration starts from V_0 = 0 and sets V_{n+1} = B V_n. For n >= 1 the certified error is
-cert_n = BETA/(1 - BETA) * max_k |V_n(k) - V_{n-1}(k)|. For each certified stop the lab prints whether
-max_k |V_n(k) - V*(k)| <= cert_n (field bound_holds), where V* is the fixed point of B on GRID. The reference V* is
-the iterate at which cert_n <= 1e-12, so it is within 1e-12 of V*. The bound_holds field compares the actual error
-with cert_n + 1e-12 to allow for that reference error.
+cert_n = BETA/(1 - BETA) * max_k |V_n(k) - V_{n-1}(k)|. The reference V_ref is the iterate at which cert_n <= 1e-12.
+By Lemma 2.3(c), its distance to the fixed point V* of B on GRID is at most 1e-12. For each certified stop the lab
+prints whether the actual error max_k |V_n(k) - V_ref(k)| is at most cert_n + 1e-12 (field bound_holds), and whether
+cert_n <= tol (field cert_within_tol). The added 1e-12 allows for the reference error.
 
 Floats are used throughout, so a printed value is correct only as far as double-precision arithmetic allows.
 No random draws. Standard library only.

@@ -2,7 +2,8 @@
 
 Standard library only (fractions, math). No randomness and no network. The inputs are those of the project
 specification, not market data. Copy this file to run_report.py beside market_structure.py, and replace the call to
-closed_form_outcome with a call to outcome from your market_structure module. Your module must print the same lines.
+closed_form_outcome with a call to outcome from your market_structure module. Your run_report.py must print the same
+lines.
 The lab prints the six outputs of each structure for two cases: the reference case, and a = 121, which makes the
 monopoly fee and volume exact halves, so the tie-going-up rule decides the printed values. Every money value is rounded
 once from its exact value, and volume_trades is rounded from the exact volume.

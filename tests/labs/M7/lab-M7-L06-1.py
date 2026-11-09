@@ -23,12 +23,13 @@ candidates and the number of distinct weight vectors among them are printed.
 
 Part C: the risk term w'Sigma w of the solution is checked to be nonincreasing in gamma for both cases, and the
 constrained objective is checked to be at least the unconstrained objective at each gamma (the feasible set is
-smaller).
+smaller). The gap between the two objectives at gamma = 16 is also printed to ten places.
 
 Part D: turnover against the equal-weight portfolio w0 = (1/4, ..., 1/4), with the linear form: a vector t with
 t_i >= w_i - w0_i and t_i >= w0_i - w_i has sum t_i >= sum |w_i - w0_i|, with equality at t_i = |w_i - w0_i|.
+The turnover at gamma = 4 is printed to six places and to ten places.
 
-Money: none. CU is not used; the weights are fractions of wealth.
+Money: none. The weights are fractions of wealth.
 """
 
 from __future__ import annotations
@@ -197,6 +198,7 @@ def main() -> None:
         return all(later <= earlier for earlier, later in pairwise(values))
 
     print(f"risk_nonincreasing_in_gamma equality {nonincreasing(eq_vars)} nonneg {nonincreasing(nn_vars)}")
+    print(f"objective_gap_at_gamma {float(GAMMAS[-1]):g} {float(nn_objs[-1] - eq_objs[-1]):.10f}")
 
     w0 = [Fraction(1, N_ASSETS)] * N_ASSETS
     _, w = min(nonnegative_candidates(sigma, mu, GAMMAS[2]), key=lambda item: objective(sigma, mu, GAMMAS[2], item[1]))
@@ -205,6 +207,7 @@ def main() -> None:
     t_star = [abs(d) for d in diff]
     feasible = all(t_star[i] >= diff[i] and t_star[i] >= -diff[i] for i in range(N_ASSETS))
     print(f"turnover_at_gamma 4 {float(turnover):.6f} linear_form_feasible {feasible}")
+    print(f"turnover_exact_at_gamma 4 {float(turnover):.10f}")
     print(f"linear_form_sum_equals_turnover {sum(t_star, Fraction(0)) == turnover}")
     gen = Lcg(SEED + 1)
     bigger = 0

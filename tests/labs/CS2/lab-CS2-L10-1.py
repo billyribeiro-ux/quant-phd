@@ -3,7 +3,7 @@
 Claim checked: for a seeded integer series of N = 200 values and the five window sizes 1, 2, 5, 13 and 30,
 the deque's rolling minimum and rolling maximum equal the brute-force minimum and maximum at every position.
 At position i the window holds the last min(w, i + 1) values, so the first w - 1 positions use partial windows.
-The total number of deque operations (appends plus removals) for each deque is counted and compared with 2N.
+The total number of deque operations (appends plus removals) for each deque is counted, and 2N is printed beside it.
 The largest number of removals made by a single push is also printed. SIMULATED integer series, seeded.
 Standard library only. No network access.
 """

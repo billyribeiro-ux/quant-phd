@@ -13,8 +13,6 @@ Part B: inequality QP, minimise (1/2) x'Qx + c'x subject to x >= 0 in two variab
 components fixed at zero) are enumerated. For each S the free components solve Q_FF x_F = -c_F, the multipliers on
 S are mu_i = (Qx + c)_i, and the candidate is kept only if x >= 0 and mu_i >= 0 on S. The printed brute-force check
 evaluates f on the grid {k/16 : 0 <= k <= 32}^2 and counts grid points below the candidate's value.
-
-CU is the currency unit. This lab has no money amounts.
 """
 
 from __future__ import annotations

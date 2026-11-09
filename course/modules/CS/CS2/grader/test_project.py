@@ -822,17 +822,24 @@ def test_sketch_quantile_is_nondecreasing_in_q() -> None:
         pytest.fail("quantile(q) must not decrease as q increases.")
 
 
-def test_sketch_constant_stream_returns_the_constant() -> None:
-    constant = VALUES[0]
-    sketch = sketch_of([constant] * 40, EPS)
-    if any(sketch.quantile(q) != constant for q in PROBES):
-        pytest.fail("on a stream of one repeated value, every quantile is that value.")
+def test_sketch_constant_stream_meets_the_rank_guarantee() -> None:
+    """Every answer on a stream of one repeated value must satisfy the rank guarantee (Conventions). The guarantee,
+    not equality with the constant, is the property the specification states: at q = 0 the answer may lie below the
+    constant, and that answer still satisfies both inequalities."""
+    stream = [VALUES[0]] * 40
+    sketch = sketch_of(stream, EPS)
+    for q in PROBES:
+        if not guarantee_holds(stream, sketch.quantile(q), q, EPS):
+            pytest.fail("on a stream of one repeated value, an answer at a probe breaks the rank guarantee.")
 
 
-def test_sketch_single_value_returns_that_value() -> None:
-    sketch = sketch_of([VALUES[1]], EPS)
-    if any(sketch.quantile(q) != VALUES[1] for q in PROBES):
-        pytest.fail("with one value added, every quantile is that value.")
+def test_sketch_single_value_meets_the_rank_guarantee() -> None:
+    """With one value added, every answer must satisfy the rank guarantee (Conventions), not equal that value."""
+    stream = [VALUES[1]]
+    sketch = sketch_of(stream, EPS)
+    for q in PROBES:
+        if not guarantee_holds(stream, sketch.quantile(q), q, EPS):
+            pytest.fail("with one value added, an answer at a probe breaks the rank guarantee.")
 
 
 @pytest.mark.parametrize("order", ["increasing", "decreasing"])

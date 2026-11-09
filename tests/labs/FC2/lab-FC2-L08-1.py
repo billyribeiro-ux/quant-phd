@@ -78,7 +78,8 @@ def implied_volatility(price: float, strike: float) -> tuple[float, int]:
     if not gap(LOW_SIGMA) < 0 <= gap(HIGH_SIGMA):
         raise ValueError(
             f"the volatility bracket [{LOW_SIGMA}, {HIGH_SIGMA}] does not contain the root: "
-            "the price is too close to the lower bound or to the spot"
+            "the implied volatility is above the upper end (the price is too close to the spot), "
+            "or below the lower end"
         )
     low, high = LOW_SIGMA, HIGH_SIGMA
     halvings = 0

@@ -6,7 +6,7 @@ STEPS = 60 equal steps along the budget line, from x = 0 to x = m / p_x, so grid
 line. It reports the grid point with the largest utility, the closed form x_bar = m / (2 p_x), y_bar = m / (2 p_y) and
 the marginal rate of substitution y / x at the closed-form bundle, which is the ratio of the marginal utilities
 u_x = y and u_y = x. The check is finite: it tests these cases only. The proof that the closed form is the optimum
-for every price and income is on the page.
+for every price and income in the Setting (p_x, p_y, m > 0) is on the page.
 """
 
 from __future__ import annotations

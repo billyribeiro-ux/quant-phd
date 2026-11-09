@@ -436,8 +436,8 @@ def test_saving_above_the_current_capital_is_feasible_within_resources() -> None
     )
     expect(
         close(float(got[0]), 9.316228, 1e-6),
-        "a saving above the current capital k is feasible when k' <= k**alpha: the operator must take the feasible "
-        "successor 0.4 at k = 0.25, which the resources 0.25**0.5 = 0.5 allow",
+        "a saving above the current capital k is feasible when k' <= k**alpha: the operator must choose among every "
+        "successor k' with k' <= k**alpha, including those above the current capital",
     )
 
 
@@ -658,6 +658,38 @@ def test_grid_with_every_point_at_most_one_is_accepted() -> None:
     expect(isinstance(out, Mapping), "solve must return a mapping for a grid whose points all lie in (0, 1]")
     value = as_value_list(out, 3)
     expect(all(math.isfinite(x) for x in value), "solve must return finite values for a grid inside (0, 1]")
+
+
+def test_operator_uses_the_top_point_on_a_grid_inside_zero_one() -> None:
+    """On a grid wholly in (0, 1] the top point is a feasible saving from the top state (k' = 1 <= 1**alpha), so the
+    operator must consider it: the values are compared with the test's own sweep."""
+    p = {"beta": 0.9, "alpha": 0.5}
+    grid = [0.5, 1.0]
+    values = [0.0, 10.0]
+    got = sol.bellman_operator(p, grid, values)
+    expect(isinstance(got, (list, tuple)) and len(got) == 2, "bellman_operator must return one value per grid point")
+    want = ref_sweep(p["beta"], p["alpha"], grid, values)
+    expect(
+        all(close(a, b, 1e-9) for a, b in zip(got, want, strict=False)),
+        "on a grid wholly in (0, 1] the operator must consider every grid point as a saving, the top point included, "
+        "whenever it is at most k**alpha",
+    )
+
+
+def test_solver_fixed_point_on_a_grid_inside_zero_one() -> None:
+    """On a grid wholly in (0, 1] the solver's value must match the fixed point of the grid operator: the top point is
+    a feasible saving from the top state, so it must enter the iteration. The reference is the test's own iteration."""
+    p = {"beta": 0.83, "alpha": 0.53}
+    grid = [0.06, 0.07, 0.24]
+    out = sol.solve(p, grid, 1e-12, MAX_SWEEPS)
+    expect(out["converged"] is True, "the iteration must reach tol = 1e-12 within the budget on this grid")
+    value = as_value_list(out, len(grid))
+    star = ref_fixed_point(p["beta"], p["alpha"], grid)
+    expect(
+        all(close(a, b, 1e-8) for a, b in zip(value, star, strict=False)),
+        "on a grid wholly in (0, 1] the solver's value must be the fixed point of the grid operator: the top point is "
+        "a feasible saving from the top state and must be among the successors in every sweep",
+    )
 
 
 def test_grid_starting_at_exactly_one_is_accepted() -> None:

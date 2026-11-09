@@ -22,6 +22,7 @@ import math
 import os
 import re
 import sys
+from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,16 @@ def hand_chain(
         "put_cents": puts,
         "cost": {"fee_cents_per_contract": fee, "half_spread_cents": spread},
     }
+
+
+def names_number(message: str, number: int) -> bool:
+    """True when the message contains the integer as a standalone number (not a part of a longer one)."""
+    return re.search(rf"(?<![\d.]){number}(?![\d.])", message) is not None
+
+
+def names_df_range(message: str) -> bool:
+    """True when the message names df_ppm and the upper bound 1000000, in any case, with or without commas."""
+    return "df_ppm" in message.lower() and "1000000" in message.replace(",", "")
 
 
 def oracle_round(x: Fraction) -> int:
@@ -302,10 +313,12 @@ def test_parity_gap_df_range_upper_boundary() -> None:
 
 def test_parity_gap_rejects_a_nonpositive_strike_and_accepts_one() -> None:
     __tracebackhide__ = True
-    with pytest.raises(ValueError, match="strictly increasing"):
+    with pytest.raises(ValueError, match="strictly increasing") as caught:
         sol.parity_gap_cents(10, 0, 10, 0, PPM)
-    with pytest.raises(ValueError, match="strictly increasing"):
+    assert "positive" in str(caught.value).lower(), "the message names the positive-strike condition"
+    with pytest.raises(ValueError, match="strictly increasing") as caught_negative:
         sol.parity_gap_cents(10, 0, 10, -5, PPM)
+    assert "positive" in str(caught_negative.value).lower(), "the message names the positive-strike condition"
     assert isinstance(sol.parity_gap_cents(10, 0, 10, 1, PPM), int), "a strike of 1 cent is positive"
 
 
@@ -463,18 +476,22 @@ def test_strictly_increasing_strikes_are_accepted() -> None:
 
 def test_strike_zero_is_rejected_by_scan_and_convexity() -> None:
     __tracebackhide__ = True
-    with pytest.raises(ValueError, match="strictly increasing"):
+    with pytest.raises(ValueError, match="strictly increasing") as caught_scan:
         sol.scan(hand_chain([0, 1, 2], [5, 5, 5], [1, 1, 1]))
-    with pytest.raises(ValueError, match="strictly increasing"):
+    assert "positive" in str(caught_scan.value).lower(), "the scan message names the positive-strike condition"
+    with pytest.raises(ValueError, match="strictly increasing") as caught_convexity:
         sol.convexity_violations([0, 1, 2], [5, 5, 5], PPM)
+    assert "positive" in str(caught_convexity.value).lower(), "the convexity message names the positive condition"
 
 
 def test_negative_strike_is_rejected_by_scan_and_convexity() -> None:
     __tracebackhide__ = True
-    with pytest.raises(ValueError, match="strictly increasing"):
+    with pytest.raises(ValueError, match="strictly increasing") as caught_scan:
         sol.scan(hand_chain([-5, 1, 2], [5, 5, 5], [1, 1, 1]))
-    with pytest.raises(ValueError, match="strictly increasing"):
+    assert "positive" in str(caught_scan.value).lower(), "the scan message names the positive-strike condition"
+    with pytest.raises(ValueError, match="strictly increasing") as caught_convexity:
         sol.convexity_violations([-5, 1, 2], [5, 5, 5], PPM)
+    assert "positive" in str(caught_convexity.value).lower(), "the convexity message names the positive condition"
 
 
 def test_equal_strikes_are_rejected_by_convexity() -> None:
@@ -495,6 +512,20 @@ def test_df_outside_range_is_rejected(bad_df: int) -> None:
         sol.scan(hand_chain([100, 110, 120], [5, 5, 5], [1, 1, 1], df=bad_df))
     with pytest.raises(ValueError, match="df_ppm"):
         sol.convexity_violations([100, 110, 120], [5, 5, 5], bad_df)
+
+
+@pytest.mark.parametrize("bad_df", [0, -1, PPM + 1])
+def test_df_message_names_df_ppm_and_the_range_in_each_function(bad_df: int) -> None:
+    __tracebackhide__ = True
+    attempts: list[Callable[[], object]] = [
+        lambda: sol.parity_gap_cents(10, 0, 10, 10, bad_df),
+        lambda: sol.convexity_violations([100, 110, 120], [5, 5, 5], bad_df),
+        lambda: sol.scan(hand_chain([100, 110, 120], [5, 5, 5], [1, 1, 1], df=bad_df)),
+    ]
+    for attempt in attempts:
+        with pytest.raises(ValueError) as caught:
+            attempt()
+        assert names_df_range(str(caught.value)), "the df_ppm message names df_ppm and the range 1 to 1000000"
 
 
 @pytest.mark.parametrize("good_df", [1, PPM])
@@ -546,7 +577,21 @@ def test_length_message_names_both_lengths() -> None:
     with pytest.raises(ValueError) as caught:
         sol.scan(hand_chain([100, 110, 120], [5, 5], [1, 1, 1]))
     message = str(caught.value)
-    assert "3" in message and "2" in message, "the message must name the two lengths that differ"
+    assert names_number(message, 3) and names_number(message, 2), "the message must name the two lengths that differ"
+
+
+def test_convexity_length_message_names_both_lengths() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError) as shorter:
+        sol.convexity_violations([100, 110, 120], [5, 5], PPM)
+    assert names_number(str(shorter.value), 3) and names_number(str(shorter.value), 2), (
+        "the message must name the strike count and the call count when calls are short"
+    )
+    with pytest.raises(ValueError) as longer:
+        sol.convexity_violations([100, 110, 120], [5, 5, 5, 5], PPM)
+    assert names_number(str(longer.value), 3) and names_number(str(longer.value), 4), (
+        "the message must name the strike count and the call count when calls are long"
+    )
 
 
 def test_negative_fee_is_rejected_and_zero_is_accepted() -> None:

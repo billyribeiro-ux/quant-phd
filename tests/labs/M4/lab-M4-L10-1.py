@@ -3,15 +3,16 @@
 SIMULATED: every draw comes from a seeded generator; no data is used. Standard library only (math, random,
 statistics). Three laws are drawn. The standard normal is drawn with random.gauss(0, 1). The Student-t law with 3
 degrees of freedom is V = Z / sqrt(W / 3), with Z a standard normal and W the sum of three squared independent
-standard normals. The standard Cauchy law is drawn by its distribution function's inverse, tan(pi (U - 1/2)), for a
-uniform U from random.random(). Part A checks the increment F(2) - F(-2) of the closed-form distribution function
-of the t(3) law against a midpoint integral of its density over [-2, 2], the density being (2 / (pi sqrt 3)) (1 +
-t^2 / 3)^(-2), and prints the tail probabilities P(|X| > x) at x = 10 for the three laws. Part B prints the running
-sample mean of one seeded path of each law at n = 10, 100, 1000 and 10000. Part C runs 400 seeded replications at n
-= 10 and n = 100, and prints the interquartile range of the sample mean (the 75th minus the 25th percentile, with
-statistics.quantiles, method "inclusive") for each law, and the sample variance of sqrt(n) Xbar_n / sigma for the
-normal and t(3) laws, where sigma is 1 for the normal and sqrt(3) for the t(3). Part D prints the products x P(|X|
-> x) for the Cauchy law and x^3 P(|V| > x) for the t(3) law at x = 10, 100 and 1000. A sample is one random run.
+standard normals, W independent of Z. The standard Cauchy law is drawn by its distribution function's inverse,
+tan(pi (U - 1/2)), for a uniform U from random.random(). Part A checks the increment F(2) - F(-2) of the
+closed-form distribution function of the t(3) law against a midpoint integral of its density over [-2, 2], the
+density being (2 / (pi sqrt 3)) (1 + t^2 / 3)^(-2), and prints the tail probabilities P(|X| > x) at x = 10 for the
+three laws. Part B prints the running sample mean of one seeded path of each law at n = 10, 100, 1000 and 10000.
+Part C runs 400 seeded replications at n = 10 and n = 100, and prints the interquartile range of the sample mean
+(the 75th minus the 25th percentile, with statistics.quantiles, method "inclusive") for each law, and the sample
+variance of sqrt(n) Xbar_n / sigma for the normal and t(3) laws, where sigma is 1 for the normal and sqrt(3) for
+the t(3). Part D prints the products x P(|X| > x) for the Cauchy law and x^3 P(|V| > x) for the t(3) law at x = 10,
+100 and 1000. A sample is one random run.
 """
 
 from __future__ import annotations
