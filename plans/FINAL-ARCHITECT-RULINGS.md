@@ -47,3 +47,15 @@
     answer only after an exact KKT check, falling back to the active-set search otherwise, is a valid alternative of a different
     style. Rows that ask for a "different method" are satisfied by the four front-end solvers in ledgers/M7/scripts/M7-d-r12fix.
 20. **Process safety.** Agents never kill processes by pattern (no pkill, no killall).
+21. **SC1 plan sections 5.5 and 5.7(4).** The built page and grader are authoritative. Plan 5.5 is amended: the one-step
+    estimate is checked against tail/2 within 5 target standard errors plus 1/N, and the grid estimate is checked one-sided
+    (estimate at most the continuous tail plus the band), because the grid bias is never negative. Plan 5.7(4) is replaced:
+    the page states that a different draw order fails the tests, so a Box-Muller alternative on another order cannot be valid.
+    The five alternatives are the verified same-order set (alt_r17_*); the draw-order statement and its two tests stay.
+22. **Tolerance versus stated accuracy (E4-d).** The page's stated agreement is binding on the grader: where the page says
+    1e-14 for the gap, the three listed comparisons use 1e-14 * max(1, |expected|). A mutant that then still survives and
+    differs from the reference only inside a stated tolerance is equivalent and goes to ledgers/E4/equivalent with its proof
+    (ruling 9). Equivalent-mutant proofs always live in ledgers/<U>/equivalent/ with a README, never only in scripts/.
+23. **Blind scoring is done by a dedicated scorer.** A verifier who has read the exemplar annotations cannot be blind. Blind
+    scoring of rubric exemplars is a separate agent that never opens the project page: it runs a stripping script over the
+    file and reads only the script's output.

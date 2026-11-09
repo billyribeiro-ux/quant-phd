@@ -41,7 +41,7 @@ INST2 = make_instance(SEED + 7_919)  # a second instance, so a fixed answer for 
 SD = float(INST["noise_sd"])
 COST = float(INST["info_cost"])
 KEYS = {"informed_fraction", "price_informativeness", "indifference_gap"}
-TOL_GAP = 1e-8  # the indifference gap, and the agreement of the gap with the oracle, in expected-utility units
+TOL_GAP = 1e-8  # the indifference gap at a root and at the boundary, in expected-utility units (reported gaps: 1e-14)
 TOL_ROOT = 1e-10  # the agreement of the informed fraction with the oracle's root
 TOL_MOMENT = 1e-8  # the agreement of the price informativeness with the oracle's moment formula
 
@@ -247,9 +247,10 @@ def test_info_cost_above_one_is_accepted() -> None:
         out["informed_fraction"] == 0.0,
         "the informed fraction must be 0 when the gap at 0 is nonpositive: check the boundary rule",
     )
+    limit = oracle_gap(0.0, 0.6, 2.0)
     expect(
-        abs(out["indifference_gap"] - oracle_gap(0.0, 0.6, 2.0)) <= TOL_GAP,
-        "the reported gap at fraction 0 must be the limit of the gap as the fraction tends to 0",
+        abs(out["indifference_gap"] - limit) <= 1e-14 * max(1.0, abs(limit)),
+        "the reported gap at fraction 0 must be the limit of the gap as the fraction tends to 0, to full precision",
     )
 
 
@@ -308,9 +309,11 @@ def test_gap_is_the_oracle_gap_at_the_reported_fraction(which: str) -> None:
     inst = INSTANCES[which]
     sd, cost = float(inst["noise_sd"]), float(inst["info_cost"])
     out = run(sd, cost)
+    limit = oracle_gap(out["informed_fraction"], sd, cost)
     expect(
-        abs(out["indifference_gap"] - oracle_gap(out["informed_fraction"], sd, cost)) <= TOL_GAP,
-        "the reported gap must be the informed-minus-uninformed expected utility at the reported fraction",
+        abs(out["indifference_gap"] - limit) <= 1e-14 * max(1.0, abs(limit)),
+        "the reported gap must be the informed-minus-uninformed expected utility at the reported fraction, to full "
+        "precision",
     )
 
 
@@ -373,9 +376,10 @@ def test_zero_fraction_is_reported_above_the_cost_threshold() -> None:
         abs(out["price_informativeness"]) <= 1e-12,
         "with no informed investors the price carries no signal about the payoff",
     )
+    limit = oracle_gap(0.0, 0.6, 0.30)
     expect(
-        abs(out["indifference_gap"] - oracle_gap(0.0, 0.6, 0.30)) <= TOL_GAP,
-        "the reported gap at fraction 0 must be the limit of the gap as the fraction tends to 0",
+        abs(out["indifference_gap"] - limit) <= 1e-14 * max(1.0, abs(limit)),
+        "the reported gap at fraction 0 must be the limit of the gap as the fraction tends to 0, to full precision",
     )
 
 

@@ -428,9 +428,11 @@ they never print the expected value (`__tracebackhide__` in every test helper th
 - `srw_max_count` and `srw_terminal_count`: the identity \(\texttt{srw\_max\_count}(n,a)=\texttt{srw\_terminal\_count}(n,a)+\texttt{srw\_terminal\_count}(n,a+1)\)
   holds exactly for every \(n\le 12\) and \(1\le a\le n\) of the instance; an independent brute-force enumeration over \(2^n\) paths
   agrees exactly. Named `ValueError` for `n = 0` and `a = 0` (both sides: `n = 1` and `a = 1` do not raise).
-- `discrete_max_exceedance`: the estimate lies within \(5\,\se\) of `reflection_tail(a, H)` on the instance (seeded). The returned
-  standard error equals the sample standard deviation of the indicators divided by \(\sqrt{N}\) with divisor \(N-1\), to 1e-12.
-  Named `ValueError` for `n_steps = 0` and `n_paths = 1` (both sides).
+- `discrete_max_exceedance` (amended by FINAL-ARCHITECT-RULINGS 21): with one grid step the estimate lies within 5 target standard
+  errors plus \(1/N\) of \(\texttt{reflection\_tail}(a, H)/2\) on the instance (seeded), because the one-step maximum is \(B_H\). The grid
+  estimate is checked one-sided: it is at most \(\texttt{reflection\_tail}(a, H)\) plus the same band, because the grid bias is never
+  negative. The returned standard error equals the sample standard deviation of the indicators divided by \(\sqrt{N}\) with divisor
+  \(N-1\), to 1e-12. Named `ValueError` for `n_steps = 0` and `n_paths = 1` (both sides).
 - `nested_grid_counts`: the coarse count is never larger than the fine count (pathwise inequality, exact, no noise). Named
   `ValueError` when `n_coarse` does not divide `n_fine`.
 - Edge cases: `n_steps = 1`; `n_paths = 2`; a level so small that the tail is near one; the instance horizon equal to one grid step.
@@ -471,8 +473,10 @@ Written as test-only fixtures under `ledgers/SC1/scripts/alternatives/` (M6 §6.
 (1) `reflection_tail` by `statistics.NormalDist` and the identity \(\operatorname{erfc}(x)=2(1-\Phi(\sqrt2\,x))\) (a different route to the same value);
 (2) `reflection_tail` by quadrature only (Simpson), no closed form, to the 1e-8 tolerance;
 (3) `srw_max_count` and `srw_terminal_count` by dynamic programming over (position, running maximum) with integer counts;
-(4) `discrete_max_exceedance` with Box–Muller Gaussians on a different draw order, so the estimate differs from the reference but
-    stays within \(5\,\se\);
+(4) (replaced by FINAL-ARCHITECT-RULINGS 21) `discrete_max_exceedance` in the page's own draw order (`random.Random(seed).gauss`, path by
+    path and step by step), with the estimate within the 5 se band. A Box–Muller alternative on a different draw order is not valid:
+    the page states that a different draw order fails the tests, and the suite enforces it. The five alternatives are the verified
+    same-order set `alt_r17_*`; the draw-order statement and its two tests stay;
 (5) `discrete_max_exceedance` by a Brownian-bridge-free cumulative-sum construction and `nested_grid_counts` by subsampling indices
     instead of slicing.
 

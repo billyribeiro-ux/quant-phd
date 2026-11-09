@@ -383,6 +383,22 @@ def test_a_fill_at_any_integer_cent_price_is_booked_exactly() -> None:
     )
 
 
+@pytest.mark.parametrize(("arrival", "at_ask"), [("uninformed-buy", False), ("uninformed-sell", True)])
+def test_a_fill_takes_its_side_from_its_price_not_its_arrival(arrival: str, at_ask: bool) -> None:
+    """A hand-built log whose arrival name disagrees with the price of its fill: an uninformed buy filled at the
+    bid, and an uninformed sell filled at the ask. The page says a fill at the bid is a purchase by the maker and a
+    fill at the ask a sale, so replay must book each fill from its price, whatever the arrival name says."""
+    price = 10_010 if at_ask else 9_990
+    side = -1 if at_ask else 1
+    turns = [turn_record(1, filled=True, arrival=arrival, price=price, inventory=side, cash=-side * price)]
+    turns += [turn_record(t, size=0, inventory=side, cash=-side * price) for t in range(2, HORIZON + 1)]
+    log = hand_log(turns, 10_000)
+    expect(
+        sol.replay(log) == oracle(log),
+        "a fill at the bid is a purchase by the maker and a fill at the ask a sale, whatever the arrival name",
+    )
+
+
 def test_a_log_with_no_fill_replays_to_zero() -> None:
     """A hand-built log in which no turn is filled: no cash moves and no inventory is held. No named condition covers
     it, so replay must return zero cash flow, zero inventory, zero mark and zero P&L, without raising."""

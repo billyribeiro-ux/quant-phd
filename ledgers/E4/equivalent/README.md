@@ -92,3 +92,67 @@ Proof, with the reference's stop test `high - low > 1e-12 * high` (and at most 2
    round 15, `ledgers/E4/scripts/E4-d-r15/out/alternatives_equivalents_0_49.txt`.
 
 `literal_price_sign.py` is not a stop-rule variant and is not covered by ruling 17; its proof is in the section above.
+
+# `mutant_v17_02_price_slope_drops_uninformed_term.py`: equivalent within the stated tolerances (round 17, ruling 22)
+
+File: `mutant_v17_02_price_slope_drops_uninformed_term.py` (moved here from `mutants/` in round 17). It is the reference
+solver with one change, in `price_coefficients`: the price slope omits the uninformed term from its numerator,
+`b_s = lam tau_e / denominator` in place of `b_s = (lam tau_e + (1 - lam) tau_y) / denominator`. The denominator and the
+ratio `b_u / b_s = -a / (lam tau_e)` are the reference's.
+
+## Why it is not in `mutants/`
+
+Ruling 22 of `plans/FINAL-ARCHITECT-RULINGS.md` says the three listed gap comparisons use `1e-14 * max(1, |expected|)`,
+as project.html Constraints states. With that tolerance (now in `grader/test_project.py`), this variant still passes every
+test on seeds 0 to 49 (50/50). Its outputs differ from the reference only inside the stated tolerances: the informed
+fraction by a relative 1e-12 (the page requires 1e-10), and the reported gap is within 1e-14 of the Proposition 3 gap at
+its own reported fraction (the page requires 1e-14). Ruling 22 makes such a mutant equivalent, with this proof.
+
+The variant does break a formula that the page states (the `b_s` of Proposition 1, project.html). Only its outputs are
+equal to the reference's, which is the basis of ruling 22. The architect should know that a formula is violated here
+and that the suite cannot see it.
+
+## Proof
+
+Write `beta` for the variant's `b_s`, `b_u = -a beta / (lam tau_e)`, and `kappa = -a / (lam tau_e)`. Then `p = beta y` with
+`y = s + kappa u` for every `beta`, and `Var(y) = 1/tau_v + 1/tau_y`, because `1/tau_y = 1/tau_e + kappa^2 sd^2`.
+
+1. **Common variance.** For any linear price `p = beta s + b_u u`, the variance of `v - p` is
+   `Omega(beta) = 1/tau_v + beta^2 (1/tau_v + 1/tau_e) - 2 beta / tau_v + b_u^2 sd^2`. (From `Var(v) = 1/tau_v`,
+   `Var(s) = 1/tau_v + 1/tau_e` and `Cov(v, s) = 1/tau_v`.)
+2. **Informed side.** The variant uses `F_I = (V_I / Omega_I)^(1/2)` with `V_I = 1/P`, `P = tau_v + tau_e`, and
+   `Omega_I = 1/P + slope^2 (1/tau_v + 1/tau_e) + b_u^2 sd^2`, where `slope = tau_e/P - beta`. Expanding `slope^2`:
+   the term in `beta` is `-2 beta (tau_e/P)(1/tau_v + 1/tau_e) = -2 beta / tau_v`, because
+   `(1/tau_v + 1/tau_e) = P / (tau_v tau_e)`. The constant is `1/P - 1/tau_v + (tau_e/P)^2 P/(tau_v tau_e)
+   = (tau_v - P + tau_e) / (P tau_v) = 0`. So `Omega_I = Omega(beta)` identically.
+3. **Uninformed side.** The variant uses `F_U = (V_U / Omega_U)^(1/2)` with `V_U = 1/(tau_v + tau_y)` and
+   `Omega_U = V_U + r^2 Var(y)`, where `r = q - beta` and `q = tau_y/(tau_v + tau_y)`. Since `q Var(y) = 1/tau_v`
+   and `V_U + q^2 Var(y) = 1/tau_v`, `Omega_U = 1/tau_v - 2 beta/tau_v + beta^2 Var(y) = Omega(beta)`.
+4. **Sign and root.** So the variant's gap is `G'(lam) = Omega(beta)^(-1/2) H(lam)` with
+   `H(lam) = V_U^(1/2) - exp(ac) V_I^(1/2)`, and the reference's gap is `G(lam) = Omega(beta*)^(-1/2) H(lam)` with
+   `beta*` the reference's slope. Both have the sign of `H`, which is the sign of `tau_bar - tau_y(lam)` (Proposition 3).
+   So the two gaps have the same sign at every `lam` in (0, 1], and the same zero `lam*`.
+5. **Bisection.** Both searches keep the sign invariant, so each final bracket contains `lam*` and has width at most
+   `1e-12` times its upper end. The reported fraction is the midpoint, so it is within that width of `lam*`, which is the
+   same bound for both. Floating-point signs can disagree only where `|H|` is at rounding level, that is within about
+   1e-14 of `lam*`, which is inside the bracket anyway.
+6. **Reported gap.** At the reported fraction `lam_m`, the variant reports `Omega(beta)^(-1/2) H(lam_m)`, while the
+   Proposition 3 gap at `lam_m` is `Omega(beta*)^(-1/2) H(lam_m)`. Their difference is
+   `H(lam_m) (Omega(beta)^(-1/2) - Omega(beta*)^(-1/2))`. It is small because `H(lam_m)` is of the order of the
+   distance of `lam_m` from `lam*`, which is at most `1e-12` relative. This step is measured, not bounded in closed form
+   (see the numbers below).
+
+## Measured (fixer, round 17)
+
+Script `ledgers/E4/scripts/E4-d-fix-r17/equiv_v17_02_probe.py`, output `equiv_v17_02_probe.out` in the same directory.
+
+- Grid of 14400 cases (`sd` 0.30 to 2.70 by `cost` 0.10 to 0.20, 120 by 120): 57 cases differ in the informed fraction
+  at the float level; no case changes whether the fraction is 0, 1 or interior.
+- Largest `|lam_ref - lam_mut|` over interior cases: 4.547e-13; largest relative difference: 9.890e-13 (page: 1e-10).
+- Largest `|reported gap - Proposition 3 gap at the reported fraction| / max(1, |gap|)`: 4.219e-15 for the variant
+  (page: 1e-14); 0 for the reference.
+- Identity of step 2 and 3: worst relative `|Omega from the terms - Omega(beta)|` = 8.478e-16 over 20000 random interior
+  points. Sign disagreements between the two gaps with `|gap| > 1e-13`: 0 of 20000.
+- Suite: reference and alt_1 to alt_8 pass seeds 0 to 49 (50/50) with the edited suite, and so do the equivalents
+  (`ledgers/E4/scripts/E4-d-fix-r17/out/run_cands_fix17.txt`). `tools/mutate_graders.py --unit E4 --seeds 0-9` gives
+  133/133 killed (`out/mutate_graders_E4_0_9_fix17.txt`).

@@ -696,7 +696,7 @@ def test_exact_position_is_an_integer_index_not_a_rounded_float() -> None:
     assert got == want, (
         "the index is the exact ceiling of target * S / 10000, computed in integers: a whole-number position is "
         "not rounded up, and a float computed as (target / 10000) * count can round it up by one "
-        "(2800 / 10000 * 50 is 14.000000000000002, not 14)"
+        "(in floating point, 2800 / 10000 * 50 is not exactly an integer, so its ceiling can come out one too high)"
     )
 
 
