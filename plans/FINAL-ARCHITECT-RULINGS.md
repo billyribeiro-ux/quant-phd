@@ -153,3 +153,8 @@
     when no counterexample exists in an exhaustive search of all small streams and a large randomised battery checked after every
     add, and the README says so in those words (measured, not proved). A mutant whose behaviour differs on a stated condition
     (r15_07: after a refused NaN the state must still describe every value added, project.html:216) is killed by a test instead.
+41. **E5 project: documented limits of the instant check.** The E5 project's instant check compares printed tokens and its page
+    (project.html line 45) states that it does not separate a percent-of-trend gap from a log gap. The two mutants that
+    exhibit exactly that (r4_m05_gap_percent_of_trend, m02_gap_percent_of_trend) are student errors, but the page tells the
+    learner the instant check cannot see them, so they violate no behaviour the check promises. Under ruling 9 they live in
+    ledgers/E5/equivalent/ with a README that quotes the page line, and the ledger lists only mutants the check kills.
