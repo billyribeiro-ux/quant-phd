@@ -12,6 +12,7 @@ compared with the lower bound ceil(log2 n!) and the merge-sort bound n * ceil(lo
 Part C: the inequality log2(n!) >= (n/2) log2(n/2) for 2 <= n <= 1000, on floats with the margin printed.
 Part D: unsuccessful binary-search probes over all n + 1 gaps of a sorted list of n values, for every n from
 1 to 1000, compared with floor(log2 n) + 1, which equals n.bit_length().
+Part E: the comparisons of one merge of seeded sorted lists, compared with the bound a + b - 1 of Lemma 1.2.
 """
 
 from __future__ import annotations
@@ -40,15 +41,10 @@ def insertion_sort(xs: list[int]) -> tuple[list[int], int]:
     return a, comparisons
 
 
-def merge_sort(xs: list[int]) -> tuple[list[int], int]:
-    """Sort a copy of xs by merge sort. Returns the sorted list and the number of key comparisons."""
-    if len(xs) <= 1:
-        return list(xs), 0
-    mid = len(xs) // 2
-    left, count_left = merge_sort(xs[:mid])
-    right, count_right = merge_sort(xs[mid:])
+def merge_count(left: list[int], right: list[int]) -> tuple[list[int], int]:
+    """Merge two sorted lists as in Definition 1.1, ties to the left list. Returns the merged list and comparisons."""
     merged: list[int] = []
-    comparisons = count_left + count_right
+    comparisons = 0
     i = 0
     j = 0
     while i < len(left) and j < len(right):
@@ -62,6 +58,17 @@ def merge_sort(xs: list[int]) -> tuple[list[int], int]:
     merged.extend(left[i:])
     merged.extend(right[j:])
     return merged, comparisons
+
+
+def merge_sort(xs: list[int]) -> tuple[list[int], int]:
+    """Sort a copy of xs by merge sort. Returns the sorted list and the number of key comparisons."""
+    if len(xs) <= 1:
+        return list(xs), 0
+    mid = len(xs) // 2
+    left, count_left = merge_sort(xs[:mid])
+    right, count_right = merge_sort(xs[mid:])
+    merged, count_merge = merge_count(left, right)
+    return merged, count_left + count_right + count_merge
 
 
 def ceil_log2(n: int) -> int:
@@ -176,12 +183,32 @@ def part_d() -> None:
     print(f"worst_equals_floor_log2_n_plus_1_for_every_n_1_to_1000 {all_match}")
 
 
+def part_e() -> None:
+    print("Part E: comparisons of one merge against a + b - 1 (Lemma 1.2), on seeded pairs of sorted lists")
+    rng = random.Random(SEED + 1)
+    slacks: list[int] = []
+    for _ in range(2000):
+        a = rng.randint(1, 8)
+        b = rng.randint(1, 8)
+        left = sorted(rng.randrange(20) for _ in range(a))
+        right = sorted(rng.randrange(20) for _ in range(b))
+        merged, comparisons = merge_count(left, right)
+        if merged != sorted(left + right):
+            raise AssertionError(f"a merge returned a wrong order for {left} and {right}")
+        slacks.append(a + b - 1 - comparisons)
+    print(f"pairs checked: {len(slacks)}")
+    print(f"pairs with comparisons above a + b - 1: {sum(1 for s in slacks if s < 0)}")
+    print(f"smallest slack a + b - 1 - comparisons: {min(slacks)}")
+    print(f"pairs that meet the bound with equality: {sum(1 for s in slacks if s == 0)}")
+
+
 def main() -> None:
     rng = random.Random(SEED)
     part_a(rng)
     part_b()
     part_c()
     part_d()
+    part_e()
 
 
 main()

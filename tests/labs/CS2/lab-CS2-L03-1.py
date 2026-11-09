@@ -9,7 +9,8 @@ For each N the stream is the same for both structures: N events are inserted wit
 hold steps each pop the earliest event and insert one new event at its time plus a seeded delay, then the
 remaining N events are popped. The popped sequences of the two structures are compared element by element.
 The lab checks two bounds: each heap operation stays within its comparison bound, and the heap total stays
-within 6 * N * floor(log2 N), which is proved on the page.
+within 6 * N * floor(log2 N), which is proved on the page. It also checks the depth formula of Proposition 1.2
+for every index below 4096, and the sorted-list move bound 2N(N + 1) of Proposition 1.6 at each size N.
 """
 
 from __future__ import annotations
@@ -126,11 +127,26 @@ def run_hold(queue: CountingHeap | CountingSortedList, n: int, seed: int) -> lis
     return popped
 
 
+def depth_by_parents(i: int) -> int:
+    """The depth of array index i: the number of parent steps from i to the root, with parent (i - 1) // 2."""
+    depth = 0
+    while i > 0:
+        i = (i - 1) // 2
+        depth += 1
+    return depth
+
+
+def depth_formula_holds(limit: int) -> bool:
+    """Proposition 1.2 for each index i < limit: depth equals floor(log2(i + 1)) = (i + 1).bit_length() - 1."""
+    return all(depth_by_parents(i) == (i + 1).bit_length() - 1 for i in range(limit))
+
+
 def main() -> None:
     print("hold model: N events, N hold steps (pop, then push one later event), then N drain pops")
     previous: tuple[int, int, int, int] | None = None
     all_equal = True
     bounds_ok = True
+    list_bounds_ok = True
     for k in range(4, 13):
         n = 2**k
         heap = CountingHeap()
@@ -140,15 +156,18 @@ def main() -> None:
         equal = heap_popped == sorted_popped
         nondecreasing = all(heap_popped[i] <= heap_popped[i + 1] for i in range(len(heap_popped) - 1))
         within = heap.comparisons <= 6 * n * (n.bit_length() - 1)
+        list_within = sorted_list.moves <= 2 * n * (n + 1)
         all_equal = all_equal and equal
         bounds_ok = bounds_ok and heap.bound_violations == 0 and within
+        list_bounds_ok = list_bounds_ok and list_within
         print(
             f"N={n:5d} operations={4 * n:6d} heap comparisons={heap.comparisons:7d} heap moves={heap.moves:7d} "
             f"sorted-list comparisons={sorted_list.comparisons:7d} sorted-list moves={sorted_list.moves:9d}"
         )
         print(
             f"  pop orders equal: {equal}; popped times nondecreasing: {nondecreasing}; "
-            f"heap comparisons within 6*N*floor(log2 N): {within}"
+            f"heap comparisons within 6*N*floor(log2 N): {within}; "
+            f"sorted-list moves within 2*N*(N+1): {list_within}"
         )
         current = (heap.comparisons, heap.moves, sorted_list.comparisons, sorted_list.moves)
         if previous is not None:
@@ -160,6 +179,8 @@ def main() -> None:
         previous = current
     print(f"pop orders equal for every N: {all_equal}")
     print(f"every heap operation within its comparison bound, and every total within its bound: {bounds_ok}")
+    print(f"sorted-list moves within 2*N*(N+1) at every N: {list_bounds_ok}")
+    print(f"index depth equals floor(log2(i+1)) for every index i < 4096: {depth_formula_holds(4096)}")
 
 
 main()

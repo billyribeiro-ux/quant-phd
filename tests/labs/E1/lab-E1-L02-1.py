@@ -86,9 +86,11 @@ def main() -> None:
     p, c, k, fixed = CASES[0]
     q_avg = math.sqrt(float(fixed / k))
     pi_avg = float(p) * q_avg - (float(fixed) + float(c) * q_avg + float(k) * q_avg * q_avg)
+    pi_at_q_star = float(profit(closed_form(p, c, k), p, fixed, c, k))
+    below = pi_avg < pi_at_q_star
     print(
         f"case 1 at the minimum-average-cost output sqrt(F/k) = {q_avg:.4f}: profit {pi_avg:.4f}, "
-        f"below the profit {float(profit(closed_form(p, c, k), p, fixed, c, k)):.4f} at q*"
+        f"below the profit {pi_at_q_star:.4f} at q*: {below}"
     )
 
 

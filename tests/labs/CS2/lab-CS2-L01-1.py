@@ -8,6 +8,11 @@ wall-clock time is measured, so the output does not depend on the machine.
 
 from __future__ import annotations
 
+from fractions import Fraction
+
+GRID_A: tuple[Fraction, ...] = (Fraction(0), Fraction(1, 2), Fraction(3))
+GRID_B: tuple[Fraction, ...] = (Fraction(0), Fraction(2), Fraction(7, 2))
+
 
 def max_scan_comparisons(values: list[int]) -> tuple[int, int]:
     """Return (maximum, comparisons) of a scan that compares each element after the first with the running maximum.
@@ -46,6 +51,25 @@ def first_failure(c: int) -> int:
     return n
 
 
+def triangular_identity_holds(limit: int) -> bool:
+    """Proposition 1.4 for n = 1 to limit: the sum of i for i = 0 to n - 1 equals n(n - 1) / 2."""
+    return all(sum(range(n)) * 2 == n * (n - 1) for n in range(1, limit + 1))
+
+
+def linear_witness_failures(limit: int) -> int:
+    """Count the triples (a, b, n) with n = 1 to limit, over the 9-pair grid, where a n + b > (a + b + 1) n.
+
+    Proposition 1.2 says this count is 0 for every a, b >= 0, so a grid is a check and not a proof.
+    """
+    failures = 0
+    for a in GRID_A:
+        for b in GRID_B:
+            for n in range(1, limit + 1):
+                if a * n + b > (a + b + 1) * n:
+                    failures += 1
+    return failures
+
+
 def main() -> None:
     print("n = 2**k, maximum-scan comparisons (n - 1), ordered-pair steps (n * n)")
     scan = []
@@ -65,6 +89,8 @@ def main() -> None:
     holds = sum(max_scan_comparisons(list(range(n)))[1] <= n for n in range(1, 1001))
     print(f"comparisons at most 1 * n for n = 1 to 1000: {holds} of 1000")
     print(f"first n with n * n greater than 1000 * n: n = {first_failure(1000)}")
+    print(f"triangular sums equal n(n - 1)/2 (Proposition 1.4) for n = 1 to 1000: {triangular_identity_holds(1000)}")
+    print(f"linear witness failures (Proposition 1.2, 9 grid pairs) for n = 1 to 1000: {linear_witness_failures(1000)}")
 
 
 main()

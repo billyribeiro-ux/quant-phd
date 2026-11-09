@@ -108,7 +108,7 @@ def part_d() -> None:
         if quotient != abs(h):
             raise AssertionError(f"quotient is not |h| at h = {h}")
         print(f"part D: h = 1e-{k}, quotient = {float(quotient):.1e}")
-    print("part D: the quotient equals |h| and tends to 0, so g'(0) = 0")
+    print("part D: at the six steps printed the quotient equals |h|; Example 4.1 gives the limit 0, so g'(0) = 0")
     print("part D: second derivative at 0 from g'(x) = 2|x|: (g'(h) - g'(0)) / h")
     for k in range(1, 7):
         h = Fraction(1, 10**k)
@@ -117,7 +117,7 @@ def part_d() -> None:
         if right != 2 or left != -2:
             raise AssertionError(f"second-derivative quotients are not +2 and -2 at h = {h}")
         print(f"part D: h = 1e-{k}, right quotient = {int(right):2d}, left quotient = {int(left):2d}")
-    print("part D: the right and left quotients are +2 and -2 at every step, so they have no common limit at 0")
+    print("part D: at the six steps printed, the right quotient is +2 and the left quotient is -2 (Proposition 4.2)")
 
 
 def main() -> None:

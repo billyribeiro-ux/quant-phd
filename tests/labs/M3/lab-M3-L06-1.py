@@ -1,7 +1,8 @@
 """M3 L06 lab 1: the singular value decomposition, checked on seeded matrices.
 
 SIMULATED: every matrix is generated here from a seeded generator (numpy default_rng). No data are read.
-Units: none (dimensionless matrix entries). Tolerances are absolute and stated in each printed line.
+Units: none (dimensionless matrix entries). Each printed tolerance is stated on its line: the rank threshold is
+relative to the largest singular value, and the others are absolute.
 
 For each of five seeds, two matrices are checked: a 4x3 matrix and a 3x4 matrix. For each one the lab
 computes the full SVD with numpy.linalg.svd and checks the statements of Theorems 2.2 and 2.3 and
@@ -29,11 +30,13 @@ def svd_residuals(a: np.ndarray) -> tuple[float, float, float, float, float]:
     sigma = np.zeros((m, n))
     sigma[:k, :k] = np.diag(s)
     v = vt.T
-    eig = np.linalg.eigvalsh(a.T @ a)[::-1]  # eigenvalues of the n x n Gram matrix, descending
+    eig = np.linalg.eigvalsh(a.T @ a)[::-1]  # all n eigenvalues of the n x n Gram matrix, descending
+    squared = np.zeros(n)
+    squared[:k] = s**2  # the n - k extra eigenvalues are zero, as Theorem 2.3 states
     orth_u = float(np.max(np.abs(u.T @ u - np.eye(m))))
     orth_v = float(np.max(np.abs(v.T @ v - np.eye(n))))
     recon = float(np.max(np.abs(u @ sigma @ v.T - a)))
-    eig_gap = float(np.max(np.abs(s**2 - eig[:k])))
+    eig_gap = float(np.max(np.abs(squared - eig)))
     frob_gap = abs(float(np.sum(s**2)) - float(np.sum(a * a)))
     return orth_u, orth_v, recon, eig_gap, frob_gap
 
@@ -72,7 +75,7 @@ def main() -> None:
     sigma = np.zeros(a0.shape)
     sigma[: len(s), : len(s)] = np.diag(s)
     still_a = np.max(np.abs(flipped_u @ sigma @ flipped_vt - a0)) < 1e-12
-    print(f"flipping the signs of the first singular pair still reconstructs A: {bool(still_a)}")
+    print(f"flipping the signs of the first singular pair still reconstructs A to 1e-12: {bool(still_a)}")
 
 
 main()

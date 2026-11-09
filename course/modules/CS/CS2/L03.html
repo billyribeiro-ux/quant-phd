@@ -89,7 +89,7 @@
 
       <section class="lab" id="lab-CS2-L03-1" data-runtime="python">
         <h3>Lab 3 · Heap-based event queue against a sorted list, at sizes 16 to 4096</h3>
-        <p class="hypothesis">Predicted before running. The stream is SIMULATED: it is seeded with 2026. For \(N = 2^k\) with \(k = 4, \dots, 12\), the lab runs the same seeded stream through both structures: \(N\) pushes, then \(N\) hold steps, each a pop followed by a push of one later event, then \(N\) drain pops. The two pop sequences should be equal. Each heap operation should meet its bound of Proposition 1.3, and the heap total of comparisons should not exceed \(6 N \lfloor \log_2 N \rfloor\), the bound of Proposition 1.5 stated in §2 below. Because each sorted-list insertion shifts a tail of the list, the sorted list should make many more moves than the heap as \(N\) grows, and its moves should grow by about 4 when \(N\) doubles. The heap's counts should approach about 2 per doubling as \(N\) grows, since \(N \log N\) grows that way. The printed ratios are reported in the interpretation below.</p>
+        <p class="hypothesis">Predicted before running. The stream is SIMULATED: it is seeded with 2026. For \(N = 2^k\) with \(k = 4, \dots, 12\), the lab runs the same seeded stream through both structures: \(N\) pushes, then \(N\) hold steps, each a pop followed by a push of one later event, then \(N\) drain pops. The two pop sequences should be equal. Each heap operation should meet its bound of Proposition 1.3, and the heap total of comparisons should not exceed \(6 N \lfloor \log_2 N \rfloor\), the bound of Proposition 1.5 stated in §2 below. Because each sorted-list insertion shifts a tail of the list, the sorted list should make many more moves than the heap as \(N\) grows, and its moves should grow by about 4 when \(N\) doubles. The heap's counts should approach about 2 per doubling as \(N\) grows, since \(N \log N\) grows that way. The lab also checks the depth formula of Proposition 1.2 for every index below 4096, and the sorted-list move bound \(2N(N + 1)\) of Proposition 1.6 at each size, and it predicts that both hold. The printed ratios are reported in the interpretation below.</p>
         <pre><code class="language-python" data-run>"""CS2 lab L03: a binary-heap event queue against a sorted list, on one seeded event stream.
 
 Standard library only. No wall-clock time is measured. Both structures are counted in the same model:
@@ -101,7 +101,8 @@ For each N the stream is the same for both structures: N events are inserted wit
 hold steps each pop the earliest event and insert one new event at its time plus a seeded delay, then the
 remaining N events are popped. The popped sequences of the two structures are compared element by element.
 The lab checks two bounds: each heap operation stays within its comparison bound, and the heap total stays
-within 6 * N * floor(log2 N), which is proved on the page.
+within 6 * N * floor(log2 N), which is proved on the page. It also checks the depth formula of Proposition 1.2
+for every index below 4096, and the sorted-list move bound 2N(N + 1) of Proposition 1.6 at each size N.
 """
 
 from __future__ import annotations
@@ -218,11 +219,26 @@ def run_hold(queue: CountingHeap | CountingSortedList, n: int, seed: int) -&gt; 
     return popped
 
 
+def depth_by_parents(i: int) -&gt; int:
+    """The depth of array index i: the number of parent steps from i to the root, with parent (i - 1) // 2."""
+    depth = 0
+    while i &gt; 0:
+        i = (i - 1) // 2
+        depth += 1
+    return depth
+
+
+def depth_formula_holds(limit: int) -&gt; bool:
+    """Proposition 1.2 for each index i &lt; limit: depth equals floor(log2(i + 1)) = (i + 1).bit_length() - 1."""
+    return all(depth_by_parents(i) == (i + 1).bit_length() - 1 for i in range(limit))
+
+
 def main() -&gt; None:
     print("hold model: N events, N hold steps (pop, then push one later event), then N drain pops")
     previous: tuple[int, int, int, int] | None = None
     all_equal = True
     bounds_ok = True
+    list_bounds_ok = True
     for k in range(4, 13):
         n = 2**k
         heap = CountingHeap()
@@ -232,15 +248,18 @@ def main() -&gt; None:
         equal = heap_popped == sorted_popped
         nondecreasing = all(heap_popped[i] &lt;= heap_popped[i + 1] for i in range(len(heap_popped) - 1))
         within = heap.comparisons &lt;= 6 * n * (n.bit_length() - 1)
+        list_within = sorted_list.moves &lt;= 2 * n * (n + 1)
         all_equal = all_equal and equal
         bounds_ok = bounds_ok and heap.bound_violations == 0 and within
+        list_bounds_ok = list_bounds_ok and list_within
         print(
             f"N={n:5d} operations={4 * n:6d} heap comparisons={heap.comparisons:7d} heap moves={heap.moves:7d} "
             f"sorted-list comparisons={sorted_list.comparisons:7d} sorted-list moves={sorted_list.moves:9d}"
         )
         print(
             f"  pop orders equal: {equal}; popped times nondecreasing: {nondecreasing}; "
-            f"heap comparisons within 6*N*floor(log2 N): {within}"
+            f"heap comparisons within 6*N*floor(log2 N): {within}; "
+            f"sorted-list moves within 2*N*(N+1): {list_within}"
         )
         current = (heap.comparisons, heap.moves, sorted_list.comparisons, sorted_list.moves)
         if previous is not None:
@@ -252,46 +271,50 @@ def main() -&gt; None:
         previous = current
     print(f"pop orders equal for every N: {all_equal}")
     print(f"every heap operation within its comparison bound, and every total within its bound: {bounds_ok}")
+    print(f"sorted-list moves within 2*N*(N+1) at every N: {list_bounds_ok}")
+    print(f"index depth equals floor(log2(i+1)) for every index i &lt; 4096: {depth_formula_holds(4096)}")
 
 
 main()</code></pre>
         <pre class="expected" data-tolerance="1e-9">hold model: N events, N hold steps (pop, then push one later event), then N drain pops
 N=   16 operations=    64 heap comparisons=    241 heap moves=    361 sorted-list comparisons=    107 sorted-list moves=       98
-  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True
+  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True; sorted-list moves within 2*N*(N+1): True
 N=   32 operations=   128 heap comparisons=    648 heap moves=    929 sorted-list comparisons=    279 sorted-list moves=      284
-  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True
+  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True; sorted-list moves within 2*N*(N+1): True
   N doubled from the row above: heap comparison ratio 2.6888, heap move ratio 2.5734, sorted-list move ratio 2.8980
 N=   64 operations=   256 heap comparisons=   1625 heap moves=   2209 sorted-list comparisons=    683 sorted-list moves=     1002
-  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True
+  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True; sorted-list moves within 2*N*(N+1): True
   N doubled from the row above: heap comparison ratio 2.5077, heap move ratio 2.3778, sorted-list move ratio 3.5282
 N=  128 operations=   512 heap comparisons=   3802 heap moves=   4933 sorted-list comparisons=   1617 sorted-list moves=     4514
-  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True
+  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True; sorted-list moves within 2*N*(N+1): True
   N doubled from the row above: heap comparison ratio 2.3397, heap move ratio 2.2331, sorted-list move ratio 4.5050
 N=  256 operations=  1024 heap comparisons=   8517 heap moves=  10623 sorted-list comparisons=   3742 sorted-list moves=    17663
-  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True
+  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True; sorted-list moves within 2*N*(N+1): True
   N doubled from the row above: heap comparison ratio 2.2401, heap move ratio 2.1535, sorted-list move ratio 3.9129
 N=  512 operations=  2048 heap comparisons=  17831 heap moves=  21095 sorted-list comparisons=   8500 sorted-list moves=    65561
-  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True
+  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True; sorted-list moves within 2*N*(N+1): True
   N doubled from the row above: heap comparison ratio 2.0936, heap move ratio 1.9858, sorted-list move ratio 3.7118
 N= 1024 operations=  4096 heap comparisons=  37178 heap moves=  42401 sorted-list comparisons=  19052 sorted-list moves=   269578
-  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True
+  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True; sorted-list moves within 2*N*(N+1): True
   N doubled from the row above: heap comparison ratio 2.0850, heap move ratio 2.0100, sorted-list move ratio 4.1119
 N= 2048 operations=  8192 heap comparisons=  78710 heap moves=  87863 sorted-list comparisons=  42192 sorted-list moves=  1086043
-  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True
+  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True; sorted-list moves within 2*N*(N+1): True
   N doubled from the row above: heap comparison ratio 2.1171, heap move ratio 2.0722, sorted-list move ratio 4.0287
 N= 4096 operations= 16384 heap comparisons= 166912 heap moves= 181761 sorted-list comparisons=  92609 sorted-list moves=  4378444
-  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True
+  pop orders equal: True; popped times nondecreasing: True; heap comparisons within 6*N*floor(log2 N): True; sorted-list moves within 2*N*(N+1): True
   N doubled from the row above: heap comparison ratio 2.1206, heap move ratio 2.0687, sorted-list move ratio 4.0316
 pop orders equal for every N: True
-every heap operation within its comparison bound, and every total within its bound: True</pre>
-        <p class="interpretation">The counts are exact integers in the counting model, and no time is measured. The pop orders of the two structures are equal at all nine sizes, and the popped times are nondecreasing, so the heap and the sorted list agree on every pop. The check "heap comparisons within \(6 N \lfloor \log_2 N \rfloor\)" is a check on these streams, and Proposition 1.5, stated in §2 below, proves it for every stream of this shape. At \(N = 4096\) the heap makes 166912 comparisons against the bound 294912 that Proposition 1.5 gives. The sorted list makes fewer comparisons than the heap at every size in these rows. Its count is consistent with one binary search of about \(\lfloor \log_2 N \rfloor\) tests per insertion: at \(N = 4096\) it makes 92609 comparisons over 8192 insertions, which is 11.3 each. Its moves are the price. Doubling \(N\) multiplies the sorted-list moves by ratios from 3.5282 to 4.5050 in the printed rows for \(N = 64\) to \(N = 4096\), each taken against the row above, and the heap's moves by ratios from 1.9858 to 2.3778 over the same rows. At \(N = 4096\) the sorted list makes 4378444 moves, which is below the bound \(2N(N + 1) = 33562624\) that Proposition 1.6, stated in §2 below, gives. The lab shows the ratios as measured on one stream per size, so they are <span class="grade" data-grade="C">C</span> results, not growth proofs.</p>
+every heap operation within its comparison bound, and every total within its bound: True
+sorted-list moves within 2*N*(N+1) at every N: True
+index depth equals floor(log2(i+1)) for every index i &lt; 4096: True</pre>
+        <p class="interpretation">The counts are exact integers in the counting model, and no time is measured. The pop orders of the two structures are equal at all nine sizes, and the popped times are nondecreasing, so the heap and the sorted list agree on every pop. The check "heap comparisons within \(6 N \lfloor \log_2 N \rfloor\)" is a check on these streams, and Proposition 1.5, stated in §2 below, proves it for every stream of this shape. At \(N = 4096\) the heap makes 166912 comparisons against the bound 294912 that Proposition 1.5 gives. The sorted list makes fewer comparisons than the heap at every size in these rows. Its count is consistent with one binary search of about \(\lfloor \log_2 N \rfloor\) tests per insertion: at \(N = 4096\) it makes 92609 comparisons over 8192 insertions, which is 11.3 each. Its moves are the price. Doubling \(N\) multiplies the sorted-list moves by ratios from 3.5282 to 4.5050 in the printed rows for \(N = 64\) to \(N = 4096\), each taken against the row above, and the heap's moves by ratios from 1.9858 to 2.3778 over the same rows. At \(N = 4096\) the sorted list makes 4378444 moves, which is below the bound \(2N(N + 1) = 33562624\) that Proposition 1.6, stated in §2 below, gives. The lab shows the ratios as measured on one stream per size, so they are <span class="grade" data-grade="C">C</span> results, not growth proofs. The two checks added at the end print True: the depth formula holds at every index below 4096, and the sorted-list moves are within \(2N(N + 1)\) at all nine sizes. They are checks on these indices and streams, graded <span class="grade" data-grade="C">C</span>; Propositions 1.2 and 1.6 prove them for every index and every hold run of this shape.</p>
       </section>
 
       <h2 id="s2"><span class="section-number">2</span>Totals of the event queue run</h2>
 
       <div class="block proposition">
         <span class="block-title claim" data-grade="T">Proposition 1.5 <span class="name">(the heap total in the hold run)</span></span>
-        <p>Assume \(N \ge 1\), the hold run of Lab 3 with \(N\) initial pushes, \(N\) hold steps and \(N\) drain pops, and that the heap never holds more than \(N\) keys. Then the heap makes at most \(6 N \lfloor \log_2 N \rfloor\) comparisons in total.</p>
+        <p>Assume \(N \ge 1\), the hold run of Lab 3 with \(N\) initial pushes, \(N\) hold steps and \(N\) drain pops, that the keys are distinct (this holds in the run, because each key carries its sequence number), and that the heap never holds more than \(N\) keys. Then the heap makes at most \(6 N \lfloor \log_2 N \rfloor\) comparisons in total.</p>
       </div>
 
       <div class="block proof">
@@ -334,7 +357,7 @@ every heap operation within its comparison bound, and every total within its bou
           </li>
           <li class="misconception">
             <p class="wrong">“A pop is \(O(1)\) because it removes only one key.”</p>
-            <p>A pop removes one key and then restores the heap order by a sift-down, which can make up to \(2 \lfloor \log_2 s \rfloor\) comparisons by Proposition 1.3(b). So the bound on a pop grows with the number of keys \(n\), as \(O(\log n)\), and this page does not prove a constant bound on a pop; the upper bound \(2 \lfloor \log_2 s \rfloor\) is all it states. Lab 3 counts 166912 heap comparisons over 16384 operations at \(N = 4096\), and Proposition 1.5 bounds that total by 294912.</p>
+            <p>A pop removes one key and then restores the heap order by a sift-down, which makes at most \(2 \lfloor \log_2 s \rfloor\) comparisons by Proposition 1.3(b). So the bound on a pop grows with the number of keys \(n\), as \(O(\log n)\), and this page does not prove a constant bound on a pop; the upper bound \(2 \lfloor \log_2 s \rfloor\) is all it states. Lab 3 counts 166912 heap comparisons over 16384 operations at \(N = 4096\), and Proposition 1.5 bounds that total by 294912.</p>
           </li>
           <li class="misconception">
             <p class="wrong">“The sorted list is always the slower structure.”</p>
@@ -441,7 +464,7 @@ every heap operation within its comparison bound, and every total within its bou
           </div>
           <div class="problem" id="res-2">
             <span class="problem-title">R2 · A stream that inserts in decreasing time</span>
-            <p>Explain how the sorted list's move count changes if every new event in the hold run had an earlier time than all events present, and why the heap bound of Proposition 1.5 still holds.</p>
+            <p>Explain how the sorted list's move count changes if every event that the run pushes, the initial pushes and the hold pushes alike, has an earlier time than all events present when it is pushed, and why the heap bound of Proposition 1.5 still holds.</p>
             <details class="solution"><summary>Solution</summary>
               <p>A new key that is smaller than all present keys is placed at the end of the descending list, which is the position of the minimum, so the list shifts nothing and the push makes 1 move. Each of the \(2N\) pushes then makes 1 move, so the list's total is \(2N\), which is at most the bound \(2N(N + 1)\) of Proposition 1.6. The proof of Proposition 1.5 counts the pushes and pops and uses the size bound of at most \(N\) keys; it does not use the order of the keys, so the heap bound still holds.</p>
             </details>

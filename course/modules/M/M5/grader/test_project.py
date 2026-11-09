@@ -120,14 +120,15 @@ def as_value_list(out: Mapping[str, Any], size: int) -> list[float]:
 
 @pytest.mark.parametrize("which", [0, 1])
 def test_operator_matches_its_definition(which: int) -> None:
-    """(B V)(k) is the maximum over feasible k' <= k**alpha of sqrt(k**alpha - k') + beta V(k'), on seeded vectors."""
+    """(B V)(k) is the maximum over feasible k' <= k**alpha of sqrt(k**alpha - k') + beta V(k'), on seeded vectors
+    of both signs: the operator is defined for any vector V on the grid, not only for nonnegative ones."""
     __tracebackhide__ = True
     inst = INSTANCES[which]
     p = params_of(inst)
     grid = inst["grid"]
     rng = random.Random(SEED + 101 + which)
     for _ in range(3):
-        values = [rng.uniform(0.0, 3.0) for _ in grid]
+        values = [rng.uniform(-3.0, 3.0) for _ in grid]
         got = sol.bellman_operator(p, grid, values)
         expect(
             isinstance(got, (list, tuple)) and len(got) == len(grid),
@@ -456,6 +457,25 @@ def test_successor_within_a_tie_tolerance_above_the_resources_is_infeasible() ->
         close(float(got[0]), 0.5, 1e-12),
         "a successor 5e-13 above k**alpha is infeasible: feasibility is the exact test k' <= k**alpha, with no "
         "tie tolerance",
+    )
+
+
+def test_feasibility_is_exact_with_no_tie_tolerance_at_the_last_bit() -> None:
+    """Feasibility is exact: the successor math.nextafter(0.5, 1.0), one unit in the last place above k**alpha, is
+    infeasible. From k = 0.25 with alpha = 0.5 the resources are exactly 0.5, the successor is refused, and the value
+    is sqrt(0.5 - 0.25) = 0.5. A tolerance of even 1e-14 would accept this successor."""
+    __tracebackhide__ = True
+    p = {"beta": 0.5, "alpha": 0.5}
+    grid = [0.25, math.nextafter(0.5, 1.0)]
+    got = sol.bellman_operator(p, grid, [0.0, 1.0e6])
+    expect(
+        isinstance(got, (list, tuple)) and len(got) == 2,
+        "bellman_operator must return one value per grid point",
+    )
+    expect(
+        close(float(got[0]), 0.5, 1e-12),
+        "a successor one unit in the last place above k**alpha is infeasible: feasibility is the exact test "
+        "k' <= k**alpha, with no tie tolerance",
     )
 
 
