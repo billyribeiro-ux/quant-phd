@@ -116,11 +116,11 @@ def hand_log(turns: list[dict[str, Any]], settlement: int) -> dict[str, Any]:
 
 
 def direct_states() -> list[dict[str, object]]:
-    """The hand-built states of the direct sweep: turns 1 and 20, at every inventory from -10 to 10. Each state holds
-    the earlier turn records of its turn, as the engine passes them: none on turn 1, and 19 unfilled records on
-    turn 20."""
+    """The hand-built states of the direct sweep: every turn from 1 to 20, at every inventory from -10 to 10. Each state
+    holds the earlier turn records of its turn, as the engine passes them: none on turn 1, and the unfilled records of
+    turns 1 to t-1 on turn t."""
     states: list[dict[str, object]] = []
-    for turn in (1, HORIZON):
+    for turn in range(1, HORIZON + 1):
         for inventory in range(-10, 11):
             states.append(
                 {
@@ -159,7 +159,7 @@ def play_custom(
     return engine.play(quote, SEED)
 
 
-# Legality of the student's quote, on every turn of both instances.
+# Legality of the student's quote, on every turn of every seed in SEEDS.
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -333,6 +333,28 @@ def test_a_fill_at_price_zero_is_a_legal_fill() -> None:
     )
 
 
+def test_a_fill_at_any_integer_cent_price_is_booked_exactly() -> None:
+    """A hand-built log with two fills at prices that are not multiples of 10 cents: a sale at the ask of 10005 on
+    turn 1 and a purchase at the bid of 10003 on turn 2. Money is an integer number of cents, so each fill is booked at
+    its own price, with no rounding, and the cash flow is 10005 - 10003 = 2 cents."""
+    turns = [
+        turn_record(
+            1, bid=9_995, ask=10_005, filled=True, arrival="uninformed-buy", price=10_005, inventory=-1, cash=10_005
+        )
+    ]
+    turns += [
+        turn_record(
+            2, bid=10_003, ask=10_013, filled=True, arrival="uninformed-sell", price=10_003, inventory=0, cash=2
+        )
+    ]
+    turns += [turn_record(t, size=0, inventory=0, cash=2) for t in range(3, HORIZON + 1)]
+    log = hand_log(turns, 10_003)
+    expect(
+        sol.replay(log) == oracle(log),
+        "each fill is booked at its own integer cent price, and the cash flow is the sum of the fill cash flows",
+    )
+
+
 def test_a_log_with_no_fill_replays_to_zero() -> None:
     """A hand-built log in which no turn is filled: no cash moves and no inventory is held. No named condition covers
     it, so replay must return zero cash flow, zero inventory, zero mark and zero P&L, without raising."""
@@ -414,8 +436,8 @@ def test_no_function_prints_or_warns(
 ) -> None:
     """On every seed, the quote and the replay print nothing on stdout or stderr, log no record and raise no warning.
     The checks reach branches that a game of the fixed seeds never takes: a log with no fill, a fill at price 0, a log
-    that ends at inventory -10, and the quotes of the direct states at every inventory from -10 to 10 on turns 1 and 20.
-    Each channel is checked on its own, because the specification forbids each of them."""
+    that ends at inventory -10, and the quotes of the direct states at every turn from 1 to 20 and every inventory from
+    -10 to 10. Each channel is checked on its own, because the specification forbids each of them."""
     caplog.set_level(logging.DEBUG)
     no_fill = hand_log([turn_record(t, size=1, filled=False) for t in range(1, HORIZON + 1)], 10_000)
     zero_fill = hand_log(
@@ -495,9 +517,9 @@ def test_a_direct_call_on_a_hand_built_state_ignores_an_earlier_game() -> None:
 
 
 def test_a_direct_quote_is_legal_at_every_inventory_within_the_limit() -> None:
-    """A direct call on hand-built states, on turn 1 with no earlier record and on turn 20 with the 19 earlier records
-    of the log, at every inventory from -10 to 10: each quote has its bid below its ask and its size in 0..5, whatever
-    the inventory."""
+    """A direct call on hand-built states, on every turn from 1 to 20 (turn 1 with no earlier record, turn t with the
+    unfilled records of turns 1 to t-1), at every inventory from -10 to 10: each quote has its bid below its ask and its
+    size in 0..5, whatever the inventory."""
     for state in direct_states():
         turn = state["turn"]
         inventory = state["inventory"]

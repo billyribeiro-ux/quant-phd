@@ -8,8 +8,8 @@ All money is in integer cents. Each quantity is an exact Fraction and is rounded
 
 Part A: the closed form F_0 = d_1 / (r - g) and the finite sum S_N of the first N discounted dividends, with the exact
 identity S_N = F_0 (1 - q^N) for q = (1 + g) / (1 + r).
-Part B: the fundamental F_t = d_1 (1 + g)^t / (r - g) at t = 0 to 12, a seeded price path P_t = F_t (1 + w_t), and the
-gap P_t - F_t in cents.
+Part B: the fundamental F_t = d_1 (1 + g)^t / (r - g) at t = 0 to 12, a seeded price path A_t = F_t (1 + w_t), and the
+gap A_t - F_t in cents.
 Part C: the same price path compared with the fundamental under an alternative growth rate of 1 percent.
 """
 

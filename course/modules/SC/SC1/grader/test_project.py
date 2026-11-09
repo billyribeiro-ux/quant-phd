@@ -185,7 +185,7 @@ def test_fifty_seeds_give_valid_instances_with_distinct_levels() -> None:
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["student seed", "second seed"])
 def test_reflection_tail_is_the_erfc_closed_form(inst: dict[str, Any]) -> None:
     target = math.erfc(inst["a"] / math.sqrt(2.0 * inst["H"]))
-    within(sol.reflection_tail(inst["a"], inst["H"]), target, 1e-10, "the tail must equal erfc(a / sqrt(2 t)) to 1e-10")
+    within(sol.reflection_tail(inst["a"], inst["H"]), target, 1e-12, "the tail must equal erfc(a / sqrt(2 t)) to 1e-12")
 
 
 @pytest.mark.parametrize("inst", [INST, INST2], ids=["student seed", "second seed"])
@@ -255,8 +255,8 @@ def test_reflection_tail_small_levels_match_the_closed_form() -> None:
             within(
                 sol.reflection_tail(a, t),
                 math.erfc(a / math.sqrt(2.0 * t)),
-                1e-10,
-                "the tail must equal erfc(a / sqrt(2 t)) to 1e-10 at every small positive level",
+                1e-12,
+                "the tail must equal erfc(a / sqrt(2 t)) to 1e-12 at every small positive level",
             )
 
 
@@ -265,8 +265,8 @@ def test_reflection_tail_small_times_match_the_closed_form() -> None:
         within(
             sol.reflection_tail(1e-3, t),
             math.erfc(1e-3 / math.sqrt(2.0 * t)),
-            1e-10,
-            "the tail must equal erfc(a / sqrt(2 t)) to 1e-10 at every small positive time",
+            1e-12,
+            "the tail must equal erfc(a / sqrt(2 t)) to 1e-12 at every small positive time",
         )
 
 
@@ -470,8 +470,8 @@ def test_estimate_is_reproducible_for_the_same_instance() -> None:
 
 def test_draws_depend_on_the_instance_seed() -> None:
     # A level near zero, so that paths reach it on every grid and the estimates can differ. At the instance's
-    # own level the tail can be so small that no path reaches it (seed 32 at grids 16, 32 and 64), and then the
-    # estimates are 0 and cannot differ.
+    # own level the tail can be so small that no path reaches a grid's level (seed 32, grids 16, 32 and 64, estimate
+    # 0.0), so the test uses a level near zero.
     low = with_(INST, a=1e-9)
     other = with_(low, seed=INST["seed"] + 7_919)
     changed = [sol.discrete_max_exceedance(low, g) != sol.discrete_max_exceedance(other, g) for g in (4, 8, 16, 32, 64)]

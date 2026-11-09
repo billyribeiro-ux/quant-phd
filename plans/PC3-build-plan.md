@@ -403,9 +403,9 @@ must fail on it), `test_project.py`.
   order: for each turn, one fair-value move and one arrival type. Returns `seed`, `start_cents = 10000`, `fair_path_cents` (21 integers,
   `v_0` to `v_20`), `arrivals` (20 strings from the four arrival names), `settlement_cents = fair_path_cents[20]`. Labelled
   **SIMULATED** in the docstring. Every generated instance is valid (fair value positive; arrivals from the four names). Seeds 0–49
-  give materially different fair paths (the test counts distinct paths over 20 sampled seeds).
-- **`reference.py`**: the full reference: `quote` posts a symmetric quote around the last fair value the public history implies
-  (the last filled price, or `start_cents` before any fill), with a half-spread of 10 cents and size 1; and `replay` as §5.2. It
+  give materially different fair paths (the test counts distinct paths over the fifty fixed seeds 0 to 49).
+- **`reference.py`**: the full reference: `quote` posts a symmetric quote around the last filled price in the public history
+  (or `start_cents` before any fill), with a half-spread of 10 cents and size 1; and `replay` as §5.2. It
   passes every test on seeds 0–49.
 - **`test_project.py`** (properties and numbers; no hard-coded answers; each test recomputes the expected value from the instance's
   own parameters by an oracle written apart from `reference.py`):
@@ -421,15 +421,18 @@ must fail on it), `test_project.py`.
     (both directions of the inequality: an order that reaches 10 fills; one that would reach 11 does not;
     `test_fills_stop_at_the_inventory_limit_in_each_direction`). The suite does not assert `|inventory_after| <= 10` on the
     game logs; the engine's refusal is what the hand-built test checks.
-  - **Cash identity.** `cash_after` changes by exactly `−ask` on a buy fill and `+bid` on a sell fill (integers).
+  - **Cash identity.** `cash_after` changes by exactly `+ask` on a maker sale at the ask and by `−bid` on a maker purchase at the bid (integers), as in the project's Conventions.
   - **P&L identity.** `replay(log)` returns `pnl_cents == cash_flow_cents + inventory_end × settlement_cents` exactly, and
     `cash_flow_cents` equals the sum of the fill cash flows from the log (integers).
   - **Mark uses settlement.** A hand-built log whose last quote mid differs from `settlement_cents` gives the mark at `settlement_cents`
     (not at the mid).
   - **Money is integer.** Every money key in `replay` is an `int` (type check, all seeds).
+  - **Fill prices.** A hand-built log with fills at 10005 and 10003 cents is booked at those prices, with no rounding to the dime
+    (`test_a_fill_at_any_integer_cent_price_is_booked_exactly`).
   - **Seed consistency.** The log's `seed` equals the seed the grader ran, and its settlement is the last fair value of its own
-    instance (`test_a_log_carries_its_own_seed_and_settlement`, on engine-produced logs of each seed). The suite does not replay a
-    log copied from another seed; a copied log carries the other seed in its `seed` field, so this check is what would refuse it.
+    instance (`test_a_log_carries_its_own_seed_and_settlement`, on engine-produced logs of each seed). No test refuses a log
+    copied from another seed: the check plays each game itself and compares its seed and settlement with that seed's instance,
+    so it never receives a copied log.
   - Failure messages name the violated property and hint at the concept. They never print the expected value; each failing check sets
     `__tracebackhide__ = True` (fixer-rule 19).
 - **Dual mode.** The same suite runs in Pyodide and under pytest; each test under 5 s in Pyodide; the suite under 60 s.
