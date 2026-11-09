@@ -2,7 +2,8 @@
 
 Standard library only. The seeded-simulation functions draw the Gaussian increments in one fixed order: path by
 path, and within a path step by step, with ``random.Random(seed).gauss(0.0, sqrt(H / n_steps))``. Any
-implementation that keeps that order reproduces the reference numbers of Lab 3 exactly. Nothing here prints or warns.
+implementation that keeps that order reproduces the reference numbers of Lab 3 to the printed digits. Nothing here
+prints or warns.
 """
 
 from __future__ import annotations

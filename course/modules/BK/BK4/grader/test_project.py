@@ -10,8 +10,8 @@ Each test checks one property or one number against the conventions of the proje
 the page fixes integer cents and the layer order, so a correct implementation returns the same integers. Only the
 conditions the page names with ValueError are required to raise it, and each named condition has its own test on
 both sides of its limit. Any other invalid input may raise any exception or return. A failing test names the property
-it checks and the idea to revisit, and it never prints an expected value. Each expected result (an amount, a count, a
-list or a mapping) is held in a named variable, so a failing line shows the name and not the value.
+it checks and the idea to revisit, and it never prints an expected value. The suite runs with --assert=plain, so a
+failing line shows the source of the check and never the values it compared.
 """
 
 from __future__ import annotations
@@ -695,7 +695,8 @@ def test_exact_position_is_an_integer_index_not_a_rounded_float() -> None:
     got = sol.margin_for_cover(losses, 2_800)
     assert got == want, (
         "the index is the exact ceiling of target * S / 10000, computed in integers: a whole-number position is "
-        "not rounded up, and a float product of the target and the count can round it up by one"
+        "not rounded up, and a float computed as (target / 10000) * count can round it up by one "
+        "(2800 / 10000 * 50 is 14.000000000000002, not 14)"
     )
 
 

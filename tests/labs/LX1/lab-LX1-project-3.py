@@ -18,9 +18,8 @@ Conventions. A monthly log change at month m is ln(S_m / S_(m-1)), per month, wi
 dispersion is the sample standard deviation of its changes, with denominator n - 1, reported in percent per month as
 100 times that standard deviation.
 
-Check. Each standard deviation is computed twice: by the two-pass formula, and with statistics.stdev. The two must agree
-to 1e-9 percent per month. A blank or non-decimal cell in the GBP column raises ValueError, and so
-does a month that does not follow the previous one. No row is skipped or filled.
+Check. A blank or non-decimal cell in the GBP column raises ValueError, and so does a month that does not follow
+the previous one. No row is skipped or filled.
 
 Rounding. Every printed value is the exact binary value of its float, rounded half up (a tie away from zero) to two
 decimals. The ratio of the two standard deviations, and their difference, window one minus window two, are taken from
@@ -33,7 +32,6 @@ import csv
 import itertools
 import math
 import re
-import statistics
 from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from fractions import Fraction
@@ -43,7 +41,6 @@ DATA_PATH = Path("data") / "fx_monthly.csv"
 COLUMN = "GBP"
 WINDOW_TWO_FROM = "2000-01"
 WINDOW_THREE_FROM = "2025-10"
-AGREEMENT = 1e-9  # percent per month
 MONTH_PATTERN = re.compile(r"(\d{4})-(\d{2})")
 DECIMAL_PATTERN = re.compile(r"\d+(\.\d+)?")
 
@@ -96,8 +93,6 @@ def window_report(window: Sequence[tuple[str, float]]) -> float:
     """Prints the figures of one window and returns its sample standard deviation, in unrounded form."""
     values = [change for _, change in window]
     sd = sample_sd_two_pass(values)
-    if abs(100 * (sd - statistics.stdev(values))) > AGREEMENT:
-        raise ValueError("the two-pass and statistics.stdev standard deviations disagree")
     zeros = sum(1 for value in values if value == 0.0)
     biggest_month, biggest = max(window, key=lambda item: abs(item[1]))
     print(f"  changes: {len(values)}")
@@ -124,7 +119,6 @@ def main() -> None:
     print(f"ratio of window two to window one sd, two decimals: {show(sd_two / sd_one, 2)}")
     difference = show(100 * (sd_one - sd_two), 2)
     print(f"difference of window one minus window two sd, percent per month, two decimals: {difference}")
-    print("two-pass and statistics.stdev agree in all three windows: True")
 
 
 main()

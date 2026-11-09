@@ -1,8 +1,7 @@
 """Rung 2 completion problem: the indifference gap and its bisection, for one SIMULATED instance.
 
-Standard library only. The inputs are stated values for this example: a noise volume of 0.70 and an information cost of
-0.14, not a draw from the generator. The model constants are a = 2, tau_v = 1 and tau_e = 1. This file is the completed
-solution: the page shows the same lines with the return of indifference_gap replaced by blanks.
+Standard library only. The inputs, a noise volume of 0.70 and an information cost of 0.14, are stated values. This file
+is the completed solution; the page shows it with the return of indifference_gap blanked.
 """
 
 import math

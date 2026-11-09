@@ -1,8 +1,7 @@
 """Rung 1 worked example: one SIMULATED instance, solved step by step.
 
-Standard library only. The two inputs are stated values for this example, a noise volume of 0.60 and an information
-cost of 0.13. They are not a draw from the generator in grader/instance.py. The model constants are a = 2, tau_v = 1
-and tau_e = 1. Each step prints the quantity it computes, so every printed number comes from the code below.
+Standard library only. The inputs, a noise volume of 0.60 and an information cost of 0.13, are stated values, not a
+draw from grader/instance.py. Each step prints the quantity it computes.
 """
 
 import math

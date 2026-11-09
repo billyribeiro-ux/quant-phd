@@ -42,3 +42,8 @@
     and is not a student error: it lives in ledgers/E4/equivalent with this ruling as its proof. The page says so in one sentence.
 18. **Retired alternatives.** Rows about alternative files that no longer exist (alt_r8_*, alt_v9_*) are retired; the current
     alt_1 to alt_8 are the verified set.
+19. **M7 alternatives.** M7's grader accepts any allocation that satisfies the KKT conditions stated on the page. An alternative
+    whose primary method is a different solver (projected gradient, ADMM, interior point, dual ascent) and which returns its
+    answer only after an exact KKT check, falling back to the active-set search otherwise, is a valid alternative of a different
+    style. Rows that ask for a "different method" are satisfied by the four front-end solvers in ledgers/M7/scripts/M7-d-r12fix.
+20. **Process safety.** Agents never kill processes by pattern (no pkill, no killall).

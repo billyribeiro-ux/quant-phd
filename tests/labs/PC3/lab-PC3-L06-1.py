@@ -10,7 +10,8 @@ number of decimal places, applied once to the exact value.
 
 Part 1 is a forward-price check. A discount factor D = 97/100 for the expiry is an input, with D = exp(-r tau) in the
 convention of the lesson. The no-arbitrage forward price is F = S / D. The portfolio of a long asset, a loan of S repaid
-as S / D, and a short forward at a quoted price F' pays F' - S / D at expiry in every spot state.
+as S / D, and a short forward at a quoted price F' pays F' - S / D at expiry. The lab checks this at five spot
+values; Proposition 2.1 covers every spot state.
 
 Part 2 is a case. A machine costs 15000000 cents. It earns a contribution of 5000 cents per unit sold for three
 years, and units per year are sized by a Fermi product of three assumed factor ranges. The net present value is the

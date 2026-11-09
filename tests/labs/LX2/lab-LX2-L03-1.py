@@ -27,9 +27,9 @@ The threshold DEMO_THRESHOLD = 2 is a demonstration value, chosen before the run
 the lab takes it from no source. The flag says only that the ratio exceeds 2 on this flow.
 After every event the lab checks two things: the book is not crossed, and the share identity
 entered = resting + 2 * traded + market cancelled + trader cancelled holds, where the traded term counts each executed
-share once for each of its two orders. It also checks that a tally of the event log reproduces the book's order and
-cancel counts per trader. The lab does not decide whether any trader's behaviour is lawful, and it does not model
-latency, brokers or several venues.
+share once for each of its two orders. At the end of the run it also checks that a tally of the event log reproduces
+the book's order and cancel counts per trader. The lab does not decide whether any trader's behaviour is lawful, and it
+does not model latency, brokers or several venues.
 """
 
 from __future__ import annotations

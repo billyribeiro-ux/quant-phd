@@ -1,0 +1,25 @@
+#!/bin/bash
+# Round 16 gate run for SC1-d, from the verifier checkout root. Writes one out/ file per command.
+R=/Users/billyribeiro/.fanout/wt/verifyE16-SC1-d
+cd "$R" || exit 1
+O=$R/ledgers/SC1/scripts/SC1-d-r16/out
+PY=$R/.venv/bin/python
+run() { name=$1; shift; { echo "\$ $*"; "$@"; echo "EXIT=$?"; } > "$O/$name.txt" 2>&1; }
+run check_pages_unit_r16 $PY tools/check_pages.py --unit SC1
+run check_dag_unit_r16 $PY tools/check_dag.py --unit SC1
+run check_projects_unit_r16 $PY tools/check_projects.py --unit SC1
+run run_labs_unit_r16 $PY tools/run_labs.py --unit SC1
+run run_labs_project_r16 $PY tools/run_labs.py --unit SC1 --page project
+run run_graders_0_49_r16 $PY tools/run_graders.py --unit SC1 --seeds 0-49
+run run_graders_0_199_r16 $PY tools/run_graders.py --unit SC1 --seeds 0-199
+run page_smoke_project_r16 $PY tools/page_smoke.py --unit SC1 --pages project
+run mutate_graders_unit_r16 $PY tools/mutate_graders.py --unit SC1 --seeds 0-9
+run mypy_r16 .venv/bin/mypy --no-incremental
+run ruff_check_repo_r16 .venv/bin/ruff check .
+run ruff_format_repo_r16 .venv/bin/ruff format --check .
+run ruff_check_grader_labs_r16 .venv/bin/ruff check course/modules/SC/SC1/grader tests/labs/SC1
+run ruff_format_grader_labs_r16 .venv/bin/ruff format --check course/modules/SC/SC1/grader tests/labs/SC1
+run collect_count_r16 $PY -m pytest --collect-only -q -p no:cacheprovider course/modules/SC/SC1/grader/test_project.py
+run verify_refs_offline_r16 $PY tools/verify_refs.py --offline
+run pytest_labs_r16 $PY -m pytest -q -p no:cacheprovider tests/labs
+echo done > "$O/GATES_DONE"

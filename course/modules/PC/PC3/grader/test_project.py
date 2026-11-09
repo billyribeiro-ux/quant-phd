@@ -9,8 +9,8 @@ with your market_maker.py, engine.py and instance.py next to this file. Warnings
 Each test checks a property or a number of the game defined in Lesson 4 and in the project specification. The checks
 that depend on the seed run on the fixed seeds 0 to 49, on the learner's seed SEED and on seed SEED + 7919, so a fixed
 answer for one seed must also match the others. Every expected value
-is computed here, from the log's own fields and this file's own oracle, never from the student's module. A failing test
-names the property it checks and the idea to revisit; it never prints the value the property should have.
+is computed here, from the log's own fields and this file's own oracle, never from the student's module. A failing
+property check names the property it checks; it never prints the value the property should have.
 
 A test expects an exception only for the conditions the specification names as invalid: a crossed or locked quote, a
 size outside 0..5, a log that is not 20 turns long, and a filled turn with no fill price. Every other failure is a plain
