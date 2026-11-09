@@ -1,8 +1,8 @@
 """CS2 lab L06: BFS hop counts against brute force, the DFS parenthesis property, and operation counts.
 
-SIMULATED graphs: every graph is a seeded random undirected graph (seed 20261028 and offsets from it). No market
-data, no network, standard library only. Vertices are 0..n-1. Adjacency lists are sorted, so every run prints
-the same lines.
+SIMULATED graphs: the random graphs of Parts A, B and D are seeded undirected graphs (seed 20261028 and offsets
+from it); Part C uses one fixed weighted graph written out in the code. No market data, no network, standard
+library only. Vertices are 0..n-1. Adjacency lists are sorted, so every run prints the same lines.
 
 Part A: 40 seeded graphs with 3 to 7 vertices. For every source, the BFS hop counts equal the fewest edges over
 all simple paths, found by exhaustive search. Mismatches are counted.

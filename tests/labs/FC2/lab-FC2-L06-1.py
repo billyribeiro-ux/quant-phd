@@ -4,10 +4,10 @@ Every number is exact. Shares, bond positions, stock prices, payoffs and values 
 values. Stock prices, payoffs and values after one move are printed in currency units; shares
 and bond positions are printed as exact fractions, because they are positions. Only the time-0
 values are also printed in integer cents: the one-period cost V0, the one-period discounted
-expectation and the two-period V0 (half up, which changes nothing here because each is already
-a whole number of cents). The parameters are model inputs chosen for exact arithmetic, not
-market data and not a forecast: spot 100 currency units, strike 100, up factor 3/2, down
-factor 1/2, and gross riskless return 5/4 per period. The claim is a European call paid at
+expectation, and the two-period V0 by backward induction and in closed form (half up, which changes
+nothing here because each is already a whole number of cents). The parameters are model inputs
+chosen for exact arithmetic, not market data and not a forecast: spot 100 currency units, strike 100,
+up factor 3/2, down factor 1/2, and gross riskless return 5/4 per period. The claim is a European call paid at
 expiry, with payoff max(S - K, 0). No input is random and no data file is read.
 """
 

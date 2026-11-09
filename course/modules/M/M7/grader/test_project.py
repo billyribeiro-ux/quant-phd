@@ -309,6 +309,83 @@ HAND_CASES: dict[str, tuple[dict[str, Any], list[float]]] = {
         ),
         [0.5, 0.5],
     ),
+    # A turnover limit of one billionth. The expected return of asset 0 is 1000, so the answer moves as far toward asset
+    # 0 as the limit allows: w0 + (t, -t) with 2t = limit, so t = 5e-10 and the answer is (0.5 + 5e-10, 0.5 - 5e-10).
+    # The starting portfolio is feasible, and the turnover limit is the only inequality that binds. An answer that
+    # leaves the start in place reports a complementary-slackness residual of about 5e-7 on this case.
+    "turnover limit of one billionth": (
+        hand_case(mu=[1000.0, 0.0], w0=[0.5, 0.5], turnover_limit=1e-9),
+        [0.5 + 5e-10, 0.5 - 5e-10],
+    ),
+    # An upper bound one billionth above the starting weight of asset 0, with the same return. The bound binds, so the
+    # answer is (0.5 + 1e-9, 0.5 - 1e-9), and the turnover limit of 2 is slack. Leaving the start in place breaks the
+    # upper-bound certificate by about 1e-6 on this case.
+    "upper bound one billionth above the start": (
+        hand_case(mu=[1000.0, 0.0], w0=[0.5, 0.5], upper=[0.5 + 1e-9, 2.0]),
+        [0.5 + 1e-9, 0.5 - 1e-9],
+    ),
+    # A lower bound one billionth above the starting weight of asset 0, binding because the expected return of asset 0
+    # is -1000. The budget gives asset 1 the rest, so the answer is (0.5 + 5e-10, 0.5 - 5e-10). The turnover limit of 2
+    # is slack. The start is moved onto the lower bound before the search begins.
+    "lower bound one billionth above the start": (
+        hand_case(mu=[-1000.0, 0.0], w0=[0.5, 0.5], lower=[0.5 + 5e-10, -1.0]),
+        [0.5 + 5e-10, 0.5 - 5e-10],
+    ),
+    # Three assets in two sectors. The start breaches the cap of sector 0 by one billionth. Asset 0 sits on its lower
+    # bound of 0.3 (its expected return is -1000), so the cap binds on asset 1: 0.3 + w1 = 0.6 - 5e-10 gives
+    # w1 = 0.3 - 5e-10, and the budget gives asset 2 the rest, 0.4 + 5e-10.
+    "sector breach one billionth at a lower bound": (
+        {
+            "label": "SIMULATED hand case for the acceptance suite, not a real portfolio",
+            "gamma": 1.0,
+            "mu": [-1000.0, 0.0, 0.0],
+            "w0": [0.3, 0.3, 0.4],
+            "sigma": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            "lower": [0.3, -1.0, -1.0],
+            "upper": [2.0, 2.0, 2.0],
+            "sector": [0, 0, 1],
+            "sector_caps": [0.6 - 5e-10, 1.0],
+            "turnover_limit": 2.0,
+        },
+        [0.3, 0.3 - 5e-10, 0.4 + 5e-10],
+    ),
+    # Zero turnover fixes the answer at the starting portfolio, (0.3, 0.3, 0.4). Sector 1 breaches its cap of 0.4 by one
+    # billionth at the start, and that breach is inside the tolerance, so the answer is the start. The cap of sector 1
+    # has a zero multiplier in the answer; the cap of sector 0 sits exactly on the start and carries a positive one.
+    "zero turnover with a sector breach one billionth": (
+        {
+            "label": "SIMULATED hand case for the acceptance suite, not a real portfolio",
+            "gamma": 1.0,
+            "mu": [1000.0, 0.0, 0.0],
+            "w0": [0.3, 0.3, 0.4],
+            "sigma": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            "lower": [-1.0, -1.0, -1.0],
+            "upper": [2.0, 2.0, 2.0],
+            "sector": [0, 0, 1],
+            "sector_caps": [0.6, 0.4 - 5e-10],
+            "turnover_limit": 0.0,
+        },
+        [0.3, 0.3, 0.4],
+    ),
+    # Three assets in two sectors, with the cap of sector 0 breached by one billionth and binding: both assets of
+    # sector 0 have expected return 1000, so the cap binds and the two split it equally. The answer is
+    # (0.3 - 2.5e-10, 0.3 - 2.5e-10, 0.4 + 5e-10): the cap leaves 0.6 - 5e-10 for the two assets, and the budget gives
+    # asset 2 the rest.
+    "binding sector cap breached by one billionth": (
+        {
+            "label": "SIMULATED hand case for the acceptance suite, not a real portfolio",
+            "gamma": 1.0,
+            "mu": [1000.0, 1000.0, 0.0],
+            "w0": [0.3, 0.3, 0.4],
+            "sigma": [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            "lower": [-1.0, -1.0, -1.0],
+            "upper": [2.0, 2.0, 2.0],
+            "sector": [0, 0, 1],
+            "sector_caps": [0.6 - 5e-10, 1.0],
+            "turnover_limit": 2.0,
+        },
+        [0.3 - 2.5e-10, 0.3 - 2.5e-10, 0.4 + 5e-10],
+    ),
 }
 
 

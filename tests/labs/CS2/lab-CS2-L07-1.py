@@ -4,8 +4,9 @@ SIMULATED: every instance is generated from a fixed seed by an integer generator
 Part A: the longest common subsequence (LCS) of 30 seeded string pairs, by memoized recursion, by table fill
 and by exhaustive search over all subsequences of the first string. Part B: the fewest coins summing to a
 seeded amount, for 30 seeded coin sets, by the same three methods (exhaustive search over all coin-count
-vectors), plus the largest-coin-first rule on the coin set (1, 3, 4). Part C: subproblem counts. Each method's
-recursive calls and stored subproblems are counted, and the table cells filled are counted. The lab counts
+vectors), plus the largest-coin-first rule on the coin set (1, 3, 4). Part C: subproblem counts. The memoized
+recursion's calls and stored subproblems are counted, the calls of the same recursion with no memo table are
+counted, and the table cells filled are counted. The lab counts
 operations only; it does not time anything. Standard library only, no network access, no randomness other
 than the seeded generator.
 """

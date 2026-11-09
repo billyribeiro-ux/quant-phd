@@ -1,4 +1,4 @@
-"""M5 L05 lab 1: the functions x^n on [0, 1] and on [0, a], checked on exact rational grids.
+"""M5 L05 lab 1: the functions x^n on [0, 1] and on [0, 1/2], checked on exact rational grids.
 
 Standard library only. No randomness and no network: every grid is enumerated with Fraction arithmetic, so every run
 prints the same lines. A supremum over a grid is a maximum over finitely many points. A grid that contains the

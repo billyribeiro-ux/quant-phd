@@ -301,9 +301,15 @@ No debate brief is required (no `debate` key, §0.1).
   5. a closed-form family (if kept, §11 Q2): the test computes the known value function from the instance's parameters and checks it;
   6. invalid input: the named `ValueError` conditions above, and no silent acceptance.
   - Tests must not pass a hard-coded answer. Seed 0 is not special.
-- **Five alternative correct implementations must pass** (BUILDER_RULES §5 and the §1 rule above): synchronous (Jacobi) sweep; in-place
-  (Gauss–Seidel) sweep; loop and vectorized forms; two tie-break rules for the argmax; stopping on the certified bound and on the
-  residual with the bound reported.
+- **Five alternative correct implementations must pass** (BUILDER_RULES §5 and the §1 rule above). Each one obeys the page contract
+  (project.html, Conventions: "Iteration", "Certified error", "Stopping"): synchronous sweeps from zero, certified by
+  \(\frac{\beta}{1-\beta}\) times the last change, stopping at the first sweep whose certified error is at most `tol`. The accepted
+  files are `ledgers/M5/alternatives/alt1` to `alt5`: functional reduce over tuples; a class with precomputed feasible tables; a
+  comprehension over feasible index lists; bisection over the sorted grid; a synchronous sweep that visits the states from largest to
+  smallest. **The in-place (Gauss–Seidel) sweep and the stop on the residual with the bound reported are not valid alternatives of
+  this project** (ruling 31, plans/FINAL-ARCHITECT-RULINGS.md): the page fixes the sweep as synchronous (project.html:244) and the stop
+  rule as the certified bound (project.html:245–246). Both fail the suite's certified-error formula test on seeds 0–49 (0 of 50 each).
+  They are kept as non-accepted variants in `ledgers/M5/alternatives/not_accepted/`.
 - **Dual mode.** The identical suite runs in Pyodide and locally (`QF_SEED` pattern as in `course/modules/M/M1/grader/test_project.py`
   docstring). Warnings are failures in both.
 - **Starter** (`grader/starter.py`): every function raises `NotImplementedError`; the suite must fail on it (`run_graders.py` checks this).

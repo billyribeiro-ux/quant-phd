@@ -100,3 +100,21 @@
     `git diff <pin of that fragment>..HEAD`, carries every other row with its evidence under the carry prefix of the
     verifier rules, and does not hunt for new defects outside those rows (observations are notes). Its fragment becomes the
     slice's ledger. A delta round that still returns a ruling-26 defect is fixed and delta-verified once more.
+31. **M5 project alternatives.** The page is authoritative: its sweep is synchronous (project.html:244) and the stop rule is
+    the page's. An in-place (Gauss-Seidel) sweep or a residual-bound stop changes the iteration count the tests check, so
+    they are not valid alternatives of this project. plans/M5-build-plan.md lines 304-306 and plans/M5-open-items.md
+    decision 3 are amended to say so; ledgers/M5/not_accepted/ keeps the two files as documented non-accepted variants.
+32. **E3 estimator range and half-up.** The stated range of the estimator is narrowed to gamma in [0.001, 0.99]: only there is
+    the reference shown to reach a point that passes the local-maximum check (a fit at gamma_hat 0.994 stops on a flat
+    direction). A clamp of the reported gamma at or above 0.99 is then a no-op inside the stated range, so the clamp mutants
+    (r11_03, r12d_03, v15d_03) stay in equivalent/ with a README that says "none found in N trials" where it is a
+    measured claim. `_half_up` is made exact (floor of the exact Fraction value plus one half) so that the tie mutants
+    differ from it only at exact ties; the four tie files are regenerated from the current reference and the README
+    states exactly that difference set. The page says the range in one sentence.
+33. **E3 notation letters.** One meaning per symbol across E3 (ruling 29): rename the Epstein-Zin exponent a = 1 - 1/psi in
+    L05 and L08 and the L06 prospect value W to letters used nowhere else in E3 (grep pages, cards and twins first);
+    L01's rho is renamed too (plan 4: never rho); the Theorem 2.1 proof's tilde u in L03 becomes \check u. Re-embed the
+    L05, L06 and L08 labs. The L05-L08 footers state "Each graded result carries a proof or a lab result labelled C."
+34. **Free-text explanations (FC2 project).** The page states the labels an explanation must name, not its wording. Mutants
+    that change only the wording (r15_a, r15_c, r15_d) violate no stated behaviour: they go to ledgers/FC2/equivalent/ with a
+    README (ruling 9). The grader keeps the label-set check that kills r15_b.

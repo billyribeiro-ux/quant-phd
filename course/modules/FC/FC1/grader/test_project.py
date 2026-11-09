@@ -351,6 +351,16 @@ def test_bond_coupon_above_one_hundred_percent_is_accepted() -> None:
     assert rows == [(1, 25_000)], "a coupon of 150 % of face is paid in the one period, with the face"
 
 
+def test_bond_coupon_of_twenty_thousand_one_bps_is_accepted() -> None:
+    """Accepted-input check: the page names only a negative coupon_bps as refused and no upper limit on the coupon, so a
+    coupon of 20001 bps (200.01 % of face) is valid: Bond(10000, 20001, 1) has one event, (1, 20001 + 10000)."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.Bond(10_000, 20_001, 1).events(), "coupon_bps = 20001"), "Bond.events"
+    )
+    assert rows == [(1, 30_001)], "a coupon of 200.01 % of face is paid in the one period, with the face"
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # bond_price_cents: present value at a per-period yield
 # ---------------------------------------------------------------------------------------------------------------
@@ -628,6 +638,16 @@ def test_trade_price_zero_is_accepted_and_kept() -> None:
     assert checked_events(sol.CashTrade(10, 0, 1, 2).events(), "CashTrade.events") == [(2, 0)], (
         "a zero price must be accepted, and its settlement event kept at zero"
     )
+
+
+def test_trade_price_of_ten_to_the_ninth_cents_is_accepted() -> None:
+    """Accepted-input check: the page names only price_cents < 0 as refused and no upper limit on a price, so a price of
+    10**9 cents per unit is valid: 10 units bought in period 2 settle as -(10 * 10**9) cents."""
+    __tracebackhide__ = True
+    rows = checked_events(
+        must_accept(lambda: sol.CashTrade(10, 10**9, 1, 2).events(), "price_cents = 10**9"), "CashTrade.events"
+    )
+    assert rows == [(2, -(10 * 10**9))], "the settlement event is quantity times price, from the holder's side"
 
 
 def test_trade_side_zero_is_refused() -> None:

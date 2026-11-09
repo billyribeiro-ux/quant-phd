@@ -682,8 +682,8 @@ def test_scan_explanations_are_nonempty_and_name_the_rule() -> None:
                 "the explanation names the rule that the finding breaks"
             )
             labels = PARITY_LABELS if record["kind"] == "parity" else CONVEXITY_LABELS
-            for label in labels:
-                assert re.search(rf"\b{label}\b", text), "the explanation names each assumption its kind depends on"
+            named = set(re.findall(r"\bP[1-6]\b", text))
+            assert named == set(labels), "the explanation names exactly the assumptions its kind depends on"
 
 
 def test_scan_matches_exhaustive_oracle_seed() -> None:

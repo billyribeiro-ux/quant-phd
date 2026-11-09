@@ -8,7 +8,7 @@ each date with the value at that date of holding the same option to expiry. The 
 the expiry payoff by DISCOUNT for each remaining year (assumption A4). DISCOUNT = 9/10 is exactly e^(-r) for the rate
 r = ln(10/9), about 10.54 per cent per year, so every discount factor in Part 2 is an exact rational number.
 Part 2 is a comparison with hindsight on one path: it is not a decision rule, and it leaves out the choice to sell
-the option before expiry. Lesson 5 gives no rule for that choice at a later date (its Remark 4.2).
+the option before expiry. The lab makes no claim about that choice at any date.
 The lab draws no random numbers.
 """
 

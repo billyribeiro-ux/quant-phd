@@ -3,7 +3,6 @@
 Reference solution with one planted error (see the docstring line above).
 """
 
-
 from __future__ import annotations
 
 import math
@@ -14,7 +13,7 @@ from itertools import product
 from typing import Any, cast
 
 REQUIRED = ("gamma", "mu", "sigma", "w0", "lower", "upper", "sector", "sector_caps", "turnover_limit")
-TOL = Fraction(1, 10**9)  # the tolerance on the starting-portfolio checks and on the active-set test
+TOL = Fraction(1, 10**9)  # the tolerance on the starting-portfolio checks (the active-set test is exact)
 
 
 @dataclass(frozen=True)
@@ -188,16 +187,42 @@ def _inequalities(problem: Problem) -> list[tuple[list[Fraction], Fraction, tupl
     return rows
 
 
+def _snapped_start(problem: Problem) -> list[Fraction]:
+    """The starting portfolio, moved exactly onto each bound and sector cap it breaks by at most TOL.
+
+    A weight below its lower bound or above its upper bound is set onto that bound. A sector whose weight exceeds its
+    cap gives up the excess in proportion to each member's room above its lower bound, so every bound still holds and
+    the sector sum equals its cap. Sectors partition the assets, so the sectors do not interact. When a sector cannot
+    meet its cap inside its bounds, the problem is infeasible within the tolerance and the start is returned as it is.
+    The start is also returned as it is when the snap moves it further from w0 than the turnover limit allows, since
+    the turnover rows are measured from w0.
+    """
+    n = problem.n
+    x = [min(max(problem.w0[i], problem.lower[i]), problem.upper[i]) for i in range(n)]
+    for k, cap in enumerate(problem.caps):
+        members = [i for i in range(n) if problem.sector[i] == k]
+        excess = sum((x[i] for i in members), Fraction(0)) - cap
+        if excess <= 0:
+            continue
+        room = sum((x[i] - problem.lower[i] for i in members), Fraction(0))
+        if room < excess:
+            return list(problem.w0)
+        for i in members:
+            x[i] -= excess * (x[i] - problem.lower[i]) / room
+    moved = sum((abs(x[i] - problem.w0[i]) for i in range(n)), Fraction(0))
+    return x if moved <= problem.tau else list(problem.w0)
+
+
 def _active_set(
     problem: Problem, rows: list[tuple[list[Fraction], Fraction, tuple[object, ...]]]
 ) -> tuple[list[Fraction], dict[tuple[object, ...], Fraction], Fraction]:
     n = problem.n
     hessian = [[problem.gamma * problem.sigma[i][j] for j in range(n)] for i in range(n)]
     budget = [Fraction(1)] * n
-    x = list(problem.w0)
+    x = _snapped_start(problem)
     working: list[int] = []
     for j, (a, b, _) in enumerate(rows):
-        if b - _dot(a, x) <= TOL and _rank([budget, *(rows[k][0] for k in working), a]) > len(working) + 1:
+        if b - _dot(a, x) == 0 and _rank([budget, *(rows[k][0] for k in working), a]) > len(working) + 1:
             working.append(j)
     for _ in range(200):  # a cap far above the iterations the search uses on seeds 0 to 49 (at most 12)
         gradient = [_dot(hessian[i], x) - problem.mu[i] for i in range(n)]
