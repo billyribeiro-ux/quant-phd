@@ -9,7 +9,8 @@ the current `grader/reference.py` in round 11 (script `ledgers/E4/scripts/E4-d-f
 Ruling 9 of `plans/FINAL-ARCHITECT-RULINGS.md` says a mutant that differs from the reference only where the page states
 nothing goes here, with a proof. This variant differs where the page does state something: Proposition 1 gives the
 sign of `b_u / b_s`. No output of `solve_model` depends on that sign, so no test in the suite can kill this variant.
-It is therefore recorded here as an open item for the architect, not as a surviving mutant that the suite misses.
+Decision: ruling 24 (round 18) keeps this variant equivalent; its sign is unobservable in every output (`b_u` enters only
+as `b_u * b_u`), so ruling 9 places it here.
 
 ## Proof that the three outputs do not change
 
@@ -23,10 +24,11 @@ It is therefore recorded here as an open item for the architect, not as a surviv
    `info_cost` in [0, 0.4]. The largest absolute difference in any of the three outputs was 0.0.
 5. Round 11: the regenerated variant passes the suite on seeds 0 to 49 (50/50).
 
-## What the architect must decide
+## Decision (ruling 24)
 
-Either (a) keep Proposition 1's sign statement, which the suite cannot test, and record this as a known limit, or
-(b) remove the sign from Proposition 1, which changes no output. The builder did not edit the proposition on its own.
+Ruling 24 of `plans/FINAL-ARCHITECT-RULINGS.md` (round 18, binding) decides this item: `literal_price_sign` stays
+equivalent. Its sign is unobservable in any output (`b_u` enters only as `b_u * b_u`), the proof above stands, and ruling 9
+provides the `equivalent/` path for it. No change to Proposition 1 is required.
 
 # Stop-rule variants (rounds 6 to 11)
 

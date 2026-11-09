@@ -71,3 +71,10 @@
     states the sweep as evidence and says plainly that the bound is measured, not proved (ruling 9). Contrast ruling 24, where
     a point beyond the stated accuracy was found, so a test was added. A verifier does not author further mutants that
     sit at the tolerance boundary; new mutants are student errors that a learner could plausibly write.
+26. **Convergence policy.** Fresh verifiers find new, mostly small defects every round (strict sweep of the older slices:
+    107 rows, then 64, then 81), so verification alone does not reach zero. Rule: a slice is accepted when a verification round
+    returns no row of these kinds: a false or unproved mathematical statement, a missing hypothesis, a wrong number, an
+    over-graded claim, a failing gate, a surviving non-equivalent mutant, a lab statement the code does not support. For the
+    older slices (tag S) round 4 is the last full verification; every row it returns is fixed and the unit gate re-run, but
+    the slice is not verified again. Rows still open at that point, and any LOW row (wording, presentation, card style)
+    deferred by a fixer, are listed in plans/KNOWN-ISSUES.md with their ledger ids so that nothing is hidden.

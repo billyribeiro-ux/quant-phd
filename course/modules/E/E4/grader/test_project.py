@@ -43,7 +43,7 @@ SD = float(INST["noise_sd"])
 COST = float(INST["info_cost"])
 KEYS = {"informed_fraction", "price_informativeness", "indifference_gap"}
 TOL_GAP = 1e-8  # the indifference gap at a root and at the boundary, in expected-utility units (reported gaps: 1e-14)
-TOL_ROOT = 1e-10  # the agreement of the informed fraction with the oracle's root
+TOL_ROOT = 1e-10  # the agreement of the informed fraction with the oracle's root, relative to the root
 TOL_MOMENT = 1e-8  # the agreement of the price informativeness with the oracle's moment formula
 
 
@@ -343,8 +343,9 @@ def test_fraction_is_the_oracle_root(which: str) -> None:
     inst = INSTANCES[which]
     sd, cost = float(inst["noise_sd"]), float(inst["info_cost"])
     lam = run(sd, cost)["informed_fraction"]
+    root = oracle_root(sd, cost)
     expect(
-        abs(lam - oracle_root(sd, cost)) <= TOL_ROOT,
+        abs(lam - root) <= TOL_ROOT * root,
         "the informed fraction should be the root of the gap, found by a different method: check the bisection",
     )
 
