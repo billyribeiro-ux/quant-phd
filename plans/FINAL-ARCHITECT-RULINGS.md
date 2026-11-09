@@ -78,3 +78,19 @@
     older slices (tag S) round 4 is the last full verification; every row it returns is fixed and the unit gate re-run, but
     the slice is not verified again. Rows still open at that point, and any LOW row (wording, presentation, card style)
     deferred by a fixer, are listed in plans/KNOWN-ISSUES.md with their ledger ids so that nothing is hidden.
+27. **E3 whole-cent ties under CRRA.** The half-up rule on the page holds exactly for the lottery tasks whose certainty
+    equivalent is computed in exact arithmetic. For CRRA with gamma != 0 the certainty equivalent is a floating-point number, so
+    an exact tie (for example gamma = 1/2 with a rational certainty equivalent) may be rounded to either neighbour. The page
+    says so in one sentence; the grader accepts either neighbour on such a tie and requires the half-up result everywhere
+    else. The tie mutants (f05, m06, r13n01, w05) stay in equivalent/ with a README proof amended to this scope.
+28. **E3 gamma clamps and dead stall branch.** The page states the estimator's domain as gamma in (0,1). First try to build
+    fixtures with gamma_hat above 0.999 and below 0.001 (a simulated participant with very low noise) and add a
+    local-maximum test; if the reference estimator converges there, mutants r11_03 and r12d_03 return to mutants/ and are
+    killed. If it does not converge there, the page states the supported range as [0.001, 0.999] and the mutants stay in
+    equivalent/. A branch no input can reach (e12_03, negligible step) is dead code: delete it from the reference and delete
+    the mutant, with a README line saying so.
+29. **E3 notation.** One meaning per symbol across E3: rename the L01 mixture weight (tau), the L03 affine constant (eta),
+    the L01-L03 affine-transform utility (v, to \tilde u) and the L05 EIS (epsilon, to psi) to symbols that appear nowhere
+    else in E3 (grep pages, cards and twins first); update lessons, lab twins (re-embed), and cards together. Do not use
+    "convex/convexity" as a term in L06: state u'' >= 0 as L02 states concavity. Forward-premise orderings in L03, L07 and
+    L08 are LOW and go to plans/KNOWN-ISSUES.md.
