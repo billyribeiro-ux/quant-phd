@@ -222,6 +222,15 @@ def test_welford_nan_first_value_raises() -> None:
     must_raise(lambda: WelfordAccumulator().update(float("nan")), "a NaN as the first value")
 
 
+def test_welford_refused_nan_leaves_the_accepted_state() -> None:
+    acc = WelfordAccumulator()
+    acc.update(5.0)
+    must_raise(lambda: acc.update(float("nan")), "a NaN update after one value")
+    must_raise(lambda: acc.variance(1), "variance(1) after one value and a refused NaN")
+    if not close(must_accept(lambda: acc.mean(), "mean() after a refused NaN"), 5.0):
+        pytest.fail("after a refused NaN, mean() must describe the values added so far.")
+
+
 def test_welford_constant_stream_has_zero_variance() -> None:
     acc = WelfordAccumulator()
     for _ in range(10):

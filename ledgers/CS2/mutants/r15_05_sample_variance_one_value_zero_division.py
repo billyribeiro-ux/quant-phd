@@ -1,4 +1,4 @@
-"""Reference solution for the CS2 streaming statistics library (streamstats.py).
+"""Sample variance of one value divides by zero instead of raising ValueError.
 
 Standard library only. Values are floats in the caller's unit; counts and window lengths are ints; the
 quantile sketch's epsilon and q are floats in [0, 1] (epsilon strictly inside (0, 1)). Nothing here prints,

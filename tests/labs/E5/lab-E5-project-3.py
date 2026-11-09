@@ -16,8 +16,8 @@ The default state is the window of 20 quarters that ends at the latest quarter, 
 * growth, the output gap and inflation as in rung 1;
 * inflation gap: inflation minus the target, 2.0 percent per year;
 * unemployment gap: the unemployment rate minus the natural rate of unemployment, 4.0 percent;
-* Taylor-rule value: i = r_n + pi_yoy + PHI_PI * (pi_yoy - target) + PHI_Y * y_log, where pi_yoy is the year-on-year
-  inflation rate and y_log the log output gap of the conventions, and r_n = 2.0 percent per year (the
+* Taylor-rule value: i_star = r_n + pi_yoy + PHI_PI * (pi_yoy - target) + PHI_Y * y_log, where pi_yoy is the
+  year-on-year inflation rate and y_log the log output gap of the conventions, and r_n = 2.0 percent per year (the
   natural real rate), PHI_PI = 0.5 and PHI_Y = 0.5 (stated assumptions, not estimates);
 * policy gap: the policy rate minus the Taylor-rule value;
 * term spread: the quarter average above.

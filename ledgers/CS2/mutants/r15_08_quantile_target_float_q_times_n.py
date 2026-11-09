@@ -1,4 +1,4 @@
-"""Reference solution for the CS2 streaming statistics library (streamstats.py).
+"""Quantile rank target uses float q times n, so q = 0.1, n = 20, epsilon = 0.05 gives target 1, not 2.
 
 Standard library only. Values are floats in the caller's unit; counts and window lengths are ints; the
 quantile sketch's epsilon and q are floats in [0, 1] (epsilon strictly inside (0, 1)). Nothing here prints,

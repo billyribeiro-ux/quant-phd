@@ -3,8 +3,9 @@
 SIMULATED: the eleven values are written out here, one decimal each, with a common offset of 10,000 (dimensionless).
 They are not market data. Standard library only, no randomness, no network. The code computes the exact mean and
 sample variance with Fraction, the same values by Welford's update in floats, the minimum and maximum of the last
-four values, and the exact rank target and answer for the median with epsilon 0.1. Exact values are printed to six
-decimals, rounded from the unrounded Fraction.
+four values, and the exact rank target and answer for the median with epsilon 0.1. The exact mean and sample variance
+are printed to six decimals, rounded from the unrounded Fraction, and so are the two Welford values. The minimum, the
+maximum and the answer are stream values with one decimal, printed to one decimal.
 """
 
 from __future__ import annotations

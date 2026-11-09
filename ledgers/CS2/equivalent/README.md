@@ -1,7 +1,8 @@
 # CS2 project: mutants ruled not to violate the specification
 
-Seven mutants survive the project grader on seeds 0-9 and are kept here, outside `mutants/`, so that
-`tools/mutate_graders.py` measures only student errors that the specification forbids. Each file is
+Six mutants are kept here, outside `mutants/`, so that `tools/mutate_graders.py` measures only student errors
+that the specification forbids. Four of them are proved equivalent or are shown to meet the stated guarantee by a
+lemma; two (r15_04 and r15_06) are measured, not proved. Each file is
 a single-change copy of the reference `course/modules/CS/CS2/grader/reference.py`.
 
 The specification (`course/modules/CS/CS2/project.html`, Constraints and Conventions) states, for the sketch, the rank
@@ -114,14 +115,30 @@ The empty-sketch guard precedes the target and is unchanged. Hence the mutant is
 ## r15_04_sketch_interior_delta_without_minus_one.py (r15_04): the inserted tuple's delta drops the minus one
 
 Claim: when a new interior tuple is inserted with successor s, the mutant sets its delta to g_s + Delta_s instead of
-g_s + Delta_s - 1. The battery below found no violation of the rank guarantee of Conventions for this mutant. This is measured, not proved (rulings 9 and 25).
+g_s + Delta_s - 1. No search below found a violation of the rank guarantee of Conventions for this mutant. This is
+measured, not proved (rulings 9, 25 and 40). No proof is claimed for it.
 
-Evidence. `ledgers/CS2/scripts/CS2-d-r15/guarantee_battery_r15.py` (output `guarantee_battery_r15.txt`) checks the final
-state of a sketch after n values, at 51 probes per stream (q = k/40 for k = 0 to 40, and 10 random q), on 300 streams
-(5 epsilons times 60 trials, n up to 300, with ties, sorted runs and values rounded to one or six decimals). Each check is
-the two inequalities of Conventions with exact Fraction counts, plus the monotonicity of quantile(q) in q. Its output is
-`checks=15300 violations=0` for the reference, for r15_04 and for r15_06. The battery does not check the state after
-every add, the band bound of Lemma 2 or the copy invariant of Lemma 1.
+Evidence, three searches. The same three searches cover r15_06 (next section), and each found 0 violations for the
+reference as a control.
+
+(i) Exhaustive small streams. `ledgers/CS2/scripts/CS2-d-r1/r15_04_06_extra.py` (output `r15_04_06_extra.txt`) runs
+every stream of length 1 to 7 over the values {0, 1, 2, 3} (4 + 16 + ... + 4^7 = 21,844 streams) at each of the
+epsilons 0.3 and 0.2: 43,688 streams in all. After every add it checks both inequalities of Conventions at the 41
+probes q = k/40 (k = 0 to 40), with exact Fraction counts, and the monotonicity of quantile(q) in q. Output:
+`r15_04 exhaustive small streams 43688 violations 0`.
+
+(ii) Randomised long streams. The same script runs 120 seeded streams of 60 to 160 values (epsilon chosen from 0.3,
+0.2 and 0.1; values rounded to zero or one decimal; every third stream sorted), checked after every add at the same 41
+probes. Output: `r15_04 random long streams 120 violations 0`.
+
+(iii) Randomised final-state battery. `ledgers/CS2/scripts/CS2-d-r15/guarantee_battery_r15.py` (output
+`guarantee_battery_r15.txt`) checks the final state of a sketch after n values, at 51 probes per stream (q = k/40 for
+k = 0 to 40, and 10 random q), on 300 streams (5 epsilons times 60 trials, n up to 300, with ties, sorted runs and values
+rounded to one or six decimals). Output: `checks=15300 violations=0` for the reference, for r15_04 and for r15_06.
+
+Scope of the evidence. Search (i) covers only the 4-value alphabet and streams of length at most 7, at two epsilons.
+Search (ii) and (iii) are random samples. The battery checks the final state only. None of the searches checks the band
+bound of Lemma 2 or the copy invariant of Lemma 1. A violation outside these domains is not excluded.
 
 Why the lemmas above do not cover it. The new tuple's band is g_s + Delta_s + 1, one more than the successor's band.
 The argument of Lemma 2 gives the successor a band of at most max(1, C_{n-1}), so it gives this tuple at most
@@ -132,35 +149,27 @@ is the only evidence.
 ## r15_06_sketch_interior_delta_is_floor_2en.py (r15_06): the inserted tuple's delta is the cap, not g + delta - 1
 
 Claim: when a new interior tuple is inserted, the mutant sets its delta to floor(2 eps n), with n the count after the
-insertion, instead of g_s + Delta_s - 1. The battery below found no violation of the rank guarantee of Conventions for this mutant. This is measured, not proved (rulings 9 and 25).
+insertion, instead of g_s + Delta_s - 1. No search below found a violation of the rank guarantee of Conventions for this mutant.
+This is measured, not proved (rulings 9, 25 and 40). No proof is claimed for it.
 
-Evidence. The same battery, `ledgers/CS2/scripts/CS2-d-r15/guarantee_battery_r15.py` with output
-`guarantee_battery_r15.txt`, gives `checks=15300 violations=0` for this mutant, the same as for the reference. The battery
-does not check the state after every add, the band bound or the copy invariant.
+Evidence, the same three searches as for r15_04 (see that section for the scripts, the streams and the counts):
+(i) exhaustive small streams: 43,688 streams, 0 violations; (ii) randomised long streams checked after every add:
+120 streams, 0 violations; (iii) randomised final-state battery: `checks=15300 violations=0`.
+The scope limits of (i) to (iii) given for r15_04 apply here too.
 
 What the lemmas give for this mutant. The band of the inserted tuple is 1 + floor(2 eps n) = C_n, so Lemma 2 holds for
 that tuple. The steps of Lemmas 1 and 3 that concern its copy were not written out for this mutant, so the claim rests on
 the measurement.
 
-## r15_07_welford_nan_checked_after_state_change.py (r15_07): the NaN check runs after the state changes
-
-Claim: `WelfordAccumulator.update` adds to count, mean and M2 before it checks for NaN. After a refused `update(nan)` the
-mutant's count is one larger and its mean and M2 are NaN, where the reference's are unchanged. For every stream
-without NaN, every output of the mutant equals the reference's. A NaN raises the named ValueError (condition 3) in both
-versions.
-
-Basis. `course/modules/CS/CS2/project.html` line 209 (Constraints) names the ValueError for `update(x)` with NaN, and says
-that each class holds its state in the object. It states nothing about the state of an object after a refused call, so
-the mutant violates no stated behaviour. A test that the state is unchanged after a refused NaN would constrain behaviour
-the page does not state, so none is added here. If the architect decides that the page must state the state after a
-refusal, that sentence belongs in project.html with a grader test that kills this mutant. That is a change outside this
-slice.
-
 ## Status
 
-The seven files here are not killed by the grader, and none violates a behaviour that the specification states:
-m14_01 is extensionally equal to the reference, d8_01, d9_04 and d8_02 satisfy Lemmas 1 to 3 above, which prove the
-rank guarantee of Conventions for each of them, r15_04 and r15_06 are supported by a measurement over the rank-guarantee
-battery and not by a proof, and r15_07 differs only in a state that the page does not state. If a reviewer finds a gap
-in a lemma, the matching test must name the condition in project.html first, and the file moves back to `mutants/` only
-if it violates a stated outcome.
+The six files here are not killed by the grader, and none is shown to violate a behaviour that the specification
+states. m14_01 is extensionally equal to the reference. d8_01, d9_04 and d8_02 satisfy Lemmas 1 to 3 above, which prove
+the rank guarantee of Conventions for each of them. r15_04 and r15_06 are measured, not proved (rulings 9, 25 and 40):
+the searches above found no violation, and no proof is claimed for either. If a reviewer finds a gap in a lemma, or a
+violation for r15_04 or r15_06, the matching test must name the condition in project.html first, and the file moves
+back to `mutants/` only if it violates a stated outcome.
+
+The non-equivalent survivor r15_07 (the NaN check runs after count, mean and M2 change) is not here. After a refused
+`update(nan)` it leaves the state altered, and Conventions (project.html:216) requires the statistics to describe every
+value added so far. It is a student error in `mutants/`, killed by `test_welford_refused_nan_leaves_the_accepted_state`.

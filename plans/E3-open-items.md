@@ -27,7 +27,8 @@ Until those pages exist, `check_pages`, `check_dag` and the page-level links are
 
 1. **Name of the weighted value.** The plan calls the L07 exhibit "the 1979-form". `kahneman1979prospect` was not read
    beyond its registry record (title and year), so no functional form is attributed to it. L07 calls the value
-   "non-cumulative weighted value" (Definition 1.2) and cites the registry title only.
+   "non-cumulative weighted value" (Definition 1.2). Its mention of the 1979 paper is an ungraded naming sentence
+   under ruling 39 (L07.html:80): it names the registry title, carries no data-grade and no data-cite, and cites no result.
 2. **Weighting symbols.** The plan's `w` for the weighting function clashes with `w` for wealth (plan section 4). L07
    uses `omega` for the weighting function and `eta` for its exponent. Both are new local symbols, defined where used.
    No symbol is registered.
@@ -51,10 +52,12 @@ Until those pages exist, `check_pages`, `check_dag` and the page-level links are
 
 ## 3. Registry and citations
 
-- Keys cited, all verified in `references/references.json` and each with `used_by` E3, each in one grade-C claim span
-  (`data-cite`, `data-locator` = "registry record: title only; paper not read") and in the key-results table:
-  `kahneman1979prospect` (L07 Section 1), `ellsberg1961risk` (L08 Example 2.5), `gilboa1989maxmin` (L08 Definition 1.2).
-  No locator was read, so none is given.
+- The three registry records, `kahneman1979prospect`, `ellsberg1961risk` and `gilboa1989maxmin`, are verified in
+  `references/references.json` with `used_by` E3. No locator was read, so none is given. Under ruling 39 the three
+  registry-title claims are ungraded naming sentences, not graded results: `kahneman1979prospect` (L07.html:80),
+  `gilboa1989maxmin` (L08.html:67) and `ellsberg1961risk` (L08.html:133). Each names the registry title, carries no
+  `data-grade` and no `data-cite`, and cites no result. They have no grade-C row in the key-results tables of L07 and
+  L08. Cards E3-c134, E3-c157 and E3-c158 carry no grade and no citation key.
 - L07 and L08 make no claim about how people weight probabilities or behave under ambiguity, and quote no magnitude of
   loss aversion or of any risk-aversion coefficient.
 - REFERENCE_REQUESTS from plan section 8.1, relevant to these lessons: R2 (full second-order dominance characterisation,
