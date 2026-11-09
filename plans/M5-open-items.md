@@ -109,3 +109,24 @@ Scope: `cards.json` only. Lessons L01–L10 were read in full and not edited. De
 - `.venv/bin/python tools/run_graders.py --unit M5 --seeds 0-49`: `run_graders M5: PASS (reference 50/50 seeds, slowest 0.2 s)`
 - `page_smoke.py` was not run. No page or lab file was changed by this builder, and the cards file is not swept by it.
 - ruff and mypy were not run. This builder wrote no `.py` file inside the repository; the scratch script is in `/tmp/m5cards/`.
+
+## Round-2 fixer, slice d (project page, grader, alternatives)
+
+- **Alternatives (verifier row M5-d-r1-06).** The page's solver contract is synchronous sweeps with the
+  `beta / (1 - beta)` last-change certificate, stopping at the first sweep with certified error at most `tol`. The
+  in-place sweep and the residual-stop-with-residual-bound alternatives contradict that contract, so they cannot pass
+  it (0 of 50 seeds). They are moved to `ledgers/M5/alternatives/not_accepted/` with a README. Replacements, both
+  synchronous and both passing seeds 0-49 (50 of 50 each): `alt1_functional_reduce_and_tuples.py` and
+  `alt2_class_with_precomputed_feasible_tables.py`. The in-place sweep stays a stretch item (page Rung 4), and the
+  architect may still choose to amend the page contract to admit it; that would also need the formula test to be
+  restated for each solver.
+- **Named invalid input, one-point grid (rows M5-d-r1-21 and M5-d-r2-34).** `[1.5]` is added to the invalid-grid
+  parametrization (`one-point-first-above-one`). Mutant `d3_02` is killed.
+- **Feasibility tie tolerance (row M5-d-r2-33).** New test `test_successor_within_a_tie_tolerance_above_the_resources_is_infeasible`
+  uses a successor `0.5 + 5e-13`. Mutant `d3_01` is killed.
+- **Failure output.** Every test function now sets `__tracebackhide__ = True`, so a failed check does not echo its
+  source (which contains literal expected values in some tests and docstrings). The page sentence on `--assert=plain` is
+  reworded to match.
+- **Count.** The suite collects 100 checks (was 98). The page quotes 100.
+- **Exemplar blinding (rows M5-d-r1-13, M5-d-r1-14).** Not addressed by the fixer. Ruling 23 assigns blind scoring to a
+  separate agent that never opens the project page; the fixer has read the annotations and does not score.

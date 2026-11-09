@@ -4,7 +4,8 @@ Inputs are illustrative, not data: a first-period dividend of 400 cents, a per-p
 per-period dividend growth rate of 3 percent. The price path is SIMULATED: each period's wedge over the fundamental is
 one draw from a seeded generator, so every run prints the same lines. No market is described by these numbers.
 
-All money is in integer cents. Each quantity is an exact Fraction and is rounded once, half up, to a whole cent.
+Amounts are in cents. Each amount is an exact Fraction, and Part A prints F_0 as that fraction. A whole-cent amount
+is the Fraction rounded once, half up, and each printed gap is the difference of two whole-cent amounts.
 
 Part A: the closed form F_0 = d_1 / (r - g) and the finite sum S_N of the first N discounted dividends, with the exact
 identity S_N = F_0 (1 - q^N) for q = (1 + g) / (1 + r).

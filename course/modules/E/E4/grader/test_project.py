@@ -23,6 +23,7 @@ import math
 import os
 import sys
 from collections.abc import Callable
+from decimal import Decimal, localcontext
 from pathlib import Path
 from typing import Any
 
@@ -419,6 +420,43 @@ def test_gap_at_an_interior_fraction_is_the_oracle_gap_to_full_precision(which: 
             "at an interior fraction the reported gap must agree with the gap of Proposition 3 at that fraction, to "
             "full precision: check the expression of the gap, not only the root",
         )
+
+
+def prop3_gap_exact(lam: float, sd: float, cost: float) -> Decimal:
+    """The gap of Proposition 3 at an interior fraction lam, from the Proposition 1 coefficients, in 60-digit decimal
+    arithmetic. It is not the solver's double-precision formula and not the quadrature oracle.
+
+    b_s and b_u are the coefficients of Proposition 1, and tau_y is its price precision. Omega = Var(v - p) is the
+    common variance of Lemma 3, 1/tau_v + b_s^2 (1/tau_v + 1/tau_e) + b_u^2 sd^2 - 2 b_s/tau_v. Then
+    G = Omega^(-1/2) (V_U^(1/2) - e^(a c) V_I^(1/2)), with V_I = 1/(tau_v + tau_e) and V_U = 1/(tau_v + tau_y).
+    """
+    with localcontext() as ctx:
+        ctx.prec = 60
+        lam_d, sd_d, cost_d = Decimal(lam), Decimal(sd), Decimal(cost)
+        a, tv, te = Decimal(A_CARA), Decimal(TAU_V), Decimal(TAU_E)
+        tau_y = lam_d * lam_d * te * te / (lam_d * lam_d * te + a * a * sd_d * sd_d)
+        b_s = (lam_d * te + (1 - lam_d) * tau_y) / (lam_d * (tv + te) + (1 - lam_d) * (tv + tau_y))
+        b_u = -a * b_s / (lam_d * te)
+        omega = 1 / tv + b_s * b_s * (1 / tv + 1 / te) + b_u * b_u * sd_d * sd_d - 2 * b_s / tv
+        v_i, v_u = 1 / (tv + te), 1 / (tv + tau_y)
+        return (v_u.sqrt() - (a * cost_d).exp() * v_i.sqrt()) / omega.sqrt()
+
+
+def test_gap_at_the_domain_point_matches_proposition_3_exactly() -> None:
+    """At a noise volume of 3.3245979322709314e-22 and an information cost of 0.059130434782608696, the root is interior
+    (about 7.8e-22), and the reported gap must agree with the gap of Proposition 3 at the reported fraction to 1e-14
+    times the larger of 1 and the absolute value of that gap. The check uses the exact expression from the Proposition 1
+    coefficients, so a slope b_s that drops a term of Proposition 1 misses it at this point."""
+    sd, cost = 3.3245979322709314e-22, 0.059130434782608696
+    out = run(sd, cost)
+    lam = out["informed_fraction"]
+    expect(0.0 < lam < 1.0, "the root at this noise volume and cost is interior: check the boundary rule and bracket")
+    exact = float(prop3_gap_exact(lam, sd, cost))
+    expect(
+        abs(out["indifference_gap"] - exact) <= 1e-14 * max(1.0, abs(exact)),
+        "at this interior fraction the reported gap must agree with the gap of Proposition 3 to full precision: check "
+        "the price slope b_s of Proposition 1 in the expression of the gap",
+    )
 
 
 def test_unit_fraction_is_reported_at_zero_cost() -> None:

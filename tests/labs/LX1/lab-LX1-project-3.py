@@ -21,9 +21,10 @@ dispersion is the sample standard deviation of its changes, with denominator n -
 Check. A blank or non-decimal cell in the GBP column raises ValueError, and so does a month that does not follow
 the previous one. No row is skipped or filled.
 
-Rounding. Every printed value is the exact binary value of its float, rounded half up (a tie away from zero) to two
-decimals. The ratio of the two standard deviations, and their difference, window one minus window two, are taken from
-their unrounded values.
+Rounding. Every printed decimal number (the dispersions, the largest changes, the ratio and the difference) is the
+exact binary value of its float, rounded half up (a tie away from zero) to two decimals. Counts and months are printed
+as they are. The ratio of the two standard deviations, and their difference, window one minus window two, are taken
+from their unrounded values.
 """
 
 from __future__ import annotations

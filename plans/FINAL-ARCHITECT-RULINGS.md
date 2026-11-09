@@ -59,3 +59,9 @@
 23. **Blind scoring is done by a dedicated scorer.** A verifier who has read the exemplar annotations cannot be blind. Blind
     scoring of rubric exemplars is a separate agent that never opens the project page: it runs a stripping script over the
     file and reads only the script's output.
+24. **E4 mutant_v17_02 is not equivalent.** It differs from the reference by up to 1.57e-14 over the page's whole domain
+    (sd down to 1e-50), which exceeds the page's stated 1e-14 gap precision, so it is a student error. It returns to
+    ledgers/E4/mutants/ and the grader gains a test that computes the exact Proposition 3 gap from the Proposition 1
+    coefficients at a domain point where the mutant misses. The equivalence section in ledgers/E4/equivalent/README.md is
+    retracted. literal_price_sign stays equivalent: its sign is unobservable in any output (b_u enters only as b_u*b_u), the
+    proof stands, and ruling 9 already provides the equivalent/ path for it.

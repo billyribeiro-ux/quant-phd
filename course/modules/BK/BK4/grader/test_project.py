@@ -10,8 +10,9 @@ Each test checks one property or one number against the conventions of the proje
 the page fixes integer cents and the layer order, so a correct implementation returns the same integers. Only the
 conditions the page names with ValueError are required to raise it, and each named condition has its own test on
 both sides of its limit. Any other invalid input may raise any exception or return. A failing test names the property
-it checks and the idea to revisit, and it never prints an expected value. The suite runs with --assert=plain, so a
-failing line shows the source of the check and never the values it compared.
+it checks and the idea to revisit, and it never prints an expected value. The suite runs with --assert=plain, which
+keeps the values an assert compares out of the report, and each test hides its own traceback, so a failing check
+shows only its message.
 """
 
 from __future__ import annotations
@@ -676,6 +677,15 @@ def test_fixture_five_losses_at_10000_bps_gives_the_largest_loss() -> None:
     want = 50
     got = sol.margin_for_cover(losses, 10_000)
     assert got == want, "the full target covers every scenario, so the margin is the largest loss"
+
+
+def test_full_target_margin_is_the_largest_loss_in_any_order() -> None:
+    """Full cover needs every scenario, so the margin is the largest loss wherever it is listed."""
+    __tracebackhide__ = True
+    losses = [30, 50, 10, 20]
+    want = 50
+    got = sol.margin_for_cover(losses, 10_000)
+    assert got == want, "the full target covers every scenario, so the margin is the largest loss, in any order"
 
 
 def test_fixture_four_losses_at_5000_bps_uses_the_exact_position() -> None:
