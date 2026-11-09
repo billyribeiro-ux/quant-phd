@@ -7,8 +7,8 @@ exact Fractions, so no rounding occurs and every printed value is exact.
 
 Part A: the expected value and the expected utility of three lotteries under both utilities.
 Part B: linearity in the probabilities, checked exactly for three mixing weights under both utilities.
-Part C: a positive affine transformation v = 3 + 2u leaves the ordering of each pair of A, B and C unchanged; checked
-exactly for each of the three pairs under both utilities.
+Part C: a positive affine transformation u_tilde = 3 + 2u leaves the ordering of each pair of A, B and C
+unchanged; checked exactly for each of the three pairs under both utilities.
 Part D: a lottery with negative probabilities, and one whose probabilities do not sum to 1, are
 rejected with ValueError.
 
@@ -50,17 +50,17 @@ def expected_utility(lottery: Lottery, u: Utility) -> Fraction:
     return sum((p * u(x) for x, p in lottery), Fraction(0))
 
 
-def mixture(tau: Fraction, first: Lottery, second: Lottery) -> Lottery:
-    """The lottery that pays the outcomes of first with probability tau and of second with probability 1 - tau.
+def mixture(rho: Fraction, first: Lottery, second: Lottery) -> Lottery:
+    """The lottery that pays the outcomes of first with probability rho and of second with probability 1 - rho.
 
-    The probability of an outcome is tau times its probability in first plus (1 - tau) times its probability in
+    The probability of an outcome is rho times its probability in first plus (1 - rho) times its probability in
     second, with a probability of 0 where an outcome does not appear. The result is sorted by outcome.
     """
     weights: dict[int, Fraction] = {}
     for x, p in first:
-        weights[x] = weights.get(x, Fraction(0)) + tau * p
+        weights[x] = weights.get(x, Fraction(0)) + rho * p
     for x, p in second:
-        weights[x] = weights.get(x, Fraction(0)) + (1 - tau) * p
+        weights[x] = weights.get(x, Fraction(0)) + (1 - rho) * p
     return sorted(weights.items())
 
 
@@ -75,12 +75,12 @@ def quadratic(x: int) -> Fraction:
 
 
 def affine_of(u: Utility) -> Utility:
-    """The utility v(x) = 3 + 2 u(x), a positive affine transformation of u."""
+    """The utility u_tilde(x) = 3 + 2 u(x), a positive affine transformation of u."""
 
-    def v(x: int) -> Fraction:
+    def u_tilde(x: int) -> Fraction:
         return Fraction(3) + 2 * u(x)
 
-    return v
+    return u_tilde
 
 
 def order(a: Fraction, b: Fraction) -> str:
@@ -101,28 +101,29 @@ def main() -> None:
             f"eu_linear {expected_utility(lottery, linear)} eu_quadratic {expected_utility(lottery, quadratic)}"
         )
 
-    print("Part B: linearity in the probabilities for the mixture tau*A + (1 - tau)*C")
+    print("Part B: linearity in the probabilities for the mixture rho*A + (1 - rho)*C")
     linearity_holds = True
-    for tau in (Fraction(1, 4), Fraction(1, 3), Fraction(1, 2)):
-        mixed = mixture(tau, LOTTERIES["A"], LOTTERIES["C"])
+    for rho in (Fraction(1, 4), Fraction(1, 3), Fraction(1, 2)):
+        mixed = mixture(rho, LOTTERIES["A"], LOTTERIES["C"])
         for label, u in (("linear", linear), ("quadratic", quadratic)):
             lhs = expected_utility(mixed, u)
-            rhs = tau * expected_utility(LOTTERIES["A"], u) + (1 - tau) * expected_utility(LOTTERIES["C"], u)
+            rhs = rho * expected_utility(LOTTERIES["A"], u) + (1 - rho) * expected_utility(LOTTERIES["C"], u)
             linearity_holds = linearity_holds and lhs == rhs
-            print(f"tau {tau} utility {label} mixture_eu {lhs} linear_combination {rhs} equal {lhs == rhs}")
+            print(f"rho {rho} utility {label} mixture_eu {lhs} linear_combination {rhs} equal {lhs == rhs}")
     print(f"all_linearity_checks {linearity_holds}")
 
-    print("Part C: pairwise order under u and under v = 3 + 2u")
+    print("Part C: pairwise order under u and under u_tilde = 3 + 2u")
     orders_preserved = True
     for left, right in (("A", "B"), ("A", "C"), ("B", "C")):
         for label, u in (("linear", linear), ("quadratic", quadratic)):
             under_u = order(expected_utility(LOTTERIES[left], u), expected_utility(LOTTERIES[right], u))
-            under_v = order(
+            under_tilde = order(
                 expected_utility(LOTTERIES[left], affine_of(u)),
                 expected_utility(LOTTERIES[right], affine_of(u)),
             )
-            orders_preserved = orders_preserved and under_u == under_v
-            print(f"pair {left} {right} utility {label} order_u {under_u} order_v {under_v} same {under_u == under_v}")
+            orders_preserved = orders_preserved and under_u == under_tilde
+            same = under_u == under_tilde
+            print(f"pair {left} {right} utility {label} order_u {under_u} order_tilde {under_tilde} same {same}")
     print(f"all_affine_orders_preserved {orders_preserved}")
 
     print("Part D: invalid lotteries are rejected")

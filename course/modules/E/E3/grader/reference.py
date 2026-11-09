@@ -321,7 +321,8 @@ def _maximise(parsed: list[Parsed]) -> list[float]:
         if max(abs(s) for s in step) < 1e-10:
             # A negligible step is a stop only at a stationary point. Otherwise the Newton model has stalled: its
             # finite-difference Hessian changes with the step, so it cannot be trusted. Polish by coordinate search,
-            # then continue the Newton search from the polished point; a stall the polish does not move is raised.
+            # then continue the Newton search from the polished point. A stall that the polish does not move ends the
+            # search, and the error after the loop reports that it did not converge.
             grad_end, _ = _gradient_and_hessian(f, xi)
             if max(abs(g) for g in grad_end) < _STATIONARY:
                 return xi
@@ -330,7 +331,7 @@ def _maximise(parsed: list[Parsed]) -> list[float]:
                 xi, value = polished, f(polished)
                 mu = 1e-3
                 continue
-            raise RuntimeError("the step became negligible before the score did: the maximisation did not converge")
+            break
     raise RuntimeError("the likelihood maximisation did not converge")
 
 

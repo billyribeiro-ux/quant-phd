@@ -1,8 +1,6 @@
-"""Student error: when the step becomes negligible before the score does, the search returns the point where it stalled instead of raising.
+"""Standard errors are multiplied by the square root of the number of responses, as if they were a mean's.
 
-Written from the current reference by ledgers/E3/scripts/fixer-d-r13/make_mutants_r13.py.
-
-Reference solution for the E3 project: elicit.py, the preference-elicitation engine.
+Reference solution for the E3 project, with one student error.
 
 This is the full solution. It is excluded from deployment (BLUEPRINT section 7); it exists so that the suite can be
 checked against a passing implementation on seeds 0 to 49. Standard library only.
@@ -334,7 +332,7 @@ def _maximise(parsed: list[Parsed]) -> list[float]:
                 xi, value = polished, f(polished)
                 mu = 1e-3
                 continue
-            return xi
+            raise RuntimeError("the step became negligible before the score did: the maximisation did not converge")
     raise RuntimeError("the likelihood maximisation did not converge")
 
 
@@ -370,8 +368,8 @@ def estimate(responses: list[dict[str, object]]) -> dict[str, float]:
         "gamma_hat": gamma,
         "lambda_hat": lam,
         "kappa_hat": kappa,
-        "se_gamma": gamma * (1.0 - gamma) * math.sqrt(cov_diag[0]),
-        "se_lambda": lam * math.sqrt(cov_diag[1]),
-        "se_kappa": kappa * math.sqrt(cov_diag[2]),
+        "se_gamma": gamma * (1.0 - gamma) * math.sqrt(cov_diag[0] * len(parsed)),
+        "se_lambda": lam * math.sqrt(cov_diag[1] * len(parsed)),
+        "se_kappa": kappa * math.sqrt(cov_diag[2] * len(parsed)),
         "log_likelihood": _objective(xi, parsed),
     }

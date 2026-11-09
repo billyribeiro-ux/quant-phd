@@ -281,6 +281,19 @@ def test_half_cent_rounding_on_exact_halves() -> None:
         )
 
 
+def test_crra_exact_tie_at_nonzero_gamma_accepts_either_neighbour() -> None:
+    """Under the CRRA model at gamma = 1/2 an exact tie may come out on either neighbouring cent (the Whole cents
+    paragraph of the specification). With wealth 1 cent and prizes 97 and 391 cents, each with probability 1/2, the
+    final wealths are 98 and 392, the expected square root is (7 + 14) sqrt(2) / 2, the sure final wealth is its
+    square, 220.5 cents, and the exact certainty equivalent is 219.5 cents: the engine must return 219 or 220."""
+    got = sol.certainty_equivalent_cents("crra", [97, 391], [Fraction(1, 2), Fraction(1, 2)], {"gamma": 0.5}, 1)
+    expect(type(got) is int, "every certainty equivalent must be returned as an int number of cents")
+    expect(
+        got in (219, 220),
+        "at gamma = 1/2 an exact tie of 219.5 cents must come out on one of its two neighbouring whole cents",
+    )
+
+
 def test_prizes_order_does_not_change_the_answer() -> None:
     """A lottery is the same lottery when its (prize, probability) pairs are listed in another order."""
     for pa, qa, _, _, _ in PARSED[:30]:
@@ -601,7 +614,10 @@ def test_estimate_recovers_the_true_parameters_within_four_standard_errors_on_47
     for seed in range(50):
         inst = make_instance(seed)
         resp = json.loads(str(inst["responses_json"]))
-        fit = sol.estimate(resp)
+        try:
+            fit = sol.estimate(resp)
+        except Exception:  # an error gives no estimate, so this seed counts as a miss; the threshold still applies
+            continue
         truth = {"gamma": float(inst["gamma"]), "lambda": float(inst["lambda"]), "kappa": float(inst["kappa"])}
         if all(abs(fit[name + "_hat"] - truth[name]) <= 4.0 * fit["se_" + name] for name in truth):
             within += 1

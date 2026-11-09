@@ -99,7 +99,7 @@ def main() -> None:
         for a in grid
         for b in grid
     )
-    losses_convex = all(
+    losses_second_derivative_nonneg = all(
         value_power(-(a + b) / 2, 2.0, alpha, delta)
         <= (value_power(-a, 2.0, alpha, delta) + value_power(-b, 2.0, alpha, delta)) / 2
         for a in grid
@@ -111,7 +111,10 @@ def main() -> None:
     ) and all(
         value_power(x, 2.0, alpha, delta) < value_power(y, 2.0, alpha, delta) for x, y in itertools.pairwise(losses)
     )
-    print(f"gain part concave on the grid: {gains_concave}; loss part convex on the grid: {losses_convex}")
+    print(
+        f"gain part concave on the grid: {gains_concave}; "
+        f"loss part with v'' >= 0 (midpoint test) on the grid: {losses_second_derivative_nonneg}"
+    )
     print(f"value increasing along the gains grid and along the losses grid: {increasing}")
     ratio_ok = all(
         math.isclose(abs(value_power(-x, 2.0, alpha, alpha)) / value_power(x, 2.0, alpha, alpha), 2.0, rel_tol=1e-12)
