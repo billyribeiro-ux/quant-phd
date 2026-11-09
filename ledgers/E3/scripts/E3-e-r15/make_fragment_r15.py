@@ -1,0 +1,197 @@
+"""Writes ledgers/E3/E3-e.json for verifier round 15, slice e (E3 hub and lessons L01-L08).
+
+Evidence strings cite the scripts and outputs under ledgers/E3/scripts/E3-e-r15/.
+Run from the checkout root with the project interpreter: python -I <this file>.
+"""
+import json
+from pathlib import Path
+
+S = "ledgers/E3/scripts/E3-e-r15"
+G = f"{S}/out/gates.out"
+C = f"{S}/out/checks_r15.out"
+N = f"{S}/out/numbers_r15.out"
+R = "/Users/billyribeiro/.fanout/wt/verifyD15-E3-e"
+
+
+def row(rid, check, location, status, evidence, fix=None):
+    r = {"id": rid, "check": check, "location": location, "status": status, "evidence": evidence}
+    if status != "PASS":
+        r["fix"] = fix
+    return r
+
+
+rows = []
+P = "PASS"
+rows += [
+    row("E3e-r14-gate-check-pages", "gate: check_pages", "course/modules/E/E3/index.html, L01-L08.html", P,
+        f"Re-run r15: .venv/bin/python tools/check_pages.py --unit E3 -> 'check_pages E3: PASS', exit 0 ({G})."),
+    row("E3e-r14-gate-check-dag", "gate: check_dag", "course/modules/E/E3 (concept dfn and links)", P,
+        f"Re-run r15: tools/check_dag.py --unit E3 -> 'check_dag E3: PASS', exit 0 ({G}). Independent scan: E3e-r14-concept-dfn-and-links."),
+    row("E3e-r14-gate-check-projects", "gate: check_projects", "unit E3 (project slice not judged here)", P,
+        f"Re-run r15: tools/check_projects.py --unit E3 -> 'check_projects E3: PASS', exit 0 ({G})."),
+    row("E3e-r14-gate-run-labs-L05-L08", "gate: run_labs", "lab sections in L05.html-L08.html (L01-L04 also run)", P,
+        f"Re-run r15: tools/run_labs.py --unit E3 --page L01 ... --page L08: each 'run_labs E3: PASS (1/1)', exit 0 ({G})."),
+    row("E3e-r14-gate-page-smoke", "gate: page_smoke", "index.html, L01-L08.html", P,
+        f"Re-run r15: tools/page_smoke.py --unit E3 --pages index L01 ... L08 -> 'page_smoke E3: PASS', exit 0 ({G})."),
+    row("E3e-r14-twins-L05-L08-run", "twins alone under python -I -W error", "tests/labs/E3/lab-E3-L01-1.py .. lab-E3-L08-1.py", P,
+        f"Each twin run as python -I -W error: exit 0 for n=1..8 ({G}). Page code equals twin and expected block equals twin output for all eight labs ({C}, section 'lab twin code and expected block')."),
+    row("E3e-r14-twins-L05-L08-lint", "lint and types of the twins", "tests/labs/E3/lab-E3-L0n-1.py (n=1..8)", P,
+        f"ruff check . -> 'All checks passed!'; ruff format --check . -> '554 files already formatted'; mypy --no-incremental -> 'Success: no issues found in 385 source files' ({G})."),
+    row("E3e-r14-verify-refs-offline", "gate: verify_refs --offline", "references/references.json", P,
+        f"Re-run r15: tools/verify_refs.py --offline -> 'offline integrity: 560 entries, 0 problems', exit 0 ({G})."),
+    row("E3e-r14-registry-crossref-live", "registry: live Crossref of the five E3 keys", "references/references.json (pratt1964risk, kahneman1979prospect, epstein1989substitution, ellsberg1961risk, gilboa1989maxmin)", P,
+        "Carried from round 14 (references/references.json and notation/notation.json byte-identical since the previous pin: git diff 1431aa1d dde0486b -- references notation has 0 lines, "
+        f"{C}, section 'references and notation registry unchanged'). Round-14 evidence: plain curl to api.crossref.org for the five DOIs (ledgers/E3/scripts/E3-e-r14/out/crossref_check.out)."),
+    row("E3e-r14-pytest-relevant", "pytest for the tools that read the pages", "tests/test_labs.py, test_run_labs.py, test_page_checks.py, test_build_site.py, test_docs_figures.py, test_page_smoke.py, test_curriculum.py", P,
+        f"Re-run r15: .venv/bin/python -m pytest -q on those seven files -> 7 progress lines of dots, all tests passed, exit 0 ({G})."),
+    row("E3e-r14-hub-structure", "hub sections and order", "course/modules/E/E3/index.html", P,
+        "Read index.html lines 1-172 in full: objectives (8 items, lines 49-58), prerequisites (61-64), placement quiz (66-123, 8 items), lessons (125-138, eight cards), ladder (140-150, four rungs), data (152-155), core reading (157-167). check_pages PASS (" + G + ")."),
+    row("E3e-r14-hub-placement-arithmetic", "placement arithmetic and skill checks", "index.html lines 66-122", P,
+        "Eight items (lines 70-120). 80 percent of 8 is 6.4, so seven correct is the bar; 6/8 = 75 percent and 7/8 = 87.5 percent (line 68). Item answers: 50 (E[coin]=50), 1 (variance of 0/2 is 1), 0.5 (d ln x/dx at 2), 90.909 (100/1.1 = 90.909), 5000 (0.5*0^2+0.5*100^2), logit z = kappa(CE_A-CE_B)/10000 matches project.html's z formula (" + C + ", 'project.html z formula: True')."),
+    row("E3e-r14-hub-data-and-labs-claims", "data and lab claims", "index.html lines 38 and 154", P,
+        "'The labs of Lessons 1 to 3 draw no random numbers': L01 lab line 178 'No random draws are used'; L03 lab docstring line 193 'No random numbers are drawn'; L02 has no random call (grep 'random' in L02.html: none). L02 lab computes mean and variance with fractions.Fraction (L02 twin mean_and_variance); floats for CEs in L02 and L03 (twins)."),
+    row("E3e-r14-hub-unlocks-and-titles", "unlocks and titles", "index.html lines 29-36 and 129-136", P,
+        "E4, AP2 and AP7 titles equal CURRICULUM.md (E4 · General Equilibrium & Information in Markets; AP2 · Mean-Variance, CAPM, ICAPM & APT; AP7 · Behavioral Finance). Prerequisite edges E3 in E4 (E2, E3, M7), AP2 and AP7 are in CURRICULUM.md lines 385, 99 and the AP rows; E1 Microeconomics and M4 Probability match CURRICULUM.md."),
+    row("E3e-r14-hub-reading-list", "core reading and Pratt attribution", "index.html lines 157-167; L02.html references section", P,
+        "Registry titles (references/references.json): pratt1964risk 'Risk Aversion in the Small and in the Large', Econometrica 32(1-2) 1964; kahneman1979prospect 'Prospect Theory: An Analysis of Decision under Risk'; epstein1989substitution 'Substitution, Risk Aversion, and the Temporal Behavior...' Econometrica 1989; ellsberg1961risk 'Risk, Ambiguity, and the Savage Axioms' QJE 1961; gilboa1989maxmin 'Maxmin expected utility with non-unique prior' 1989. L02 line 616 names Pratt for the name only."),
+    row("E3e-r14-hub-ladder-rungs-3-4", "ladder rungs 3 and 4", "index.html lines 140-148 vs project.html ladder and spec table", P,
+        "Rung 3 text (index line 146) 'at least 12 pairs with at least one mixed-sign lottery' matches project.html ('at least 12 pairs', 'at least one pair with a mixed-sign lottery'; " + C + " 'at least 12 pairs: True'). Rung 4 stretch (index line 147) matches project.html ladder."),
+    row("E3e-r14-lesson-hours", "lesson and hub hours", "L01-L08.html data-hours; index.html data-hours-lessons/project", P,
+        "grep: data-hours=\"7\" on each of L01-L08 (8 x 7 = 56); index.html line 29 data-hours-lessons=\"56\" data-hours-project=\"14\" (sum 70, curriculum 70 h)."),
+    row("E3e-r14-lesson-structure", "lesson template order and counts", "L01-L08.html", P,
+        f"check_pages PASS ({G}). Read each page: why-it-matters, numbered sections, inline lab before canon breaks, canon breaks, >=3 misconceptions, problem set with mechanics/proof/empirical/research tiers (3 problems each), key-results table, quiz. Quiz item counts (" + C + "): L01 10, L02 10, L03 9, L04 9, L05 12, L06 10, L07 11, L08 11 (range 8-15)."),
+    row("E3e-r14-why-it-matters", "why-it-matters paragraphs", "L01-L08.html why-it-matters", P,
+        "Read all eight paragraphs; each states what the lesson defines and proves; forward mentions are pointers (see forward-pointers row). check_pages PASS (" + G + ")."),
+    row("E3e-r14-banned-strings", "banned phrases and ellipses", "index.html, L01-L08.html", P,
+        "grep -i for TODO, TBD, lorem, for brevity, details omitted, beyond the scope, left as an exercise, you can add more, important to note, studies show, experts agree, well known, obviously, clearly: 0 hits each. '...' occurs only inside code blocks (L03 line 225, L07 lines 175-177). Counts: " + C + " section 'banned, process, DAG-sensitive terms, strong scope words'."),
+    row("E3e-r14-process-words", "process words in learner text", "index.html, L01-L08.html", P,
+        "grep -i for builder, verifier, REQUESTS, ledger, fanout: 0 hits (" + C + " section 'banned, process, ...'); 'round' occurs only as rounding (L03 lines 184, 239, 336; L06 lines 415, 504; L08 line 177); 'unit' occurs only as the course unit."),
+    row("E3e-r14-filler-and-rhetoric", "filler and rhetorical padding", "index.html, L01-L08.html prose", P,
+        "Read every prose paragraph in the slice; no filler or rhetorical padding found; no claims beyond the lab or proof."),
+    row("E3e-r14-concept-dfn-and-links", "concept definitions and links", "dfn[data-concept] and a.concept in index.html, L01-L08.html", P,
+        "Definitions: L01 expected-utility (line 69); L02 certainty-equivalent (line 99) and arrow-pratt-risk-aversion (line 144); L03 crra-utility (line 88); L04 first-order and second-order (lines 80, 130); L05 epstein-zin-preferences (line 65) and elasticity-of-intertemporal-substitution (line 107); L06 prospect-theory (line 69) and loss-aversion (line 89); L07 probability-weighting (line 65); L08 ambiguity-aversion (line 94). Each link points to an earlier lesson or to a closure concept (" + G + " check_dag PASS)."),
+    row("E3e-r14-DAG-unlinked-names", "unlinked names outside the closure", "index.html, L01-L08.html", P,
+        "grep for convex, Bellman, martingale, maximum likelihood, estimator, confidence, Fisher, Hessian: 'convex' only in L02 line 74 (a disclaimer that A2 uses no other definition of concavity or convexity); none elsewhere (" + C + " 'dag' lines). 'maximum likelihood' appears in index.html lines 33 and 57 as plain prose, which plan section 7 allows (no link, no concept). 'equity risk premium' appears only in L02 line 99 as the plan's stated collision note. 'risk neutral' (L01) is prose per plan section 7."),
+    row("E3e-r14-forward-pointers-allowed", "forward mentions", "index.html and L01-L08.html", P,
+        "Forward mentions that are pointers only (allowed): L01 why-it-matters (L02, L04), L01 canon-breaks (L02), L02 canon-breaks (L06, L07), L05 Definition 1.1 (L08 timing), L05 Assumption A2 (Proposition 2.2), L05 why-it-matters (Remark 3.4). Premise-type forward uses are in L03, L07 and L08 and are deferred (see notes)."),
+    row("E3e-r14-grades", "grades of claim spans and key-results rows", "L01-L08.html claim spans and key-results tables", P,
+        "Re-graded every claim span: T for proved statements (for example L07 Proposition 2.2 and L03 Theorem 2.1), C for lab-read or single-study statements (L02 lab, L03 key-results grid row, L05 key-results lab rows, L07 registry-title row, L08 registry-title rows). No over-graded claim found; L06 key-results row 7 (T, example arithmetic) checked by numbers_r15.out."),
+    row("E3e-r14-quiz-and-explanations", "quiz items and explanations", "L01-L08.html quiz sections; index.html placement", P,
+        "Each numeric answer recomputed (" + N + "): L01 4030, 150 CU, 5/12, 30, 50; L02 9, 1, 0.5, 0.5; L03 3000; L04 500, 0.5, 5; L05 2, -2, 1.632653 (80/49), 4; L06 -100, 1.6667 (5/3), 1.2910; L07 0.26795, 39.1251, 0.35355, 0.278; L08 101951.22, 99523.81, 103125, 548.78, 99892.77. Explanations checked against their lesson sections."),
+    row("E3e-r14-hub-lesson-titles-match", "hub card titles vs lesson h1", "index.html lines 129-136 vs L01-L08.html h1", P,
+        "Card titles equal the h1 of each lesson: 'Expected utility', 'Risk aversion and the certainty equivalent', 'Constant relative risk aversion', 'Stochastic dominance', 'Recursive Preferences and the Elasticity of Intertemporal Substitution', 'Prospect Theory and Loss Aversion', 'Probability Weighting', 'Ambiguity Aversion and the Four-Model Comparison'."),
+    row("E3e-r14-scope-words", "scope words in lesson prose", "L01-L08.html prose (not footers)", P,
+        "grep for always, never, in general, for all, every nondecreasing/concave/utility/lottery/gamble (" + C + " 'scope' lines, each hit reviewed). Each universal statement in prose is a proved result (L01 Prop 2.2-3.3, L03 Thm 2.1, L04 Thm 1.5/2.3, L05 Cor 3.3, L08 Thm 2.2, Prop 2.4) or is qualified ('in the checked family', 'on this grid', 'for one fixed lottery'). The footer sentences are a separate row."),
+    row("E3e-r14-plan-rulings-6-8", "plan section 10 Q6-Q8 and section 4 symbol rules", "plans/E3-build-plan.md sections 4 and 10; L02/L03/L08 money outputs", P,
+        "Q6 (float CE): L03 Remark 2.8 and lab use one half-up rule floor(v+1/2) and state tolerances; L08 refuses values within 1e-6 cents of a half cent (L08 twin half_up_float). Q7 symbols: psi (EIS), theta, lambda, alpha, delta used as the plan says; beta used only as the discount factor (L05, L08); no kappa in lessons. Q8 (ten mutants) concerns the project grader, outside slice e."),
+    row("E3e-r14-notation-registry", "notation registry compliance", "notation/notation.json vs L01-L08.html and index.html", P,
+        "grep (" + C + " 'registry symbols and raw macros'): no raw \\mathbb{E}, \\mathbb{R}, \\mathbb{Q}, \\Phi, \\gamma_3, \\gamma_4, R_f, R^*, \\operatorname{Var} or \\operatorname{Cov} in any page; macros \\E, \\Var, \\R, \\Prob, \\indic are used. Symbol collisions with the local letters are in the rows E3e-r15-notation-a and E3e-r15-notation-W."),
+    row("E3e-r14-cross-lesson-anchors", "cross-lesson anchor ids", "L01-L08.html def ids used by later lessons", P,
+        "All eleven anchors used by links exist as id attributes (" + C + " 'anchors used by cross-lesson links')."),
+    row("E3e-r14-open-items-deviations", "plans/E3-open-items.md deviations for L07 and L08", "L07.html, L08.html vs plans/E3-open-items.md sections 1-6", P,
+        "L07 uses omega for the weighting function and eta for its exponent, alpha for gains, no delta (open items 2-3: matches). L08 Definition 1.2 uses tau, not alpha (open items 5: matches); Model 3 is Epstein-Zin with a=-1 at date 1 only (open items 4: matches); Example 2.5 uses the full set 0-90 and the stated prize (open items 7: matches). Registry keys cited by data-cite are the three named in open items section 3."),
+    row("E3e-r14-plan-lesson-guidance", "plan section 5 lesson content guidance", "L01-L08.html vs plans/E3-build-plan.md section 5", P,
+        "L01 defines expected utility as a formula and states the axiomatic question is not proved (Remark 2.4). L02 defines concavity by u'' <= 0, proves CE <= E X and gives the second-order premium with its error term named. L03 gives CRRA, the gamma-to-1 limit, homogeneity. L04 proves the finite-support FOSD/SOSD results. L05 gives the two-period EZ value with 1-1/psi and no rho in the recursion. L06 defines v with the stated powers and lambda as a parameter. L07 gives the weighting function and the exhibit. L08 gives maxmin, the Ellsberg-type check and the four-model comparison."),
+    row("E3e-r14-L01-numbers", "L01 numbers", "L01.html Example 1.4, Example 3.4, Misconceptions 1-3, Problems M1-M3, P2, E1-E3, R3, quiz, lab expected block", P,
+        f"Recomputed exactly with fractions ({N}, section 'L01 exact'): EV 150 and EU 45000 (Ex 1.4); 37500 (Ex 3.4); M1 59, 4030, 3481, gap 549; M2 mixture sum 1, both sides 400/3; M3 E X 20 and 30, tilde-u 65 and 95; E1 45000 and 37500, difference 7500; E2 40000; E3 weights sum to 5/6; Q7 5/12; R3 25000 and 22500. Lab expected block equals twin output (" + C + ")."),
+    row("E3e-r14-L02-numbers", "L02 numbers", "L02.html Example 1.5, Example 2.3, Remark 3.2, Misconception 1, Problems E1-E3, quiz", P,
+        f"Recomputed ({N}, section 'L02 Example 1.5' and 'L02 Lab 1 Part A/B'): E sqrt(W) = 9.7434164903; CE = 94.934165; squaring the printed 9.743416 gives 94.934155; premium 5.065835 CU = 507 cents; CE 9493 cents; approximation 4.5; error 0.565835; share of exact premium 11.17 percent (11.1696); share of approximation 12.57; gaps 0.565835 ... 0.000046 (five scales). r_A = 1/(2w), r_R = 1/2 (Example 2.3, by F6 derivatives)."),
+    row("E3e-r14-L02-lab-claims", "L02 lab hypothesis, interpretation and canon breaks", "L02.html lab section and canon breaks", P,
+        "Lab output (" + G + " run_labs L02 PASS) and checks: 'the exact premium exceeds the approximation by a positive gap' (0.565835); 'the premium is zero for the linear utility at each printed scale' (Part C); 'gaps_shrink_as_eps_falls True'. The interpretation's 'Problem P2 gives a zero premium for every scale at which the wealth lottery has all its outcomes in I' follows from P2 (linear utility gives CE = E X)."),
+    row("E3e-r14-L03-numbers", "L03 numbers", "L03.html Example 2.5, Proposition 2.6 examples, M1-M3, E1-E3, Misconception 3, Lab hypothesis", P,
+        f"Recomputed ({N}, 'L03 CRRA CE'): CE at gamma 0.25, 0.5, 4 = 10931.7733, 10615.8009, 7337.6161 (also in the lab output, " + G + "). Example 2.5: 1600 and 2000 cents. M2 3000 cents (M = 1/3000), M3 9000 cents; E2 80000/9 = 8888.888...; E3 bound (k+1)/2 = 5.5 cents (k = 10). Lab hypothesis values 11250 (E), 10000 (geometric mean, exact), 8888.89 -> 8889 (harmonic 80000/9)."),
+    row("E3e-r14-L03-proofs-and-citations", "L03 proofs and citations to Module M1", "L03.html Definitions 1.1-1.3, Propositions 1.2, 1.4, 1.7, 2.4, 2.6, 2.7, Theorem 2.1, Remark 2.8", P,
+        "Each proof re-derived (Prop 1.4 limit via h = sL; Prop 1.7 derivatives; Thm 2.1 via g' = 0 and u' = K w^{-gamma}; Prop 2.4 closed form; Prop 2.6 homogeneity; Prop 2.7 affine; Remark 2.8 bound). Citations to Module M1 checked against course/modules/M/M1/L03.html: e defined as e^1; Proposition 1.4 ln(e^x) = x; Proposition 1.6(b) ln(ab) = ln a + ln b; addition rule A2; uniqueness in A3. Premise-type forward use in Definition 1.3 and Example 1.5 is deferred (notes)."),
+    row("E3e-r14-L04-theorems", "L04 theorems and lemmas", "L04.html Lemma 1.2, Theorem 1.5, Lemma 1.6, Proposition 1.8, Lemma 2.2, Theorem 2.3, Remark 2.4, Examples 1.7, 2.5, 2.6", P,
+        f"Each proof re-derived: Lemma 1.2 (indicator integral); Theorem 1.5 (summation identity E u(X)-E u(Y) = sum d_j (F_Y-F_X)(s_{{j-1}})); Lemma 1.6; Prop 1.8; Lemma 2.2 (D affine between support points); Theorem 2.3 (chord-slope decomposition with c_j >= 0 and b_1(EX-EY)). Example 2.5 integrated values 0,0,500,1000,2000 and 0,250,500,1250,2000 ({N}, section 'L04'). Example 2.6 and Example 1.7 checked by hand."),
+    row("E3e-r14-L05-math", "L05 mathematics", "L05.html Definition 1.1, Remarks 1.2, 1.5, 2.3, 3.1, 3.4; Theorem 1.3; Corollary 1.4; Proposition 2.2; Theorem 3.2; Corollary 3.3", P,
+        f"Proposition 2.2 MRS = (1-beta)/beta (c1/c0)^(1/psi) re-derived from K^(1/a-1) cancellation; EIS = psi. Theorem 1.3(b) monotonicity re-derived for a>0 and a<0. Theorem 3.2 identity checked on the Lab 1 tree in exact fractions: (1-gamma)U = 49/80 = V0^{{-1}} ({N}, section 'L05'). Remark 1.5 CEs 8/5 and 12/5. Remark 3.4 MRS exponents gamma and 1/psi; agreement exactly when psi = 1/gamma."),
+    row("E3e-r14-L05-lab-claims", "L05 lab hypothesis and interpretation", "L05.html lab section", P,
+        f"Lab output (" + G + ") matches every printed claim: V0 = 80/49, U = -49/80, theta = 1, mean 5/2, CE1 = 8/5, sure plan equal, ranking True, CE1 falls 2.25, 1.6, 1.372, identity True, deterministic value same across gamma, (4,4) above (1,10) under U and below under V0 (-0.2500 vs -0.5500; 4.0000 vs 4.3311 ({N})), EIS 0.5000, 2.0000, 0.2500."),
+    row("E3e-r14-L06-math", "L06 mathematics", "L06.html Proposition 1.4, Remarks 1.5, 2.4, 2.5, 3.1, 3.2; Propositions 2.1, 2.2; Example 2.3; Problems P1-P3, R1-R3", P,
+        f"Proposition 1.4 derivatives re-derived: v'(x)=alpha x^(alpha-1) > 0, v''=alpha(alpha-1)x^(alpha-2) < 0 for x>0; v'=lambda delta (-x)^(delta-1) > 0, v''=lambda delta(1-delta)(-x)^(delta-2) > 0 for x<0; statement's 'v'' >= 0 on x<0' is true. Example 2.3: 200, 5/3, 50, -100. Remark 2.5: 700-300 lambda and 1000-600 lambda; 100 and -200 at lambda 2. Remark 3.2: lambda_R = 1 for the Example 2.3 gamble and 0.7071067812 for p=1/3, g=1000, l=300 ({N}, section 'L06 power-form')."),
+    row("E3e-r14-L06-lab-claims", "L06 lab hypothesis and interpretation", "L06.html lab section", P,
+        f"Lab output (" + G + ") and {N}: threshold 1.2910 = sqrt(5/3) (1.2909944487); W at lambda 2 = -8.6835 (-8.6835091270); W at lambda 1 equals EV; W zero at lambda*; combined 100, separate -200; sign pattern True; grid checks True. Hypothesis predictions match."),
+    row("E3e-r14-L07-numbers", "L07 numbers", "L07.html Example 1.4, Observation 1.5, Remark 1.6, Example 2.1, Proposition 2.2, Remark 2.3, Misconceptions 1-3, Problems E1-E3, M1, R2, quiz", P,
+        f"Recomputed to 40 digits ({N}, section 'L07 weights'): omega(3/10) = 0.2857908849, omega(3/5) = 0.3912507700, omega(1/2) = 0.3535533906 (match the page); ratio 0.730454498236 -> 0.73045450 at eight decimals; 8-decimal quotient 0.73045449 (the page's remark is correct); Gamma(A) 42.86863274, Gamma(B) 39.12507700, difference 3.743555733 (3.7436 at four decimals; 8-decimal subtraction 3.74355574); Remark 1.6 sum 0.891036685821; misconception: 49.8327748658, overweight +7.34, underweight -8.01, net -0.67; eta=1 closed-form gap 0.312562 at p=0.862 (page: 3.13e-1); omega(0.278)-0.278 = +8.5e-5 and omega(0.279)-0.279 = -5.6e-4, so the crossing lies in (0.278, 0.279)."),
+    row("E3e-r14-L07-prop-and-examples", "L07 examples, proposition proof and derivative", "L07.html Example 1.4 derivative, Remark 1.3, Proposition 2.2, Remark 2.3, Example 2.1 table, Problems M1, P1, P3, R1, R2", P,
+        "Example 1.4: closed form from (sqrt p + sqrt(1-p))^2; q' = (1-2p)/(2q), g' = (1-2p)/q; numerator qg - 2p(1-2p) = q + 2p^2 (q^2 = p - p^2), so omega' = (q+2p^2)/(2 sqrt(p) q (1+2q)^2) > 0 (re-derived by hand). Proposition 2.2 threshold 1/(1+2^(-alpha)) = 2/3 and 0.58578644 ({N}). Example 2.1 table F_A(0,50,100) = 2/5, 7/10, 1; F_B = 2/5, 2/5, 1 (exact). Remark 2.3: 45 and 60 under identity weighting. Remark R2 tails 3/5, 3/5 and 3/10, 3/5."),
+    row("E3e-r14-L07-lab-claims", "L07 lab hypothesis and interpretation", "L07.html lab section", P,
+        f"Lab output (" + G + "): part A endpoints 0.0000 and 1.0000; seven values match the page; one sign change; last point 0.278; part B True/True; part C 42.8686 and 39.1251 (A above B) and 4.8788 and 3.9125 (A above B); part D 10 of 10. Hypothesis numbers 42.87 vs 39.13 and 4.88 vs 3.91 match ({N})."),
+    row("E3e-r14-L08-numbers", "L08 numbers", "L08.html Example 1.4, Example 2.5, Remark 2.3, Section 4 table and models, Remark 4.2, Problems M1-M3 and E1-E3, quiz", P,
+        f"Recomputed ({N}, section 'L08 gamble'): EU CE 4180000/41 = 101951.2195121951; maxmin at 1/3 = 99523.8095238095; M1 at 1/4 = 98352.94117647 (1672000/17), M2 at 3/4 = 105822.78, M3 consistent; risk premium 102500 - 101951.2195 = 548.7805 = 22500/41; prospect V_p = 5 - sqrt(50) = -2.0710678119, wealth CE 99892.7669529664; known-urn CEs 103125 and 106451.612903; Example 2.5 known black 106451.6129; 85/8360000 identity."),
+    row("E3e-r14-L08-math", "L08 mathematics", "L08.html Definition 1.2, Proposition 1.3, Theorem 2.2, Proposition 2.4, Example 2.5, Proposition 3.2, Remarks 2.3, 3.3, 4.2, Problems P1-P3, R1-R3", P,
+        "Theorem 2.2 (average of expected utilities >= minimum; strict case); Proposition 2.4 (E_p u = u(w_no) + p(u(w_red)-u(w_no)) increasing in p, worst prior P_0 for red and P_90 for black); Proposition 3.2 (equal V0 gives c^a = K, a != 0, so c = (E c1^(1-gamma))^(1/(1-gamma))); Remark 4.2 (g affine and decreasing since w1 > wL; midpoint of extreme priors equals average prior 1/2). R2 numbers 103125 (indifferent) and 106451.6129 (known black preferred) re-derived."),
+    row("E3e-r14-L08-lab-claims", "L08 lab hypothesis and interpretation", "L08.html lab section", P,
+        f"Lab output (" + G + ") matches the hypothesis line: EU 101951.2195, prospect 99892.7670, EZ 101951.2195, maxmin 99523.8095 at P(red)=1/3; part B six gaps, largest 2.91e-11 (below 1e-6); part C known urn preferred for both colours; part D True. Prospect closed-form minus bisection 4.44e-16 CU (below 1e-15 as stated)."),
+    row("E3e-r14-hub-E1-M4-released-claim", "index sentence on concept-index status of E1 and M4", "course/modules/E/E3/index.html:63", P,
+        "The sentence now reads 'Each link opens its entry in the concept index, which links to the lesson that defines the concept.' It no longer says 'not yet released'. course/concepts.html shows 'Consumer utility maximization · defined here' and 'Random variable and its distribution · defined here' (" + C + ", hub claims section, concepts count 332 'defined here')."),
+    row("E3e-r14-hub-rung1-generated-participant", "ladder rung 1 wording", "course/modules/E/E3/index.html:144 vs project.html:44", P,
+        "index.html line 144 now reads 'one SIMULATED participant whose answers are written into the lab for this example, not generated from the parameters', which matches project.html rung 1 ('one SIMULATED participant (answers written into the lab ... not generated from the parameters; not a real person)'). " + C + " 'index rung 1 wording: True' and 'project.html rung 1 says SIMULATED participant: True'."),
+    row("E3e-r14-L02-prop3.1-undefined-q", "undefined symbol q in the Proposition 3.1 proof", "course/modules/E/E3/L02.html:195-199", P,
+        "The proof now sets z(eps) = pi(eps)/eps^2 and concludes z(eps) -> (1/2) r_A(w) s^2 (line 199). grep for q(eps) in L02: 0 occurrences (" + C + ")."),
+    row("E3e-r14-notation-v", "symbol v used as an affine transform in L01-L03", "L01.html:148, L02.html:149, L03.html:134 and 174 vs L06.html:61-69", P,
+        "The affine transform is now \\tilde u in L01 (Proposition 3.3, lines 148-153, Problems P2, M3), L02 (Proposition 2.2 lines 149-154), L03 (Theorem 2.1 proof line 134; Proposition 2.7 line 174). v is used only for the value function of L06, L07 and L08 (Definition 1.2 in L06 and L07; Model 2 in L08), with one meaning."),
+    row("E3e-r14-notation-eps", "symbol epsilon used for EIS and for wealth scale", "L05.html:107 vs L02.html:164-209", P,
+        "L05 Definition 2.1 now defines EIS := d ln(c1/c0)/d ln MRS (line 107) and Proposition 2.2 gives EIS = psi. epsilon (\varepsilon) occurs only in L02 (wealth scale W_eps = w + eps X; 91 occurrences by grep -o), so no symbol has two meanings (" + C + " and grep counts)."),
+    row("E3e-r14-DAG-convexity-term", "convexity term in L06", "L06.html:74, 133, 247, 272, 431, 438, 460 (round 14 lines)", P,
+        "L06 contains no 'convex' or 'convexity' (grep). Proposition 1.4 (line 74) now states v''(x) < 0 for x > 0 and v''(x) >= 0 for x < 0 in the sign convention of L02 A2; the key-results row (line 434) says 'v'' >= 0 on losses'; the lab text (line 133) says 'v'' >= 0 on the losses'."),
+    row("E3e-r14-contested-counter-side", "two-sided treatment of contested claims (L06, L07)", "L06.html:298 and L07.html:52, :324", P,
+        "Judgment (topic-level, no magnitude asserted): L06.html:298 says 'The size of loss aversion is not settled ... this page takes no position on it and cites no estimate' (the fix offered in round 14 named this form); L07.html:52 says 'Whether people weight small probabilities ... is an empirical question. This page takes no position on it and cites no estimate'; L07.html:324 says the one source is used for its title only. No B- or C-graded claim asserts a magnitude. The two sides are not named one by one; the architect can require that if plan section 2.2 is read strictly."),
+    row("E3e-r15-footers-registry-claim", "footer claims about registry citations", "L05.html:620, L06.html:545, L07.html:571, L08.html:724", "FAIL",
+        f"Footers say 'Every claim carries an evidence grade and a registry citation' (L05, L06) or 'Each graded claim carries an evidence grade and a registry citation' (L07, L08). data-cite counts (" + C + "): L05 0, L06 0, L07 1, L08 2, while the pages carry 13, 16, 8 and 12 T-graded spans that have no registry key (e.g. L05 Proposition 2.2 span with data-grade T and no data-cite). The statement is false.",
+        "Replace the four footers with the sentence L01-L04 already use: 'Each graded result carries a proof or a lab result labelled C.' (L01.html:576 text)."),
+    row("E3e-r15-notation-a", "symbol a with three meanings across E3", "L05.html:65 and L08.html:142 (EZ exponent a = 1 - 1/psi) vs L01.html:133, :148 (affine constant a) and L03.html:67, :72, :78 (real exponent a)", "FAIL",
+        f"Same letter, three definitions: affine constant (L01 Proposition 3.1 line 133, Proposition 3.3 line 148, L02 Proposition 2.2 line 149), generic real exponent (L03 F2 line 67, Definition 1.1 line 72, Proposition 1.2 line 78), Epstein-Zin exponent 1 - 1/psi (L05 Definition 1.1 line 65, L08 Definition 3.1 line 142). Counts (" + C + " 'symbol a'): L01 5, L03 15, L05 1, L08 1. BUILDER_RULES section 2.1 item 7 requires local letters to keep one meaning across the unit; ruling 29 requires one meaning per symbol across E3 (plans/FINAL-ARCHITECT-RULINGS.md item 29; plans/KNOWN-ISSUES.md, E3 slice e, lists the a collision for the notation slice). Lab twins tests/labs/E3/lab-E3-L05-1.py and lab-E3-L08-1.py also use a for the EZ exponent.",
+        "Rename the EZ exponent 1 - 1/psi in L05 and L08 (text, Definition 1.1, Theorem 1.3, Proposition 2.2, Theorem 3.2, Definition 3.1, Proposition 3.2, Model 3 text, cards that use a, and the twins' a variable) to one symbol that appears nowhere else in E3 (grep first), then re-embed the L05 and L08 labs with tools/embed_labs.py. Or give the affine constant and the generic exponent new names. One meaning per symbol is the requirement."),
+    row("E3e-r15-notation-W", "symbol W with two meanings (wealth lottery and prospect value)", "L02.html:136, :164, :209, :214, :217, :319, :420 vs L06.html:69, :94, :98-123, :133", "FAIL",
+        f"L02 Example 1.5 and Problems M1, the lab docstring and code use W for a wealth lottery (E W = 100 CU). L06 Definition 1.3 (line 69) defines W := sum_i p_i v(x_i), the prospect value, and uses it in Propositions 2.1 and 2.2, Remark 2.4 and the lab text ('prospect value W =', twin line 68). Counts (" + C + " 'symbol W'): L02 2, L06 1; grep lines above. plans/KNOWN-ISSUES.md (E3 slice e, additional collisions list) records the same clash for the notation slice.",
+        "Rename the prospect value in L06 (Definition 1.3, Propositions 2.1 and 2.2, Remark 2.4, lab text and expected block) to a symbol that appears nowhere else in E3 (grep first, for example PV written as \\mathrm{PV}), then re-embed the L06 lab with tools/embed_labs.py. Alternatively rename the L02 wealth lottery."),
+]
+
+notes = [
+    "DEFERRED LOW forward-premise rows (architect ruling 29; plans/KNOWN-ISSUES.md). They are carried as notes, not as rows, and they are not counted in the verdict. Each is still present at the pin dde0486b: E3e-r14-L03-forward-premise (L03.html:90 Definition 1.3 cites Proposition 2.7, stated at L03.html:173; L03.html:107 Example 1.5 cites Proposition 1.7, stated at L03.html:116); E3e-r14-L07-forward-premise (L07.html:101 Remark 1.6 uses lotteries A and B, defined at L07.html:109-110); E3e-r14-L08-forward-gamble (L08.html:85, :90, :113, :132, :138 use the Section 4 gamble, defined at L08.html:432).",
+    "Carried: the registry row E3e-r14-registry-crossref-live is carried from round 14 under the prefix in its evidence. references/ and notation/notation.json are byte-identical since 1431aa1d (0 diff lines).",
+    "Rho (judgment, not a FAIL): L01 now uses rho for the mixture weight (renamed per ruling 29; rho appears in no other E3 page; cards.json uses it with the same meaning, E3-c005/c007/c008). Plan section 4 says 'never rho' (the planner's reason was the Epstein-Zin literature's rho = 1/psi). Ruling 29 does not forbid it. Recorded for the architect.",
+    "Local letters reused with different meanings inside proofs (judgment, not a FAIL): K (L03 Theorem 2.1 scale constant; L05 Proposition 2.2 bracket), c (certainty equivalent in L02, L03, L08; consumption c0, c1 in L05), M (L01 lottery M; L03 Proposition 2.4 sum), L (L01 lottery L; L03 Proposition 1.4 proof ln w; L04 piecewise function). Each is defined where used. The architect can require renames under ruling 29.",
+    "Contested-claim row (E3e-r14-contested-counter-side) is PASS on judgment: the topic-level sentences name the open question and cite no magnitude. Plan section 2.2 can be read to require the two sides named individually; if so, reopen.",
+    "Mutants: none. Slice e contains no grader; the project grader is in another slice. The mutants directory is untouched. run_graders --unit E3 --seeds 0-49 was started in this round and did not finish before the session ended (process stopped; its output file is empty); the grader is project-slice material and is not a row of slice e.",
+    "Not checked: live verify_refs (online; only --offline run); live Crossref (carried, not re-run); cards.json (outside slice e; a scan found the notation issues above also appear there, e.g. E3-c078 for the EZ exponent a); project.html and grader (other slice; check_projects and run_graders run as gates only); figures (none in E3); M1 lessons other than L03 (only the cross-cited results); browser rendering beyond page_smoke.",
+    "Round 14 rows E3e-r14-hub-E1-M4-released-claim, E3e-r14-hub-rung1-generated-participant, E3e-r14-L02-prop3.1-undefined-q, E3e-r14-notation-v, E3e-r14-notation-eps, E3e-r14-DAG-convexity-term and E3e-r14-contested-counter-side were FAIL in round 14; each is re-verified above at dde0486b and is now PASS (the last with the judgment noted).",
+]
+
+fragment = {
+    "unit": "E3",
+    "slice": "e",
+    "round": 15,
+    "verifier": "Haiku independent verifier, E3-e round 15 (did not build E3)",
+    "pin": "dde0486b (checkout detached at dde0486beeb0312e4ac1cc03aaa02e56644adb24)",
+    "base": "1431aa1d842a5d2d05fd5953c098500bf78a4307 (round-14 pin); delta 1431aa1d..dde0486b read in full for index.html and L01-L08.html",
+    "checkout": f"{R} (detached, .venv symlinked, vendor copied)",
+    "scratch": "/tmp/e3e_r15_twin1.txt .. /tmp/e3e_r15_twin8.txt (twin outputs); repository scripts under ledgers/E3/scripts/E3-e-r15/",
+    "verified_at": "2026-11-09",
+    "verdict": "FAIL",
+    "rows": rows,
+    "mutants": [],
+    "registry_flags": [],
+    "freshness_flags": [],
+    "notes": notes,
+    "summary": {
+        "rows": len(rows),
+        "pass": sum(1 for r in rows if r["status"] == "PASS"),
+        "fail": sum(1 for r in rows if r["status"] == "FAIL"),
+        "unverifiable": sum(1 for r in rows if r["status"] == "UNVERIFIABLE"),
+        "mutants": 0,
+        "mutants_killed": 0,
+        "deferred_low_notes": ["E3e-r14-L03-forward-premise", "E3e-r14-L07-forward-premise", "E3e-r14-L08-forward-gamble"],
+        "not_checked": [
+            "live verify_refs (only --offline)",
+            "live Crossref (carried from round 14)",
+            "cards.json, project.html, grader (other slices)",
+            "Module M1 beyond the results L03 cites",
+        ],
+    },
+}
+
+Path(R, "ledgers/E3/E3-e.json").write_text(json.dumps(fragment, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+print("wrote", len(rows), "rows")

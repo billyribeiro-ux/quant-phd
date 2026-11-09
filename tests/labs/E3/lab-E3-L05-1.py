@@ -6,9 +6,9 @@ is a plain number with no units attached. Exact cases use fractions.Fraction. Ot
 output prints them to at most four decimals or as True or False against a stated tolerance.
 
 Formulas (Definition 1.1 and Theorem 1.3 of the lesson):
-    a = 1 - 1/psi                       (psi > 0, psi != 1)
+    Omega = 1 - 1/psi                   (psi > 0, psi != 1)
     CE1 = (sum_s p_s c1_s^(1-gamma))^(1/(1-gamma))     (gamma != 1)
-    V0 = ((1-beta) c0^a + beta CE1^a)^(1/a)
+    V0 = ((1-beta) c0^Omega + beta CE1^Omega)^(1/Omega)
 CRRA expected utility of the same plan, with u(c) = c^(1-gamma)/(1-gamma):
     U = (1-beta) u(c0) + beta sum_s p_s u(c1_s)
 """
@@ -47,10 +47,10 @@ def crra_utility(c: Num, gamma: Num) -> Num:
 def ez_value(c0: Num, plan: Plan, beta: Num, gamma: Num, psi: Num) -> Num:
     """Two-period Epstein-Zin value V0 of a plan: sure consumption c0 and a date-1 lottery."""
     if psi == 1:
-        raise ValueError("psi = 1 is outside this formula: the exponent a = 1 - 1/psi is zero")
-    a = 1 - 1 / psi
-    bracket = (1 - beta) * power(c0, a) + beta * power(crra_ce(plan, gamma), a)
-    return power(bracket, 1 / a)
+        raise ValueError("psi = 1 is outside this formula: the exponent Omega = 1 - 1/psi is zero")
+    omega = 1 - 1 / psi
+    bracket = (1 - beta) * power(c0, omega) + beta * power(crra_ce(plan, gamma), omega)
+    return power(bracket, 1 / omega)
 
 
 def crra_eu(c0: Num, plan: Plan, beta: Num, gamma: Num) -> Num:

@@ -70,8 +70,9 @@ def _check_prospect(gamma: float, lam: float) -> None:
 
 
 def _half_up(y: float) -> int:
-    """The nearest whole cent with an exact half going up (toward plus infinity): floor(y + 1/2)."""
-    return math.floor(y + 0.5)
+    """The nearest whole cent to the float y, an exact half going up (toward plus infinity): floor(y + 1/2), computed
+    on the exact value of y, so that no rounding of the sum can move a value across a half."""
+    return math.floor(Fraction(y) + Fraction(1, 2))
 
 
 def _crra_change(prizes: list[int], probs: list[Fraction], gamma: float, wealth: int) -> float:

@@ -10,7 +10,7 @@ Value function (Definition 1.2 of the lesson):
     v(x) = x^alpha            for x >= 0
     v(x) = -lam (-x)^delta    for x < 0
 A gamble with prize g (probability p) and loss l (probability 1 - p), with g, l > 0, has value
-    W = p v(g) + (1 - p) v(-l).
+    PV = p v(g) + (1 - p) v(-l).
 """
 
 from __future__ import annotations
@@ -35,22 +35,22 @@ def value_power(x: float, lam: float, alpha: float, delta: float) -> float:
 
 
 def gamble_value_linear(g: Fraction, loss: Fraction, p: Fraction, lam: Fraction) -> Fraction:
-    """W = p v(g) + (1 - p) v(-loss) with alpha = delta = 1."""
+    """PV = p v(g) + (1 - p) v(-loss) with alpha = delta = 1."""
     return p * value_linear(g, lam) + (1 - p) * value_linear(-loss, lam)
 
 
 def gamble_value_power(g: float, loss: float, p: float, lam: float, alpha: float, delta: float) -> float:
-    """W = p v(g) + (1 - p) v(-loss) with powers alpha and delta."""
+    """PV = p v(g) + (1 - p) v(-loss) with powers alpha and delta."""
     return p * value_power(g, lam, alpha, delta) + (1 - p) * value_power(-loss, lam, alpha, delta)
 
 
 def threshold_linear(g: Fraction, loss: Fraction, p: Fraction) -> Fraction:
-    """The loss-aversion coefficient at which W = 0 when alpha = delta = 1: p g / ((1 - p) loss)."""
+    """The loss-aversion coefficient at which PV = 0 when alpha = delta = 1: p g / ((1 - p) loss)."""
     return p * g / ((1 - p) * loss)
 
 
 def threshold_power(g: float, loss: float, p: float, alpha: float, delta: float) -> float:
-    """The loss-aversion coefficient at which W = 0 for powers alpha and delta."""
+    """The loss-aversion coefficient at which PV = 0 for powers alpha and delta."""
     return p * math.pow(g, alpha) / ((1 - p) * math.pow(loss, delta))
 
 
@@ -65,9 +65,9 @@ def main() -> None:
     print(f"loss-aversion threshold lam* = {star}")
     for lam in (Fraction(1), Fraction(3, 2), Fraction(2)):
         value = gamble_value_linear(g, loss, p, lam)
-        print(f"lam = {lam}: prospect value W = {value}; positive: {value > 0}")
-    print(f"W at lam = 1 equals the expected value: {gamble_value_linear(g, loss, p, Fraction(1)) == expected}")
-    print(f"W is zero exactly at lam*: {gamble_value_linear(g, loss, p, star) == 0}")
+        print(f"lam = {lam}: prospect value PV = {value}; positive: {value > 0}")
+    print(f"PV at lam = 1 equals the expected value: {gamble_value_linear(g, loss, p, Fraction(1)) == expected}")
+    print(f"PV is zero exactly at lam*: {gamble_value_linear(g, loss, p, star) == 0}")
 
     lam = Fraction(2)
     combined: list[tuple[Fraction, Fraction]] = [
@@ -79,7 +79,7 @@ def main() -> None:
     v_single = gamble_value_linear(g, loss, p, lam)
     print("two independent copies of the gamble, at lam = 2")
     print(f"value of the combined lottery (one lottery over the sum): {v_combined}")
-    print(f"two separate evaluations, one for each copy: 2 W = {2 * v_single}")
+    print(f"two separate evaluations, one for each copy: 2 PV = {2 * v_single}")
     print(f"the combined lottery is positive while each copy alone is negative: {v_combined > 0 and v_single < 0}")
 
     alpha = 0.5
@@ -88,9 +88,9 @@ def main() -> None:
     print(f"alpha = delta = 0.5: threshold lam* = {lam_star:.4f}")
     below = gamble_value_power(1000.0, 600.0, 0.5, lam_star * (1 - 1e-6), alpha, delta)
     above = gamble_value_power(1000.0, 600.0, 0.5, lam_star * (1 + 1e-6), alpha, delta)
-    print(f"sign of W just below lam*: positive {below > 0}; just above lam*: negative {above < 0}")
+    print(f"sign of PV just below lam*: positive {below > 0}; just above lam*: negative {above < 0}")
     at_two = gamble_value_power(1000.0, 600.0, 0.5, 2.0, alpha, delta)
-    print(f"W at lam = 2 with alpha = delta = 0.5: {at_two:.4f}")
+    print(f"PV at lam = 2 with alpha = delta = 0.5: {at_two:.4f}")
 
     grid = (1.0, 2.0, 4.0, 9.0)
     gains_concave = all(

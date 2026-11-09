@@ -111,12 +111,13 @@ def prospect_inverse_by_bisection(v: float) -> float:
 
 
 def ez_value(c0: float, date1: Sequence[tuple[float, float]], psi: float, beta: float) -> float:
-    """Two-date Epstein-Zin value V0 = [(1 - beta) c0**a + beta * (E[c1**(1 - gamma)])**(a / (1 - gamma))]**(1/a),
-    with a = 1 - 1/psi, gamma = GAMMA and the terminal value V1 = c1. The sure amount is a one-point distribution."""
-    a = 1.0 - 1.0 / psi
+    """Two-date Epstein-Zin value V0 = [(1 - beta) c0**omega + beta * (E[c1**(1 - gamma)])**(omega / (1 - gamma))]
+    ** (1/omega), with omega = 1 - 1/psi, gamma = GAMMA and the terminal value V1 = c1. The sure amount is a
+    one-point distribution."""
+    omega = 1.0 - 1.0 / psi
     expectation = sum(p * c1 ** (1.0 - GAMMA) for c1, p in date1)
-    inner = (1.0 - beta) * c0**a + beta * expectation ** (a / (1.0 - GAMMA))
-    return float(inner ** (1.0 / a))
+    inner = (1.0 - beta) * c0**omega + beta * expectation ** (omega / (1.0 - GAMMA))
+    return float(inner ** (1.0 / omega))
 
 
 def ez_certainty_equivalent(c0: float, date1: Sequence[tuple[float, float]], psi: float, beta: float) -> float:

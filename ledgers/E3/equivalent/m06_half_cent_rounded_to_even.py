@@ -1,4 +1,6 @@
-"""Reference solution for the E3 project: elicit.py, the preference-elicitation engine.
+"""Student error: the half cent is rounded to the even neighbour, so 2.5 gives 2 and 3.5 gives 4.
+
+Reference solution for the E3 project: elicit.py, the preference-elicitation engine.
 
 This is the full solution. It is excluded from deployment (BLUEPRINT section 7); it exists so that the suite can be
 checked against a passing implementation on seeds 0 to 49. Standard library only.
@@ -70,8 +72,9 @@ def _check_prospect(gamma: float, lam: float) -> None:
 
 
 def _half_up(y: float) -> int:
-    """The nearest whole cent with an exact half going up (toward plus infinity): floor(y + 1/2)."""
-    return round(y)
+    """The nearest whole cent to the float y, an exact half going up (toward plus infinity): floor(y + 1/2), computed
+    on the exact value of y, so that no rounding of the sum can move a value across a half."""
+    return round(Fraction(y))
 
 
 def _crra_change(prizes: list[int], probs: list[Fraction], gamma: float, wealth: int) -> float:
@@ -321,7 +324,8 @@ def _maximise(parsed: list[Parsed]) -> list[float]:
         if max(abs(s) for s in step) < 1e-10:
             # A negligible step is a stop only at a stationary point. Otherwise the Newton model has stalled: its
             # finite-difference Hessian changes with the step, so it cannot be trusted. Polish by coordinate search,
-            # then continue the Newton search from the polished point; a stall the polish does not move is raised.
+            # then continue the Newton search from the polished point. A stall that the polish does not move ends the
+            # search, and the error after the loop reports that it did not converge.
             grad_end, _ = _gradient_and_hessian(f, xi)
             if max(abs(g) for g in grad_end) < _STATIONARY:
                 return xi
@@ -330,7 +334,7 @@ def _maximise(parsed: list[Parsed]) -> list[float]:
                 xi, value = polished, f(polished)
                 mu = 1e-3
                 continue
-            raise RuntimeError("the step became negligible before the score did: the maximisation did not converge")
+            break
     raise RuntimeError("the likelihood maximisation did not converge")
 
 

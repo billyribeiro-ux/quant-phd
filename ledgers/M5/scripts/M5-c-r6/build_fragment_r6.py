@@ -1,0 +1,181 @@
+"""Round-6 delta fragment for M5 slice c (writes ledgers/M5/M5-c.json in the checkout). Evidence strings cite the scripts and outputs under ledgers/M5/scripts/M5-c-r6/."""
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[4]
+S = "ledgers/M5/scripts/M5-c-r6"
+O = f"{S}/out"
+PREV = "dde0486b (round-5 pin)"
+DELTA = f"git diff dde0486b e896b7a4 (see {O}/delta_check.out)"
+CARRY5 = f"Carried from round 5 (byte-identical since the previous pin {PREV}):"
+CARRY4 = f"Carried from round 4 (byte-identical since the previous pin {PREV}):"
+
+def row(id_, check, location, status, evidence, fix=None):
+    r = {"id": id_, "check": check, "location": location, "status": status, "evidence": evidence}
+    if status != "PASS":
+        r["fix"] = fix
+    return r
+
+rows = [
+ row("M5c-gate-check-pages", "2.9 structure (check_pages)", "course/modules/M/M5 (L08-L10, cards.json)", "PASS",
+     f"Re-run at e896b7a4: {O}/check_pages.out 'check_pages M5: PASS', exit 0 (gates.sh)."),
+ row("M5c-gate-check-dag", "2.9 DAG (check_dag)", "course/modules/M/M5 pages", "PASS",
+     f"Re-run: {O}/check_dag.out 'check_dag M5: PASS', exit 0."),
+ row("M5c-gate-check-projects", "2.6 projects (check_projects, unit-level, recorded for completeness)", "course/modules/M/M5/project.html (outside slice)", "PASS",
+     f"Re-run: {O}/check_projects.out 'check_projects M5: PASS', exit 0."),
+ row("M5c-gate-run-labs", "2.5 labs (run_labs, unit and per page)", "tests/labs/M5/lab-M5-L08-1.py, L09-1.py, L10-1.py", "PASS",
+     f"Re-run: {O}/run_labs_L08.out, run_labs_L09.out, run_labs_L10.out each 'run_labs M5: PASS (1/1)', exit 0 (summary.txt)."),
+ row("M5c-twins-isolated", "2.5 twins alone under python -I -W error; page code and expected block equal the twin", "tests/labs/M5/lab-M5-L08-1.py, lab-M5-L09-1.py, lab-M5-L10-1.py; L08/L09/L10.html lab blocks", "PASS",
+     f"Re-run: each twin under 'python -I -W error' exit 0 with stderr 0 bytes ({O}/twin_L08.stdout|stderr, twin_L09, twin_L10). {S}/page_twin_compare.py -> {O}/page_twin_compare.out: code_equals_twin=True and expected_equals_stdout=True for L08, L09, L10; RESULT PASS."),
+ row("M5c-gate-page-smoke", "2.9 page_smoke for the slice pages, alone", "course/modules/M/M5/L08.html, L09.html, L10.html", "PASS",
+     f"Re-run: {O}/page_smoke_L08.out, page_smoke_L09.out, page_smoke_L10.out each 'page_smoke modules/M/M5/Lxx.html: PASS', exit 0."),
+ row("M5c-gate-ruff-mypy", "2.5 twins: ruff and mypy", "tests/labs/M5/lab-M5-L08-1.py, L09-1.py, L10-1.py", "PASS",
+     f"{O}/ruff_check_twins.out 'All checks passed!'; {O}/ruff_format_twins.out '3 files already formatted'; {O}/mypy_no_incremental.out 'Success: no issues found in 385 source files'."),
+ row("M5c-gate-pytest-labs", "2.5 relevant pytest", "tests/test_labs.py -k M5", "PASS",
+     f"Re-run: {O}/pytest_labs_M5.out shows 13 passing tests ('.............' [100%]); gate exit 0 (summary.txt)."),
+ row("M5c-gate-verify-refs-offline", "2.1 citations (verify_refs --offline)", "references/references.json; slice pages", "PASS",
+     f"Re-run: {O}/verify_refs_offline.out 'offline integrity: 560 entries, 0 problems'. references/references.json byte-identical dde0486b..e896b7a4 ({O}/delta_check.out). Live run not repeated (no reference changed)."),
+ row("M5c-lab-L08-1", "2.5 lab L08-1 (demonstration; rung not applicable)", "course/modules/M/M5/L08.html:136-271; tests/labs/M5/lab-M5-L08-1.py", "PASS",
+     f"Fresh. {DELTA}: the only L08 hunk is line 73 (Example 1.2 markup), outside the lab block 136-271; the twin is byte-identical since dde0486b. Twin stdout ({O}/twin_L08.stdout): 'part A: iterations until the successive gap is at most 1e-12 = 257', 'part A: state k = 0.25  V*(k) = 5.000000', residual 8.695e-13, 'largest sampled ratio = 0.900000', 'part C: one-point grid, beta = 1: after 1000 iterations V = 500.000000'. Page code equals twin and expected equals stdout ({O}/page_twin_compare.out)."),
+ row("M5c-lab-L09-1", "2.5 lab L09-1 (demonstration; rung not applicable)", "course/modules/M/M5/L09.html:130-274; tests/labs/M5/lab-M5-L09-1.py", "PASS",
+     f"Fresh. L09.html and the twin are byte-identical since dde0486b ({O}/delta_check.out). {O}/twin_L09.stdout: 'reference_iterations 278 reference_certified 9.512e-13'; certified_stop n 59, 103, 147 with cert = actual error; fixed_count_stop n 10 cert 1.7433922005; naive_step_stop n 126 actual 0.0000085808. page_twin_compare L09 PASS."),
+ row("M5c-lab-L10-1", "2.5 lab L10-1 (demonstration; rung not applicable)", "course/modules/M/M5/L10.html:175-353; tests/labs/M5/lab-M5-L10-1.py", "PASS",
+     f"Fresh. The L10 hunks are at lines 389 and 510 only, outside the lab block 175-353 ({O}/delta_check.out); twin byte-identical. {O}/twin_L10.stdout: Part A n=1000 right 0.667166500000 left 0.666166500000; Part B largest_error_over_mesh 0.491631 all_within_2_mesh True; Part C jumps 1 at meshes 0.1 and 0.01 (left 0, right 1); Part D right 0.500500000000 left 0.499500000000. page_twin_compare L10 PASS."),
+ row("M5c-num-L08-worked", "2.2 numbers (worked values, one row per span)", "L08.html:74, :133, :278, :312, :326, :369, :483", "PASS",
+     f"Fresh: {S}/numbers_r6.py -> {O}/numbers_r6.out: sqrt(0.75) = 0.866025 (exact 0.8660254038); (BV)(1.0) = max over {{0.25, 1.0}} = 0.866025; quiz utility sqrt(sqrt(0.5)-0.25) = 0.6760967248. L08.html:73 changed markup only ({O}/delta_check.out); the :74 text is byte-identical."),
+ row("M5c-num-L08-counts", "2.2 numbers (iteration counts and a priori counts)", "L08.html:293, :362, :455, :490", "PASS",
+     f"Fresh: {S}/beta_copies_r6.py -> {O}/beta_copies_r6.out: copies of the twin with BETA = 0.5, 0.9, 0.95 print 40, 257, 527 iterations (exit 0, stderr 0). A priori least n with beta^n*(sqrt(3)/2)/(1-beta) <= 1e-12 is 41, 283, 595 (thresholds 40.66, 282.74, 594.29; {O}/numbers_r6.out). L08.html:293, :362, :455, :490 byte-identical since dde0486b."),
+ row("M5c-num-L08-ratio-unrounded", "2.2 numbers (unrounded contraction excess)", "L08.html:271; card M5-c205 absent", "PASS",
+     f"{CARRY4} L08.html:271 is not in any hunk of {DELTA}. Card M5-c205 remains absent (cards_r6.out lists M5-c204 and M5-c206 with no c205). Rationale per ledgers/M5/scripts/M5-c-r4/numbers_r4.py: unrounded worst ratio 0.9000000000000006, excess 5.55e-16."),
+ row("M5c-num-L09-apriori-R2", "2.2 numbers (a priori count, Problem R2)", "L09.html:392-399 (R2 statement and solution)", "PASS",
+     f"Fresh: {O}/numbers_r6.out: bound at n=151 is 1.066963e-6, at n=152 is 9.602671e-7; least n with bound <= 1e-6 is 152; at n=147 the bound is 1.626e-6 (certified stop at tol 1e-6 is n=147, twin_L09.stdout). L09.html byte-identical since dde0486b."),
+ row("M5c-num-L09-problems-quiz", "2.2 numbers (problem solutions and quiz keys)", "L09.html:311-327, :363, :436-492", "PASS",
+     f"{CARRY4} L09.html is byte-identical since dde0486b ({O}/delta_check.out). Values per ledgers/M5/scripts/M5-c-r4/numbers_r4.py: M1 1, 9, 99; M2 cert_2 = 0.064; M3 step 1/9000; E1 n=103 cert 0.0000968163; E3 1.7433922005 and 147 steps; quiz keys 0.02, 3.486784, 147, 99."),
+ row("M5c-num-L09-E2-ratio", "2.2 numbers (printed ratio)", "L09.html:290, :370", "PASS",
+     f"Fresh: {S}/numbers_r6.py -> {O}/numbers_r6.out: 0.0000085808/0.0000009534 = 9.0002097755, which is 9.0002 at 4 dp. L09.html:290 and :370 print 9.0002 and '9 to the precision of the printed step' (page text search, same run as {O}/prose_checks_r6.out). Actual error minus 9 times the printed step is 2e-10."),
+ row("M5c-num-L10-example33", "2.2 numbers and 2.4 mathematics (Example 3.3 closed forms)", "L10.html:147, :471, :485, :580", "PASS",
+     f"Fresh: {O}/numbers_r6.out: closed forms (n+1)(4n-1)/(6n^2) and (4n^2-3n-1)/(6n^2) equal the direct Fraction tagged sums for n=4, 10, 100, 1000; |right-2/3| <= 1/(2n) and |left-2/3| <= 1/n True for each n. L10.html:147 is not in any hunk ({O}/delta_check.out)."),
+ row("M5c-num-L10-partB-P2", "2.2 numbers (Part B ratio and Problem P2)", "L10.html:352, :451-453, :478", "PASS",
+     f"Fresh: {O}/twin_L10.stdout 'largest_error_over_mesh 0.491631 all_within_2_mesh True' (200 partitions); the page prints 0.491631 ({O}/prose_checks_r6.out: '0.491631 in page text: True'). The sentence 'in this sample every error is below half' is scoped to the sample (see notes)."),
+ row("M5c-num-L10-prop42-R2-R3", "2.2 numbers and 2.4 mathematics (Prop 4.2, Problem R2, Problem R3)", "L10.html:376-381, :502-503, :508-510 (R3 changed)", "PASS",
+     f"Fresh: R3 at L10.html:508-510 with G(x) = x^2 + 5 has G' = 2x; int_0^1 x*2x dx = 2/3 (exact, {O}/numbers_r6.out); the sums of G+kappa and G are identical for n=1000 (R3 shift invariance True True). Prop 4.2 and R2 (L10.html:376-381, :502-503) are not in any hunk ({O}/delta_check.out)."),
+ row("M5c-math-L08", "2.4 mathematics (Prop 1.3, Remark, Thm 2.2 (a)-(c), Ex 1.2, Ex 2.3, Problems M1-M3, P1-P3, R1-R2)", "L08.html:73-134, 317-400", "PASS",
+     f"Fresh for L08.html:73 (Example 1.2 values re-derived in {O}/numbers_r6.out; the hunk is class and data-grade markup only, {O}/delta_check.out). {CARRY5} L08.html lines 77-134 and 317-400 contain no hunk ({O}/delta_check.out)."),
+ row("M5c-math-L09", "2.4 mathematics (Lemmas 1.1, 1.2, 2.3; Thm 1.3, 2.4; Remark 2.5; problems)", "L09.html:52-130; P3 solution L09.html:352", "PASS",
+     f"{CARRY4} L09.html is byte-identical since dde0486b ({O}/delta_check.out; M5 L09 twin also identical)."),
+ row("M5c-math-L10", "2.4 mathematics (Sections 1-4, Lemmas, Theorems, Props, problems)", "L10.html:69-172, 364-381, 418-510 (changed lines 389, 510)", "PASS",
+     f"Fresh on the two changed lines. L10.html:389 now reads 'is 2/3 (under Assumption 1)'; Assumption 1 is stated in Section 2 of the lesson (page text). L10.html:510 uses G + kappa and the statement at :508 defines kappa; the constant cancels in every increment. Lemma 2.4 (a)-(c) statement at L10.html:105-108 read and matches cards M5-c187, M5-c247, M5-c248. Other lines unchanged ({O}/delta_check.out)."),
+ row("M5c-math-cross-refs", "2.4 cross-references and 2.1 locators (M2, M5 L01/L02/L06/L07/L08)", "L08: L07 Thm 2.1; L09: L01 Thm 1.2, L02 Thm 2.5, L06 Prop 1.3, L08 Thm 2.2(a); L10: M2 L09 Def 1.3, Lemmas 1.1/1.2, Ex 3.2; L10 :496", "PASS",
+     f"{CARRY5} course/modules/M/M2/L09.html is byte-identical since dde0486b (git diff --quiet exit 0), so the M2 L09 locators (Lemma 1.1 at :65, Lemma 1.2 at :75, Definition 1.3 at :85) are carried. L10.html:105-108 (Lemma 2.4 cited at :496 and :130-132) is unchanged in position and text."),
+ row("M5c-math-grades", "2.3 grades (theorem titles, key-results rows)", "L08.html:73, :413-419; L09.html:414-419; L10.html:522-530", "PASS",
+     f"Fresh: L08.html:73 now carries class 'claim' and data-grade 'T' (Example 1.2, computed on the page; BLUEPRINT §3 T = proved on the page). L08 key-results table (:413-419), L09 table and L10 key-results table (:522-530) not in any hunk ({O}/delta_check.out). Block titles match their table rows."),
+ row("M5c-struct-L08", "2.9 structure (template sections in order)", "course/modules/M/M5/L08.html", "PASS",
+     f"Fresh: the only L08 hunk is one line inside the Example 1.2 block ({O}/delta_check.out); no heading or section added or removed; check_pages PASS."),
+ row("M5c-struct-L09", "2.9 structure (template sections in order)", "course/modules/M/M5/L09.html", "PASS",
+     f"{CARRY4} L09.html byte-identical since dde0486b ({O}/delta_check.out); check_pages PASS."),
+ row("M5c-struct-L10", "2.9 structure (template sections in order)", "course/modules/M/M5/L10.html", "PASS",
+     f"Fresh: the L10 hunks are inside an existing list item (:389) and an existing solution paragraph (:510); no heading added or removed; check_pages PASS ({O}/delta_check.out)."),
+ row("M5c-prose-banned", "2.9 banned phrases (BUILDER_RULES 1.3-1.4)", "L08.html, L09.html, L10.html; cards.json (slice cards)", "PASS",
+     f"Fresh: {S}/cards_r6.py -> {O}/cards_r6.out (banned-word scan of all 89 L08-L10 cards and the three pages) finds none of TODO, TBD, lorem, omitted, beyond the scope, for brevity, clearly, obviously, well known, can be shown, roughly, it is important. Added text: L08.html:73, L10.html:389, L10.html:510 and cards c135, c187, c208, c247, c248 contain none."),
+ row("M5c-prose-process-words", "2.9 process words in learner text", "L08.html, L09.html, L10.html; cards.json", "PASS",
+     f"Fresh: {O}/cards_r6.out process-word hits are 'previous' and 'earlier' only: 'Previous L07/L08/L09' navigation links (template) and 'the certified stop at 147 steps is earlier' (mathematical ordering). No revision, round, ledger, verification, builder, agent or ruling word in learner text."),
+ row("M5c-prose-html", "2.9 HTML validity (raw < in math)", "L08.html, L09.html, L10.html", "PASS",
+     f"Fresh: {S}/prose_checks_r6.py -> {O}/prose_checks_r6.out: html.parser reads L08 (46547 chars), L09 (48279), L10 (62282) without error."),
+ row("M5c-prose-stock-L09", "2.9 prose (undefined term 'stock')", "L09.html:272, :485", "PASS",
+     f"Fresh: {O}/prose_checks_r6.out 'L09 \\bstock hits: 0'. L09.html byte-identical since dde0486b."),
+ row("M5c-prose-L09-nav", "2.9 navigation", "L09.html:505", "PASS",
+     f"{CARRY4} L09.html byte-identical since dde0486b ({O}/delta_check.out)."),
+ row("M5c-thm-L09-1.3-hypotheses", "2.4 hypotheses (Theorem 1.3 as the Banach theorem)", "L09.html:86 (Theorem 1.3)", "PASS",
+     f"{CARRY4} L09.html byte-identical since dde0486b ({O}/delta_check.out)."),
+ row("M5c-quiz-L10-q7", "2.5/2.4 quiz key (L10q7)", "L10.html:585", "PASS",
+     f"{CARRY4} L10.html:585 is not in any hunk of {DELTA}."),
+ row("M5c-quiz-numeric-answers", "2.2 quiz numeric keys and tolerances", "L08.html:438-483 (:441, :483); L09.html:438-489; L10.html:549-603", "PASS",
+     f"Fresh: {O}/numbers_r6.out: 0.866025 vs exact 0.8660254038 (diff 4e-7 <= 1e-6); 0.676097 vs 0.6760967248 (diff 2.8e-7 <= 1e-6). No hunk at L08.html:438-483, L09 or L10 quiz lines ({O}/delta_check.out)."),
+ row("M5c-dag", "2.9 DAG and concept links", "L08.html:38-39, :84; L09.html:38-39; L10.html:38-39, :167", "PASS",
+     f"Fresh: check_dag M5 PASS ({O}/check_dag.out). No hunk adds or removes an <a class=\"concept\"> link or a <dfn> ({O}/delta_check.out)."),
+ row("M5c-notation", "2.4 notation (notation.json)", "L08.html, L09.html, L10.html math segments; course/assets/data/notation.json", "PASS",
+     f"Fresh: {O}/prose_checks_r6.out: 'kappa registered in notation.json: False'; kappa occurs in M5 L08-L10 only at L10.html:508 and :510 (the R3 statement and solution), defined in the statement. The earlier unbound 'c' in the R3 solution is gone. Note on the letter's other use in L04 is in the notes."),
+ row("M5c-hours", "2.9 hours arithmetic", "L08.html:2, L09.html:2, L10.html:2; course/modules/M/M5/index.html data-hours-lessons, data-hours-project", "PASS",
+     f"{CARRY5} the data-hours lines of L08/L09/L10 and index.html are not in any hunk ({O}/delta_check.out). data-hours 11 each, 6 x 10 + 4 x 11 = 104; 104 + 26 = 130; 26/130 = 20.0% (inside 10-40%); check_pages PASS."),
+ row("M5c-cards-schema", "2.7 retrieval cards: schema and counts", "course/modules/M/M5/cards.json", "PASS",
+     f"Fresh: {O}/cards_r6.out: 238 cards, 238 unique ids, no duplicate id; per lesson L08 29, L09 26, L10 34; every id matches M5-cNNN with non-empty front and back; every graded card has a basis or cite. Hunks at lines 56, 985, 1339, 1381, 1472, 1719 ({O}/delta_check.out)."),
+ row("M5c-cards-L08", "2.7 cards agree with the current L08 text (29 cards)", "cards.json, lesson L08 (c121-c139, c186, c199, c200, c204, c206, c212, c226-c228, c243)", "PASS",
+     f"Fresh for the changed cards. M5-c135 now asks how many points V* is defined on: 'Four ... G = (0.25, 0.5, 0.75, 1.0)', matching the twin GRID (tests/labs/M5/lab-M5-L08-1.py:22), problem M3 (L08.html:323) and the four states at L08.html:297; '(Misconception 3)' is the continuous-state misconception at L08.html:297. M5-c243 (T, Example 1.2) matches L08.html:73-74 (sqrt 0.75 = 0.866025 and the two candidates). The other 27 L08 cards: text byte-identical since dde0486b and the L08 text is unchanged except :73, carried from round 5 ({O}/cards_r6.out)."),
+ row("M5c-cards-L09", "2.7 cards agree with the current L09 text (26 cards)", "cards.json, lesson L09 (c140-c161, c202, c207, c208, c230-c232, c235)", "PASS",
+     f"Fresh for M5-c208: 'Its ratio to the printed last step 0.0000009534 is 9.0002, which is 9 to the precision of the printed step' matches L09.html:290 and :370 (9.0002; 'nine' to the printed precision) and L09.html:272 (step 0.0000009534, actual 0.0000085808). Other 25 L09 cards: text and lesson byte-identical since dde0486b, carried from round 5."),
+ row("M5c-cards-L10", "2.7 cards agree with the current L10 text (34 cards)", "cards.json, lesson L10 (c162-c189, c209, c233, c234, c236-c239, c247, c248)", "PASS",
+     f"Fresh for the changed and new cards: M5-c187 is Lemma 2.4(a) (monotonicity, L10.html:105-108); M5-c247 is Lemma 2.4(b) (|h| <= M, M >= 0, estimate M(d-c)); M5-c248 is Lemma 2.4(c) (additivity and integrability on both pieces). Each matches the lemma's hypotheses and conclusion as printed. Other L10 cards carried from round 5 (text and lesson byte-identical since dde0486b). Note on M5-c183 is in the notes."),
+ row("M5c-cards-numbers", "2.2/2.7 every card number appears in its lesson or the lab output", "cards.json (L08-L10) vs lesson text and twin stdout", "PASS",
+     f"Fresh: {O}/cards_r6.out: every numeric token on the 89 L08-L10 cards appears in the lesson text or the twin stdout, in TeX form where they differ: 10^(-6) is 10^{{-6}} in L09.html, 10^(-12) is 10^{{-12}} in L08.html, and '3/2' is the sqrt{{3}}/2 of L09.html (the TeX-form check is in {O}/prose_checks_r6.out). The new value 9.0002 is at L09.html:290 and :370."),
+ row("M5c-cards-coverage", "2.7 cards cover every named block and misconception in L08-L10", "L08-L10 blocks; cards.json", "PASS",
+     f"Fresh: Lemma 2.4 now has one card per part (c187, c247, c248); L08 Example 1.2 (c243); misconceptions L08 (c133-c135), L09 (c159-c161), L10 (c179-c181); the three dfn terms (c124, c140, c164) unchanged. No named block of the delta lacks a card."),
+ row("M5c-cards-atomic", "2.7 each card tests one fact", "cards.json M5-c143, M5-c162, M5-c188, M5-c171, M5-c187, M5-c208", "PASS",
+     f"{CARRY5} c143, c162, c188, c171 byte-identical. Fresh: c187 asks one property (Lemma 2.4(a)); c135 asks one count. c208 asks for the naive stop's error and its ratio to the last step, one relation with its value; noted, not failed."),
+ row("M5c3-cards-duplicate-fact", "2.7 duplicate cards (full scan)", "cards.json: M5-c135 (L08) and M5-c160 (L09)", "PASS",
+     f"Fresh full scan: {S}/cards_r6.py near-duplicate list ({O}/cards_r6.out) over all 89 L08-L10 cards. c135 now asks how many points V* is defined on, not the grid-versus-continuous question, so the round-5 duplicate with c160 is gone; c160 is the sole card for the grid-versus-continuous fact. The highest similarities are same-lesson families with different questions (c170/c233 right vs left sum; c127/c128/c129 parts (a)-(c)). The cross-lesson restatements of one result (c127 Theorem 2.2(a) and c143 Lemma 1.2 of L09, linked by c235; c125, c142 and c202) ask different questions and are linked on the page; noted, not failed."),
+ row("M5c3-L08-note-docstring", "2.4 lab docstring defines u before its use", "tests/labs/M5/lab-M5-L08-1.py lines 9-10; L08.html:147-148", "PASS",
+     f"{CARRY5} lab-M5-L08-1.py is byte-identical since dde0486b ({O}/delta_check.out); page_twin_compare L08 PASS (embedded copy equals the twin)."),
+ row("M5c-prose-footer", "2.9 footer claim matches the page", "course/modules/M/M5/L08.html:501; L09.html:510; L10.html:620", "PASS",
+     f"{CARRY4} those footer lines are not in any hunk of {DELTA}; the page cites no registry key."),
+ row("M5c3-L09-misc2-heading", "2.4 Misconception 2 heading and body agree (L09)", "course/modules/M/M5/L09.html:293-294", "PASS",
+     f"{CARRY5} L09.html byte-identical since dde0486b."),
+ row("M5c3-L09-misc3-fixed-count", "2.4 Misconception 3 (fixed count) is not overstated (L09)", "course/modules/M/M5/L09.html:298", "PASS",
+     f"{CARRY4} L09.html:298 byte-identical since dde0486b. Numbers: twin_L09.stdout fixed_count_stop cert 1.7433922005 (> 1e-6); certified_stop 1e-06 n 147 cert 0.0000009389."),
+ row("M5c4-L10-ex33-bound-step", "2.2/2.4 Example 3.3 bound step (L10)", "course/modules/M/M5/L10.html:147", "PASS",
+     f"{CARRY5} L10.html:147 not in any hunk of {DELTA}; re-derived fresh in {O}/numbers_r6.out (closed forms and both 1/n bounds True for n = 4, 10, 100, 1000)."),
+ row("M5c4-L10-R1-weakest-hypothesis", "2.4 hypothesis stated by R1 solution (L10)", "course/modules/M/M5/L10.html:496", "PASS",
+     f"{CARRY5} L10.html:496 not in any hunk of {DELTA}."),
+ row("M5c4-L10-ex33-grade-display", "2.3 Example 3.3 grade display (L10)", "course/modules/M/M5/L10.html:146; key-results :528; cards M5-c170, M5-c233, M5-c234", "PASS",
+     f"{CARRY5} L10.html:146 and the key-results row at :528 are not in any hunk of {DELTA}."),
+ row("M5c5-cards-L08-ex12-grade-display", "2.3 grades (Example 1.2 carded T; block title carries the grade)", "course/modules/M/M5/L08.html:73; cards.json M5-c243", "PASS",
+     f"Fixed in the delta and re-verified fresh: L08.html:73 now reads '<span class=\"block-title claim\" data-grade=\"T\">Example 1.2 ...' ({O}/delta_check.out hunk @@ -73 +73 @@), as at L10.html:146. Card M5-c243 is T with basis 'Example 1.2 (computed on the page)'."),
+ row("M5c5-L10-sec5-hypothesis", "2.4 hypotheses (Section 5 bullet states a result that needs Assumption 1)", "course/modules/M/M5/L10.html:389", "PASS",
+     f"Fixed in the delta and re-verified fresh: L10.html:389 now reads 'For G(x) = x^{{2}} the integral of f(x) = x is 2/3 (under Assumption 1).' ({O}/delta_check.out hunk @@ -389 +389 @@). Assumption 1 is stated in Section 2 of the lesson, as the page's own wording says."),
+ row("M5c5-L10-R3-symbol", "2.4 notation (symbol defined in statement, used in solution)", "course/modules/M/M5/L10.html:508 (statement, kappa) and :510 (solution)", "PASS",
+     f"Fixed in the delta and re-verified fresh: L10.html:510 now reads 'the increments of \\(G + \\kappa\\) equal the increments of \\(G\\)' ({O}/delta_check.out hunk @@ -510 +510 @@). kappa is defined in the statement at :508; no unbound c remains in R3 (the R3 solution's only other symbols are G, f, x_i, Assumption 1)."),
+]
+
+notes = (
+ "Delta verification (ruling 30) from the round-5 pin dde0486b to e896b7a4 for slice c (M5 L08-L10, the three lab twins, cards). "
+ "Slice-file hunks (ledgers/M5/scripts/M5-c-r6/out/delta_check.out): L08.html:73 (Example 1.2 claim markup); L10.html:389 (Section 5 bullet, '(under Assumption 1)'); "
+ "L10.html:510 (R3 solution, G + kappa). Twins and L09.html are byte-identical. cards.json hunks: c135 (text, now asks the point count), c187 (text, Lemma 2.4(a) only), c208 (text, ratio 9.0002), "
+ "new c247 (Lemma 2.4(b)) and c248 (Lemma 2.4(c)). The round-5 non-PASS rows M5c3-cards-duplicate-fact, M5c5-cards-L08-ex12-grade-display, M5c5-L10-sec5-hypothesis and M5c5-L10-R3-symbol are each fixed in the delta and re-verified fresh (rows above, PASS). "
+ "Every other row is either re-run or carried with the carry prefix; carried rows cite a byte-identity check or a re-derivation. "
+ "Observations, not rows (ruling 30): (1) M5-c183 (L10, grade C) ends 'so every error is below half of its partition's mesh'; the question scopes it to the 200 seeded partitions and the L10 page (Part B interpretation) says 'in this sample', so it is not failed, but a builder could add 'in this sample' to the card's back. "
+ "(2) M5-c127 (L08 Theorem 2.2(a)) and M5-c143 (L09 Lemma 1.2) state the same contraction bound; c235 links them as a restatement by design. The architect may merge them. "
+ "(3) kappa is a constant in L10 R3 and a function kappa(c) in L04 (outside this slice). Neither is a registry symbol (notation.json has no kappa), so no notation row fails; the letter is reused across lessons with different meanings. "
+ "(4) Other slices changed in this delta (not verified here; owners should check): cards M5-c008 (L01, text), M5-c193 (L04, text), new M5-c244 (L04), new M5-c245 and M5-c246 (L01); pages L05, L06, L07 and lab-M5-L05-1.py. "
+ "(5) The checkout's ledgers/M5/scripts/M5-c-r6/ already held three tracked files (l08_numeric.py, l09_l10_numeric.py, strip_page_text.py) from an earlier run at the pin; they are not cited and were left untouched. "
+ "Mutants: none. Slice c contains no project grader, so the grader mutation rule does not apply; per the verifier rules' Rulings, lab twins are demonstrations and mutation testing applies to project graders only."
+)
+
+not_checked = (
+ "Not checked: rendered screenshots at 360 px and 1280 px in both themes beyond the page_smoke geometry sweep (page_smoke PASS); run_graders and mutate_graders (no grader in slice c); "
+ "repository-wide gates outside M5 (check_pages --all, check_dag --all, build_site --check, render_curriculum, fetch_data --check); a live verify_refs run (no reference changed); "
+ "cards and pages of other M5 slices (L01-L07, project, grader); a full line-by-line re-read of L08-L10 (the delta protocol carries byte-identical text; every hunk and every card whose subject changed was read)."
+)
+
+fragment = {
+ "unit": "M5",
+ "slice": "c",
+ "round": 6,
+ "verifier": "Claude Haiku 5.5, independent verifier for M5-c, round 6 (delta verification from round-5 pin dde0486b to e896b7a4). No build-side context; round-5 rows used as context and re-verified where the subject changed.",
+ "pin": "e896b7a45344d1bc17ebfbf7fb05d87698ec9d6a",
+ "base": "dde0486beeb0312e4ac1cc03aaa02e56644adb24",
+ "checkout": "/Users/billyribeiro/.fanout/wt/verifyS6-M5-c",
+ "scratch": "/Users/billyribeiro/.fanout/wt/verifyS6-M5-c/ledgers/M5/scripts/M5-c-r6/out",
+ "verified_at": "2026-11-09T11:58:00Z",
+ "verdict": "PASS" if all(r["status"] == "PASS" for r in rows) else "FAIL",
+ "rows": rows,
+ "mutants": [],
+ "registry_flags": [],
+ "freshness_flags": [],
+ "notes": notes,
+ "summary": (f"M5-c round 6 (delta dde0486b..e896b7a4 on e896b7a4): {len(rows)} rows, all PASS. The four round-5 non-PASS rows are fixed or resolved and re-verified; all gates re-run and pass; "
+             "subject-changed rows re-derived; other rows carried with byte-identity evidence. " + not_checked),
+ "counts": {"rows": len(rows), "pass": sum(r["status"] == "PASS" for r in rows), "fail": sum(r["status"] == "FAIL" for r in rows), "unverifiable": sum(r["status"] == "UNVERIFIABLE" for r in rows)},
+}
+
+out = ROOT / "ledgers/M5/M5-c.json"
+out.write_text(json.dumps(fragment, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+print("wrote", out, "rows", len(rows), "verdict", fragment["verdict"], fragment["counts"])
