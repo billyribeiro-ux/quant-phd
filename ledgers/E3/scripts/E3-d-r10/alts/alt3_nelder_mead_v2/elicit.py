@@ -293,9 +293,15 @@ def _newton_polish(f, xi: list[float]) -> list[float]:
         while scale > 1e-14 and f([x + scale * s for x, s in zip(xi, step, strict=True)]) <= base:
             scale /= 2.0
         if scale <= 1e-14:
-            return xi
+            # A stalled Newton search is returned only at a stationary point (round 13: the page's rule), else it raises.
+            if max(abs(g) for g in grad) < 1e-5:
+                return xi
+            raise RuntimeError("the search stalled before a stationary point: the maximisation did not converge")
         xi = [x + scale * s for x, s in zip(xi, step, strict=True)]
-    return xi
+    grad_end, _ = _gradient_and_hessian(f, xi)
+    if max(abs(g) for g in grad_end) < 1e-5:
+        return xi
+    raise RuntimeError("the Newton polish did not converge")
 
 
 def _maximise(parsed: list[Parsed]) -> list[float]:

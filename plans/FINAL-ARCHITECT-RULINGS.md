@@ -65,3 +65,9 @@
     coefficients at a domain point where the mutant misses. The equivalence section in ledgers/E4/equivalent/README.md is
     retracted. literal_price_sign stays equivalent: its sign is unobservable in any output (b_u enters only as b_u*b_u), the
     proof stands, and ruling 9 already provides the equivalent/ path for it.
+25. **Mutants that differ only below the stated accuracy.** A mutant whose every output stays within the page's stated
+    accuracy of the reference on all inputs searched (E4 mutant_r19_02: worst gap error 8.5e-15 against 1e-14 over 77,194 interior
+    points) cannot be separated by any test the page justifies. It goes to ledgers/<U>/equivalent/ with a README section that
+    states the sweep as evidence and says plainly that the bound is measured, not proved (ruling 9). Contrast ruling 24, where
+    a point beyond the stated accuracy was found, so a test was added. A verifier does not author further mutants that
+    sit at the tolerance boundary; new mutants are student errors that a learner could plausibly write.

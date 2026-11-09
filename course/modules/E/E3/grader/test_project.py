@@ -35,6 +35,7 @@ INST = make_instance(SEED)
 INST2 = make_instance(SEED + 7_919)  # a second participant, so a fixed answer for one seed must also match another
 LOW_KAPPA = make_instance(30)  # fixed, with kappa below 1, in every seed window: a clamp of kappa_hat must fail
 LARGE_LAMBDA = make_instance(49)  # fixed, with lambda_hat above 10 (20.69 on the reference): a clamp at 10 fails
+STALL = make_instance(108)  # fixed: the reference's search stops without a stationary point on this participant
 TRUE = {"gamma": float(INST["gamma"]), "lambda": float(INST["lambda"]), "kappa": float(INST["kappa"])}
 WEALTH: int = int(INST["wealth_cents"])
 RESPONSES: list[dict[str, Any]] = json.loads(str(INST["responses_json"]))
@@ -262,28 +263,22 @@ def test_loss_aversion_weights_losses_not_gains() -> None:
     expect(got_mirror == 25, "with lambda = 1/2 the same lottery's sure amount must follow the loss weight lambda")
 
 
-def test_half_cent_goes_up_on_exact_halves() -> None:
-    """An exact half cent goes toward plus infinity in both models. A rule that rounds halves to even fails."""
+def test_half_cent_rounding_on_exact_halves() -> None:
+    """Under the CRRA model at gamma = 0 the value is an exact fraction, so an exact half cent goes toward plus infinity
+    (a rule that rounds halves to even fails). Under the prospect model the value is a float, so an exact half cent may
+    land on either neighbouring cent; the prospect check of the specification allows a half cent either way."""
     half, wealth = Fraction(1, 2), 10
-    got_up = sol.certainty_equivalent_cents("prospect", [2, 3], [half, half], {"gamma": 0.0, "lambda": 1.0}, WEALTH)
-    expect(
-        got_up == 3,
-        "an exact half cent must go toward plus infinity: the rule is floor(c + 1/2), not rounding half to even",
-    )
-    got_up_low = sol.certainty_equivalent_cents("prospect", [0, 1], [half, half], {"gamma": 0.0, "lambda": 1.0}, WEALTH)
-    expect(
-        got_up_low == 1, "an exact half cent just above zero must go toward plus infinity: the rule is floor(c + 1/2)"
-    )
-    got_neg = sol.certainty_equivalent_cents("prospect", [-1, 0], [half, half], {"gamma": 0.0, "lambda": 1.0}, WEALTH)
-    expect(
-        got_neg == 0,
-        "an exact half cent just below zero must go toward plus infinity: the rule is floor(c + 1/2)",
-    )
     got_crra = sol.certainty_equivalent_cents("crra", [2, 3], [half, half], {"gamma": 0.0}, wealth)
     expect(
         got_crra == 3,
         "at gamma = 0 the CRRA certainty equivalent must send an exact half cent toward plus infinity",
     )
+    for prizes, neighbours in (([2, 3], (2, 3)), ([0, 1], (0, 1)), ([-1, 0], (-1, 0))):
+        got = sol.certainty_equivalent_cents("prospect", prizes, [half, half], {"gamma": 0.0, "lambda": 1.0}, WEALTH)
+        expect(
+            got in neighbours,
+            "a prospect certainty equivalent at an exact half cent must be one of the two neighbouring whole cents",
+        )
 
 
 def test_prizes_order_does_not_change_the_answer() -> None:
@@ -900,9 +895,10 @@ def test_estimate_accepts_a_mixed_lottery_on_the_a_side_alone() -> None:
     )
 
 
-# A fixed SIMULATED participant of 26 responses, written out as data (it is not drawn from instance.py). Its curvature
-# estimate lies near the lower end of the domain. Fields: pair_id, choice, prizes of A, probabilities of A, prizes of B,
-# probabilities of B.
+# A fixed SIMULATED participant of 26 responses, written out as data (it is not drawn from instance.py). Its estimate
+# lies inside the domain (gamma_hat 0.6534, lambda_hat 2.9147 on the reference). An earlier version had gamma_hat
+# near 0, on the boundary of the domain, where the observed information is not positive definite and the suite
+# failed in Pyodide. Fields: pair_id, choice, prizes of A, probabilities of A, prizes of B, probabilities of B.
 FIXED_26_ANSWERS: list[tuple[int, str, list[int], list[str], list[int], list[str]]] = [
     (0, "A", [-16600], ["1"], [-18600], ["1"]),
     (1, "B", [-18900], ["1"], [-18900, 4100], ["13/20", "7/20"]),
@@ -913,7 +909,7 @@ FIXED_26_ANSWERS: list[tuple[int, str, list[int], list[str], list[int], list[str
     (6, "B", [-200], ["1"], [4400, 3200, 15700], ["3/10", "3/10", "2/5"]),
     (7, "B", [-100, 5600, 17700], ["17/20", "1/10", "1/20"], [15000, 12200, -10900], ["7/20", "3/5", "1/20"]),
     (8, "A", [7700, 14800], ["19/20", "1/20"], [-1100], ["1"]),
-    (9, "A", [-6900], ["1"], [5100, -6700, 3000], ["2/5", "1/10", "1/2"]),
+    (9, "B", [-6900], ["1"], [5100, -6700, 3000], ["2/5", "1/10", "1/2"]),
     (10, "A", [5700], ["1"], [-13600, 3200], ["3/5", "2/5"]),
     (11, "B", [-15800, 5000], ["13/20", "7/20"], [3000], ["1"]),
     (12, "A", [500, -2800], ["9/10", "1/10"], [-11600], ["1"]),
@@ -923,7 +919,7 @@ FIXED_26_ANSWERS: list[tuple[int, str, list[int], list[str], list[int], list[str
     (16, "B", [-14300], ["1"], [17300, 3400, -10000], ["13/20", "1/20", "3/10"]),
     (17, "B", [-19800, -6500, -20000], ["9/10", "1/20", "1/20"], [9400, -18900, -5600], ["3/4", "1/20", "1/5"]),
     (18, "A", [8100, 9400], ["1/4", "3/4"], [10200, 3700, 18700], ["1/20", "7/10", "1/4"]),
-    (19, "A", [8200, 18300], ["9/10", "1/10"], [-6300, 13900, -8500], ["3/20", "2/5", "9/20"]),
+    (19, "B", [8200, 18300], ["9/10", "1/10"], [-6300, 13900, -8500], ["3/20", "2/5", "9/20"]),
     (20, "A", [7500, 16400], ["1/20", "19/20"], [100, 11200, 6100], ["3/10", "1/5", "1/2"]),
     (21, "A", [2600], ["1"], [-4000, 8300], ["7/20", "13/20"]),
     (22, "B", [-4000, 10200, 9200], ["3/5", "1/10", "3/10"], [19500], ["1"]),
@@ -968,9 +964,9 @@ def _assert_estimate_is_a_maximum(responses: list[dict[str, Any]]) -> None:
 
 
 def test_estimate_on_a_fixed_26_response_participant_is_a_maximum() -> None:
-    """The fixed 26-response participant FIXED_26_ANSWERS: the estimate passes the score and local-maximum checks. A
-    search that stops before the stationary point, or that returns an unconverged point, can pass every seed of
-    instance.py that the verifier scanned (seeds 0 to 399) and still fail here."""
+    """The fixed 26-response participant FIXED_26_ANSWERS: the estimate passes the score and local-maximum checks. This
+    participant is checked in every seed's run, so a search that stops before the stationary point, or that returns an
+    unconverged point, fails here whatever the learner's seed."""
     responses: list[dict[str, Any]] = [
         {"pair_id": i, "choice": c, "prizes_a": pa, "probs_a": qa, "prizes_b": pb, "probs_b": qb}
         for i, c, pa, qa, pb, qb in FIXED_26_ANSWERS
@@ -992,6 +988,18 @@ def test_estimate_on_the_b_side_twelve_response_set_is_a_maximum() -> None:
         }
         for i in range(len(B_SIDE_CHOICES))
     ]
+    _assert_estimate_is_a_maximum(responses)
+
+
+def test_a_search_that_stops_without_a_stationary_point_is_not_returned_as_the_estimate() -> None:
+    """The fixed SIMULATED participant of generator seed 108 (STALL), on which a search can stop without a stationary
+    point. A search that stops before a stationary point fails the suite, so a returned estimate must pass the score and
+    local-maximum checks. An error raised on this participant is not penalised: the page names no outcome for it."""
+    responses = json.loads(str(STALL["responses_json"]))
+    try:
+        sol.estimate(responses)
+    except Exception:  # any error is allowed on this participant, as the page names none for it
+        return
     _assert_estimate_is_a_maximum(responses)
 
 

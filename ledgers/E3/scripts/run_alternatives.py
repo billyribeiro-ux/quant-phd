@@ -43,6 +43,18 @@ GRID = """    best_t: list[float] = [0.0, 0.0, 0.0]
 """
 
 NEWTON = """    t, h = list(best_t), 1e-6
+
+    def _stalled(point: list[float]) -> list[float]:
+        # A stalled search is returned only if its score is near zero; otherwise it raises, as the reference does.
+        worst = 0.0
+        for i in range(3):
+            up = [x + (h if k == i else 0.0) for k, x in enumerate(point)]
+            down = [x - (h if k == i else 0.0) for k, x in enumerate(point)]
+            worst = max(worst, abs(f(up) - f(down)) / (2 * h))
+        if worst < 1e-5:
+            return point
+        raise RuntimeError("the search stalled before a stationary point: the maximisation did not converge")
+
     for _ in range(100):
         f0 = f(t)
         grad = [0.0, 0.0, 0.0]
@@ -65,11 +77,13 @@ NEWTON = """    t, h = list(best_t), 1e-6
         while scale > 1e-14 and f([x + scale * d for x, d in zip(t, step_dir, strict=True)]) <= f0:
             scale /= 2.0
         if scale <= 1e-14:
-            return t
+            return _stalled(t)
         t = [x + scale * d for x, d in zip(t, step_dir, strict=True)]
-        if max(abs(g) for g in grad) < 1e-7 or max(abs(scale * d) for d in step_dir) < 1e-10:
+        if max(abs(g) for g in grad) < 1e-7:
             return t
-    return t
+        if max(abs(scale * d) for d in step_dir) < 1e-10:
+            return _stalled(t)
+    return _stalled(t)
 """
 
 COMPASS = """    import itertools

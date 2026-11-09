@@ -50,17 +50,17 @@ def expected_utility(lottery: Lottery, u: Utility) -> Fraction:
     return sum((p * u(x) for x, p in lottery), Fraction(0))
 
 
-def mixture(alpha: Fraction, first: Lottery, second: Lottery) -> Lottery:
-    """The lottery that pays the outcomes of first with probability alpha and of second with probability 1 - alpha.
+def mixture(tau: Fraction, first: Lottery, second: Lottery) -> Lottery:
+    """The lottery that pays the outcomes of first with probability tau and of second with probability 1 - tau.
 
-    The probability of an outcome is alpha times its probability in first plus (1 - alpha) times its probability in
+    The probability of an outcome is tau times its probability in first plus (1 - tau) times its probability in
     second, with a probability of 0 where an outcome does not appear. The result is sorted by outcome.
     """
     weights: dict[int, Fraction] = {}
     for x, p in first:
-        weights[x] = weights.get(x, Fraction(0)) + alpha * p
+        weights[x] = weights.get(x, Fraction(0)) + tau * p
     for x, p in second:
-        weights[x] = weights.get(x, Fraction(0)) + (1 - alpha) * p
+        weights[x] = weights.get(x, Fraction(0)) + (1 - tau) * p
     return sorted(weights.items())
 
 
@@ -101,15 +101,15 @@ def main() -> None:
             f"eu_linear {expected_utility(lottery, linear)} eu_quadratic {expected_utility(lottery, quadratic)}"
         )
 
-    print("Part B: linearity in the probabilities for the mixture alpha*A + (1 - alpha)*C")
+    print("Part B: linearity in the probabilities for the mixture tau*A + (1 - tau)*C")
     linearity_holds = True
-    for alpha in (Fraction(1, 4), Fraction(1, 3), Fraction(1, 2)):
-        mixed = mixture(alpha, LOTTERIES["A"], LOTTERIES["C"])
+    for tau in (Fraction(1, 4), Fraction(1, 3), Fraction(1, 2)):
+        mixed = mixture(tau, LOTTERIES["A"], LOTTERIES["C"])
         for label, u in (("linear", linear), ("quadratic", quadratic)):
             lhs = expected_utility(mixed, u)
-            rhs = alpha * expected_utility(LOTTERIES["A"], u) + (1 - alpha) * expected_utility(LOTTERIES["C"], u)
+            rhs = tau * expected_utility(LOTTERIES["A"], u) + (1 - tau) * expected_utility(LOTTERIES["C"], u)
             linearity_holds = linearity_holds and lhs == rhs
-            print(f"alpha {alpha} utility {label} mixture_eu {lhs} linear_combination {rhs} equal {lhs == rhs}")
+            print(f"tau {tau} utility {label} mixture_eu {lhs} linear_combination {rhs} equal {lhs == rhs}")
     print(f"all_linearity_checks {linearity_holds}")
 
     print("Part C: pairwise order under u and under v = 3 + 2u")

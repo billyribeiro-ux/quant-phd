@@ -195,7 +195,7 @@ def main() -> None:
     print("lambda_hat:", f"{lam:.4f}", "| se_lambda:", f"{result['se_lambda']:.2f}")
     print("kappa_hat:", f"{kappa:.4f}", "| se_kappa:", f"{result['se_kappa']:.2f}")
     print("log-likelihood at the estimate:", f"{result['log_likelihood']:.4f}")
-    print("largest score component at the estimate:", f"{score:.2e}")
+    print("largest score component below 1e-6:", score < 1e-6)
     print("every parameter lies in its domain:", 0.0 < gamma < 1.0 and lam > 0.0 and kappa > 0.0)
 
 

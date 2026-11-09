@@ -20,6 +20,7 @@ MODELS: tuple[str, str] = ("crra", "prospect")
 CENTS_PER_UNIT = 10_000.0  # the logit uses differences in units of $100: z = kappa * dCE / 10000
 _H = 1e-5  # finite-difference step in the transformed coordinates
 _MAX_ITER = 200
+_STATIONARY = 1e-5  # the score (per unit of its coordinate) counts as zero below this, inside the suite's 2e-5
 _BOUND = 40.0  # |c|, |a|, |b| beyond this are far outside any sensible parameter range; such points get -infinity
 
 Parsed = tuple[list[int], list[Fraction], list[int], list[Fraction], str]
@@ -87,7 +88,6 @@ def _value(x: int, gamma: float, lam: float) -> float:
     if x >= 0:
         return math.pow(float(x), 1.0 - gamma)
     return -lam * math.pow(float(-x), 1.0 - gamma)
-
 
 
 def _prospect_ce(prizes: list[int], probs: list[Fraction], gamma: float, lam: float) -> float:
@@ -250,6 +250,47 @@ def _solve(lower: list[list[float]], rhs: list[float]) -> list[float]:
     return x
 
 
+def _golden(f: Callable[[list[float]], float], xi: list[float], i: int, lo: float, hi: float) -> float:
+    """The maximiser of f along coordinate i in [lo, hi] by golden-section search (f is unimodal on the bracket)."""
+    ratio = (math.sqrt(5.0) - 1.0) / 2.0
+
+    def along(s: float) -> float:
+        y = list(xi)
+        y[i] = s
+        return f(y)
+
+    a, b = lo, hi
+    c, d = b - ratio * (b - a), a + ratio * (b - a)
+    fc, fd = along(c), along(d)
+    for _ in range(200):
+        if b - a < 1e-14:
+            break
+        if fc > fd:
+            b, d, fd = d, c, fc
+            c = b - ratio * (b - a)
+            fc = along(c)
+        else:
+            a, c, fc = c, d, fd
+            d = a + ratio * (b - a)
+            fd = along(d)
+    return (a + b) / 2.0
+
+
+def _polish(f: Callable[[list[float]], float], xi: list[float]) -> list[float]:
+    """Coordinate ascent: golden-section search along each of the three coordinates in turn, within 0.01 of the current
+    point, for up to 30 sweeps, stopping when a sweep gains less than 1e-12."""
+    cur = list(xi)
+    value = f(cur)
+    for _ in range(30):
+        for i in range(len(cur)):
+            cur[i] = _golden(f, cur, i, cur[i] - 0.01, cur[i] + 0.01)
+        new_value = f(cur)
+        if new_value - value < 1e-12:
+            return cur
+        value = new_value
+    return cur
+
+
 def _maximise(parsed: list[Parsed]) -> list[float]:
     def f(t: list[float]) -> float:
         return _objective(t, parsed)
@@ -281,11 +322,25 @@ def _maximise(parsed: list[Parsed]) -> list[float]:
                     break
             mu = max(mu * 4.0, 1e-9)
             if mu > 1e12:
-                return xi
+                # No step raises the likelihood in floating point. That is a stop only at a stationary point.
+                if max(abs(g) for g in grad) < _STATIONARY:
+                    return xi
+                raise RuntimeError("no damped Newton step raises the likelihood: the maximisation did not converge")
         xi, value = trial, new_value
         mu = max(mu / 3.0, 1e-12)
         if max(abs(s) for s in step) < 1e-10:
-            return xi
+            # A negligible step is a stop only at a stationary point. Otherwise the Newton model has stalled: its
+            # finite-difference Hessian changes with the step, so it cannot be trusted. Polish by coordinate search,
+            # then continue the Newton search from the polished point; a stall the polish does not move is raised.
+            grad_end, _ = _gradient_and_hessian(f, xi)
+            if max(abs(g) for g in grad_end) < _STATIONARY:
+                return xi
+            polished = _polish(f, xi)
+            if f(polished) > value + 1e-12:
+                xi, value = polished, f(polished)
+                mu = 1e-3
+                continue
+            raise RuntimeError("the step became negligible before the score did: the maximisation did not converge")
     raise RuntimeError("the likelihood maximisation did not converge")
 
 
