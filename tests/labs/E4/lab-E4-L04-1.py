@@ -42,7 +42,10 @@ CLAIMS: tuple[tuple[str, Row], ...] = (
 
 
 def check_matrix(matrix: Matrix) -> int:
-    """Return the number of states (the number of columns), or raise ValueError if the matrix is not rectangular."""
+    """Return the number of states (the number of columns).
+
+    Raise ValueError if the matrix has no security or no state, or if its rows have unequal lengths.
+    """
     if not matrix or not matrix[0]:
         raise ValueError("payoff matrix must have at least one security and one state")
     width = len(matrix[0])

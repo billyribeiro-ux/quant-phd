@@ -1,4 +1,4 @@
-"""Reference solution for the CS2 streaming statistics library (streamstats.py).
+"""Quantile sketch sets an inserted interior tuple's delta to floor(2 epsilon n), not the successor's g + delta - 1.
 
 Standard library only. Values are floats in the caller's unit; counts and window lengths are ints; the
 quantile sketch's epsilon and q are floats in [0, 1] (epsilon strictly inside (0, 1)). Nothing here prints,
@@ -113,7 +113,9 @@ class QuantileSketch:
         if math.isnan(x):
             raise ValueError("a NaN value is not a number and cannot be added")
         position = bisect_right(self._values, x)
-        delta = 0 if position == 0 or position == len(self._values) else math.floor(2 * self._exact_epsilon * (self._n + 1))
+        delta = (
+            0 if position == 0 or position == len(self._values) else math.floor(2 * self._exact_epsilon * (self._n + 1))
+        )
         self._values.insert(position, float(x))
         self._g.insert(position, 1)
         self._delta.insert(position, delta)

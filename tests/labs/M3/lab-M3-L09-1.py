@@ -7,7 +7,8 @@ Claims checked, each on the inputs named in the code:
    ||C0 - B||_F^2 equals the sum of the squared negative eigenvalues of C0 (Proposition 3.3 of the lesson).
 3. Rescaling B to unit diagonal gives a correlation matrix R: symmetric, unit diagonal, PSD (Proposition 3.4).
 4. For 40 matrices drawn from a generator seeded with 20261028 (SIMULATED: off-diagonal entries 0.5 plus
-   symmetrised Gaussian noise, each raw entry with standard deviation 0.35; unit diagonal; size 5), the
+   the symmetrised noise (N + N^T) / 2, where N has independent Gaussian entries of standard deviation 0.35;
+   unit diagonal; size 5), the
    non-PSD matrices are repaired two ways. Clip-and-rescale gives R. Alternating projections (clip at zero,
    set the diagonal to one, repeat until the change is below 1e-12, at most 500 steps) gives W. The lab counts
    how often W passes is_correlation (symmetric and unit diagonal to 1e-12, smallest eigenvalue at least -1e-8),

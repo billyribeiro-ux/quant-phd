@@ -1,0 +1,120 @@
+import json, sys
+from datetime import datetime, timezone
+root = sys.argv[1]
+S = "ledgers/E1/scripts/E1-a-r1"
+CARRY_PAGES = ("Carried from round 5 (course/modules/E/E1/index.html, L01.html, L02.html, L03.html, tests/labs/E1/lab-E1-L01-1.py, "
+               "lab-E1-L02-1.py, lab-E1-L03-1.py, notation/, references/, curriculum/ byte-identical since the previous pin dde0486b; "
+               "`git diff --stat dde0486b..HEAD` over these paths is empty, see " + S + "/delta_slice_a_r1.out):")
+CARRY_L01 = ("Carried from round 5 (the 16 L01 card objects E1-c001..c014, c137, c139 are identical to the previous pin dde0486b; "
+             "the id-level compare in " + S + "/card_delta_r1.out lists changed ids c018, c023, c030, c039, c056, c101 and removed/added "
+             "c088, c159, c161-c166 only, and none is an L01 id):")
+def R(id_, check, location, status, evidence):
+    return {"id": id_, "check": check, "location": location, "status": status, "evidence": evidence}
+rows = [
+R("E1a-01","2.1-citations","references/references.json key varian2014intermediate; course/modules/E/E1/index.html; L01.html:498; L02.html:488; L03.html:464","PASS",
+  "Fresh this round: `.venv/bin/python tools/verify_refs.py --offline` -> 'offline integrity: 560 entries, 0 problems' (exit 0, "+S+"/verify_refs_offline_r1.out); `tools/verify_refs.py --unit E1` -> 'live re-verification of E1: 1 of 560 entries, 0 problems' (exit 0, "+S+"/verify_refs_unit_E1_live_r1.out). references/ unchanged since dde0486b."),
+R("E1a-02","2.2-numbers-hub","course/modules/E/E1/index.html (eyebrow; objectives; hours split; placement)","PASS",
+  CARRY_PAGES+" index.html carries the round-5 eyebrow '90 h lessons · 30 h project (25% of the 120 h)'; 9 x 10 = 90, 90 + 30 = 120, 30/120 = 25 %. Hub arithmetic re-run through check_pages (E1a-26)."),
+R("E1a-03","2.2-numbers-L01","L01.html Example 1.6, Remark 1.5, Remark 2.4, Problems, quiz","PASS",
+  CARRY_PAGES+" Example 1.6 values x_bar=30, y_bar=20, u_bar=600 are re-printed fresh by twin_L01_r1.out (case 1; point 30; equals closed form: True)."),
+R("E1a-04","2.2-numbers-L02","L02.html Example 1.4 (l.88), Remark 1.6 (l.103), Misconception 1 (l.264-266), Problems and quiz","PASS",
+  CARRY_PAGES+" Fresh: twin_L02_r1.out prints case 1 q*=4, profit 4, shutdown -12; 'case 1 at the minimum-average-cost output sqrt(F/k) = 3.4641: profit 3.7128, below the profit 4.0000 at q*: True'. 16 sqrt 3 - 24 = 3.7128 (L02.html:266)."),
+R("E1a-05","2.2-numbers-L03","L03.html Example 1.5 (l.93), Remark 2.2 (l.110), Problems, quiz","PASS",
+  CARRY_PAGES+" Fresh: twin_L03_r1.out prints p* = 110/7, Q* = 480/7, one firm 48/7, grid counts 110 / 1 / 30, at p = 20 D = 60, S = 90, Z = -30."),
+R("E1a-06","2.2-numbers-lab-printed","L01 expected block (L01.html:240-257); L02 (L02.html:228-246); L03 (L03.html:215-222)","PASS",
+  "Fresh this round: `tools/run_labs.py --unit E1 --page L01|L02|L03` -> 'run_labs E1: PASS (1/1)' each, exit 0 ("+S+"/run_labs_L0{1,2,3}_r1.out). run_labs checks twin == page code byte-for-byte and expected block == stdout under the page rule. Twins under `python -I -W error` exit 0, stderr 0 bytes (twin_L0{1,2,3}_r1.err)."),
+R("E1a-07","2.2-numbers-prose / 2.3-mathematics","L01.html:153 (Remark 2.4), L01.html:307 (M2)","PASS",
+  CARRY_PAGES+" Re-derived values in "+S+"/rederive_cards_r1.out (Example 1.5 p*=110/7, Q*=480/7, one firm 48/7)."),
+R("E1a-08","2.3-grades-propositions","L01 Props 1.2, 1.3, 1.4, 2.2, 2.3; L02 Props 1.3 (l.72), 1.5 (l.91), 2.2 (l.118); L03 Props 1.3 (l.72), 2.1 (l.98)","PASS",
+  CARRY_PAGES+" L02 Prop 1.5 card E1-c019 is object-identical (card_delta_r1.out). Grades T with proofs on the page (L02.html:79-84, :96-99, :123-125)."),
+R("E1a-09","2.3-grades / 2.4-mathematics / 2.9-prose","L02.html:130 (hypothesis), L02.html:262-266 (misconception 1)","PASS",
+  CARRY_PAGES+" Fresh: twin_L02_r1.out line 'price equals marginal cost at q*: True' in all four cases; AC(q)=F/q+c+kq (L02.html:266)."),
+R("E1a-10","2.3-grades-lab-results (C cards)","cards E1-c014, c025, c027, c139, c140, c141, c142 (grade C; basis names Lab 1)","PASS",
+  "Fresh this round against twin_L01_r1.out, twin_L02_r1.out, twin_L03_r1.out: c014 point 30 in all four L01 cases; c025 profit 4 and -84 (cases 1 and 4); c027 grid j/12 equals closed form True in all four; c140 4 > -12, 3 > -5, 16/3 > 0, -84 > -100; c141 110 / 1 / 30; c142 48/7 for F=0 and F=100. The seven card objects are unchanged (card_delta_r1.out). Basis strings name the lab."),
+R("E1a-11","2.4-mathematics-L01","L01 Props 1.2-1.4, 2.2, 2.3; Remark 1.5; Problem R2 (l.380-386)","PASS",
+  CARRY_PAGES+" L01 page unchanged; re-derivation in "+S+"/rederive_cards_r1.out."),
+R("E1a-12","2.4-mathematics-L02","L02 Props 1.3, 1.5, 2.2; Remarks 1.6, 1.7; Problems R1, R2","PASS",
+  CARRY_PAGES+" pi(q)=pi0 - k(q-q0)^2 re-checked exactly in "+S+"/rederive_cards_r1.py (144 parameter cases, all ok True)."),
+R("E1a-13","2.4-mathematics-L03","L03 Prop 1.3 (l.79-84), Remark 1.4, Prop 2.1, Problems P1-P2","PASS",
+  CARRY_PAGES+" Fresh exact-fraction check (144 cases, Z(p*)=0, p*-c=(a-bc)/(b+s), Q*=s(p*-c)=a-bp*) in "+S+"/rederive_cards_r1.out: all ok True."),
+R("E1a-14","2.4-mathematics-problems","L01 R1-R3, M1-M3, P1-P3, E1-E3; L02 R1-R3, M1-M3, P1-P3, E1-E3; L03 R1-R3, M1-M3, P1-P3, P2, E1-E3","PASS",
+  CARRY_PAGES+" Problem blocks lie outside every changed hunk (only cards.json and project.html changed in course/modules/E/E1)."),
+R("E1a-15","2.4-notation","hub and L01-L03 math spans vs notation/notation.json (8 registered symbols, 26 macros)","PASS",
+  CARRY_PAGES+" The changed and added cards use no registered symbol (registry: T, \\Phi, \\gamma_3, \\gamma_4, R^\\ast, R^{e\\ast}, R_f, \\mathbb{Q}; the new card text uses Q*, s, p*, MC, a, b, n, k, all already introduced by the lesson text: L02.html:57-58, L03.html:57-58, L03.html:75)."),
+R("E1a-16","2.5-labs-L01","tests/labs/E1/lab-E1-L01-1.py; L01.html lab section","PASS",
+  "Fresh: run_labs --page L01 PASS (1/1) (run_labs_L01_r1.out); `python -I -W error tests/labs/E1/lab-E1-L01-1.py` exit 0, stderr 0 bytes (twin_L01_r1.err); twin unchanged since dde0486b."),
+R("E1a-17","2.5-labs-L02","tests/labs/E1/lab-E1-L02-1.py; L02.html:130, :228-246, :247","PASS",
+  "Fresh: run_labs --page L02 PASS (1/1) (run_labs_L02_r1.out); twin exit 0 under -I -W error, stderr 0 bytes; last stdout line 'case 1 at the minimum-average-cost output sqrt(F/k) = 3.4641: profit 3.7128, below the profit 4.0000 at q*: True' (twin_L02_r1.out). L02.html unchanged since dde0486b."),
+R("E1a-18","2.5-labs-L03","tests/labs/E1/lab-E1-L03-1.py docstring; L03.html:113-223","PASS",
+  "Fresh: run_labs --page L03 PASS (1/1) (run_labs_L03_r1.out); twin exit 0 under -I -W error, stderr 0 bytes (twin_L03_r1.out/err)."),
+R("E1a-19","2.9-prose-scope-words (rule 4)","L01.html:268; L02.html:247; L01-L03 scope words","PASS",
+  CARRY_PAGES+" L02.html:247 ('So, in case 1, the minimum-average-cost output does not maximize profit') still scoped to case 1, matching twin_L02_r1.out. Card scope words (E1-c019 'every output', E1-c030 'exactly one', E1-c033 'every fixed cost', E1-c037 'only zero', E1-c140 'each case') checked against lesson text: "+S+"/scope_cards_L02_L03_r1.out."),
+R("E1a-20","2.5-labs-runtime-seed-network","the three L01-L03 twins; tests/labs/E1; tests/test_page_checks.py; tests/test_run_labs.py","PASS",
+  "Fresh: `python -I -W error` exit 0 for the three twins; `ruff check tests/labs/E1` 'All checks passed!' (ruff_check_E1_labs_r1.out); `ruff format --check tests/labs/E1` '12 files already formatted' (ruff_format_E1_labs_r1.out); `mypy --no-incremental` on the three twins 'Success: no issues found in 3 source files' (mypy_slice_a_twins_r1.out); `pytest tests/test_page_checks.py tests/test_run_labs.py -q` exit 0, 47 dots (pytest_page_checks_run_labs_r1.out)."),
+R("E1a-21","2.7-cards-L01","cards.json E1-c001..c014, c137, c139 (16 L01 cards)","PASS",
+  CARRY_L01+" "+S+"/card_delta_r1.out"),
+R("E1a-22","2.7-cards-duplicates","cards.json: full scan of all E1 cards (now 160)","PASS",
+  "Re-verified fresh (subject changed: cards c018, c023, c030, c039, c056, c101 edited; c088, c159 removed; c161-c166 added). "+S+"/cards_scan_r1.out: 160 cards, 160 unique ids, 0 duplicate fronts, 0 duplicate backs. "+S+"/cards_dup_words_r1.out (word-token Jaccard >= 0.45): 37 pairs, reviewed. Pairs involving the changed or added slice-a cards: c018/c023 (0.65; the same formula under two names, but two questions: the profit-maximizing output of Proposition 1.3 versus the supply function of Definition 2.1, which the lesson defines as that output; judged distinct, see notes), c018/c161 (0.64; q* vs MC(q*)), c023/c161 (0.61), c023/c162 (0.55; formula vs monotonicity), c030/c163 (0.60; p* vs Q*), c037/c163 (0.48), c152/c161 (0.47), c018/c152 (0.46), c056/c164 (0.48; p_m vs Q_m and pi_m; c056 is now price only). Other pairs are the L04-L09 cards (surplus triples c097/c098/c099, elasticity c038/c040/c153, Cournot/Bertrand c076/c082, c086/c087, c095/c104, c110/c111, c131/c150, c066/c145): distinct questions and distinct answers, reviewed in the same scan."),
+R("E1a-23","2.7-cards-L02","cards.json E1-c015..c027, c140, c152, c161, c162 (17 L02 cards)","PASS",
+  "Re-verified fresh (subject changed: c018, c023 edited; c161, c162 added). c018 front 'Under the Setting (p > 0, F >= 0, c >= 0, k > 0), what is the profit-maximizing output?' back q* = max(0,(p-c)/(2k)), unique (Proposition 1.3; L02.html:72-76). c161 MC(q*) = p, q* = (p-c)/(2k) > 0 for p > c (L02.html:76). c023 supply function q(p) = max(0,(p-c)/(2k)) (Definition 2.1 at L02.html:115; Proposition 2.2 at L02.html:120). c162 nondecreasing and 0 at p = c (L02.html:120, proof at :125). All six numbers re-derived exactly (rederive_cards_r1.out). Unchanged cards c015-c017, c019-c022, c024-c027, c140, c152 re-read against L02.html (Props 1.5 at :92-99; misconceptions at :264-274 with Section 4 cited by c024 and c026 at :272-274; Remark 1.6 at :103). Lab-result cards c025, c027, c140 print in twin_L02_r1.out (see E1a-10)."),
+R("E1a-24","2.7-cards-L03","cards.json E1-c028..c035, c037, c141, c142, c163 (12 L03 cards; E1-c036 absent)","PASS",
+  "Re-verified fresh (subject changed: c030 edited; c163 added). c030 'what is the equilibrium?' back: exactly one price p* = (a+sc)/(b+s), s = n/(2k) (L03.html:73-75). The card no longer states Q*; Q* is carried by c163 (not a defect, see notes). c163 Q* = s(p*-c) = a - bp* > 0 and p*-c = (a-bc)/(b+s) (L03.html:75-76), with the L03 Setting (L03.html:56-59). Exact check in rederive_cards_r1.out: Example 1.5 p*=110/7, Q*=480/7. c033 Setting and claim (L03.html:99-100, Prop 2.1 'for every F >= 0'); c034 (Remark 2.2, Section 4 misconception 2 at L03.html:245-246); c035 (Remark 1.4; misconception 1 at L03.html:241-242); c037 (Problem P2). Unchanged cards c028, c029, c031, c032, c141, c142 re-read against L03.html."),
+R("E1a-25","2.7-cards-coverage","L01-L03 definitions, propositions and misconceptions vs cards","PASS",
+  "Re-verified fresh: "+S+"/coverage_r1.py -> coverage_r1.out, lesson-restricted. Every labelled Definition / Proposition / Example block of L02 and L03 has a card in the same lesson: L02 Def 1.1 c015, Def 1.2 c016/c017, Prop 1.3 c018/c022/c027/c152/c161, Ex 1.4 c152, Prop 1.5 c019/c025, Remark 1.6 c020/c026/c140, Remark 1.7 c021, Def 2.1 c022, Prop 2.2 c023/c162; L03 Def 1.1 c028, Def 1.2 c029, Prop 1.3 c030/c037/c163, Remark 1.4 c031/c035/c141, Ex 1.5 c032/c034/c035, Prop 2.1 c033, Remark 2.2 c034. L01 unchanged (Remark 1.5 has no card; the rule of the row covers Definitions and Propositions only, and the L01 cards are object-identical). Misconceptions: L02 c024, c019, c026; L03 c035, c034, c033."),
+R("E1a-26","2.9-structure-hub","course/modules/E/E1/index.html","PASS",
+  "Fresh: `tools/check_pages.py --unit E1` -> 'check_pages E1: PASS', exit 0 (check_pages_E1_r1.out). The per-page form is not a valid invocation for the hub (round-4 note, unchanged)."),
+R("E1a-27","2.9-structure-lessons","L01.html, L02.html, L03.html","PASS",
+  "Fresh: check_pages --unit E1 --page L01 / L02 / L03 each 'PASS', exit 0 (check_pages_L01_r1.out, check_pages_L02_r1.out, check_pages_L03_r1.out). check_pages reads cards.json (tools/check_pages.py is the only tool that reads it) and passes with the 160 cards."),
+R("E1a-28","2.9-banned-phrases-process-words","index.html, L01.html, L02.html, L03.html (learner text) and the E1 cards.json learner text","PASS",
+  "Fresh: banned-phrase scan of the four pages (banned_pages_r1.out: no hit for TODO, TBD, lorem, for brevity, details omitted, beyond the scope, left as an exercise, you can add more, it is important to note, studies show, experts agree, it is well known, obviously, clearly, verifier, builder, REQUEST, unit report, ellipsis) and of all 160 E1 cards (banned_cards_r1.out: the only hits are 'round' inside 'around' (E1-c136) and 'round to' / 'rounds half up' (E1-c165), which are mathematical wording, not process words)."),
+R("E1a-29","2.9-gates","unit E1 (hub and L01-L03) and the repo gates that touch these files","PASS",
+  "Fresh at 95f3f8cb: check_pages --unit E1 PASS; check_dag --unit E1 PASS (check_dag_E1_r1.out); check_projects --unit E1 PASS (check_projects_E1_r1.out); run_labs --page L01/L02/L03 PASS (1/1 each); page_smoke `tools/page_smoke.py --unit E1 --pages index L01 L02 L03` 'page_smoke E1: PASS', exit 0 (page_smoke_slice_a_r1.out; run without `timeout`, which is not installed on this Mac); verify_refs offline and E1 live PASS (E1a-01); ruff and mypy PASS on the twins (E1a-20)."),
+R("E1a-30","2.9-DAG","index.html; L01-L03 concept links and dfn; L02.html:51 ('Definition 2.1 below')","PASS",
+  "Fresh: `tools/check_dag.py --unit E1` PASS (check_dag_E1_r1.out). L02.html unchanged since dde0486b; Definition 2.1 is at L02.html:114-115, inside the lesson. The changed and added cards introduce no concept that the lesson does not define (q(p), MC, supply function, s = n/(2k) are all defined in L02/L03 text)."),
+R("E1a-31","2.9-hours","index.html data-hours-lessons=90, data-hours-project=30; L01-L03 data-hours=10","PASS",
+  "Fresh: check_pages --unit E1 PASS (hours rules). index.html unchanged since dde0486b (CARRY_PAGES). Arithmetic 9 x 10 = 90; 90 + 30 = 120; 30/120 = 25 %."),
+R("E1a-32","2.9-hub-vs-lessons","index.html lesson cards and objectives; L01-L03 h1 (l.35)","PASS",
+  CARRY_PAGES+" Hub card titles equal the h1 values (Consumer Choice; Producer Choice and Cost; Competitive Equilibrium)."),
+R("E1a-33","2.1-attribution (rule 3)","L01-L03 prose; L01.html:498; L02.html:488; L03.html:464; references/references.json varian2014intermediate","PASS",
+  CARRY_PAGES+" No card cites a reference; the card changes add no attribution (cards cite only Definitions, Propositions, Remarks, Examples, Problems and Lab 1)."),
+R("E1a-34","2.9-scope-words-prose","L01-L03 prose (every, all, always, never, any, only, exactly, each)","PASS",
+  CARRY_PAGES+" Page prose unchanged. Card scope words checked (scope_cards_L02_L03_r1.out): 'exactly one' (E1-c030) is the wording of Proposition 1.3 (L03.html:74); 'every output' (E1-c019) and 'every fixed cost' (E1-c033) match Proposition 2.1 (L03.html:99-100, stated for every F >= 0); 'every output' (E1-c019) matches Proposition 1.5 (L02.html:92-93, 'at every output'); no changed card carries an unscoped generalisation."),
+R("E1a-35","2.8-data-figures","index.html; L01.html; L02.html; L03.html (no figures, no data-files)","PASS",
+  CARRY_PAGES+" The four pages have no data-files, svg or img (grep count 0, unchanged); the cards carry no figure."),
+R("E1a-36","2.9-stray-file (twin directory hygiene)","tests/labs/E1/","PASS",
+  "Fresh: `ls tests/labs/E1` lists exactly the twelve lab-E1-*.py files (L01-L09, project-1..3) (ls_tests_labs_E1_r1.out)."),
+R("E1a-37","2.9-prose (learner claim vs page)","course/modules/E/E1/L01.html:268 (Section 3, bullet 4)","PASS",
+  CARRY_PAGES+" L01.html:268 unchanged since dde0486b; Proposition 1.4 (L01.html:94-95) gives x_bar = m/(2 p_x)."),
+R("E1a-38","2.9-prose / rule 4 (generalisation from one case)","course/modules/E/E1/L02.html:247 (interpretation)","PASS",
+  CARRY_PAGES+" L02.html:247 unchanged since dde0486b; the qualifier 'in case 1' matches twin_L02_r1.out (last line computes case 1 only)."),
+]
+ids = [r["id"] for r in rows]
+assert len(ids) == len(set(ids)) == 38, len(ids)
+frag = {
+ "unit": "E1", "slice": "a", "round": 1,
+ "verifier": "independent Haiku verifier, closing delta round (round 1 of this verifier, slice a, claude-haiku-5-5); did not build E1",
+ "pin": "95f3f8cb21c2cd9fc904430bd30a6b734d01f672",
+ "base": "dde0486beeb0312e4ac1cc03aaa02e56644adb24 (round-5 pin; base fragment /Users/billyribeiro/.fanout/frags/S-E1-a.round5.json, 38 PASS)",
+ "checkout": "/Users/billyribeiro/.fanout/wt/verifyF11-E1-a",
+ "scratch": S + "/",
+ "verified_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+ "verdict": "PASS",
+ "rows": rows,
+ "mutants": [],
+ "registry_flags": [],
+ "freshness_flags": [],
+ "notes": [
+  "Delta from the base pin dde0486b to 95f3f8cb over slice a: course/modules/E/E1/cards.json only (project.html is the project slice, not slice a). No change to index.html, L01-L03.html, the three twins, notation/, references/, curriculum/, tools/ or tests/labs/E1 (git diff empty; delta_slice_a_r1.out). Card-object delta (card_delta_r1.out): edited c018, c023, c030 (slice a, L02/L03), c039, c056, c101 (other lessons); removed c088, c159 (L06); added c161, c162, c163 (slice a), c164, c165, c166 (L05-L07). Slice-a changed or added card subjects are re-verified (E1a-22..25); L01 objects are unchanged (E1a-21 carried).",
+  "Ruling 30/37 closing delta: the base had no non-PASS row, so no base row was re-verified only because it failed. No new mutants were written (ruling 37); the slice has no project grader and its mutant list is empty, as in the base.",
+  "Judgement, not a finding: E1-c018 and E1-c023 state the same formula max(0,(p-c)/(2k)) under different questions (profit-maximizing output, Proposition 1.3; supply function, Definition 2.1 and Proposition 2.2). The lesson itself defines supply as that output, so the overlap is in the lesson. Not a duplicate card (distinct questions, distinct proposition citations).",
+  "Observation, not a defect: E1-c030 now states the equilibrium price only; Q* moved to E1-c163. A card may cover one clause of a proposition; no wrong or missing hypothesis results.",
+  "Observation, not a defect: E1-c018 dropped the clause 'If p > c, MC(q*) = p' and E1-c023 dropped 'for p >= c, the unique output at which MC(q) = p'. The first is carried by E1-c161; the uniqueness clause of Proposition 2.2 is carried by no card, which is allowed (cards need not cover every clause).",
+  "Out of slice a (not verified here beyond the duplicate scan of E1a-22): L06 card edits (c088 removed, c159 removed, c160/c165 Bertrand/Cournot profit wording), L04 c039, L05 c056/c164, L07 c101. The duplicate scan covers them; their content was not re-verified (not in the base scope).",
+  "Not checked: a browser screenshot of the L02/L03 pages (not in the closing delta; page_smoke only). Live Crossref or publisher reads (references unchanged; verify_refs --unit E1 live re-verification ran and passed).",
+  "The hub, L01-L03 pages and twins are byte-identical to the base pin, so the carried rows rest on the base fragment's hard evidence plus identity of the cited files (CARRY_PAGES prefix)."
+ ],
+ "summary": "Slice a (hub index.html, L01-L03, their twins and slice cards), closing delta from pin dde0486b to 95f3f8cb: 38 rows, 38 PASS, 0 FAIL, 0 UNVERIFIABLE. Changed subjects re-verified from scratch (E1a-22 duplicate scan of 160 cards; E1a-23 L02 cards incl. c018, c023, c161, c162; E1a-24 L03 cards incl. c030, c163; E1a-25 lesson coverage). All slice gates re-run and pass at 95f3f8cb: check_pages (unit, L01, L02, L03), check_dag, check_projects, run_labs (L01-L03), twins under python -I -W error, page_smoke (index, L01-L03), verify_refs offline and E1 live, ruff, mypy, pytest test_page_checks and test_run_labs."
+}
+out = "ledgers/E1/E1-a.json"
+json.dump(frag, open(f"{root}/{out}", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+print("wrote", out, len(rows), "rows")
