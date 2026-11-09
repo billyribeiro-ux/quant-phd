@@ -1,9 +1,4 @@
 """_psd_projection floors eigenvalues at -0.01 instead of 0, so the repaired matrix keeps negative eigenvalues and is not positive semidefinite."""
-"""Reference solution for the M3 project, covariance_doctor.py. Not shipped to learners.
-
-Pure Python, standard library only. Eigenvalues come from cyclic Jacobi rotations; the Frobenius-nearest repair is
-Dykstra's alternating projections between the positive semidefinite matrices and the unit-diagonal matrices.
-"""
 
 from __future__ import annotations
 

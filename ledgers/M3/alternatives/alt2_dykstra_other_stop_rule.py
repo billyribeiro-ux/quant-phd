@@ -1,4 +1,4 @@
-"""Alternative 2: Dykstra projection that stops on the feasibility gap alone and allows 5000 iterations."""
+"""Alternative 2: Dykstra projection that stops on the feasibility gap alone, within max_iter steps (default 500)."""
 
 from __future__ import annotations
 

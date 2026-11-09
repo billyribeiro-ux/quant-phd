@@ -29,3 +29,10 @@
     graded T with the Example as basis, even when a lab also prints it. A value that appears only in lab output, or that
     rests on SIMULATED data the page does not derive, is graded C naming the lab. A card and the key-results row it mirrors
     carry the same grade and basis.
+14. **Honest-pending definitions.** A concept whose definition waits for a source that is not admitted may carry a visible
+    "definition pending" dfn (LX1 L04, `bretton-woods-system`), with the model the lesson does define stated separately. This is
+    an explicit honest-pending state and is not a defect. It ends when the source is admitted.
+15. **Blind exemplar scoring.** A verifier extracts the memo prose of each exemplar with a script that drops the annotation
+    elements, the verdict lines and the `data-score(s)` attributes, scores that prose by the rubric descriptors, and only then
+    compares with the official scores. The page keeps its annotations for learners; they are not moved out of the HTML.
+16. **LX1 notation.** `P_t` is the price level of L02, L03 and the project. L01's observed asset price is `A_t`.

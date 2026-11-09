@@ -1,9 +1,4 @@
 """min_eigenvalue returns the first eigenvalue Jacobi produces, not the smallest one, so a planted matrix whose first Jacobi value is not the minimum reports the wrong smallest eigenvalue."""
-"""Reference solution for the M3 project, covariance_doctor.py. Not shipped to learners.
-
-Pure Python, standard library only. Eigenvalues come from cyclic Jacobi rotations; the Frobenius-nearest repair is
-Dykstra's alternating projections between the positive semidefinite matrices and the unit-diagonal matrices.
-"""
 
 from __future__ import annotations
 

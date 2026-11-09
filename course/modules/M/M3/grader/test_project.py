@@ -238,6 +238,38 @@ def test_asymmetry_of_twice_the_tolerance_is_refused_at_large_entries(name: str,
     must_raise(lambda: call(bad), f"{name} on an entry pair that differs by 2e-9 at entries about 0.3")
 
 
+# --- the named conditions with non-default arguments: each call below sets one parameter away from its default, and
+# the named refusals apply to that call as well as to the defaults.
+
+NON_DEFAULT_CALLS: dict[str, Callable[[Matrix], object]] = {
+    "is_psd(tol=1e-5)": lambda m: sol.is_psd(m, tol=1e-5),
+    "clip_repair(floor=0.1)": lambda m: sol.clip_repair(m, floor=0.1),
+    "clip_repair(floor=-0.5)": lambda m: sol.clip_repair(m, floor=-0.5),
+    "projection_repair(tol=1e-6)": lambda m: sol.projection_repair(m, tol=1e-6),
+    "projection_repair(max_iter=3)": lambda m: sol.projection_repair(m, max_iter=3),
+}
+
+
+@pytest.mark.parametrize("call_name", list(NON_DEFAULT_CALLS))
+@pytest.mark.parametrize("shape", list(NON_SQUARE))
+def test_non_square_is_refused_with_non_default_arguments(call_name: str, shape: str) -> None:
+    """A matrix that is not square is refused by every call with a non-default parameter, not only by the defaults."""
+    call = NON_DEFAULT_CALLS[call_name]
+    must_raise(lambda: call(NON_SQUARE[shape]), f"{call_name} on a non-square matrix ({shape})")
+
+
+@pytest.mark.parametrize("call_name", list(NON_DEFAULT_CALLS))
+@pytest.mark.parametrize(("i", "j", "sign"), [(0, 1, 1.0), (0, 1, -1.0), (1, 2, 1.0), (1, 2, -1.0)])
+def test_asymmetry_beyond_tolerance_is_refused_with_non_default_arguments(
+    call_name: str, i: int, j: int, sign: float
+) -> None:
+    """An asymmetry of 1e-8 is refused by every call with a non-default parameter, in each direction and position."""
+    call = NON_DEFAULT_CALLS[call_name]
+    base = [[1.0, 0.3, 0.1], [0.3, 1.0, -0.2], [0.1, -0.2, 1.0]]
+    bad = symmetric_pair(base, i, j, sign * 1e-8)
+    must_raise(lambda: call(bad), f"{call_name} on an entry pair that differs by 1e-8")
+
+
 # --- min_eigenvalue
 
 
