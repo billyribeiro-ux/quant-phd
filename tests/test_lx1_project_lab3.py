@@ -87,16 +87,22 @@ def test_a_month_that_does_not_follow_the_previous_one_raises_value_error(tmp_pa
     assert "ValueError: month 1990-07 does not follow 1990-05" in done.stderr
 
 
-def test_a_population_sd_variant_of_the_two_pass_check_raises(tmp_path: Path) -> None:
-    """Dividing by n instead of n - 1 moves the standard deviation far past the 1e-9 percent agreement tolerance."""
+def test_a_population_sd_variant_changes_the_printed_standard_deviations(tmp_path: Path) -> None:
+    """Dividing by n instead of n - 1 changes the printed sample standard deviations."""
     source = TWIN.read_text(encoding="utf-8")
     needle = "math.fsum((value - mean) ** 2 for value in values) / (n - 1)"
-    assert source.count(needle) == 1, "the two-pass denominator must appear exactly once in the twin"
+    assert source.count(needle) == 1, "the sample denominator must appear exactly once in the twin"
     variant = tmp_path / "population_sd_twin.py"
     variant.write_text(
         source.replace(needle, "math.fsum((value - mean) ** 2 for value in values) / n"), encoding="utf-8"
     )
     header, rows = snapshot()
-    done = run_twin_on(tmp_path, header, rows, twin=variant)
-    assert done.returncode != 0, "a population-sd variant must not pass the agreement check"
-    assert "ValueError: the two-pass and statistics.stdev standard deviations disagree" in done.stderr
+    (tmp_path / "base").mkdir()
+    (tmp_path / "variant").mkdir()
+    original = run_twin_on(tmp_path / "base", header, rows)
+    changed = run_twin_on(tmp_path / "variant", header, rows, twin=variant)
+    assert original.returncode == 0, original.stderr
+    assert changed.returncode == 0, changed.stderr
+    sd_lines = [line for line in original.stdout.splitlines() if "sample sd" in line]
+    variant_lines = [line for line in changed.stdout.splitlines() if "sample sd" in line]
+    assert sd_lines and sd_lines != variant_lines, "a population-sd variant must change a printed standard deviation"
