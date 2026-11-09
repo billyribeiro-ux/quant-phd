@@ -10,8 +10,9 @@ linear utility u^{-1}(y) = y. The risk premium is w - CE. The Arrow-Pratt measur
 r_R(w) = w r_A(w). The second-order approximation of the premium is 0.5 r_A(w) Var(eps X) = 0.5 r_A(w) eps^2 Var(X).
 
 Floating-point arithmetic is used, at full double precision. Money outputs are whole cents: a CU amount is multiplied
-by 100 and rounded once, with a tie going up (half up), by the function half_up_cents. Other values are unrounded CU
-quantities, printed with six decimal places.
+by 100 and rounded once, with a tie going up (half up), by the function half_up_cents. Other values are unrounded and
+printed with six decimal places, in the units the lab names (CU, CU squared or per CU); the scales and the True or
+False checks are printed as given.
 
 Part A: at eps = 1, the certainty equivalent and the premium in cents, and the exact premium beside the approximation.
 Part B: the ratio of the exact premium to eps^2 at five scales, beside the limit 0.5 r_A(w) Var(X).
