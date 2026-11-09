@@ -1,7 +1,8 @@
 """Rung 2 completion problem: the rung 1 scan with its parity-gap line and its cost-netting lines left blank.
 
 Standard library only. The chain is SIMULATED and is not a market quote.
-Money is integer cents, rounded once from exact Fractions, a tie going toward plus infinity.
+Money is integer cents, rounded once from exact Fractions. A signed gap rounds a tie toward plus infinity, and a gross
+amount (the magnitude of the gap) rounds a tie up in magnitude.
 """
 
 from __future__ import annotations

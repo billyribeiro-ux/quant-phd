@@ -648,6 +648,37 @@ def test_one_strike_chain_checks_the_quote_lengths() -> None:
         sol.scan(hand_chain([100], [5, 5], [0]))
 
 
+def test_one_strike_convexity_rejects_df_below_the_range() -> None:
+    __tracebackhide__ = True
+    # a one-strike chain has no interior index, but df_ppm is still checked by convexity_violations
+    with pytest.raises(ValueError, match="df_ppm"):
+        sol.convexity_violations([100], [5], 0)
+
+
+def test_one_strike_convexity_rejects_df_above_the_range() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError, match="df_ppm"):
+        sol.convexity_violations([100], [5], PPM + 1)
+
+
+def test_one_strike_convexity_rejects_a_zero_strike() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError, match="strictly increasing"):
+        sol.convexity_violations([0], [5], PPM)
+
+
+def test_one_strike_convexity_rejects_two_calls_for_one_strike() -> None:
+    __tracebackhide__ = True
+    with pytest.raises(ValueError):
+        sol.convexity_violations([100], [5, 5], PPM)
+
+
+def test_one_strike_convexity_accepts_one_matching_quote_at_the_df_ends() -> None:
+    __tracebackhide__ = True
+    assert sol.convexity_violations([100], [5], 1) == [], "one strike with one call and df_ppm = 1 has no violation"
+    assert sol.convexity_violations([100], [5], PPM) == [], "one strike with one call and df_ppm = 1000000 has none"
+
+
 # ---------------------------------------------------------------------------
 # scan: findings, the cost rule and the record contract
 # ---------------------------------------------------------------------------
@@ -853,10 +884,22 @@ def test_convexity_half_cent_gross_rounds_once_up() -> None:
 def test_convexity_half_cent_tie_at_a_non_dyadic_chord_weight_rounds_once_up() -> None:
     __tracebackhide__ = True
     # the chord at 2 weights its neighbours 5/6 and 1/6, not 1/2: (5 * 2 + 1 * 5) / 6 = 2.5, and the call 3 is half a
-    # cent above it, so the gross is 1 cent. The weights are not dyadic, so a float computation does not keep the tie.
+    # cent above it, so the gross is 1 cent. The weights 5/6 and 1/6 are not exact in binary floating point, and
+    # converting those float weights to Fraction loses the tie, so this chain tests the exact weights.
     chain = hand_chain([1, 2, 7], [2, 3, 5], [3, 5, 12], spot=0, df=PPM, fee=0, spread=0)
     assert rows_of(sol.scan(chain)) == [("convexity", 2, 1, 1)], (
         "an exact half-cent convexity gross at a non-dyadic chord weight rounds up once"
+    )
+
+
+def test_convexity_half_cent_tie_on_a_chord_of_6_point_5_rounds_once_up() -> None:
+    __tracebackhide__ = True
+    # the chord at 2 is 5/6 * 7 + 1/6 * 4 = 6.5 exactly, and the call 7 is half a cent above it, so the gross is 1 cent.
+    # Plain float arithmetic gives the chord 6.500000000000001 instead, so the half cent reads as 0 cents and the
+    # finding is lost. The three put quotes make every parity gap zero (7 - 8 + 1, 7 - 9 + 2 and 4 - 11 + 7 are 0).
+    chain = hand_chain([1, 2, 7], [7, 7, 4], [8, 9, 11], spot=0, df=PPM, fee=0, spread=0)
+    assert rows_of(sol.scan(chain)) == [("convexity", 2, 1, 1)], (
+        "an exact half-cent convexity gross on a 6.5 chord rounds up once"
     )
 
 

@@ -1,7 +1,8 @@
 """Rung 1 worked example: scan one SIMULATED six-strike chain for parity and convexity findings, net of cost.
 
 Standard library only. The chain is SIMULATED and is not a market quote. Money is integer cents. Every money value
-is computed from exact Fractions and rounded once to the nearest cent, a tie going toward plus infinity. A finding
+is computed from exact Fractions and rounded once to the nearest cent. A signed gap rounds a tie toward plus infinity,
+and a gross amount (the magnitude of the gap) rounds a tie up in magnitude. A finding
 trades three legs, and each leg pays the fee and the half-spread, so a finding costs 3 * (fee + half-spread) cents.
 The printed numbers are the output of this file and nothing else.
 """
