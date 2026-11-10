@@ -168,3 +168,21 @@ export async function importAll(payload) {
     }
   }
 }
+
+/** Record the learner's current location to enable seamless "Resume Learning". */
+export async function recordVisit(unit, page, title, href) {
+  if (!unit || !page) return;
+  await put("kv", "last-visited", {
+    unit,
+    page,
+    title: title || (typeof document !== "undefined" ? document.title : ""),
+    href: href || (typeof window !== "undefined" ? window.location.href : ""),
+    timestamp: Date.now(),
+  });
+}
+
+/** Retrieve the learner's last visited unit and lesson. */
+export async function getLastVisited() {
+  return await get("kv", "last-visited");
+}
+

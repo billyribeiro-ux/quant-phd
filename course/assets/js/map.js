@@ -24,6 +24,10 @@ function el(tag, attrs = {}, text = "") {
   return node;
 }
 
+function escapeHtml(str) {
+  return String(str || "").replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[m]);
+}
+
 export async function initMap(root) {
   const map = document.querySelector("[data-program-map]");
   if (!map) return;
@@ -36,6 +40,84 @@ export async function initMap(root) {
   const search = document.querySelector("[data-map-search]");
   const view = document.querySelector("[data-map-view]");
   const summary = document.querySelector("[data-map-summary]");
+
+  // Initialize Resume Learning banner
+  const banner = document.querySelector("[data-resume-banner]");
+  if (banner) {
+    try {
+      const lastVisited = await store.getLastVisited();
+      const progressEntries = await store.entries("progress");
+      const completedSet = new Set(progressEntries.filter(([, v]) => v?.done).map(([k]) => k));
+      const passedGraderSet = new Set((await store.entries("grader")).filter(([, v]) => v && v.all).map(([k]) => k));
+
+      if (lastVisited && lastVisited.unit && modules[lastVisited.unit]) {
+        const m = modules[lastVisited.unit];
+        const part = program.parts.find((p) => p.modules.some((x) => x.id === m.id));
+        const totalLessons = m.lessons || 8;
+        const completedCount = [...completedSet].filter((k) => k.startsWith(`${m.id}/`)).length;
+        const pct = Math.min(100, Math.round((completedCount / totalLessons) * 100));
+
+        const pill = banner.querySelector(".resume-pill");
+        if (pill) pill.textContent = "Resume Learning";
+        const heading = banner.querySelector(".resume-heading");
+        if (heading) heading.textContent = `Module ${m.id} · ${m.title}`;
+        const sub = banner.querySelector(".resume-sub");
+        if (sub) {
+          const pageTitle = (lastVisited.title || "").replace(/^L\d+\s*·\s*/, "").split("·")[0].trim() || lastVisited.page;
+          sub.innerHTML = `You were working on: <strong>${escapeHtml(lastVisited.page)}</strong> (${escapeHtml(pageTitle)})`;
+        }
+
+        const progContainer = banner.querySelector(".resume-progress-container");
+        if (progContainer) {
+          progContainer.removeAttribute("hidden");
+          const fill = progContainer.querySelector(".resume-progress-fill");
+          if (fill) fill.style.width = `${Math.max(pct, 6)}%`;
+          const text = progContainer.querySelector(".resume-progress-text");
+          if (text) text.textContent = `${completedCount} of ${totalLessons} lessons completed (${pct}%)`;
+        }
+
+        const btn = banner.querySelector(".resume-btn");
+        if (btn) {
+          btn.textContent = `Resume ${lastVisited.page} →`;
+          btn.href = lastVisited.href || `modules/${part.code}/${m.id}/${lastVisited.page}.html`;
+        }
+      } else if (completedSet.size > 0) {
+        const firstActive = Object.values(modules).find((m) => {
+          const total = m.lessons || 8;
+          const done = [...completedSet].filter((k) => k.startsWith(`${m.id}/`)).length;
+          return done < total || !passedGraderSet.has(m.id);
+        }) || modules["M1"];
+        const part = program.parts.find((p) => p.modules.some((x) => x.id === firstActive.id));
+
+        const pill = banner.querySelector(".resume-pill");
+        if (pill) pill.textContent = "Next Recommended Module";
+        const heading = banner.querySelector(".resume-heading");
+        if (heading) heading.textContent = `Module ${firstActive.id} · ${firstActive.title}`;
+        const sub = banner.querySelector(".resume-sub");
+        if (sub) sub.textContent = firstActive.core;
+
+        const btn = banner.querySelector(".resume-btn");
+        if (btn) {
+          btn.textContent = `Continue ${firstActive.id} →`;
+          btn.href = `modules/${part.code}/${firstActive.id}/index.html`;
+        }
+      } else {
+        const pill = banner.querySelector(".resume-pill");
+        if (pill) pill.textContent = "Start Your Journey";
+        const heading = banner.querySelector(".resume-heading");
+        if (heading) heading.textContent = "Begin from Ground Zero";
+        const sub = banner.querySelector(".resume-sub");
+        if (sub) sub.textContent = "Start with orientation (P0.1) or dive straight into mathematical reasoning and calculus (M1).";
+        const btn = banner.querySelector(".resume-btn");
+        if (btn) {
+          btn.textContent = "Start Module M1 →";
+          btn.href = "modules/M/M1/index.html";
+        }
+      }
+    } catch (err) {
+      console.warn("resume banner error:", err);
+    }
+  }
 
   const passed = new Set((await store.entries("grader")).filter(([, v]) => v && v.all).map(([k]) => k));
   for (const id of passed) chips.get(id)?.classList.add("done");

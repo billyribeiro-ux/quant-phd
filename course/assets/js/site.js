@@ -7,6 +7,7 @@ import { initLabs } from "./labs.js";
 import { renderMath } from "./math.js";
 import { initQuizzes } from "./quiz.js";
 import { renderCitations } from "./refs.js";
+import { initSpotlight } from "./spotlight.js";
 import * as store from "./store.js";
 
 const root = document.documentElement.dataset.root || "./";
@@ -74,19 +75,68 @@ async function initProgress() {
   const unit = document.documentElement.dataset.unit;
   const page = document.documentElement.dataset.page;
   const button = document.querySelector("[data-complete]");
-  if (unit && page && button) {
-    const key = `${unit}/${page}`;
-    const render = (done) => {
-      button.textContent = done ? "Completed ✓ (click to undo)" : "Mark this lesson complete";
-      button.setAttribute("aria-pressed", String(Boolean(done)));
-    };
-    render((await store.get("progress", key))?.done);
-    button.addEventListener("click", async () => {
-      const done = !(await store.get("progress", key))?.done;
-      await store.put("progress", key, { done, at: Date.now() });
-      render(done);
-    });
+  if (unit && page) {
+    // Record visit for seamless "Resume Learning"
+    await store.recordVisit(unit, page, document.title, window.location.href);
+
+    // Auto-complete current lesson when student clicks "Next Lesson"
+    const nextLink = document.querySelector(".lesson-nav a.next");
+    if (nextLink) {
+      nextLink.addEventListener("click", async () => {
+        try {
+          const key = `${unit}/${page}`;
+          const current = await store.get("progress", key);
+          if (!current?.done) {
+            await store.put("progress", key, { done: true, at: Date.now() });
+          }
+        } catch {
+          /* storage error: ignore */
+        }
+      });
+    }
+
+    if (button) {
+      const key = `${unit}/${page}`;
+      const render = (done) => {
+        button.textContent = done ? "Completed ✓ (click to undo)" : "Mark this lesson complete";
+        button.setAttribute("aria-pressed", String(Boolean(done)));
+      };
+      render((await store.get("progress", key))?.done);
+      button.addEventListener("click", async () => {
+        const done = !(await store.get("progress", key))?.done;
+        await store.put("progress", key, { done, at: Date.now() });
+        render(done);
+      });
+    }
   }
+
+  // If on a module hub/overview, mark completed lessons with a subtle checkmark
+  if (unit && (!page || page === "index")) {
+    try {
+      const progressEntries = await store.entries("progress");
+      const completedForUnit = new Set(
+        progressEntries
+          .filter(([k, v]) => k.startsWith(`${unit}/`) && v?.done)
+          .map(([k]) => k.split("/")[1])
+      );
+      for (const link of document.querySelectorAll(`a[href*="${unit}"], a[href^="L"]`)) {
+        const match = link.getAttribute("href")?.match(/(L\d{2})\.html/);
+        if (match && completedForUnit.has(match[1])) {
+          if (!link.querySelector(".lesson-check")) {
+            const check = document.createElement("span");
+            check.className = "lesson-check";
+            check.textContent = " ✓";
+            check.title = "Completed";
+            link.append(check);
+            link.classList.add("is-completed");
+          }
+        }
+      }
+    } catch {
+      /* storage unavailable: ignore */
+    }
+  }
+
   for (const card of document.querySelectorAll("[data-progress-key]")) {
     const record = await store.get("progress", card.dataset.progressKey);
     if (record?.done) card.classList.add("done");
@@ -97,6 +147,32 @@ async function initProgress() {
     passed.textContent = record
       ? `Autograder: ${record.passed} of ${record.total} tests passed on seed ${record.seed}.`
       : "Autograder: not yet attempted.";
+  }
+}
+
+async function initReviewBadge() {
+  const reviewLink = document.querySelector('header a[href$="review.html"], header a[href*="review.html"]');
+  if (!reviewLink) return;
+  try {
+    const now = Date.now();
+    const all = (await store.entries("cards")).map(([, v]) => v);
+    if (!all.length) return;
+    const due = all.filter((c) => c?.fsrs?.due && c.fsrs.due <= now);
+    let badge = reviewLink.querySelector(".review-due-badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "review-due-badge";
+      reviewLink.append(badge);
+    }
+    if (due.length > 0) {
+      badge.textContent = ` (${due.length} due)`;
+      badge.className = "review-due-badge has-due";
+    } else {
+      badge.textContent = ` (✓)`;
+      badge.className = "review-due-badge all-done";
+    }
+  } catch {
+    /* storage unavailable: ignore */
   }
 }
 
@@ -176,6 +252,8 @@ async function main() {
     await step("figures", async () => (await import(new URL(figures, location.href).href)).drawFigures(root));
   }
   await step("progress", initProgress);
+  await step("reviewBadge", initReviewBadge);
+  await step("spotlight", () => initSpotlight(root));
   initExport();
   await step("storage", storageNotice);
   document.documentElement.dataset.ready = "true";
