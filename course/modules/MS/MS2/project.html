@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="MS2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MS2 Project · Batch-Auction Counterfactual</title>
+  <meta name="description" content="Autograded simulation and analytical research memo running counterfactual order streams through continuous limit order books and frequent batch auctions. 20 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">MS2 Limit Order Books &amp; Market Structure</a><span class="sep">›</span><span>Project</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="20">
+      <header class="page-head">
+        <p class="eyebrow">Project · MS2 · Tier M · 20 hours</p>
+        <h1>Batch-Auction Counterfactual</h1>
+        <p class="lede">Continuous limit order books possess a fundamental market design flaw: when public information updates correlated asset values, high-frequency traders engage in an arms race to snipe stale quotes before liquidity providers can cancel them. This project constructs an empirical simulation engine (<code>counterfactual.py</code>) that replays identical order streams through continuous trading and frequent batch auctions (FBA). You will measure the exact latency-arbitrage rents extracted by fast traders, quantify market maker losses and investor welfare improvements, and author an analytical research memo (<code>report.md</code>) evaluated by rubric.</p>
+        <div class="hours-split" role="img" aria-label="40 lesson hours and 20 project hours">
+          <span class="lessons" style="width:67%"></span><span class="project" style="width:33%"></span>
+        </div>
+        <p class="eyebrow">40 h lessons · 20 h project (33%)</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The four-rung project ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: Replay a simulated event stream of jumps and investor orders through continuous trading and a 100 ms batch auction, tracking trade executions, latency rents, and cash flows.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: Complete the core latency rent calculation formula on sniped quote executions, verifying that faster snipers extract net rents when price jumps exceed the half-spread.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement the full counterfactual engine <code>counterfactual.py</code> satisfying the autograder suite across 50 seeded instances, and draft the analytical memo <code>report.md</code> evaluated by rubric.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extend the counterfactual simulation to endogenous market maker spread adjustment, showing how the equilibrium bid–ask spread contracts as batch auctions eliminate sniping risk.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="worked-example">
+        <h2 id="h-worked-example">Rung 1 · Worked example</h2>
+        <p>In this worked example, an order stream of 60 events—comprising public price jumps and exogenous investor buys and sells—is evaluated under continuous trading and a 100 ms frequent batch auction.</p>
+
+        <section class="lab" id="lab-MS2-project-1" data-runtime="python">
+          <h3>Lab 1 · Continuous vs Frequent Batch Auction counterfactual</h3>
+          <p class="hypothesis">Replaying the identical event stream will demonstrate that: (1) under continuous trading, snipers extract latency-arbitrage rents whenever public jumps exceed the half-spread; (2) under frequent batch auctions, latency-arbitrage rents drop to exactly zero; (3) offsetting investor orders cross directly at the mid-price, yielding substantial spread savings.</p>
+          <pre><code class="language-python" data-run>"""Lab MS2-project-1: Rung 1 worked example for batch-auction counterfactual.
+
+Simulates an order stream under continuous trading (CLOB) and frequent batch auctions (FBA),
+computing latency arbitrage rents, market maker PnL, and investor welfare.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+from typing import Any
+
+
+def run_worked_example() -&gt; None:
+    rng = random.Random(42)
+    initial_price = 100.0
+    half_spread = 0.05
+    mm_latency = 2.5
+    sniper_latencies = [0.8, 1.2, 1.5]
+    batch_interval = 100.0
+
+    print("Step 1 | Generating order stream: 60 events (jumps and investor orders)")
+    events: list[dict[str, Any]] = []
+    current_time = 0.0
+    for _ in range(60):
+        current_time += round(rng.expovariate(0.05) + 0.1, 2)
+        u = rng.random()
+        if u &lt; 0.25:
+            delta = round(rng.choice([-1.0, 1.0]) * rng.uniform(0.10, 0.25), 4)
+            events.append({"time": round(current_time, 2), "type": "jump", "price_delta": delta, "size": 1})
+        elif u &lt; 0.625:
+            events.append({"time": round(current_time, 2), "type": "investor_buy", "price_delta": 0.0, "size": 1})
+        else:
+            events.append({"time": round(current_time, 2), "type": "investor_sell", "price_delta": 0.0, "size": 1})
+
+    t0 = events[0]["time"]
+    t_end = events[-1]["time"]
+    print(f"Step 1 | Generated {len(events)} events. First event at t={t0}ms, last at t={t_end}ms")
+
+    # Step 2: Continuous limit order book simulation
+    mid_clob = initial_price
+    fastest_sniper = min(sniper_latencies)
+    clob_rents = 0.0
+    clob_snipe_count = 0
+    clob_trades = 0
+    mm_cash_clob = 0.0
+    mm_inv_clob = 0
+
+    for e in events:
+        t = e["type"]
+        sz = e["size"]
+        if t == "jump":
+            d = e["price_delta"]
+            if fastest_sniper &lt; mm_latency:
+                if d &gt; half_spread:
+                    p = mid_clob + half_spread
+                    new_m = mid_clob + d
+                    r = (new_m - p) * sz
+                    clob_rents += r
+                    clob_snipe_count += 1
+                    clob_trades += 1
+                    mm_cash_clob += p * sz
+                    mm_inv_clob -= sz
+                elif d &lt; -half_spread:
+                    p = mid_clob - half_spread
+                    new_m = mid_clob + d
+                    r = (p - new_m) * sz
+                    clob_rents += r
+                    clob_snipe_count += 1
+                    clob_trades += 1
+                    mm_cash_clob -= p * sz
+                    mm_inv_clob += sz
+            mid_clob += d
+        elif t == "investor_buy":
+            p = mid_clob + half_spread
+            mm_cash_clob += p * sz
+            mm_inv_clob -= sz
+            clob_trades += 1
+        elif t == "investor_sell":
+            p = mid_clob - half_spread
+            mm_cash_clob -= p * sz
+            mm_inv_clob += sz
+            clob_trades += 1
+
+    mm_pnl_clob = mm_cash_clob + mm_inv_clob * mid_clob
+
+    print("Step 2 | Continuous Trading (CLOB) Results:")
+    print(f"       | Total Trades:                {clob_trades:d}")
+    print(f"       | Latency Arbitrage Trades:    {clob_snipe_count:d}")
+    print(f"       | Latency Arbitrage Rents ($): {clob_rents:.4f}")
+    print(f"       | Market Maker PnL ($):        {mm_pnl_clob:.4f}")
+    print(f"       | Final Mid-Price ($):         {mid_clob:.4f}")
+
+    # Step 3: Frequent Batch Auction simulation
+    mid_fba = initial_price
+    fba_trades = 0
+    mm_cash_fba = 0.0
+    mm_inv_fba = 0
+    spread_savings = 0.0
+
+    max_t = max(float(e["time"]) for e in events)
+    n_batches = math.ceil(max_t / batch_interval) + 1
+    batches: list[list[dict[str, Any]]] = [[] for _ in range(n_batches)]
+    for e in events:
+        batches[int(float(e["time"]) // batch_interval)].append(e)
+
+    for b in batches:
+        if not b:
+            continue
+        buys = 0
+        sells = 0
+        for e in b:
+            if e["type"] == "jump":
+                mid_fba += float(e["price_delta"])
+            elif e["type"] == "investor_buy":
+                buys += int(e["size"])
+            elif e["type"] == "investor_sell":
+                sells += int(e["size"])
+
+        cross = min(buys, sells)
+        if cross &gt; 0:
+            spread_savings += cross * half_spread * 2.0
+            fba_trades += 1
+
+        imbalance = buys - sells
+        if imbalance &gt; 0:
+            p = mid_fba + half_spread
+            mm_cash_fba += p * imbalance
+            mm_inv_fba -= imbalance
+            fba_trades += 1
+        elif imbalance &lt; 0:
+            p = mid_fba - half_spread
+            mm_cash_fba -= p * (-imbalance)
+            mm_inv_fba += -imbalance
+            fba_trades += 1
+
+    mm_pnl_fba = mm_cash_fba + mm_inv_fba * mid_fba
+
+    print("Step 3 | Frequent Batch Auction (FBA, delta=100ms) Results:")
+    print(f"       | Batch Clearing Events:       {fba_trades:d}")
+    print("       | Latency Arbitrage Trades:    0")
+    print("       | Latency Arbitrage Rents ($): 0.0000")
+    print(f"       | Multilateral Spread Savings: ${spread_savings:.4f}")
+    print(f"       | Market Maker PnL ($):        {mm_pnl_fba:.4f}")
+    print(f"       | Final Mid-Price ($):         {mid_fba:.4f}")
+
+    print("Step 4 | Welfare Comparison:")
+    print(f"       | Latency Rent Elimination:    ${clob_rents:.4f}")
+    print(f"       | Market Maker PnL Gain:       ${mm_pnl_fba - mm_pnl_clob:.4f}")
+
+
+def main() -&gt; None:
+    run_worked_example()
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Step 1 | Generating order stream: 60 events (jumps and investor orders)
+Step 1 | Generated 60 events. First event at t=20.5ms, last at t=849.49ms
+Step 2 | Continuous Trading (CLOB) Results:
+       | Total Trades:                60
+       | Latency Arbitrage Trades:    21
+       | Latency Arbitrage Rents ($): 2.3698
+       | Market Maker PnL ($):        -10.4863
+       | Final Mid-Price ($):         98.3280
+Step 3 | Frequent Batch Auction (FBA, delta=100ms) Results:
+       | Batch Clearing Events:       13
+       | Latency Arbitrage Trades:    0
+       | Latency Arbitrage Rents ($): 0.0000
+       | Multilateral Spread Savings: $1.4000
+       | Market Maker PnL ($):        -1.7854
+       | Final Mid-Price ($):         98.3280
+Step 4 | Welfare Comparison:
+       | Latency Rent Elimination:    $2.3698
+       | Market Maker PnL Gain:       $8.7009</pre>
+          <p class="interpretation">The worked example confirms the theoretical predictions of Budish, Cramton &amp; Shim (2015): in continuous trading, latency arbitrageurs exploit speed advantages to extract $2.3698 in rents from stale quotes, resulting in negative market maker PnL. In the frequent batch auction, discrete batching pools orders, completely eliminating latency rents ($0.0000) and generating $1.4000 in direct multilateral spread savings for investors.</p>
+        </section>
+      </section>
+
+      <section id="completion-problem">
+        <h2 id="h-completion-problem">Rung 2 · Completion problem</h2>
+        <p>Complete the missing rent calculation in the snipe rent evaluation function below. In continuous trading, when a positive jump \(\Delta V > s/2\) occurs and the fastest sniper beats the market maker cancellation, the sniper buys at the stale ask \(P = V_{\text{old}} + s/2\) while the true fundamental price is \(V_{\text{new}} = V_{\text{old}} + \Delta V\). The net rent extracted per unit is \(\Delta V - s/2\).</p>
+
+        <section class="lab completion" id="lab-MS2-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: calculating latency arbitrage rents</h3>
+          <p class="hypothesis">Complete the blanked lines in <code>calculate_snipe_rent</code>. When correctly implemented, positive jumps exceeding the half-spread yield positive rents, negative jumps exceeding the half-spread yield positive sell rents, and jumps within the half-spread yield zero rents.</p>
+          <pre><code class="language-python" data-run>"""Lab MS2-project-2: Rung 2 completion problem for latency rent calculation.
+
+SIMULATED: generates jump and snipe events.
+On the project page, the latency rent calculation line is blanked:
+rent = ___
+The twin contains the complete solution.
+"""
+
+from __future__ import annotations
+
+
+def calculate_snipe_rent(
+    mid_price: float,
+    half_spread: float,
+    price_delta: float,
+    size: int,
+    fastest_sniper: float,
+    mm_latency: float,
+) -> float:
+    """Calculate latency arbitrage rent extracted by fastest sniper."""
+    if fastest_sniper >= mm_latency:
+        return 0.0
+
+    if price_delta > half_spread:
+        # Sniper buys stale ask = mid_price + half_spread
+        exec_price = mid_price + half_spread
+        new_mid = mid_price + price_delta
+        rent = ___
+        return rent
+    elif price_delta < -half_spread:
+        # Sniper sells stale bid = mid_price - half_spread
+        exec_price = mid_price - half_spread
+        new_mid = mid_price + price_delta
+        rent = ___
+        return rent
+    return 0.0
+
+
+def main() -> None:
+    mid = 100.0
+    half_spread = 0.05
+    size = 10
+    mm_latency = 2.0
+    fastest_sniper = 0.8
+
+    jumps = [0.15, -0.20, 0.03, -0.04, 0.25]
+
+    print("Rung 2 Snipe Rent Calculation (mid=100.00, half_spread=0.05, size=10):")
+    print("Jump Delta ($) | Fastest Snipe (ms) | MM Cancel (ms) | Rent Extracted ($)")
+    print("------------------------------------------------------------------------")
+
+    total_rent = 0.0
+    for delta in jumps:
+        rent = calculate_snipe_rent(mid, half_spread, delta, size, fastest_sniper, mm_latency)
+        total_rent += rent
+        print(
+            f"    {delta:6.2f}     |        {fastest_sniper:3.1f}         |"
+            f"      {mm_latency:3.1f}       | ${rent:18.2f}"
+        )
+
+    print(f"Total Latency Arbitrage Rents: ${total_rent:.2f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Rung 2 Snipe Rent Calculation (mid=100.00, half_spread=0.05, size=10):
+Jump Delta ($) | Fastest Snipe (ms) | MM Cancel (ms) | Rent Extracted ($)
+------------------------------------------------------------------------
+      0.15     |        0.8         |      2.0       | $              1.00
+     -0.20     |        0.8         |      2.0       | $              1.50
+      0.03     |        0.8         |      2.0       | $              0.00
+     -0.04     |        0.8         |      2.0       | $              0.00
+      0.25     |        0.8         |      2.0       | $              2.00
+Total Latency Arbitrage Rents: $4.50</pre>
+          <p class="interpretation">The blanks are completed with <code>(new_mid - exec_price) * size</code> for buying the stale ask and <code>(exec_price - new_mid) * size</code> for selling to the stale bid. Jumps within the half-spread (\(0.03\) and \(-0.04\)) generate zero rent because stale quotes remain profitable for the market maker.</p>
+        </section>
+      </section>
+
+      <section id="model">
+        <h2 id="h-model">The theoretical model and counterfactual mechanics</h2>
+        <p>The counterfactual framework formalizes the continuous-time limit order book arms race and frequent batch auction mechanics established by <span class="claim" data-grade="A" data-cite="budish2015high">Budish, Cramton &amp; Shim (2015)</span>.</p>
+
+        <h3 id="assumptions">Assumptions</h3>
+        <ol class="assumptions">
+          <li><strong>A1 · Correlated security and public innovations.</strong> At discrete jump times \(\tau_k\), public innovations arrive from a correlated venue, shifting the fundamental efficient mid-price \(V_t\) by \(\Delta V_k \in \R\). Innovations are observable immediately by all market participants.</li>
+          <li><strong>A2 · Market maker quote provision.</strong> A competitive market maker maintains bilateral limit orders at half-spread \(s/2 > 0\) around the mid-price: bid \(B = V_t - s/2\) and ask \(A = V_t + s/2\). Upon observing an innovation \(\Delta V_k\) at time \(\tau_k\), the market maker sends a cancel/replace message that reaches the matching engine at time \(\tau_k + \delta_{\text{MM}}\).</li>
+          <li><strong>A3 · Latency arbitrageurs.</strong> Competing latency arbitrageurs (snipers) observe the innovation and transmit aggressive market orders to pick off stale quotes. The fastest sniper's order reaches the matching engine at time \(\tau_k + \delta_{\text{sniper}}\), where \(\delta_{\text{sniper}} < \delta_{\text{MM}}\).</li>
+          <li><strong>A4 · Continuous limit order book clearing (CLOB).</strong> In continuous trading, orders are processed in serial order of matching engine arrival. If \(\delta_{\text{sniper}} < \delta_{\text{MM}}\) and \(|\Delta V_k| > s/2\), the fastest sniper's order executes against the stale quote before the cancellation request arrives, extracting rent \(R_k = (|\Delta V_k| - s/2) \cdot q\).</li>
+          <li><strong>A5 · Frequent batch auction clearing (FBA).</strong> In frequent batch auctions, continuous time is partitioned into discrete intervals \([m\Delta, (m+1)\Delta)\). All orders and cancellations received during the interval are treated as arriving simultaneously and clear at a uniform auction price at time \((m+1)\Delta\). Because cancellations and snipes are batched together, speed within the interval confers no priority, and stale quote sniping rents are strictly zero.</li>
+        </ol>
+
+        <h3 id="propositions">Theoretical propositions</h3>
+        <p><span class="block-title claim" data-grade="T">Proposition 1 · Latency-arbitrage rent extraction in CLOB.</span> Under Assumptions A1–A4, whenever a price innovation satisfies \(|\Delta V_k| > s/2\) and \(\delta_{\text{sniper}} < \delta_{\text{MM}}\), the latency arbitrageur earns positive economic rent:
+        \[R_k = (|\Delta V_k| - s/2) \cdot q_k > 0,\]
+        which is borne entirely as an adverse selection loss by the liquidity-providing market maker.</p>
+
+        <p><span class="block-title claim" data-grade="T">Proposition 2 · Elimination of latency arbitrage in FBA.</span> Under Assumptions A1–A3 and A5, for any batch auction interval \(\Delta \ge \delta_{\text{MM}}\), all orders and cancellations triggered by innovation \(\Delta V_k \in [m\Delta, (m+1)\Delta)\) are processed in the same uniform-price auction at \((m+1)\Delta\). The latency-arbitrage rent extracted from stale quotes is identically zero:
+        \[R_{\text{FBA}} \equiv 0.\]
+        Furthermore, offsetting investor buy and sell orders within the batch interval cross directly at the uniform clearing price, avoiding the bid–ask spread entirely.</p>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A quantitative trading desk evaluates market design reforms for an electronic exchange trading highly liquid equities and ETFs. Under continuous trading, market makers incur substantial losses to latency arbitrageurs who snipe stale quotes following public price jumps in correlated futures. You will build an empirical counterfactual engine (<code>counterfactual.py</code>) that replays identical event logs through continuous books and frequent batch auctions, and author an analytical memo (<code>report.md</code>) quantifying rent reduction and investor welfare gains.</dd>
+          <dt>Inputs</dt>
+          <dd>(1) Synthetically generated event streams from <code>make_instance(seed)</code> in <code>grader/instance.py</code>, returning a dictionary containing <code>events</code> (list of dicts with keys <code>time</code>, <code>type</code>, <code>price_delta</code>, <code>size</code>), <code>initial_price</code>, <code>half_spread</code>, <code>mm_latency</code>, <code>sniper_latencies</code>, and <code>batch_intervals</code>. All instances are labelled SIMULATED. (2) Optional bring-your-own-data order logs formatted with header <code>time,type,price_delta,size</code>, validated entirely client-side.</dd>
+          <dt>Required outputs</dt>
+          <dd>Implement the module <code>counterfactual.py</code> exposing the following frozen signatures:
+          <pre><code class="language-pseudocode">def simulate_continuous_book(
+    events: list[dict[str, Any]],
+    initial_price: float,
+    half_spread: float,
+    mm_latency: float,
+    sniper_latencies: list[float],
+) -> dict[str, Any]:
+    """Simulate continuous limit order book trading."""
+
+def simulate_batch_auction(
+    events: list[dict[str, Any]],
+    initial_price: float,
+    half_spread: float,
+    batch_interval: float,
+    mm_latency: float,
+    sniper_latencies: list[float],
+) -> dict[str, Any]:
+    """Simulate frequent batch auction trading."""
+
+def run_counterfactual(
+    events: list[dict[str, Any]],
+    initial_price: float,
+    half_spread: float,
+    batch_intervals: list[float],
+    mm_latency: float,
+    sniper_latencies: list[float],
+) -> dict[str, Any]:
+    """Replay event stream across continuous and FBA regimes."""</code></pre>
+          The returned dictionaries must include <code>trade_count</code>, <code>latency_arbitrage_count</code>, <code>latency_arbitrage_rents</code>, <code>mm_pnl</code>, <code>investor_pnl</code>, and <code>final_price</code>. In addition, author an analytical memo <code>report.md</code> following the rubric.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only (<code>math</code>, <code>random</code>, <code>typing</code>). Floating-point arithmetic must operate at double precision. In FBA, latency arbitrage rents must evaluate to exactly 0.0. Input parameters must be strictly validated according to <a href="#exceptions">the exception table</a>.</dd>
+          <dt>Grading</dt>
+          <dd>Both grading modes apply: the Python solver <code>counterfactual.py</code> is evaluated by the autograder test suite across 50 seeded instances, and the analytical research memo <code>report.md</code> is evaluated by rubric across five criteria with observable performance levels.</dd>
+          <dt>Reading list</dt>
+          <dd>See <a href="#reading">the reading list</a> below for verified foundations by Budish et al. (2015), Cont et al. (2010), Brogaard et al. (2014), and Kirilenko et al. (2017).</dd>
+        </dl>
+
+        <h3 id="exceptions">Exception table</h3>
+        <p>The solver must validate inputs and raise <code>ValueError</code> under the following conditions:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Condition</th><th>Exception</th><th>Required message substring</th></tr></thead>
+            <tbody>
+              <tr><td><code>initial_price &lt;= 0.0</code></td><td><code>ValueError</code></td><td>"initial_price must be positive"</td></tr>
+              <tr><td><code>half_spread &lt;= 0.0</code></td><td><code>ValueError</code></td><td>"half_spread must be positive"</td></tr>
+              <tr><td><code>mm_latency &lt;= 0.0</code></td><td><code>ValueError</code></td><td>"mm_latency must be positive"</td></tr>
+              <tr><td><code>not sniper_latencies</code> or non-positive sniper latency</td><td><code>ValueError</code></td><td>"sniper_latencies must be non-empty and strictly positive"</td></tr>
+              <tr><td><code>events</code> is empty</td><td><code>ValueError</code></td><td>"events list cannot be empty"</td></tr>
+              <tr><td>Events not in chronological order</td><td><code>ValueError</code></td><td>"events must be strictly ordered by timestamp"</td></tr>
+              <tr><td><code>batch_interval &lt;= 0.0</code></td><td><code>ValueError</code></td><td>"batch_interval must be positive"</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">1</td><td>Examine continuous vs batch auction execution on identical order flow.</td></tr>
+              <tr><td>Rung 2 completion problem: complete latency rent calculation</td><td class="num">1</td><td>Implement snipe rent formula and test in browser runtime.</td></tr>
+              <tr><td>Theoretical model: continuous vs discrete clearing identities</td><td class="num">3</td><td>Derive Budish-Cramton-Shim latency arbitrage rent propositions.</td></tr>
+              <tr><td>Data intake and event queue validation</td><td class="num">2</td><td>Implement event stream sorting and parameter validation.</td></tr>
+              <tr><td>Solver implementation and local autograder execution</td><td class="num">6</td><td>Code <code>counterfactual.py</code>, pass 50 test seeds, verify zero-rent invariance.</td></tr>
+              <tr><td>Benchmark parameter grid runs</td><td class="num">2</td><td>Execute solver across batch intervals 10ms to 500ms and record metrics.</td></tr>
+              <tr><td>Authoring analytical research memo <code>report.md</code></td><td class="num">3</td><td>Draft five mandatory sections on model, estimators, grid results, and limits.</td></tr>
+              <tr><td>Self-assessment and exemplar calibration</td><td class="num">2</td><td>Score report against rubric, reconcile with Exemplars A and B.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>20</strong></td><td>Matches declared project hours (20 hours of the module's 60 hours).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Submit your <code>counterfactual.py</code> implementation below to execute the verification suite against your unique workspace seed.</p>
+        <section class="grader-panel" id="grader" data-unit="MS2" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="counterfactual.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>To run the test suite locally in your environment, place <code>counterfactual.py</code> alongside the grader files and run pytest:</p>
+        <pre><code class="no-math">QF_SEED=42 pytest -q -p no:cacheprovider --assert=plain -W error grader/test_project.py</code></pre>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The report</h2>
+        <p>The analytical research memo documents the theoretical foundations, numerical estimates, and structural welfare implications of batch auctions. Lab 3 generates the benchmark grid required in the memo.</p>
+
+        <section class="lab" id="lab-MS2-project-3" data-runtime="python">
+          <h3>Lab 3 · Benchmark parameter grid for research memo</h3>
+          <p class="hypothesis">Under \(N = 120\) events with half-spread \(s/2 = 0.05\) (seed 1), evaluating frequent batch auctions across batch intervals \(\Delta \in \{10, 50, 100, 250, 500\}\) ms will demonstrate that: (1) continuous trading generates substantial latency arbitrage rents ($4.0048); (2) batch auctions completely eliminate latency rents ($0.0000) at every interval; (3) longer batch intervals increase multilateral crossing spread savings from $0.8000 at 10 ms to $3.8000 at 500 ms.</p>
+          <pre><code class="language-python" data-run>"""Lab MS2-project-3: Rung 3 benchmark parameter grid for research memo.
+
+Evaluates counterfactual continuous trading vs frequent batch auctions
+across batch intervals delta in {10.0, 50.0, 100.0, 250.0, 500.0} ms.
+Produces the reference output table required for the student report.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+from typing import Any
+
+
+def simulate_continuous_book(
+    events: list[dict[str, Any]],
+    initial_price: float,
+    half_spread: float,
+    mm_latency: float,
+    sniper_latencies: list[float],
+) -&gt; dict[str, Any]:
+    mid_price = float(initial_price)
+    fastest_sniper = min(sniper_latencies)
+
+    latency_arbitrage_count = 0
+    latency_arbitrage_rents = 0.0
+    investor_volume = 0
+
+    mm_cash = 0.0
+    mm_inventory = 0
+
+    trades = 0
+
+    for e in events:
+        etype = e["type"]
+        size = int(e["size"])
+
+        if etype == "jump":
+            delta = float(e["price_delta"])
+            if fastest_sniper &lt; mm_latency:
+                if delta &gt; half_spread:
+                    exec_price = mid_price + half_spread
+                    new_mid = mid_price + delta
+                    rent = (new_mid - exec_price) * size
+                    latency_arbitrage_count += 1
+                    latency_arbitrage_rents += rent
+                    mm_cash += exec_price * size
+                    mm_inventory -= size
+                    trades += 1
+                elif delta &lt; -half_spread:
+                    exec_price = mid_price - half_spread
+                    new_mid = mid_price + delta
+                    rent = (exec_price - new_mid) * size
+                    latency_arbitrage_count += 1
+                    latency_arbitrage_rents += rent
+                    mm_cash -= exec_price * size
+                    mm_inventory += size
+                    trades += 1
+            mid_price += delta
+
+        elif etype == "investor_buy":
+            exec_price = mid_price + half_spread
+            mm_cash += exec_price * size
+            mm_inventory -= size
+            investor_volume += size
+            trades += 1
+
+        elif etype == "investor_sell":
+            exec_price = mid_price - half_spread
+            mm_cash -= exec_price * size
+            mm_inventory += size
+            investor_volume += size
+            trades += 1
+
+    mm_pnl = mm_cash + mm_inventory * mid_price
+
+    return {
+        "trade_count": trades,
+        "latency_arbitrage_count": latency_arbitrage_count,
+        "latency_arbitrage_rents": round(latency_arbitrage_rents, 4),
+        "mm_pnl": round(mm_pnl, 4),
+    }
+
+
+def simulate_batch_auction(
+    events: list[dict[str, Any]],
+    initial_price: float,
+    half_spread: float,
+    batch_interval: float,
+) -&gt; dict[str, Any]:
+    mid_price = float(initial_price)
+    spread_savings = 0.0
+    mm_cash = 0.0
+    mm_inventory = 0
+    trade_count = 0
+
+    max_time = max(float(e["time"]) for e in events)
+    num_batches = math.ceil(max_time / batch_interval) + 1
+    batches: list[list[dict[str, Any]]] = [[] for _ in range(num_batches)]
+
+    for e in events:
+        b_idx = int(float(e["time"]) // batch_interval)
+        batches[b_idx].append(e)
+
+    for b_events in batches:
+        if not b_events:
+            continue
+
+        buy_orders = 0
+        sell_orders = 0
+
+        for e in b_events:
+            etype = e["type"]
+            size = int(e["size"])
+            if etype == "jump":
+                mid_price += float(e["price_delta"])
+            elif etype == "investor_buy":
+                buy_orders += size
+            elif etype == "investor_sell":
+                sell_orders += size
+
+        crossed = min(buy_orders, sell_orders)
+        if crossed &gt; 0:
+            spread_savings += crossed * half_spread * 2.0
+            trade_count += 1
+
+        net = buy_orders - sell_orders
+        if net &gt; 0:
+            exec_price = mid_price + half_spread
+            mm_cash += exec_price * net
+            mm_inventory -= net
+            trade_count += 1
+        elif net &lt; 0:
+            exec_price = mid_price - half_spread
+            mm_cash -= exec_price * (-net)
+            mm_inventory += -net
+            trade_count += 1
+
+    mm_pnl = mm_cash + mm_inventory * mid_price
+
+    return {
+        "trade_count": trade_count,
+        "latency_arbitrage_count": 0,
+        "latency_arbitrage_rents": 0.0,
+        "spread_savings": round(spread_savings, 4),
+        "mm_pnl": round(mm_pnl, 4),
+    }
+
+
+def make_benchmark_instance(seed: int) -&gt; dict[str, Any]:
+    rng = random.Random(seed)
+    n_events = 120
+    initial_price = 100.0
+    half_spread = 0.05
+    mm_latency = 2.5
+    sniper_latencies = [0.8, 1.2, 1.5]
+    batch_intervals = [10.0, 50.0, 100.0, 250.0, 500.0]
+
+    events: list[dict[str, Any]] = []
+    current_time = 0.0
+    for _ in range(n_events):
+        current_time += round(rng.expovariate(0.04) + 0.1, 2)
+        u = rng.random()
+        if u &lt; 0.25:
+            delta = round(rng.choice([-1.0, 1.0]) * rng.uniform(0.10, 0.30), 4)
+            events.append({"time": round(current_time, 2), "type": "jump", "price_delta": delta, "size": 1})
+        elif u &lt; 0.625:
+            events.append({"time": round(current_time, 2), "type": "investor_buy", "price_delta": 0.0, "size": 1})
+        else:
+            events.append({"time": round(current_time, 2), "type": "investor_sell", "price_delta": 0.0, "size": 1})
+
+    return {
+        "events": events,
+        "initial_price": initial_price,
+        "half_spread": half_spread,
+        "mm_latency": mm_latency,
+        "sniper_latencies": sniper_latencies,
+        "batch_intervals": batch_intervals,
+    }
+
+
+def main() -&gt; None:
+    inst = make_benchmark_instance(1)
+    clob = simulate_continuous_book(
+        events=inst["events"],
+        initial_price=inst["initial_price"],
+        half_spread=inst["half_spread"],
+        mm_latency=inst["mm_latency"],
+        sniper_latencies=inst["sniper_latencies"],
+    )
+
+    print("MS2 Project Report Benchmark Grid (Seed 1, N=120 events, half_spread=0.05):")
+    print("Venue / Delta   | Trades | Snipes | Latency Rent ($) | Spread Savings ($) | MM PnL ($)")
+    print("--------------------------------------------------------------------------------------")
+    print(
+        f"Continuous CLOB | {clob['trade_count']:6d} | {clob['latency_arbitrage_count']:6d} | "
+        f"${clob['latency_arbitrage_rents']:16.4f} | $            0.0000 | ${clob['mm_pnl']:10.4f}"
+    )
+
+    for delta in inst["batch_intervals"]:
+        fba = simulate_batch_auction(
+            events=inst["events"],
+            initial_price=inst["initial_price"],
+            half_spread=inst["half_spread"],
+            batch_interval=delta,
+        )
+        print(
+            f"FBA delta={delta:4.0f}ms | {fba['trade_count']:6d} | {fba['latency_arbitrage_count']:6d} | "
+            f"${fba['latency_arbitrage_rents']:16.4f} | ${fba['spread_savings']:18.4f} | ${fba['mm_pnl']:10.4f}"
+        )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">MS2 Project Report Benchmark Grid (Seed 1, N=120 events, half_spread=0.05):
+Venue / Delta   | Trades | Snipes | Latency Rent ($) | Spread Savings ($) | MM PnL ($)
+--------------------------------------------------------------------------------------
+Continuous CLOB |    120 |     27 | $          4.0048 | $            0.0000 | $    0.7756
+FBA delta=  10ms |     79 |      0 | $          0.0000 | $            0.8000 | $   -0.0092
+FBA delta=  50ms |     58 |      0 | $          0.0000 | $            2.1000 | $   -0.4388
+FBA delta= 100ms |     41 |      0 | $          0.0000 | $            2.9000 | $   -1.0084
+FBA delta= 250ms |     19 |      0 | $          0.0000 | $            3.5000 | $   -0.7567
+FBA delta= 500ms |     11 |      0 | $          0.0000 | $            3.8000 | $   -0.0590</pre>
+          <p class="interpretation">The benchmark grid validates Proposition 1 and Proposition 2. In continuous trading, latency arbitrageurs exploit speed advantages on 27 jump events, extracting $4.0048 in rents. Under frequent batch auctions, latency arbitrage rents drop to exactly $0.0000 across all batch intervals. Furthermore, as \(\Delta\) increases from 10 ms to 500 ms, more offsetting investor orders arrive within each batch, expanding multilateral crossing savings from $0.8000 to $3.8000.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Author an analytical research memo (400 to 900 words) titled <code>report.md</code> structured under the following five mandatory headings:</p>
+        <ol>
+          <li><strong>Model specification</strong>: state the continuous and batch auction market architectures, define price jump events, and state Assumptions A1–A5.</li>
+          <li><strong>Estimators and identities</strong>: document the latency rent extraction formula, the zero-rent invariance under FBA, multilateral crossing spread savings, and exception handling.</li>
+          <li><strong>Results and counterfactual analysis</strong>: present the benchmark grid from Lab 3, compare continuous vs FBA outcomes, and explain why batching eliminates speed rents.</li>
+          <li><strong>Numerical rigour and rounding</strong>: declare the display rounding convention (four decimal places for cash amounts and rents), confirm that internal calculations use unrounded double precision floats, and show one verified manual recomputation.</li>
+          <li><strong>Limits and evidence</strong>: evaluate structural limitations of batch auctions (e.g., discrete execution delay, cross-venue fragmentation), assign evidence grades, and cite verified literature keys.</li>
+        </ol>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The batch-auction counterfactual research memo: five criteria, four performance levels each. Passing doctoral standard requires level 3 or above on all criteria.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Model specification</th><td>Lists Assumptions A1–A5 with exact mathematical definitions, states the structural role of jump innovations and cancellation delays, and contrasts continuous time-priority clearing against uniform-price discrete double auctions.</td><td>States Assumptions A1–A5 with equations and identifies the continuous vs batch clearing mechanisms.</td><td>Describes trading mechanisms informally without numbering assumptions or defining mathematical variables.</td><td>Mentions market speed without defining continuous or batch auction models.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Estimators and identities</th><td>Derives the latency rent formula \(R = (|\Delta V| - s/2) \cdot q\), proves the zero-rent invariance \(R_{\text{FBA}} \equiv 0\), derives multilateral crossing spread savings, and documents all seven <code>ValueError</code> exception conditions.</td><td>States the latency rent formula, the zero-rent property in FBA, spread savings calculations, and documents exception conditions.</td><td>States formulas but omits spread savings or fails to document exception triggers.</td><td>Presents informal descriptions without mathematical formulas or exception rules.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Results and analysis</th><td>Presents the complete Lab 3 benchmark grid, analyzes the progression of spread savings as \(\Delta\) widens, evaluates the economic welfare trade-off between speed elimination and execution delay, and explains why market maker PnL stabilizes under FBA.</td><td>Presents the benchmark grid, reports outputs across all batch intervals, and correctly interprets rent savings and multilateral crossing.</td><td>Reports numerical values for some batch intervals but omits spread savings or fails to compare continuous and batch regimes.</td><td>Omits the simulation grid or reports unsubstantiated numbers.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Numerical rigour</th><td>Declares an explicit display rounding policy (e.g. four decimals for dollar amounts), demonstrates that internal calculations maintain full double-precision floating-point accuracy, and provides an exact manual verification of one jump rent and one batch clearing.</td><td>States the display rounding rule, quotes numbers consistent with Lab 3 output, and avoids premature intermediate rounding.</td><td>Presents inconsistent decimal precisions or shows signs of intermediate rounding distortion.</td><td>Presents unformatted numbers without declared precision or rounding rules.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Limits and evidence</th><td>Evaluates at least three structural limitations of frequent batch auctions (e.g., execution delay for urgent traders, cross-venue coordination failures, inventory risk across batch intervals), assigns evidence grades (T, A, B), and cites verified literature keys (Budish et al. 2015, Kirilenko et al. 2017, Brogaard et al. 2014).</td><td>Identifies at least three model limitations and assigns evidence grades to theoretical propositions and empirical findings.</td><td>Mentions generic market complexities without linking them to specific model assumptions or citations.</td><td>Contains no discussion of model limitations or evidence evaluation.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Review the following annotated student memo excerpts to calibrate your self-assessment. Exemplar A illustrates common deficiencies resulting in a failing grade (Level 2), whereas Exemplar B demonstrates exemplary execution meeting all Level 4 descriptors.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2. The memo describes speed races and batching informally, but omits formal assumption numbers, reports partial simulation results without evaluating spread savings across delta, shows inconsistent rounding, and lacks literature citations.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model specification</h5>
+              <p>In continuous trading, high-frequency traders use fast feeds to trade ahead of slow market makers when prices jump. In frequent batch auctions, orders are grouped together over a time interval and cleared at a single price, so fast traders cannot jump the queue.</p>
+              <h5>Results and counterfactual analysis</h5>
+              <p>We simulated trading on seed 1. Continuous trading produced $4.00 of latency arbitrage rents. In the batch auction with delta=100ms, latency rents were zero, which proves batch auctions help market makers.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li><strong>C1 (Level 2):</strong> Describes the speed race and batching concept informally, but omits mathematical formulations for price jumps, cancellation delays, and formal Assumptions A1–A5.</li>
+                <li><strong>C2 (Level 2):</strong> States that fast traders jump the queue, but omits the mathematical formula for latency rent \(R = (|\Delta V| - s/2) \cdot q\) and does not document input validation exceptions.</li>
+                <li><strong>C3 (Level 2):</strong> Reports results for only one batch interval (\(\Delta = 100\) ms) instead of the full parameter grid, and omits analysis of multilateral crossing spread savings.</li>
+                <li><strong>C4 (Level 2):</strong> Quotes rounded figures ("$4.00") without stating a display precision policy or demonstrating manual recalculation.</li>
+                <li><strong>C5 (Level 2):</strong> Contains no evaluation of structural limitations such as execution delay or cross-venue fragmentation, and cites no literature keys.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. Exemplary execution across all five criteria. Assumptions A1–A5 are rigorously formalized, the complete Lab 3 grid is analyzed, numerical precision is maintained with an exact manual verification check, and model limitations are evaluated with verified citations.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model specification</h5>
+              <p>We evaluate an electronic financial market under two competing market architectures following <span class="claim" data-grade="A" data-cite="budish2015high">Budish, Cramton &amp; Shim (2015)</span>. The economy satisfies Assumptions A1–A5: public price jumps \(\Delta V_k\) arrive at discrete times \(\tau_k\); a competitive market maker quotes half-spread \(s/2\) and updates quotes with latency \(\delta_{\text{MM}} = 2.5\) ms; competing snipers observe jumps with latency \(\delta_{\text{sniper}} = 0.8\) ms. In continuous trading (CLOB), orders execute serially, allowing snipers to pick off stale quotes whenever \(\delta_{\text{sniper}} < \delta_{\text{MM}}\). In frequent batch auctions (FBA), continuous time is discretized into intervals \([m\Delta, (m+1)\Delta)\), within which all submissions clear at a uniform double-auction price.</p>
+              <h5>Estimators and identities</h5>
+              <p>The rent extracted on a stale quote snipe is \(R_k = (|\Delta V_k| - s/2) \cdot q_k\) when \(|\Delta V_k| > s/2\) and \(\delta_{\text{sniper}} < \delta_{\text{MM}}\), and zero otherwise (Proposition 1). In frequent batch auctions with \(\Delta \ge \delta_{\text{MM}}\), the market maker's cancellation arrives within the same batch interval as the snipers' orders. Because all orders within the batch clear simultaneously at the uniform price, stale quote sniping rents are identically zero: \(R_{\text{FBA}} \equiv 0.0\) (Proposition 2). Furthermore, offsetting investor buys \(B_m\) and sells \(S_m\) cross directly at the mid-price, yielding spread savings \(2(s/2) \min(B_m, S_m)\). The solver validates seven boundary conditions, raising <code>ValueError</code> on non-positive prices, non-positive spreads, negative latencies, empty logs, or out-of-order timestamps.</p>
+              <h5>Results and counterfactual analysis</h5>
+              <p>The Lab 3 benchmark grid (seed 1, \(N = 120\) events, \(s/2 = 0.05\)) demonstrates the transformative welfare impact of batch auctions. In continuous trading, snipers pick off 27 stale quotes, extracting $4.0048 in latency-arbitrage rents and imposing severe adverse selection on the market maker. Under FBA, latency-arbitrage rents drop to exactly $0.0000 across all batch intervals \(\Delta \in \{10, 50, 100, 250, 500\}\) ms. In addition, as \(\Delta\) expands from 10 ms to 500 ms, trade netting increases: multilateral spread savings grow monotonically from $0.8000 (at 10 ms) to $3.8000 (at 500 ms), as 76 of 93 investor orders cross directly without paying dealer spreads.</p>
+              <h5>Numerical rigour and rounding</h5>
+              <p>All internal computations operate on IEEE 754 64-bit floating-point numbers. Display outputs are rounded to four decimal places. As a manual verification check, consider the first sniped jump in the event log: \(\Delta V_1 = +0.1742\), \(s/2 = 0.0500\), \(q = 1\). Because \(\delta_{\text{sniper}} = 0.8 < 2.5 = \delta_{\text{MM}}\) and \(\Delta V_1 > s/2\), the sniper buys at the stale ask \(P = 100.0000 + 0.0500 = 100.0500\). The new mid-price is \(100.1742\). The exact rent extracted is \(100.1742 - 100.0500 = 0.1242\), matching solver output to machine precision.</p>
+              <h5>Limits and evidence</h5>
+              <p>While frequent batch auctions eliminate latency arbitrage (<span class="claim" data-grade="A" data-cite="budish2015high">Budish et al. 2015</span>), three structural limitations warrant caution: (1) <strong>Execution delay:</strong> Urgent traders with idiosyncratic liquidity needs must wait up to \(\Delta\) for execution; (2) <strong>Cross-venue fragmentation:</strong> If one exchange adopts batch auctions while others remain continuous, cross-market arbitrageurs can exploit price discrepancies across venues (<span class="claim" data-grade="B" data-cite="brogaard2014high">Brogaard et al. 2014</span>); (3) <strong>Inventory volatility:</strong> Batching concentrates inventory absorption at discrete points, requiring robust dealer capitalization during market stress (<span class="claim" data-grade="A" data-cite="kirilenko2017flash">Kirilenko et al. 2017</span>).</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li><strong>C1 (Level 4):</strong> Formalizes Assumptions A1–A5 with explicit mathematical variables and establishes the economic distinction between continuous serial priority and discrete uniform double auctions.</li>
+                <li><strong>C2 (Level 4):</strong> Proves the latency rent and zero-rent propositions, details multilateral crossing spread savings, and documents all input validation exception rules.</li>
+                <li><strong>C3 (Level 4):</strong> Analyzes the complete Lab 3 simulation grid across all five batch intervals, distinguishing speed rent elimination from trade netting gains.</li>
+                <li><strong>C4 (Level 4):</strong> Declares explicit double-precision and rounding policies, and provides an exact manual verification of a sniped execution.</li>
+                <li><strong>C5 (Level 4):</strong> Evaluates three nuanced structural limitations, assigns evidence grades (A, B, A), and cites verified literature keys (Budish et al. 2015, Kirilenko et al. 2017, Brogaard et al. 2014).</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="budish2015high">Budish, Cramton &amp; Shim (2015) · The high-frequency trading arms race: frequent batch auctions as a market design response. <em>Quarterly Journal of Economics</em> 130(4), 1547–1621.</li>
+          <li data-cite="cont2010stochastic">Cont, Stoikov &amp; Talreja (2010) · A stochastic model for order book dynamics. <em>Operations Research</em> 58(3), 549–563.</li>
+          <li data-cite="brogaard2014high">Brogaard, Hendershott &amp; Riordan (2014) · High-frequency trading and price discovery. <em>Review of Financial Studies</em> 27(8), 2267–2306.</li>
+          <li data-cite="kirilenko2017flash">Kirilenko, Kyle, Samadi &amp; Tuzun (2017) · The Flash Crash: high-frequency trading in an electronic market. <em>Journal of Finance</em> 72(3), 967–998.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

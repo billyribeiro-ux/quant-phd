@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="MS2" data-page="L01" data-hours="7">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01 · Limit Order Mechanics &amp; Queue Position · MS2</title>
+  <meta name="description" content="Mechanics of limit order books, price-time priority, FIFO queue position, fill probabilities, cancellation dynamics, and the adverse selection of passive execution.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">MS2 Limit Order Books</a><span class="sep">›</span><span>L01 Limit Order Mechanics</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 01 · 7 study hours</p>
+        <h1>Limit Order Mechanics &amp; Queue Position</h1>
+        <p class="why-it-matters">Modern electronic markets clear through automated limit order books governed by strict priority rules. Placing a passive limit order yields the bid–ask spread but surrenders execution timing to the market. Your execution depends on queue position: how many shares sit ahead of you at the price level. As cancellations and market orders deplete the queue, your order advances. Understanding queue position is critical because passive fills suffer from the winner's curse: orders fill quickly when adverse information arrives, while unfilled orders are left behind when the market moves away.</p>
+      </header>
+
+      <section id="priority-rules">
+        <h2 id="s1"><span class="section-number">1</span>Matching Engines and Priority Rules</h2>
+        <p>An electronic limit order book organizes unexecuted orders into discrete price levels, implementing the <a class="concept" data-concept="order-book-data-structure" href="../../../concepts.html#order-book-data-structure">order-book data structure</a> established in CS2. Matching engines enforce priority rules to determine which resting orders execute when an incoming market order arrives.</p>
+
+        <div class="block definition" id="def-queue-position-block">
+          <p><span class="block-title claim" data-grade="T">Definition 1.1 · Queue Position</span><br>
+          In a price-time priority matching engine, let \(p\) denote a price level and let \(Q(p, t)\) denote the total quantity of resting shares at price \(p\) at time \(t\). For a specific limit order \(i\) placed at price \(p\) and timestamp \(\tau_i\), its <dfn id="def-queue-position" data-concept="queue-position">queue position</dfn> \(k_i(t) \in \{1, 2, \dots, Q(p, t)\}\) is the cumulative quantity of shares resting at price \(p\) that possess higher priority than order \(i\) plus the order's own priority index. In a strict first-in, first-out (FIFO) queue:
+          \[k_i(t) = 1 + \sum_{j \ne i, \, p_j = p, \, \tau_j < \tau_i} q_j(t),\]
+          where \(q_j(t)\) is the active remaining quantity of order \(j\).</p>
+        </div>
+
+        <p>Financial exchanges implement several primary allocation algorithms:</p>
+        <ul>
+          <li><strong>Price-Time Priority (FIFO):</strong> Orders are ranked strictly by price, then by arrival timestamp. An order at the best bid executes ahead of all lower bids; among identical bids, older orders execute before newer ones. This is the dominant rule in US equity and options markets.</li>
+          <li><strong>Pro-Rata Allocation:</strong> When a trade occurs at price \(p\), incoming volume is allocated proportionally to the resting size of each participant:
+          \[\text{Fill}_i = \min\left(q_i, \left\lfloor V_{\text{trade}} \cdot \frac{q_i}{\sum_j q_j} \right\rfloor\right).\]
+          This rule dominates short-term interest rate futures (such as SOFR and Eurodollar contracts on CME), incentivizing traders to post large sizes.</li>
+          <li><strong>Split FIFO / Pro-Rata:</strong> A hybrid structure where a designated fraction (e.g., 40%) is allocated by FIFO priority, and the remainder is split pro-rata among other resting orders.</li>
+        </ul>
+
+        <div class="block example" id="ex-priority">
+          <p><span class="block-title claim" data-grade="T">Example 1.1 · FIFO Matching</span><br>
+          Suppose three buy limit orders sit at the national best bid of $100.00: Order A for 200 shares arrives at 10:00:00.001; Order B for 500 shares arrives at 10:00:00.004; Order C for 300 shares arrives at 10:00:00.010. Total depth is 1,000 shares. Order A has queue position \(k_A = 1\); Order B has queue position \(k_B = 201\); Order C has queue position \(k_C = 701\). An incoming market sell order for 400 shares fills Order A completely (200 shares) and fills 200 shares of Order B. Order B now has 300 shares remaining at queue position \(k_B = 1\), while Order C remains untouched at queue position \(k_C = 301\).</p>
+        </div>
+      </section>
+
+      <section id="queue-depletion">
+        <h2 id="s2"><span class="section-number">2</span>Queue Depletion and Cancellation Dynamics</h2>
+        <p>A resting limit order advances toward the head of the queue through two distinct mechanical channels: market order executions and cancellations of preceding orders.</p>
+
+        <div class="block theorem" id="thm-queue-advancement">
+          <p><span class="block-title claim" data-grade="T">Theorem 1.1 · Queue Position Evolution</span><br>
+          Let \(k(t)\) denote the queue position of a resting limit order at time \(t \ge 0\), with \(k(0) = k_0 > 0\). Over an increment \(dt\), let \(dM(t)\) denote the volume of incoming market orders executing against the queue, and let \(dC_{\text{ahead}}(t)\) denote the volume of order cancellations occurring strictly ahead of position \(k(t)\). The queue position evolves according to:
+          \[k(t + dt) = \max\left(0, k(t) - dM(t) - dC_{\text{ahead}}(t)\right).\]
+          The order executes when \(k(t)\) reaches 0.</p>
+        </div>
+
+        <div class="block proof" id="proof-queue-advancement">
+          <p><span class="block-title claim" data-grade="T">Proof</span><br>
+          In a FIFO matching engine, incoming market orders match against resting limit orders starting at index 1. Any market order execution of size \(m\) decreases the queue position of all subsequent orders by \(m\). Similarly, if an order of size \(c\) located at index \(j < k(t)\) is cancelled, all resting shares at indices \(j' > j\) shift forward by \(c\) shares. Cancellations occurring behind the order (\(j > k(t)\)) reduce total queue depth but leave the order's relative queue position \(k(t)\) unchanged. Combining both sources of depletion yields the result.</p>
+        </div>
+
+        <p>In high-frequency markets, cancellations account for a substantial majority of all order book events. As documented empirically by <span class="claim" data-grade="B" data-cite="harris2002trading">Harris (2002)</span> and <span class="claim" data-grade="A" data-cite="cont2010stochastic">Cont, Stoikov &amp; Talreja (2010)</span>, more than 90% of submitted limit orders are cancelled before execution.</p>
+
+        <section class="lab" id="lab-MS2-L01-1" data-runtime="python">
+          <h3>Lab 1 · Queue-position simulator</h3>
+          <p class="hypothesis">Simulating a FIFO queue at the best bid (depth = 20 lots, horizon T = 4.0 s) with Poisson market sells (\(\mu = 2.0\)/s) and order cancellations (\(\theta = 0.05\)/lot/s) will demonstrate that execution probability decays non-linearly with queue position: orders at the front (\(k=1\)) fill with near certainty (>99%), while orders deep in the queue (\(k \ge 15\)) face severe execution failure (&lt;6%).</p>
+          <pre><code class="language-python" data-run>"""Lab MS2-L01-1: Queue-position simulator.
+
+Simulates FIFO limit order queue priority at the best bid, computing fill
+probability and execution time as a function of initial queue position k.
+"""
+
+from __future__ import annotations
+
+import random
+
+
+def simulate_queue(
+    initial_queue_size: int,
+    target_pos: int,
+    market_sell_rate: float,
+    cancel_rate_per_order: float,
+    limit_arrival_rate: float,
+    max_time: float,
+    rng: random.Random,
+) -&gt; tuple[bool, float]:
+    """Simulate a single FIFO queue realization until target order fills or expires.
+
+    Returns:
+        (filled, time_elapsed)
+    """
+    pos = target_pos
+    queue_len = initial_queue_size
+    current_time = 0.0
+
+    while current_time &lt; max_time and pos &gt; 0:
+        total_cancel_rate = cancel_rate_per_order * queue_len
+        total_rate = market_sell_rate + total_cancel_rate + limit_arrival_rate
+        if total_rate &lt;= 0.0:
+            break
+
+        dt = rng.expovariate(total_rate)
+        current_time += dt
+        if current_time &gt;= max_time:
+            break
+
+        u = rng.random() * total_rate
+        if u &lt; market_sell_rate:
+            # Market sell executes against the head of the queue
+            pos -= 1
+            queue_len = max(0, queue_len - 1)
+        elif u &lt; market_sell_rate + total_cancel_rate:
+            # A cancellation occurs uniformly in the queue
+            cancel_idx = rng.randint(1, max(1, queue_len))
+            if cancel_idx &lt; pos:
+                pos -= 1
+            queue_len = max(0, queue_len - 1)
+        else:
+            # A new limit order joins the back of the queue
+            queue_len += 1
+
+    return pos == 0, current_time
+
+
+def main() -&gt; None:
+    rng = random.Random(42)
+    n_sims = 2500
+    queue_depth = 20
+    market_sell_rate = 2.0  # orders per second
+    cancel_rate_per_order = 0.05  # per order per second
+    limit_arrival_rate = 1.8  # orders per second
+    time_horizon = 4.0  # seconds
+
+    positions = [1, 5, 10, 15, 20]
+
+    print("Queue-Position Simulation Results (N=2500 per position, depth=20, T=4.0s):")
+    print("Pos (k) | Fill Prob | Mean Fill Time (s) | Relative Fill")
+    print("---------------------------------------------------------")
+
+    p1_prob = 0.0
+    for k in positions:
+        fills = 0
+        fill_times: list[float] = []
+        for _ in range(n_sims):
+            filled, t = simulate_queue(
+                queue_depth,
+                k,
+                market_sell_rate,
+                cancel_rate_per_order,
+                limit_arrival_rate,
+                time_horizon,
+                rng,
+            )
+            if filled:
+                fills += 1
+                fill_times.append(t)
+
+        prob = fills / n_sims
+        if k == 1:
+            p1_prob = prob
+        rel_fill = prob / p1_prob if p1_prob &gt; 0 else 0.0
+        mean_time = sum(fill_times) / len(fill_times) if fill_times else float("nan")
+
+        print(f"{k:7d} | {prob:9.4f} | {mean_time:18.4f} | {rel_fill:13.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Queue-Position Simulation Results (N=2500 per position, depth=20, T=4.0s):
+Pos (k) | Fill Prob | Mean Fill Time (s) | Relative Fill
+---------------------------------------------------------
+      1 |    0.9992 |             0.4953 |        1.0000
+      5 |    0.9188 |             2.1578 |        0.9195
+     10 |    0.4020 |             3.1661 |        0.4023
+     15 |    0.0528 |             3.5221 |        0.0528
+     20 |    0.0040 |             3.7244 |        0.0040</pre>
+          <p class="interpretation">The simulation confirms the extreme priority value of queue position. An order at position 1 executes in 0.4953 s with a 99.92% fill probability. In contrast, an order at position 10 fills only 40.20% of the time, and position 20 fills just 0.40% of the time. The non-linear priority decay illustrates why quantitative traders invest heavily in latency minimization to secure top-of-book queue priority.</p>
+        </section>
+      </section>
+
+      <section id="winners-curse">
+        <h2 id="s3"><span class="section-number">3</span>The Winner's Curse of Passive Execution</h2>
+        <p>A fundamental challenge in passive liquidity provision is adverse execution timing. A limit order represents a free option granted to the market: counterparties exercise this option only when it is favorable to them.</p>
+
+        <div class="block theorem" id="thm-winners-curse">
+          <p><span class="block-title claim" data-grade="T">Theorem 1.2 · Adverse Selection in Fill Conditioning</span><br>
+          Let \(V_{t+\Delta t}\) denote the fundamental value of the asset at horizon \(\Delta t\) after trade execution, and let \(p_t\) denote the limit order execution price. For a resting buy limit order:
+          \[\E[V_{t+\Delta t} - p_t \mid \text{fill at } t] < \E[V_{t+\Delta t} - p_t],\]
+          establishing that conditional on receiving an execution, the expected post-trade fundamental value is systematically lower than its unconditional expectation.</p>
+        </div>
+
+        <div class="block proof" id="proof-winners-curse">
+          <p><span class="block-title claim" data-grade="T">Proof</span><br>
+          Decompose the arrival of market sell orders into informed selling driven by negative private signals (\(S_t = -1\)) and uninformed liquidity selling (\(S_t = 0\)). When \(S_t = -1\), informed traders submit market sell orders with high intensity, rapidly consuming the resting bid queue. Consequently:
+          \[\Prob(\text{fill} \mid S_t = -1) > \Prob(\text{fill} \mid S_t = 0).\]
+          By Bayes' rule, the posterior probability of informed selling conditional on execution is:
+          \[\Prob(S_t = -1 \mid \text{fill}) = \frac{\Prob(\text{fill} \mid S_t = -1) \Prob(S_t = -1)}{\Prob(\text{fill})} > \Prob(S_t = -1).\]
+          Because \(\E[V_{t+\Delta t} \mid S_t = -1] < V_t\), conditioning on a fill skews the expectation toward unfavorable fundamental price revisions, proving the result.</p>
+        </div>
+
+        <div class="block remark" id="rem-adverse-selection">
+          <p><span class="block-title claim" data-grade="A" data-cite="glosten1985bid">Remark 1.1 · Connection to Sequential Trade Models</span><br>
+          This result provides the micro-structural foundation for the <a class="concept" data-concept="adverse-selection" href="../../../concepts.html#adverse-selection">adverse selection</a> component analyzed in MS1 (<a class="concept" data-concept="glosten-milgrom-model" href="../../../concepts.html#glosten-milgrom-model">Glosten–Milgrom model</a>). In a limit order book, queue position modulates this adverse selection: orders at the front of the queue are exposed to both uninformed and informed flows, whereas orders at the tail are filled almost exclusively by large, informed sweeps.</p>
+        </div>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>Textbook models of limit order books often assume static queues where orders arrive, wait patiently in line, and execute in deterministic sequence. In live electronic markets, this idealized picture breaks down in three critical dimensions:</p>
+        <ul>
+          <li><strong>Queue Fading and Phantom Liquidity:</strong> When a large market order sweeps multiple venues, high-frequency market makers cancel resting orders within microseconds across correlated venues. Displayed queue depth dissolves before incoming orders arrive, turning apparent liquidity into "phantom" depth.</li>
+          <li><strong>Co-location and Deterministic Races:</strong> Microsecond latency differences mean queue position at newly created price levels is not assigned randomly. The fastest participant takes position 1 with probability near 1, leaving slower participants at the back of the queue where fill probability collapses.</li>
+          <li><strong>Adverse Queue Abandonment:</strong> Cancellations ahead of your order are not independent of future price direction. When an informed trader begins accumulating shares on the ask side, informed participants cancel bids ahead of you, accelerating your fill precisely when the price is about to decline.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Posting a limit order at the best bid guarantees earning the bid–ask spread upon execution.</p>
+            <p><strong>Why it is wrong:</strong> Earning the spread requires that the asset price subsequently rebounds or that you can offload inventory at the ask. If the fill was triggered by an informed trade or market-wide price decline, the fundamental value drops immediately below the executed bid price, resulting in a net mark-to-market loss that exceeds the half-spread.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">In a FIFO queue, an order's wait time to execution equals the total shares ahead of it divided by the market order arrival rate.</p>
+            <p><strong>Why it is wrong:</strong> Queue advancement is driven by both market orders and order cancellations. In liquid equities, cancellations typically account for 80% to 95% of total queue depletion. Ignoring cancellations drastically overestimates expected wait times.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Being at the back of a large queue is safe because you have the protection of many orders ahead of you.</p>
+            <p><strong>Why it is wrong:</strong> While a large queue protects against small random noise trades, it creates extreme adverse selection. An order at position 100 in a 100-lot queue is only reached when an aggressive market participant deliberately sweeps the entire level or when all 99 preceding participants cancel their orders. Getting filled at the back of a queue is an overwhelmingly bearish signal.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3 id="p-mechanics">Tier 1 · Mechanics</h3>
+
+          <div class="problem" id="prob-m1">
+            <p class="prompt"><strong>Problem 1.1:</strong> A FIFO price level has 500 shares resting. Order A has 100 shares at position 1; Order B has 250 shares at position 101; Order C has 150 shares at position 351. If a cancellation of 100 shares occurs in Order B, followed by an incoming market sell order of 150 shares, what is the final queue position and remaining size of Order C?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Initially, Order C sits at queue position 351 with 150 shares. When Order B cancels 100 shares, the depth ahead of Order C decreases by 100 shares, shifting Order C to position \(351 - 100 = 251\). Next, the market sell order of 150 shares arrives. It fully executes against Order A (100 shares) and partially executes against Order B (50 shares). The market order depletes 150 shares that sat ahead of Order C. Therefore, Order C's position shifts forward by 150 shares: \(251 - 150 = 101\). Because the market order size did not reach Order C, its remaining size is completely intact at 150 shares.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-m2">
+            <p class="prompt"><strong>Problem 1.2:</strong> Under pro-rata matching, four limit orders rest at the best bid: Order 1 has 1,000 shares, Order 2 has 2,000 shares, Order 3 has 3,000 shares, and Order 4 has 4,000 shares (total depth = 10,000 shares). An incoming market sell order of 1,500 shares arrives. Assuming integer rounding down with residual allocated to the largest order, compute the fill allocation for each order.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Total depth is \(10,000\) shares. Each order receives a proportional share \(\lfloor 1500 \cdot (q_i / 10000) \rfloor\):</p>
+              <ul>
+                <li>Order 1: \(\lfloor 1500 \times 0.10 \rfloor = 150\) shares.</li>
+                <li>Order 2: \(\lfloor 1500 \times 0.20 \rfloor = 300\) shares.</li>
+                <li>Order 3: \(\lfloor 1500 \times 0.30 \rfloor = 450\) shares.</li>
+                <li>Order 4: \(\lfloor 1500 \times 0.40 \rfloor = 600\) shares.</li>
+              </ul>
+              <p>Summing the allocations: \(150 + 300 + 450 + 600 = 1,500\) shares. The total exactly equals the incoming order size, so no rounding residual remains.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-m3">
+            <p class="prompt"><strong>Problem 1.3:</strong> In a FIFO queue at the bid, market sell orders arrive as a Poisson process with rate \(\mu = 4.0\) orders per second, each of size 1 lot. Individual resting limit orders cancel at rate \(\theta = 0.10\) per second. For an order at position \(k = 5\), what is the instantaneous total depletion rate of shares ahead of it?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>There are \(k - 1 = 4\) shares resting strictly ahead of the order. Market sell orders consume the head of the queue at rate \(\mu = 4.0\) shares/sec. In addition, each of the 4 preceding shares cancels independently at rate \(\theta = 0.10\) shares/sec, giving a preceding cancellation rate of \(4 \times 0.10 = 0.40\) shares/sec. The total instantaneous depletion rate is \(\mu + (k-1)\theta = 4.0 + 0.40 = 4.40\) shares per second.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3 id="p-proof">Tier 2 · Proof</h3>
+
+          <div class="problem" id="prob-p1">
+            <p class="prompt"><strong>Problem 1.4:</strong> Prove that in a pure FIFO queue without cancellations where market orders arrive according to a Poisson process with rate \(\mu\) and size 1 lot, the time-to-fill \(T_k\) for an order at position \(k\) follows an Erlang distribution with shape parameter \(k\) and rate \(\mu\), and derive its mean and variance.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under pure Poisson market order arrivals with unit size and zero cancellations, each fill of a preceding lot requires an independent exponential waiting time \(\Delta t_i \sim \text{Exp}(\mu)\) with probability density function \(f(t) = \mu e^{-\mu t}\). Because the order is at position \(k\), exactly \(k\) market orders must execute sequentially for the target order to be filled. Therefore:
+              \[T_k = \sum_{i=1}^k \Delta t_i.\]
+              The sum of \(k\) independent and identically distributed exponential random variables with rate \(\mu\) is by definition an Erlang random variable with parameters \((k, \mu)\). Its probability density function is:
+              \[f_{T_k}(t) = \frac{\mu^k t^{k-1} e^{-\mu t}}{(k-1)!}, \quad t \ge 0.\]
+              By linearity of expectation and independence:
+              \[\E[T_k] = \sum_{i=1}^k \E[\Delta t_i] = \frac{k}{\mu}, \qquad \Var(T_k) = \sum_{i=1}^k \Var(\Delta t_i) = \frac{k}{\mu^2}.\]
+              This completes the proof.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-p2">
+            <p class="prompt"><strong>Problem 1.5:</strong> Prove that pro-rata allocation strictly weakly dominates FIFO matching in terms of queue length when market participants can costlessly expand their order sizes, thereby demonstrating the incentive for order book stuffing.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Consider \(N\) participants competing for execution of an incoming trade of size \(M\). In FIFO matching, a participant's allocation depends strictly on timestamp \(\tau_i\); submitting size \(q_i > M\) yields no marginal execution benefit if the order is already at the front of the queue, and yields zero if behind. In contrast, under pro-rata matching, participant \(i\)'s allocation is:
+              \[\text{Fill}_i = M \cdot \frac{q_i}{q_i + \sum_{j \ne i} q_j}.\]
+              Taking the partial derivative with respect to \(q_i\):
+              \[\frac{\partial \text{Fill}_i}{\partial q_i} = M \cdot \frac{\sum_{j \ne i} q_j}{\left(q_i + \sum_{j \ne i} q_j\right)^2} > 0.\]
+              Because the marginal allocation is strictly positive for any finite total size, each participant has a strictly dominant strategy to scale up their order size \(q_i\) arbitrarily up to their capital limit. In equilibrium, aggregate posted queue length expands to capacity, strictly exceeding the FIFO queue length.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-p3">
+            <p class="prompt"><strong>Problem 1.6:</strong> Prove that under the winner's curse (Theorem 1.2), the adverse selection cost conditional on fill is an increasing function of initial queue position \(k\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(V_t\) denote fundamental value and \(p\) the bid price. An execution occurs at position \(k\) if cumulative market order volume plus cancellations exceeds \(k\). Let \(M\) denote total market sell volume over horizon \([t, t+\tau]\). The execution event is \(E_k = \{M \ge k\}\). Because \(E_k \subset E_{k-1}\) for all \(k \ge 2\), conditioning on \(E_k\) conditions on a strictly larger volume of market sell orders. In any sequential trade or price-impact model where market sell orders convey adverse fundamental information (\(\E[V_{t+\tau} \mid M = m]\) is strictly decreasing in \(m\)):
+              \[\E[V_{t+\tau} \mid M \ge k] < \E[V_{t+\tau} \mid M \ge k - 1].\]
+              Subtracting the fixed execution price \(p\):
+              \[\E[p - V_{t+\tau} \mid E_k] > \E[p - V_{t+\tau} \mid E_{k-1}],\]
+              proving that the adverse selection loss \(\E[p - V_{t+\tau} \mid \text{fill}]\) is strictly increasing in queue position \(k\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3 id="p-empirical">Tier 3 · Empirical</h3>
+
+          <div class="problem" id="prob-e1">
+            <p class="prompt"><strong>Problem 1.7:</strong> Using the simulation results from Lab 1, compute the empirical priority decay factor \(\rho_k = P(\text{fill} \mid k) / P(\text{fill} \mid 1)\) for positions \(k \in \{1, 5, 10, 15, 20\}\), and determine the critical queue position at which fill probability falls below 50%.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>From the Lab 1 reference output table with \(T = 4.0\) s and depth 20:</p>
+              <ul>
+                <li>Position 1: Fill prob = 0.9992, \(\rho_1 = 1.0000\).</li>
+                <li>Position 5: Fill prob = 0.9188, \(\rho_5 = 0.9195\).</li>
+                <li>Position 10: Fill prob = 0.4020, \(\rho_{10} = 0.4023\).</li>
+                <li>Position 15: Fill prob = 0.0528, \(\rho_{15} = 0.0528\).</li>
+                <li>Position 20: Fill prob = 0.0040, \(\rho_{20} = 0.0040\).</li>
+              </ul>
+              <p>At position 5, the fill probability is 91.88%, while at position 10 it drops to 40.20%. Therefore, the critical queue position at which fill probability falls below 50% lies between position 5 and position 10 (approximately position 9 under linear interpolation).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-e2">
+            <p class="prompt"><strong>Problem 1.8:</strong> An algorithmic market maker logs 10,000 passive bid executions: 7,000 were filled at queue positions \(k \le 3\), with an average 5-second post-trade price change of \(\Delta p = -0.01\) ($0.01 loss); 3,000 were filled at queue positions \(k \ge 8\), with an average 5-second post-trade price change of \(\Delta p = -0.06\) ($0.06 loss). If the quoted half-spread is $0.03, compute the net realized spread for top-of-queue vs back-of-queue executions.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The realized half-spread on a buy limit order executed at price \(p_b\) with post-trade mid-price \(m_{t+5}\) is \(p_b - m_{t+5} + \text{spread}\), or equivalently:
+              \[\text{Realized Half-Spread} = \frac{s}{2} + \Delta p.\]
+              For top-of-queue executions (\(k \le 3\)):
+              \[\text{Realized Half-Spread} = 0.03 + (-0.01) = +0.02 \text{ per share} \quad (+\$2.00 \text{ per 100 shares}).\]
+              For back-of-queue executions (\(k \ge 8\)):
+              \[\text{Realized Half-Spread} = 0.03 + (-0.06) = -0.03 \text{ per share} \quad (-\$3.00 \text{ per 100 shares}).\]
+              Top-of-queue orders earn a profitable realized spread of +$0.02, whereas back-of-queue orders suffer severe adverse selection, yielding a negative realized spread of -$0.03.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-e3">
+            <p class="prompt"><strong>Problem 1.9:</strong> In an empirical tick-data sample of US equities, order cancellations at the best bid occur with intensity \(\lambda_c = 12.0\) events/sec, while market sell orders arrive with intensity \(\lambda_m = 1.5\) events/sec. Compute the empirical probability that an order's queue position advances via cancellation rather than market execution.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Assuming competing Poisson processes for preceding cancellations and incoming market orders, the probability that the next queue advancement event is a cancellation is given by the ratio of cancellation intensity to total advancement intensity:
+              \[P(\text{advancement via cancellation}) = \frac{\lambda_c}{\lambda_c + \lambda_m} = \frac{12.0}{12.0 + 1.5} = \frac{12.0}{13.5} = \frac{8}{9} \approx 0.8889.\]
+              Approximately 88.89% of queue advancements occur through cancellations rather than trade fills.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3 id="p-research">Tier 4 · Research</h3>
+
+          <div class="problem" id="prob-r1">
+            <p class="prompt"><strong>Problem 1.10:</strong> Formulate the optimal queue-joining problem for an execution algorithm that must purchase \(Q\) shares over horizon \(T\). When the bid queue length \(k\) is large, when should the algorithm cross the spread with a market order rather than joining the back of the queue?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(s\) denote the bid–ask spread. Posting at the bid saves the half-spread \(s/2\) relative to paying the ask, but incurs two costs: the risk of non-execution (requiring an emergency market order at horizon \(T\) with expected slippage \(\alpha(T)\)) and the adverse selection cost conditional on fill \(\theta(k)\). The expected cost of posting at queue position \(k\) is:
+              \[C_{\text{limit}}(k) = (1 - P(k, T))(s + \alpha(T)) + P(k, T) \theta(k),\]
+              while the cost of crossing the spread immediately with a market order is \(C_{\text{market}} = s/2 + I_{\text{perm}}\), where \(I_{\text{perm}}\) is permanent price impact. The algorithm should cross the spread whenever \(C_{\text{limit}}(k) > C_{\text{market}}\), which occurs when queue depth \(k\) exceeds a threshold \(k^*\) where fill probability \(P(k, T)\) is sufficiently depressed or adverse selection \(\theta(k)\) exceeds the spread savings.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-r2">
+            <p class="prompt"><strong>Problem 1.11:</strong> In high-frequency equity trading, how does the queue-priority value change between tick-constrained stocks (large tick size relative to price) and tick-unconstrained stocks (spread fluctuates across multiple ticks)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In tick-constrained stocks (such as liquid large-caps trading with a 1-cent spread and thousands of shares at the NBBO), price priority cannot be improved by bidding a sub-penny increment due to Rule 612. Therefore, queue position in the 1-cent queue is the sole determinant of execution priority. Time priority is immensely valuable, queue lengths are long, and fill probability decays steeply with queue position. In tick-unconstrained stocks (such as high-priced stocks with spreads of 10 to 50 cents), traders rarely wait in long queues; instead, they step ahead of existing orders by improving price by one tick. In such stocks, price priority dominates time priority, queue depths are small, and queue position has significantly lower economic value.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-r3">
+            <p class="prompt"><strong>Problem 1.12:</strong> Analyze the welfare implications of replacing FIFO time priority with a randomized tie-breaking rule (or batch auction) at each price level. Which market participants gain and which lose?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Replacing FIFO priority with randomized tie-breaking diminishes the value of sub-millisecond speed advantages in securing top-of-queue priority. High-frequency proprietary trading firms that invest heavily in microwave towers and FPGA hardware lose their speed-based queue monopolies. In contrast, agency brokers, institutional asset managers, and long-term liquidity providers gain because their resting orders receive equal fill probability regardless of microsecond arrival latencies. However, if randomization discourages passive liquidity provision by reducing fill certainty for dedicated market makers, aggregate quoted depth at the inside spread could decline.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Primary Sources</th><th>Basis</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Queue Position Definition (FIFO cumulative priority)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><span class="claim" data-grade="T" data-cite="harris2002trading">Harris (2002)</span></td>
+                <td>Definition 1.1</td>
+              </tr>
+              <tr>
+                <td>Queue Position Evolution via market orders and cancellations</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><span class="claim" data-grade="T" data-cite="cont2010stochastic">Cont, Stoikov &amp; Talreja (2010)</span></td>
+                <td>Theorem 1.1</td>
+              </tr>
+              <tr>
+                <td>Winner's Curse of Passive Execution conditioning</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><span class="claim" data-grade="T" data-cite="glosten1985bid">Glosten &amp; Milgrom (1985)</span></td>
+                <td>Theorem 1.2</td>
+              </tr>
+              <tr>
+                <td>Non-linear fill probability priority decay across queue depth</td>
+                <td><span class="grade" data-grade="B">B</span></td>
+                <td><span class="claim" data-grade="B" data-cite="cont2010stochastic">Cont, Stoikov &amp; Talreja (2010)</span></td>
+                <td>Lab 1 simulation</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="MS2" data-page="L01">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">In a price-time priority limit order book, what determines execution priority between two orders at identical price levels?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="MS2L1q1"> The order with the earlier matching engine arrival timestamp has priority</label>
+              <label class="option"><input type="radio" name="MS2L1q1"> The order with the larger share quantity has priority</label>
+              <label class="option"><input type="radio" name="MS2L1q1"> Priority is randomized uniformly among all resting orders</label>
+            </fieldset>
+            <div class="explain" hidden><p>Price-time priority (FIFO) dictates that among orders at the same price, the order with the earlier arrival timestamp executes first.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="10" data-tolerance="0">
+            <p class="prompt">If a limit order has 9 shares resting ahead of it in a FIFO queue, what is its queue position \(k\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>By Definition 1.1, queue position \(k = 1 + \text{shares ahead} = 1 + 9 = 10\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does an order's queue position advance when an order ahead of it is cancelled?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="MS2L1q3"> The cancellation reduces the cumulative volume of orders with higher priority, shifting following orders toward index 1</label>
+              <label class="option"><input type="radio" name="MS2L1q3"> Cancellations immediately execute against the resting order</label>
+              <label class="option"><input type="radio" name="MS2L1q3"> Cancellations change the price level of the remaining orders</label>
+            </fieldset>
+            <div class="explain" hidden><p>A cancellation strictly ahead of position \(k\) removes higher-priority shares, moving all subsequent shares forward in the queue.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="5" data-tolerance="0">
+            <p class="prompt">Under pro-rata matching, an incoming market sell order of 100 shares arrives against total depth of 2,000 shares. If you posted 100 shares, how many shares will you be allocated?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Pro-rata allocation is \(100 \times (100 / 2000) = 100 \times 0.05 = 5\) shares.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the winner's curse in the context of limit order execution?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="MS2L1q5"> Limit orders fill with higher probability when counterparties possess adverse private information</label>
+              <label class="option"><input type="radio" name="MS2L1q5"> Winning auction bids always exceed fundamental asset valuations</label>
+              <label class="option"><input type="radio" name="MS2L1q5"> Execution fees exceed the quoted bid-ask spread</label>
+            </fieldset>
+            <div class="explain" hidden><p>The winner's curse reflects the adverse conditioning that fills occur disproportionately when informed traders trade aggressively against resting quotes.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="2" data-tolerance="0.01">
+            <p class="prompt">In a FIFO queue without cancellations, if market orders arrive at rate \(\mu = 5.0\) orders per second (each of size 1 lot), what is the expected time to fill (seconds) for an order at position \(k = 10\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\E[T_k] = k / \mu = 10 / 5.0 = 2.0\) seconds.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How do cancellations behind your queue position (\(j > k\)) affect your execution priority?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="MS2L1q7"> They reduce total queue depth but leave your queue position \(k\) completely unchanged</label>
+              <label class="option"><input type="radio" name="MS2L1q7"> They increase your fill probability by advancing your queue position</label>
+              <label class="option"><input type="radio" name="MS2L1q7"> They cancel your order automatically</label>
+            </fieldset>
+            <div class="explain" hidden><p>Cancellations behind your order reduce total queue depth but do not change the number of shares resting ahead of you.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is queue position significantly more valuable in tick-constrained stocks than tick-unconstrained stocks?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="MS2L1q8"> Minimum tick rules prevent traders from stepping ahead via price improvement, making time priority the sole allocation mechanism</label>
+              <label class="option"><input type="radio" name="MS2L1q8"> Tick-constrained stocks trade with wider percentage bid-ask spreads</label>
+              <label class="option"><input type="radio" name="MS2L1q8"> Market orders are prohibited in tick-constrained stocks</label>
+            </fieldset>
+            <div class="explain" hidden><p>When the spread is locked at 1 cent, traders cannot improve price, making queue position in the 1-cent queue the primary determinant of execution.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <ol data-references>
+          <li data-cite="cont2010stochastic">Cont, Stoikov &amp; Talreja (2010) · A stochastic model for order book dynamics. <em>Operations Research</em> 58(3), 549–563.</li>
+          <li data-cite="glosten1985bid">Glosten &amp; Milgrom (1985) · Bid, ask and transaction prices in a specialist market with heterogeneously informed traders. <em>Journal of Financial Economics</em> 14(1), 71–100.</li>
+          <li data-cite="harris2002trading">Harris (2002) · <em>Trading and Exchanges: Market Microstructure for Practitioners</em>. Oxford University Press.</li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="index.html"><span class="dir">Module</span>MS2 overview</a>
+        <a class="next" href="L02.html"><span class="dir">Next</span>L02 · LOB Dynamics</a>
+      </nav>
+    </main>
+  </div>
+</body>
+</html>
