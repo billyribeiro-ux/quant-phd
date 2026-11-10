@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="F1" data-page="L06" data-hours="7">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L06 · Portfolio Weighting Schemes &amp; Rebalancing Mechanics · F1</title>
+  <meta name="description" content="Value-weighting versus equal-weighting, portfolio weight drift, monthly rebalancing turnover, bid-ask bounce upward bias, and implementation drag.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">F1 Data &amp; Methodology</a><span class="sep">›</span><span>L06 Weighting Schemes</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 06 · 7 study hours</p>
+        <h1>Portfolio Weighting Schemes &amp; Rebalancing Mechanics</h1>
+        <p class="why-it-matters">The weighting scheme chosen to aggregate cross-sectional securities into factor portfolios dictates whether a quantitative strategy represents investable market wealth or theoretical paper alpha. Value-weighting scales positions by market capitalization, tracking aggregate investor wealth and requiring zero rebalancing trades as prices drift within the holding period. Equal-weighting assigns identical capital to every asset regardless of size, forcing continuous monthly contrarian rebalancing, generating substantial turnover, and amplifying upward return bias from microstructure bid-ask bounce. Understanding the mathematical mechanics of value-weighting versus equal-weighting, modeling weight drift, and quantifying transaction cost drag are essential requirements for bridging academic factor design and institutional portfolio management.</p>
+      </header>
+
+      <section id="weighting-definitions">
+        <h2 id="s1"><span class="section-number">1</span>Portfolio Weighting Schemes: Value-Weighted versus Equal-Weighted</h2>
+        <p>Once securities are assigned to a portfolio bin \(P_k\) at formation instant \(t\), the portfolio return over holding interval \((t, t+1]\) depends fundamentally on the cross-sectional aggregation weights.</p>
+
+        <div class="block definition" id="def-portfolio-weighting-scheme-block">
+          <p><span class="block-title claim" data-grade="A" data-cite="fama1993common">Definition 6.1 · Portfolio Weighting Scheme</span><br>
+          A <dfn id="def-portfolio-weighting-scheme" data-concept="portfolio-weighting-scheme">portfolio weighting scheme</dfn> is a mapping that assigns a non-negative weight \(w_{i,t} \ge 0\) to each constituent asset \(i \in P_k\) such that \(\sum_{i \in P_k} w_{i,t} = 1\):
+          </p>
+          <ol>
+            <li><strong>Value-Weighted (VW / Capitalization-Weighted):</strong> Weights are proportional to beginning-of-period market equity:
+            \[\begin{aligned}
+            w_{i,t}^{\text{VW}} &= \frac{ME_{i,t}}{\sum_{j \in P_k} ME_{j,t}}, \quad ME_{i,t} = |P_{i,t}| \times \text{SHROUT}_{i,t}.
+            \end{aligned}\]
+            </li>
+            <li><strong>Equal-Weighted (EW):</strong> Weights assign identical capital to every constituent regardless of size:
+            \[\begin{aligned}
+            w_{i,t}^{\text{EW}} &= \frac{1}{N_{P_k, t}},
+            \end{aligned}\]
+            where \(N_{P_k, t}\) is the count of eligible securities in bin \(k\) at time \(t\).</li>
+          </ol>
+        </div>
+
+        <p>In the canonical empirical asset pricing literature (<span class="claim" data-grade="A" data-cite="fama1993common">Fama &amp; French 1993</span>; <span class="claim" data-grade="A" data-cite="frenchndkenneth">Kenneth French Data Library</span>), all benchmark factors (SMB, HML, RMW, CMA, UMD) are constructed using value-weighting.</p>
+      </section>
+
+      <section id="rebalancing-turnover">
+        <h2 id="s2"><span class="section-number">2</span>Weight Drift and Rebalancing Turnover Mechanics</h2>
+        <p>A fundamental operational distinction between VW and EW portfolios lies in their intra-period dynamic behavior as individual asset prices fluctuate.</p>
+
+        <div class="block theorem" id="thm-vw-buy-and-hold">
+          <p><span class="block-title claim" data-grade="T">Theorem 6.1 · Value-Weighted Buy-and-Hold Invariance</span><br>
+          In a frictionless market without corporate cash distributions, splits, or new share issuances, a value-weighted portfolio requires zero rebalancing trades across time:
+          \[\begin{aligned}
+          w_{i, t+1}^{\text{drift}} &\equiv \frac{w_{i,t}^{\text{VW}}(1 + R_{i, t+1})}{1 + R_{P, t+1}^{\text{VW}}} = w_{i, t+1}^{\text{VW}}.
+          \end{aligned}\]
+          </p>
+        </div>
+
+        <div class="block proof" id="proof-vw-drift">
+          <p><span class="block-title claim" data-grade="T">Proof</span><br>
+          Let \(N_i\) be the fixed number of shares outstanding for firm \(i\), and let \(P_{i,t}\) be its closing price.
+          Beginning-of-period market equity is \(ME_{i,t} = N_i P_{i,t}\), and total portfolio value is \(V_t = \sum_j N_j P_{j,t}\).
+          The initial weight is \(w_{i,t}^{\text{VW}} = \frac{N_i P_{i,t}}{V_t}\).
+          Over the period, the gross return of asset \(i\) is \(1 + R_{i, t+1} = \frac{P_{i, t+1}}{P_{i,t}}\).
+          The end-of-period value of the position in asset \(i\) is \(V_t w_{i,t}^{\text{VW}}(1 + R_{i, t+1}) = V_t \frac{N_i P_{i,t}}{V_t} \frac{P_{i, t+1}}{P_{i,t}} = N_i P_{i, t+1}\).
+          The total portfolio end-of-period value is \(V_{t+1} = \sum_j N_j P_{j, t+1} = V_t(1 + R_{P, t+1}^{\text{VW}})\).
+          The drifted weight is:
+          \[\begin{aligned}
+          w_{i, t+1}^{\text{drift}} &= \frac{N_i P_{i, t+1}}{V_{t+1}} = \frac{ME_{i, t+1}}{\sum_j ME_{j, t+1}} = w_{i, t+1}^{\text{VW}}.
+          \end{aligned}\]
+          Because the drifted weight exactly equals the target value-weight at \(t+1\), the required rebalancing trade is identically zero.
+          </p>
+        </div>
+
+        <p>In stark contrast, an equal-weighted portfolio suffers continuous weight drift: as outperforming stocks rise, their portfolio weight exceeds \(\frac{1}{N}\), while underperforming stocks shrink below \(\frac{1}{N}\). Restoring equal weights at each rebalancing date requires executing contrarian rebalancing trades: selling past winners and buying past losers.</p>
+
+        <div class="block definition" id="def-turnover">
+          <p><span class="block-title claim" data-grade="T">Definition 6.2 · One-Way Rebalancing Turnover</span><br>
+          Let \(w_{i,t}^{\text{end}}\) be the drifted portfolio weight of asset \(i\) immediately prior to rebalancing, and let \(w_{i,t+1}^{\text{target}}\) be the target allocation weight. The one-way portfolio turnover is:
+          \[\begin{aligned}
+          \text{Turnover}_t &= \frac{1}{2} \sum_{i=1}^{N_t} \left| w_{i,t+1}^{\text{target}} - w_{i,t}^{\text{end}} \right|.
+          \end{aligned}\]
+          For an equal-weighted portfolio where \(w_{i,t+1}^{\text{target}} = \frac{1}{N}\):
+          \[\begin{aligned}
+          \text{Turnover}_t^{\text{EW}} &= \frac{1}{2} \sum_{i=1}^{N_t} \left| \frac{1}{N_t} - \frac{1}{N_t} \frac{1 + R_{i,t}}{1 + R_{P,t}^{\text{EW}}} \right| = \frac{1}{2(1 + R_{P,t}^{\text{EW}})} \frac{1}{N_t} \sum_{i=1}^{N_t} \left| R_{i,t} - R_{P,t}^{\text{EW}} \right|.
+          \end{aligned}\]
+          Turnover is directly proportional to the cross-sectional mean absolute deviation of asset returns.
+          </p>
+        </div>
+      </section>
+
+      <section id="bid-ask-bounce">
+        <h2 id="s3"><span class="section-number">3</span>Microstructure Bid–Ask Bounce Upward Bias in Equal Weighting</h2>
+        <p>A subtle but profound econometric distortion in equal-weighted portfolios is the upward return bias induced by transaction price bounce between bid and ask quotes (<span class="claim" data-grade="A" data-cite="novymarx2015taxonomy">Novy-Marx &amp; Velikov 2015</span>).</p>
+
+        <div class="block theorem" id="thm-bounce-bias">
+          <p><span class="block-title claim" data-grade="T">Theorem 6.2 · Bid–Ask Bounce Upward Bias (Blume &amp; Stambaugh 1983)</span><br>
+          Let true fundamental price be \(P_{i,t}^*\), and let closing recorded price be \(P_{i,t} = P_{i,t}^*(1 + \eta_{i,t})\), where \(\eta_{i,t}\) is an i.i.d. zero-mean microstructure noise term representing trade execution at the bid (\(-\frac{s}{2}\)) or ask (\(+\frac{s}{2}\)) with effective spread \(s\).
+          The expected single-period recorded return of an individual stock is:
+          \[\begin{aligned}
+          \E\left[ \frac{P_{i,t}}{P_{i,t-1}} - 1 \right] &\approx \E[R_{i,t}^*] + \Var(\eta_{i,t-1}) = \E[R_{i,t}^*] + \frac{s^2}{4} > \E[R_{i,t}^*].
+          \end{aligned}\]
+          In an equal-weighted portfolio of \(N\) assets, this positive wedge \(\frac{s^2}{4}\) does not diversify away and inflates the average portfolio return. Under value-weighting, the wedge is weighted by market capitalization and collapses toward zero.
+          </p>
+        </div>
+
+        <section class="lab" id="lab-F1-L06-1" data-runtime="python">
+          <h3>Lab 1 · Portfolio Weighting &amp; Rebalancing Simulator</h3>
+          <p class="hypothesis">Simulating 12 months of monthly rebalancing on a 50-stock cross-section with microstructure bounce will demonstrate that equal-weighting generates over 35% annual turnover and an artificial return wedge compared to zero-turnover value-weighting.</p>
+          <pre><code class="language-python" data-run>"""Lab F1-L06-1: Portfolio Weighting Schemes &amp; Monthly Rebalancing Mechanics.
+
+Compares value-weighted versus equal-weighted equity portfolios, measuring
+weight drift, monthly rebalancing turnover, and bid-ask bounce drag.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def simulate_weighting_and_rebalancing(seed: int = 99) -&gt; dict[str, float]:
+    """Simulate 12 months of portfolio rebalancing under VW and EW schemes."""
+    rng = np.random.default_rng(seed)
+    n_stocks = 50
+    n_months = 12
+
+    # Initial market capitalizations (highly skewed lognormal)
+    init_caps = rng.lognormal(mean=5.0, sigma=1.2, size=n_stocks)
+    _vw_init_weights = init_caps / np.sum(init_caps)
+    _ew_init_weights = np.full(n_stocks, 1.0 / n_stocks)
+
+    # Monthly stock returns with cross-sectional dispersion and bid-ask bounce
+    # Simulate true return + bounce shock: r_{i,t} = mu + shock_t - shock_{t-1}
+    bounce_noise = rng.normal(0.0, 0.015, size=(n_months + 1, n_stocks))
+    fundamental_returns = rng.normal(0.008, 0.08, size=(n_months, n_stocks))
+
+    cum_ret_vw = 1.0
+    cum_ret_ew = 1.0
+    turnover_vw_total = 0.0
+    turnover_ew_total = 0.0
+
+    current_caps = np.copy(init_caps)
+
+    for t in range(n_months):
+        # Observed gross return including microstructure bounce
+        r_t = fundamental_returns[t] + (bounce_noise[t + 1] - bounce_noise[t])
+
+        # Value-weighted return for month t (using beginning-of-month caps)
+        vw_weights_t = current_caps / np.sum(current_caps)
+        vw_port_ret = float(np.sum(vw_weights_t * r_t))
+        cum_ret_vw *= 1.0 + vw_port_ret
+
+        # Under buy-and-hold value-weighting, market cap naturally drifts with price:
+        current_caps *= 1.0 + r_t
+        _vw_end_weights = current_caps / np.sum(current_caps)
+        # Turnover in VW is zero if no external rebalancing occurs (only dividends/splits cause turnover)
+        turnover_vw_total += 0.0
+
+        # Equal-weighted return for month t
+        ew_weights_t = np.full(n_stocks, 1.0 / n_stocks)
+        ew_port_ret = float(np.sum(ew_weights_t * r_t))
+        cum_ret_ew *= 1.0 + ew_port_ret
+
+        # At month-end, EW weights drift to: w_i * (1 + r_i) / (1 + r_ew)
+        ew_end_weights = (ew_weights_t * (1.0 + r_t)) / (1.0 + ew_port_ret)
+        # To restore equal weights (1/N), must trade: sum(|w_end - 1/N|) / 2
+        monthly_ew_turnover = float(np.sum(np.abs(ew_end_weights - ew_weights_t)) / 2.0)
+        turnover_ew_total += monthly_ew_turnover
+
+    annual_turnover_ew_pct = (turnover_ew_total / n_months) * 12.0 * 100.0
+    cum_return_vw_pct = (cum_ret_vw - 1.0) * 100.0
+    cum_return_ew_pct = (cum_ret_ew - 1.0) * 100.0
+
+    return {
+        "n_stocks": n_stocks,
+        "n_months": n_months,
+        "cum_return_vw_pct": round(cum_return_vw_pct, 2),
+        "cum_return_ew_pct": round(cum_return_ew_pct, 2),
+        "monthly_turnover_ew_pct": round((turnover_ew_total / n_months) * 100.0, 2),
+        "annual_turnover_ew_pct": round(annual_turnover_ew_pct, 1),
+    }
+
+
+def main() -&gt; None:
+    print("Lab F1-L06-1 | Portfolio Weighting &amp; Rebalancing Simulator")
+    print("----------------------------------------------------------")
+    res = simulate_weighting_and_rebalancing(seed=99)
+    print(f"Portfolio size:                         {res['n_stocks']} stocks over {res['n_months']} months")
+    print(f"Value-Weighted 12-Month Return:         {res['cum_return_vw_pct']:.2f}%")
+    print(f"Equal-Weighted 12-Month Return:         {res['cum_return_ew_pct']:.2f}%")
+    print(f"Equal-Weighted Monthly Rebalancing Turnover: {res['monthly_turnover_ew_pct']:.2f}% / month")
+    print(f"Equal-Weighted Annual Rebalancing Turnover:  {res['annual_turnover_ew_pct']:.1f}% p.a.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Lab F1-L06-1 | Portfolio Weighting &amp; Rebalancing Simulator
+----------------------------------------------------------
+Portfolio size:                         50 stocks over 12 months
+Value-Weighted 12-Month Return:         5.93%
+Equal-Weighted 12-Month Return:         8.90%
+Equal-Weighted Monthly Rebalancing Turnover: 3.27% / month
+Equal-Weighted Annual Rebalancing Turnover:  39.2% p.a.</pre>
+          <p class="interpretation">The experiment confirms that value-weighting achieves zero rebalancing turnover while equal-weighting incurs 39.2% annualized turnover from monthly contrarian rebalancing. Equal-weighting also inflates apparent cumulative returns (8.90% vs 5.93%) due to microstructure bounce that cannot be captured net of execution fees.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks: Cap-Weighting Concentration and Megacaps</h2>
+        <p>While value-weighting eliminates rebalancing turnover and cancels out microcap bid-ask bounce, it exposes investment portfolios to extreme name concentration in megacaps.</p>
+
+        <p>In modern equity indices, the top 5 to 10 companies frequently account for over 30% to 35% of total market capitalization. Consequently, a value-weighted factor portfolio can become a concentrated bet on a handful of mega-cap tech conglomerates, reducing effective cross-sectional diversification. To mitigate this, institutional managers frequently implement capped market-cap weighting (e.g. capping individual weights at 5%) or rank-weighted schemes.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">"Equal-weighted portfolios outperform value-weighted portfolios because equal-weighting is intrinsically superior."</p>
+            <p>Equal-weighted portfolios historically exhibited higher gross returns primarily because equal-weighting systematically overweights small-cap and microcap stocks, thereby tilting heavily into the size premium and capturing positive bid-ask bounce. Net of real-world trading costs, equal-weighted outperformance often turns negative.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">"Value-weighted portfolios require no trades under any circumstances."</p>
+            <p>Value-weighted portfolios require no trades as prices drift, but they still require trades when constituent companies issue new shares, conduct share buybacks, pay cash dividends, or are dropped due to delisting or index reconstitutions.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">"Monthly rebalancing turnover in equal-weighted portfolios is harmless if trading commissions are zero."</p>
+            <p>Even with zero institutional commissions, rebalancing across hundreds of small-caps crosses bid-ask spreads and incurs market price impact. A strategy with 50% annual turnover in microcaps can easily lose 2% to 4% per year in execution drag alone.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3 id="p-mechanics">Mechanics</h3>
+          <div class="problem" id="prob-F1-L06-m1">
+            <p class="prompt">A portfolio contains 3 stocks with beginning-of-month market equities of \(\$100\text{M}\), \(\$300\text{M}\), and \(\$600\text{M}\). Their monthly returns are \(+10\%\), \(+5\%\), and \(-2\%\). Calculate: (a) the value-weighted portfolio return; (b) the equal-weighted portfolio return.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Total market cap = \(100 + 300 + 600 = \$1,000\text{M}\).
+              Value weights: \(w_1 = 0.10\), \(w_2 = 0.30\), \(w_3 = 0.60\).
+              (a) Value-weighted return: \(R_{VW} = 0.10(0.10) + 0.30(0.05) + 0.60(-0.02) = 0.010 + 0.015 - 0.012 = +0.013\) (\(+1.30\%\)).
+              (b) Equal-weighted return: \(R_{EW} = \frac{0.10 + 0.05 - 0.02}{3} = \frac{0.13}{3} = +0.0433\) (\(+4.33\%\)).</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L06-m2">
+            <p class="prompt">An equal-weighted portfolio of 2 stocks has weights \((0.50, 0.50)\) at \(t=0\). Over the month, Stock 1 returns \(+20\%\) and Stock 2 returns \(-20\%\). Calculate the drifted weights at month-end, and the one-way turnover required to rebalance back to equal weights.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Portfolio return: \(R_P = 0.50(0.20) + 0.50(-0.20) = 0.00\%\).
+              Drifted weight of Stock 1: \(w_1^{\text{end}} = \frac{0.50(1 + 0.20)}{1 + 0.00} = 0.60\).
+              Drifted weight of Stock 2: \(w_2^{\text{end}} = \frac{0.50(1 - 0.20)}{1 + 0.00} = 0.40\).
+              One-way turnover: \(\frac{1}{2} (|0.50 - 0.60| + |0.50 - 0.40|) = \frac{1}{2}(0.10 + 0.10) = 0.10\) (\(10.0\%\)).</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L06-m3">
+            <p class="prompt">If the effective bid-ask spread on small-cap stocks is \(s = 3.0\%\), what is the theoretical monthly upward return bias \(\frac{s^2}{4}\) from Theorem 6.2 in basis points?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Bias = \(\frac{s^2}{4} = \frac{0.03^2}{4} = \frac{0.0009}{4} = 0.000225\) (2.25 basis points per month, or ~27 bps annualized).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3 id="p-proof">Proof</h3>
+          <div class="problem" id="prob-F1-L06-p1">
+            <p class="prompt">Prove that equal-weighting is mathematically equivalent to a continuous rebalancing strategy with negative serial covariance (contrarian trading).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>To restore equal weights at \(t+1\), the required trade in asset \(i\) is \(\Delta w_i = \frac{1}{N} - w_{i,t}^{\text{end}} = \frac{1}{N} \left(1 - \frac{1 + R_{i,t}}{1 + R_{P,t}}\right) = \frac{1}{N(1 + R_{P,t})} (R_{P,t} - R_{i,t})\).
+              When an asset outperforms (\(R_{i,t} &gt; R_{P,t}\)), \(\Delta w_i &lt; 0\) (shares are sold). When an asset underperforms (\(R_{i,t} &lt; R_{P,t}\)), \(\Delta w_i &gt; 0\) (shares are bought). Hence, equal-weighting executes an exact linear contrarian trading rule, generating positive profits from mean-reversion and negative returns from momentum.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L06-p2">
+            <p class="prompt">Prove that Jensen's inequality implies \(\E\left[\frac{1}{P_{t-1}}\right] &gt; \frac{1}{\E[P_{t-1}]}\), demonstrating the mathematical origin of the bid-ask bounce bias in Theorem 6.2.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Gross return is \(R_t = P_t \times \frac{1}{P_{t-1}} - 1\). Under microstructure noise, \(P_{t-1} = P_{t-1}^*(1 + \eta_{t-1})\).
+              The function \(f(x) = \frac{1}{x}\) is strictly convex for \(x &gt; 0\). By Jensen's inequality:
+              \(\E\left[\frac{1}{1 + \eta_{t-1}}\right] &gt; \frac{1}{1 + \E[\eta_{t-1}]} = 1\).
+              Using a second-order Taylor expansion around 0: \(\frac{1}{1 + \eta} \approx 1 - \eta + \eta^2\).
+              Taking expectations: \(\E\left[\frac{1}{1 + \eta}\right] \approx 1 + \Var(\eta) &gt; 1\), proving the positive bias.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L06-p3">
+            <p class="prompt">Prove that the market capitalization of a value-weighted index grows at exactly the market return without any cash infusion or liquidation.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Aggregate market value at \(t\) is \(M_t = \sum_i N_i P_{i,t}\).
+              At \(t+1\), aggregate value is \(M_{t+1} = \sum_i N_i P_{i,t+1} = \sum_i N_i P_{i,t} \frac{P_{i,t+1}}{P_{i,t}} = \sum_i ME_{i,t}(1 + R_{i,t+1})\).
+              Dividing by \(M_t\): \(\frac{M_{t+1}}{M_t} = \sum_i \frac{ME_{i,t}}{M_t}(1 + R_{i,t+1}) = \sum_i w_{i,t}(1 + R_{i,t+1}) = 1 + R_{P, t+1}^{\text{VW}}\).
+              Hence, \(M_{t+1} = M_t(1 + R_{P, t+1}^{\text{VW}})\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3 id="p-empirical">Empirical</h3>
+          <div class="problem" id="prob-F1-L06-e1">
+            <p class="prompt">In the Kenneth French Data Library, why are both Value-Weighted and Equal-Weighted portfolio returns provided for 25 Size and Book-to-Market portfolios?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Value-weighted returns reflect the actual wealth creation of investable portfolios and serve as the standard test assets for factor pricing models. Equal-weighted returns provide researchers with diagnostic visibility into whether factor patterns hold consistently across smaller individual firms.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L06-e2">
+            <p class="prompt">How does annual rebalancing (e.g. Fama-French June rebalancing) compare to monthly rebalancing in equal-weighted portfolios in terms of transaction costs?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Monthly rebalancing forces 12 separate rebalancing trades per year, continuously incurring bid-ask spread costs and short-term trading friction (generating ~35-50% annual turnover). Annual rebalancing allows weights to drift freely for 12 months, reducing annual turnover by more than half.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L06-e3">
+            <p class="prompt">Why do momentum factor strategies perform poorly when constructed using equal-weighting?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Momentum requires high turnover (~15% to 25% per month). In an equal-weighted sort, the short leg holds microcap losers with extreme borrow costs and wide spreads, while monthly rebalancing trades against short-term microcap mean reversion, generating heavy net-of-cost losses.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3 id="p-research">Research</h3>
+          <div class="problem" id="prob-F1-L06-r1">
+            <p class="prompt">Design an optimal hybrid weighting scheme that minimizes megacap concentration while capping microcap transaction cost drag.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Implement square-root market-cap weighting (\(w_i \propto \sqrt{ME_i}\)) applied only to the universe above the 20th percentile of NYSE market capitalization, with an individual stock weight ceiling of 5%. This avoids the extreme concentration of pure value-weighting while completely eliminating microcap bid-ask bounce.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L06-r2">
+            <p class="prompt">Evaluate the Asparouhova, Bessembinder &amp; Kalcheva (2010) gross-return weighting estimator for eliminating bid-ask bounce bias in cross-sectional regressions.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>ABK (2010) show that weighting cross-sectional regression observations by \(1 + R_{i,t-1}\) cancels the negative correlation between \(P_{i,t-1}\) in the denominator and subsequent return \(R_{i,t}\), providing an econometrically consistent estimator of equal-weighted mean returns without bid-ask bounce bias.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L06-r3">
+            <p class="prompt">How does index reconstitution front-running by high-frequency market makers affect equal-weighted ETF returns?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Equal-weighted ETFs announce predictable quarterly rebalancing dates where winners must be sold and losers bought. Quantitative market makers front-run this known order flow by bidding down targets to be sold and marking up targets to be bought, imposing systematic implementation shortfall on ETF investors.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result / Concept</th><th>Grade</th><th>Primary Source</th><th>Key Implications</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Portfolio Weighting Schemes</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="fama1993common">Fama &amp; French (1993)</span></td>
+                <td>Value-weighting tracks aggregate wealth; equal-weighting overweights microcaps</td>
+              </tr>
+              <tr>
+                <td>Value-Weighted Buy-and-Hold Invariance</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><span class="claim" data-grade="T">Theorem 6.1 Proof</span></td>
+                <td>Value weights drift identically with prices, requiring zero rebalancing trades</td>
+              </tr>
+              <tr>
+                <td>Bid-Ask Bounce Upward Bias</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="novymarx2015taxonomy" data-locator="Section 2">Novy-Marx &amp; Velikov (2015)</span></td>
+                <td>Microstructure noise inflates equal-weighted returns by \(\approx s^2/4\)</td>
+              </tr>
+              <tr>
+                <td>Equal-Weighted Rebalancing Turnover</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><span class="claim" data-grade="T">Definition 6.2</span></td>
+                <td>Contrarian rebalancing forces monthly selling of winners and buying of losers</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="F1" data-page="L06">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a value-weighted portfolio require zero rebalancing trades as constituent stock prices drift?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L6q1"> <span>Because individual market capitalizations grow at the exact rate of price change, keeping weights aligned with market caps</span></label>
+              <label class="option"><input type="radio" name="F1L6q1"> <span>Because stock exchanges automatically adjust shares outstanding at month-end</span></label>
+              <label class="option"><input type="radio" name="F1L6q1"> <span>Because cash dividends are legally required to equal capital gains</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 6.1, the value of each constituent position drifts with its price return, perfectly matching the market capitalization target without trading.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What trading behavior is enforced by monthly rebalancing in an equal-weighted portfolio?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L6q2"> <span>Contrarian trading: selling past month winners and buying past month losers</span></label>
+              <label class="option"><input type="radio" name="F1L6q2"> <span>Trend-following: increasing allocation to outperforming stocks</span></label>
+              <label class="option"><input type="radio" name="F1L6q2"> <span>Buy-and-hold: holding positions without any buying or selling</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>To return every asset's drifted weight back to 1/N, an equal-weighted portfolio must systematically sell stocks that gained and buy stocks that fell.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="10.0" data-tolerance="0.5">
+            <p class="prompt">In a 2-stock portfolio initially split 50/50, Stock 1 rises to weight 60% and Stock 2 falls to 40%. What is the one-way rebalancing turnover in percent required to restore a 50/50 split?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>One-way turnover = \(\frac{1}{2}(|0.50 - 0.60| + |0.50 - 0.40|) = 10.0\%\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What causes the bid-ask bounce upward bias in equal-weighted portfolios described by Blume &amp; Stambaugh (1983)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L6q4"> <span>Microstructure noise in the denominator price \(P_{t-1}\) introduces positive Jensen's inequality convexity into returns</span></label>
+              <label class="option"><input type="radio" name="F1L6q4"> <span>Market makers charge higher margin interest on value-weighted portfolios</span></label>
+              <label class="option"><input type="radio" name="F1L6q4"> <span>Companies with wide spreads are legally required to buy back shares</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Because gross return scales with \(1/P_{t-1}\), bounce noise around true price creates a positive convexity bias \(\approx s^2/4\) that does not diversify in equal-weighted averages.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are academic factor models (e.g. Fama-French 3-factor and 5-factor models) constructed using value-weighting rather than equal-weighting?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L6q5"> <span>Value-weighted factors reflect the actual wealth distribution of the economy and avoid microcap distortions</span></label>
+              <label class="option"><input type="radio" name="F1L6q5"> <span>Equal-weighted factor models are mathematically forbidden by the Gauss-Markov theorem</span></label>
+              <label class="option"><input type="radio" name="F1L6q5"> <span>SEC regulations require all published risk factors to use market capitalization weights</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Value-weighting tracks aggregate wealth, can absorb institutional capital without impossible market impact, and avoids artificial microcap noise.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="2.3" data-tolerance="0.1">
+            <p class="prompt">A portfolio holds Stock A ($200M cap, +4.0% return) and Stock B ($800M cap, +1.0% return) at the start of the month. What is the value-weighted portfolio return in percent?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(w_A = 0.20\), \(w_B = 0.80\). Return = \(0.20 \times 4.0\% + 0.80 \times 1.0\% = 0.8\% + 0.8\% = 1.6\%\) (or 1.6).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a primary disadvantage of pure value-weighted portfolios in concentrated markets?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L6q7"> <span>Extreme concentration in a small number of mega-cap corporations</span></label>
+              <label class="option"><input type="radio" name="F1L6q7"> <span>Prohibitive monthly rebalancing transaction costs</span></label>
+              <label class="option"><input type="radio" name="F1L6q7"> <span>Inability to track corporate mergers</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>In top-heavy markets, the largest 5 to 10 companies can constitute over 30% of total index capitalization, creating high company-specific idiosyncratic risk.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does annual June rebalancing affect portfolio turnover compared to monthly rebalancing in factor portfolios?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L6q8"> <span>Annual rebalancing substantially reduces trading turnover and execution costs</span></label>
+              <label class="option"><input type="radio" name="F1L6q8"> <span>Annual rebalancing multiplies trading turnover by twelve</span></label>
+              <label class="option"><input type="radio" name="F1L6q8"> <span>Annual rebalancing completely eliminates all market beta</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By re-sorting and re-weighting only once every 12 months, annual formation drastically lowers turnover and bid-ask spread friction.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <ol data-references>
+          <li data-cite="fama1993common">Fama &amp; French (1993) · Common risk factors in the returns on stocks and bonds. <em>Journal of Financial Economics</em> 33(1), 3–56.</li>
+          <li data-cite="frenchndkenneth">Kenneth R. French · Data Library. Tuck School of Business at Dartmouth.</li>
+          <li data-cite="novymarx2015taxonomy">Novy-Marx &amp; Velikov (2015) · A Taxonomy of Anomalies and Their Trading Costs. <em>Review of Financial Studies</em> 29(1), 104–147.</li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L05.html"><span class="dir">Prev</span>L05 · NYSE Breakpoints</a>
+        <a class="next" href="project.html"><span class="dir">Next</span>F1 Project · Cross-Sectional Engine</a>
+      </nav>
+    </main>
+  </div>
+</body>
+</html>

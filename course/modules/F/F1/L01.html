@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="F1" data-page="L01" data-hours="7">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01 · CRSP &amp; Compustat Data Structures &amp; Point-in-Time Merging · F1</title>
+  <meta name="description" content="CRSP and Compustat database architecture, permanent security identifiers, CCM link tables, point-in-time discipline, and June portfolio formation rules.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">F1 Data &amp; Methodology</a><span class="sep">›</span><span>L01 CRSP &amp; Compustat</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 01 · 7 study hours</p>
+        <h1>CRSP &amp; Compustat Data Structures &amp; Point-in-Time Merging</h1>
+        <p class="why-it-matters">Empirical cross-sectional asset pricing is only as rigorous as the underlying security data architecture. Research databases combine Center for Research in Security Prices (CRSP) equity market files with Compustat corporate balance sheet filings through bitemporal link tables. A failure to understand security identifiers, exchange share codes, reporting dates, or filing lags introduces devastating lookahead and restatement biases that invalidate backtests. Mastering the structure of CRSP and Compustat, implementing point-in-time matching, and enforcing annual June portfolio formation conventions are prerequisite disciplines for reproducible quantitative asset pricing and factor model engineering.</p>
+      </header>
+
+      <section id="database-architecture">
+        <h2 id="s1"><span class="section-number">1</span>The Dual Architecture: CRSP and Compustat</h2>
+        <p>Quantitative equity research in the US cross-section relies on two foundational datasets: the Center for Research in Security Prices (<span class="claim" data-grade="A" data-cite="chen2022open">CRSP</span>) at the University of Chicago, which tracks market equity prices, returns, and shares outstanding, and S&amp;P Global <span class="claim" data-grade="A" data-cite="chen2022open">Compustat</span>, which records corporate balance sheets, income statements, and cash flows.</p>
+
+        <div class="block definition" id="def-crsp-compustat-structure-block">
+          <p><span class="block-title claim" data-grade="T">Definition 1.1 · CRSP and Compustat Data Structure</span><br>
+          <dfn id="def-crsp-compustat-structure" data-concept="crsp-compustat-structure">CRSP and Compustat data structure</dfn> refers to the bitemporal, relational schema uniting daily and monthly traded market securities with quarterly and annual accounting filings:
+          </p>
+          <ol>
+            <li><strong>CRSP Hierarchy:</strong> Organizes securities by permanent issue identifier (<code>PERMNO</code>) and permanent company identifier (<code>PERMCO</code>), alongside historical 8-digit CUSIPs, exchange codes (<code>HEXCD</code>), and share codes (<code>SHRCD</code>).</li>
+            <li><strong>Compustat Hierarchy:</strong> Organizes corporate entities by Global Company Key (<code>GVKEY</code>), reporting accounting items by fiscal year (<code>FYEAR</code>), fiscal period (<code>DATADATE</code>), and filing vintage.</li>
+            <li><strong>CRSP/Compustat Merged (CCM):</strong> A point-in-time linkage table mapping <code>GVKEY</code> to <code>PERMNO</code> through bitemporal validity intervals \([\text{LINKDT}, \text{LINKENDDT}]\).</li>
+          </ol>
+        </div>
+
+        <p>A fatal pitfall in financial data engineering is linking companies across time using ticker symbols or current CUSIPs. As established in <a class="concept" data-concept="bitemporal-data-model" href="../../../concepts.html#bitemporal-data-model">bitemporal data models</a> (QR1), ticker symbols are non-unique and frequently recycled across unrelated corporate entities following bankruptcies or mergers. Furthermore, CUSIP identifiers change across major corporate recapitalizations, reverse splits, or state incorporations. In CRSP, <code>PERMNO</code> uniquely tracks a specific equity issue through all ticker transitions, while <code>PERMCO</code> tracks the corporate issuing entity.</p>
+      </section>
+
+      <section id="sample-filters">
+        <h2 id="s2"><span class="section-number">2</span>Security Universe Filtering: Exchanges and Share Codes</h2>
+        <p>Standard asset pricing literature (<span class="claim" data-grade="A" data-cite="fama1992crosssection fama1993common">Fama &amp; French 1992, 1993</span>; <span class="claim" data-grade="A" data-cite="chen2022open">Chen &amp; Zimmermann 2022</span>) restricts the empirical cross-section to ordinary common equities traded on major public exchanges. Failing to filter out exotic vehicles introduces severe pricing noise and unhedged legal rights into factor portfolios.</p>
+
+        <div class="block remark" id="rem-filters">
+          <p class="block-title">Remark 1.1 · Canonical Security Inclusion Criteria</p>
+          <p>The standard empirical equity universe is formed by applying two strict filters:</p>
+          <ul>
+            <li><strong>Share Code (<code>SHRCD</code>):</strong> Must be <code>10</code> or <code>11</code> (ordinary common shares of domestic operating companies). This filters out American Depositary Receipts (ADRs, <code>SHRCD 30-39</code>), Real Estate Investment Trusts (REITs, <code>SHRCD 18</code>), closed-end funds (<code>SHRCD 14-15</code>), units, and shares of beneficial interest.</li>
+            <li><strong>Exchange Code (<code>HEXCD</code>):</strong> Must be <code>1</code> (New York Stock Exchange, NYSE), <code>2</code> (American Stock Exchange, AMEX), or <code>3</code> (NASDAQ Stock Market, admitted July 1972). Over-the-counter (OTC) Bulletin Board and Pink Sheet listings are excluded due to stale quotes and extreme illiquidity.</li>
+          </ul>
+        </div>
+
+        <p>Market capitalization (Market Equity, \(ME\)) is defined as the absolute value of closing price multiplied by shares outstanding:
+        \[\begin{aligned}
+        ME_{i,t} &= |P_{i,t}| \times \text{SHROUT}_{i,t}.
+        \end{aligned}\]
+        In CRSP, a negative price indicates that no trade occurred on the final trading day of the month; the recorded magnitude represents the average of the bid and ask quotes. Using the absolute value ensures that market capitalization remains strictly positive.</p>
+      </section>
+
+      <section id="point-in-time-linking">
+        <h2 id="s3"><span class="section-number">3</span>Point-in-Time Merging and the Fama–French June Formation Rule</h2>
+        <p>A primary source of <a class="concept" data-concept="look-ahead-bias" href="../../../concepts.html#look-ahead-bias">look-ahead bias</a> in quantitative research is matching accounting variables to market prices using the fiscal period end date (<code>DATADATE</code>). Corporate financial statements are not available to the public on the final day of the fiscal quarter or fiscal year; they require weeks to months of auditing, closing, and regulatory SEC filing.</p>
+
+        <div class="block theorem" id="thm-point-in-time">
+          <p><span class="block-title claim" data-grade="T">Theorem 1.1 · Point-in-Time Availability Bounds</span><br>
+          Let \(t_{\text{fiscal}}\) be the fiscal year-end date of firm \(i\), and let \(t_{\text{file}}\) be the public dissemination timestamp of its SEC Form 10-K. An empirical portfolio formation rule implemented at calendar date \(t_{\text{form}}\) is free from accounting look-ahead bias if and only if:
+          \[\begin{aligned}
+          t_{\text{form}} &\ge \max_{i} t_{\text{file}, i}.
+          \end{aligned}\]
+          </p>
+        </div>
+
+        <div class="block proof" id="proof-pit">
+          <p><span class="block-title claim" data-grade="T">Proof</span><br>
+          Let \(\mathcal{F}_t\) denote the market filtration (information set) at calendar date \(t\). Portfolio weights \(w_t\) must be \(\mathcal{F}_t\)-measurable. The accounting signal \(X_i(t_{\text{fiscal}})\) enters \(\mathcal{F}_t\) at the filing instant \(t_{\text{file}, i}\), such that \(X_i \in \mathcal{F}_t \iff t \ge t_{\text{file}, i}\). If \(t_{\text{form}} &lt; t_{\text{file}, i}\) for any firm \(i\), \(w_{t_{\text{form}}}\) depends on future unreleased information, violating measurability and inducing look-ahead bias. Setting \(t_{\text{form}} \ge \max_i t_{\text{file}, i}\) guarantees that all cross-sectional fundamentals are in \(\mathcal{F}_{t_{\text{form}}}\).
+          </p>
+        </div>
+
+        <p>To establish a uniform, robust formation protocol prior to electronic EDGAR dissemination, <span class="claim" data-grade="A" data-cite="fama1992crosssection fama1993common" data-locator="p. 430">Fama &amp; French (1992, 1993)</span> introduced the annual <strong>June portfolio formation convention</strong>:
+        Accounting data for all fiscal years ending within calendar year \(t-1\) are formed into portfolios at the end of June of calendar year \(t\). This guarantees a minimum filing lag of 6 months (for December fiscal year-ends) and up to 18 months (for January fiscal year-ends), fully absorbing the SEC's historical 90-day filing window.</p>
+
+        <div class="block definition" id="def-be-me">
+          <p><span class="block-title claim" data-grade="A" data-cite="fama1993common">Definition 1.2 · Book Equity and Book-to-Market Ratio</span><br>
+          In the Fama–French methodology, Book Equity (\(BE\)) for fiscal year \(t-1\) is computed from Compustat as:
+          \[\begin{aligned}
+          BE_{t-1} &= \text{Stockholders' Equity} + \text{Deferred Taxes (TXDITC)} - \text{Preferred Stock},
+          \end{aligned}\]
+          where Preferred Stock is chosen hierarchically as Redemption Value (<code>PSTKRV</code>), Liquidating Value (<code>PSTKL</code>), or Carrying Value (<code>PSTK</code>).
+          The Book-to-Market ratio used for portfolio formation in June of year \(t\) is:
+          \[\begin{aligned}
+          (BE/ME)_{t} &= \frac{BE_{t-1}}{ME_{\text{Dec}, t-1}},
+          \end{aligned}\]
+          where \(ME_{\text{Dec}, t-1}\) is market equity from the close of December of year \(t-1\). In contrast, the market equity used to calculate value weights in the portfolio is \(ME_{\text{June}, t}\).
+          </p>
+        </div>
+
+        <section class="lab" id="lab-F1-L01-1" data-runtime="python">
+          <h3>Lab 1 · CRSP &amp; Compustat Point-in-Time Merging Simulator</h3>
+          <p class="hypothesis">Simulating historical filing lag distributions will demonstrate that forming fundamental portfolios in January introduces pervasive look-ahead contamination, whereas the Fama-French June formation rule achieves 100% filing availability.</p>
+          <pre><code class="language-python" data-run>"""Lab F1-L01-1: CRSP &amp; Compustat Point-in-Time Merging Simulator.
+
+Demonstrates point-in-time linking discipline and Fama-French June portfolio
+formation rules to prevent look-ahead bias in cross-sectional asset pricing.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def simulate_point_in_time_merge(seed: int = 42) -&gt; dict[str, float | int]:
+    """Simulate point-in-time matching of accounting data with market prices.
+
+    Fama-French (1992, 1993) convention:
+    - Fiscal year t-1 ends in Dec (or any month of calendar year t-1).
+    - SEC 10-K filing deadline historically was 90 days after fiscal year-end.
+    - Portfolio formation occurs at the end of June of year t.
+    - Book Equity (BE) from fiscal year t-1 is matched with Market Equity (ME)
+      from December of calendar year t-1 to compute Book-to-Market (BE/ME).
+    - Portfolio weights use Market Equity from June of year t.
+    """
+    rng = np.random.default_rng(seed)
+    n_firms = 50
+
+    # Simulate true fundamentals for fiscal year t-1 (Dec 31, t-1)
+    true_book_equity = rng.lognormal(mean=5.0, sigma=0.8, size=n_firms)
+    dec_market_equity = true_book_equity * np.exp(rng.normal(0.0, 0.4, size=n_firms))
+
+    # Filing lag: number of days between fiscal year end and public filing
+    # Historical median ~75-80 days; some late filers take 120-150 days
+    filing_lags_days = rng.integers(low=45, high=160, size=n_firms)
+
+    # In June of year t (~180 days after Dec 31):
+    # Stocks with filing lag &lt;= 180 days have known accounting data by June
+    available_in_june = filing_lags_days &lt;= 181
+    pct_available_june = float(np.mean(available_in_june) * 100.0)
+
+    # Stocks with filing lag &lt;= 31 days (if formed in January, lookahead bias!)
+    available_in_jan = filing_lags_days &lt;= 31
+    pct_available_jan = float(np.mean(available_in_jan) * 100.0)
+
+    # Calculate Book-to-Market ratio using December t-1 Market Equity
+    bm_ratio = true_book_equity / dec_market_equity
+    median_bm = float(np.median(bm_ratio))
+
+    # Market Equity growth from Dec t-1 to June t
+    growth = np.exp(rng.normal(0.04, 0.12, size=n_firms))
+    june_market_equity = dec_market_equity * growth
+
+    return {
+        "n_firms": n_firms,
+        "pct_available_jan": pct_available_jan,
+        "pct_available_june": pct_available_june,
+        "median_bm": round(median_bm, 4),
+        "mean_me_dec": round(float(np.mean(dec_market_equity)), 2),
+        "mean_me_june": round(float(np.mean(june_market_equity)), 2),
+    }
+
+
+def main() -&gt; None:
+    print("Lab F1-L01-1 | CRSP &amp; Compustat Point-in-Time Merging Simulator")
+    print("----------------------------------------------------------------")
+    res = simulate_point_in_time_merge(seed=42)
+    print(f"Total simulated firms:                  {res['n_firms']}")
+    print(f"Filing availability in January (Day 31): {res['pct_available_jan']:.1f}%")
+    print(f"Filing availability in June (Day 181):    {res['pct_available_june']:.1f}%")
+    print(f"Sample median Book-to-Market ratio:     {res['median_bm']:.4f}")
+    print(f"Mean Market Equity at Dec t-1 ($M):     {res['mean_me_dec']:.2f}")
+    print(f"Mean Market Equity at June t ($M):      {res['mean_me_june']:.2f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Lab F1-L01-1 | CRSP &amp; Compustat Point-in-Time Merging Simulator
+----------------------------------------------------------------
+Total simulated firms:                  50
+Filing availability in January (Day 31): 0.0%
+Filing availability in June (Day 181):    100.0%
+Sample median Book-to-Market ratio:     1.1240
+Mean Market Equity at Dec t-1 ($M):     186.77
+Mean Market Equity at June t ($M):      199.65</pre>
+          <p class="interpretation">The simulation confirms that on January 31, 0.0% of annual 10-K filings have been publicly filed, whereas by June 30 (Day 181), 100% of firms have completed public dissemination. The June formation convention cleanly isolates cross-sectional fundamentals without look-ahead contamination.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks: Point-in-Time Restatements and Daily EDGAR</h2>
+        <p>While the annual June formation convention remains the canonical standard for benchmark factor construction (<span class="claim" data-grade="A" data-cite="frenchndkenneth">French Data Library</span>), modern quantitative trading architectures frequently require quarterly and monthly signal updates.</p>
+
+        <p>In standard Compustat point-in-time tables, subsequent restatements (e.g. revisions due to revenue recognition audits or accounting fraud) can overwrite historical values unless a point-in-time archive (such as Compustat Point-in-Time or SEC EDGAR raw XBRL) is used. As proved in <span class="claim" data-grade="A" data-cite="chen2022open" data-locator="Section 3">Chen &amp; Zimmermann (2022)</span>, using restated fundamentals instead of unrevised original as-reported numbers creates artificial backtest outperformance because future audit corrections are projected back into past signals.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">"Security ticker symbols are permanent unique identifiers suitable for joining fundamental and price tables."</p>
+            <p>Ticker symbols are repeatedly recycled by stock exchanges after bankruptcies and delistings. Joining on ticker maps modern companies to historical performance of completely different corporate entities. Researchers must join exclusively on permanent identifiers such as CRSP <code>PERMNO</code> and Compustat <code>GVKEY</code> via bitemporal link tables.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">"Forming portfolios in January using previous year fiscal accounting data reflects public real-time market information."</p>
+            <p>Companies report annual results weeks or months after fiscal year-end; in the 1970s and 1980s, 10-Ks were often filed in late March or April. January formation commits severe look-ahead bias by using financial statements that were not yet filed with the SEC.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">"Market capitalization for portfolio weighting in June should use the same December price used in the Book-to-Market denominator."</p>
+            <p>Book-to-Market uses December market equity (\(ME_{\text{Dec}, t-1}\)) to align price with the fiscal year-end date of book equity, whereas portfolio weighting must use current June market equity (\(ME_{\text{June}, t}\)) to reflect the investor's actual capital allocation at formation.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3 id="p-mechanics">Mechanics</h3>
+          <div class="problem" id="prob-F1-L01-m1">
+            <p class="prompt">A firm has 50 million common shares outstanding. On the last trading day of June, the closing price is recorded in CRSP as \(-24.50\). What is the firm's Market Equity (ME) in millions of dollars, and what does the negative price sign signify?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In CRSP, a negative price signifies that no trade took place on the closing day; the recorded magnitude represents the bid-ask midpoint. Market Equity is computed using the absolute value: \(ME = |-24.50| \times 50 = \$1,225.0\) million.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L01-m2">
+            <p class="prompt">A researcher filters CRSP for ordinary common domestic equities. Which share codes (<code>SHRCD</code>) and exchange codes (<code>HEXCD</code>) must be retained?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The researcher must filter for <code>SHRCD</code> \(\in \{10, 11\}\) to isolate ordinary common domestic shares (excluding REITs, ADRs, and closed-end funds) and <code>HEXCD</code> \(\in \{1, 2, 3\}\) to restrict to NYSE, AMEX, and NASDAQ.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L01-m3">
+            <p class="prompt">Compustat reports stockholders' equity of \(\$800\text{M}\), deferred taxes (<code>TXDITC</code>) of \(\$50\text{M}\), and preferred stock redemption value of \(\$120\text{M}\). What is Fama-French Book Equity (\(BE\))?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Applying the canonical formula: \(BE = \text{Stockholders' Equity} + \text{TXDITC} - \text{Preferred Stock} = 800 + 50 - 120 = \$730\) million.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3 id="p-proof">Proof</h3>
+          <div class="problem" id="prob-F1-L01-p1">
+            <p class="prompt">Prove that scaling Book Equity \(BE_{t-1}\) by June market equity \(ME_{\text{June}, t}\) instead of December market equity \(ME_{\text{Dec}, t-1}\) contaminates the value factor with past 6-month price momentum.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Decompose the log ratio \(\ln(BE_{t-1}/ME_{t,\text{June}}) = \ln(BE_{t-1}/ME_{t-1,\text{Dec}}) - \ln(ME_{t,\text{June}}/ME_{t-1,\text{Dec}})\). The second term is approximately the stock's 6-month return from January to June. Consequently, sorting on \(BE/ME_{\text{June}}\) is mathematically identical to sorting on fundamental value minus recent price momentum, conflating value and momentum.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L01-p2">
+            <p class="prompt">Formally prove why conditioning portfolio formation on LINKTYPE = 'LC' or 'LU' prevents spurious cross-sectional observations in CRSP-Compustat merges.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The CCM link table assigns link type codes: 'LC' denotes research-validated primary links between a Compustat GVKEY and CRSP PERMNO, while 'LU' denotes unresearched links matching established CUSIP history. Other link types ('NR', 'NU', 'LD') represent duplicate classes, non-equity securities, or severed links. Restricting to 'LC' and 'LU' ensures a mathematically bijective mapping between firm fundamentals and market returns.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L01-p3">
+            <p class="prompt">Prove that an investor who rebalances portfolio weights at the end of each month according to market capitalization executes zero net buy/sell trades in the absence of corporate actions.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let firm \(i\) have shares \(N_i\) and price \(P_{i,t}\). Its market equity is \(ME_{i,t} = N_i P_{i,t}\) and portfolio weight is \(w_{i,t} = \frac{N_i P_{i,t}}{\sum_j N_j P_{j,t}}\). At time \(t+1\), the value of the holding grows to \(N_i P_{i,t+1}\). The aggregate portfolio value grows to \(\sum_j N_j P_{j,t+1}\). The new portfolio fraction held is exactly \(\frac{N_i P_{i,t+1}}{\sum_j N_j P_{j,t+1}} = w_{i,t+1}\). Hence, buy-and-hold value-weights drift identically with prices, requiring zero rebalancing trades.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3 id="p-empirical">Empirical</h3>
+          <div class="problem" id="prob-F1-L01-e1">
+            <p class="prompt">In an empirical sample of 1,000 firms, 80 firms have December fiscal year-ends and file their 10-K on April 15. If a backtest forms portfolios on March 31 using those statements, what fraction of the sample exhibits look-ahead bias?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Exactly 80 out of 1,000 firms (8.0% of the cross-section) will be traded using fundamental accounting data that has not yet been filed with the SEC, introducing look-ahead contamination into portfolio formation.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L01-e2">
+            <p class="prompt">A firm undergoes a 1-for-2 reverse stock split on June 15. Prior to the split, shares are 100M at \(\$10\). After the split, shares are 50M at \(\$20\). Explain why CUSIP changes but PERMNO remains unchanged in CRSP.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>CUSIP numbers are assigned by the CUSIP Service Bureau; major corporate recapitalizations such as reverse splits frequently trigger a new CUSIP issue. CRSP PERMNO was designed specifically to track the equity security permanently across all corporate reorganizations, maintaining time-series continuity.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L01-e3">
+            <p class="prompt">According to Chen &amp; Zimmermann (2022), what is the impact on anomaly replication when as-reported accounting vintages are replaced by restated historical data?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Using restated accounting data introduces artificial outperformance because accounting restatements systematically correct previous accounting errors, effectively projecting future forensic audit knowledge into historical trading signals.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3 id="p-research">Research</h3>
+          <div class="problem" id="prob-F1-L01-r1">
+            <p class="prompt">Design an automated validation pipeline to verify point-in-time integrity in an SEC EDGAR ingestion database.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>An automated pipeline logs both the filing acceptance timestamp (from SEC EDGAR headers) and the period end date. The engine enforces that no quantitative trading signal computed at calendar time \(t\) may reference an accession number whose public acceptance timestamp is strictly greater than \(t\), verified via unit tests asserting non-retroactive state transitions.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L01-r2">
+            <p class="prompt">Evaluate the trade-offs between annual June portfolio formation and monthly rolling point-in-time formation using quarterly SEC Form 10-Q filings.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Quarterly formation incorporates fundamental earnings shocks faster, capturing short-term earnings momentum. However, it significantly increases portfolio turnover, transaction costs, and bid-ask spread friction compared to the low-turnover, highly investable annual June convention.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-F1-L01-r3">
+            <p class="prompt">How does the rise of intangible assets and R&amp;D capitalization challenge the Fama-French Book Equity formula?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under US GAAP, internal research and development is expensed immediately rather than capitalized on the balance sheet, causing modern tech and healthcare firms to report artificially low book equity. Researchers adjust \(BE\) by capitalizing cumulative past R&amp;D with standard amortization schedules.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result / Concept</th><th>Grade</th><th>Primary Source</th><th>Key Implications</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>CRSP &amp; Compustat Data Structure</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><span class="claim" data-grade="T" data-cite="chen2022open">Chen &amp; Zimmermann (2022)</span></td>
+                <td>Relational bitemporal schema uniting PERMNO and GVKEY via CCM validity windows</td>
+              </tr>
+              <tr>
+                <td>Fama–French June Portfolio Formation Rule</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="fama1992crosssection fama1993common" data-locator="p. 430">Fama &amp; French (1992, 1993)</span></td>
+                <td>Enforces a 6-month lag after fiscal year-end, eliminating accounting lookahead bias</td>
+              </tr>
+              <tr>
+                <td>Point-in-Time Availability Theorem</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><span class="claim" data-grade="T">Mathematical Theorem 1.1</span></td>
+                <td>Measurability requires formation date to strictly exceed filing dissemination date</td>
+              </tr>
+              <tr>
+                <td>Book Equity (\(BE\)) Definition</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="fama1993common" data-locator="p. 8">Fama &amp; French (1993)</span></td>
+                <td>Stockholders' equity + deferred taxes - preferred stock redemption value</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="F1" data-page="L01">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What unique property distinguishes the CRSP PERMNO from a company's ticker symbol?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L1q1"> <span>PERMNO is permanently assigned to an equity issue and never recycled across companies</span></label>
+              <label class="option"><input type="radio" name="F1L1q1"> <span>PERMNO is changed automatically whenever a company conducts a stock split</span></label>
+              <label class="option"><input type="radio" name="F1L1q1"> <span>PERMNO is assigned by the SEC only after a firm files its third Form 10-K</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>PERMNO is a permanent, invariant numerical security identifier created by CRSP to track an issue through all name, ticker, and exchange changes.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under the Fama-French methodology, why is Book Equity for fiscal year \(t-1\) scaled by December market equity of year \(t-1\) to calculate Book-to-Market?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L1q2"> <span>To measure value relative to market price at the close of the fiscal accounting year, avoiding momentum contamination</span></label>
+              <label class="option"><input type="radio" name="F1L1q2"> <span>Because stock exchanges are closed during the first two quarters of the year</span></label>
+              <label class="option"><input type="radio" name="F1L1q2"> <span>Because SEC regulations prohibit using June market prices for valuation multiples</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Scaling by December market equity aligns the market price date with the fiscal year-end of book equity, preventing recent price movement from confounding value with momentum.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1800.0" data-tolerance="1.0">
+            <p class="prompt">CRSP reports closing price \(-45.00\) and shares outstanding of 40.0 million on the last trading day of the month. What is the firm's Market Equity in millions of dollars?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(ME = |-45.00| \times 40.0 = 1800.0\) million dollars.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which share code in CRSP represents ordinary common shares of domestic operating companies?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L1q4"> <span>Share codes 10 and 11</span></label>
+              <label class="option"><input type="radio" name="F1L1q4"> <span>Share codes 30 and 31</span></label>
+              <label class="option"><input type="radio" name="F1L1q4"> <span>Share code 18</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Share codes 10 and 11 designate ordinary common domestic stocks; 18 designates REITs, and 30-31 designate ADRs.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does the Fama-French June formation rule require regarding portfolio rebalancing?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L1q5"> <span>Portfolios are formed once a year at the end of June and held for twelve months until the following June</span></label>
+              <label class="option"><input type="radio" name="F1L1q5"> <span>Portfolios are rebalanced daily whenever an earnings announcement occurs</span></label>
+              <label class="option"><input type="radio" name="F1L1q5"> <span>Portfolios are re-sorted at the end of every calendar quarter</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>In the canonical Fama-French methodology, factor portfolios are formed annually at the end of June and held without re-sorting until the next June.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which link types in the CRSP/Compustat Merged (CCM) database represent verified primary links?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L1q6"> <span>LC and LU</span></label>
+              <label class="option"><input type="radio" name="F1L1q6"> <span>NR and NU</span></label>
+              <label class="option"><input type="radio" name="F1L1q6"> <span>LD and DX</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>'LC' (Link Research Complete) and 'LU' (Link Unresearched) designate reliable primary connections between Compustat GVKEY and CRSP PERMNO.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does using restated financial statement data rather than as-reported data induce hindsight bias in empirical research?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="F1L1q7"> <span>Restated data incorporates information from subsequent audit revisions that were unknown to investors at the historical formation date</span></label>
+              <label class="option"><input type="radio" name="F1L1q7"> <span>Restated data always inflates total assets by exactly ten percent</span></label>
+              <label class="option"><input type="radio" name="F1L1q7"> <span>Stock exchanges immediately halt trading on any firm that restates prior filings</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Restatements project future forensic discoveries back into historical periods, endowing backtested strategies with information impossible to possess in real time.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="6.0" data-tolerance="0.1">
+            <p class="prompt">How many months of minimum filing lag does the Fama-French June formation rule enforce for a firm with a December 31 fiscal year-end?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>From December 31 to June 30 is exactly 6 months.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <ol data-references>
+          <li data-cite="chen2022open">Chen &amp; Zimmermann (2022) · Open Source Cross-Sectional Asset Pricing. <em>Critical Finance Review</em> 11(2), 207–270.</li>
+          <li data-cite="fama1992crosssection">Fama &amp; French (1992) · The Cross-Section of Expected Stock Returns. <em>Journal of Finance</em> 47(2), 427–465.</li>
+          <li data-cite="fama1993common">Fama &amp; French (1993) · Common risk factors in the returns on stocks and bonds. <em>Journal of Financial Economics</em> 33(1), 3–56.</li>
+          <li data-cite="frenchndkenneth">Kenneth R. French · Data Library. Tuck School of Business at Dartmouth.</li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="index.html"><span class="dir">Module</span>F1 overview</a>
+        <a class="next" href="L02.html"><span class="dir">Next</span>L02 · Survivorship Bias</a>
+      </nav>
+    </main>
+  </div>
+</body>
+</html>
