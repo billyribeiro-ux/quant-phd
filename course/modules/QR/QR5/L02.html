@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR5" data-page="L02" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Value-Based RL &amp; Deep Q-Networks · QR5 L02</title>
+  <meta name="description" content="Temporal difference learning, off-policy Q-learning convergence, Deep Q-Networks (DQN), experience replay, target networks, and double-DQN overestimation bias corrections.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR5 Reinforcement Learning &amp; Control in Trading</a><span class="sep">›</span>
+      <span>L02</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 02 · 8 study hours · Part QR</p>
+        <h1>Value-Based Reinforcement Learning &amp; Deep Q-Networks</h1>
+        <p class="why-it-matters">In real financial markets, the exact transition probability kernel \(P(s' \mid s, a)\) is unknown. Value-based reinforcement learning solves the optimal trading problem directly from sampled interaction trajectories without requiring an explicit model of market dynamics. By mastering temporal difference learning, off-policy Q-learning convergence conditions, and Deep Q-Network stabilization techniques, quantitative researchers can construct adaptive execution and market-making algorithms that learn directly from tick-level order book events.</p>
+      </header>
+
+      <section id="td-learning">
+        <h2 id="s1">1. Temporal Difference Learning and Q-Learning</h2>
+        <p>Dynamic programming requires iterating over all possible successor states weighted by transition probabilities \(P(s' \mid s, a)\). Temporal difference (TD) learning substitutes expected future returns with single-step sample realizations, bootstrapping from current value estimates.</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-q-learning" data-concept="q-learning">Q-learning</dfn></p>
+          <p><strong>Q-learning</strong> is an off-policy temporal difference algorithm that estimates the optimal action-value function \(Q^*(s, a)\) independently of the behavioral policy generating exploratory transitions. Upon observing transition \((S_t, A_t, R_{t+1}, S_{t+1})\), the Q-table update rule is:</p>
+          \[
+          Q(S_t, A_t) \leftarrow Q(S_t, A_t) + \alpha_t \left[ R_{t+1} + \gamma \max_{a \in A} Q(S_{t+1}, a) - Q(S_t, A_t) \right]
+          \]
+          <p>where \(\alpha_t \in (0, 1]\) is the learning rate, and \(\delta_t = R_{t+1} + \gamma \max_a Q(S_{t+1}, a) - Q(S_t, A_t)\) is the temporal difference error.</p>
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 2.1 · Off-Policy Architecture in Electronic Trading</p>
+          <p>As demonstrated by <span class="claim" data-grade="A" data-cite="nevmyvaka2006reinforcement" data-locator="Section 3">Nevmyvaka, Feng &amp; Kearns (2006)</span>, the off-policy property is critical for institutional execution. Historical order book feeds recorded under human trader or legacy VWAP execution policies can be replayed to train an optimal policy without requiring real-time capital deployment.</p>
+        </div>
+      </section>
+
+      <section id="convergence-theory">
+        <h2 id="s2">2. Almost Sure Convergence of Tabular Q-Learning</h2>
+        <p>The convergence of Q-learning to the unique optimal action-value function \(Q^*\) rests on stochastic approximation theory under the Robbins–Monro conditions.</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T" data-cite="sutton2018reinforcement" data-locator="Section 6.5">Theorem 2.1 · Q-Learning Convergence Theorem</span>
+          <p>Let the state and action spaces \(S\) and \(A\) be finite. Assume rewards are bounded, \(|R_t| \le M\), and the learning rates \(\alpha_t(s, a)\) satisfy the Robbins–Monro conditions:</p>
+          \[
+          \sum_{t=0}^\infty \alpha_t(s, a) = \infty, \quad \sum_{t=0}^\infty \alpha_t^2(s, a) < \infty, \quad \forall (s, a) \in S \times A
+          \]
+          <p>If every state-action pair is visited infinitely often, then \(Q_t(s, a)\) converges almost surely to \(Q^*(s, a)\) as \(t \to \infty\).</p>
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof Sketch</p>
+          <p>The update rule can be written as \(Q_{t+1}(s, a) = (1 - \alpha_t) Q_t(s, a) + \alpha_t [(T Q_t)(s, a) + \omega_t]\), where \(T\) is the Bellman optimality operator on action-value functions, and \(\omega_t = R_{t+1} + \gamma \max_{a'} Q_t(S_{t+1}, a') - (T Q_t)(S_t, A_t)\) is a zero-mean martingale difference sequence: \(\E[\omega_t \mid \mathcal{F}_t] = 0\). Since \(T\) is a contraction in the supremum norm with factor \(\gamma < 1\), the Robbins–Monro conditions guarantee that variance vanishes while sufficient step size remains to reach the fixed point, establishing almost sure convergence via the Borkar–Meyn theorem.</p>
+        </div>
+      </section>
+
+      <section id="dqn-section">
+        <h2 id="s3">3. Deep Q-Networks (DQN) and the Deadly Triad</h2>
+        <p>In high-dimensional limit order books, state spaces become continuous, rendering tabular representations infeasible. A deep neural network parameterized by weights \(\theta\) approximates \(Q(s, a; \theta) \approx Q^*(s, a)\).</p>
+        <p>However, combining function approximation, bootstrapping (using \(Q\) to update \(Q\)), and off-policy training forms the <em>deadly triad</em>, which routinely induces divergent oscillations. In Deep Q-Networks, two stabilizing mechanisms prevent catastrophic divergence:</p>
+        <ul>
+          <li><strong>Experience Replay:</strong> Transitions \(e_t = (s_t, a_t, r_t, s_{t+1})\) are appended to a FIFO buffer \(\mathcal{D}\). Minibatches are sampled uniformly at random, breaking temporal autocorrelation between consecutive market quotes.</li>
+          <li><strong>Target Network:</strong> The loss function at step \(i\) evaluates against a frozen parameter set \(\theta^-\):
+            \[
+            L(\theta_i) = \E_{(s, a, r, s') \sim \mathcal{D}} \left[ \left( r + \gamma \max_{a'} Q(s', a'; \theta_i^-) - Q(s, a; \theta_i) \right)^2 \right]
+            \]
+            where \(\theta^-\) is periodically synchronized with \(\theta\) every \(C\) steps.
+          </li>
+        </ul>
+
+        <div class="block definition">
+          <p class="block-title">Double Deep Q-Networks (Double DQN)</p>
+          <p>Standard DQN systematically overestimates action values because the maximum operator \(\E[\max(X, Y)] \ge \max(\E[X], \E[Y])\) propagates upward noise shocks. Double DQN decouples action selection from action evaluation:</p>
+          \[
+          Y_t^{\text{Double}} = R_{t+1} + \gamma Q\left(S_{t+1}, \argmax_{a'} Q(S_{t+1}, a'; \theta_t); \theta_t^-\right)
+          \]
+        </div>
+      </section>
+
+      <section id="inline-lab">
+        <h2 id="s4">4. Numerical Verification · Tabular Q-Learning vs. Bellman Optimality</h2>
+        <p>We test tabular Q-learning convergence against the exact dynamic programming fixed point on a trade execution MDP.</p>
+
+        <section class="lab" id="lab-QR5-L02-1" data-runtime="python">
+          <h3>Lab 1 · Tabular Q-Learning Convergence vs. Exact Bellman Optimality</h3>
+          <p class="hypothesis">Verifies that off-policy Q-learning converges to the analytical Bellman fixed point, driving temporal difference error to zero and recovering the optimal execution action.</p>
+          <pre><code class="language-python" data-run>"""Lab QR5-L02-1: Tabular Q-Learning Convergence vs. Exact Bellman Optimality.
+
+Demonstrates:
+1. Implementation of Temporal Difference Q-learning on a trade execution MDP.
+2. Decay of TD root-mean-squared error over training episodes.
+3. Convergence of empirical Q-table to the analytical Bellman fixed-point Q*(s, a).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def compute_exact_q_values(
+    n_inventory: int,
+    n_times: int,
+    gamma: float,
+    terminal_penalty: float = 1.5,
+) -&gt; np.ndarray:
+    """Compute exact analytical Q*(s, a) via backward dynamic programming."""
+    v = np.zeros((n_inventory, n_times))
+    q_table = np.full((n_inventory, n_times, n_inventory), -1e9)
+
+    # Terminal stage
+    for q in range(n_inventory):
+        v[q, n_times - 1] = -terminal_penalty * (q**2)
+        q_table[q, n_times - 1, q] = -terminal_penalty * (q**2)
+
+    for t in range(n_times - 2, -1, -1):
+        for q in range(n_inventory):
+            for a in range(q + 1):
+                reward = a * 10.0 - 0.5 * (a**2)
+                next_q = q - a
+                q_val = reward + gamma * v[next_q, t + 1]
+                q_table[q, t, a] = q_val
+            valid_vals = [q_table[q, t, a] for a in range(q + 1)]
+            v[q, t] = max(valid_vals)
+
+    return q_table
+
+
+def main() -&gt; None:
+    n_inventory = 4
+    n_times = 3
+    gamma = 0.90
+    q_exact = compute_exact_q_values(n_inventory, n_times, gamma)
+
+    # Tabular Q-learning
+    q_learned = np.zeros((n_inventory, n_times, n_inventory))
+    rng = np.random.default_rng(42)
+
+    n_episodes = 25000
+    alpha_0 = 0.2
+    epsilon_0 = 0.5
+
+    td_errors: list[float] = []
+
+    for ep in range(n_episodes):
+        alpha = alpha_0 / (1.0 + 0.0001 * ep)
+        eps = epsilon_0 / (1.0 + 0.0002 * ep)
+
+        # Start from random inventory and t=0
+        q = int(rng.integers(1, n_inventory))
+        t = 0
+
+        while t &lt; n_times - 1 and q &gt; 0:
+            # Epsilon-greedy action
+            a = int(rng.integers(0, q + 1)) if rng.uniform() &lt; eps else int(np.argmax(q_learned[q, t, : q + 1]))
+
+            reward = a * 10.0 - 0.5 * (a**2)
+            next_q = q - a
+            next_t = t + 1
+
+            if next_t == n_times - 1:
+                target = reward + gamma * (-1.5 * (next_q**2))
+            else:
+                next_best = float(np.max(q_learned[next_q, next_t, : next_q + 1]))
+                target = reward + gamma * next_best
+
+            td_err = target - q_learned[q, t, a]
+            q_learned[q, t, a] += alpha * td_err
+            td_errors.append(abs(td_err))
+
+            q = next_q
+            t = next_t
+
+    # Compare learned Q-values with exact values on reachable states
+    errors = []
+    for t in range(n_times - 1):
+        for q in range(1, n_inventory):
+            for a in range(q + 1):
+                err = abs(q_learned[q, t, a] - q_exact[q, t, a])
+                errors.append(err)
+
+    mean_abs_err = float(np.mean(errors))
+    max_abs_err = float(np.max(errors))
+    mean_late_td = float(np.mean(td_errors[-1000:]))
+
+    print(f"Mean absolute error vs. Bellman exact: {mean_abs_err:.4f}")
+    print(f"Max absolute error: {max_abs_err:.4f}")
+    print(f"Late training mean TD error: {mean_late_td:.4f}")
+    print(f"Learned optimal action a*(q=3, t=0): {int(np.argmax(q_learned[3, 0, :4]))}")
+    print(f"Exact optimal action a*(q=3, t=0): {int(np.argmax(q_exact[3, 0, :4]))}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Mean absolute error vs. Bellman exact: 0.0682
+Max absolute error: 0.6402
+Late training mean TD error: 0.0000
+Learned optimal action a*(q=3, t=0): 2
+Exact optimal action a*(q=3, t=0): 2</pre>
+          <p class="interpretation">Tabular Q-learning achieves a mean absolute error of 0.0682 against the exact Bellman fixed point, and late-training TD error decays to 0.0000, recovering the exact optimal action a* = 2.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2>Where the Canon Breaks</h2>
+        <p>Classical DQN assumes the experience replay buffer \(\mathcal{D}\) represents an independent and identically distributed sample of market transitions. In financial trading:</p>
+        <ul>
+          <li><strong>Regime shifts:</strong> Order flow transitions recorded during a low-volatility period are invalid when the market enters a high-volatility crash regime. Replaying obsolete transitions poisons gradient updates.</li>
+          <li><strong>Adversarial feedback:</strong> If an RL algorithm becomes a dominant participant in an illiquid book, other market participants adapt endogenously, altering the transition kernel and creating non-stationary game-theoretic feedback.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">To use Q-learning, one must first build an accurate mathematical model of price dynamics.</p>
+            <p>Q-learning is strictly model-free. It learns directly from sampled transition tuples \((s, a, r, s')\) without estimating or knowing \(P(s' \mid s, a)\).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">The output \(Q(s, a; \theta)\) represents an unbiased estimate of the true expected cumulative discounted return.</p>
+            <p>Due to Jensen's inequality and the max operator, standard Q-learning is strictly upward-biased: \(\E[\max_a \hat{Q}(s, a)] \ge \max_a \E[\hat{Q}(s, a)]\). In noisy financial data, this overestimation bias can cause severe misallocation.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Setting replay buffer capacity to millions of ticks ensures maximum training performance.</p>
+            <p>In non-stationary markets, large replay buffers store stale data from obsolete macro and microstructural regimes. A smaller, recency-weighted buffer or regime-conditioned memory prevents policy obsolescence.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2>Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-L02-mech-1">
+            <p class="problem-title">Problem 2.1 · Q-Learning Numerical Update</p>
+          <p>At time \(t\), the current Q-value is \(Q(s_1, a_1) = 15.0\). The agent executes action \(a_1\), receives immediate reward \(R_{t+1} = 3.0\), and observes next state \(s_2\). In state \(s_2\), available actions have estimated values \(Q(s_2, a_1) = 18.0\) and \(Q(s_2, a_2) = 22.0\). If learning rate \(\alpha = 0.10\) and discount factor \(\gamma = 0.90\), calculate the TD error \(\delta_t\) and updated value \(Q_{t+1}(s_1, a_1)\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Compute the target value:</p>
+            \[
+            \text{Target} = R_{t+1} + \gamma \max_{a'} Q(s_2, a') = 3.0 + 0.90 \times \max(18.0, 22.0) = 3.0 + 0.90 \times 22.0 = 3.0 + 19.8 = 22.8
+            \]
+            <p>Calculate the TD error:</p>
+            \[
+            \delta_t = \text{Target} - Q(s_1, a_1) = 22.8 - 15.0 = 7.8
+            \]
+            <p>Update the Q-value:</p>
+            \[
+            Q_{t+1}(s_1, a_1) = 15.0 + 0.10 \times 7.8 = 15.0 + 0.78 = 15.78
+            \]
+          </details>
+          </div>
+          <div class="problem" id="p-L02-mech-2">
+            <p class="problem-title">Problem 2.2 · Double DQN Target Computation</p>
+          <p>Suppose the online network evaluates action values in successor state \(s'\) as \(Q(s', a_1; \theta) = 12.0\) and \(Q(s', a_2; \theta) = 14.0\). The target network evaluates \(Q(s', a_1; \theta^-) = 13.0\) and \(Q(s', a_2; \theta^-) = 11.0\). If \(R = 2.0\) and \(\gamma = 0.95\), calculate the standard DQN target and the Double DQN target.</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Standard DQN target uses \(\theta^-\) for both maximization and evaluation:</p>
+            \[
+            Y^{\text{DQN}} = R + \gamma \max_{a'} Q(s', a'; \theta^-) = 2.0 + 0.95 \times \max(13.0, 11.0) = 2.0 + 0.95 \times 13.0 = 2.0 + 12.35 = 14.35
+            \]
+            <p>Double DQN uses online weights \(\theta\) to pick the action: \(a^* = \argmax_{a'} Q(s', a'; \theta) = a_2\). It then evaluates using target network \(\theta^-\):</p>
+            \[
+            Y^{\text{Double}} = R + \gamma Q(s', a_2; \theta^-) = 2.0 + 0.95 \times 11.0 = 2.0 + 10.45 = 12.45
+            \]
+            <p>The standard DQN target is inflated by 1.90 due to overestimation bias.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L02-mech-3">
+            <p class="problem-title">Problem 2.3 · Robbins–Monro Learning Rate Verification</p>
+          <p>Consider two candidate learning rate schedules: (A) \(\alpha_t = \frac{1}{t^{0.6}}\), and (B) \(\alpha_t = \frac{1}{t^{1.2}}\). Determine which schedule satisfies the Robbins–Monro conditions for \(t \ge 1\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>For schedule A: \(\sum_{t=1}^\infty \frac{1}{t^{0.6}}\) diverges because \(p = 0.6 \le 1\). Its squared sum is \(\sum_{t=1}^\infty \frac{1}{t^{1.2}}\), which converges because \(2 \times 0.6 = 1.2 > 1\). Thus, schedule A satisfies both Robbins–Monro conditions.</p>
+            <p>For schedule B: \(\sum_{t=1}^\infty \frac{1}{t^{1.2}}\) converges because \(p = 1.2 > 1\), violating the infinite sum condition. Thus, schedule B does not satisfy the Robbins–Monro conditions.</p>
+          </details>
+          </div>
+        </div>
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p-L02-proof-1">
+            <p class="problem-title">Problem 2.4 · Overestimation Bias in Q-Learning</p>
+          <p>Let \(X_1, \dots, X_M\) be independent random variables with true means \(\mu_i = \E[X_i]\). Prove that \(\E[\max_i X_i] \ge \max_i \mu_i\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>For each index \(j \in \{1, \dots, M\}\), by definition of the maximum: \(\max_i X_i \ge X_j\). Taking expectations on both sides preserves the inequality: \(\E[\max_i X_i] \ge \E[X_j] = \mu_j\). Since this inequality holds for all \(j \in \{1, \dots, M\}\), it holds for the maximum over \(j\): \(\E[\max_i X_i] \ge \max_j \mu_j\). If the variance of any \(X_i\) is strictly positive and the distribution has common support, the inequality is strictly positive: \(\E[\max_i X_i] > \max_i \mu_i\).</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L02-proof-2">
+            <p class="problem-title">Problem 2.5 · Contraction Property of the Action-Value Bellman Operator</p>
+          <p>Define the Bellman operator on action values: \((F Q)(s, a) = R(s, a) + \gamma \sum_{s'} P(s' \mid s, a) \max_{a'} Q(s', a')\). Prove that \(\|F Q_1 - F Q_2\|_\infty \le \gamma \|Q_1 - Q_2\|_\infty\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>For any pair \((s, a)\):</p>
+            \[
+            |(F Q_1)(s, a) - (F Q_2)(s, a)| = \gamma \left| \sum_{s'} P(s' \mid s, a) [\max_{a'} Q_1(s', a') - \max_{a'} Q_2(s', a')] \right|
+            \]
+            <p>Using the elementary inequality \(|\max_x f(x) - \max_x g(x)| \le \max_x |f(x) - g(x)|\):</p>
+            \[
+            |\max_{a'} Q_1(s', a') - \max_{a'} Q_2(s', a')| \le \max_{a'} |Q_1(s', a') - Q_2(s', a')| \le \|Q_1 - Q_2\|_\infty
+            \]
+            <p>Since \(\sum_{s'} P(s' \mid s, a) = 1\), it follows that \(|(F Q_1)(s, a) - (F Q_2)(s, a)| \le \gamma \|Q_1 - Q_2\|_\infty\). Taking the supremum over \((s, a)\) gives the result.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L02-proof-3">
+            <p class="problem-title">Problem 2.6 · Target Network Gradient Decoupling</p>
+          <p>Prove that treating the target \(y_i = r + \gamma \max_{a'} Q(s', a'; \theta^-)\) as constant with respect to \(\theta\) yields a semi-gradient descent step rather than true gradient descent on the Bellman error.</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>True gradient descent on the mean squared Bellman error \(\frac{1}{2} \E[(r + \gamma \max_{a'} Q(s', a'; \theta) - Q(s, a; \theta))^2]\) requires computing:</p>
+            \[
+            \nabla_\theta L_{\text{true}}(\theta) = -\E \left[ \left( r + \gamma \max_{a'} Q(s', a'; \theta) - Q(s, a; \theta) \right) \left( \nabla_\theta Q(s, a; \theta) - \gamma \nabla_\theta Q(s', a^*; \theta) \right) \right]
+            \]
+            <p>In DQN, the target network freezes parameters \(\theta^-\), setting \(\nabla_\theta Q(s', a^*; \theta^-) = 0\). Thus, the update step is \(g(\theta) = -\E[(y_i - Q(s, a; \theta)) \nabla_\theta Q(s, a; \theta)]\), which omits the second-order bootstrapping derivative term \(-\gamma \nabla_\theta Q(s', a^*)\), confirming it is a semi-gradient method.</p>
+          </details>
+          </div>
+        </div>
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p-L02-emp-1">
+            <p class="problem-title">Problem 2.7 · Q-Learning Exploration Decay in Liquidation</p>
+          <p>Implement an \(\epsilon\)-greedy decay schedule \(\epsilon_t = \max(\epsilon_{\min}, \epsilon_0 \cdot \beta^t)\) with \(\epsilon_0 = 1.0\), \(\epsilon_{\min} = 0.05\), and \(\beta = 0.9995\). Calculate the exact episode number at which exploration reaches the minimum threshold.</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Set \(\epsilon_0 \cdot \beta^t = \epsilon_{\min} \implies 1.0 \times (0.9995)^t = 0.05\). Taking natural logarithms:</p>
+            \[
+            t \ln(0.9995) = \ln(0.05) \implies t = \frac{\ln(0.05)}{\ln(0.9995)} = \frac{-2.995732}{-0.0005001} \approx 5990.2
+            \]
+            <p>Thus, the minimum exploration rate of 0.05 is reached at episode 5,991.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L02-emp-2">
+            <p class="problem-title">Problem 2.8 · Empirical Overestimation Measurement</p>
+          <p>In an environment with 10 actions having identical true values \(Q^*(s, a_i) = 0\), suppose the estimated values \(\hat{Q}(s, a_i)\) are independent \(\operatorname{Normal}(0, 1)\) variables. Compute the expected value of \(\max_{i=1,\dots,10} \hat{Q}(s, a_i)\) analytically or via Monte Carlo, and determine the magnitude of overestimation bias.</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>For \(M = 10\) independent standard normal variables, the expected maximum is approximately \(\E[\max_{i=1,\dots,10} Z_i] \approx \sqrt{2 \ln 10} - \frac{\ln(\ln 10) + \ln(4\pi)}{2 \sqrt{2 \ln 10}} \approx 1.5388\). Since the true maximum is 0.0, the overestimation bias is strictly +1.5388, illustrating the severe upward distortion of standard Q-learning under noise.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L02-emp-3">
+            <p class="problem-title">Problem 2.9 · Target Network Update Frequency Trade-Off</p>
+          <p>A practitioner compares target network synchronization frequencies \(C \in \{10, 100, 1000\}\) steps in a trading DQN. If \(C\) is too small, target values oscillate violently. If \(C\) is too large, policy updates lag real market state transitions. Formulate an empirical loss criterion to evaluate the optimal \(C\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Evaluate the out-of-sample Bellman residual variance: \(\operatorname{Var}_{\mathcal{D}_{\text{val}}}(r + \gamma \max_{a'} Q(s', a'; \theta^-) - Q(s, a; \theta))\) combined with policy Sharpe ratio on validation episodes. At \(C=10\), gradient variance is elevated. At \(C=1000\), convergence is excessively slow. Empirical benchmarks typically find optimal stability around \(C \in [100, 250]\) trading batches.</p>
+          </details>
+          </div>
+        </div>
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p-L02-res-1">
+            <p class="problem-title">Problem 2.10 · The Deadly Triad in High-Frequency Trading</p>
+          <p>Explain why financial time series are uniquely susceptible to the deadly triad (bootstrapping, non-linear function approximation, and off-policy distribution shifts). What structural constraints prevent Q-networks from diverging in trading?</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>In high-frequency trading, non-stationary market regimes cause off-policy replay samples to deviate systematically from the true current distribution. Bootstrapping amplifies noise in forward return predictions, and deep neural networks overfit idiosyncratic noise splits. Structural safeguards include: (1) clipped Double DQN loss, (2) spectral normalization on weight matrices, and (3) hard position bounds preventing leverage expansion.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L02-res-2">
+            <p class="problem-title">Problem 2.11 · Distributional Reinforcement Learning for Risk Control</p>
+          <p>Instead of estimating scalar expectation \(Q(s, a) = \E[Z(s, a)]\), distributional RL (e.g., C51, QR-DQN) models the entire probability distribution of cumulative returns. How does access to the full return distribution enable direct Value-at-Risk and Expected Shortfall optimization?</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>In standard Q-learning, the agent is constrained to risk-neutral expectation maximization. In distributional RL, the network outputs quantile locations \(q_\tau(s, a)\) for \(\tau \in (0, 1)\). A risk-averse execution policy can then choose actions by maximizing risk-adjusted functionals such as \(\operatorname{CVaR}_\alpha(Z(s, a)) = \frac{1}{1-\alpha} \int_\alpha^1 q_\tau(s, a) \mathrm{d}\tau\), embedding non-linear risk preferences directly into action selection without secondary penalties.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L02-res-3">
+            <p class="problem-title">Problem 2.12 · Replay Buffer Purging Under Market Microstructure Regimes</p>
+          <p>Design a prioritized experience replay mechanism that dynamically discounts transitions based on regime distance. If market volatility doubles from \(\sigma_0\) to \(\sigma_1\), how should transition priorities \(p_i = |\delta_i| + \epsilon\) be reweighted?</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Weight transitions by likelihood ratio under estimated regime densities: \(w_i = \frac{f_{\text{current}}(s_i)}{f_{\text{past}}(s_i)}\). For volatility doubling under Gaussian increments, the Radon–Nikodym derivative scales as \(\exp\left(-\frac{1}{2} r_i^2 (\sigma_1^{-2} - \sigma_0^{-2})\right) \frac{\sigma_0}{\sigma_1}\). Reweighting priority probabilities by \(p_i \propto (|\delta_i| + \epsilon)^\alpha \cdot w_i\) down-weights obsolete regime trajectories, preventing gradient corruption.</p>
+          </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2>Key Results</h2>
+        <div class="table-wrap">
+        <table class="key-results">
+          <thead>
+            <tr><th>Result</th><th>Grade</th><th>Key / Source</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Q-Learning Convergence: Tabular Q-learning converges almost surely to \(Q^*\) under Robbins–Monro conditions.</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>sutton2018reinforcement</td>
+            </tr>
+            <tr>
+              <td>Double DQN De-biasing: Decoupling action selection from target evaluation eliminates positive maximization overestimation bias.</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>sutton2018reinforcement</td>
+            </tr>
+            <tr>
+              <td>Model-Free Execution Optimization: Q-learning trains optimal execution policies directly from limit order book event logs.</td>
+              <td><span class="grade-tag grade-a">A</span></td>
+              <td>nevmyvaka2006reinforcement</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR5" data-page="L02">
+        <h2>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What distinguishes Q-learning from SARSA?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q1"> <span style="min-width: 0;">Q-learning is off-policy (evaluates greedy maximum action), whereas SARSA is on-policy (evaluates actual executed action).</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0;">Q-learning requires knowing the transition kernel \(P(s' \mid s, a)\).</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0;">SARSA uses deep neural networks, while Q-learning is only tabular.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Q-learning updates using \(\max_a Q(S_{t+1}, a)\) regardless of the action selected by the behavioral policy, making it strictly off-policy.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What are the Robbins–Monro conditions on learning rate \(\alpha_t\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q2"> <span style="min-width: 0;">\(\sum_t \alpha_t = \infty\) and \(\sum_t \alpha_t^2 < \infty\)</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0;">\(\lim_{t \to \infty} \alpha_t = 1\)</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0;">\(\alpha_t = \alpha_0 \cdot \gamma^t\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The infinite sum guarantees sufficient step size to reach any starting point, while the square-summable condition guarantees that variance decays to zero.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does Double DQN use two separate sets of network parameters?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q3"> <span style="min-width: 0;">To decouple action selection from action value evaluation, preventing upward overestimation bias.</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0;">To speed up GPU backpropagation by 50%.</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0;">To compute buy and sell orders in separate branches.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By selecting the argmax action with online weights \(\theta\) and evaluating with target weights \(\theta^-\), Double DQN eliminates maximization bias.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What three components comprise the "deadly triad" in reinforcement learning?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q4"> <span style="min-width: 0;">Function approximation, bootstrapping, and off-policy training.</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">Volatility, bid-ask spread, and transaction costs.</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">Overfitting, underfitting, and multicollinearity.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>When function approximation, bootstrapping, and off-policy learning are combined without stabilizing tricks, value estimates can diverge to infinity.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the primary role of experience replay in Deep Q-Networks?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q5"> <span style="min-width: 0;">To break autocorrelation between consecutive market transitions and stabilize stochastic gradient descent.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">To store analytical Greeks for risk management.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">To guarantee that the market model is arbitrage-free.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Consecutive tick observations in order books are heavily autocorrelated; uniform sampling from a large replay buffer restores the i.i.d. assumption.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">In financial trading, why can an excessively large replay buffer harm out-of-sample performance?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q6"> <span style="min-width: 0;">It retains transitions from obsolete market regimes that no longer represent current liquidity dynamics.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">It causes GPU memory fragmentation.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">It forces the learning rate to zero.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Because market regimes shift non-stationarily, old transitions reflect distributions that no longer hold, causing negative transfer.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">If \(\hat{Q}(s, a_1)\) and \(\hat{Q}(s, a_2)\) are noisy independent estimates of true values \(Q^*(s, a_1) = Q^*(s, a_2) = 10.0\), what is \(\E[\max(\hat{Q}(s, a_1), \hat{Q}(s, a_2))]\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q7"> <span style="min-width: 0;">Strictly greater than 10.0 (by Jensen's inequality).</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0;">Exactly 10.0.</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0;">Strictly less than 10.0.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The maximum of two non-degenerate independent random variables with identical means strictly exceeds their common mean.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does prioritized experience replay sample transitions from the replay buffer?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q8"> <span style="min-width: 0;">With probability proportional to their temporal difference error magnitude \(|\delta_i|^\alpha\).</span></label>
+              <label class="option"><input type="radio" name="q8"> <span style="min-width: 0;">Uniformly at random.</span></label>
+              <label class="option"><input type="radio" name="q8"> <span style="min-width: 0;">In strict chronological FIFO order.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Prioritizing transitions with large absolute TD errors focuses training on surprising or poorly predicted market events.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <li data-cite="sutton2018reinforcement">Sutton, R. S., &amp; Barto, A. G. (2018). <em>Reinforcement Learning: An Introduction</em> (2nd ed.). MIT Press.</li>
+          <li data-cite="nevmyvaka2006reinforcement">Nevmyvaka, Y., Feng, Y., &amp; Kearns, M. (2006). Reinforcement learning for optimized trade execution. <em>Proceedings of the 23rd International Conference on Machine Learning</em>, 673–680.</li>
+          <li data-cite="khandani2011happened">Khandani, A. E., &amp; Lo, A. W. (2011). What happened to the quants in August 2007? Evidence from factors and transactions data. <em>Journal of Financial Markets</em>, 14(1), 1–46.</li>
+        </ol>
+      </section>
+      <p><button type="button" class="button" data-complete>Mark lesson complete</button></p>
+    </main>
+  </div>
+</body>
+</html>

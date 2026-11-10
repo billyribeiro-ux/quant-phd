@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR5" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project: Deep Hedging vs. Delta Hedging · QR5</title>
+  <meta name="description" content="Train a deep-hedging neural policy under proportional transaction costs, and benchmark it against Black-Scholes delta hedging and Whalley-Wilmott asymptotic no-trade bands.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR5 Reinforcement Learning &amp; Control in Trading</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="32">
+      <header class="page-head">
+        <p class="eyebrow">Capstone Project · 32 hours · Part QR</p>
+        <h1>Deep Hedging vs. Delta Hedging Under Transaction Costs</h1>
+        <p class="lead">Train a deep neural hedging policy that directly minimizes convex risk measures under proportional trading costs, and benchmark its empirical performance against classical Black-Scholes delta hedging and the Whalley–Wilmott asymptotic no-trade band.</p>
+      </header>
+
+      <section id="ladder">
+        <h2>The Four-Rung Ladder</h2>
+        <ol class="ladder">
+          <li>
+            <span class="rung-title">1 · Worked example</span>
+            <p>End-to-end derivation and implementation of a neural hedging layer under convex risk measures, contrasting its continuous decision surface with Black-Scholes continuous rebalancing.</p>
+          </li>
+          <li>
+            <span class="rung-title">2 · Completion problem</span>
+            <p>Implement the three foundational algorithmic kernels: Whalley-Wilmott asymptotic half-bandwidth, Expected Shortfall (CVaR) tail loss, and Entropic risk measure.</p>
+          </li>
+          <li>
+            <span class="rung-title">3 · Independent project</span>
+            <p>Build the full deep hedging evaluation engine, train neural policies across friction regimes, and benchmark against delta hedging on jump-diffusion paths.</p>
+          </li>
+          <li>
+            <span class="rung-title">4 · Stretch</span>
+            <p>Extend deep hedging to rough fractional volatility models and multi-asset basket options with non-diagonal cross-impact transaction costs.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2>Rung 1 · Worked example</h2>
+        <p>In frictionless markets, complete replication guarantees zero terminal tracking error via continuous rebalancing. In the presence of proportional transaction costs \(\epsilon > 0\), continuous rebalancing incurs unbounded total friction: \(\int_0^T \epsilon S_t |\mathrm{d}\delta_t| \to \infty\). As established by <span class="claim" data-grade="A" data-cite="buehler2019deep" data-locator="Theorem 2.1">Buehler et al. (2019)</span>, deep hedging replaces analytical Greeks with a neural policy \(\delta_k = F_\theta(S_k, \delta_{k-1}, \tau_k)\) trained to minimize a convex risk measure of terminal hedging loss.</p>
+        <p>Consider an at-the-money call option with \(S_0 = 100\), \(K = 100\), \(\sigma = 0.20\), \(T = 0.20\), and proportional cost \(\epsilon = 0.005\) (50 bps). Below is the complete worked implementation of the forward cash flow evaluation:</p>
+        <pre><code class="language-pseudocode"># Worked Example: Cash flow evaluation of a hedging policy
+import numpy as np
+
+def evaluate_hedging_path(paths: np.ndarray, deltas: np.ndarray, strike: float, eps: float):
+    # paths: (M, N+1), deltas: (M, N)
+    price_diffs = paths[:, 1:] - paths[:, :-1]
+    trading_gains = np.sum(deltas * price_diffs, axis=1)
+    # Friction on initial position, rebalancing, and terminal liquidation
+    costs = eps * paths[:, 0] * np.abs(deltas[:, 0])
+    costs += np.sum(eps * paths[:, 1:-1] * np.abs(deltas[:, 1:] - deltas[:, :-1]), axis=1)
+    costs += eps * paths[:, -1] * np.abs(deltas[:, -1])
+    payoff = np.maximum(paths[:, -1] - strike, 0.0)
+    pnl = trading_gains - payoff - costs
+    return pnl, costs
+</code></pre>
+      </section>
+
+      <section id="rung-2">
+        <h2>Rung 2 · Completion problem</h2>
+        <p>Complete the core mathematical implementations below: Whalley-Wilmott cubic half-bandwidth, Expected Shortfall tail expectation, and Entropic risk measure.</p>
+
+        <section class="lab completion" id="lab-QR5-project-1" data-runtime="python">
+          <h3>Lab 1 · Hedging Mathematics &amp; Risk Kernels</h3>
+          <p class="hypothesis">Verifies Whalley-Wilmott asymptotic cubic scaling, CVaR 95% tail expectation, and log-sum-exp entropic risk measure.</p>
+          <pre><code class="language-python" data-run>"""Lab QR5-project-1: Rung 2 Completion Problem Reference Solution.
+
+Implements the three core algorithmic building blocks of the deep hedging framework:
+1. Whalley-Wilmott asymptotic cubic no-trade bandwidth calculation.
+2. Rockafellar-Uryasev Expected Shortfall (CVaR_alpha) tail loss computation.
+3. Entropic risk measure via numerically stable log-sum-exp.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+from numpy.typing import NDArray
+from scipy.special import erf
+
+
+def _std_norm_cdf(x: NDArray[np.float64]) -> NDArray[np.float64]:
+    res: NDArray[np.float64] = np.asarray(0.5 * (1.0 + erf(x / math.sqrt(2.0))), dtype=np.float64)
+    return res
+
+
+def _std_norm_pdf(x: NDArray[np.float64]) -> NDArray[np.float64]:
+    res: NDArray[np.float64] = np.asarray(np.exp(-0.5 * (x**2)) / math.sqrt(2.0 * math.pi), dtype=np.float64)
+    return res
+
+
+def compute_whalley_wilmott_half_width(
+    s: float,
+    k: float,
+    tau: float,
+    sigma: float,
+    r: float,
+    cost_rate: float,
+    risk_aversion: float,
+) -> float:
+    """Compute Whalley & Wilmott (1997) asymptotic half-bandwidth h(S, t)."""
+    if tau <= 1e-8:
+        return 0.0
+    vol_sqrt = sigma * math.sqrt(tau)
+    d1 = (math.log(s / k) + (r + 0.5 * sigma**2) * tau) / vol_sqrt
+    gamma = float(math.exp(-0.5 * d1**2) / (math.sqrt(2.0 * math.pi) * s * vol_sqrt))
+
+    inner = ___
+    return float(np.cbrt(max(inner, 0.0)))
+
+
+def compute_cvar(loss_distribution: NDArray[np.float64], alpha: float = 0.95) -> float:
+    """Compute Expected Shortfall at confidence level alpha."""
+    sorted_losses = np.sort(loss_distribution)
+    cutoff = ___
+    cutoff = min(cutoff, len(sorted_losses) - 1)
+    return float(np.mean(sorted_losses[cutoff:]))
+
+
+def compute_entropic_risk(loss_distribution: NDArray[np.float64], gamma: float = 1.0) -> float:
+    """Compute Entropic Risk Measure: (1/gamma) * ln E[exp(gamma * L)]."""
+    scaled = gamma * loss_distribution
+    max_val = float(np.max(scaled))
+    log_mean_exp = ___
+    return float(log_mean_exp / gamma)
+
+
+def main() -> None:
+    s0 = 100.0
+    k = 100.0
+    tau = 0.20
+    sigma = 0.25
+    r = 0.03
+    cost_rate = 0.005
+    risk_aversion = 1.0
+
+    h_width = compute_whalley_wilmott_half_width(s0, k, tau, sigma, r, cost_rate, risk_aversion)
+
+    rng = np.random.default_rng(42)
+    simulated_losses = rng.normal(4.0, 2.5, size=1000)
+
+    cvar_val = compute_cvar(simulated_losses, alpha=0.95)
+    entropic_val = compute_entropic_risk(simulated_losses, gamma=1.0)
+
+    print(f"Whalley-Wilmott half-width h(S0, tau): {h_width:.6f}")
+    print(f"CVaR 95% loss: {cvar_val:.6f}")
+    print(f"Entropic risk (gamma=1.0): {entropic_val:.6f}")
+
+
+main()
+</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Whalley-Wilmott half-width h(S0, tau): 0.097885
+CVaR 95% loss: 9.010424
+Entropic risk (gamma=1.0): 6.858989</pre>
+          <p class="interpretation">Verifies exact asymptotic half-width scaling, CVaR 95% tail expectation, and log-sum-exp entropic risk measure.</p>
+        </section>
+      </section>
+
+      <section id="rung-3">
+        <h2>Rung 3 · Independent project (Graded Deliverable)</h2>
+
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Institutional derivatives desks face substantial bid-ask spreads and exchange fees when rebalancing option hedging portfolios. Under proportional costs \(\epsilon \in [20, 80]\) bps, classical continuous delta hedging generates severe cost drag that destroys portfolio Sharpe ratios. Quantitative portfolio managers require data-driven policies that systematically balance market risk against transaction costs.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Deterministic problem instances generated by <code>instance.py</code>, specifying initial spot price \(S_0\), strike \(K\), time to expiry \(T\), volatility \(\sigma\), drift \(\mu\), risk-free rate \(r\), proportional cost rate \(\epsilon\), risk aversion \(\gamma\), simulated training paths under Geometric Brownian Motion, and held-out test paths with Merton jump-diffusion shocks.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>A fully compliant Python module <code>reference.py</code> exposing <code>simulate_gbm_paths</code>, <code>simulate_jump_diffusion_paths</code>, <code>black_scholes_call_delta</code>, <code>whalley_wilmott_bandwidth</code>, <code>compute_hedging_pnl</code>, <code>cvar_loss</code>, <code>entropic_risk_measure</code>, <code>DeltaHedger</code>, <code>WhalleyWilmottHedger</code>, <code>DeepHedger</code>, and <code>evaluate_hedging_strategies</code>, accompanied by a comprehensive technical defense report.</dd>
+
+          <dt>Constraints</dt>
+          <dd>All estimators must pass <code>mypy --strict</code> without warnings under Python 3.14. Deep hedging policies must be causal (no future lookahead) and strictly bounded in \([0, 1]\). Entire test suite must execute in under 60 seconds.</dd>
+
+          <dt>Grading</dt>
+          <dd>This project is graded by both autograder and rubric (50% deterministic acceptance tests across 50 random seeds; 50% written methodology defense and failure mode analysis).</dd>
+        </dl>
+
+        <h3>Time Budget</h3>
+        <table id="hours">
+          <thead>
+            <tr><th>Component</th><th>Hours</th><th>Rationale</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Data &amp; Simulation Engine</td><td>4</td><td>Simulate GBM and Merton jump-diffusion paths with seeded RNG</td></tr>
+            <tr><td>Whalley-Wilmott Benchmark</td><td>4</td><td>Implement asymptotic no-trade boundaries and Gamma calculation</td></tr>
+            <tr><td>Neural Policy Architecture</td><td>6</td><td>Construct feedforward network with inventory state inputs</td></tr>
+            <tr><td>Convex Risk Optimization</td><td>6</td><td>Implement CVaR and Entropic risk backpropagation loop</td></tr>
+            <tr><td>Stress Testing &amp; Evaluation</td><td>6</td><td>Execute out-of-sample comparison across transaction cost grids</td></tr>
+            <tr><td>Technical Report &amp; Defense</td><td>6</td><td>Write synthesis report and defense against failure modes</td></tr>
+            <tr><td>Total</td><td>32</td><td>Full capstone implementation and analysis</td></tr>
+          </tbody>
+        </table>
+
+        <section class="grader-panel" id="grader" data-unit="QR5" data-grader="grader/" data-suite="test_project.py" data-solution="reference.py" data-starter="starter.py" data-support="instance.py" data-packages="numpy scipy pytest"></section>
+
+        <h3>Evaluation Rubric</h3>
+        <div class="table-wrap">
+        <table class="rubric">
+          <thead>
+            <tr>
+              <th>Criterion</th>
+              <th>Level 1 (Unacceptable)</th>
+              <th>Level 2 (Marginal)</th>
+              <th>Level 3 (Proficient)</th>
+              <th>Level 4 (Distinguished)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Mathematical Formulation</th>
+              <td>Convex risk measures miscalculated; ignores transaction cost initiation/liquidation frictions.</td>
+              <td>Implements simple mean loss; ignores cash flow articulation in hedging P&amp;L accounting.</td>
+              <td>Accurately implements Rockafellar-Uryasev CVaR and Entropic risk with complete cash flow articulation.</td>
+              <td>Rigorous convex duality formulation; exact log-sum-exp stabilization; proves subadditivity and monotonicity.</td>
+            </tr>
+            <tr>
+              <th scope="row">Neural Architecture &amp; Training</th>
+              <td>Unbounded outputs; severe gradient explosions; lookahead leakage of future spot prices.</td>
+              <td>Network trains but exhibits high variance; outputs not strictly bounded in [0, 1].</td>
+              <td>Causal architecture with inventory feedback; stable convergence minimizing Entropic risk.</td>
+              <td>Adaptive state parameterization; comprehensive backpropagation verification; monotonic risk descent across epochs.</td>
+            </tr>
+            <tr>
+              <th scope="row">Whalley-Wilmott Calibration</th>
+              <td>Incorrect asymptotic scaling power; constant ad-hoc band width without Gamma scaling.</td>
+              <td>Uses Black-Scholes delta directly or incorrect constant multiplier in cubic root.</td>
+              <td>Exact asymptotic cubic half-width \(O(\epsilon^{1/3})\) correctly tracking dynamic Gamma and expiry.</td>
+              <td>Full asymptotic expansion verification; explicit derivation of boundary behavior as \(\tau \to 0\) and \(\Gamma \to 0\).</td>
+            </tr>
+            <tr>
+              <th scope="row">Out-of-Sample Empirical Benchmarking</th>
+              <td>Evaluates only in-sample; missing comparison with Black-Scholes or Whalley-Wilmott baselines.</td>
+              <td>Compares strategies only on Gaussian paths without transaction cost parameter sweeps.</td>
+              <td>Comprehensive out-of-sample comparison across turnover, mean P&amp;L, CVaR 95%, and transaction costs.</td>
+              <td>Extensive stress testing across jump-diffusion regimes; detailed trade-off analysis between tail risk and cost drag.</td>
+            </tr>
+            <tr>
+              <th scope="row">Non-Stationarity &amp; Failure Modes</th>
+              <td>No discussion of non-stationarity or failure modes; treats RL as infallible.</td>
+              <td>Superficial mention of overfitting without empirical evidence or out-of-distribution tests.</td>
+              <td>Demonstrates policy degradation under regime shifts and volatility spikes with clear performance metrics.</td>
+              <td>Exhaustive analysis of Markov assumption failure; formulates robust regularization and risk-budget safeguards.</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+
+        <h3>Annotated Exemplars</h3>
+
+        <div class="exemplar" data-level="4">
+          <h4>Distinguished Exemplar (Level 4)</h4>
+          <p class="annotation">Meets Level 4 descriptors across all 5 criteria: rigorous mathematical formulation, causal neural policy with inventory state, exact Whalley-Wilmott asymptotic calibration, and stress testing under Merton jump diffusion.</p>
+          <blockquote>
+            <p>Our deep hedging architecture parameterizes the hedge ratio \(\delta_k = \pi_\theta(S_k/K, \tau_k, \delta_{k-1}, \Delta_{\mathrm{BS}})\) using a multi-layer feedforward network with bounded sigmoid activation \(\delta_k \in [0, 1]\). We train the policy to minimize the Entropic risk measure \(\rho_\gamma(L) = \frac{1}{\gamma} \ln \E[e^{\gamma L}]\), which upper-bounds expected shortfall while remaining smooth and strictly convex everywhere. On held-out Geometric Brownian Motion paths with \(\epsilon = 50\) bps friction, the Black-Scholes continuous hedger incurs an average transaction cost drag of $1.84 per contract, whereas the Whalley-Wilmott asymptotic band reduces turnover by 64.2%, cutting costs to $0.66 while maintaining a 95% CVaR of $4.12. The trained DeepHedger achieves a 95% CVaR of $3.88 with transaction costs of $0.58, successfully learning a state-dependent no-trade zone that widens when Gamma is elevated. When evaluated out-of-sample on Merton jump-diffusion stress paths (\(\lambda = 2.0, \mu_J = -0.06\)), the DeepHedger maintains robust tracking, demonstrating superior downside protection over delta hedging.</p>
+          </blockquote>
+        </div>
+
+        <div class="exemplar" data-level="2">
+          <h4>Marginal Exemplar (Level 2)</h4>
+          <p class="annotation">Exhibits Level 2 defects: optimizes sample mean loss rather than a coherent tail risk measure, omits initiation and liquidation transaction costs, and fails to evaluate performance under jump regimes.</p>
+          <blockquote>
+            <p>We trained a neural network in Python to predict delta. The loss function was the average mean squared error between the option payoff and the stock gains. The network traded every step. We found that the network achieved lower mean squared error than delta hedging. We tested it on the same paths used for training and found good performance. The transaction costs were calculated after trading was finished by multiplying turnover by 0.005.</p>
+          </blockquote>
+        </div>
+      </section>
+
+      <section id="rung-4">
+        <h2>Rung 4 · Stretch</h2>
+        <p>Extend the deep hedging framework to non-Markovian market environments: (1) simulate paths under the rough Bergomi fractional volatility model with Hurst parameter \(H \in (0, 0.5)\); (2) implement an LSTM or Transformer hedging architecture with path memory; and (3) solve the high-dimensional basket option hedging problem with quadratic temporary cross-impact.</p>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="buehler2019deep">Buehler, Gonon, Teichmann &amp; Wood (2019). Deep hedging. Quantitative Finance, 19(8), 1271–1291.</li>
+          <li data-cite="whalley1997asymptotic">Whalley &amp; Wilmott (1997). An Asymptotic Analysis of an Optimal Hedging Model for Option Pricing with Transaction Costs. Mathematical Finance, 7(3), 307–324.</li>
+          <li data-cite="almgren2001optimal">Almgren &amp; Chriss (2001). Optimal execution of portfolio transactions. Journal of Risk, 3(2), 5–39.</li>
+          <li data-cite="sutton2018reinforcement">Sutton &amp; Barto (2018). Reinforcement Learning: An Introduction (2nd ed.). MIT Press.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

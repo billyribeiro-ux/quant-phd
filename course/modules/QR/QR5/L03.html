@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR5" data-page="L03" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Policy Gradients &amp; Actor-Critic Architectures · QR5 L03</title>
+  <meta name="description" content="Policy gradient theorem, score function estimators, baseline variance reduction, continuous action spaces, and actor-critic architectures for quantitative trading.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR5 Reinforcement Learning &amp; Control in Trading</a><span class="sep">›</span>
+      <span>L03</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 03 · 8 study hours · Part QR</p>
+        <h1>Policy Gradients, Continuous Action Spaces &amp; Actor-Critic</h1>
+        <p class="why-it-matters">Value-based methods like Q-learning fail when trading actions are continuous—such as selecting portfolio target weights \(\mathbf{w} \in \Delta^{N-1}\) or continuous execution rates \(v_t \in [0, v_{\max}]\). Discretizing continuous action spaces leads to an exponential curse of dimensionality. Policy gradient methods parameterize trading policies directly as differentiable probability distributions, optimizing expected risk-adjusted utility via gradient ascent without requiring an explicit argmax over infinite action candidates.</p>
+      </header>
+
+      <section id="policy-gradient-theorem">
+        <h2 id="s1">1. The Policy Gradient Theorem and REINFORCE</h2>
+        <p>Let \(\pi_\theta(a \mid s)\) denote a parameterized stochastic policy with parameter vector \(\theta \in \R^d\). The objective is to maximize expected cumulative discounted return:</p>
+        \[
+        J(\theta) = \E_{\tau \sim \pi_\theta} [R(\tau)] = \int P(\tau; \theta) R(\tau) \mathrm{d}\tau
+        \]
+        <p>where trajectory \(\tau = (s_0, a_0, s_1, a_1, \dots, s_T)\) has probability \(P(\tau; \theta) = \mu(s_0) \prod_{t=0}^{T-1} \pi_\theta(a_t \mid s_t) P(s_{t+1} \mid s_t, a_t)\).</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-policy-gradient" data-concept="policy-gradient">Policy-gradient methods</dfn></p>
+          <p><strong>Policy-gradient methods</strong> are reinforcement learning algorithms that optimize a parameterized policy \(\pi_\theta\) by ascending the analytical gradient of expected return with respect to policy parameters: \(\theta \leftarrow \theta + \alpha \nabla_\theta J(\theta)\). By the Policy Gradient Theorem, the gradient evaluates as:</p>
+          \[
+          \nabla_\theta J(\theta) = \E_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^T \nabla_\theta \ln \pi_\theta(a_t \mid s_t) G_t \right]
+          \]
+          <p>where \(G_t = \sum_{k=t}^T \gamma^{k-t} R_{k+1}\) is the cumulative future return from step \(t\), and \(\nabla_\theta \ln \pi_\theta(a_t \mid s_t)\) is the likelihood ratio or score function.</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T" data-cite="sutton2018reinforcement" data-locator="Eq. 13.5">Theorem 3.1 · The Policy Gradient Theorem</span>
+          <p>For any differentiable policy \(\pi_\theta(a \mid s)\) and any Markov decision process, the gradient \(\nabla_\theta J(\theta)\) does not depend on the derivatives of the state distribution or transition kernel \(P(s' \mid s, a)\):</p>
+          \[
+          \nabla_\theta J(\theta) = \sum_{s \in S} d^\pi(s) \sum_{a \in A} \nabla_\theta \pi_\theta(a \mid s) Q^\pi(s, a) = \E_{s \sim d^\pi, a \sim \pi_\theta} \left[ \nabla_\theta \ln \pi_\theta(a \mid s) Q^\pi(s, a) \right]
+          \]
+          <p>where \(d^\pi(s) = \sum_{t=0}^\infty \gamma^t \Prob(S_t = s \mid s_0, \pi)\) is the discounted state visitation distribution.</p>
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>Compute the gradient of trajectory probability \(P(\tau; \theta)\):</p>
+          \[
+          \nabla_\theta P(\tau; \theta) = P(\tau; \theta) \frac{\nabla_\theta P(\tau; \theta)}{P(\tau; \theta)} = P(\tau; \theta) \nabla_\theta \ln P(\tau; \theta)
+          \]
+          <p>Expanding the log trajectory probability:</p>
+          \[
+          \ln P(\tau; \theta) = \ln \mu(s_0) + \sum_{t=0}^{T-1} \ln \pi_\theta(a_t \mid s_t) + \sum_{t=0}^{T-1} \ln P(s_{t+1} \mid s_t, a_t)
+          \]
+          <p>Differentiating with respect to \(\theta\), the terms \(\mu(s_0)\) and \(P(s_{t+1} \mid s_t, a_t)\) vanish because market dynamics do not depend directly on policy parameters \(\theta\):</p>
+          \[
+          \nabla_\theta \ln P(\tau; \theta) = \sum_{t=0}^{T-1} \nabla_\theta \ln \pi_\theta(a_t \mid s_t)
+          \]
+          <p>Substituting back into \(\nabla_\theta J(\theta) = \int \nabla_\theta P(\tau; \theta) R(\tau) \mathrm{d}\tau\) gives the expectation over \(\tau\). Causality further dictates that past rewards cannot depend on future actions, so \(\sum_{k=0}^T R_{k+1}\) reduces to the future return \(G_t = \sum_{k=t}^T \gamma^{k-t} R_{k+1}\), establishing the theorem.</p>
+        </div>
+      </section>
+
+      <section id="continuous-action-spaces">
+        <h2 id="s2">2. Continuous Action Parameterizations in Portfolio Control</h2>
+        <p>In quantitative portfolio management, the action represents allocation weights or trade speed. Two primary parameterizations are employed:</p>
+
+        <div class="block definition">
+          <p class="block-title">Gaussian Continuous Policy</p>
+          <p>For an unconstrained action \(a_t \in \R\), the policy is parameterized by a conditional Gaussian density:</p>
+          \[
+          \pi_\theta(a \mid s) = \frac{1}{\sqrt{2\pi \sigma^2}} \exp\left( -\frac{(a - \mu_\theta(s))^2}{2 \sigma^2} \right)
+          \]
+          <p>where the score function evaluates analytically to:</p>
+          \[
+          \nabla_\theta \ln \pi_\theta(a \mid s) = \frac{a - \mu_\theta(s)}{\sigma^2} \nabla_\theta \mu_\theta(s)
+          \]
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 3.1 · Squashed Gaussian Policies for Bounded Positions</p>
+          <p>To enforce leverage or inventory boundaries \(a \in [-a_{\max}, a_{\max}]\), the policy samples latent Gaussian noise \(u \sim \mathcal{N}(\mu_\theta(s), \sigma^2)\) and applies a squashing bijection \(a = a_{\max} \tanh(u)\). By change of variables, the score function includes the Jacobian determinant \(\ln |1 - \tanh^2(u)|\) to maintain exact probability density evaluation.</p>
+        </div>
+      </section>
+
+      <section id="variance-reduction">
+        <h2 id="s3">3. Variance Reduction via Baselines and Actor-Critic</h2>
+        <p>The raw REINFORCE gradient estimator suffers from severe sample variance. Subtracting an arbitrary state-dependent baseline \(b(s)\) eliminates variance without introducing bias.</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T" data-cite="sutton2018reinforcement" data-locator="Eq. 13.11">Theorem 3.2 · Baseline Unbiasedness</span>
+          <p>For any baseline function \(b: S \to \R\) that does not depend on action \(a\):</p>
+          \[
+          \E_{a \sim \pi_\theta} \left[ \nabla_\theta \ln \pi_\theta(a \mid s) b(s) \right] = 0
+          \]
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>Expand the expectation as an integral over the action space:</p>
+          \[
+          \int_A \nabla_\theta \ln \pi_\theta(a \mid s) b(s) \pi_\theta(a \mid s) \mathrm{d}a = b(s) \int_A \frac{\nabla_\theta \pi_\theta(a \mid s)}{\pi_\theta(a \mid s)} \pi_\theta(a \mid s) \mathrm{d}a = b(s) \nabla_\theta \int_A \pi_\theta(a \mid s) \mathrm{d}a
+          \]
+          <p>Since \(\int_A \pi_\theta(a \mid s) \mathrm{d}a = 1\) for all \(\theta\), its gradient with respect to \(\theta\) is identically zero: \(\nabla_\theta (1) = 0\), establishing the theorem.</p>
+        </div>
+
+        <p>Setting \(b(s) = V^\phi(s)\) gives the advantage function \(A^\pi(s, a) = Q^\pi(s, a) - V^\pi(s)\), which forms the core of <strong>Actor-Critic</strong> architectures: the <em>actor</em> updates \(\theta\) in the direction of \(\nabla_\theta \ln \pi_\theta(a \mid s) A(s, a)\), while the <em>critic</em> updates \(\phi\) to minimize value prediction error \((R_{t+1} + \gamma V^\phi(S_{t+1}) - V^\phi(S_t))^2\).</p>
+      </section>
+
+      <section id="inline-lab">
+        <h2 id="s4">4. Numerical Verification · Policy Gradient &amp; Baseline Variance Reduction</h2>
+        <p>We now verify the policy gradient theorem numerically, comparing empirical score function estimates against finite differences and measuring variance reduction from baseline subtraction.</p>
+
+        <section class="lab" id="lab-QR5-L03-1" data-runtime="python">
+          <h3>Lab 1 · Continuous Policy Gradient Verification &amp; Variance Reduction</h3>
+          <p class="hypothesis">Verifies that the analytical score function policy gradient matches numerical finite differences to high precision, and that state-value baseline subtraction reduces gradient variance without biasing the estimate.</p>
+          <pre><code class="language-python" data-run>"""Lab QR5-L03-1: Continuous Policy Gradient Verification &amp; Variance Reduction.
+
+Demonstrates:
+1. Continuous action Gaussian policy parameterization for portfolio allocation.
+2. Derivation and implementation of the REINFORCE score function estimator.
+3. Variance reduction via state-value baseline subtraction.
+4. Numerical validation of empirical policy gradient against finite difference approximation.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def evaluate_trajectory_return(theta: float, noise: np.ndarray) -&gt; tuple[float, float]:
+    """Simulate portfolio rebalancing with Gaussian policy a ~ Normal(theta, sigma^2).
+
+    Reward R(a) = mu_asset * a - 0.5 * lambda_cost * a^2.
+    """
+    sigma_a = 0.5
+    action = theta + sigma_a * noise
+    # True market return: quadratic utility
+    reward = float(0.12 * action - 0.05 * (action**2))
+    # Score function d ln pi(a | theta) / d theta = (a - theta) / sigma_a^2
+    score = float((action - theta) / (sigma_a**2))
+    return reward, score
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(42)
+    n_samples = 40000
+    theta_0 = 1.0
+
+    shocks = rng.normal(0.0, 1.0, size=n_samples)
+
+    # 1. Analytical Expected Return J(theta) = E[0.12*(theta + sigma*z)
+    #    - 0.05*(theta^2 + 2*theta*sigma*z + sigma^2*z^2)]
+    # J(theta) = 0.12*theta - 0.05*theta^2 - 0.05*sigma^2
+    # dJ/dtheta = 0.12 - 0.10*theta
+    expected_grad_analytical = 0.12 - 0.10 * theta_0
+
+    # 2. REINFORCE Empirical Policy Gradient
+    scores = np.zeros(n_samples)
+    rewards = np.zeros(n_samples)
+
+    for i in range(n_samples):
+        r, sc = evaluate_trajectory_return(theta_0, shocks[i])
+        rewards[i] = r
+        scores[i] = sc
+
+    # Raw REINFORCE gradient
+    raw_grad_samples = scores * rewards
+    var_raw = float(np.var(raw_grad_samples))
+
+    # Baseline-subtracted REINFORCE
+    baseline = float(np.mean(rewards))
+    baseline_grad_samples = scores * (rewards - baseline)
+    grad_baseline = float(np.mean(baseline_grad_samples))
+    var_baseline = float(np.var(baseline_grad_samples))
+
+    # 3. Finite Difference Gradient
+    delta = 1e-4
+    rewards_plus = np.zeros(n_samples)
+    rewards_minus = np.zeros(n_samples)
+    for i in range(n_samples):
+        r_p, _ = evaluate_trajectory_return(theta_0 + delta, shocks[i])
+        r_m, _ = evaluate_trajectory_return(theta_0 - delta, shocks[i])
+        rewards_plus[i] = r_p
+        rewards_minus[i] = r_m
+
+    grad_fd = float(np.mean((rewards_plus - rewards_minus) / (2.0 * delta)))
+
+    variance_reduction = (var_raw - var_baseline) / var_raw * 100.0
+
+    print(f"Analytical gradient dJ/dtheta: {expected_grad_analytical:.6f}")
+    print(f"Finite difference gradient: {grad_fd:.6f}")
+    print(f"REINFORCE empirical gradient: {grad_baseline:.6f}")
+    print(f"Raw gradient variance: {var_raw:.6f}")
+    print(f"Baseline gradient variance: {var_baseline:.6f}")
+    print(f"Variance reduction from baseline: {variance_reduction:.2f}%")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Analytical gradient dJ/dtheta: 0.020000
+Finite difference gradient: 0.019779
+REINFORCE empirical gradient: 0.019729
+Raw gradient variance: 0.008796
+Baseline gradient variance: 0.007075
+Variance reduction from baseline: 19.57%</pre>
+          <p class="interpretation">The analytical score function gradient matches finite differences within 0.0002, and subtracting the baseline reduces gradient variance by 19.57% without altering the expected gradient value.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2>Where the Canon Breaks</h2>
+        <p>Standard policy gradient methods (REINFORCE, PPO, SAC) assume rewards follow sub-Gaussian distributions with finite higher moments. In financial asset markets:</p>
+        <ul>
+          <li><strong>Heavy-tailed jumps:</strong> Extreme market returns (kurtosis \(\gg 3\)) produce outlier score products \(\nabla_\theta \ln \pi \cdot G_t\), causing gradient explosions and destabilizing policy updates.</li>
+          <li><strong>Variance-induced exploration failure:</strong> In continuous spaces, increasing policy variance \(\sigma\) to explore causes catastrophic drawdown during market stress, conflicting with capital preservation.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Subtracting \(V(s)\) from the return introduces an approximation bias into the policy gradient.</p>
+            <p>By Theorem 3.2, \(\E[\nabla_\theta \ln \pi(a \mid s) b(s)] = 0\) identically for any function independent of \(a\). The expectation is strictly zero, guaranteeing zero bias.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Clipping Gaussian actions at execution time preserves policy gradient convergence.</p>
+            <p>Post-hoc clipping alters the action distribution without informing the score function \(\nabla_\theta \ln \pi(a \mid s)\), producing inconsistent gradient steps. Positions must be bounded via smooth transformations (e.g., \(\tanh\)) or Beta distributions.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Standard policy gradient algorithms automatically maximize the portfolio Sharpe ratio.</p>
+            <p>The standard objective is expected cumulative return \(J(\theta) = \E[\sum R_t]\). The Sharpe ratio \(\frac{\E[R]}{\sqrt{\Var(R)}}\) is non-additive and non-separable across time steps, requiring differential Sharpe ratio formulation.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2>Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-L03-mech-1">
+            <p class="problem-title">Problem 3.1 · Gaussian Policy Score Function Calculation</p>
+          <p>A continuous execution policy parameterizes trade rate as a Gaussian \(\pi_\theta(a \mid s) \sim \mathcal{N}(\mu_\theta(s), \sigma^2)\) where \(\mu_\theta(s) = \theta^\top \mathbf{x} = 2.5\) and fixed dispersion \(\sigma = 0.5\). If the executed action is \(a = 3.2\) and return is \(G = 12.0\), calculate the scalar score factor \(\frac{a - \mu}{\sigma^2}\) and the raw policy gradient update factor.</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>The scalar score factor is:</p>
+            \[
+            \text{Score} = \frac{a - \mu}{\sigma^2} = \frac{3.2 - 2.5}{0.5^2} = \frac{0.7}{0.25} = 2.80
+            \]
+            <p>The policy gradient update factor is \(\text{Score} \times G = 2.80 \times 12.0 = 33.6\). The parameter update moves in the direction \(33.6 \mathbf{x}\).</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L03-mech-2">
+            <p class="problem-title">Problem 3.2 · Baseline Variance Reduction Ratio</p>
+          <p>Across 1,000 simulated trading episodes, a raw policy gradient sample has variance \(\sigma_{\text{raw}}^2 = 0.0450\). Subtracting a linear value baseline \(V^\phi(s)\) reduces the sample variance to \(\sigma_{\text{base}}^2 = 0.0180\). Calculate the percentage variance reduction and the required sample size reduction to achieve identical estimation error.</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Percentage variance reduction:</p>
+            \[
+            \text{Reduction} = \frac{0.0450 - 0.0180}{0.0450} \times 100\% = \frac{0.0270}{0.0450} \times 100\% = 60.0\%
+            \]
+            <p>Since estimation variance scales as \(\sigma^2 / N\), the required sample size to achieve identical precision scales proportionally: \(N_{\text{base}} = \frac{0.0180}{0.0450} N_{\text{raw}} = 0.40 N_{\text{raw}}\), representing a 60% reduction in required training samples.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L03-mech-3">
+            <p class="problem-title">Problem 3.3 · GAE Advantage Computation</p>
+          <p>Given 1-step TD errors \(\delta_0 = 1.2\), \(\delta_1 = -0.5\), \(\delta_2 = 2.0\), with discount factor \(\gamma = 0.95\) and GAE parameter \(\lambda = 0.90\), calculate the generalized advantage estimate \(\hat{A}_0^{\text{GAE}}\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>The GAE formula is \(\hat{A}_t^{\text{GAE}} = \sum_{l=0}^\infty (\gamma \lambda)^l \delta_{t+l}\). Here \(\gamma \lambda = 0.95 \times 0.90 = 0.855\):</p>
+            \[
+            \hat{A}_0^{\text{GAE}} = \delta_0 + (0.855) \delta_1 + (0.855)^2 \delta_2 = 1.2 + 0.855 \times (-0.5) + (0.731025) \times 2.0 = 1.2 - 0.4275 + 1.46205 = 2.23455
+            \]
+          </details>
+          </div>
+        </div>
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p-L03-proof-1">
+            <p class="problem-title">Problem 3.4 · Invariance to Constant Baseline</p>
+          <p>Prove that for any constant \(C \in \R\), \(\E_{a \sim \pi_\theta}[\nabla_\theta \ln \pi_\theta(a \mid s) \cdot C] = 0\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>By linearity of the integral:</p>
+            \[
+            \int_A \nabla_\theta \ln \pi_\theta(a \mid s) \cdot C \cdot \pi_\theta(a \mid s) \mathrm{d}a = C \int_A \frac{\nabla_\theta \pi_\theta(a \mid s)}{\pi_\theta(a \mid s)} \pi_\theta(a \mid s) \mathrm{d}a = C \nabla_\theta \int_A \pi_\theta(a \mid s) \mathrm{d}a
+            \]
+            <p>Since \(\int_A \pi_\theta(a \mid s) \mathrm{d}a = 1\) identically, its derivative is zero: \(C \nabla_\theta (1) = 0\).</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L03-proof-2">
+            <p class="problem-title">Problem 3.5 · Score Function Expectation Property</p>
+          <p>Prove that the score function \(\nabla_\theta \ln \pi_\theta(a \mid s)\) has expectation zero: \(\E_{a \sim \pi_\theta}[\nabla_\theta \ln \pi_\theta(a \mid s)] = 0\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Follows immediately from Problem 3.4 with \(C = 1\):</p>
+            \[
+            \E_{a \sim \pi_\theta}[\nabla_\theta \ln \pi_\theta(a \mid s)] = \int_A \nabla_\theta \pi_\theta(a \mid s) \mathrm{d}a = \nabla_\theta \int_A \pi_\theta(a \mid s) \mathrm{d}a = \nabla_\theta (1) = 0
+            \]
+          </details>
+          </div>
+          <div class="problem" id="p-L03-proof-3">
+            <p class="problem-title">Problem 3.6 · Optimal Variance-Minimizing Baseline</p>
+          <p>Derive the state-dependent baseline \(b^*(s)\) that minimizes the variance of the policy gradient estimator \(\Var(\nabla_\theta \ln \pi_\theta(a \mid s) [Q(s, a) - b(s)])\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>The variance of the component-wise estimator is \(\E[\|\nabla_\theta \ln \pi_\theta(a \mid s)\|^2 (Q(s, a) - b(s))^2]\). Differentiating with respect to \(b(s)\) and setting to zero:</p>
+            \[
+            \frac{\partial}{\partial b(s)} \E[\|\nabla_\theta \ln \pi_\theta(a \mid s)\|^2 (Q(s, a)^2 - 2 b(s) Q(s, a) + b(s)^2)] = 0
+            \]
+            \[
+            \implies -2 \E[\|\nabla_\theta \ln \pi_\theta(a \mid s)\|^2 Q(s, a)] + 2 b(s) \E[\|\nabla_\theta \ln \pi_\theta(a \mid s)\|^2] = 0
+            \]
+            \[
+            b^*(s) = \frac{\E_{a \sim \pi_\theta}[\|\nabla_\theta \ln \pi_\theta(a \mid s)\|^2 Q(s, a)]}{\E_{a \sim \pi_\theta}[\|\nabla_\theta \ln \pi_\theta(a \mid s)\|^2]}
+            \]
+            <p>This is a weighted expectation of \(Q(s, a)\) weighted by the squared score norm.</p>
+          </details>
+          </div>
+        </div>
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p-L03-emp-1">
+            <p class="problem-title">Problem 3.7 · Empirical Policy Gradient Verification vs. Finite Differences</p>
+          <p>For a parameter \(\theta = 0.50\) and objective \(J(\theta)\), evaluate policy gradient estimate \(\hat{g}\) across \(N = 50,000\) sample paths. Compare with centered finite difference \(\frac{J(\theta + \epsilon) - J(\theta - \epsilon)}{2 \epsilon}\) for \(\epsilon = 10^{-4}\). What is the empirical relative discrepancy?</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>By the central limit theorem, the empirical policy gradient estimator has standard error \(\sigma / \sqrt{N}\). With \(N = 50,000\) and \(\sigma \approx 0.1\), \(\operatorname{SE} \approx 0.00045\). Centered finite differences have truncation error \(O(\epsilon^2) = 10^{-8}\). The empirical relative error between the two estimators is typically under 1%, verifying code implementation integrity.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L03-emp-2">
+            <p class="problem-title">Problem 3.8 · PPO Clipping Frequency in High Volatility</p>
+          <p>In Proximal Policy Optimization (PPO), the surrogate objective clips the probability ratio \(r_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)}\) to \([1 - \epsilon, 1 + \epsilon]\). Under market volatility doubling, how does the clipping activation frequency behave if learning rate is held constant?</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Under doubled return volatility, advantage estimates \(\hat{A}_t\) scale proportionally to volatility, multiplying gradient step sizes. Consequently, parameter updates between epochs induce larger ratio shifts \(r_t(\theta)\), causing clipping activation to rise from typical levels of 15–20% to over 60%, heavily dampening policy updates and preserving numerical stability.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L03-emp-3">
+            <p class="problem-title">Problem 3.9 · Maximum Entropy Regularization in Soft Actor-Critic</p>
+          <p>Soft Actor-Critic adds entropy bonus \(\alpha \mathcal{H}(\pi_\theta(\cdot \mid s_t))\) to the reward. For a Gaussian policy with standard deviation \(\sigma\), entropy is \(\frac{1}{2} \ln(2\pi e \sigma^2)\). Calculate the marginal gradient of the entropy term with respect to policy dispersion \(\sigma\).</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Differentiating with respect to \(\sigma\):</p>
+            \[
+            \frac{\partial}{\partial \sigma} \left[ \frac{1}{2} \ln(2\pi e \sigma^2) \right] = \frac{\partial}{\partial \sigma} \left[ \frac{1}{2} \ln(2\pi e) + \ln \sigma \right] = \frac{1}{\sigma}
+            \]
+            <p>The entropy gradient pushes dispersion outward with force proportional to \(1/\sigma\), preventing the policy from collapsing to a deterministic Dirac delta prematurely.</p>
+          </details>
+          </div>
+        </div>
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p-L03-res-1">
+            <p class="problem-title">Problem 3.10 · Direct Sharpe Ratio Optimization via Policy Gradients</p>
+          <p>Formulate the analytical policy gradient for the Sharpe ratio \(\operatorname{SR} = \frac{\E[R_t]}{\sqrt{\E[R_t^2] - (\E[R_t])^2}}\) directly using the chain rule and the Policy Gradient Theorem.</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Let \(A = \E[R_t]\) and \(B = \E[R_t^2]\), so \(\operatorname{SR} = \frac{A}{\sqrt{B - A^2}}\). By the chain rule:</p>
+            \[
+            \nabla_\theta \operatorname{SR} = \frac{\nabla_\theta A \sqrt{B - A^2} - A \frac{\nabla_\theta B - 2 A \nabla_\theta A}{2 \sqrt{B - A^2}}}{B - A^2} = \frac{(B - A^2) \nabla_\theta A - \frac{1}{2} A \nabla_\theta B + A^2 \nabla_\theta A}{(B - A^2)^{3/2}} = \frac{B \nabla_\theta A - \frac{1}{2} A \nabla_\theta B}{(B - A^2)^{3/2}}
+            \]
+            <p>Substituting the policy gradient expressions \(\nabla_\theta A = \E[\nabla_\theta \ln \pi R_t]\) and \(\nabla_\theta B = \E[\nabla_\theta \ln \pi R_t^2]\) gives the direct Sharpe ratio policy gradient.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L03-res-2">
+            <p class="problem-title">Problem 3.11 · Off-Policy Correction in Continuous Action Spaces</p>
+          <p>Why does importance sampling \(w(a) = \frac{\pi_\theta(a \mid s)}{\beta(a \mid s)}\) suffer from unbounded variance in multi-dimensional continuous action spaces? How does Deterministic Policy Gradient (DPG) sidestep importance sampling ratios entirely?</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>In high dimensions, the likelihood ratio of continuous Gaussian densities contains the exponential term \(\exp(-\frac{1}{2} (a-\mu_\pi)^\top \Sigma_\pi^{-1} (a-\mu_\pi) + \frac{1}{2} (a-\mu_\beta)^\top \Sigma_\beta^{-1} (a-\mu_\beta))\), whose variance diverges exponentially in action dimension \(D\). Silver et al. (2014) show that DPG parameterizes a deterministic policy \(a = \mu_\theta(s)\). Its gradient is \(\nabla_\theta J = \E[\nabla_a Q(s, a) \nabla_\theta \mu_\theta(s)]\), completely eliminating action importance sampling weights.</p>
+          </details>
+          </div>
+          <div class="problem" id="p-L03-res-3">
+            <p class="problem-title">Problem 3.12 · Heavy-Tailed Gradient Clipping in Execution</p>
+          <p>Design an adaptive gradient clipping threshold \(\tau_k\) based on rolling empirical quantiles of score norms \(\|\nabla_\theta \ln \pi \cdot G_t\|\). How does adaptive clipping preserve gradient direction while preventing ruinous parameter jumps during market flash crashes?</p>
+          <details class="solution">
+            <summary>Worked solution</summary>
+            <p>Maintain an exponential moving median and interquartile range (IQR) of gradient norms: \(\tau_k = \operatorname{Median}_k + 3 \times \operatorname{IQR}_k\). For any sample gradient \(g_i\), scale by \(\min(1, \tau_k / \|g_i\|)\). Because the vector is scaled by a non-negative scalar, its directional cosine \(\frac{g_i^\top \nabla J}{\|g_i\| \|\nabla J\|}\) is exactly preserved, while individual outlier gradient norms are capped, preventing network weight corruption during liquidity vacuums.</p>
+          </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2>Key Results</h2>
+        <div class="table-wrap">
+        <table class="key-results">
+          <thead>
+            <tr><th>Result</th><th>Grade</th><th>Key / Source</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Policy Gradient Theorem: The gradient of expected return evaluates without requiring derivatives of state transition probabilities.</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>sutton2018reinforcement</td>
+            </tr>
+            <tr>
+              <td>Baseline Unbiasedness: Subtracting any state-dependent baseline preserves exact expected gradient while strictly reducing variance.</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>sutton2018reinforcement</td>
+            </tr>
+            <tr>
+              <td>Sharpe Ratio Sampling Distribution: Non-additive Sharpe objectives require second-moment gradient tracking.</td>
+              <td><span class="grade-tag grade-a">A</span></td>
+              <td>lo2002statistics</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR5" data-page="L03">
+        <h2>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the score function \(\nabla_\theta \ln \pi_\theta(a \mid s)\) for a Gaussian policy with mean \(\mu_\theta(s)\) and variance \(\sigma^2\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q1"> <span style="min-width: 0;">\(\frac{a - \mu_\theta(s)}{\sigma^2} \nabla_\theta \mu_\theta(s)\)</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0;">\(\frac{(a - \mu_\theta(s))^2}{2 \sigma^2}\)</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0;">\(\frac{1}{\sqrt{2\pi \sigma^2}} \nabla_\theta \mu_\theta(s)\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Taking the natural logarithm of the Gaussian density and differentiating with respect to \(\theta\) yields \(\frac{a - \mu_\theta(s)}{\sigma^2} \nabla_\theta \mu_\theta(s)\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does subtracting a baseline \(b(s)\) not alter the expected policy gradient?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q2"> <span style="min-width: 0;">Because the expectation of the score function \(\E_{a \sim \pi}[\nabla_\theta \ln \pi_\theta(a \mid s)]\) is identically zero.</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0;">Because the baseline is always zero.</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0;">Because the discount factor cancels the baseline out.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Since \(\int \pi(a \mid s) \mathrm{d}a = 1\), differentiating both sides yields \(\int \nabla \pi \mathrm{d}a = 0\), so \(\E[\nabla \ln \pi \cdot b(s)] = 0\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">In continuous action spaces, why is a squashed Gaussian policy \(a = \tanh(u)\) preferred over hard clipping?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q3"> <span style="min-width: 0;">It is continuously differentiable everywhere with known Jacobian, preserving exact policy gradient updates.</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0;">It forces all trades to be strictly zero.</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0;">It eliminates the need for neural network weights.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Hard clipping creates zero derivatives at boundaries, breaking backpropagation. The \(\tanh\) squashing transformation is smooth and invertible.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does the advantage function \(A^\pi(s, a) = Q^\pi(s, a) - V^\pi(s)\) quantify?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q4"> <span style="min-width: 0;">How much better taking specific action \(a\) is compared to the expected performance of current policy \(\pi\) at state \(s\).</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">The total cumulative transaction costs incurred up to state \(s\).</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">The probability of entering a drawdown.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The advantage measures the relative superiority of action \(a\) over the baseline average value \(V^\pi(s)\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the primary role of the GAE parameter \(\lambda \in [0, 1]\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q5"> <span style="min-width: 0;">To interpolate smoothly between low-variance biased 1-step TD (\(\lambda = 0\)) and high-variance unbiased Monte Carlo (\(\lambda = 1\)).</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">To discount future transaction fees.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">To penalize maximum drawdowns.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Generalized Advantage Estimation trades off bias and variance through the exponential decay parameter \(\lambda\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does PPO clip the probability ratio \(r_t(\theta)\) to \([1-\epsilon, 1+\epsilon]\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q6"> <span style="min-width: 0;">To prevent destructively large policy updates when advantage estimates are noisy.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">To force the policy to trade at least \(\epsilon\) shares every period.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">To satisfy the Robbins–Monro conditions.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Clipping the surrogate objective penalizes updates that move the new policy too far from the old policy, ensuring stable monotonic policy improvement.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why can policy gradient training fail catastrophically during market jump events?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q7"> <span style="min-width: 0;">Fat-tailed returns produce extreme sample returns \(G_t\), creating explosive gradients that corrupt policy parameters.</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0;">Asset volatility vanishes to zero.</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0;">The policy gradient theorem requires continuous trading without jumps.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Heavy-tailed returns violate Gaussian assumptions and cause massive gradient variance unless gradients are clipped or regularized.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does the Policy Gradient Theorem demonstrate about the transition kernel \(P(s' \mid s, a)\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q8"> <span style="min-width: 0;">The policy gradient does not require calculating or knowing the gradient of the transition probabilities \(\nabla_\theta P(s' \mid s, a)\).</span></label>
+              <label class="option"><input type="radio" name="q8"> <span style="min-width: 0;">The transition kernel must be deterministic.</span></label>
+              <label class="option"><input type="radio" name="q8"> <span style="min-width: 0;">The market must be in equilibrium.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A profound insight of Sutton et al. (1999) is that the gradient of expected return depends only on policy derivatives, not on transition derivatives.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <li data-cite="sutton2018reinforcement">Sutton, R. S., &amp; Barto, A. G. (2018). <em>Reinforcement Learning: An Introduction</em> (2nd ed.). MIT Press.</li>
+          <li data-cite="nevmyvaka2006reinforcement">Nevmyvaka, Y., Feng, Y., &amp; Kearns, M. (2006). Reinforcement learning for optimized trade execution. <em>Proceedings of the 23rd International Conference on Machine Learning</em>, 673–680.</li>
+          <li data-cite="lo2002statistics">Lo, A. W. (2002). The statistics of Sharpe ratios. <em>Financial Analysts Journal</em>, 58(4), 36–52.</li>
+          <li data-cite="virtanen2020scipy">Virtanen, P. et al. (2020). SciPy 1.0: fundamental algorithms for scientific computing in Python. <em>Nature Methods</em>, 17(3), 261–272.</li>
+        </ol>
+      </section>
+      <p><button type="button" class="button" data-complete>Mark lesson complete</button></p>
+    </main>
+  </div>
+</body>
+</html>

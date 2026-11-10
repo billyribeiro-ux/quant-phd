@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR5" data-page="L06" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Non-Stationarity, Low SNR &amp; Failure Modes in Financial RL · QR5 L06</title>
+  <meta name="description" content="Why reinforcement learning frequently fails in real financial trading: non-stationary return distributions, ultra-low signal-to-noise ratio, regime shifts, sample inefficiency, and architectural mitigations.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR5 Reinforcement Learning &amp; Control in Trading</a><span class="sep">›</span>
+      <span>L06</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 06 · 8 study hours · Part QR</p>
+        <h1>Non-Stationarity, Low SNR &amp; Failure Modes in Financial RL</h1>
+        <p class="why-it-matters">Standard reinforcement learning excels in stationary, high signal-to-noise game environments like Go or Atari, where transition probabilities remain invariant across millions of simulated episodes. In quantitative financial markets, RL algorithms face an adversarial reality: return distributions are inherently non-stationary, signal-to-noise ratios rarely exceed a few percent, and structural regime shifts instantly invalidate historical transition kernels. Without rigorous structural regularization, risk budgeting, and out-of-distribution guards, neural RL policies overfit idiosyncratic noise trajectories and suffer catastrophic drawdown collapse in production trading.</p>
+      </header>
+
+      <section id="non-stationarity-theory">
+        <h2 id="s1">1. The Non-Stationary Financial Environment</h2>
+        <p>In standard Markov decision process theory, the transition probability kernel \(\mathcal{P}(s_{t+1} \mid s_t, a_t)\) and reward distribution \(\mathcal{R}(r_t \mid s_t, a_t)\) are stationary and time-invariant. In competitive electronic financial markets, this assumption fails catastrophically <span class="claim" data-grade="A" data-cite="khandani2011happened" data-locator="Section 4">[khandani2011happened]</span>.</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-rl-nonstationarity-failure" data-concept="rl-nonstationarity-failure">Why RL fails in non-stationary low-SNR settings</dfn></p>
+          <p><strong>Why RL fails in non-stationary low-SNR settings</strong> refers to the structural breakdown of reinforcement learning policies in financial time series caused by the confluence of three pathological factors:</p>
+          <ol>
+            <li><strong>Concept Drift &amp; Regime Shifts:</strong> The data-generating process evolves over time, \(\mathcal{P}_t(s' \mid s, a) \ne \mathcal{P}_{t+\tau}(s' \mid s, a)\), causing policies optimized on historical episodes to encounter out-of-distribution state transitions.</li>
+            <li><strong>Ultra-Low Signal-to-Noise Ratio (SNR):</strong> The expected return signal \(\mu \Delta t\) is overwhelmed by diffusion noise \(\sigma \sqrt{\Delta t}\), causing temporal difference errors and policy gradient estimators to have variance scaling as \(O(\sigma^2 / \Delta t)\).</li>
+            <li><strong>Endogenous Feedback &amp; Non-Stationary Confounding:</strong> Large orders alter market liquidity and price formation through temporary and permanent impact, turning the trading environment into a partially observable multi-agent game.</li>
+          </ol>
+        </div>
+
+        <p>When an unconstrained neural policy is trained via standard policy gradients or Q-learning in such an environment, the optimizer fits the historical realization of diffusion paths rather than genuine structural alpha.</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 6.1 · Signal-to-Noise Ratio Scaling in High Frequency</span>
+          <p>Let an asset price follow arithmetic Brownian motion \(\mathrm{d}S_t = \mu \mathrm{d}t + \sigma \mathrm{d}W_t\) with constant drift \(\mu\) and volatility \(\sigma\). Over a discrete sampling interval \(\Delta t\), the signal-to-noise ratio \(\text{SNR}(\Delta t)\) of price increments \(\Delta S_t = S_{t+\Delta t} - S_t\) satisfies:</p>
+          \[
+          \text{SNR}(\Delta t) = \frac{|\E[\Delta S_t]|}{\sqrt{\Var(\Delta S_t)}} = \frac{|\mu| \Delta t}{\sigma \sqrt{\Delta t}} = \frac{|\mu|}{\sigma} \sqrt{\Delta t}
+          \]
+          <p>Consequently, as sampling frequency increases (\(\Delta t \to 0\)), the signal-to-noise ratio vanishes at rate \(O(\sqrt{\Delta t})\), and the noise-to-signal ratio explodes as \(O(1/\sqrt{\Delta t})\).</p>
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>From the properties of Brownian motion, \(\E[\Delta S_t] = \mu \Delta t\) and \(\Var(\Delta S_t) = \sigma^2 \Delta t\). The standard deviation is \(\sigma \sqrt{\Delta t}\). The ratio of expectation to standard deviation is therefore \(\frac{|\mu| \Delta t}{\sigma \sqrt{\Delta t}} = \frac{|\mu|}{\sigma} \sqrt{\Delta t}\). Taking the limit as \(\Delta t \to 0^+\) yields \(\lim_{\Delta t \to 0} \frac{|\mu|}{\sigma} \sqrt{\Delta t} = 0\), establishing that high-frequency increments are asymptotically pure noise.</p>
+        </div>
+
+        <div class="block example">
+          <p class="block-title">Example 6.1 · Daily vs. Tick-Level SNR in S&amp;P 500 Equities</p>
+          <p>Consider an annualized equity drift \(\mu = 10\%\) and volatility \(\sigma = 20\%\). On an annual scale (\(\Delta t = 1\)), \(\text{SNR} = 0.10 / 0.20 = 0.50\). On a daily scale (\(\Delta t = 1/252 \approx 0.00397\)), \(\text{SNR} = 0.50 \times \sqrt{1/252} \approx 0.0315\) (3.15%). On a 1-minute scale (\(\Delta t = 1/(252 \times 390) \approx 1.018 \times 10^{-5}\)), \(\text{SNR} = 0.50 \times \sqrt{1.018 \times 10^{-5}} \approx 0.0016\) (0.16%). At 1-minute resolution, 99.84% of price variance is pure Brownian noise.</p>
+        </div>
+      </section>
+
+      <section id="policy-collapse-mechanisms">
+        <h2 id="s2">2. Mechanisms of Catastrophic Policy Collapse</h2>
+        <p>In reinforcement learning, policy collapse occurs when an agent's out-of-sample performance degrades severely below a naive benchmark or produces catastrophic capital drawdown <span class="claim" data-grade="A" data-cite="lo2002statistics" data-locator="pp. 36–44">[lo2002statistics]</span>. Three primary mathematical mechanisms drive policy collapse in finance:</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 6.2 · Policy Gradient Variance in Low-SNR Regimes</span>
+          <p>Let reward \(R_t = a_t \Delta S_t\) where \(a_t = \pi_\theta(s_t)\) is a bounded action and \(\Delta S_t \sim \mathcal{N}(\mu \Delta t, \sigma^2 \Delta t)\). The REINFORCE policy gradient estimator \(\hat{g} = \nabla_\theta \ln \pi_\theta(s_t) R_t\) has variance:</p>
+          \[
+          \Var(\hat{g}) \ge \|\nabla_\theta \ln \pi_\theta(s_t)\|^2 \cdot \sigma^2 \Delta t
+          \]
+          <p>while the expected gradient is \(O(\mu \Delta t)\). The relative estimation error \(\frac{\sqrt{\Var(\hat{g})}}{\|\E[\hat{g}]\|}\) scales as \(O\left(\frac{\sigma}{\mu \sqrt{\Delta t}}\right)\), requiring sample sizes \(N = O\left(\frac{\sigma^2}{\mu^2 \Delta t}\right)\) to achieve an accurate gradient step.</p>
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>By definition, \(\E[\hat{g}] = \nabla_\theta \ln \pi_\theta(s_t) \E[R_t] = \nabla_\theta \ln \pi_\theta(s_t) a_t \mu \Delta t\). The variance is \(\Var(\hat{g}) = \|\nabla_\theta \ln \pi_\theta(s_t)\|^2 \Var(R_t) = \|\nabla_\theta \ln \pi_\theta(s_t)\|^2 a_t^2 \sigma^2 \Delta t\). The ratio of standard deviation to expectation is \(\frac{\|\nabla_\theta \ln \pi_\theta(s_t)\| |a_t| \sigma \sqrt{\Delta t}}{\|\nabla_\theta \ln \pi_\theta(s_t)\| |a_t| |\mu| \Delta t} = \frac{\sigma}{\mu \sqrt{\Delta t}}\). To reduce standard error below the mean requires \(\frac{1}{\sqrt{N}} \frac{\sigma}{\mu \sqrt{\Delta t}} \le 1 \implies N \ge \frac{\sigma^2}{\mu^2 \Delta t}\).</p>
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 6.1 · Sample Inefficiency and Financial Data Horizons</p>
+          <p>If \(\mu = 0.08\) and \(\sigma = 0.16\) with daily intervals (\(\Delta t = 1/252\)), then \(N \ge \frac{0.16^2}{0.08^2 (1/252)} = 4 \times 252 = 1,008\) trading days (4 full calendar years) merely to determine the sign of the policy gradient with a 1-sigma signal! Deep RL architectures with \(10^5\) parameters require millions of transitions—equivalent to centuries of historical market data that do not exist.</p>
+        </div>
+      </section>
+
+      <section id="empirical-lab">
+        <h2 id="s3">3. Empirical Lab: Regime Shift and Policy Collapse</h2>
+        <p>The following laboratory demonstrates policy collapse under distribution shift: an RL momentum policy is trained in a stationary low-volatility bull regime and evaluated when the market undergoes a hidden Markov regime shift into a high-volatility crisis.</p>
+
+        <section class="lab" id="lab-QR5-L06-1" data-runtime="python">
+          <h3>Lab 1 · Non-Stationarity &amp; Policy Collapse</h3>
+          <p class="hypothesis">Verifies that an RL leverage policy trained in a stationary low-volatility bull regime suffers catastrophic policy collapse when exposed to an out-of-sample regime shift.</p>
+          <pre><code class="language-python" data-run>"""Lab QR5-L06-1: Non-Stationarity, Regime Shifts &amp; Policy Collapse in Financial RL.
+
+Demonstrates:
+1. Training an RL momentum/leverage policy under stationary Gaussian market returns.
+2. In-sample performance metrics: Sharpe ratio, return, and maximum drawdown.
+3. Out-of-sample evaluation under a non-stationary Markov regime shift (volatility explosion and trend reversal).
+4. Catastrophic policy collapse: breakdown of Sharpe ratio and severe drawdown under distribution shift.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def simulate_market_regimes(
+    n_days: int,
+    regime_shift_day: int,
+    rng: np.random.Generator,
+) -&gt; tuple[np.ndarray, np.ndarray]:
+    """Simulate asset price series with a regime shift from bull/low-vol to bear/high-vol."""
+    returns = np.zeros(n_days)
+    regimes = np.zeros(n_days, dtype=int)
+
+    # Regime 0 (Stationary training regime): mu = +12% ann., sigma = 12% ann.
+    mu_0 = 0.12 / 252.0
+    sigma_0 = 0.12 / np.sqrt(252.0)
+
+    # Regime 1 (Crisis/Stress regime): mu = -30% ann., sigma = 40% ann.
+    mu_1 = -0.30 / 252.0
+    sigma_1 = 0.40 / np.sqrt(252.0)
+
+    for d in range(n_days):
+        if d &lt; regime_shift_day:
+            returns[d] = rng.normal(mu_0, sigma_0)
+            regimes[d] = 0
+        else:
+            returns[d] = rng.normal(mu_1, sigma_1)
+            regimes[d] = 1
+
+    prices = 100.0 * np.exp(np.cumsum(returns))
+    return returns, prices
+
+
+def evaluate_policy_performance(returns: np.ndarray, positions: np.ndarray) -&gt; dict[str, float]:
+    """Compute annualized return, annualized volatility, Sharpe ratio, and max drawdown."""
+    strat_returns = positions[:-1] * returns[1:]
+    if len(strat_returns) == 0:
+        return {"return": 0.0, "vol": 0.0, "sharpe": 0.0, "max_dd": 0.0}
+
+    ann_ret = float(np.mean(strat_returns) * 252.0)
+    ann_vol = float(np.std(strat_returns) * np.sqrt(252.0))
+    sharpe = float(ann_ret / ann_vol) if ann_vol &gt; 1e-8 else 0.0
+
+    cum_wealth = np.cumprod(1.0 + strat_returns)
+    peak = np.maximum.accumulate(cum_wealth)
+    drawdowns = (cum_wealth - peak) / peak
+    max_dd = float(np.min(drawdowns))
+
+    return {
+        "return": ann_ret,
+        "vol": ann_vol,
+        "sharpe": sharpe,
+        "max_dd": max_dd,
+    }
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(6)
+    n_days = 504  # 2 years
+    regime_shift_day = 252  # year 1 = stationary training, year 2 = regime shift
+
+    returns, _ = simulate_market_regimes(n_days, regime_shift_day, rng)
+
+    # Trend-following RL policy trained on Regime 0
+    window = 10
+    positions = np.zeros(n_days)
+    for d in range(window, n_days):
+        roll_ret = np.mean(returns[d - window : d])
+        if roll_ret &gt; 0.0:
+            positions[d] = 2.0  # max leverage learned in low-vol bull regime
+        else:
+            positions[d] = 0.2
+
+    # In-sample evaluation (Regime 0)
+    perf_is = evaluate_policy_performance(returns[:regime_shift_day], positions[:regime_shift_day])
+
+    # Out-of-sample evaluation (Regime 1: crisis shift)
+    perf_oos = evaluate_policy_performance(returns[regime_shift_day:], positions[regime_shift_day:])
+
+    print("--- IN-SAMPLE PERFORMANCE (Stationary Regime 0) ---")
+    print(f"Annualized Return:    {perf_is['return'] * 100.0:6.2f}%")
+    print(f"Annualized Volatility:{perf_is['vol'] * 100.0:6.2f}%")
+    print(f"Sharpe Ratio:         {perf_is['sharpe']:6.2f}")
+    print(f"Maximum Drawdown:     {perf_is['max_dd'] * 100.0:6.2f}%")
+
+    print("\n--- OUT-OF-SAMPLE PERFORMANCE (Regime-Shifted Regime 1) ---")
+    print(f"Annualized Return:    {perf_oos['return'] * 100.0:6.2f}%")
+    print(f"Annualized Volatility:{perf_oos['vol'] * 100.0:6.2f}%")
+    print(f"Sharpe Ratio:         {perf_oos['sharpe']:6.2f}")
+    print(f"Maximum Drawdown:     {perf_oos['max_dd'] * 100.0:6.2f}%")
+
+    collapse_detected = perf_oos["sharpe"] &lt; 0.0 and perf_oos["max_dd"] &lt; -0.30
+    print(f"\nPolicy Collapse Detected: {collapse_detected}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">--- IN-SAMPLE PERFORMANCE (Stationary Regime 0) ---
+Annualized Return:     24.46%
+Annualized Volatility: 17.40%
+Sharpe Ratio:           1.41
+Maximum Drawdown:     -10.95%
+
+--- OUT-OF-SAMPLE PERFORMANCE (Regime-Shifted Regime 1) ---
+Annualized Return:    -135.27%
+Annualized Volatility: 50.21%
+Sharpe Ratio:          -2.69
+Maximum Drawdown:     -77.19%
+
+Policy Collapse Detected: True</pre>
+          <p class="interpretation">In-sample Sharpe ratio of 1.41 collapses to -2.69 out-of-sample with a maximum drawdown of -77.19%, confirming catastrophic policy collapse under distribution shift.</p>
+        </section>
+      </section>
+
+      <section id="architectural-mitigations">
+        <h2 id="s4">4. Architectural Mitigations and Robust Design</h2>
+        <p>To deploy reinforcement learning safely in quantitative finance, quantitative researchers use strict architectural regularizations rather than end-to-end black-box networks:</p>
+        <ul>
+          <li><strong>Residual Control / Action Anchoring:</strong> Parameterize the RL policy as a perturbation around an analytical baseline (such as Black-Scholes delta or Almgren-Chriss TWAP): \(\delta_t = \delta_{\text{BS}}(S_t, t) + \tanh(\pi_\theta(s_t)) \cdot h_{\text{band}}\).</li>
+          <li><strong>Hard Risk Constraints / Position Caps:</strong> Project policy actions into admissible safety sets \(\mathcal{A}(s_t) = [-\bar{a}, \bar{a}]\) via projection layers or barrier penalties.</li>
+          <li><strong>Recurrent Memory &amp; Regime Belief:</strong> Use LSTM/GRU cells or hidden Markov model filter probabilities \(\pi_t = \Prob(\text{Regime}_t = k \mid \mathcal{F}_t)\) as explicit state inputs.</li>
+          <li><strong>Adversarial Training / Jump Stress Injection:</strong> Train on synthetic paths augmented with Poisson jumps and volatility shocks to build invariance against tail events <span class="claim" data-grade="A" data-cite="buehler2019deep" data-locator="Section 5">[buehler2019deep]</span>.</li>
+        </ul>
+      </section>
+
+      <section id="canon-breaks">
+        <h2>Where the Canon Breaks</h2>
+        <p>The standard deep RL paradigm developed in computer science assumes that:</p>
+        <ul>
+          <li>Environment simulators can generate infinite on-demand trajectories with ground-truth physics.</li>
+          <li>The optimal policy \(\pi^*\) is stationary and deterministic in the true underlying state.</li>
+          <li>Overfitting can be overcome simply by scaling neural network parameters and compute.</li>
+        </ul>
+        <p>In electronic financial trading, scaling parameters in a low-SNR environment accelerates overfitting rather than eliminating it. Adding network capacity causes the model to memorize past random price walk trajectories, exacerbating out-of-sample policy collapse.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Deep RL will automatically discover regime shifts if given enough convolutional or attention layers.</p>
+            <p>Feedforward and attention networks trained with standard empirical risk minimization optimize average historical performance. When a regime shift occurs that is unrepresented or underrepresented in the training sample, the policy produces confident but catastrophic out-of-distribution actions.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Simulating price paths using historical bootstrap eliminates non-stationarity risks.</p>
+            <p>Historical bootstrap samples past price paths but preserves past macroeconomic conditions. It cannot simulate endogenous feedback, order book liquidity evaporation, or novel regulatory regime transitions.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A policy with an in-sample Sharpe ratio of 3.0 is guaranteed to remain profitable out-of-sample.</p>
+            <p>In low-SNR environments, high in-sample Sharpe ratios are typically symptoms of severe over-parametrization and data snooping. Out-of-sample Sharpe ratios decay toward zero or turn negative due to selection bias and structural drift.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2>Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-L06-mech-1">
+            <p class="prompt">Calculate the signal-to-noise ratio \(\text{SNR} = \frac{\mu \Delta t}{\sigma \sqrt{\Delta t}}\) for an asset with annualized drift \(\mu = 0.15\), volatility \(\sigma = 0.30\), evaluated across daily (\(\Delta t = 1/252\)) and hourly (\(\Delta t = 1/1600\)) horizons.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>For daily frequency with \(\Delta t = 1/252\): \(\text{SNR} = \frac{0.15}{0.30} \sqrt{\frac{1}{252}} = 0.50 \times 0.0630 \approx 0.0315\) (3.15%). For hourly frequency with \(\Delta t = 1/1600\): \(\text{SNR} = 0.50 \times \frac{1}{40} = 0.0125\) (1.25%). As observation frequency increases, noise dominates signal by a factor of 80 to 1.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-mech-2">
+            <p class="prompt">Suppose an RL agent experiences in-sample return \(\bar{R} = 20\%\) with standard deviation \(\sigma = 15\%\) across \(N = 252\) trading days. Compute the standard error of the annualized Sharpe ratio estimator using Lo's (2002) formula \(\operatorname{SE}(\widehat{\text{SR}}) \approx \sqrt{\frac{1 + \frac{1}{2}\text{SR}^2}{T}}\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The point estimate is \(\widehat{\text{SR}} = \frac{0.20}{0.15} = 1.333\). Under Lo's asymptotic formula with \(T = 1\) year: \(\operatorname{SE}(\widehat{\text{SR}}) = \sqrt{\frac{1 + 0.5 \times (1.333)^2}{1}} = \sqrt{1 + 0.5 \times 1.777} = \sqrt{1.888} \approx 1.374\). The 95% confidence interval spans \(1.333 \pm 1.96 \times 1.374 = [-1.36, 4.03]\), showing that 1 year of data is insufficient to establish statistical significance.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-mech-3">
+            <p class="prompt">An RL policy holds position \(a_t = +2.5\) contracts into an unexpected regime shift where daily volatility jumps from \(\sigma_0 = 1\%\) to \(\sigma_1 = 4\%\) and drift shifts from \(\mu_0 = +0.05\%\) to \(\mu_1 = -0.20\%\). Calculate the expected 5-day cumulative loss and the 99% Value-at-Risk under the new regime.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Over 5 days, expected strategy return is \(5 \times 2.5 \times (-0.0020) = -0.025\) (-2.50%). Strategy 5-day volatility is \(2.5 \times 0.04 \times \sqrt{5} = 0.10 \times 2.236 \approx 0.2236\) (22.36%). The 99% VaR is \(-(-0.025 - 2.326 \times 0.2236) = 0.025 + 0.520 = 54.51\%\), demonstrating severe vulnerability to unmodeled regime shifts.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p-L06-proof-1">
+            <p class="prompt">Prove that in an unconstrained linear-Gaussian RL environment with zero true drift (\(\mu = 0\)), the expected out-of-sample Sharpe ratio of an empirical risk minimizer is strictly negative due to selection bias.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Let estimated weights \(\hat{w} = \argmax_w \widehat{\text{SR}}(w)\). Since the true return expectation is zero (\(\E[r] = 0\)), the true out-of-sample expected return is \(\E[\hat{w}^\top r_{\text{test}}] = \E[\hat{w}]^\top \E[r_{\text{test}}] = 0\) in the absence of friction. However, under any non-zero transaction cost \(\epsilon > 0\), the net expected return is \(\E[\hat{w}^\top r_{\text{test}} - \epsilon |\Delta \hat{w}|] = -\epsilon \E[|\Delta \hat{w}|] < 0\). Dividing by positive standard deviation yields a strictly negative expected out-of-sample Sharpe ratio.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-proof-2">
+            <p class="prompt">Prove that a policy parameterized as a bounded perturbation around a stable baseline policy \(\pi_\theta(s) = \pi_{\text{base}}(s) + \alpha \tanh(f_\theta(s))\) maintains guaranteed bounded tracking error relative to \(\pi_{\text{base}}\) uniformly across all states.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Since \(-1 \le \tanh(z) \le 1\) for all \(z \in \R\), the difference satisfies \(|\pi_\theta(s) - \pi_{\text{base}}(s)| = |\alpha \tanh(f_\theta(s))| \le \alpha \cdot 1 = \alpha\). This bound holds uniformly for all parameter vectors \(\theta\) and all states \(s \in S\), guaranteeing that the policy cannot deviate from the safe baseline by more than \(\alpha\) regardless of out-of-distribution neural network outputs.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-proof-3">
+            <p class="prompt">Prove that the variance of the REINFORCE policy gradient estimator scales quadratically with episode horizon \(T\) in the absence of baseline subtraction.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The total trajectory return is \(G_t = \sum_{k=t}^T R_k\). If rewards are uncorrelated with variance \(\sigma_R^2\), \(\Var(G_t) \approx (T - t) \sigma_R^2\). The gradient is \(g = \sum_{t=0}^T \nabla_\theta \ln \pi_\theta(a_t \mid s_t) G_t\). The variance of the sum includes \(T\) terms each scaled by \(G_t \sim O(T)\), yielding total variance scaling as \(\Var(g) = O(T^2)\). Baseline subtraction replaces \(G_t\) with advantage \(A_t = G_t - V(s_t)\), reducing variance dramatically.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p-L06-emp-1">
+            <p class="prompt">In Lab 1, why does the in-sample leverage policy achieve a Sharpe ratio of 1.41 in Regime 0 but collapse to -2.69 in Regime 1?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>In Regime 0 (bull market with positive drift and 12% volatility), the policy learned to hold maximum leverage (2.0x) on positive moving-average signals. When the regime shifted to Regime 1 (crisis with -30% drift and 40% volatility), positive momentum signals became false breakout traps. Holding high leverage into a trending crash caused rapid capital destruction and a catastrophic drawdown of -77.19%.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-emp-2">
+            <p class="prompt">How does Khandani &amp; Lo (2011) explain the sudden collapse of quantitative equity market-neutral strategies during the Quant Meltdown of August 2007?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Khandani &amp; Lo (2011) demonstrate that a sudden liquidation by one or more multi-strategy funds triggered a cascade of forced unwinds across identical statistical arbitrage signals. Even though individual stock fundamentals were unchanged, the liquidation shock altered cross-sectional correlation and liquidity dynamics, breaking the stationary statistical assumptions of long-short quant models.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-emp-3">
+            <p class="prompt">What empirical diagnostic test should quantitative researchers apply before deploying an RL policy to detect out-of-distribution market regimes?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Researchers should compute Mahalanobis distance or kernel two-sample test statistics (such as Maximum Mean Discrepancy, MMD) between the real-time feature vector \(s_t\) and the empirical training distribution. If the test statistic exceeds a calibrated critical threshold, the system should trigger an out-of-distribution circuit breaker, freezing RL trading and reverting to a defensive baseline policy.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p-L06-res-1">
+            <p class="prompt">Compare the resilience of model-based RL versus model-free policy gradients under structural macroeconomic regime shifts.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Model-free policy gradients encode trading rules directly into neural network weights; when transition dynamics shift, the weights cannot adapt without extensive retraining, leading to immediate failure. Model-based RL explicitly decouples the transition model \(\hat{P}\) from the planning objective. If the transition model incorporates Bayesian online updating or regime inference, it can adapt its forecasts within a few observations, offering superior structural resilience.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-res-2">
+            <p class="prompt">How does meta-reinforcement learning (e.g., MAML or RL^2) formulate the non-stationary trading problem?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Meta-RL models non-stationarity as a family of tasks \(\mathcal{T}_i \sim P(\mathcal{T})\), where each task corresponds to a distinct market regime. The meta-objective trains a policy prior \(\theta\) that can adapt to a new regime with only a handful of gradient updates or recurrent hidden state adjustments, optimizing fast adaptation rather than stationary historical fit.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-res-3">
+            <p class="prompt">Explain why deep hedging policies trained with convex risk measures (Buehler et al. 2019) exhibit greater out-of-distribution robustness than policies trained on expected P&amp;L.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Policies trained on expected P&amp;L optimize the first moment of returns and ignore tail events, leaving them vulnerable to severe drawdowns during jumps. Deep hedging minimizes convex risk measures such as Expected Shortfall (CVaR) or entropic risk, which explicitly penalize extreme tail losses. As shown by Buehler et al. (2019), this risk-averse objective forces the neural network to hold defensive hedges even in tranquil regimes, providing built-in protection against out-of-distribution shocks.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2>Key Results</h2>
+        <div class="table-wrap">
+        <table class="key-results">
+          <thead>
+            <tr><th>Result</th><th>Grade</th><th>Key / Source</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Signal-to-Noise Ratio Scaling: At high sampling frequencies \(\Delta t \to 0\), the SNR of asset returns decays as \(O(\sqrt{\Delta t})\), rendering returns overwhelmingly dominated by diffusion noise.</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>Theorem 6.1</td>
+            </tr>
+            <tr>
+              <td>Policy Gradient Variance Explosion: In low-SNR environments, policy gradient estimator variance scales as \(O(\sigma / (\mu \sqrt{\Delta t}))\), requiring years of data for sample convergence.</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>Theorem 6.2</td>
+            </tr>
+            <tr>
+              <td>Quant Meltdown Regime Invalidation: Unanticipated liquidity shocks and crowded unwinds break stationary statistical assumptions, causing severe simultaneous drawdowns across quant strategies.</td>
+              <td><span class="grade-tag grade-a">A</span></td>
+              <td>khandani2011happened</td>
+            </tr>
+            <tr>
+              <td>Sharpe Ratio Estimation Uncertainty: Statistical estimation of the Sharpe ratio requires multi-year observation windows to establish non-zero statistical significance under Lo (2002).</td>
+              <td><span class="grade-tag grade-a">A</span></td>
+              <td>lo2002statistics</td>
+            </tr>
+            <tr>
+              <td>Robust Convex Risk Hedging: Minimizing convex risk measures rather than raw expected returns confers structural robustness against jump-diffusion tail shocks.</td>
+              <td><span class="grade-tag grade-a">A</span></td>
+              <td>buehler2019deep</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR5" data-page="L06">
+        <h2>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does the signal-to-noise ratio of asset price increments scale as the observation interval \(\Delta t \to 0\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q1"> <span style="min-width: 0;">It decays to zero as \(O(\sqrt{\Delta t})\).</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0;">It increases to infinity as \(O(1/\sqrt{\Delta t})\).</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0;">It remains strictly constant across all time scales.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 6.1, \(\text{SNR} = \frac{|\mu|}{\sigma} \sqrt{\Delta t}\), which approaches zero as \(\Delta t \to 0\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the primary cause of out-of-distribution policy collapse in financial RL?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q2"> <span style="min-width: 0;">Non-stationary regime shifts alter the market transition kernel, making historically learned policies take disastrous high-risk actions.</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0;">The learning rate is too small to follow gradient updates.</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0;">The discount factor \(\gamma\) violates the contraction mapping property.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>When macroeconomic or liquidity regimes shift, empirical transition probabilities deviate completely from the training distribution, causing unregularized policies to fail.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does adding neural network capacity often worsen out-of-sample performance in financial RL?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q3"> <span style="min-width: 0;">In low-SNR environments, high capacity memorizes idiosyncratic Brownian noise paths, inflating estimator variance without reducing bias.</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0;">It increases the Bellman contraction factor above 1.</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0;">It violates the Markov property of state representations.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Because return variance is overwhelmingly noise, unconstrained neural parameters fit noise spikes, destroying generalization.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What architectural design pattern bounds RL tracking error relative to a trusted analytical benchmark?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q4"> <span style="min-width: 0;">Residual control / action anchoring: \(\pi(s) = \pi_{\text{base}}(s) + \alpha \tanh(f_\theta(s))\).</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">Setting the replay buffer size to infinity.</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">Removing the discount factor \(\gamma\).</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Residual control anchors the policy around an analytical model (such as Black-Scholes delta) and uses bounded perturbations (\(\le \alpha\)) to prevent catastrophic deviations.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">According to Khandani &amp; Lo (2011), what phenomenon caused quant strategies to collapse simultaneously in August 2007?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q5"> <span style="min-width: 0;">Forced unwinds by leveraged multi-strategy funds triggered a crowded liquidity crisis across common quantitative factor portfolios.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">A programming bug in the New York Stock Exchange order routing engine.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">A nationwide power outage affecting financial data centers.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Khandani and Lo (2011) show that forced deleveraging in crowded factor portfolios created massive market impact, invalidating stationary statistical arbitrage models.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are policies trained on convex risk measures (CVaR / Entropic risk) more robust than policies trained on expected P&amp;L?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q6"> <span style="min-width: 0;">Convex risk measures penalize tail loss realizations, enforcing defensive inventory management against jump shocks.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">Convex risk measures guarantee linear Bellman optimality equations.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">They eliminate all transaction costs in rebalancing.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Tail risk objectives force policies to hold conservative positions that survive sudden volatility spikes and out-of-sample jumps.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the effect of non-stationarity on temporal difference (TD) learning targets?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q7"> <span style="min-width: 0;">Target values computed from past transitions become systematically biased estimates of future returns, destabilizing Bellman updates.</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0;">It increases the learning rate automatically.</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0;">It converts off-policy learning into on-policy learning.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>TD targets rely on the stationarity of the transition operator \(T\). Under regime shifts, historical targets no longer represent expected future value.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under Lo (2002), how does serial correlation in strategy returns affect the estimated Sharpe ratio?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q8"> <span style="min-width: 0;">Positive serial correlation severely inflates the annualized Sharpe ratio and distorts its asymptotic standard error.</span></label>
+              <label class="option"><input type="radio" name="q8"> <span style="min-width: 0;">Serial correlation has zero impact on Sharpe ratio estimators.</span></label>
+              <label class="option"><input type="radio" name="q8"> <span style="min-width: 0;">It guarantees that the Sharpe ratio is strictly normally distributed.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Lo (2002) proves that positive autocorrelation in returns underestimates multi-period variance, artificially inflating annualized Sharpe ratios by up to 50%.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <li data-cite="khandani2011happened">Khandani, A. E., &amp; Lo, A. W. (2011). What happened to the quants in August 2007? Evidence from factors and transactions. <em>Journal of Financial Markets</em>, 14(1), 1–41.</li>
+          <li data-cite="lo2002statistics">Lo, A. W. (2002). The statistics of Sharpe ratios. <em>Financial Analysts Journal</em>, 58(4), 36–52.</li>
+          <li data-cite="buehler2019deep">Buehler, H., Gonon, L., Teichmann, J., &amp; Wood, B. (2019). Deep hedging. <em>Quantitative Finance</em>, 19(8), 1271–1291.</li>
+          <li data-cite="sutton2018reinforcement">Sutton, R. S., &amp; Barto, A. G. (2018). <em>Reinforcement Learning: An Introduction</em> (2nd ed.). MIT Press.</li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark lesson complete</button></p>
+    </main>
+  </div>
+</body>
+</html>
