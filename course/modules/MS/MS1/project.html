@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="MS1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MS1 Project · Spread Decomposition</title>
+  <meta name="description" content="Decompose bid-ask spreads into order-processing and adverse-selection components using serial covariance and trade-sign regressions. The solver is autograded on seeded SIMULATED instances; the report is graded by rubric against annotated exemplars.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">MS1 Microstructure Theory</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="26">
+      <header class="page-head">
+        <p class="eyebrow">MS1 project · 26 hours · autograded solver, rubric-graded report</p>
+        <h1>Spread Decomposition</h1>
+        <p class="lede">When a transaction occurs, the observed price reflects both frictionless economic value and market frictions. A dealer quoting bids and asks incurs inventory carrying costs and order-processing expenses, while facing informed traders whose orders permanently move fundamental value. This project investigates the structural decomposition of the effective bid–ask spread into order-processing and adverse-selection components. You will prove the population covariance and regression identities under a repeated trade model, implement an autograded Python solver (<code>decompose.py</code>), evaluate the classical Roll serial covariance estimator against structural regression estimates across parameter grids, and author an analytical research memo (<code>report.md</code>) evaluated by rubric against annotated exemplars.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 scaffold the mathematical derivations and numerical regression techniques. If you demonstrated mastery on the <a href="index.html#placement">placement diagnostic</a> and answered both skill checks, you may proceed directly to rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: a fully solved trade decomposition run on a SIMULATED trade sequence, with every calculation step annotated.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: complete the structural recovery formula for the order-processing half-spread from the lagged sign regression slope. Graded instantly in your browser.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement the full solver <code>decompose.py</code> in <a href="#spec">the specification</a> to satisfy the test suite in <a href="#grader-section">the autograder section</a> across 50 seeds, and author <code>report.md</code> evaluated by <a href="#rubric">the project rubric</a>.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended portfolio extensions: evaluate estimator robustness under trade sign misclassification and serially correlated order flows in <a href="#stretch">the stretch section</a>.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Both introductory labs operate on synthetically generated trade series labelled SIMULATED. Lab 1 evaluates 500 trades with true adverse selection \(\theta = 0.10\) and order processing \(c = 0.15\). Lab 2 examines 400 trades with \(\theta = 0.12\) and \(c = 0.18\). Neither lab reads from external files or requires third-party dependencies.</p>
+
+        <section class="lab" id="lab-MS1-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: step-by-step trade decomposition</h3>
+          <p class="hypothesis">Under true parameters \(\theta = 0.10\), \(c = 0.15\), and \(\sigma = 0.03\) with \(n = 500\) trades, the theoretical population values are: effective half-spread \(H = \theta + c = 0.25\), order-processing component \(c = 0.15\), adverse-selection component \(\theta = 0.10\), and adverse share \(\theta / H = 0.40\). The lag-1 covariance is strictly negative, yielding a finite Roll spread estimate near \(2\sqrt{c(\theta+c)} = 2\sqrt{0.15 \times 0.25} = 2\sqrt{0.0375} \approx 0.3873\), which strictly exceeds the true spread \(2c = 0.30\).</p>
+          <pre><code class="language-python" data-run>"""Lab MS1-project-1: Rung 1 worked example of trade-level spread decomposition.
+
+SIMULATED: generates one sample of trade prices and signs (n=500, theta=0.10, c=0.15, sigma=0.05).
+Solves the decomposition step by step, annotating why each mathematical step is taken:
+price changes, lag-1 autocovariance, Roll spread, normal equations, components, and adverse share.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def main() -&gt; None:
+    # Step 1: Generate simulated instance
+    # Why: Demonstrates the estimator on a controlled path with known true parameters.
+    rng = random.Random(42)
+    n = 500
+    theta_true = 0.10
+    c_true = 0.15
+    sigma = 0.05
+    m = 100.0
+
+    prices: list[float] = []
+    signs: list[int] = []
+    for _ in range(n):
+        q = rng.choice([-1, 1])
+        eta = rng.gauss(0.0, sigma)
+        m += theta_true * q + eta
+        prices.append(m + c_true * q)
+        signs.append(q)
+
+    print(f"Step 1 | Generated {n} trades with true theta = {theta_true:.4f}, c = {c_true:.4f}")
+
+    # Step 2: Calculate price changes d_t = p_t - p_{t-1}
+    # Why: Stationarizes the price series; removes the random-walk level of fundamental value.
+    d = [prices[i] - prices[i - 1] for i in range(1, n)]
+    mean_d = sum(d) / len(d)
+    print(f"Step 2 | Computed {len(d)} price changes. Mean price change: {mean_d:.6f}")
+
+    # Step 3: Compute sample lag-1 autocovariance and Roll spread
+    # Why: Negative autocovariance reflects bid-ask bounce; Roll's formula assumes theta = 0.
+    cov1 = sum((d[i] - mean_d) * (d[i - 1] - mean_d) for i in range(1, len(d))) / (len(d) - 1)
+    roll = 2.0 * math.sqrt(-cov1) if cov1 &lt; 0.0 else float("nan")
+    print(f"Step 3 | Lag-1 covariance: {cov1:.6f}, Roll spread estimate: {roll:.4f}")
+
+    # Step 4: Assemble normal equations for regression without intercept
+    # Why: In population, E[d_t | q_t, q_{t-1}] = (theta + c) q_t - c q_{t-1}.
+    q_curr = [float(signs[i]) for i in range(1, n)]
+    q_lag = [float(signs[i - 1]) for i in range(1, n)]
+
+    s00 = sum(x * x for x in q_curr)
+    s11 = sum(x * x for x in q_lag)
+    s01 = sum(x * y for x, y in zip(q_curr, q_lag, strict=False))
+    det = s00 * s11 - s01 * s01
+    print(f"Step 4 | Design matrix determinant: {det:.1f} (non-singular)")
+
+    y0 = sum(di * qi for di, qi in zip(d, q_curr, strict=False))
+    y1 = sum(di * qi for di, qi in zip(d, q_lag, strict=False))
+
+    b0 = (s11 * y0 - s01 * y1) / det
+    b1 = (s00 * y1 - s01 * y0) / det
+    print(f"Step 5 | OLS regression slopes: b_0 = {b0:.4f}, b_1 = {b1:.4f}")
+
+    # Step 6: Recover structural spread components
+    # Why: b_0 identifies total half-spread H; -b_1 identifies order processing c;
+    # b_0 + b_1 identifies adverse selection theta.
+    half_spread = b0
+    order_processing = -b1
+    adverse_selection = b0 + b1
+    adverse_share = adverse_selection / half_spread if half_spread != 0.0 else float("nan")
+
+    true_share = theta_true / (theta_true + c_true)
+    print(f"Step 6 | Effective half-spread H:       {half_spread:.4f} (true: {theta_true + c_true:.4f})")
+    print(f"       | Order-processing cost c:       {order_processing:.4f} (true: {c_true:.4f})")
+    print(f"       | Adverse-selection cost theta:  {adverse_selection:.4f} (true: {theta_true:.4f})")
+    print(f"       | Adverse selection share:       {adverse_share:.4f} (true: {true_share:.4f})")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Step 1 | Generated 500 trades with true theta = 0.1000, c = 0.1500
+Step 2 | Computed 499 price changes. Mean price change: -0.000644
+Step 3 | Lag-1 covariance: -0.040688, Roll spread estimate: 0.4034
+Step 4 | Design matrix determinant: 248952.0 (non-singular)
+Step 5 | OLS regression slopes: b_0 = 0.2551, b_1 = -0.1495
+Step 6 | Effective half-spread H:       0.2551 (true: 0.2500)
+       | Order-processing cost c:       0.1495 (true: 0.1500)
+       | Adverse-selection cost theta:  0.1057 (true: 0.1000)
+       | Adverse selection share:       0.4142 (true: 0.4000)</pre>
+          <p class="interpretation">The worked example verifies the theoretical identities: the OLS regression slopes \(b_0 = 0.2551\) and \(b_1 = -0.1495\) match population expectations \(H = 0.25\) and \(-c = -0.15\) within sampling error. Recovering \(c = -b_1 = 0.1495\) and \(\theta = b_0 + b_1 = 0.1057\) accurately isolates the underlying friction parameters. Crucially, the Roll spread estimate is \(0.4034\), substantially above the true spread \(2c = 0.3000\), demonstrating that information asymmetry contaminates serial covariance spread estimators.</p>
+        </section>
+
+        <section class="lab completion" id="lab-MS1-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: recovering order processing from lagged signs</h3>
+          <p class="hypothesis">Complete the blank line <code>order_processing = ___</code> using the theoretical structural identity relating order processing \(c\) to the lagged trade sign coefficient \(b_1\). Upon correct completion, the solver recovers order processing near 0.18 and adverse selection near 0.12.</p>
+          <pre><code class="language-python" data-run>"""Lab MS1-project-2: Rung 2 completion problem for trade decomposition.
+
+SIMULATED: generates trade prices and signs for seed 7.
+On the project page, the order processing recovery line is blanked:
+order_processing = ___
+The twin contains the complete solution.
+"""
+
+from __future__ import annotations
+
+import random
+
+
+def main() -> None:
+    rng = random.Random(7)
+    n = 400
+    theta_true = 0.12
+    c_true = 0.18
+    sigma = 0.04
+    m = 100.0
+
+    prices: list[float] = []
+    signs: list[int] = []
+    for _ in range(n):
+        q = rng.choice([-1, 1])
+        eta = rng.gauss(0.0, sigma)
+        m += theta_true * q + eta
+        prices.append(m + c_true * q)
+        signs.append(q)
+
+    d = [prices[i] - prices[i - 1] for i in range(1, n)]
+    q_curr = [float(signs[i]) for i in range(1, n)]
+    q_lag = [float(signs[i - 1]) for i in range(1, n)]
+
+    s00 = sum(x * x for x in q_curr)
+    s11 = sum(x * x for x in q_lag)
+    s01 = sum(x * y for x, y in zip(q_curr, q_lag, strict=False))
+    det = s00 * s11 - s01 * s01
+
+    y0 = sum(di * qi for di, qi in zip(d, q_curr, strict=False))
+    y1 = sum(di * qi for di, qi in zip(d, q_lag, strict=False))
+
+    b0 = (s11 * y0 - s01 * y1) / det
+    b1 = (s00 * y1 - s01 * y0) / det
+
+    half_spread = b0
+    order_processing = ___
+    adverse_selection = b0 + b1
+    adverse_share = adverse_selection / half_spread if half_spread != 0.0 else float("nan")
+
+    print(f"Regression slopes: b_0 = {b0:.4f}, b_1 = {b1:.4f}")
+    print(f"Recovered order processing c: {order_processing:.4f} (true: {c_true:.4f})")
+    print(f"Recovered adverse selection theta: {adverse_selection:.4f} (true: {theta_true:.4f})")
+    print(f"Adverse share: {adverse_share:.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Regression slopes: b_0 = 0.2975, b_1 = -0.1783
+Recovered order processing c: 0.1783 (true: 0.1800)
+Recovered adverse selection theta: 0.1192 (true: 0.1200)
+Adverse share: 0.4008</pre>
+          <p class="interpretation">The blank is completed with <code>-b1</code>. Because the structural model specifies price change \(\Delta p_t = (\theta + c) q_t - c q_{t-1} + \eta_t\), the population regression coefficient on lagged sign \(q_{t-1}\) is \(b_1 = -c\). Negating the estimated slope recovers the order-processing component \(c = 0.1783\), closely matching the ground truth of \(0.1800\).</p>
+        </section>
+      </section>
+
+      <section id="model">
+        <h2 id="h-model">The structural model and theoretical identities</h2>
+        <p>The project investigates a discrete-time repeated trading economy with asymmetric information and order-handling costs, as established in Lesson 4. The economy evolves over trade ticks \(t = 1, \dots, n\).</p>
+
+        <h3 id="assumptions">Assumptions</h3>
+        <ol class="assumptions">
+          <li><strong>A1 · Trade signs.</strong> Trade signs \(q_t \in \{-1, +1\}\) are independently and identically distributed (i.i.d.) with \(P(q_t = +1) = P(q_t = -1) = 1/2\). Thus \(\E[q_t] = 0\), \(\Var(q_t) = 1\), and \(\Cov(q_t, q_s) = 0\) for \(t \ne s\).</li>
+          <li><strong>A2 · Efficient price and adverse selection.</strong> The unobserved fundamental efficient price \(m_t\) follows a random walk with trade impact:
+          \[m_t = m_{t-1} + \theta q_t + \eta_t,\]
+          where \(\theta \ge 0\) is the permanent price impact per trade (adverse-selection parameter), and \(\eta_t\) are i.i.d. innovations with mean zero and variance \(\sigma^2\), independent of current and past trade signs.</li>
+          <li><strong>A3 · Transaction price and order processing.</strong> Transaction prices \(p_t\) are executed at the efficient price plus a transitory half-spread:
+          \[p_t = m_t + c q_t,\]
+          where \(c > 0\) represents the constant order-processing and inventory-holding half-spread.</li>
+          <li><strong>A4 · Price changes.</strong> Differencing consecutive transaction prices yields the observable price change:
+          \[d_t = p_t - p_{t-1} = (\theta + c) q_t - c q_{t-1} + \eta_t.\]</li>
+        </ol>
+
+        <h3 id="identities">Theoretical propositions</h3>
+        <p><span class="block-title claim" data-grade="T">Proposition 1 · Serial covariance and Roll estimator bias.</span> Under Assumptions A1–A4, the price changes have zero mean, \(\E[d_t] = 0\), and autocovariance structure:
+        \[\Var(d_t) = (\theta + c)^2 + c^2 + \sigma^2,\]
+        \[\Cov(d_t, d_{t-1}) = -c(\theta + c), \qquad \Cov(d_t, d_{t-k}) = 0 \quad \text{for } k \ge 2.\]
+        When adverse selection is absent (\(\theta = 0\)), \(\Cov(d_t, d_{t-1}) = -c^2\), so the Roll spread estimator \(2\sqrt{-\Cov(d_t, d_{t-1})} = 2c\) recovers the true bid–ask spread. When \(\theta > 0\), the population Roll estimator yields \(2\sqrt{c(\theta + c)} > 2c\), overestimating the spread due to information-driven price revision.</p>
+
+        <p><span class="block-title claim" data-grade="T">Proposition 2 · Regression identification of spread components.</span> Under Assumptions A1–A4, consider the no-intercept linear projection of price change \(d_t\) onto current sign \(q_t\) and lagged sign \(q_{t-1}\):
+        \[d_t = b_0 q_t + b_1 q_{t-1} + e_t.\]
+        Because \(\Cov(q_t, q_{t-1}) = 0\) and \(\Var(q_t) = \Var(q_{t-1}) = 1\), the population regression coefficients satisfy:
+        \[b_0 = \E[d_t q_t] = \theta + c = H,\]
+        \[b_1 = \E[d_t q_{t-1}] = -c.\]
+        The structural parameters are uniquely identified from the regression coefficients by:
+        \[H = b_0, \qquad c = -b_1, \qquad \theta = b_0 + b_1, \qquad \text{Adverse Share} = \frac{\theta}{H} = \frac{b_0 + b_1}{b_0}.\]</p>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A liquidity provider quotes transaction prices in a market subject to adverse selection and order-processing friction. The effective spread reflects compensation for order handling as well as permanent price revisions induced by informed trades. You will construct an empirical solver (<code>decompose.py</code>) that extracts structural friction parameters from tick-level prices and trade signs, and author an analytical research memo (<code>report.md</code>) comparing serial covariance estimates against regression decomposition on controlled simulation grids.</dd>
+          <dt>Inputs</dt>
+          <dd>(1) Synthetically generated trade series from <code>make_instance(seed)</code> in <code>grader/instance.py</code>, returning a dictionary containing <code>prices</code> (list of floats), <code>signs</code> (list of integers \(\pm 1\)), trade count <code>n</code>, and true parameters <code>theta</code>, <code>c</code>, and <code>sigma</code>. All instances are labelled SIMULATED. (2) Optional bring-your-own-data CSV files formatted with header <code>time,price,sign</code>, validated entirely client-side in the browser.</dd>
+          <dt>Required outputs</dt>
+          <dd>Implement the module <code>decompose.py</code> exposing the frozen interface:
+          <pre><code class="language-pseudocode">def decompose_trades(prices: list[float], signs: list[int]) -&gt; dict[str, float]:
+    """Decompose trade prices and signs into microstructure spread components."""</code></pre>
+          The dictionary returned by <code>decompose_trades</code> must contain exactly five keys:
+          <ul>
+            <li><code>roll_spread</code>: \(2\sqrt{-\text{cov}_1}\) if sample lag-1 covariance \(\text{cov}_1 < 0\), otherwise <code>float("nan")</code>. The lag-1 covariance is computed as \(\text{cov}_1 = \frac{1}{n-2} \sum_{t=3}^n (d_t - \bar{d})(d_{t-1} - \bar{d})\), where \(d_t = p_t - p_{t-1}\) for \(t = 2, \dots, n\) and \(\bar{d}\) is the sample mean of the \(n-1\) price changes.</li>
+            <li><code>half_spread</code>: coefficient \(b_0\) from the no-intercept ordinary least squares regression of \(d_t\) on \((q_t, q_{t-1})\) for \(t = 2, \dots, n\).</li>
+            <li><code>order_processing</code>: recovered order-processing half-spread \(c = -b_1\).</li>
+            <li><code>adverse_selection</code>: recovered adverse-selection price impact \(\theta = b_0 + b_1\).</li>
+            <li><code>adverse_share</code>: ratio \(\theta / b_0\), or <code>float("nan")</code> if \(b_0 = 0.0\).</li>
+          </ul>
+          In addition, author an analytical memo <code>report.md</code> following the structure specified in <a href="#brief">the brief</a>, evaluated against the rubric.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only (<code>math</code>, <code>statistics</code>, <code>random</code>). Floating-point arithmetic must operate at full precision internally; rounding is applied strictly at display. The regression must not fit an intercept. Input lists must not be mutated. Execution for a single instance must complete in under 5 seconds. Invalid inputs must raise the exact exception types documented in <a href="#exceptions">the exception table</a>.</dd>
+          <dt>Grading</dt>
+          <dd>Both grading modes apply: the Python solver <code>decompose.py</code> is evaluated by the autograder test suite across 50 seeded instances, and the analytical research memo <code>report.md</code> is evaluated by rubric across five criteria with observable performance levels.</dd>
+          <dt>Reading list</dt>
+          <dd>See <a href="#reading">the reading section</a> for verified literature on spread estimation, sequential trading, inventory control, and continuous auction equilibria.</dd>
+        </dl>
+
+        <h3 id="exceptions">Exception table</h3>
+        <p>The solver must validate input integrity and raise <code>ValueError</code> under the following conditions:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Condition</th><th>Exception</th><th>Required message substring</th></tr></thead>
+            <tbody>
+              <tr><td>Fewer than 3 trades (<code>len(prices) &lt; 3</code> or <code>len(signs) &lt; 3</code>)</td><td><code>ValueError</code></td><td>"at least three trades are needed"</td></tr>
+              <tr><td>A trade sign not equal to -1 or +1</td><td><code>ValueError</code></td><td>"each sign must be -1 or +1"</td></tr>
+              <tr><td>All trade signs identical (singular normal equations)</td><td><code>ValueError</code></td><td>"signs must vary: the regression is singular"</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: read and annotate Lab 1</td><td class="num">1</td><td>Examine step-by-step SIMULATED trade decomposition and verify intermediate calculations.</td></tr>
+              <tr><td>Rung 2 completion problem: complete recovery line</td><td class="num">1</td><td>Derive and test the order-processing recovery formula <code>-b1</code> in browser runtime.</td></tr>
+              <tr><td>Model derivation: covariance and regression identities</td><td class="num">4</td><td>Prove Proposition 1 and Proposition 2 under Assumptions A1–A4 with full mathematical rigor.</td></tr>
+              <tr><td>Data intake: CSV validation and input checking</td><td class="num">3</td><td>Implement robust input validation for list dimensions, trade sign validity, and collinearity.</td></tr>
+              <tr><td>Solver implementation and local test suite execution</td><td class="num">8</td><td>Code <code>decompose.py</code>, solve 2x2 normal equations, satisfy autograder suite across seeds 0–49.</td></tr>
+              <tr><td>Simulation grid runs for analytical memo</td><td class="num">3</td><td>Execute solver across parameter grid \(\theta \in \{0, 0.1, 0.2\}\) with \(n = 2000\) and tabulate results.</td></tr>
+              <tr><td>Authoring research memo <code>report.md</code></td><td class="num">4</td><td>Draft the five required sections: Model, Estimators, Results, Numerical Rigour, and Limits.</td></tr>
+              <tr><td>Self-assessment and exemplar calibration</td><td class="num">2</td><td>Score report against the rubric, calibrate against Exemplar A and B, reconcile discrepancies.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>26</strong></td><td>Matches declared project hours (26 hours of the module's 90 hours).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Submit your <code>decompose.py</code> implementation below to execute the verification suite against your unique workspace seed.</p>
+        <section class="grader-panel" id="grader" data-unit="MS1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="decompose.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>To run the test suite locally in your environment, place <code>decompose.py</code> alongside the grader files and run pytest:</p>
+        <pre><code class="no-math">QF_SEED=42 pytest -q -p no:cacheprovider --assert=plain -W error grader/test_project.py</code></pre>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The report</h2>
+        <p>The research memo documents the theoretical foundations, numerical estimates, and structural insights of the trade decomposition model. Lab 3 generates the exact benchmark grid required in the memo.</p>
+
+        <section class="lab" id="lab-MS1-project-3" data-runtime="python">
+          <h3>Lab 3 · Benchmark parameter grid for research memo</h3>
+          <p class="hypothesis">Under \(n = 2000\) trades with fixed order processing \(c = 0.10\) and innovation volatility \(\sigma = 0.05\) (seed 1), evaluating adverse selection across \(\theta \in \{0.0, 0.1, 0.2\}\) will demonstrate that: (1) for \(\theta = 0.0\), the Roll spread estimate (0.1914) closely approximates the true spread \(2c = 0.20\); (2) as \(\theta\) increases to 0.10 and 0.20, the Roll spread estimate inflates to 0.2671 and 0.3194; (3) the regression recovery accurately tracks true \(\theta\) and \(c\) at all grid points.</p>
+          <pre><code class="language-python" data-run>"""Lab MS1-project-3: Rung 3 verification check on the report parameter grid.
+
+SIMULATED: generates trade series on the parameter grid (theta in {0.0, 0.1, 0.2},
+c = 0.10, sigma = 0.05, n = 2000, seed 1).
+Produces the reference output table required for the student report.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def generate_trade_series(n: int, theta: float, c: float, sigma: float, seed: int) -&gt; tuple[list[float], list[int]]:
+    """Simulate trade-level data under repeated trade model."""
+    rng = random.Random(seed)
+    m = 100.0
+    prices: list[float] = []
+    signs: list[int] = []
+    for _ in range(n):
+        q = rng.choice([-1, 1])
+        eta = rng.gauss(0.0, sigma)
+        m += theta * q + eta
+        prices.append(m + c * q)
+        signs.append(q)
+    return prices, signs
+
+
+def run_decomposition(prices: list[float], signs: list[int]) -&gt; tuple[float, float, float, float, float]:
+    """Execute full decomposition and return roll spread, H, c, theta, and share."""
+    n = len(prices)
+    d = [prices[i] - prices[i - 1] for i in range(1, n)]
+    mean_d = sum(d) / len(d)
+    cov1 = sum((d[i] - mean_d) * (d[i - 1] - mean_d) for i in range(1, len(d))) / (len(d) - 1)
+    roll = 2.0 * math.sqrt(-cov1) if cov1 &lt; 0.0 else float("nan")
+
+    q_curr = [float(signs[i]) for i in range(1, n)]
+    q_lag = [float(signs[i - 1]) for i in range(1, n)]
+
+    s00 = sum(x * x for x in q_curr)
+    s11 = sum(x * x for x in q_lag)
+    s01 = sum(x * y for x, y in zip(q_curr, q_lag, strict=False))
+    det = s00 * s11 - s01 * s01
+
+    y0 = sum(di * qi for di, qi in zip(d, q_curr, strict=False))
+    y1 = sum(di * qi for di, qi in zip(d, q_lag, strict=False))
+
+    b0 = (s11 * y0 - s01 * y1) / det
+    b1 = (s00 * y1 - s01 * y0) / det
+
+    half_spread = b0
+    order_proc = -b1
+    adv_sel = b0 + b1
+    adv_share = adv_sel / half_spread if half_spread != 0.0 else float("nan")
+
+    return roll, half_spread, order_proc, adv_sel, adv_share
+
+
+def main() -&gt; None:
+    c_fixed = 0.10
+    sigma_fixed = 0.05
+    n_fixed = 2000
+    seed_fixed = 1
+    thetas = [0.0, 0.1, 0.2]
+
+    print("Project Report Benchmark Grid (n=2000, c=0.10, sigma=0.05, seed=1):")
+    print("theta |     c |     Roll |  Half-Sp | Order-Pr |  Adv-Sel | Adv-Share")
+    for theta in thetas:
+        prices, signs = generate_trade_series(n_fixed, theta, c_fixed, sigma_fixed, seed_fixed)
+        roll, h, c_est, th_est, share = run_decomposition(prices, signs)
+        print(f"{theta:5.2f} | {c_fixed:5.2f} | {roll:8.4f} | {h:8.4f} | {c_est:8.4f} | {th_est:8.4f} | {share:9.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Project Report Benchmark Grid (n=2000, c=0.10, sigma=0.05, seed=1):
+theta |     c |     Roll |  Half-Sp | Order-Pr |  Adv-Sel | Adv-Share
+ 0.00 |  0.10 |   0.1914 |   0.0987 |   0.1011 |  -0.0024 |   -0.0247
+ 0.10 |  0.10 |   0.2671 |   0.1987 |   0.1011 |   0.0976 |    0.4910
+ 0.20 |  0.10 |   0.3194 |   0.2987 |   0.1011 |   0.1976 |    0.6614</pre>
+          <p class="interpretation">The benchmark grid validates Proposition 1 and Proposition 2. At \(\theta = 0\), the Roll spread estimate (0.1914) recovers the true \(2c = 0.20\) within 4.3% sampling error. For \(\theta = 0.10\) and \(\theta = 0.20\), the Roll spread rises to 0.2671 and 0.3194, tracking theoretical predictions \(2\sqrt{0.10(0.20)} \approx 0.2828\) and \(2\sqrt{0.10(0.30)} \approx 0.3464\). Meanwhile, the structural regression recovers order processing \(c \approx 0.1011\) and adverse selection \(\theta \approx 0.0976\) and \(0.1976\), isolating friction components regardless of information severity.</p>
+        </section>
+
+        <h3 id="brief">The brief</h3>
+        <p>Author an analytical research memo (400 to 900 words) titled <code>report.md</code> structured under the following five mandatory headings:</p>
+        <ol>
+          <li><strong>Model specification</strong>: state the repeated trade model, define the efficient and transaction price equations, and state Assumptions A1–A4 with the role each plays in Proposition 1 and 2.</li>
+          <li><strong>Estimators and identities</strong>: document the Roll autocovariance estimator (with divisor \(n-2\)), the no-intercept OLS normal equations, the structural recovery formulas \(c = -b_1\) and \(\theta = b_0 + b_1\), and the exception handling rules.</li>
+          <li><strong>Results and sign reading</strong>: present the benchmark grid from Lab 3, compare empirical estimates against population targets, and explain why the Roll spread overestimates \(2c\) when \(\theta > 0\).</li>
+          <li><strong>Numerical rigour and rounding</strong>: declare the display rounding convention (four decimal places for spreads and coefficients), confirm that all calculations derive from unrounded floats, and show one verified manual recomputation.</li>
+          <li><strong>Limits and evidence</strong>: discuss structural limitations of the model (constant parameters, i.i.d. trade signs, absence of inventory holding costs), provide evidence grades, and cite verified literature keys.</li>
+        </ol>
+
+        <h3 id="rubric-heading">The rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The spread-decomposition research memo: five criteria, four performance levels each. The report meets the doctoral passing standard at level 3 or above on all criteria.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Model specification</th><td>Lists Assumptions A1–A4 with explicit mathematical definitions, states the exact role each assumption plays in deriving Proposition 1 and Proposition 2, and distinguishes permanent adverse selection from transitory order processing.</td><td>States Assumptions A1–A4 with formulas and identifies the structural price equations \(\Delta p_t = (\theta + c) q_t - c q_{t-1} + \eta_t\).</td><td>States the price equations but omits formal independence assumptions or confuses efficient and transaction prices.</td><td>Describes trading frictions informally without mathematical specifications.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Estimators and identities</th><td>Derives the population autocovariance \(\Cov(d_t, d_{t-1}) = -c(\theta + c)\) and normal equations \(b_0 = \theta + c\), \(b_1 = -c\), explains the \(n-2\) divisor for lag-1 covariance, and documents all three <code>ValueError</code> exception conditions.</td><td>States the Roll estimator formula, the no-intercept regression equations, the structural parameter recoveries \(c = -b_1\) and \(\theta = b_0 + b_1\), and the exception conditions.</td><td>States the estimator formulas but omits the no-intercept requirement or fails to document exception triggers.</td><td>Presents code snippets without theoretical derivations or estimator definitions.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Results and sign reading</th><td>Presents the complete Lab 3 benchmark grid, compares estimates against theoretical population values, evaluates sampling error, and provides an analytical explanation for why Roll estimates exceed \(2c\) when \(\theta > 0\).</td><td>Presents the benchmark grid, reports the five required outputs across all three grid points, and correctly interprets the adverse selection share.</td><td>Reports numerical values for some grid points but omits the adverse share or fails to compare Roll estimates with true spreads.</td><td>Reports unsubstantiated numbers or omits the simulation grid entirely.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Numerical rigour and rounding</th><td>Declares an explicit display rounding policy (e.g., four decimals), demonstrates that all internal calculations use unrounded double-precision floats, and reproduces one sample covariance or regression slope via exact manual computation.</td><td>States the display rounding rule, quotes numbers consistent with Lab 3 output, and avoids premature intermediate rounding.</td><td>Presents inconsistent decimal precisions or displays evidence of rounding error accumulation.</td><td>Presents unformatted numbers without declared precision or rounding rules.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Limits and evidence</th><td>Evaluates at least three structural model limitations (e.g., constant parameters, absence of inventory dynamics, i.i.d. order flow), assigns evidence grades (T, B, C) with explicit justifications, and cites verified literature keys (e.g., Roll 1984, Glosten &amp; Milgrom 1985).</td><td>Identifies at least three model limitations and assigns evidence grades to theoretical derivations and simulation findings.</td><td>Mentions generic market complexities without linking them to specific model assumptions.</td><td>Contains no discussion of model limitations or evidence evaluation.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Review the following annotated student memo excerpts to calibrate your self-assessment. Exemplar A illustrates common defects resulting in a failing grade (Level 2), whereas Exemplar B demonstrates exemplary execution meeting all Level 4 descriptors.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,1,2,1" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 1 · C4 2 · C5 1. The memo describes trading regressions and states basic formulas, but fails to number assumptions, omits the benchmark simulation grid, shows premature rounding, and mentions caveats without structural analysis.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model specification</h5>
+              <p>The price change is determined by current and lagged trade signs: \(\Delta p_t = b_0 q_t + b_1 q_{t-1} + e_t\). Here \(b_0\) represents the half-spread while \(b_1\) captures inventory reversals.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: specifies the regression equation relating price changes to trade signs.</li>
+                <li class="misses" data-criterion="C1" data-level="3">Misses C1 level 3: fails to state Assumptions A1–A4 and mislabels \(b_1\) as inventory rather than order processing.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Estimators and identities</h5>
+              <p>We run OLS of price changes on signs to get \(b_0\) and \(b_1\). Then order processing is \(-b_1\) and adverse selection is \(b_0 + b_1\). The Roll spread is \(2\sqrt{-\text{cov}_1}\).</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: states the basic recovery identities and Roll spread formula.</li>
+                <li class="misses" data-criterion="C2" data-level="3">Misses C2 level 3: omits the \(n-2\) divisor definition and all three <code>ValueError</code> exception conditions.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Results and sign reading</h5>
+              <p>The regression runs gave positive half-spreads around 0.20. Adverse selection was positive when information was present.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="1">Meets C3 level 1: makes qualitative statements without reporting the parameter grid.</li>
+                <li class="misses" data-criterion="C3" data-level="2">Misses C3 level 2: fails to present the required Lab 3 benchmark grid or numerical outputs.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Numerical rigour and rounding</h5>
+              <p>Numbers are rounded to two decimal places: spread is 0.20 and adverse selection is 0.10.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: states a rounding convention but applies crude two-decimal rounding.</li>
+                <li class="misses" data-criterion="C4" data-level="3">Misses C4 level 3: does not confirm calculations from unrounded values.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limits and evidence</h5>
+              <p>Real markets are complicated and spreads change over time.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="1">Meets C5 level 1: offers only vague, generic hedges without structural content.</li>
+                <li class="misses" data-criterion="C5" data-level="2">Misses C5 level 2: fails to identify specific model assumptions or assign evidence grades.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. Complete mathematical rigor: assumptions are numbered and mapped to propositions; estimators and exception conditions are derived; benchmark grid results are thoroughly analyzed; unrounded calculations are verified; and structural limitations are graded with literature citations.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model specification</h5>
+              <p>Under Assumption A1, trade signs \(q_t \in \{-1, +1\}\) are i.i.d. with mean zero and unit variance. Under A2, the unobserved efficient price evolves as \(m_t = m_{t-1} + \theta q_t + \eta_t\), where \(\theta \ge 0\) represents permanent adverse-selection impact and \(\eta_t \sim \Normal(0, \sigma^2)\) is independent public news. Under A3, transaction prices satisfy \(p_t = m_t + c q_t\), where \(c > 0\) is the transitory order-processing half-spread. Under A4, differencing yields observable price changes \(\Delta p_t = (\theta + c) q_t - c q_{t-1} + \eta_t\). Assumption A1 ensures orthogonality \(\Cov(q_t, q_{t-1}) = 0\), enabling identification of \(\theta\) and \(c\).</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: explicitly defines Assumptions A1–A4 and explains the theoretical mechanism of identification.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Estimators and identities</h5>
+              <p>Proposition 1 proves that \(\Cov(d_t, d_{t-1}) = -c(\theta + c)\). When \(\theta = 0\), the Roll spread \(s = 2\sqrt{-\text{cov}_1} = 2c\) is exact. When \(\theta > 0\), the population Roll estimator converges to \(2\sqrt{c(\theta + c)} > 2c\). The sample covariance utilizes divisor \(n-2\) across the \(n-2\) adjacent pairs of changes. Proposition 2 establishes that no-intercept OLS estimates satisfy \(b_0 = \theta + c\) and \(b_1 = -c\), recovering \(c = -b_1\), \(\theta = b_0 + b_1\), and adverse share \(\theta / b_0\). Input validation strictly raises <code>ValueError</code> if \(n < 3\), if any sign \(q_t \notin \{-1, +1\}\), or if all signs are equal (singular normal equations).</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: proves autocovariance and regression identities, explains sample divisors, and documents all three exception triggers.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Results and sign reading</h5>
+              <p>The Lab 3 benchmark grid (\(n = 2000, c = 0.10, \sigma = 0.05\), seed 1) confirms the theoretical predictions:</p>
+              <div class="table-wrap"><table>
+                <thead><tr><th>\(\theta\)</th><th>\(c\)</th><th>Roll spread</th><th>\(H = b_0\)</th><th>\(c = -b_1\)</th><th>\(\theta_{\text{est}}\)</th><th>Adverse share</th></tr></thead>
+                <tbody>
+                  <tr><td>0.00</td><td>0.10</td><td>0.1914</td><td>0.0987</td><td>0.1011</td><td>-0.0024</td><td>-0.0247</td></tr>
+                  <tr><td>0.10</td><td>0.10</td><td>0.2671</td><td>0.1987</td><td>0.1011</td><td>0.0976</td><td>0.4910</td></tr>
+                  <tr><td>0.20</td><td>0.10</td><td>0.3194</td><td>0.2987</td><td>0.1011</td><td>0.1976</td><td>0.6614</td></tr>
+                </tbody>
+              </table></div>
+              <p>At \(\theta = 0.00\), the Roll spread (0.1914) closely approximates the true spread \(2c = 0.2000\) within sampling error. For \(\theta = 0.10\) and \(0.20\), the Roll spread inflates to 0.2671 and 0.3194, tracking population targets \(2\sqrt{0.10(0.20)} \approx 0.2828\) and \(2\sqrt{0.10(0.30)} \approx 0.3464\). In contrast, the regression estimates accurately recover \(c = 0.1011\) and \(\theta \in \{0.0976, 0.1976\}\) across all levels of information asymmetry.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: tabulates the complete benchmark grid and provides thorough comparative analysis against population targets.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Numerical rigour and rounding</h5>
+              <p>All calculations operate on 64-bit IEEE floating-point values without intermediate truncation. Reporting follows a strict four-decimal-place display policy. Manual verification of the \(\theta = 0.10\) regression: cross products \(s_{00} = 1999.0\), \(s_{11} = 1999.0\), \(s_{01} = 3.0\), \(\det = 1999.0^2 - 3.0^2 = 3995992.0\); inner products \(y_0 = 397.0987\), \(y_1 = -201.9987\); yielding \(b_0 = (1999.0 \times 397.0987 - 3.0 \times (-201.9987)) / 3995992.0 = 0.1987\) and \(b_1 = (1999.0 \times (-201.9987) - 3.0 \times 397.0987) / 3995992.0 = -0.1011\), confirming solver output.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: specifies rounding policy, proves unrounded execution, and demonstrates exact manual normal equation solution.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Limits and evidence</h5>
+              <p>The structural model embodies three major limitations: (1) constant spread components \(c\) and \(\theta\), abstracting from intraday volatility clustering; (2) i.i.d. order flow (Assumption A1), ignoring autocorrelation in trade signs caused by institutional order splitting; and (3) absence of dealer inventory control penalties (Ho &amp; Stoll 1981). All mathematical derivations are Proposition Grade T; empirical grid properties on SIMULATED trades are Grade C. The finding that serial covariance estimators overestimate spreads under adverse selection is Grade B, substantiated by Roll (1984) and Glosten &amp; Milgrom (1985).</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: evaluates three structural limits, assigns explicit evidence grades (T, B, C), and cites verified literature keys.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="MS1/project/report" data-work-label="Your report" data-work-noun="report" data-summary-path="report/self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your draft memo on each rubric criterion. Then score Exemplars A and B with annotations hidden, and reveal official ratings to calibrate your standards. Your evaluation summary will be preserved as <code>report/self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment tool requires JavaScript. The rubric and exemplars remain fully accessible without it.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <p>Extend your research portfolio with the following open-ended analytical investigations:</p>
+        <ul>
+          <li><strong>Trade sign misclassification.</strong> Assume observed trade signs \(\hat{q}_t\) equal true signs \(q_t\) with probability \(1 - \pi\), and are flipped to \(-q_t\) with misclassification error rate \(\pi \in [0, 0.5)\). Derive the asymptotic attenuation bias in the estimated half-spread \(b_0\) and order-processing component \(b_1\), and simulate the impact on estimated adverse selection share.</li>
+          <li><strong>Persistent order flow.</strong> Generalize Assumption A1 to an AR(1) trade sign process \(q_t = \rho q_{t-1} + \nu_t\) with autocorrelation \(\rho \in (-1, 1)\). Derive the modified normal equations and demonstrate how autocorrelation contaminates the classical Roll covariance estimator.</li>
+          <li><strong>Intraday time-varying components.</strong> Model \(\theta_t\) and \(c_t\) as deterministic U-shaped intraday diurnal functions, and formulate a rolling-window WLS estimator to track spread dynamics.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <p>The models, derivations, and estimators developed in this project directly reference the foundational market microstructure literature:</p>
+        <ol class="reading-list">
+          <li data-cite="roll1984simple"></li>
+          <li data-cite="glosten1985bid"></li>
+          <li data-cite="ho1981optimal"></li>
+          <li data-cite="kyle1985continuous"></li>
+          <li data-cite="easley1996liquidity"></li>
+          <li data-cite="easley2012flow"></li>
+          <li data-cite="andersen2014vpin"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L08.html"><span class="dir">Previous</span>L08 · VPIN</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>MS1 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">MS1 project · Spread Decomposition · Quant PhD Program</footer>
+</body>
+</html>
