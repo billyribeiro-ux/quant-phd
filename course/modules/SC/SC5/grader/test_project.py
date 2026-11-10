@@ -99,9 +99,7 @@ def test_characteristic_function_at_zero() -> None:
     within(val_m.imag, 0.0, 1e-7, "Merton CF imaginary part at u=0 must vanish")
 
     # Variance Gamma
-    cf_vg = sol.vg_characteristic_function(
-        0.0, t, spot, r, INST["vg_sigma"], INST["vg_nu"], INST["vg_theta"]
-    )
+    cf_vg = sol.vg_characteristic_function(0.0, t, spot, r, INST["vg_sigma"], INST["vg_nu"], INST["vg_theta"])
     val_vg = complex(cf_vg)
     within(val_vg.real, 1.0, 1e-7, "VG CF real part at u=0 must equal 1.0 (total probability axiom)")
     within(val_vg.imag, 0.0, 1e-7, "VG CF imaginary part at u=0 must vanish")
@@ -128,9 +126,7 @@ def test_characteristic_function_martingale_condition() -> None:
     within(val_m.imag, 0.0, 1e-5, "Merton CF imaginary part at u=-i must vanish")
 
     # Variance Gamma
-    cf_vg = sol.vg_characteristic_function(
-        -1.0j, t, spot, r, INST["vg_sigma"], INST["vg_nu"], INST["vg_theta"]
-    )
+    cf_vg = sol.vg_characteristic_function(-1.0j, t, spot, r, INST["vg_sigma"], INST["vg_nu"], INST["vg_theta"])
     val_vg = complex(cf_vg)
     within(
         val_vg.real,

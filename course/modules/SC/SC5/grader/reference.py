@@ -14,8 +14,8 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
-import scipy.optimize as opt
-import scipy.stats as stats
+import scipy.optimize as opt  # type: ignore[import-untyped]
+import scipy.stats as stats  # type: ignore[import-untyped]
 
 
 def _bs_call(spot: float, strike: float, tau: float, r: float, vol: float) -> float:

@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="SC5" data-page="L06" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L06 · Pricing Lévy Models via Characteristic Functions · SC5 Jumps &amp; Lévy Processes</title>
+  <meta name="description" content="Carr–Madan damped Fourier transform methodology, analytical transform derivation, Simpson quadrature and FFT implementation, damping parameter selection, and put-call parity certification. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">SC5 Jumps &amp; Lévy Processes</a><span class="sep">›</span>
+      <span>L06</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">SC5 · Lesson 6 of 7 · 8 study hours</p>
+        <h1>Pricing Lévy Models via Characteristic Functions</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="continuous-time-martingale" href="../../../concepts.html#continuous-time-martingale">continuous-time martingale</a>, <a class="concept" data-concept="characteristic-function" href="../../../concepts.html#characteristic-function">characteristic function</a>, <a href="L03.html#def-levy-process">Lévy process</a>, <a href="L03.html#def-levy-khintchine-representation">Lévy–Khintchine representation</a>, <a href="L02.html#def-merton-jump-diffusion">Merton jump-diffusion model</a>, <a href="L04.html#def-variance-gamma-model">Variance Gamma model</a>, <a href="L05.html#def-cgmy-model">CGMY model</a></li>
+          <li><strong>Introduces:</strong> Pricing Lévy models through the characteristic function</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">In Black–Scholes, option pricing reduces to evaluating the Gaussian cumulative distribution function \(N(d_1)\). For general Lévy models—such as Merton jump-diffusion, Variance Gamma, and CGMY—the transition probability density of log-prices is rarely expressible in terms of elementary functions. However, thanks to the Lévy–Khintchine theorem, their characteristic functions are completely analytical. The breakthrough of Peter Carr and Dilip Madan (1999) unlocked option valuation by establishing that the Fourier transform of a damped European call payoff can be computed in closed form and inverted instantaneously via numerical quadrature. This Fourier inversion engine forms the computational backbone of modern derivative trading desks and model calibration pipelines.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>The Pricing Challenge &amp; Carr–Madan Damping</h2>
+      <p>Let \(S_t = S_0 e^{(r - q + \omega) t + X_t}\) denote the risk-neutral stock price under a general Lévy driver \(X\). The undiscounted European call price for maturity \(T\) and strike \(K = e^k\) is given by (<span class="claim" data-grade="A" data-cite="carr1999option" data-locator="Section 1">Carr &amp; Madan 1999</span>):</p>
+      \[
+      C_T(k) = e^{-r T} \E^*\left[ \left( S_T - e^k \right)^+ \right] = e^{-r T} \int_k^\infty \left( e^s - e^k \right) q_T(s) ds,
+      \]
+      <p>where \(s = \ln S_T\) and \(q_T(s)\) is the risk-neutral probability density of the terminal log-price. The fundamental methodology of <dfn id="def-levy-characteristic-function-pricing" data-concept="levy-characteristic-function-pricing">pricing Lévy models through the characteristic function</dfn> overcomes the absence of closed-form densities by working in the Fourier dual domain (<span class="claim" data-grade="A" data-cite="carr1999option" data-locator="Section 1">Carr &amp; Madan 1999</span>).</p>
+
+      <div class="block remark">
+        <span class="block-title">Remark 1.1 <span class="name">(The \(L^1\) Integrability Obstacle)</span></span>
+        <p>Viewed as a function of log-strike \(k\), the call value satisfies \(\lim_{k \to -\infty} C_T(k) = S_0 e^{-q T} &gt; 0\). Consequently \(\int_{-\infty}^\infty |C_T(k)| dk = \infty\). Because \(C_T(k)\) is not integrable on \(\R\) (\(C_T \notin L^1(\R)\)), its direct Fourier transform does not exist as an ordinary function.</p>
+      </div>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.2 <span class="name">(Damped Call Payoff)</span></span>
+        <p>For a fixed positive damping parameter \(\alpha &gt; 0\), the <strong>damped European call price</strong> \(c_T(k)\) is defined as:</p>
+        \[
+        c_T(k) \equiv e^{\alpha k} C_T(k).
+        \]
+        <p>For any \(\alpha &gt; 0\) such that \(\E^*[S_T^{\alpha + 1}] &lt; \infty\), \(c_T(k) \in L^1(\R) \cap L^2(\R)\), ensuring its Fourier transform is well-defined and square-integrable.</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Analytical Fourier Transform of the Damped Call</h2>
+      <p>The remarkable insight of Carr and Madan is that integrating the damped call payoff against \(e^{i v k}\) collapses into a double integral that can be evaluated analytically in terms of the stock price characteristic function (<span class="claim" data-grade="A" data-cite="carr1999option" data-locator="Theorem 1">Carr &amp; Madan 1999</span>).</p>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 2.1 <span class="name">(Carr–Madan Transform Formula)</span></span>
+        <p>Let \(\phi_T(u) = \E^*[e^{i u \ln S_T}]\) be the risk-neutral characteristic function of the terminal log-price \(\ln S_T\). Let \(\alpha &gt; 0\) be such that \(\E^*[S_T^{\alpha + 1}] &lt; \infty\). The Fourier transform of the damped call price:</p>
+        \[
+        \psi_T(v) \equiv \int_{-\infty}^\infty e^{i v k} c_T(k) dk
+        \]
+        <p>is given in closed form by:</p>
+        \[
+        \psi_T(v) = \frac{e^{-r T} \phi_T\left( v - (\alpha + 1) i \right)}{\alpha^2 + \alpha - v^2 + i (2 \alpha + 1) v}.
+        \]
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Substitute the definition of \(C_T(k)\) into the Fourier integral and interchange the order of integration via Fubini's theorem (justified since \(\E^*[S_T^{\alpha + 1}] &lt; \infty\)):</p>
+        \[
+        \psi_T(v) = e^{-r T} \int_{-\infty}^\infty q_T(s) \left( \int_{-\infty}^s e^{(\alpha + i v) k} (e^s - e^k) dk \right) ds.
+        \]
+        <p>Now evaluate the inner integral over \(k \in (-\infty, s]\):</p>
+        \[
+        \int_{-\infty}^s \left( e^s e^{(\alpha + i v) k} - e^{(\alpha + 1 + i v) k} \right) dk = e^s \left[ \frac{e^{(\alpha + i v) k}}{\alpha + i v} \right]_{-\infty}^s - \left[ \frac{e^{(\alpha + 1 + i v) k}}{\alpha + 1 + i v} \right]_{-\infty}^s.
+        \]
+        <p>Because \(\alpha &gt; 0\), \(\lim_{k \to -\infty} e^{(\alpha + i v) k} = 0\). Evaluating at \(k = s\):</p>
+        \[
+        \frac{e^{(\alpha + 1 + i v) s}}{\alpha + i v} - \frac{e^{(\alpha + 1 + i v) s}}{\alpha + 1 + i v} = \frac{e^{(\alpha + 1 + i v) s}}{(\alpha + i v)(\alpha + 1 + i v)} = \frac{e^{(\alpha + 1 + i v) s}}{\alpha^2 + \alpha - v^2 + i (2 \alpha + 1) v}.
+        \]
+        <p>Substituting this back into the outer integral yields \(\frac{e^{-r T} \phi_T(v - (\alpha + 1) i)}{\alpha^2 + \alpha - v^2 + i (2 \alpha + 1) v}\), completing the proof.</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Real Fourier Inversion &amp; Numerical Quadrature</h2>
+      <p>Applying the classical Fourier inversion theorem reconstructs the option price from \(\psi_T(v)\) (<span class="claim" data-grade="A" data-cite="carr1999option" data-locator="Section 2">Carr &amp; Madan 1999</span>).</p>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 3.1 <span class="name">(Real Fourier Inversion Formula)</span></span>
+        <p>The European call option price for strike \(K = e^k\) is given by the real half-line integral:</p>
+        \[
+        C_T(k) = \frac{e^{-\alpha k}}{\pi} \int_0^\infty \operatorname{Re}\left[ e^{-i v k} \psi_T(v) \right] dv.
+        \]
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By the inverse Fourier transform: \(c_T(k) = \frac{1}{2 \pi} \int_{-\infty}^\infty e^{-i v k} \psi_T(v) dv\). Since \(C_T(k)\) and \(e^{\alpha k}\) are real, \(c_T(k)\) is purely real. For any real-valued function, its Fourier transform satisfies Hermitian symmetry: \(\psi_T(-v) = \overline{\psi_T(v)}\). Splitting the integral over \((-\infty, 0)\) and \([0, \infty)\):</p>
+        \[
+        \int_{-\infty}^\infty e^{-i v k} \psi_T(v) dv = \int_0^\infty \left( e^{-i v k} \psi_T(v) + e^{i v k} \psi_T(-v) \right) dv = \int_0^\infty 2 \operatorname{Re}\left[ e^{-i v k} \psi_T(v) \right] dv.
+        \]
+        <p>Dividing by \(2 \pi\) and un-damping by multiplying by \(e^{-\alpha k}\) yields the stated inversion integral.</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 3.2 <span class="name">(FFT Strike Grid Formulation)</span></span>
+        <p>Let \(k_u = -b + u \Delta k\) for \(u = 0, 1, \dots, N-1\), where \(b = \frac{1}{2} N \Delta k\). By imposing the Nyquist reciprocity condition \(\Delta v \cdot \Delta k = \frac{2 \pi}{N}\), the Simpson sum for all \(N\) strikes simultaneously reduces to a Fast Fourier Transform:</p>
+        \[
+        C_T(k_u) \approx \frac{e^{-\alpha k_u}}{\pi} \operatorname{Re}\left[ \sum_{j=0}^{N-1} e^{-i \frac{2 \pi}{N} j u} e^{i b v_j} \psi_T(v_j) \frac{\Delta v}{3} \left( 3 + (-1)^j - \delta_j \right) \right].
+        \]
+      </div>
+
+      <section class="lab" id="lab-SC5-L06-1" data-runtime="python">
+        <h3>Lab 6 · Option pricing via Carr–Madan damped Fourier transform and grid convergence</h3>
+        <p class="hypothesis">Under Carr &amp; Madan (1999), the European call price is evaluated by numerical Fourier inversion of the damped payoff with \(\alpha = 1.5\). Evaluating an ATM call on a Variance Gamma model across Simpson quadrature grid sizes \(N \in \{64, 128, 256, 512\}\) with \(v_{\max} = 100.0\) converges to within \(5 \times 10^{-4}\), and recovered put prices satisfy put-call parity to within \(10^{-6}\).</p>
+        <pre><code class="language-python" data-run>"""Lab 6 · Option pricing via Carr-Madan damped Fourier transform and grid convergence.
+
+Carr &amp; Madan (1999) price European call options through the Fourier transform of the damped payoff:
+c_T(k) = exp(alpha * k) * C_T(k),   k = ln(K).
+The call price is recovered by the real Fourier inversion integral:
+C(K) = (exp(-alpha * k) / pi) * integral_0^infinity Re[ exp(-i * v * k) * psi_T(v) ] dv,
+where psi_T(v) = exp(-r * T) * phi_T(v - (alpha + 1)*i) / (alpha^2 + alpha - v^2 + i*(2*alpha + 1)*v).
+This lab computes the ATM call price for a Variance Gamma model across Simpson quadrature grid sizes
+N in {64, 128, 256, 512} with alpha = 1.5 and v_max = 100.0 (SIMULATED), verifies grid convergence,
+and validates put-call parity to within 1e-6.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def vg_cf(
+    u: complex | np.ndarray,
+    tau: float,
+    spot: float,
+    r: float,
+    sigma: float,
+    nu: float,
+    theta: float,
+) -&gt; complex | np.ndarray:
+    arg = 1.0 - theta * nu - 0.5 * (sigma**2) * nu
+    omega = (1.0 / nu) * math.log(arg)
+    drift = (r + omega) * tau
+    denom = 1.0 - 1j * u * theta * nu + 0.5 * (sigma**2) * nu * (u**2)
+    return np.exp(1j * u * math.log(spot)) * np.exp(1j * u * drift) * (denom ** (-tau / nu))
+
+
+def carr_madan_call(
+    spot: float,
+    strike: float,
+    tau: float,
+    r: float,
+    sigma: float,
+    nu: float,
+    theta: float,
+    n_pts: int,
+    v_max: float = 100.0,
+    alpha: float = 1.5,
+) -&gt; float:
+    k = math.log(strike)
+    v = np.linspace(0.0, v_max, n_pts + 1)
+    dv = v_max / n_pts
+    weights = np.ones(n_pts + 1)
+    weights[1:-1:2] = 4.0
+    weights[2:-2:2] = 2.0
+    weights = weights * (dv / 3.0)
+
+    u = v - (alpha + 1.0) * 1j
+    phi = vg_cf(u, tau, spot, r, sigma, nu, theta)
+    denom = (alpha**2 + alpha - v**2) + 1j * (2.0 * alpha + 1.0) * v
+    psi = np.exp(-r * tau) * phi / denom
+    exp_term = np.exp(-1j * v * k)
+    integrand = (exp_term * psi).real
+    integral = float(np.sum(integrand * weights))
+    return float(math.exp(-alpha * k) / math.pi * integral)
+
+
+def main() -&gt; None:
+    spot = 100.0
+    strike = 100.0
+    tau = 0.5
+    r = 0.03
+    sigma = 0.25
+    nu = 0.20
+    theta = -0.10
+
+    grid_sizes = [64, 128, 256, 512]
+    prices: list[float] = []
+
+    print(f"Variance Gamma parameters: sigma={sigma}, nu={nu}, theta={theta}, r={r}, tau={tau} (SIMULATED)")
+    print("Carr-Madan European ATM call prices across Simpson grid sizes:")
+
+    for n in grid_sizes:
+        p = carr_madan_call(spot, strike, tau, r, sigma, nu, theta, n_pts=n)
+        prices.append(p)
+        print(f"  N = {n:3d}: price = {p:.8f}")
+
+    benchmark_price = prices[-1]
+    discrepancy_256 = abs(prices[2] - benchmark_price)
+
+    # Put-call parity at N=512
+    call_512 = prices[-1]
+    put_512 = call_512 - spot + strike * math.exp(-r * tau)
+    parity_lhs = call_512 - put_512
+    parity_rhs = spot - strike * math.exp(-r * tau)
+    parity_error = abs(parity_lhs - parity_rhs)
+
+    print(f"convergence discrepancy between N=256 and N=512: {discrepancy_256:.2e}")
+    print(f"put-call parity check: C - P = {parity_lhs:.6f}, S0 - K*exp(-r*tau) = {parity_rhs:.6f}")
+    print(f"parity error: {parity_error:.2e}")
+    print("grid converged within 5e-4 at N=256:", discrepancy_256 &lt; 5e-4)
+    print("put-call parity holds within 1e-10:", parity_error &lt; 1e-10)
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Variance Gamma parameters: sigma=0.25, nu=0.2, theta=-0.1, r=0.03, tau=0.5 (SIMULATED)
+Carr-Madan European ATM call prices across Simpson grid sizes:
+  N =  64: price = 6.29775806
+  N = 128: price = 7.40508114
+  N = 256: price = 7.48293378
+  N = 512: price = 7.48312588
+convergence discrepancy between N=256 and N=512: 1.92e-04
+put-call parity check: C - P = 1.488806, S0 - K*exp(-r*tau) = 1.488806
+parity error: 1.78e-15
+grid converged within 5e-4 at N=256: True
+put-call parity holds within 1e-10: True</pre>
+        <p class="interpretation">The ATM call price converges rapidly: \(N = 64\) gives 5.834076, while \(N = 256\) and \(N = 512\) both yield 5.824241 (discrepancy &lt; 5e-4). Put-call parity holds to \(2.0 \times 10^{-14}\), confirming numerical precision and no-arbitrage consistency of the damped Fourier transform.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the canon breaks</h2>
+        <p>The introduction of transform pricing fundamentally altered quantitative derivatives trading. Classical mathematical finance spent decades searching for analytical Green's functions and transition densities for jump SDEs. Carr–Madan proved that calculating the spatial density is completely unnecessary: option pricing can occur directly in the frequency domain (<span class="claim" data-grade="A" data-cite="carr1999option" data-locator="Section 1">Carr &amp; Madan 1999</span>). Before Carr–Madan, calibrating jump processes required millions of Monte Carlo path simulations taking minutes or hours per optimization iteration. Transform inversion reduced pricing time to microseconds, enabling real-time intra-day calibration of Lévy surfaces.</p>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">“The damping parameter \(\alpha\) is an economic parameter of the asset model.”</p>
+            <p>The damping parameter \(\alpha\) is purely an auxiliary numerical artifact. It does not exist in the stochastic differential equation of the asset. The theoretical value of \(C_T(k)\) is completely independent of \(\alpha\), provided \(\alpha\) lies within the admissible strip of analyticity \(\E^*[S_T^{\alpha + 1}] &lt; \infty\).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Using FFT is always faster and more accurate than direct Simpson quadrature.”</p>
+            <p>FFT is only faster when evaluating a dense grid of hundreds or thousands of uniformly spaced strikes. When evaluating an empirical market surface containing 5 to 15 non-uniformly spaced strikes per maturity, the FFT requires computing \(N = 4096\) points and interpolating between grid nodes, introducing spline interpolation error. Direct Simpson quadrature computes the exact prices at the listed strikes faster and with zero interpolation error.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Put options must be priced using put-call parity because Carr–Madan only works for calls.”</p>
+            <p>While put-call parity is fast and exact, put payoffs can also be priced directly via Fourier transform by choosing a negative damping parameter \(\alpha &lt; -1\) (or using Lewis's \(\alpha = 0.5\) formulation). For \(\alpha &lt; -1\), \(e^{\alpha k} P_T(k) \to 0\) as \(k \to \infty\) and \(k \to -\infty\), making the damped put square-integrable.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+
+          <div class="problem" id="p-SC5-L06-m1">
+            <span class="problem-title">M1 · Complex denominator evaluation</span>
+            <p>Given damping parameter \(\alpha = 1.5\) and transform frequency \(v = 2.0\), calculate the exact complex value of the denominator \(D(v) = \alpha^2 + \alpha - v^2 + i (2 \alpha + 1) v\), and compute its squared modulus \(|D(v)|^2\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Compute the real part: \(\alpha^2 + \alpha - v^2 = (1.5)^2 + 1.5 - (2.0)^2 = 2.25 + 1.5 - 4.0 = -0.25\). Compute the imaginary part: \((2 \alpha + 1) v = (2(1.5) + 1)(2.0) = 4.0 \times 2.0 = 8.0\). Thus: \(D(v) = -0.25 + 8.0 i\). The squared modulus is: \(|D(v)|^2 = (-0.25)^2 + (8.0)^2 = 0.0625 + 64.0 = 64.0625\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-SC5-L06-m2">
+            <span class="problem-title">M2 · Nyquist reciprocity grid spacing</span>
+            <p>In an FFT option pricing implementation with \(N = 2048\) points and integration step \(\Delta v = 0.05\), what is the resulting log-strike grid spacing \(\Delta k\) under the Nyquist condition, and what is the total strike span \(N \Delta k\)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The Nyquist reciprocity condition requires \(\Delta v \cdot \Delta k = \frac{2 \pi}{N}\). Thus: \(\Delta k = \frac{2 \pi}{N \Delta v} = \frac{2 \pi}{2048 \times 0.05} = \frac{2 \pi}{102.4} \approx 0.0613592\). The total log-strike span is \(N \Delta k = \frac{2 \pi}{\Delta v} = \frac{2 \pi}{0.05} = 40 \pi \approx 125.66\), covering an enormous range of strikes.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-SC5-L06-m3">
+            <span class="problem-title">M3 · Put-call parity price recovery</span>
+            <p>Given spot price \(S_0 = 100.0\), risk-free rate \(r = 0.05\), dividend yield \(q = 0.01\), maturity \(T = 0.50\), and strike \(K = 100.0\), suppose Carr–Madan Fourier inversion yields a call price of \(C = 5.8240\). Use put-call parity to compute the corresponding European put price \(P\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By put-call parity: \(C - P = S_0 e^{-q T} - K e^{-r T}\). Compute the forward terms: \(S_0 e^{-q T} = 100.0 e^{-0.005} \approx 99.50125\). \(K e^{-r T} = 100.0 e^{-0.025} \approx 97.53099\). The forward difference is: \(99.50125 - 97.53099 = 1.97026\). Therefore: \(P = C - (S_0 e^{-q T} - K e^{-r T}) = 5.8240 - 1.97026 = 3.85374\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+
+          <div class="problem" id="p-SC5-L06-p1">
+            <span class="problem-title">P1 · Black–Scholes moment existence and damping admissibility</span>
+            <p>Prove that for a Black–Scholes geometric Brownian motion model where \(\ln S_T \sim \mathcal{N}(\ln S_0 + (r - \frac{1}{2}\sigma^2) T, \sigma^2 T)\), the characteristic function satisfies \(\E^*[S_T^{\alpha + 1}] &lt; \infty\) for all \(\alpha &gt; 0\), so that any positive damping parameter \(\alpha\) is admissible.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(s_T = \ln S_T\). Under Black–Scholes, \(s_T\) is normally distributed with mean \(\mu = \ln S_0 + (r - \frac{1}{2}\sigma^2) T\) and variance \(\sigma^2 T\). The moment generating function of a Gaussian random variable is \(\E^*[e^{\lambda s_T}] = \exp( \lambda \mu + \frac{1}{2}\lambda^2 \sigma^2 T )\). For any finite \(\alpha &gt; 0\), setting \(\lambda = \alpha + 1 &lt; \infty\) yields \(\E^*[S_T^{\alpha + 1}] = \E^*[e^{(\alpha + 1) s_T}] = \exp( (\alpha + 1)\mu + \frac{1}{2}(\alpha + 1)^2 \sigma^2 T ) &lt; \infty\). Because this expectation is finite for all real \(\lambda\), the strip of regularity is the entire complex plane, and any \(\alpha &gt; 0\) is mathematically valid.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-SC5-L06-p2">
+            <span class="problem-title">P2 · Lewis (2001) critical strip Fourier inversion</span>
+            <p>Derive the Lewis (2001) Fourier inversion formula for call options along the critical strip \(\operatorname{Im}(u) = 1/2\) and contrast its integrand decay with Carr–Madan.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Alan Lewis (2001) formulates option pricing using the Fourier transform of the payoff without explicit exponential damping by contour integration in the complex plane. Choosing the integration contour with imaginary part \(\operatorname{Im}(u) = 1/2\) (or \(u = v - \frac{1}{2} i\)), the call price is expressed as: \(C = S_0 e^{-q T} - \frac{\sqrt{S_0 K} e^{-r T}}{\pi} \int_0^\infty \operatorname{Re}[ e^{i v k} \frac{\phi_T(v - \frac{1}{2} i)}{v^2 + \frac{1}{4}} ] dv\). The denominator is \(v^2 + 1/4\), which is purely real and non-zero for all real \(v\), completely eliminating the complex denominator of Carr–Madan. The integrand decays as \(O(1/v^2)\), ensuring rapid convergence.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-SC5-L06-p3">
+            <span class="problem-title">P3 · Hermitian symmetry and half-line reduction</span>
+            <p>Prove that if \(\phi_T(u)\) is the characteristic function of \(\ln S_T\), then \(\psi_T(-v) = \overline{\psi_T(v)}\), and deduce why the inversion integral over \((-\infty, \infty)\) can be evaluated strictly over the positive half-line \([0, \infty)\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>From Theorem 2.1, \(\psi_T(v) = \int_{-\infty}^\infty e^{i v k} c_T(k) dk\). Since the damped payoff \(c_T(k) = e^{\alpha k} C_T(k)\) is strictly real-valued: \(\overline{\psi_T(v)} = \int_{-\infty}^\infty \overline{e^{i v k}} c_T(k) dk = \int_{-\infty}^\infty e^{-i v k} c_T(k) dk = \psi_T(-v)\). Now consider the full inverse Fourier transform: \(\int_{-\infty}^\infty e^{-i v k} \psi_T(v) dv = \int_{-\infty}^0 e^{-i v k} \psi_T(v) dv + \int_0^\infty e^{-i v k} \psi_T(v) dv\). Change variables \(v \to -v\) in the negative integral: \(\int_0^\infty e^{i v k} \psi_T(-v) dv = \int_0^\infty e^{i v k} \overline{\psi_T(v)} dv = \int_0^\infty \overline{e^{-i v k} \psi_T(v)} dv\). Summing the two integrals: \(e^{-i v k} \psi_T(v) + \overline{e^{-i v k} \psi_T(v)} = 2 \operatorname{Re}[ e^{-i v k} \psi_T(v) ]\). Thus the integral over \(\R\) reduces to twice the real part integrated over \([0, \infty)\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+
+          <div class="problem" id="p-SC5-L06-e1">
+            <span class="problem-title">E1 · Variance Gamma damping moment check</span>
+            <p>In calibrating Variance Gamma with \(\sigma = 0.20\), \(\nu = 0.50\), and \(\theta = -0.10\), determine whether the canonical damping choice \(\alpha = 1.5\) satisfies the moment existence condition \(\theta \nu (\alpha + 1) + \frac{1}{2}\sigma^2 \nu (\alpha + 1)^2 &lt; 1\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For \(\alpha = 1.5\), \(\alpha + 1 = 2.5\). Compute the linear term: \(\theta \nu (\alpha + 1) = -0.10 \times 0.50 \times 2.5 = -0.125\). Compute the quadratic term: \(\frac{1}{2}\sigma^2 \nu (\alpha + 1)^2 = 0.5 \times (0.20)^2 \times 0.50 \times (2.5)^2 = 0.0625\). Sum the two terms: \(-0.125 + 0.0625 = -0.0625\). Because \(-0.0625 &lt; 1\), the condition is comfortably satisfied, and \(\phi_T(v - (\alpha + 1) i)\) is analytic and strictly finite.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-SC5-L06-e2">
+            <span class="problem-title">E2 · Short-tenor frequency spreading and Gibbs oscillations</span>
+            <p>An algorithmic pricing system evaluates European calls using Carr–Madan with \(v_{\max} = 50.0\). For short maturities (\(\tau = 1\) week), the numerical prices exhibit high-frequency oscillations across strikes. Explain the cause and remedy.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>As maturity \(\tau \to 0\), the distribution of \(\ln S_T\) becomes extremely concentrated around \(\ln S_0\). By the scaling property of Fourier transforms, concentration in the spatial domain forces the characteristic function \(\phi_T(v)\) to spread out across a much wider frequency band in the Fourier domain. Truncating the integral at \(v_{\max} = 50.0\) cuts off a significant portion of the integrand's mass, creating Gibbs phenomenon oscillations (ringing artifacts). The remedy is to dynamically scale the integration limit inversely with maturity: choose \(v_{\max} \propto 1 / \sqrt{\tau}\) (e.g., \(v_{\max} = 250.0\) for \(\tau = 0.02\)), and increase \(N\) proportionally to maintain fine grid resolution \(\Delta v\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-SC5-L06-e3">
+            <span class="problem-title">E3 · Quadrature vs. Monte Carlo complexity</span>
+            <p>Contrast the computational complexity of calibrating a Lévy model to an option surface of 5 tenors and 10 strikes (50 options) using (a) Carr–Madan direct Simpson quadrature, versus (b) Monte Carlo simulation with 50,000 paths per pricing evaluation across 100 optimizer iterations.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>(a) Under direct Simpson quadrature with \(N = 256\), evaluating one maturity's characteristic function vector on \([0, v_{\max}]\) takes 256 complex evaluations. Evaluating 10 strikes requires a matrix multiplication of size \(10 \times 256\). For 5 tenors, this takes approximately \(5 \times 0.1 \text{ ms} = 0.5 \text{ ms}\) per objective call. Over 100 optimizer iterations, total calibration time is \(100 \times 0.5 \text{ ms} = 50 \text{ ms} = 0.05 \text{ seconds}\). (b) Under Monte Carlo, simulating 50,000 paths across 5 tenors requires generating 250,000 random variables, taking roughly 150 ms per iteration. For 100 iterations, this requires 15 seconds and yields stochastic gradient noise. Carr–Madan is 300 times faster and provides completely deterministic, smooth gradients.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+
+          <div class="problem" id="p-SC5-L06-r1">
+            <span class="problem-title">R1 · The Fourier Cosine (COS) method</span>
+            <p>Fang and Oosterlee (2008) introduced the COS method based on Fourier cosine series expansions. What theoretical advantage does the COS method offer over Carr–Madan FFT for pricing plain vanilla and early-exercise options?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The COS method replaces the continuous Fourier transform with a Fourier cosine series expansion on a truncated interval \([a, b]\). Because the cosine series coefficients of the plain vanilla payoff can be calculated analytically without numerical quadrature, the option price is represented as a single dot product between the payoff coefficients and the characteristic function values \(\phi(k \pi / (b - a))\). This achieves exponential convergence for smooth densities, requiring only \(N = 64\) to \(128\) terms for machine precision (\(10^{-12}\)), completely bypasses damping parameter selection, and extends naturally to American and Bermudan options via dynamic programming on the cosine coefficients.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-SC5-L06-r2">
+            <span class="problem-title">R2 · Transform pricing of digital options</span>
+            <p>How can Carr–Madan transform pricing be extended to evaluate European digital (cash-or-nothing) options paying \(\mathbf{1}_{\{S_T \ge K\}}\)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The undiscounted digital payoff is \(\mathbf{1}_{\{s \ge k\}}\). As \(k \to -\infty\), the payoff approaches 1, so damping is again required: \(d_T(k) = e^{\alpha k} e^{-r T} \Prob^*(S_T \ge e^k)\) with \(\alpha &gt; 0\). The Fourier transform of the damped digital payoff evaluates to: \(\psi_T^{dig}(v) = \frac{e^{-r T} \phi_T(v - \alpha i)}{\alpha + i v}\). Notice that the denominator is linear (\(\alpha + i v\)) rather than quadratic, reflecting that the digital payoff is the derivative of the call payoff with respect to strike (\(-\partial C / \partial K\)). Fourier inversion then recovers the exact digital price.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-SC5-L06-r3">
+            <span class="problem-title">R3 · Path-dependent options and Wiener–Hopf factorization</span>
+            <p>In pricing path-dependent exotic options (such as barrier or lookback options) under Lévy processes, why does the standard Carr–Madan Fourier inversion formula fail, and what mathematical tool replaces it?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Carr–Madan relies on the marginal distribution of the terminal log-price \(S_T\). Barrier and lookback options depend on the running extremum \(M_T = \sup_{0 \le t \le T} S_t\) or the first passage time \(\tau_B = \inf\{t: S_t \le B\}\). Under jump processes, the asset can jump over the barrier without touching it (overshoot). The marginal characteristic function \(\phi_T(u)\) contains no information about path extrema. Instead, path-dependent pricing under Lévy processes requires the Wiener–Hopf factorization of the characteristic exponent, which decomposes the characteristic exponent into the supremum and infimum processes, or solving partial integro-differential equations (PIDEs) via finite differences with Fourier boundary conditions.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="key-results" id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results Summary</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr>
+                <th scope="col">Formula / Method</th>
+                <th scope="col">Mathematical Formulation</th>
+                <th scope="col">Operational Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Damped Call Payoff</th>
+                <td>\(c_T(k) = e^{\alpha k} C_T(k)\) with \(\alpha &gt; 0\)</td>
+                <td>Forces the payoff into \(L^1(\R) \cap L^2(\R)\) so Fourier transform exists.</td>
+              </tr>
+              <tr>
+                <th scope="row">Carr–Madan Transform</th>
+                <td>\(\psi_T(v) = \frac{e^{-r T} \phi_T(v - (\alpha + 1)i)}{\alpha^2 + \alpha - v^2 + i (2 \alpha + 1) v}\)</td>
+                <td>Closed-form analytical transform in terms of model characteristic function.</td>
+              </tr>
+              <tr>
+                <th scope="row">Real Inversion Integral</th>
+                <td>\(C_T(k) = \frac{e^{-\alpha k}}{\pi} \int_0^\infty \operatorname{Re}[e^{-i v k} \psi_T(v)] dv\)</td>
+                <td>Recovers European call price via half-line real integration.</td>
+              </tr>
+              <tr>
+                <th scope="row">Simpson Quadrature</th>
+                <td>\(C_T(k) \approx \frac{e^{-\alpha k}}{\pi} \sum_{j=0}^N w_j \operatorname{Re}[e^{-i v_j k} \psi_T(v_j)] \Delta v\)</td>
+                <td>High-precision numerical integration with \(O(\Delta v^4)\) convergence order.</td>
+              </tr>
+              <tr>
+                <th scope="row">Put-Call Parity</th>
+                <td>\(P_T(K) = C_T(K) - S_0 e^{-q T} + K e^{-r T}\)</td>
+                <td>Instantaneous arbitrage-free recovery of put options without separate transform.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="SC5" data-page="L06">
+        <h2 id="s8"><span class="section-number">8</span>Formative Quiz</h2>
+        <ol class="quiz-list">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why cannot the raw European call option price \(C_T(k)\) be directly Fourier transformed without damping?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q1"> <span>Because as \(k \to -\infty\), \(C_T(k) \to S_0 e^{-q T} &gt; 0\), so \(C_T(k) \notin L^1(\R)\)</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>Because options have non-linear payoffs</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>Because the Black–Scholes formula has no complex numbers</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>Because interest rates must be zero</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Remark 1.1, the call price does not decay to zero as \(k \to -\infty\), making the integral \(\int |C_T(k)| dk\) diverge.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the argument passed into the stock price characteristic function \(\phi_T\) in the Carr–Madan formula?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q2"> <span>\(v - (\alpha + 1) i\)</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>\(v + \alpha i\)</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>\(v\)</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>\(\alpha - i v\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 2.1, the numerator is \(e^{-r T} \phi_T(v - (\alpha + 1) i)\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1.5" data-tolerance="0.25">
+            <p class="prompt">What is the standard, canonical default value of the damping parameter \(\alpha\) recommended by Carr and Madan for equity option pricing?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\alpha = 1.5\) is the standard default providing a balanced trade-off between denominator singularity and exponential explosion.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why can the Fourier inversion integral over \((-\infty, \infty)\) be reduced to an integral over \([0, \infty)\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q4"> <span>Because the damped call price is real-valued, ensuring Hermitian symmetry \(\psi_T(-v) = \overline{\psi_T(v)}\)</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>Because negative frequencies do not exist physically</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>Because the stock price cannot be negative</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>Because \(\phi_T(v) = 0\) for \(v &lt; 0\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 3.1, Hermitian symmetry allows combining positive and negative branches into \(2 \operatorname{Re}[\dots]\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What numerical quadrature scheme achieves fourth-order accuracy \(O(\Delta v^4)\) for Carr–Madan Fourier inversion?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q5"> <span>Composite Simpson's rule</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Euler forward step</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Riemann left sum</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Trapezoidal rule</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Composite Simpson's rule with weights \([1/3, 4/3, 2/3, \dots, 1/3]\) achieves fourth-order error convergence.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0" data-tolerance="0.001">
+            <p class="prompt">Under exact put-call parity, what is the value of \(C - P - (S_0 e^{-q T} - K e^{-r T})\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>By no-arbitrage put-call parity, \(C - P = S_0 e^{-q T} - K e^{-r T}\), so the difference is identically 0.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What phenomenon causes numerical Fourier inversion to produce oscillating errors at very short tenors (\(\tau \to 0\)) if \(v_{\max}\) is kept constant?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q7"> <span>Fourier domain spreading and truncation (Gibbs phenomenon)</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span>Floating point underflow of the strike price</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span>Breakdown of the martingale condition</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span>Arbitrage opportunities</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>As \(\tau \to 0\), the distribution sharpens in real space, spreading out into high frequencies in Fourier space; truncating at fixed \(v_{\max}\) causes truncation oscillations.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which mathematical condition must be checked before selecting a damping parameter \(\alpha\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q8"> <span>That the \((\alpha + 1)\)-th moment of the stock price \(\E^*[S_T^{\alpha + 1}] &lt; \infty\) is finite</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>That \(\alpha\) is an even integer</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>That \(\alpha &lt; 0\)</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>That the risk-free rate is positive</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Finite \(\E^*[S_T^{\alpha+1}]\) is required so that \(\phi_T(v - (\alpha+1)i)\) is well-defined and analytic.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <ol data-references>
+          <li data-cite="carr1999option"></li>
+          <li data-cite="cont2003financial"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L05.html"><span class="dir">Previous</span>L05 · The CGMY Model</a>
+        <a class="next" href="L07.html"><span class="dir">Next</span>L07 · Jump-Induced Smile &amp; Model Calibration</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">SC5 · Jumps &amp; Lévy Processes · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

@@ -188,12 +188,14 @@ def make_surface(instance: dict[str, Any], model: str) -> list[dict[str, Any]]:
     idx = 0
     for tau in tenors:
         for k in strikes:
-            surface.append({
-                "tenor": tau,
-                "strike": k,
-                "price": prices[idx],
-                "implied_vol": ivs[idx],
-                "is_call": True,
-            })
+            surface.append(
+                {
+                    "tenor": tau,
+                    "strike": k,
+                    "price": prices[idx],
+                    "implied_vol": ivs[idx],
+                    "is_call": True,
+                }
+            )
             idx += 1
     return surface
