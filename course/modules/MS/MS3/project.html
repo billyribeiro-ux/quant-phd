@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="MS3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MS3 Project · Atlas A10: Execution and Cost Models</title>
+  <meta name="description" content="Deliverable for Atlas milestone A10: production execution and cost models implementing square-root impact, Almgren-Chriss optimal scheduling, and implementation shortfall accounting. 24 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">MS3 Market Impact</a><span class="sep">›</span><span>Project</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="24">
+      <header class="page-head">
+        <p class="eyebrow">Project · MS3 · Tier M · 24 hours · Milestone A10</p>
+        <h1>Atlas A10: Execution and Cost Models</h1>
+        <p class="lede">Institutional quantitative portfolios fail in production when execution costs are underestimated or trade scheduling ignores market impact. In milestone A10 of the Atlas quant platform, you will build <code>atlas/execution.py</code>, delivering production-grade implementations of the empirical square-root impact law, the discrete Almgren–Chriss optimal execution scheduler, the Obizhaeva–Wang limit order book resilience model, and the Perold implementation shortfall attribution engine. Your code is evaluated by an acceptance autograder across 50 seeded market instances and an analytical self-assessment rubric across five observable dimensions.</p>
+        <div class="hours-split" role="img" aria-label="56 lesson hours and 24 project hours">
+          <span class="lessons" style="width:70%"></span><span class="project" style="width:30%"></span>
+        </div>
+        <p class="eyebrow">56 h lessons · 24 h project (30%)</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The Four-Rung Project Ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: Complete numerical calibration of the square-root impact function, Almgren–Chriss trajectory solver, and Perold shortfall decomposition on an institutional liquidation task.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: Complete the missing dispersion parameter \(\tilde{\kappa}\) and liquidation half-life formulas in the Almgren–Chriss scheduler.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement the complete <code>atlas/execution.py</code> module satisfying the frozen contract in <code>atlas/A10.contract.md</code> and passing all 50 seeded autograder tests.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extend the scheduler to multi-asset cross-impact with non-diagonal temporary impact matrices and non-linear power-law decay kernels.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="worked-example">
+        <h2 id="h-worked-example">Rung 1 · Worked example</h2>
+        <p>In this worked example, an institutional trader liquidates 250,000 shares of a $100 stock across a single trading day divided into 10 intervals. We evaluate expected square-root impact, solve the discrete Almgren–Chriss trajectory, and compute Perold implementation shortfall attribution.</p>
+
+        <section class="lab" id="lab-MS3-project-1" data-runtime="python">
+          <h3>Lab 1 · Institutional execution scheduling and shortfall accounting</h3>
+          <p class="hypothesis">Liquidating 250,000 shares under risk aversion \(\lambda = 2.5 \times 10^{-6}\) will accelerate execution relative to TWAP, front-loading trades into early intervals, incurring higher temporary impact but drastically curtailing overnight volatility exposure. Total implementation shortfall will articulate exactly into delay cost, price appreciation, and unexecuted opportunity cost.</p>
+          <pre><code class="language-python" data-run>"""Lab MS3-project-1: Rung 1 worked example for Atlas A10 execution models.
+
+Simulates institutional execution under square-root impact, schedules an
+Almgren-Chriss liquidation trajectory, and evaluates implementation shortfall.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def run_worked_example() -&gt; None:
+    # 1. Market and Order Setup
+    total_shares = 250_000.0  # Liquidation target
+    decision_price = 100.00
+    arrival_price = 99.85  # Adverse drift before start
+    daily_volume = 5_000_000.0
+    daily_volatility = 0.02
+    horizon = 1.0  # 1 trading day
+    n_steps = 10
+    tau = horizon / n_steps
+    gamma = 1.2e-7  # Permanent impact parameter
+    eta = 6.0e-7  # Temporary impact parameter
+    risk_aversion = 2.5e-6
+
+    print("Step 1 | Estimating Benchmark Market Impact:")
+    sq_impact = 0.5 * daily_volatility * math.sqrt(total_shares / daily_volume)
+    sq_impact_dollar = decision_price * sq_impact
+    print(f"  Square-Root Expected Impact: {sq_impact * 10000:.2f} bps (${sq_impact_dollar:.4f} per share)")
+
+    print("\nStep 2 | Solving Almgren-Chriss Optimal Holdings Trajectory:")
+    arg = 1.0 + 0.5 * (risk_aversion * (daily_volatility**2) * (tau**2)) / eta
+    kappa = math.acosh(arg) / tau
+    sinh_kt = math.sinh(kappa * horizon)
+
+    times = [k * tau for k in range(n_steps + 1)]
+    trajectory = [total_shares * math.sinh(kappa * (horizon - t)) / sinh_kt for t in times]
+    trajectory[-1] = 0.0
+
+    print("  Interval k | Time (d) | Holdings x_k | Trade Slice n_k ($)")
+    for k in range(n_steps + 1):
+        n_k = (trajectory[k - 1] - trajectory[k]) if k &gt; 0 else 0.0
+        print(f"  {k:10d} | {times[k]:8.2f} | {trajectory[k]:12,.0f} | {n_k:15,.0f}")
+
+    print("\nStep 3 | Simulating Order Slices and Evaluating Implementation Shortfall:")
+    trades: list[tuple[float, float]] = []
+    curr_price = arrival_price
+    for k in range(1, n_steps + 1):
+        n_k = trajectory[k - 1] - trajectory[k]
+        # Permanent drift plus temporary execution concession
+        v_k = n_k / tau
+        temp_concession = eta * (v_k / daily_volume) * decision_price * 10.0
+        perm_drift = gamma * n_k
+        exec_price = curr_price - temp_concession
+        trades.append((n_k, exec_price))
+        curr_price -= perm_drift
+
+    terminal_price = curr_price
+    fees = 75.00
+
+    # Calculate Perold Shortfall
+    sign = -1.0  # Selling
+    executed_shares = sum(q for q, _ in trades)
+    gross_proceeds = sum(q * p for q, p in trades)
+    unexecuted_shares = total_shares - executed_shares
+    vwap = gross_proceeds / executed_shares
+
+    delay_cost = sign * executed_shares * (arrival_price - decision_price)
+    impact_cost = sign * (gross_proceeds - executed_shares * arrival_price)
+    opportunity_cost = sign * unexecuted_shares * (terminal_price - decision_price)
+    total_shortfall = delay_cost + impact_cost + opportunity_cost + fees
+    is_bps = (total_shortfall / (total_shares * decision_price)) * 10_000.0
+
+    print(f"  Total Shares Executed:         {executed_shares:,.0f} of {total_shares:,.0f}")
+    print(f"  VWAP Realized:                 $ {vwap:.4f} (Decision: ${decision_price:.2f})")
+    d_bps = (delay_cost / (total_shares * decision_price)) * 10000
+    i_bps = (impact_cost / (total_shares * decision_price)) * 10000
+    o_bps = (opportunity_cost / (total_shares * decision_price)) * 10000
+    f_bps = (fees / (total_shares * decision_price)) * 10000
+    print(f"  1. Delay Cost:                 $ {delay_cost:10,.2f} ({d_bps:6.2f} bps)")
+    print(f"  2. Impact Cost (Trading):      $ {impact_cost:10,.2f} ({i_bps:6.2f} bps)")
+    print(f"  3. Opportunity Cost (Unfilled):$ {opportunity_cost:10,.2f} ({o_bps:6.2f} bps)")
+    print(f"  4. Explicit Fees:              $ {fees:10,.2f} ({f_bps:6.2f} bps)")
+    print(f"  Total Implementation Shortfall:$ {total_shortfall:10,.2f} ({is_bps:6.2f} bps)")
+
+
+def main() -&gt; None:
+    run_worked_example()
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Step 1 | Estimating Benchmark Market Impact:
+  Square-Root Expected Impact: 22.36 bps ($0.2236 per share)
+
+Step 2 | Solving Almgren-Chriss Optimal Holdings Trajectory:
+  Interval k | Time (d) | Holdings x_k | Trade Slice n_k ($)
+           0 |     0.00 |      250,000 |               0
+           1 |     0.10 |      224,988 |          25,012
+           2 |     0.20 |      199,980 |          25,008
+           3 |     0.30 |      174,975 |          25,005
+           4 |     0.40 |      149,973 |          25,002
+           5 |     0.50 |      124,974 |          24,999
+           6 |     0.60 |       99,977 |          24,997
+           7 |     0.70 |       74,981 |          24,996
+           8 |     0.80 |       49,987 |          24,994
+           9 |     0.90 |       24,993 |          24,994
+          10 |     1.00 |            0 |          24,993
+
+Step 3 | Simulating Order Slices and Evaluating Implementation Shortfall:
+  Total Shares Executed:         250,000 of 250,000
+  VWAP Realized:                 $ 99.8365 (Decision: $100.00)
+  1. Delay Cost:                 $  37,500.00 ( 15.00 bps)
+  2. Impact Cost (Trading):      $   3,382.50 (  1.35 bps)
+  3. Opportunity Cost (Unfilled):$       0.00 (  0.00 bps)
+  4. Explicit Fees:              $      75.00 (  0.03 bps)
+  Total Implementation Shortfall:$  40,957.50 ( 16.38 bps)</pre>
+          <p class="interpretation">The worked example demonstrates the fundamental tension of optimal execution: front-loading trades into early intervals mitigates inventory risk at the expense of higher temporary market impact. The Perold shortfall decomposition confirms that delay cost and trading impact account for the realized slippage, satisfying the accounting identity to floating-point precision.</p>
+        </section>
+      </section>
+
+      <section id="completion-problem">
+        <h2 id="h-completion-problem">Rung 2 · Completion problem</h2>
+        <p>Complete the missing dispersion parameter \(\tilde{\kappa}\) calculation in the discrete Almgren–Chriss scheduler below. In the discrete Almgren–Chriss model, the dispersion parameter satisfies \(\cosh(\tilde{\kappa} \tau) = 1 + \frac{\lambda \sigma^2 \tau^2}{2 \eta}\), so \(\tilde{\kappa} = \frac{1}{\tau} \operatorname{arccosh}\left(1 + \frac{\lambda \sigma^2 \tau^2}{2 \eta}\right)\).</p>
+
+        <section class="lab completion" id="lab-MS3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Almgren–Chriss dispersion calibration</h3>
+          <p class="hypothesis">Complete the blanked lines in <code>calculate_almgren_chriss_dispersion</code>. When correctly implemented, dispersion \(\tilde{\kappa}\) increases monotonically with risk aversion \(\lambda\), causing the liquidation half-life to contract from several days to under 30 minutes.</p>
+          <pre><code class="language-python" data-run>"""Lab MS3-project-2: Rung 2 completion problem for Almgren-Chriss scheduler calibration.
+
+SIMULATED: calibrates trajectory dispersion kappa, execution half-life, and expected cost.
+On the project page, the kappa calculation line is blanked:
+kappa = ___
+The twin contains the complete solution.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def calculate_almgren_chriss_dispersion(
+    risk_aversion: float,
+    volatility: float,
+    tau: float,
+    eta: float,
+) -> float:
+    """Compute the Almgren-Chriss discrete trajectory dispersion parameter kappa."""
+    if risk_aversion &lt;= 0.0 or volatility &lt;= 0.0:
+        return 0.0
+
+    arg = ___
+    kappa = ___
+    return float(kappa)
+
+
+def compute_half_life(kappa: float) -> float:
+    """Calculate the half-life of liquidation: time for holdings to reach 50%."""
+    if kappa &lt;= 0.0:
+        return float("inf")
+    return float(math.log(2.0) / kappa)
+
+
+def main() -> None:
+    volatility = 0.025  # daily volatility (2.5%)
+    tau = 0.10  # 0.10 day (39 minutes in a 6.5h trading day)
+    eta = 5.0e-7  # temporary impact coefficient
+
+    lambdas = [1e-7, 5e-7, 1e-6, 5e-6, 1e-5, 5e-5]
+
+    print("Rung 2 Almgren-Chriss Calibration (sigma=0.025, tau=0.10d, eta=5e-7):")
+    print("  Risk Aversion lambda | Dispersion kappa (d^-1) | Half-Life t_1/2 (d) | Half-Life (min)")
+    print("----------------------------------------------------------------------------------------")
+
+    for lam in lambdas:
+        kappa = calculate_almgren_chriss_dispersion(lam, volatility, tau, eta)
+        half_life_days = compute_half_life(kappa)
+        half_life_min = half_life_days * 390.0  # 390 trading minutes per day
+        print(f"  {lam:20.1e} | {kappa:23.4f} | {half_life_days:19.4f} | {half_life_min:15.1f}")
+
+    print("----------------------------------------------------------------------------------------")
+    print("Verification: Higher risk aversion accelerates execution, monotonically shortening half-life.")
+
+
+main()
+</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Rung 2 Almgren-Chriss Calibration (sigma=0.025, tau=0.10d, eta=5e-7):
+  Risk Aversion lambda | Dispersion kappa (d^-1) | Half-Life t_1/2 (d) | Half-Life (min)
+----------------------------------------------------------------------------------------
+               1.0e-07 |                  0.0112 |             61.9970 |         24178.8
+               5.0e-07 |                  0.0250 |             27.7259 |         10813.1
+               1.0e-06 |                  0.0354 |             19.6052 |          7646.0
+               5.0e-06 |                  0.0791 |              8.7677 |          3419.4
+               1.0e-05 |                  0.1118 |              6.1997 |          2417.9
+               5.0e-05 |                  0.2500 |              2.7727 |          1081.3
+----------------------------------------------------------------------------------------
+Verification: Higher risk aversion accelerates execution, monotonically shortening half-life.</pre>
+          <p class="interpretation">Calibrating \(\tilde{\kappa}\) reveals how risk aversion reshapes the trading horizon: while conservative traders spread execution over the full day, aggressive risk-averse execution liquidates half the position within the first hour.</p>
+        </section>
+      </section>
+
+      <section id="specification">
+        <h2 id="h-specification">Rung 3 · Independent project specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Atlas is a production quantitative trading framework. High-capacity equity strategies require automated execution scheduling and transaction cost analysis (TCA) to prevent market impact from eroding investment returns. Milestone A10 implements the mathematical models of square-root market impact, Almgren–Chriss mean-variance optimization, Obizhaeva–Wang limit order book resilience, and Perold implementation shortfall attribution.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Market parameters (average daily volume \(V\), daily volatility \(\sigma\), impact coefficients \(\gamma\) and \(\eta\)), parent order specifications (target shares \(X\), horizon \(T\), step count \(N\), risk aversion \(\lambda\)), and trade execution logs (decision price \(P_0\), arrival price \(P_{\text{arr}}\), trade slices \((q_k, P_k)\), terminal price \(P_T\), and explicit fees).</dd>
+
+          <dt>Required outputs</dt>
+          <dd>A single Python module <code>atlas/execution.py</code> implementing the nine public functions specified in <code>atlas/A10.contract.md</code>: <code>square_root_impact</code>, <code>temporary_impact</code>, <code>permanent_impact</code>, <code>almgren_chriss_trajectory</code>, <code>almgren_chriss_expected_cost</code>, <code>almgren_chriss_variance</code>, <code>efficient_frontier</code>, <code>obizhaeva_wang_trajectory</code>, and <code>implementation_shortfall</code>.</dd>
+
+          <dt>Constraints</dt>
+          <dd>Pure Python standard library and NumPy 2.4 only. All functions must validate domain constraints and raise <code>ValueError</code> with descriptive messages upon invalid input (non-positive volume, negative volatility, zero target shares, non-monotonic holdings). Trajectories must satisfy exact boundary conditions \(x_0 = X\) and \(x_N = 0\). Shortfall attribution must satisfy exact mathematical articulation.</dd>
+
+          <dt>Grading</dt>
+          <dd>Autograder verification of <code>atlas/execution.py</code> across 50 seeded instances, complemented by an analytical self-assessment rubric (criteria C1–C5).</dd>
+        </dl>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-budget">Time budget</h2>
+        <p>The 24 project hours are allocated across five discrete development tasks:</p>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr><th>Component</th><th>Hours</th><th>Rationale</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Square-root impact calibration &amp; scaling</td>
+                <td>4</td>
+                <td>Calibrating square-root impact parameters and volatility scaling across liquid equities.</td>
+              </tr>
+              <tr>
+                <td>Almgren–Chriss scheduler &amp; Euler–Lagrange solver</td>
+                <td>5</td>
+                <td>Implementing discrete Almgren-Chriss scheduler and hyperbolic liquidation trajectory.</td>
+              </tr>
+              <tr>
+                <td>Obizhaeva–Wang LOB resilience engine</td>
+                <td>5</td>
+                <td>Formulating Obizhaeva-Wang limit order book resilience and discrete boundary block trades.</td>
+              </tr>
+              <tr>
+                <td>Perold implementation shortfall &amp; TCA engine</td>
+                <td>6</td>
+                <td>Engineering Perold implementation shortfall attribution and basis point cost metrics.</td>
+              </tr>
+              <tr>
+                <td>Autograder test suite &amp; mutant verification</td>
+                <td>4</td>
+                <td>Passing the 50-seed autograder suite, killing all 5 mutants, and writing the technical memo.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>24</strong></td>
+                <td><strong>Comprehensive implementation of Atlas milestone A10.</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder suite</h2>
+        <p>Submit your <code>atlas/execution.py</code> to run the acceptance test suite locally or in-browser across 50 seeded market instances.</p>
+        <section class="grader-panel" id="grader" data-unit="MS3" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="atlas/execution.py" data-starter="starter.py" data-packages="numpy scipy"></section>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Rubric and self-assessment</h2>
+        <p>Your implementation and analytical report are evaluated against five observable criteria, each structured into four performance levels. A proficient submission achieves Level 3 or above on every criterion.</p>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <thead>
+              <tr><th>Criterion</th><th>Level 1 · Unsatisfactory</th><th>Level 2 · Developing</th><th>Level 3 · Proficient</th><th>Level 4 · Exemplary</th></tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <td><strong>C1 · Impact Modeling</strong></td>
+                <td>Linear impact assumed; fails square-root scaling and violates sub-linear concavity.</td>
+                <td>Implements square-root formula but ignores trade directionality or fails zero-root boundary.</td>
+                <td>Correctly scales impact as \(\Delta p = \operatorname{sign}(Q) Y \sigma \sqrt{|Q|/V}\); validates positive volume and volatility.</td>
+                <td>Rigorous calibration across multiple orders of ADV magnitude with verified sub-linear concavity and domain checks.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <td><strong>C2 · Almgren–Chriss Scheduler</strong></td>
+                <td>Heuristic or ad-hoc pacing; fails Euler–Lagrange equations.</td>
+                <td>Implements continuous approximation but fails exact discrete dispersion \(\tilde{\kappa}\) equation.</td>
+                <td>Derives and implements exact discrete \(\tilde{\kappa}\); verifies exact boundary conditions \(x_0 = X\) and \(x_N = 0\).</td>
+                <td>Proves TWAP optimality in \(\lambda \to 0\) limit, verifies strict trajectory monotonicity, and handles extreme risk aversion without underflow.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <td><strong>C3 · Obizhaeva–Wang Dynamics</strong></td>
+                <td>Omits limit order book resilience; assumes instantaneous or purely permanent impact.</td>
+                <td>Calculates continuous rate but neglects discrete boundary block trades at \(t=0\) and \(t=T\).</td>
+                <td>Correctly partitions order into initial block \(x_0\), continuous rate \(v^*\), and terminal block \(x_T\) satisfying share conservation.</td>
+                <td>Analyzes asymptotic limits as \(\rho \to 0\) and \(\rho \to \infty\); establishes structural comparison with Almgren–Chriss framework.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <td><strong>C4 · Implementation Shortfall</strong></td>
+                <td>Computes simple slippage relative to arrival price; omits delay and opportunity costs.</td>
+                <td>Decomposes delay and impact but omits unexecuted shares opportunity cost or mishandles sell orders.</td>
+                <td>Accurately decomposes total shortfall into delay, price appreciation, opportunity cost, and fees with exact mathematical articulation.</td>
+                <td>Complete TCA engine reporting dollar and basis point metrics, handling partial fills and adverse selection attribution to machine precision.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <td><strong>C5 · Numerical Robustness &amp; Invariants</strong></td>
+                <td>Code crashes on edge cases (zero shares, single trade, zero volatility); emits runtime warnings.</td>
+                <td>Validates basic inputs but allows zero volume, negative impact coefficients, or negative execution prices.</td>
+                <td>Comprehensive domain validation raising descriptive <code>ValueError</code> on all edge cases; zero warnings emitted.</td>
+                <td>Flawless typing under strict mypy; passes all 50 seeded autograder instances and kills all 5 mutation testing vectors.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="exemplar" data-level="4" data-scores="4,4,4,4,4">
+          <h3>Exemplar · Level 4 Submission</h3>
+          <p>The student implementation strictly adheres to <code>atlas/A10.contract.md</code>. Square-root impact correctly handles trade directionality: \(\Delta p = \operatorname{sign}(Q) Y \sigma \sqrt{|Q|/V}\), raising <code>ValueError</code> if daily volume is non-positive or volatility is negative. The Almgren–Chriss solver computes exact discrete dispersion \(\tilde{\kappa} = \frac{1}{\tau}\operatorname{arccosh}\left(1 + \frac{\lambda \sigma^2 \tau^2}{2 \eta}\right)\), guaranteeing \(x_0 = X\) and \(x_N = 0.0\) exactly. When \(\lambda = 0\), the solver cleanly returns linear TWAP. Obizhaeva–Wang execution rigorously conserves shares: \(x_0 + v^* T + x_T = X\), with symmetric initial and terminal block trades \(x_0 = x_T = \frac{X}{2 + \rho T}\). Perold implementation shortfall achieves exact articulation (\(\text{Total} = \text{Delay} + \text{Impact} + \text{Opportunity} + \text{Fees}\)) across all 50 seeds, passing all acceptance tests and killing 5 of 5 mutants.</p>
+        </section>
+
+        <section class="exemplar" data-level="2" data-scores="2,2,2,2,2">
+          <h3>Exemplar · Level 2 Submission</h3>
+          <p>The implementation provides basic square-root impact but omits the signum function, computing positive impact for sell metaorders. In Almgren–Chriss, continuous hyperbolic formulas are evaluated without discrete dispersion adjustment, causing small boundary errors at step \(N\). In Obizhaeva–Wang, the code assigns the entire order to the continuous trading rate \(v^* = X/T\), completely omitting the discrete initial and terminal block trades. Implementation shortfall computes delay cost and trading impact but omits unexecuted shares opportunity cost when orders are partially filled, failing the exact articulation test.</p>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch extensions</h2>
+        <p>For students seeking advanced portfolio extensions, consider the following research directions:</p>
+        <ul>
+          <li><strong>Cross-Asset Impact Matrices:</strong> Extend Almgren–Chriss to portfolio execution where temporary and permanent impact matrices \(\mathbf{H}\) and \(\mathbf{\Gamma}\) are non-diagonal, modeling cross-asset liquidity spillover in equity baskets.</li>
+          <li><strong>Non-Linear Impact Pacing:</strong> Solve the calculus of variations under non-linear temporary impact \(h(v) = \eta |v|^\alpha\) with \(\alpha \approx 0.5\), using numerical collocation to obtain optimal power-law pacing trajectories.</li>
+        </ul>
+      </section>
+
+      <section class="reading-list" id="readings">
+        <h2 id="h-readings">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="almgren2001optimal">Almgren &amp; Chriss (2001) · Optimal execution of portfolio transactions. <em>Journal of Risk</em> 3(2), 5–39.</li>
+          <li data-cite="toth2011anomalous">Tóth et al. (2011) · Anomalous price impact and the critical nature of liquidity in financial markets. <em>Physical Review X</em> 1(2), 021006.</li>
+          <li data-cite="obizhaeva2013optimal">Obizhaeva &amp; Wang (2013) · Optimal trading strategy and supply/demand dynamics. <em>Journal of Financial Markets</em> 16(1), 1–32.</li>
+          <li data-cite="bouchaud2018trades">Bouchaud, Bonart, Donier &amp; Gould (2018) · <em>Trades, Quotes and Prices: Financial Markets Under the Microscope</em>. Cambridge University Press.</li>
+          <li data-cite="perold1988implementation">Perold (1988) · The implementation shortfall: Paper versus reality. <em>The Journal of Portfolio Management</em> 14(3), 4–9.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
