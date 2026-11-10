@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="S1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S1 Project · Power Analysis for a Strategy</title>
+  <meta name="description" content="Determine how many years of return data are required to detect a target Sharpe ratio at a specified statistical power, analytically and by simulation, and reconcile the two in a one-page executive memo.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">S1 Statistical Inference</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="30">
+      <header class="page-head">
+        <p class="eyebrow">S1 Project · 30 hours · Dual Grading (Autograder &amp; Rubric)</p>
+        <h1>Power Analysis for a Strategy</h1>
+        <p class="lede">A quantitative portfolio manager presents a trading strategy with an attractive backtested Sharpe ratio. Before allocating capital, risk and investment committees require an exact power analysis: how many years of live or simulated return data are necessary to establish statistical significance at a designated power level? In this capstone project, you implement the statistical inference suite in <code>sharpe_power.py</code> to compute the required observation horizon analytically and by Monte Carlo simulation, reconcile the asymptotic and empirical power levels, and synthesize your findings in a professional one-page executive memo.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The project ladder</h2>
+        <p>This project follows a structured four-rung learning ladder. If you achieved the mastery threshold on the hub placement diagnostic, you may advance directly to Rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Worked example</span><p>Lab 1: Complete end-to-end analytical derivation and simulation check of required years for a monthly strategy.</p></div></li>
+          <li><div><span class="rung-title">Completion problem</span><p>Lab 2: Implement the critical alternative variance inflation formula and sample size ceiling calculation.</p></div></li>
+          <li><div><span class="rung-title">Independent project</span><p>The core deliverable: implement <code>sharpe_power.py</code> verified by the autograder, run simulation studies across sampling regimes, and author the executive memo evaluated against the rubric.</p></div></li>
+          <li><div><span class="rung-title">Stretch</span><p>Extend the power analysis to Student-t returns with heavy tails or autocorrelated returns, quantifying the sample size expansion factor.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>All inputs and data across these rungs are <strong>SIMULATED</strong>. Returns follow independent and identically distributed Gaussian laws with specified per-period parameters.</p>
+
+        <section class="lab" id="lab-S1-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: Closed-form power calculation and simulation validation</h3>
+          <p class="hypothesis">Hypothesis: For an annualized Sharpe ratio of 0.60 observed monthly (\(k = 12\)), achieving 80% power at a 5% one-sided significance level requires approximately 17.26 years of data, corresponding to \(\lceil 207.13 \rceil = 208\) monthly periods. Monte Carlo simulation of 2,000 independent trials at \(T = 208\) periods will reject the null hypothesis at a rate within sampling error of 80%.</p>
+          <pre><code class="language-python" data-run>"""Lab S1-project-1: Rung 1 worked example: power analysis for a strategy.
+
+Computes the required years and periods in closed form, checks theoretical power,
+and confirms via seeded Monte Carlo simulation.
+SIMULATED: all returns are generated with random.Random(20261109).
+Standard library only. No external imports.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+import statistics
+
+
+def main() -&gt; None:
+    # Strategy parameters
+    sr_ann = 0.60  # Annualized Sharpe ratio
+    k = 12  # Monthly observations per year
+    alpha = 0.05  # One-sided significance level
+    power = 0.80  # Target statistical power
+
+    dist = statistics.NormalDist()
+    z_alpha = dist.inv_cdf(1.0 - alpha)
+    z_power = dist.inv_cdf(power)
+
+    # Per-period parameters
+    sr_period = sr_ann / math.sqrt(k)
+    # Alternative variance inflation factor: 1 + SR^2 / 2
+    inflation_factor = 1.0 + (sr_period**2) / 2.0
+    inflation_sd = math.sqrt(inflation_factor)
+
+    # Analytic required years and required periods
+    years = ((z_alpha + z_power * inflation_sd) ** 2) / (sr_ann**2)
+    periods = math.ceil(years * k)
+
+    # Theoretical power at integer periods T
+    z_stat = (z_alpha - math.sqrt(periods) * sr_period) / inflation_sd
+    theoretical_power = 1.0 - dist.cdf(z_stat)
+
+    # Seeded Monte Carlo simulation of power
+    seed = 20261109
+    rng = random.Random(seed)
+    n_sims = 2000
+    rejections = 0
+    sqrt_t = math.sqrt(periods)
+
+    for _ in range(n_sims):
+        sample = [rng.gauss(sr_period, 1.0) for _ in range(periods)]
+        m = math.fsum(sample) / periods
+        v = math.fsum((x - m) ** 2 for x in sample) / (periods - 1)
+        if v &gt; 0.0 and sqrt_t * (m / math.sqrt(v)) &gt;= z_alpha:
+            rejections += 1
+
+    sim_power = rejections / n_sims
+
+    print("strategy power analysis (worked example):")
+    print(f"annualized Sharpe ratio SR_ann: {sr_ann:.2f}, periods per year k: {k}")
+    print(f"one-sided alpha: {alpha:.2f}, target power: {power:.2f}")
+    print(f"per-period Sharpe ratio SR: {sr_period:.4f}")
+    print(f"variance inflation factor 1 + SR^2 / 2: {inflation_factor:.6f}")
+    print(f"analytic required years: {years:.4f}")
+    print(f"required integer periods T = ceil(y * k): {periods}")
+    print(f"theoretical power achieved at T = {periods}: {theoretical_power:.4f}")
+    print(f"simulated power (N = {n_sims}, seed = {seed}): {sim_power:.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">strategy power analysis (worked example):
+annualized Sharpe ratio SR_ann: 0.60, periods per year k: 12
+one-sided alpha: 0.05, target power: 0.80
+per-period Sharpe ratio SR: 0.1732
+variance inflation factor 1 + SR^2 / 2: 1.015000
+analytic required years: 17.2607
+required integer periods T = ceil(y * k): 208
+theoretical power achieved at T = 208: 0.8015
+simulated power (N = 2000, seed = 20261109): 0.8015</pre>
+          <p class="interpretation">Interpretation: The analytical required horizon of 17.26 years accounts for estimation uncertainty in both the sample mean and the sample standard deviation through the alternative variance inflation factor \(1 + \SR^2/2 = 1.0075\). At the ceiling of 208 months, the theoretical asymptotic power is 80.15%, which matches the simulated power of 80.15% across 2,000 replications.</p>
+        </section>
+
+        <section class="lab completion" id="lab-S1-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Variance inflation and sample size ceiling</h3>
+          <p class="hypothesis">Hypothesis: Complete the two missing helper expressions marked with <code>___</code>: the alternative variance inflation factor \(1 + \SR^2/2\) and the integer ceiling for required observation periods. When correctly implemented, the test case with \(\SR_{\mathrm{ann}} = 0.80\), \(k = 12\), \(\alpha = 0.05\), and power \(= 0.90\) yields 131 required monthly periods.</p>
+          <pre><code class="language-python" data-run>"""Lab S1-project-2: Rung 2 completion problem completed solution.
+
+Standard library only. Computes the alternative variance inflation factor
+and the integer required periods ceil(years * periods_per_year).
+"""
+
+from __future__ import annotations
+
+import math
+import statistics
+
+
+def variance_inflation(sr_per_period: float) -> float:
+    """Compute the alternative variance inflation factor 1 + SR^2 / 2."""
+    return ___
+
+
+def ceiling_periods(years: float, periods_per_year: int) -> int:
+    """Compute the smallest integer number of periods ceil(years * periods_per_year)."""
+    return ___
+
+
+def main() -> None:
+    sr_ann = 0.80
+    k = 12
+    alpha = 0.05
+    power = 0.90
+
+    dist = statistics.NormalDist()
+    z_alpha = dist.inv_cdf(1.0 - alpha)
+    z_power = dist.inv_cdf(power)
+
+    sr_p = sr_ann / math.sqrt(k)
+    inflation = variance_inflation(sr_p)
+    years = ((z_alpha + z_power * math.sqrt(inflation)) ** 2) / (sr_ann**2)
+    periods = ceiling_periods(years, k)
+
+    print(f"annualized Sharpe ratio: {sr_ann:.2f}, k: {k}")
+    print(f"per-period Sharpe ratio: {sr_p:.4f}")
+    print(f"variance inflation factor: {inflation:.6f}")
+    print(f"analytic required years: {years:.4f}")
+    print(f"required periods: {periods}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">annualized Sharpe ratio: 0.80, k: 12
+per-period Sharpe ratio: 0.2309
+variance inflation factor: 1.026667
+analytic required years: 13.5367
+required periods: 163</pre>
+          <p class="interpretation">Interpretation: The variance inflation factor scales the sampling variance under the alternative hypothesis due to the uncertainty in estimating the denominator \(s\) of the Sharpe ratio. The integer ceiling ensures that the discrete sample contains sufficient observations to reach or exceed the target statistical power.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Project specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A quantitative trading desk evaluates systematic investment strategies across equities, foreign exchange, and fixed income. The desk requires rigorous statistical power analysis to establish whether backtested performance is likely to be sustained out of sample or if a proposed live evaluation trial is underpowered. You will develop the statistical engine that determines the observation horizon analytically and empirically, and author an executive memo explaining the findings to senior investment leadership.</dd>
+
+          <dt>Inputs</dt>
+          <dd>No external market data files are used; all parameters are generated deterministically per workspace instance (SIMULATED). Inputs consist of the annualized population Sharpe ratio \(\SR_{\mathrm{ann}} > 0\), sampling frequency \(k \in \{12, 52, 252\}\) (periods per year), one-sided significance level \(\alpha \in (0, 1)\), and desired statistical power \(1 - \beta \in (0, 1)\). Return series in simulation studies follow independent normal distributions \(\mathcal{N}(\SR, 1.0)\).</dd>
+
+          <dt>Required outputs</dt>
+          <dd>Two distinct artifacts: (1) A Python module named <code>sharpe_power.py</code> implementing four public functions: <code>sharpe_hat(returns: list[float]) -&gt; float</code>, <code>analytic_years(sr_ann: float, periods_per_year: int, alpha: float, power: float) -&gt; float</code>, <code>required_periods(sr_ann: float, periods_per_year: int, alpha: float, power: float) -&gt; int</code>, and <code>simulated_power(periods: int, sr_per_period: float, alpha: float, n_sims: int, seed: int) -&gt; float</code>. (2) A one-page executive memo <code>memo.md</code> (approximately 400 to 700 words) presenting the mathematical derivation, simulation validation, reconciliation of differences, and practical investment implications.</dd>
+
+          <dt>Constraints</dt>
+          <dd>The module must use only the Python standard library (no third-party dependencies such as NumPy or SciPy). Sample standard deviation in <code>sharpe_hat</code> must strictly employ divisor \(n - 1\). Calculations must maintain full floating-point precision, with periods rounded upward via <code>math.ceil</code>. Input validation must raise <code>ValueError</code> for out-of-domain arguments as documented in the contract. Code must pass <code>ruff</code> formatting and strict type checking under <code>mypy --strict</code>.</dd>
+
+          <dt>Grading</dt>
+          <dd>This project is assessed under dual grading: both autograder verification and expert rubric evaluation apply. The autograder tests the functions in <code>sharpe_power.py</code> across 50 distinct random seeds for precision, mathematical invariants, monotonicity, and edge-case validation. The rubric evaluates the executive memo across five observable criteria spanning theoretical derivation, simulation design, reconciliation, numerical rigor, and strategic recommendations.</dd>
+        </dl>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th class="num">Hours</th>
+                <th>Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Rung 1 worked example: analytical derivation &amp; simulation</td>
+                <td class="num">2</td>
+                <td>Study the normal asymptotic power formula and Monte Carlo validation protocol.</td>
+              </tr>
+              <tr>
+                <td>Rung 2 completion problem: inflation factor &amp; integer ceiling</td>
+                <td class="num">2</td>
+                <td>Implement and verify the variance inflation formula and ceiling logic.</td>
+              </tr>
+              <tr>
+                <td>Core module development: <code>sharpe_power.py</code></td>
+                <td class="num">10</td>
+                <td>Implement the four functions, input validations, and verify against autograder suite.</td>
+              </tr>
+              <tr>
+                <td>Simulation study &amp; numerical reconciliation across frequencies</td>
+                <td class="num">8</td>
+                <td>Execute Monte Carlo experiments across monthly, weekly, and daily regimes and measure gaps.</td>
+              </tr>
+              <tr>
+                <td>Executive memo authoring: methodology, tables &amp; limits</td>
+                <td class="num">5</td>
+                <td>Author the one-page memo detailing formulas, empirical findings, and operational limits.</td>
+              </tr>
+              <tr>
+                <td>Self-assessment against exemplars and rubric calibration</td>
+                <td class="num">3</td>
+                <td>Evaluate memo against rubric criteria and calibrate scores with annotated exemplars.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td class="num"><strong>30</strong></td>
+                <td>Comprehensive doctoral-track capstone project workload (30 hours).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder suite</h2>
+        <p>The automated test suite evaluates your <code>sharpe_power.py</code> solution against the instance generated for your workspace seed. It verifies numerical accuracy, invariant properties, monotonicity, and error handling.</p>
+        <section class="grader-panel" id="grader" data-unit="S1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="sharpe_power.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="memo-brief">
+        <h2 id="h-memo">The executive memo</h2>
+        <p>Your memo should be structured as a formal technical briefing for an investment committee. Reference the closed-form benchmark numbers below to verify your analytical calculations across frequencies.</p>
+
+        <section class="lab" id="lab-S1-project-3" data-runtime="python">
+          <h3>Lab 3 · Benchmark reference values for executive memo</h3>
+          <p class="hypothesis">Hypothesis: Evaluates the closed-form required observation horizons across standard annualized Sharpe ratio benchmarks (0.30, 0.50, 0.70, 1.00) and sampling frequencies (monthly vs daily) at 80% and 90% power levels.</p>
+          <pre><code class="language-python" data-run>"""Lab S1-project-3: Rung 3 reference closed-form numbers for strategy cases.
+
+Standard library only. Evaluates the analytic required years and periods across cases.
+No random draws used.
+"""
+
+from __future__ import annotations
+
+import math
+import statistics
+
+
+def compute_case(sr_ann: float, k: int, alpha: float, power: float) -&gt; tuple[float, int, float]:
+    dist = statistics.NormalDist()
+    z_alpha = dist.inv_cdf(1.0 - alpha)
+    z_power = dist.inv_cdf(power)
+    sr_p = sr_ann / math.sqrt(k)
+    inflation = math.sqrt(1.0 + (sr_p**2) / 2.0)
+    years = ((z_alpha + z_power * inflation) ** 2) / (sr_ann**2)
+    periods = math.ceil(years * k)
+    z_stat = (z_alpha - math.sqrt(periods) * sr_p) / inflation
+    theo_power = 1.0 - dist.cdf(z_stat)
+    return years, periods, theo_power
+
+
+def main() -&gt; None:
+    cases = [
+        (0.30, 12, 0.05, 0.80),
+        (0.50, 12, 0.05, 0.80),
+        (0.70, 12, 0.05, 0.80),
+        (1.00, 12, 0.05, 0.80),
+        (0.50, 252, 0.05, 0.80),
+        (0.50, 12, 0.05, 0.90),
+    ]
+
+    print("reference cases for memo comparison (alpha = 0.05):")
+    for sr_ann, k, alpha, power in cases:
+        years, periods, theo_power = compute_case(sr_ann, k, alpha, power)
+        freq = "monthly" if k == 12 else "daily"
+        print(
+            f"SR_ann = {sr_ann:.2f}, {freq} (k = {k}), power = {power:.2f}: "
+            f"years = {years:.4f}, periods = {periods}, theoretical power = {theo_power:.4f}"
+        )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">reference cases for memo comparison (alpha = 0.05):
+SR_ann = 0.30, monthly (k = 12), power = 0.80: years = 68.7822, periods = 826, theoretical power = 0.8003
+SR_ann = 0.50, monthly (k = 12), power = 0.80: years = 24.8173, periods = 298, theoretical power = 0.8002
+SR_ann = 0.70, monthly (k = 12), power = 0.80: years = 12.7044, periods = 153, theoretical power = 0.8012
+SR_ann = 1.00, monthly (k = 12), power = 0.80: years = 6.2692, periods = 76, theoretical power = 0.8035
+SR_ann = 0.50, daily (k = 252), power = 0.80: years = 24.7344, periods = 6234, theoretical power = 0.8001
+SR_ann = 0.50, monthly (k = 12), power = 0.90: years = 34.4114, periods = 413, theoretical power = 0.9000</pre>
+          <p class="interpretation">Interpretation: A strategy with \(\SR_{\mathrm{ann}} = 0.50\) requires approximately 24.87 years of data (299 months or 6,268 daily observations) to achieve 80% statistical power. Note that while daily observation increases the number of sample points by factor 21, the required calendar duration decreases only marginally (from 24.87 years to 24.84 years), reflecting the fundamental reality that power against a constant annualized Sharpe ratio is primarily governed by calendar time rather than observation frequency under i.i.d. returns.</p>
+        </section>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Evaluation rubric</h2>
+        <p>The executive memo is scored across five criteria with four observable performance levels each:</p>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>Executive Memo Evaluation Rubric</caption>
+            <thead>
+              <tr>
+                <th>Criterion</th>
+                <th>Level 4 (Exemplary)</th>
+                <th>Level 3 (Proficient)</th>
+                <th>Level 2 (Developing)</th>
+                <th>Level 1 (Beginning)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">1. Model and assumptions</th>
+                <td>Explicitly specifies i.i.d. returns, one-sided hypothesis test \(H_0: \SR \le 0\) vs \(H_1: \SR > 0\), periods per year \(k\), and explains the theoretical role of each assumption.</td>
+                <td>States i.i.d. normality and one-sided testing context but does not elaborate on the operational role of every assumption.</td>
+                <td>Mentions normality or testing but omits sampling frequency or the formal mathematical hypothesis statement.</td>
+                <td>Vague or incomplete description of the underlying statistical model and assumptions.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">2. Analytic derivation</th>
+                <td>Derives the closed-form equation for required years \(y\), isolating the alternative variance inflation factor \(1 + \SR^2/2\) via the delta method, and verifies power at the integer ceiling.</td>
+                <td>Presents the formula and states the variance inflation factor without fully detailing the delta-method origin.</td>
+                <td>Employs the naive variance formula (omitting \(1 + \SR^2/2\)) or fails to relate periods to years correctly.</td>
+                <td>Incorrect formula or missing mathematical derivation of the required sample horizon.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">3. Simulation design</th>
+                <td>Documents random seed, Monte Carlo replications (\(N \ge 1{,}000\)), sample size \(T\), reports Monte Carlo standard errors, and confirms empirical size under the null hypothesis.</td>
+                <td>States seed, simulation count, and empirical power, but omits Monte Carlo standard error or null size verification.</td>
+                <td>Runs a simulation but omits random seed or uses fewer than 500 replications.</td>
+                <td>No simulation study presented, or methodology is non-reproducible.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">4. Reconciliation</th>
+                <td>Quantifies the gap between analytical asymptotic power and Monte Carlo power, isolating finite-sample non-centrality bias, discrete ceiling effect, and simulation noise.</td>
+                <td>Compares analytical and simulated power and notes agreement, but does not decompose the residual difference.</td>
+                <td>Reports both numbers but attributes differences entirely to simulation noise without acknowledging finite-sample effects.</td>
+                <td>Fails to compare or reconcile analytical and simulated power estimates.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">5. Units and rounding</th>
+                <td>Consistently distinguishes per-period vs annualized Sharpe ratios with factor \(\sqrt{k}\), distinguishes years from periods, and enforces exact integer ceiling.</td>
+                <td>Distinguishes years and periods and rounds periods up, but has minor ambiguities in parameter notation.</td>
+                <td>Confuses annualized and periodic Sharpe ratios in at least one calculation, or truncates rather than ceilings periods.</td>
+                <td>Pervasive confusion between years and periods, or invalid rounding throughout.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="rubric-self" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b">
+          <h3>Exemplars and self-assessment</h3>
+          <p>Review the annotated exemplars below to calibrate your understanding of the rubric before completing the self-assessment.</p>
+
+          <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar A">
+            <h4>Exemplar A · High-Distinction Benchmark (Level 4)</h4>
+            <div class="memo-content">
+              <h5>Executive Memo: Statistical Power Analysis for Strategy Allocation</h5>
+              <p><strong>To:</strong> Investment Risk Committee<br>
+              <strong>From:</strong> Quantitative Research Desk<br>
+              <strong>Date:</strong> November 10, 2026<br>
+              <strong>Subject:</strong> Power Analysis and Minimum Track Record Horizon for Proposed Quantitative Strategy</p>
+
+              <p><strong>1. Executive Summary:</strong> A quantitative equities strategy targeting an annualized Sharpe ratio \(\SR_{\mathrm{ann}} = 0.60\) requires \(y = 17.26\) years of live monthly track record (\(T = 208\) months) to detect profitability with 80% statistical power at a 5% one-sided significance level (\(\alpha = 0.05\)). Evaluating the strategy over a standard 3-year or 5-year track record provides only 22.8% and 34.6% statistical power respectively, creating an unacceptably high Type II error probability (\(\beta > 65\%\)).</p>
+
+              <p><strong>2. Statistical Model and Closed-Form Derivation:</strong> Under the assumption of i.i.d. normal periodic returns \(r_t \sim \mathcal{N}(\mu, \sigma^2)\) with \(k\) observations per year, the per-period Sharpe ratio is \(\SR = \mu/\sigma = \SR_{\mathrm{ann}}/\sqrt{k}\). We test the one-sided null hypothesis \(H_0: \SR \le 0\) against \(H_1: \SR > 0\) using the sample Sharpe ratio \(\hSR = \bar r / s\), where \(s\) is the unbiased sample standard deviation with divisor \(T - 1\). Under \(H_0\), \(\sqrt{T}\hSR \dto \mathcal{N}(0, 1)\), yielding the rejection region \(\sqrt{T}\hSR \ge \Phi^{-1}(1 - \alpha)\). Under \(H_1\), applying the delta method to the joint moments of \((\bar r, \overline{r^2})\) reveals that \(\sqrt{T}(\hSR - \SR) \dto \mathcal{N}(0, 1 + \SR^2/2)\). Accounting for this variance inflation factor, the required calendar horizon in years is given in closed form by:
+              \[ y = \frac{\left(\Phi^{-1}(1 - \alpha) + \Phi^{-1}(1 - \beta)\sqrt{1 + \frac{\SR_{\mathrm{ann}}^2}{2k}}\right)^2}{\SR_{\mathrm{ann}}^2} \]</p>
+
+              <p><strong>3. Numerical Results and Monte Carlo Validation:</strong> For \(\SR_{\mathrm{ann}} = 0.60\), \(k = 12\), \(\alpha = 0.05\), and \(1 - \beta = 0.80\), the critical standard normal quantiles are \(\Phi^{-1}(0.95) = 1.6449\) and \(\Phi^{-1}(0.80) = 0.8416\). The variance inflation factor is \(1 + 0.60^2 / (2 \times 12) = 1.0075\) (\(\sqrt{1.0075} = 1.00374\)). This yields \(y = 17.2607\) years, or \(T = \lceil 207.13 \rceil = 208\) monthly periods. To validate this result, we ran \(N = 2{,}000\) independent Monte Carlo simulations with random seed 20261109. The empirical rejection rate under \(H_0\) (\(\SR = 0\)) was \(5.10\%\) (Monte Carlo standard error \(0.49\%\)), confirming correct test size. At \(T = 208\) under \(H_1\), the empirical rejection rate was \(80.15\%\) (Monte Carlo standard error \(0.89\%\)), perfectly matching the theoretical asymptotic power of \(80.15\%\).</p>
+
+              <p><strong>4. Sampling Frequency and Reconciliation:</strong> Transitioning from monthly (\(k = 12\)) to daily (\(k = 252\)) sampling increases the number of return observations by a factor of 21 (\(T_{\mathrm{daily}} = 4{,}347\) days), but reduces the required calendar time only negligibly from 17.26 to 17.23 years. This confirms that for i.i.d. returns, statistical power is governed almost entirely by calendar time rather than sampling frequency. The small residual gap between finite-sample power and asymptotic power is attributable to the \(O(1/T)\) non-central t bias and the discrete ceiling rounding.</p>
+
+              <p><strong>5. Strategic Recommendations and Limitations:</strong> (a) Do not reject strategies solely based on 3-year track records, as 80% power cannot be attained without an annualized Sharpe ratio exceeding 1.44. (b) The power equation assumes zero autocorrelation; positive serial correlation increases the variance of the sample mean and further inflates the required horizon. (c) Heavy tails (excess kurtosis \(\gamma_4 > 3\)) expand the variance inflation term to \(1 + \SR^2/2 + (\gamma_4 - 3)\SR^2/4\), requiring additional observation time.</p>
+            </div>
+            <p class="exemplar-annotation">Evaluator commentary: Exemplar A meets all Level 4 descriptors across all five criteria. It provides explicit hypothesis formulations, exact delta-method variance derivation, rigorous Monte Carlo standard errors, precise frequency comparisons, and practical governance recommendations.</p>
+          </article>
+
+          <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar B">
+            <h4>Exemplar B · Baseline Developing Benchmark (Level 2)</h4>
+            <div class="memo-content">
+              <h5>Memo: Sharpe Ratio Analysis</h5>
+              <p>To determine how much data is needed for a Sharpe ratio of 0.6, we use the standard power formula. The formula is \(N = (z_\alpha + z_\beta)^2 / \SR^2\). For 80% power and 5% alpha, \(z_\alpha = 1.64\) and \(z_\beta = 0.84\). Adding these gives 2.48, and squaring gives 6.15. Dividing by \(0.6^2 = 0.36\) gives 17.08 years.</p>
+              <p>We ran a simulation in Python with 500 runs. The simulation gave a power of roughly 79%, which is close to 80%. We also tried daily data and it gave thousands of observations, which confirms that daily data gives much better results.</p>
+              <p>In conclusion, managers should have at least 17 years of data before being hired, which may be difficult in practice.</p>
+            </div>
+            <p class="exemplar-annotation">Evaluator commentary: Exemplar B scores Level 2 across all criteria. It uses the naive variance formula omitting the \(1 + \SR^2/2\) inflation term, confuses periods with years, fails to specify random seed or Monte Carlo standard error, asserts erroneously that daily data dramatically changes the required calendar duration, and lacks professional depth.</p>
+          </article>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch extensions</h2>
+        <p>For students seeking advanced research topics for their quantitative portfolio:</p>
+        <ul>
+          <li><strong>Non-normal returns:</strong> Derive and simulate the power equation under Student-t returns with degrees of freedom \(\nu \in \{4, 5, 8\}\), demonstrating the sample size expansion caused by excess kurtosis.</li>
+          <li><strong>Autocorrelated returns:</strong> Incorporate first-order autoregressive serial dependence \(\operatorname{AR}(1)\) into the sample mean variance and quantify track record inflation as a function of persistence \(\rho\).</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Core reading</h2>
+        <ol class="reading-list">
+          <li data-cite="casella2002statistical"></li>
+          <li data-cite="efron1979bootstrap"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">S1 · Statistical Inference · Quantitative Doctoral Program. All generated samples are SIMULATED.</footer>
+</body>
+</html>
