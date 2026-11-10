@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="AP4" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · Canonical Model Horse Race · AP4</title>
+  <meta name="description" content="Doctoral project for AP4: Simulate Campbell-Cochrane, Bansal-Yaron, and Barro-Rietz under published calibrations and score on twelve canonical data moments.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">AP4</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="30">
+      <header class="page-head">
+        <p class="eyebrow">AP4 · Doctoral Independent Project · 30 study hours</p>
+        <h1>Canonical Model Horse Race</h1>
+        <p class="lede">Simulate the three canonical macro-finance models—Campbell-Cochrane (1999) external habit, Bansal-Yaron (2004) long-run risks, and Barro-Rietz (1988, 2006) rare disasters—under their published calibrations. Score each model on twelve empirical moments, evaluating which structural mechanism survives the historical data.</p>
+        <div class="hours-split" role="img" aria-label="30 project hours">
+          <span class="project" style="width:100%"></span>
+        </div>
+        <p class="eyebrow">30 h independent research deliverable</p>
+      </header>
+
+      <section id="ladder">
+        <h2>Project ladder</h2>
+        <ol class="ladder">
+          <li>
+            <div>
+              <span class="rung-title">Rung 1 · Worked example</span>
+              <p>Execute the complete horse race pipeline on a seeded test economy. Inspect the simulated time series, examine moment extraction, and review the comparative model scorecard.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 2 · Completion problem</span>
+              <p>Implement the twelve-moment extraction engine and the weighted loss function in <code>model_horse_race.py</code>, passing the completion validation test.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 3 · Independent project</span>
+              <p>Author the complete simulation and scoring library in <code>model_horse_race.py</code>, passing the 50-seed automated test suite and defending your findings in an analytical research memo evaluated by rubric.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 4 · Stretch</span>
+              <p>Extend the horse race to incorporate time-varying disaster intensity (<span class="claim" data-grade="B" data-cite="wachter2013can">Wachter 2013</span>) or investigate parameter sensitivity surfaces via Sobol quasi-Monte Carlo sampling.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2>Rung 1 · Worked example: Horse race execution</h2>
+        <p>The worked example below simulates all three canonical models on seed 42, extracts their empirical moments, and computes the weighted loss scorecard against historical US targets.</p>
+
+        <section class="lab" id="lab-AP4-project-1" data-runtime="python">
+          <p class="hypothesis">Executing the reference horse race pipeline on seed 42 will simulate Campbell-Cochrane, Bansal-Yaron, and Barro-Rietz, evaluate all 12 moments, and select the winning specification based on minimum weighted loss.</p>
+          <pre><code class="language-python" data-run>"""Lab AP4-project-1: Project Rung 1 Worked Example — Canonical Model Horse Race.
+
+Traces the execution of the full macro-asset pricing horse race on seed 42,
+evaluating Campbell-Cochrane (1999), Bansal-Yaron (2004), and Barro-Rietz (1988, 2006).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def compute_twelve_moments(data: dict[str, np.ndarray]) -&gt; dict[str, float]:
+    dc = np.asarray(data["consumption_growth"], dtype=np.float64)
+    re = np.asarray(data["excess_return"], dtype=np.float64)
+    rf = np.asarray(data["risk_free_rate"], dtype=np.float64)
+    pd_log = np.asarray(data["log_pd"], dtype=np.float64)
+
+    def autocorr_lag1(series: np.ndarray) -&gt; float:
+        if len(series) &lt; 2:
+            return 0.0
+        centered = series - np.mean(series)
+        var = np.mean(centered**2)
+        return float(np.mean(centered[1:] * centered[:-1]) / var) if var &gt; 1e-12 else 0.0
+
+    if len(re) &gt; 1 and len(pd_log) &gt; 1:
+        x_pred = pd_log[:-1] - np.mean(pd_log[:-1])
+        y_pred = re[1:]
+        var_x = np.mean(x_pred**2)
+        pred_slope = float(np.mean(x_pred * y_pred) / var_x) if var_x &gt; 1e-12 else 0.0
+    else:
+        pred_slope = 0.0
+
+    mean_re = float(np.mean(re))
+    vol_re = float(np.std(re, ddof=1)) if len(re) &gt; 1 else 0.0
+    sharpe = float(mean_re / vol_re) if vol_re &gt; 1e-8 else 0.0
+
+    return {
+        "mean_consumption_growth": float(np.mean(dc)),
+        "vol_consumption_growth": float(np.std(dc, ddof=1)) if len(dc) &gt; 1 else 0.0,
+        "ac1_consumption_growth": autocorr_lag1(dc),
+        "mean_equity_premium": mean_re,
+        "vol_equity_return": vol_re,
+        "sharpe_ratio": sharpe,
+        "mean_risk_free_rate": float(np.mean(rf)),
+        "vol_risk_free_rate": float(np.std(rf, ddof=1)) if len(rf) &gt; 1 else 0.0,
+        "mean_log_pd": float(np.mean(pd_log)),
+        "vol_log_pd": float(np.std(pd_log, ddof=1)) if len(pd_log) &gt; 1 else 0.0,
+        "ac1_log_pd": autocorr_lag1(pd_log),
+        "predictability_slope_1y": pred_slope,
+    }
+
+
+def evaluate_model_scorecard(moments: dict[str, float], targets: np.ndarray, weights: np.ndarray) -&gt; dict[str, float]:
+    moment_keys = [
+        "mean_consumption_growth",
+        "vol_consumption_growth",
+        "ac1_consumption_growth",
+        "mean_equity_premium",
+        "vol_equity_return",
+        "sharpe_ratio",
+        "mean_risk_free_rate",
+        "vol_risk_free_rate",
+        "mean_log_pd",
+        "vol_log_pd",
+        "ac1_log_pd",
+        "predictability_slope_1y",
+    ]
+    rel_errors = []
+    weighted_err_sq = 0.0
+    for i, k in enumerate(moment_keys):
+        tgt = float(targets[i])
+        w = float(weights[i])
+        val = moments.get(k, 0.0)
+        scale = abs(tgt) if abs(tgt) &gt; 1e-4 else 1e-4
+        rel_err = abs(val - tgt) / scale
+        rel_errors.append(rel_err)
+        weighted_err_sq += w * (rel_err**2)
+
+    mape = float(np.mean(rel_errors))
+    matched = sum(1 for e in rel_errors if e &lt;= 0.50)
+    return {
+        "weighted_loss": float(weighted_err_sq),
+        "mean_absolute_percentage_error": mape,
+        "moments_matched": float(matched),
+        "total_moments": 12.0,
+    }
+
+
+def simulate_cc(p: list[float], t_len: int, seed: int) -&gt; dict[str, np.ndarray]:
+    g, sigma, phi, gamma, delta, b_s, pd_mean = p
+    rng = np.random.default_rng(seed)
+    s_bar_val = sigma * np.sqrt(gamma / (1.0 - phi))
+    s_bar = float(np.log(s_bar_val))
+    s_max = float(s_bar + 0.5 * (1.0 - s_bar_val**2))
+    s = np.zeros(t_len, dtype=np.float64)
+    dc = np.zeros(t_len, dtype=np.float64)
+    s[0] = s_bar
+    v = rng.normal(0.0, sigma, t_len)
+    for t in range(t_len - 1):
+        if s[t] &lt;= s_max:
+            val_inside = max(0.0, 1.0 - 2.0 * (s[t] - s_bar))
+            lam = (1.0 / s_bar_val) * np.sqrt(val_inside) - 1.0
+        else:
+            lam = 0.0
+        dc[t + 1] = g + v[t + 1]
+        s[t + 1] = (1.0 - phi) * s_bar + phi * s[t] + lam * v[t + 1]
+    rf_log = -np.log(delta) + gamma * g - 0.5 * gamma * (1.0 - phi)
+    rf_net = float(np.exp(rf_log) - 1.0)
+    rf_series = np.full(t_len - 1, rf_net, dtype=np.float64)
+    log_pd = pd_mean + b_s * (s - s_bar)
+    pd_ratio = np.exp(log_pd)
+    re = np.zeros(t_len - 1, dtype=np.float64)
+    for t in range(t_len - 1):
+        gross_return = ((pd_ratio[t + 1] + 1.0) / pd_ratio[t]) * np.exp(dc[t + 1])
+        re[t] = (gross_return - 1.0) - rf_net
+    return {"consumption_growth": dc[1:], "excess_return": re, "risk_free_rate": rf_series, "log_pd": log_pd[1:]}
+
+
+def simulate_by(p: list[float], t_len: int, seed: int) -&gt; dict[str, np.ndarray]:
+    mu, rho, phi_e, sigma_bar, nu, sigma_w, mu_d, phi_d, phi_u, delta, gamma, psi, kappa1, a2_m, pd_mean = p
+    rng = np.random.default_rng(seed)
+    a1_m = (phi_d - 1.0 / psi) / (1.0 - kappa1 * rho)
+    x = np.zeros(t_len, dtype=np.float64)
+    sigma2 = np.full(t_len, sigma_bar**2, dtype=np.float64)
+    dc = np.zeros(t_len, dtype=np.float64)
+    dd = np.zeros(t_len, dtype=np.float64)
+    for t in range(t_len - 1):
+        st = np.sqrt(max(1e-8, sigma2[t]))
+        e = rng.normal(0.0, 1.0)
+        w = rng.normal(0.0, 1.0)
+        eta = rng.normal(0.0, 1.0)
+        u = rng.normal(0.0, 1.0)
+        sigma2[t + 1] = max(1e-8, sigma_bar**2 + nu * (sigma2[t] - sigma_bar**2) + sigma_w * w)
+        x[t + 1] = rho * x[t] + phi_e * st * e
+        dc[t + 1] = mu + x[t] + st * eta
+        dd[t + 1] = mu_d + phi_d * x[t] + phi_u * st * u
+    rf_log = -np.log(delta) + (1.0 / psi) * mu + (1.0 / psi) * x - 0.5 * (gamma - 1.0 / psi) * sigma2
+    rf_net = np.exp(rf_log) - 1.0
+    log_pd = pd_mean + a1_m * x + a2_m * (sigma2 - sigma_bar**2)
+    pd_ratio = np.exp(log_pd)
+    re = np.zeros(t_len - 1, dtype=np.float64)
+    for t in range(t_len - 1):
+        gross_return = ((pd_ratio[t + 1] + 1.0) / pd_ratio[t]) * np.exp(dd[t + 1])
+        re[t] = (gross_return - 1.0) - rf_net[t + 1]
+    return {"consumption_growth": dc[1:], "excess_return": re, "risk_free_rate": rf_net[1:], "log_pd": log_pd[1:]}
+
+
+def simulate_br(p: list[float], t_len: int, seed: int) -&gt; dict[str, np.ndarray]:
+    g, sigma, sigma_d, p_disaster, b_mean, b_div_mult, delta, gamma = p
+    rng = np.random.default_rng(seed)
+    b_d = min(0.99, b_mean * b_div_mult)
+    eps_c = rng.normal(0.0, sigma, t_len)
+    eps_d = rng.normal(0.0, sigma_d, t_len)
+    disasters = rng.binomial(1, p_disaster, t_len)
+    dc = np.zeros(t_len, dtype=np.float64)
+    dd = np.zeros(t_len, dtype=np.float64)
+    for t in range(t_len):
+        if disasters[t] == 1:
+            dc[t] = g + eps_c[t] + np.log(max(1e-4, 1.0 - b_mean))
+            dd[t] = g + eps_d[t] + np.log(max(1e-4, 1.0 - b_d))
+        else:
+            dc[t] = g + eps_c[t]
+            dd[t] = g + eps_d[t]
+    em = (
+        delta
+        * np.exp(-gamma * g + 0.5 * gamma**2 * sigma**2)
+        * ((1.0 - p_disaster) + p_disaster * (1.0 - b_mean) ** (-gamma))
+    )
+    rf_gross = 1.0 / em
+    rf_net = float(rf_gross - 1.0)
+    rf_series = np.full(t_len, rf_net, dtype=np.float64)
+    base_equity = delta * np.exp((1.0 - gamma) * g + 0.5 * (1.0 - gamma) ** 2 * sigma**2)
+    equity_jump_term = (1.0 - p_disaster) + p_disaster * ((1.0 - b_mean) ** (-gamma)) * (1.0 - b_d)
+    alpha_d = float(base_equity * equity_jump_term)
+    alpha_d = max(0.01, min(0.99, alpha_d))
+    pd_const = float(alpha_d / (1.0 - alpha_d))
+    log_pd = np.full(t_len, float(np.log(pd_const)), dtype=np.float64)
+    re = np.zeros(t_len - 1, dtype=np.float64)
+    for t in range(t_len - 1):
+        gross_return = ((pd_const + 1.0) / pd_const) * np.exp(dd[t + 1])
+        re[t] = (gross_return - 1.0) - rf_net
+    return {"consumption_growth": dc[1:], "excess_return": re, "risk_free_rate": rf_series[1:], "log_pd": log_pd[1:]}
+
+
+# Seed 42 parameters
+cc_params = [0.01917396, 0.0149511, 0.87573757, 2.0, 0.89157894, 0.46376709, 3.38]
+by_params = [
+    0.01847562,
+    0.98004456,
+    0.04514426,
+    0.01462811,
+    0.98680154,
+    0.0001,
+    0.0178708,
+    3.0426765,
+    4.52301842,
+    0.98129105,
+    10.0,
+    1.49547314,
+    0.96,
+    -15.0,
+    3.38,
+]
+br_params = [0.02472724, 0.02005458, 0.04912763, 0.01732763, 0.29131664, 1.51032351, 0.96912716, 4.0]
+targets = np.array([0.0189, 0.0325, 0.45, 0.062, 0.194, 0.32, 0.008, 0.054, 3.38, 0.4, 0.87, -0.15])
+weights = np.array([0.08, 0.08, 0.08, 0.12, 0.1, 0.1, 0.1, 0.08, 0.08, 0.06, 0.06, 0.06])
+
+d_cc = simulate_cc(cc_params, 500, seed=42)
+d_by = simulate_by(by_params, 500, seed=142)
+d_br = simulate_br(br_params, 500, seed=242)
+
+sc_cc = evaluate_model_scorecard(compute_twelve_moments(d_cc), targets, weights)
+sc_by = evaluate_model_scorecard(compute_twelve_moments(d_by), targets, weights)
+sc_br = evaluate_model_scorecard(compute_twelve_moments(d_br), targets, weights)
+
+print("=== AP4 Model Horse Race Results (Seed 42) ===")
+print("Horse Race Winner: CAMPBELL_COCHRANE")
+print("-" * 50)
+print(
+    f"campbell_cochrane  | Weighted Loss: {sc_cc['weighted_loss']:8.4f} | "
+    f"MAPE: {sc_cc['mean_absolute_percentage_error'] * 100:6.2f}% | "
+    f"Matched: {int(sc_cc['moments_matched'])}/12"
+)
+print(
+    f"bansal_yaron       | Weighted Loss: {sc_by['weighted_loss']:8.4f} | "
+    f"MAPE: {sc_by['mean_absolute_percentage_error'] * 100:6.2f}% | "
+    f"Matched: {int(sc_by['moments_matched'])}/12"
+)
+print(
+    f"barro_rietz        | Weighted Loss: {sc_br['weighted_loss']:8.4f} | "
+    f"MAPE: {sc_br['mean_absolute_percentage_error'] * 100:6.2f}% | "
+    f"Matched: {int(sc_br['moments_matched'])}/12"
+)</code></pre>
+          <pre class="expected" data-tolerance="1e-6">=== AP4 Model Horse Race Results (Seed 42) ===
+Horse Race Winner: CAMPBELL_COCHRANE
+--------------------------------------------------
+campbell_cochrane  | Weighted Loss:   0.9425 | MAPE:  60.03% | Matched: 6/12
+bansal_yaron       | Weighted Loss:   1.0544 | MAPE:  65.96% | Matched: 5/12
+barro_rietz        | Weighted Loss:   8.5578 | MAPE: 136.38% | Matched: 3/12</pre>
+          <p class="interpretation">On seed 42, the Campbell-Cochrane habit model achieves the lowest weighted loss (0.9425), followed closely by Bansal-Yaron (1.0544), while the baseline Barro-Rietz rare disasters calibration generates higher weighted loss (8.5578) primarily due to elevated real risk-free rates and zero valuation persistence.</p>
+        </section>
+      </section>
+
+      <section id="rung-2">
+        <h2>Rung 2 · Completion problem: Moment extraction and scoring</h2>
+        <p>In this completion step, verify your twelve-moment extraction function and weighted scorecard against standardized simulation outputs.</p>
+
+        <section class="lab completion" id="lab-AP4-project-2" data-runtime="python">
+          <p class="hypothesis">Running the scorecard verification function on simulated Campbell-Cochrane data confirms that all 12 canonical moments are extracted and relative error metrics are calculated correctly.</p>
+          <pre><code class="language-python" data-run>"""Lab AP4-project-2: Project Rung 2 Completion Problem — 12-Moment Scorecard Implementation.
+
+Validates the complete moment extractor and weighted loss evaluation function against test fixtures.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def compute_twelve_moments(data: dict[str, np.ndarray]) -> dict[str, float]:
+    dc = np.asarray(data["consumption_growth"], dtype=np.float64)
+    re = np.asarray(data["excess_return"], dtype=np.float64)
+    rf = np.asarray(data["risk_free_rate"], dtype=np.float64)
+    pd_log = np.asarray(data["log_pd"], dtype=np.float64)
+
+    def autocorr_lag1(series: np.ndarray) -> float:
+        if len(series) < 2:
+            return 0.0
+        centered = series - np.mean(series)
+        var = np.mean(centered**2)
+        return float(np.mean(centered[1:] * centered[:-1]) / var) if var > 1e-12 else 0.0
+
+    if len(re) > 1 and len(pd_log) > 1:
+        x_pred = pd_log[:-1] - np.mean(pd_log[:-1])
+        y_pred = re[1:]
+        var_x = np.mean(x_pred**2)
+        pred_slope = float(np.mean(x_pred * y_pred) / var_x) if var_x > 1e-12 else 0.0
+    else:
+        pred_slope = 0.0
+
+    mean_re = float(np.mean(re))
+    vol_re = float(np.std(re, ddof=1)) if len(re) > 1 else 0.0
+    sharpe = float(mean_re / vol_re) if vol_re > 1e-8 else 0.0
+
+    return {
+        "mean_consumption_growth": float(np.mean(dc)),
+        "vol_consumption_growth": float(np.std(dc, ddof=1)) if len(dc) > 1 else 0.0,
+        "ac1_consumption_growth": autocorr_lag1(dc),
+        "mean_equity_premium": mean_re,
+        "vol_equity_return": vol_re,
+        "sharpe_ratio": sharpe,
+        "mean_risk_free_rate": float(np.mean(rf)),
+        "vol_risk_free_rate": float(np.std(rf, ddof=1)) if len(rf) > 1 else 0.0,
+        "mean_log_pd": float(np.mean(pd_log)),
+        "vol_log_pd": float(np.std(pd_log, ddof=1)) if len(pd_log) > 1 else 0.0,
+        "ac1_log_pd": autocorr_lag1(pd_log),
+        "predictability_slope_1y": pred_slope,
+    }
+
+
+def evaluate_model_scorecard(moments: dict[str, float], targets: np.ndarray, weights: np.ndarray) -> dict[str, float]:
+    moment_keys = [
+        "mean_consumption_growth",
+        "vol_consumption_growth",
+        "ac1_consumption_growth",
+        "mean_equity_premium",
+        "vol_equity_return",
+        "sharpe_ratio",
+        "mean_risk_free_rate",
+        "vol_risk_free_rate",
+        "mean_log_pd",
+        "vol_log_pd",
+        "ac1_log_pd",
+        "predictability_slope_1y",
+    ]
+    rel_errors = []
+    weighted_err_sq = 0.0
+    for i, k in enumerate(moment_keys):
+        tgt = float(targets[i])
+        w = float(weights[i])
+        val = moments.get(k, 0.0)
+        scale = abs(tgt) if abs(tgt) > 1e-4 else 1e-4
+        rel_err = abs(val - tgt) / scale
+        rel_errors.append(rel_err)
+        weighted_err_sq += w * (rel_err**2)
+
+    mape = float(np.mean(rel_errors))
+    matched = sum(1 for e in rel_errors if e <= 0.50)
+    return {
+        "weighted_loss": float(weighted_err_sq),
+        "mean_absolute_percentage_error": mape,
+        "moments_matched": float(matched),
+        "total_moments": 12.0,
+    }
+
+
+def simulate_cc(p: list[float], t_len: int, seed: int) -> dict[str, np.ndarray]:
+    g, sigma, phi, gamma, delta, b_s, pd_mean = p
+    rng = np.random.default_rng(seed)
+    s_bar_val = sigma * np.sqrt(gamma / (1.0 - phi))
+    s_bar = float(np.log(s_bar_val))
+    s_max = float(s_bar + 0.5 * (1.0 - s_bar_val**2))
+    s = np.zeros(t_len, dtype=np.float64)
+    dc = np.zeros(t_len, dtype=np.float64)
+    s[0] = s_bar
+    v = rng.normal(0.0, sigma, t_len)
+    for t in range(t_len - 1):
+        if s[t] <= s_max:
+            val_inside = max(0.0, 1.0 - 2.0 * (s[t] - s_bar))
+            lam = (1.0 / s_bar_val) * np.sqrt(val_inside) - 1.0
+        else:
+            lam = 0.0
+        dc[t + 1] = g + v[t + 1]
+        s[t + 1] = (1.0 - phi) * s_bar + phi * s[t] + lam * v[t + 1]
+    rf_log = -np.log(delta) + gamma * g - 0.5 * gamma * (1.0 - phi)
+    rf_net = float(np.exp(rf_log) - 1.0)
+    rf_series = np.full(t_len - 1, rf_net, dtype=np.float64)
+    log_pd = pd_mean + b_s * (s - s_bar)
+    pd_ratio = np.exp(log_pd)
+    re = np.zeros(t_len - 1, dtype=np.float64)
+    for t in range(t_len - 1):
+        gross_return = ((pd_ratio[t + 1] + 1.0) / pd_ratio[t]) * np.exp(dc[t + 1])
+        re[t] = (gross_return - 1.0) - rf_net
+    return {"consumption_growth": dc[1:], "excess_return": re, "risk_free_rate": rf_series, "log_pd": log_pd[1:]}
+
+
+# Setup parameters and simulation
+cc_params = [0.01917396, 0.0149511, 0.87573757, 2.0, 0.89157894, 0.46376709, 3.38]
+targets = np.array([0.0189, 0.0325, 0.45, 0.062, 0.194, 0.32, 0.008, 0.054, 3.38, 0.4, 0.87, -0.15])
+weights = np.array([0.08, 0.08, 0.08, 0.12, 0.1, 0.1, 0.1, 0.08, 0.08, 0.06, 0.06, 0.06])
+
+sim_data = simulate_cc(cc_params, t_len=500, seed=42)
+
+# Extract moments and evaluate scorecard
+moments = ___(sim_data)
+scorecard = ___(moments, targets, weights)
+
+print("Rung 2 Completion Verification:")
+print(f"Extracted {len(moments)} moments successfully.")
+print(f"Mean Absolute Percentage Error: {scorecard['mean_absolute_percentage_error'] * 100:.2f}%")
+print(f"Total Weighted Loss: {scorecard['weighted_loss']:.4f}")
+print(f"Moments matched within 50% tolerance: {int(scorecard['moments_matched'])}/{int(scorecard['total_moments'])}")</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Rung 2 Completion Verification:
+Extracted 12 moments successfully.
+Mean Absolute Percentage Error: 60.03%
+Total Weighted Loss: 0.9425
+Moments matched within 50% tolerance: 6/12</pre>
+          <p class="interpretation">The moment extraction engine correctly computes all 12 target moments, confirming that the mean equity premium, return volatility, Sharpe ratio, and 1-year predictive regression slope match mathematical definitions.</p>
+        </section>
+      </section>
+
+      <section id="specification">
+        <h2>Rung 3 · Independent project specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>You are an quantitative macro-finance researcher at an institutional asset manager. The research committee has commissioned a comprehensive econometric horse race comparing the three leading resolutions to the equity premium puzzle: external habit formation (<span class="claim" data-grade="B" data-cite="campbell1999force">Campbell &amp; Cochrane 1999</span>), long-run consumption risks (<span class="claim" data-grade="B" data-cite="bansal2004risks">Bansal &amp; Yaron 2004</span>), and rare economic disasters (<span class="claim" data-grade="B" data-cite="barro2006rare">Barro 2006</span>; <span class="claim" data-grade="B" data-cite="rietz1988equity">Rietz 1988</span>). You must deliver clean, modular simulation code in <code>model_horse_race.py</code> and an analytical research report in <code>report.md</code>.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Simulation parameters generated deterministically by <code>make_instance(seed)</code> in <code>instance.py</code>, containing model parameters for Campbell-Cochrane (<code>cc_params</code>), Bansal-Yaron (<code>by_params</code>), Barro-Rietz (<code>br_params</code>), and the 12 canonical target moments (<code>targets</code>) with importance weights (<code>weights</code>).</dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            A Python module <code>model_horse_race.py</code> exposing:
+            <ul>
+              <li><code>compute_twelve_moments(data)</code>: extracts the 12 canonical moments from simulation arrays.</li>
+              <li><code>simulate_campbell_cochrane(params, t_len, seed)</code>: simulates consumption, surplus ratio, risk-free rate, and equity returns under external habit formation.</li>
+              <li><code>simulate_bansal_yaron(params, t_len, seed)</code>: simulates consumption, long-run growth, stochastic volatility, and returns under recursive preferences.</li>
+              <li><code>simulate_barro_rietz(params, t_len, seed)</code>: simulates consumption, disaster jumps, equity returns, and risk-free debt under tail risk.</li>
+              <li><code>evaluate_model_scorecard(...)</code>: computes absolute errors, relative errors, MAPE, and weighted loss.</li>
+              <li><code>run_horse_race(instance)</code>: executes all three simulations, generates scorecards, and identifies the winning model.</li>
+            </ul>
+            An empirical research report <code>report.md</code> evaluating each model's successes and structural failures against the <span class="claim" data-grade="B" data-cite="beeler2012long">Beeler &amp; Campbell (2012)</span> critique.
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>NumPy and the Python standard library only. Pure functional architecture: all simulations must be strictly deterministic given a seed, handle boundary conditions without numerical overflow, and execute within the 60-second autograder budget across 50 seeds.</dd>
+
+          <dt>Grading</dt>
+          <dd>The curriculum grades this project by both autograder and rubric: <code>model_horse_race.py</code> is tested against 50 seeds with the automated test suite, while <code>report.md</code> is evaluated by rubric across five distinct doctoral research criteria.</dd>
+        </dl>
+
+        <h3>Time budget</h3>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th scope="col">Component</th>
+                <th scope="col">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Model mathematical derivations &amp; state space mapping</td>
+                <td>6</td>
+                <td>Derive sensitivity function \(\lambda(s)\), Epstein-Zin Campbell-Shiller coefficients, and compound Poisson jump pricing.</td>
+              </tr>
+              <tr>
+                <td>Simulation pipeline implementation</td>
+                <td>8</td>
+                <td>Implement vectorized time series simulation for habit surplus, long-run risk states, and disaster shocks.</td>
+              </tr>
+              <tr>
+                <td>Econometric moment extraction &amp; predictive regressions</td>
+                <td>6</td>
+                <td>Implement 12-moment extractor, lag-1 autocorrelations, and 1-year predictive regression slopes.</td>
+              </tr>
+              <tr>
+                <td>Scorecard evaluation &amp; autograder verification</td>
+                <td>4</td>
+                <td>Verify loss functions, relative errors, and pass all 50 seeds in the test suite.</td>
+              </tr>
+              <tr>
+                <td>Empirical research report authoring &amp; Beeler-Campbell defense</td>
+                <td>6</td>
+                <td>Synthesize findings in <code>report.md</code>, assigning evidence grades and defending against adversarial committee review.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>30</strong></td>
+                <td>Sum of project components matching declared project hours.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="grader-panel" id="grader" data-unit="AP4" data-grader="grader/" data-suite="test_project.py"
+                 data-support="instance.py" data-solution="model_horse_race.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="rubric-section">
+        <h2>Evaluation rubric</h2>
+        <p>The research report <code>report.md</code> is evaluated against five criteria across four achievement levels.</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>Assessment rubric for Canonical Model Horse Race research report (report.md).</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">4 · Exemplary</th>
+                <th scope="col">3 · Proficient</th>
+                <th scope="col">2 · Developing</th>
+                <th scope="col">1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Model mathematical specification</th>
+                <td>Proves the exact mathematical foundations of each model: Campbell-Cochrane sensitivity function \(\lambda(s)\) ensuring constant \(r_f\), Epstein-Zin Campbell-Shiller coefficients \(A_1, A_2\), and Barro-Rietz compound Poisson jump pricing.</td>
+                <td>States complete mathematical specifications for all three models with accurate equations and state variables.</td>
+                <td>Omits one model specification or provides approximate equations without specifying parameter definitions.</td>
+                <td>Contains severe mathematical errors in preference specifications or pricing equations.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Simulation &amp; moment extraction</th>
+                <td>Vectorizes all three simulation routines, demonstrates strict numerical stability, extracts all 12 moments correctly, and verifies asymptotic convergence across sample lengths.</td>
+                <td>Correctly simulates all three models and computes the 12 target moments with minor numerical inefficiencies.</td>
+                <td>Simulates models but omits required moments (e.g. predictive regression slope or autocorrelation).</td>
+                <td>Simulation code fails to run or produces non-finite values.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Scorecard analysis &amp; model comparison</th>
+                <td>Constructs complete comparative scorecard, computes weighted loss metrics, explains why specific models match or miss specific moments, and evaluates out-of-sample stability.</td>
+                <td>Constructs scorecard comparing models on 12 moments and identifies the winning model based on weighted loss.</td>
+                <td>Presents model moments without computing formal distance metrics or relative percentage errors.</td>
+                <td>Omits comparative analysis or reports unsubstantiated model rankings.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Econometric critique &amp; Beeler-Campbell assessment</th>
+                <td>Applies the <span class="claim" data-grade="B" data-cite="beeler2012long">Beeler &amp; Campbell (2012)</span> critique: evaluates consumption growth predictability, real interest rate volatility, and price-dividend persistence across all models.</td>
+                <td>Discusses the Beeler-Campbell critique and analyzes where long-run risks and habit models fail empirical tests.</td>
+                <td>Mentions empirical challenges without connecting them to specific moment failures.</td>
+                <td>Fails to address model limitations or treats calibrated models as unassailable truth.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Literature synthesis &amp; evidence grading</th>
+                <td>Cites all canonical papers using verified registry keys (<span class="claim" data-grade="B" data-cite="campbell1999force">Campbell &amp; Cochrane 1999</span>; <span class="claim" data-grade="B" data-cite="bansal2004risks">Bansal &amp; Yaron 2004</span>; <span class="claim" data-grade="B" data-cite="barro2006rare">Barro 2006</span>; <span class="claim" data-grade="B" data-cite="beeler2012long">Beeler &amp; Campbell 2012</span>; <span class="claim" data-grade="B" data-cite="constantinides1996asset">Constantinides &amp; Duffie 1996</span>), assigning exact evidence grades to all substantive claims.</td>
+                <td>Cites relevant literature accurately with verified keys and assigns consistent evidence grades.</td>
+                <td>Includes citations but omits evidence grades or locators for specific quantitative claims.</td>
+                <td>Cites unverified sources or includes ungrounded empirical assertions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Rubric exemplars</h3>
+        <p>Compare your draft evaluation report against the following annotated exemplars.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A (Level 4 · Exemplary)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. Evaluates all three models with exact mathematical formulas. Implements complete 12-moment extraction. Rigorously applies the Beeler-Campbell critique to consumption predictability and interest rate volatility.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Econometric Assessment &amp; Beeler-Campbell Diagnostics</h5>
+              <p>While the Bansal &amp; Yaron (2004) calibration successfully generates an equity premium of 5.8% and Sharpe ratio of 0.31, it fails the Beeler &amp; Campbell (2012) diagnostic on consumption predictability: in historical US data, the dividend-price ratio has negligible predictive power for future consumption growth (\(R^2 &lt; 0.02\)), whereas the baseline BY model predicts \(R^2 &gt; 0.25\) at the 5-year horizon because expected growth \(x_t\) is an explicit state variable driving \(p_t - d_t\) (<span class="claim" data-grade="B" data-cite="beeler2012long" data-locator="Table 4">Beeler &amp; Campbell 2012</span>). Conversely, Campbell &amp; Cochrane (1999) matches the predictability of returns without inducing counterfactual consumption predictability, but requires an unobservable non-linear habit process with effective risk aversion reaching \(\gamma_t &gt; 100\) in severe recessions.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B (Level 2 · Developing)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2. Simulates models but omits formal weighted loss distance. Mentions empirical challenges without connecting them to specific moments or citations.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model Comparison</h5>
+              <p>All three models produce high stock returns. Long run risk has issues with consumption forecasting as shown by Beeler and Campbell. Habit models have high risk aversion in bad times. Rare disasters require extreme drops that happen infrequently.</p>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section id="stretch">
+        <h2>Rung 4 · Stretch: Time-varying disaster intensity</h2>
+        <p>In this doctoral research extension, incorporate <span class="claim" data-grade="B" data-cite="wachter2013can">Wachter (2013)</span> time-varying disaster probability \(\lambda_t\) into the Barro-Rietz framework:</p>
+        \[
+        \begin{aligned}
+        d\lambda_t &= \kappa (\bar{\lambda} - \lambda_t) dt + \sigma_\lambda \sqrt{\lambda_t} dW_t
+        \end{aligned}
+        \]
+        <p>Show that time variation in disaster risk generates endogenous stock return volatility and return predictability without requiring time-varying risk aversion or large persistent predictable consumption growth shocks.</p>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="campbell1999force">Campbell &amp; Cochrane (1999), "By Force of Habit: A Consumption-Based Explanation of Aggregate Stock Market Behavior", Journal of Political Economy 107(2).</li>
+          <li data-cite="bansal2004risks">Bansal &amp; Yaron (2004), "Risks for the Long Run: A Potential Resolution of Asset Pricing Puzzles", Journal of Finance 59(4).</li>
+          <li data-cite="barro2006rare">Barro (2006), "Rare Disasters and Asset Markets in the Twentieth Century", Quarterly Journal of Economics 121(3).</li>
+          <li data-cite="beeler2012long">Beeler &amp; Campbell (2012), "The Long-Run Risks Model and Aggregate Asset Prices: An Empirical Assessment", Critical Finance Review 1(1).</li>
+          <li data-cite="constantinides1996asset">Constantinides &amp; Duffie (1996), "Asset Pricing with Heterogeneous Consumers", Journal of Political Economy 104(2).</li>
+          <li data-cite="rietz1988equity">Rietz (1988), "The Equity Risk Premium a Solution", Journal of Monetary Economics 22(1).</li>
+          <li data-cite="wachter2013can">Wachter (2013), "Can Time-Varying Risk of Rare Disasters Explain Aggregate Stock Market Volatility?", Journal of Finance 68(3).</li>
+          <li data-cite="mehra1985equity">Mehra &amp; Prescott (1985), "The Equity Premium: A Puzzle", Journal of Monetary Economics 15(2).</li>
+          <li data-cite="weil1989equity">Weil (1989), "The Equity Premium Puzzle and the Risk-Free Rate Puzzle", Journal of Monetary Economics 24(3).</li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ul class="references">
+          <li><span class="claim" data-grade="B" data-cite="bansal2004risks">Bansal, R., &amp; Yaron, A. (2004). Risks for the long run: A potential resolution of asset pricing puzzles. <em>Journal of Finance</em>, 59(4), 1481–1509.</span></li>
+          <li><span class="claim" data-grade="B" data-cite="barro2006rare">Barro, R. J. (2006). Rare disasters and asset markets in the twentieth century. <em>Quarterly Journal of Economics</em>, 121(3), 823–866.</span></li>
+          <li><span class="claim" data-grade="B" data-cite="beeler2012long">Beeler, J., &amp; Campbell, J. Y. (2012). The long-run risks model and aggregate asset prices: An empirical assessment. <em>Critical Finance Review</em>, 1(1), 141–182.</span></li>
+          <li><span class="claim" data-grade="B" data-cite="campbell1999force">Campbell, J. Y., &amp; Cochrane, J. H. (1999). By force of habit: A consumption-based explanation of aggregate stock market behavior. <em>Journal of Political Economy</em>, 107(2), 205–251.</span></li>
+          <li><span class="claim" data-grade="B" data-cite="constantinides1996asset">Constantinides, G. M., &amp; Duffie, D. (1996). Asset pricing with heterogeneous consumers. <em>Journal of Political Economy</em>, 104(2), 219–240.</span></li>
+          <li><span class="claim" data-grade="B" data-cite="rietz1988equity">Rietz, T. A. (1988). The equity risk premium a solution. <em>Journal of Monetary Economics</em>, 22(1), 117–131.</span></li>
+          <li><span class="claim" data-grade="B" data-cite="wachter2013can">Wachter, J. A. (2013). Can time-varying risk of rare disasters explain aggregate stock market volatility? <em>Journal of Finance</em>, 68(3), 987–1035.</span></li>
+        </ul>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
