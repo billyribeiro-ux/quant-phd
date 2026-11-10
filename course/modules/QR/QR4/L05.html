@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR4" data-page="L05" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Self-Attention &amp; the Transformer Architecture · QR4 L05</title>
+  <meta name="description" content="Mathematical formulation of multi-head self-attention, query-key-value projections, causal masking, and positional encodings in the Transformer architecture (Vaswani et al., 2017).">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR4 Text, Sequence Models &amp; LLMs in Finance</a><span class="sep">›</span>
+      <span>L05</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 05 · 8 study hours · Part QR</p>
+        <h1>Self-Attention &amp; the Transformer Architecture</h1>
+        <p class="why-it-matters">Prior to the transformer architecture, quantitative sequence modeling relied on recurrent neural networks (RNNs and LSTMs) that processed text sequentially token by token. In long financial filings spanning tens of thousands of words, recurrent models suffer from vanishing gradients and fail to retain cross-paragraph accounting dependencies. The transformer architecture replaces recurrence entirely with multi-head self-attention, computing pairwise contextual relevance across entire documents in parallel. Understanding scaled dot-product attention, query-key-value projections, and causal sequence masking is the prerequisite for modern financial language modeling and auditing lookahead bias.</p>
+      </header>
+
+      <section id="attention-mechanism">
+        <h2 id="s1">1. Scaled Dot-Product Attention</h2>
+        <p>In 2017, Vaswani et al. introduced the transformer architecture, replacing sequential recurrent loops with direct, non-local attention mechanisms <span class="claim" data-grade="A" data-cite="vaswani2017attention">[vaswani2017attention]</span>.</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-transformer-architecture" data-concept="transformer-architecture">Transformer architecture</dfn></p>
+          <p>The <strong>transformer architecture</strong> is a deep sequence processing network based entirely on multi-head self-attention mechanisms, query-key-value linear projections, and position-wise feedforward networks, dispensing with recurrence and convolutions. For an input sequence of token <a class="concept" data-concept="word-embedding" href="L04.html#def-word-embedding">word embeddings</a> \(\mathbf{X} \in \R^{n \times d_{\text{model}}}\), the scaled dot-product attention operator is defined as:</p>
+          \[
+          \operatorname{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \operatorname{Softmax}\left( \frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_k}} + \mathbf{M} \right) \mathbf{V}
+          \]
+          <p>where \(\mathbf{Q} = \mathbf{X} \mathbf{W}^Q \in \R^{n \times d_k}\), \(\mathbf{K} = \mathbf{X} \mathbf{W}^K \in \R^{n \times d_k}\), and \(\mathbf{V} = \mathbf{X} \mathbf{W}^V \in \R^{n \times d_v}\) are learned linear projections of queries, keys, and values, and \(\mathbf{M}\) is an optional mask matrix.</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 5.1 · Softmax Gradient Saturation and the Scaling Factor \(\sqrt{d_k}\)</span>
+          <p>Let the components of query \(\mathbf{q} \in \R^{d_k}\) and key \(\mathbf{k} \in \R^{d_k}\) be independent random variables with zero mean and unit variance (\(\E[q_i] = \E[k_i] = 0\), \(\Var(q_i) = \Var(k_i) = 1\)). The raw dot product \(z = \mathbf{q}^\top \mathbf{k} = \sum_{i=1}^{d_k} q_i k_i\) has mean zero and variance:</p>
+          \[
+          \Var(z) = d_k
+          \]
+          <p>Scaling by \(\frac{1}{\sqrt{d_k}}\) ensures that the scaled logit \(z_{\text{scaled}} = \frac{\mathbf{q}^\top \mathbf{k}}{\sqrt{d_k}}\) has variance \(\Var(z_{\text{scaled}}) = 1\) independent of head dimension \(d_k\), preventing the softmax function from saturating into regions with vanishing gradients.</p>
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>Because \(q_i\) and \(k_i\) are independent with zero mean, \(\E[q_i k_i] = \E[q_i] \E[k_i] = 0\). The variance of each term is \(\Var(q_i k_i) = \E[(q_i k_i)^2] - (\E[q_i k_i])^2 = \E[q_i^2] \E[k_i^2] - 0 = 1 \times 1 = 1\). By independence across components \(i = 1, \dots, d_k\), the variance of the sum is \(\Var(\sum_{i=1}^{d_k} q_i k_i) = \sum_{i=1}^{d_k} \Var(q_i k_i) = d_k\). Therefore, dividing by \(\sqrt{d_k}\) yields \(\Var\left(\frac{z}{\sqrt{d_k}}\right) = \frac{1}{d_k} \Var(z) = \frac{d_k}{d_k} = 1\). Without this scaling, for large \(d_k\) (e.g. \(d_k = 64\)), dot products would have standard deviation 8, pushing softmax probabilities toward 0 or 1 where softmax derivatives \(\frac{\partial \sigma_i}{\partial z_j} = \sigma_i (\delta_{i,j} - \sigma_j)\) vanish exponentially.</p>
+        </div>
+
+        <div class="block example">
+          <p class="block-title">Example 5.1 · Connecting Distant Footnotes in Form 10-K</p>
+          <p>In SEC Form 10-K, an Item 7 discussion may state: <em>"Operating margins contracted due to contingent debt guarantee obligations."</em> The specific details of that guarantee are disclosed 40 pages later in Note 14 (Commitments and Contingencies). In an LSTM, sequential recurrence over 15,000 words attenuates the gradient to zero. In a transformer, the query vector for 'obligations' in Item 7 computes an immediate dot product with the key vector for 'Note 14 guarantee', establishing an attention weight in a single computational layer.</p>
+        </div>
+      </section>
+
+      <section id="multi-head-causal-masking">
+        <h2 id="s2">2. Multi-Head Attention and Causal Sequence Masking</h2>
+        <p>Rather than performing a single attention function with \(d_{\text{model}}\)-dimensional queries, keys, and values, multi-head attention projects queries, keys, and values \(h\) times with different learned parameter matrices <span class="claim" data-grade="A" data-cite="vaswani2017attention" data-locator="pp. 6000–6002">[vaswani2017attention]</span>.</p>
+
+        <div class="block definition">
+          <p class="block-title">Definition 5.1 · Multi-Head Attention and Causal Masking</p>
+          <p>For \(h\) attention heads with projection matrices \(\mathbf{W}_i^Q \in \R^{d_{\text{model}} \times d_k}\), \(\mathbf{W}_i^K \in \R^{d_{\text{model}} \times d_k}\), \(\mathbf{W}_i^V \in \R^{d_{\text{model}} \times d_v}\), and output matrix \(\mathbf{W}^O \in \R^{h d_v \times d_{\text{model}}}\):</p>
+          \[
+          \operatorname{MultiHead}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \operatorname{Concat}(\text{head}_1, \text{head}_2, \dots, \text{head}_h) \mathbf{W}^O
+          \]
+          \[
+          \text{head}_i = \operatorname{Attention}(\mathbf{Q} \mathbf{W}_i^Q, \mathbf{K} \mathbf{W}_i^K, \mathbf{V} \mathbf{W}_i^V)
+          \]
+          <p>In autoregressive sequence modeling (e.g. GPT decoders), the <strong>causal upper-triangular mask</strong> \(\mathbf{M} \in \R^{n \times n}\) enforces temporal order:</p>
+          \[
+          M_{i,j} = \begin{cases} 0 & \text{if } j \le i \\ -\infty & \text{if } j > i \end{cases}
+          \]
+          <p>Because \(\exp(-\infty) = 0\), the attention weight on future tokens is identically zero: \(\operatorname{Softmax}(\dots)_{i,j} = 0\) for all \(j > i\).</p>
+        </div>
+      </section>
+
+      <section id="lab-section">
+        <h2 id="s3">3. Inline Lab: Multi-Head Causal Attention Verification</h2>
+        <p>The following laboratory implements multi-head self-attention from mathematical primitives, verifies softmax probability normalization, and confirms that causal masking completely eliminates forward lookahead leakage.</p>
+
+        <section class="lab" id="lab-QR4-L05-1" data-runtime="python">
+          <h3>Lab 1 · Multi-Head Self-Attention and Causal Masking</h3>
+          <p class="hypothesis">Verifies that causal self-attention weights form a strictly lower-triangular stochastic matrix, with identically zero attention on future sequence positions.</p>
+          <pre><code class="language-python" data-run>"""Lab QR4-L05-1: Multi-Head Self-Attention and Causal Masking in Transformers (Vaswani et al. 2017).
+
+Demonstrates the core mechanics of the transformer architecture: scaled dot-product attention,
+multi-head linear projections, numerical softmax stabilization, and causal autoregressive masking
+that prevents sequential forward lookahead in temporal text streams.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def softmax(x: np.ndarray, axis: int = -1) -&gt; np.ndarray:
+    """Numerically stable softmax along specified axis."""
+    max_x = np.max(x, axis=axis, keepdims=True)
+    exp_x = np.exp(x - max_x)
+    return np.asarray(exp_x / np.sum(exp_x, axis=axis, keepdims=True), dtype=np.float64)
+
+
+def scaled_dot_product_attention(
+    q: np.ndarray,
+    k: np.ndarray,
+    v: np.ndarray,
+    mask: np.ndarray | None = None,
+) -&gt; tuple[np.ndarray, np.ndarray]:
+    """Computes Attention(Q, K, V) = softmax(Q @ K.T / sqrt(d_k) + M) @ V."""
+    d_k = q.shape[-1]
+    scores = (q @ k.swapaxes(-2, -1)) / np.sqrt(float(d_k))
+
+    if mask is not None:
+        scores = scores + mask
+
+    weights = softmax(scores, axis=-1)
+    output = weights @ v
+    return output, weights
+
+
+def make_causal_mask(seq_len: int) -&gt; np.ndarray:
+    """Creates upper-triangular additive causal mask with -1e9 for future positions."""
+    mask = np.triu(np.full((seq_len, seq_len), -1e9, dtype=np.float64), k=1)
+    return mask
+
+
+def main() -&gt; None:
+    # 4-token sequence (e.g. ["Inflation", "surged", "above", "target"])
+    seq_len = 4
+    d_model = 8
+    num_heads = 2
+    d_k = d_model // num_heads
+
+    rng = np.random.default_rng(42)
+
+    # Simulated input token embeddings X of shape (seq_len, d_model)
+    x = rng.normal(0.0, 1.0, size=(seq_len, d_model))
+
+    # Projection weight matrices for Multi-Head Attention
+    w_q = rng.normal(0.0, 0.5, size=(d_model, d_model))
+    w_k = rng.normal(0.0, 0.5, size=(d_model, d_model))
+    w_v = rng.normal(0.0, 0.5, size=(d_model, d_model))
+    w_o = rng.normal(0.0, 0.5, size=(d_model, d_model))
+
+    q = x @ w_q
+    k = x @ w_k
+    v = x @ w_v
+
+    # Reshape into 2 heads: (num_heads, seq_len, d_k)
+    q_heads = q.reshape(seq_len, num_heads, d_k).swapaxes(0, 1)
+    k_heads = k.reshape(seq_len, num_heads, d_k).swapaxes(0, 1)
+    v_heads = v.reshape(seq_len, num_heads, d_k).swapaxes(0, 1)
+
+    causal_mask = make_causal_mask(seq_len)
+
+    # 1. Unmasked Bidirectional Attention (e.g. BERT encoder)
+    _out_unmasked, _weights_unmasked = scaled_dot_product_attention(q_heads, k_heads, v_heads, mask=None)
+
+    # 2. Causal Autoregressive Attention (e.g. GPT decoder)
+    out_causal, weights_causal = scaled_dot_product_attention(q_heads, k_heads, v_heads, mask=causal_mask)
+
+    print(f"Sequence length: {seq_len} tokens")
+    print(f"Model dimension: {d_model} (Heads: {num_heads}, Head dimension d_k: {d_k})")
+
+    # Inspect Head 0 causal attention weight matrix
+    h0_causal_weights = weights_causal[0]
+    print("\n--- Head 0 Causal Attention Weight Matrix (GPT-style Decoder) ---")
+    for row_idx in range(seq_len):
+        row_str = "  ".join(f"{h0_causal_weights[row_idx, col]:.4f}" for col in range(seq_len))
+        print(f"Token {row_idx}: [{row_str}]")
+
+    # Invariants verification
+    row_sums = np.sum(h0_causal_weights, axis=-1)
+    future_leakage = float(np.sum(np.triu(h0_causal_weights, k=1)))
+
+    print(f"\nRow sums (probabilistic normalization): {np.round(row_sums, 4)}")
+    print(f"Total future position attention weight (Causal Leakage Check): {future_leakage:.8f}")
+
+    # Concatenate heads and project output
+    concat_causal = out_causal.swapaxes(0, 1).reshape(seq_len, d_model)
+    final_output = concat_causal @ w_o
+    print(f"Final Multi-Head Attention output shape: {final_output.shape}")
+    print(f"Final output norm per token: {np.round(np.linalg.norm(final_output, axis=1), 4)}")
+    print("Verification Invariant: Causal attention strictly eliminates information leakage from j &gt; i.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Sequence length: 4 tokens
+Model dimension: 8 (Heads: 2, Head dimension d_k: 4)
+
+--- Head 0 Causal Attention Weight Matrix (GPT-style Decoder) ---
+Token 0: [1.0000  0.0000  0.0000  0.0000]
+Token 1: [0.3895  0.6105  0.0000  0.0000]
+Token 2: [0.2666  0.3079  0.4255  0.0000]
+Token 3: [0.2949  0.1362  0.3375  0.2314]
+
+Row sums (probabilistic normalization): [1. 1. 1. 1.]
+Total future position attention weight (Causal Leakage Check): 0.00000000
+Final Multi-Head Attention output shape: (4, 8)
+Final output norm per token: [4.5119 3.5305 2.1581 2.4126]
+Verification Invariant: Causal attention strictly eliminates information leakage from j &gt; i.</pre>
+          <p class="interpretation">The experiment confirms that every row in the causal attention weight matrix sums to exactly 1.0, while the total future position attention weight is 0.00000000, proving zero sequential forward leakage.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4">4. Where the Canon Breaks</h2>
+        <p>While the transformer architecture dominates natural language processing, its unconstrained application to quantitative finance breaks down in two critical dimensions:</p>
+        <ul>
+          <li><strong>Quadratic Memory Complexity \(\mathcal{O}(n^2)\):</strong> Standard self-attention requires materializing and storing an \(n \times n\) attention matrix. In full SEC Form 10-K filings containing 50,000 to 100,000 tokens, \(n^2\) operations exceed GPU memory limits, requiring chunking or linear attention approximations.</li>
+          <li><strong>Permutation Invariance without Positional Encodings:</strong> Raw self-attention is strictly permutation equivariant: shuffling the order of input tokens permutes the output rows identically. Without explicit positional encodings (sinusoidal or learned), self-attention cannot distinguish between "revenue grew before cost increased" versus "cost increased before revenue grew".</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5">5. Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Self-attention inherently understands the chronological timeline of events described in a text.</p>
+            <p class="right">Self-attention is mathematically set-based and permutation equivariant. Chronological order is injected solely through added positional encoding vectors \(\mathbf{X} + \mathbf{P}\) or causal triangular masking.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Bidirectional attention (such as BERT) can be applied safely to autoregressive return forecasting.</p>
+            <p class="right">Bidirectional attention allows token \(i\) to attend to tokens \(j > i\). In temporal text streams (e.g. daily news or transcript feeds), this leaks future disclosures into historical states, generating catastrophic lookahead bias.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">High attention weights indicate that a specific word is economically responsible for the model's return prediction.</p>
+            <p class="right">Jain &amp; Wallace (2019) prove that attention weights do not correspond to feature importance. Multi-layer nonlinear projections and residual connections decouple attention maps from marginal causal attribution.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6">6. Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-L05-mech-1">
+            <p class="prompt">Let head dimension be \(d_k = 64\). If query \(\mathbf{q}\) and key \(\mathbf{k}\) have unscaled inner product \(\mathbf{q}^\top \mathbf{k} = 32.0\), calculate the scaled dot-product logit \(\frac{\mathbf{q}^\top \mathbf{k}}{\sqrt{d_k}}\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The scaling factor is \(\sqrt{d_k} = \sqrt{64} = 8.0\). The scaled logit is \(\frac{32.0}{8.0} = 4.0\). Scaling prevents the raw logit (32.0) from saturating the softmax function into vanishing gradient regimes.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-mech-2">
+            <p class="prompt">In a 3-token sequence with scaled logits matrix \(\mathbf{S} = \begin{bmatrix} 2.0 & 1.0 & 0.0 \\ 1.0 & 3.0 & 2.0 \\ 0.0 & 1.0 & 4.0 \end{bmatrix}\), apply the causal mask \(\mathbf{M}\) and compute the unnormalized exponentiated weights \(\exp(\mathbf{S} + \mathbf{M})\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The causal mask sets entries with \(j > i\) to \(-\infty\), where \(\exp(-\infty) = 0\). For row 1 (\(i=1\)): \([e^2, 0, 0] \approx [7.3891, 0, 0]\). For row 2 (\(i=2\)): \([e^1, e^3, 0] \approx [2.7183, 20.0855, 0]\). For row 3 (\(i=3\)): \([e^0, e^1, e^4] \approx [1.0, 2.7183, 54.5982]\). Future positions receive exactly zero weight.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-mech-3">
+            <p class="prompt">A Transformer model has model dimension \(d_{\text{model}} = 512\) and uses \(h = 8\) attention heads. Calculate the head dimension \(d_k = d_{\text{model}} / h\) and the total number of parameters in the four projection matrices \(\mathbf{W}^Q, \mathbf{W}^K, \mathbf{W}^V, \mathbf{W}^O\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Head dimension is \(d_k = \frac{512}{8} = 64\). Each of \(\mathbf{W}^Q, \mathbf{W}^K, \mathbf{W}^V, \mathbf{W}^O\) has dimensions \(d_{\text{model}} \times d_{\text{model}} = 512 \times 512 = 262,144\) parameters. Total parameters across all four matrices is \(4 \times 262,144 = 1,048,576\) parameters (\(\approx 1.05 \times 10^6\)).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p-L05-proof-1">
+            <p class="prompt">Prove that raw self-attention \(\operatorname{Attention}(\mathbf{X}) = \operatorname{Softmax}\left(\frac{\mathbf{X}\mathbf{W}^Q (\mathbf{X}\mathbf{W}^K)^\top}{\sqrt{d_k}}\right) \mathbf{X}\mathbf{W}^V\) is permutation equivariant with respect to row permutations of input matrix \(\mathbf{X}\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Let \(\mathbf{P} \in \{0, 1\}^{n \times n}\) be a permutation matrix satisfying \(\mathbf{P}^\top \mathbf{P} = \mathbf{I}\). Let \(\tilde{\mathbf{X}} = \mathbf{P} \mathbf{X}\). Queries and keys transform as \(\tilde{\mathbf{Q}} = \mathbf{P} \mathbf{Q}\) and \(\tilde{\mathbf{K}} = \mathbf{P} \mathbf{K}\). The attention logits are \(\frac{\tilde{\mathbf{Q}} \tilde{\mathbf{K}}^\top}{\sqrt{d_k}} = \frac{\mathbf{P} \mathbf{Q} \mathbf{K}^\top \mathbf{P}^\top}{\sqrt{d_k}}\). Because softmax applies row-wise, \(\operatorname{Softmax}(\mathbf{P} \mathbf{A} \mathbf{P}^\top) = \mathbf{P} \operatorname{Softmax}(\mathbf{A}) \mathbf{P}^\top\). Multiplying by \(\tilde{\mathbf{V}} = \mathbf{P} \mathbf{V}\) gives \(\mathbf{P} \operatorname{Softmax}(\mathbf{A}) \mathbf{P}^\top \mathbf{P} \mathbf{V} = \mathbf{P} \operatorname{Softmax}(\mathbf{A}) \mathbf{I} \mathbf{V} = \mathbf{P} \operatorname{Attention}(\mathbf{X})\), proving permutation equivariance.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-proof-2">
+            <p class="prompt">Prove that sinusoidal positional encodings \(\text{PE}_{(pos, 2i)} = \sin(pos / 10000^{2i/d})\), \(\text{PE}_{(pos, 2i+1)} = \cos(pos / 10000^{2i/d})\) permit the model to learn linear relative shifts \(\text{PE}_{pos + k} = \mathbf{M}_k \text{PE}_{pos}\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>By standard trigonometric angle-addition formulas: \(\sin(\omega (pos + k)) = \sin(\omega pos) \cos(\omega k) + \cos(\omega pos) \sin(\omega k)\) and \(\cos(\omega (pos + k)) = \cos(\omega pos) \cos(\omega k) - \sin(\omega pos) \sin(\omega k)\). In matrix form, for each 2D frequency block \(\omega_i = 10000^{-2i/d}\): \(\begin{bmatrix} \text{PE}_{(pos+k, 2i)} \\ \text{PE}_{(pos+k, 2i+1)} \end{bmatrix} = \begin{bmatrix} \cos(\omega_i k) & \sin(\omega_i k) \\ -\sin(\omega_i k) & \cos(\omega_i k) \end{bmatrix} \begin{bmatrix} \text{PE}_{(pos, 2i)} \\ \text{PE}_{(pos, 2i+1)} \end{bmatrix}\). The transformation is a block-diagonal rotation matrix \(\mathbf{M}_k\) independent of absolute position \(pos\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-proof-3">
+            <p class="prompt">Prove that under causal masking, the Jacobian of token representation \(\mathbf{h}_i\) with respect to any future input token \(\mathbf{x}_j\) (\(j > i\)) is identically zero.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The output representation for token \(i\) is \(\mathbf{h}_i = \sum_{k=1}^n A_{i,k} \mathbf{v}_k\). Under causal masking, the mask ensures \(A_{i,k} = 0\) for all \(k > i\), so \(\mathbf{h}_i = \sum_{k=1}^i A_{i,k} \mathbf{v}_k\). Since the sum and attention weights \(A_{i,k}\) depend only on keys \(\mathbf{k}_1, \dots, \mathbf{k}_i\) and query \(\mathbf{q}_i\), the function \(\mathbf{h}_i\) is independent of \(\mathbf{x}_j\) for all \(j > i\). Therefore, the partial derivative \(\frac{\partial \mathbf{h}_i}{\partial \mathbf{x}_j} = \mathbf{0}\) for all \(j > i\), proving causal isolation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p-L05-emp-1">
+            <p class="prompt">In Lab 1, why does row 0 of the causal attention matrix contain exactly 1.0 on column 0 and 0.0 on all other columns?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Under causal masking, the first token (\(i=0\)) is masked from attending to any future tokens (\(j=1, 2, 3\)), which receive logits of \(-\infty\). The only unmasked position is \(j=0\). By the softmax normalization constraint \(\sum_{j=0}^{n-1} \sigma_j = 1.0\), the single remaining candidate receives probability \(\frac{e^{s_0}}{e^{s_0}} = 1.0\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-emp-2">
+            <p class="prompt">How does FinBERT (Araci, 2019) outperform general BERT on financial phrase sentiment classification?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>FinBERT continues pretraining on corporate disclosures (10-K, 10-Q, and earnings call transcripts). In financial contexts, general BERT predicts neutral sentiment for phrases like "EBITDA fell 10%", whereas FinBERT's financial domain contextual embeddings correctly classify it as negative distress with over 90% accuracy.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-emp-3">
+            <p class="prompt">What empirical Sharpe ratio failure occurs when fine-tuning a transformer on daily stock returns without an embargo period?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Without an embargo period, the transformer memorizes short-term auto-regressive liquidity noise and post-earnings announcement drift across adjacent folds. In-sample Sharpe ratios exceed 4.0, but out-of-sample performance collapses to negative Sharpe ratios due to lookahead overfitting.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p-L05-res-1">
+            <p class="prompt">Analyze how sparse attention architectures (e.g. Longformer, BigBird) scale transformer context windows to process entire 100-page SEC Form 10-K filings.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Full attention scales quadratically (\(\mathcal{O}(n^2)\)), failing on 50,000-token 10-Ks. Sparse attention decomposes the attention matrix into a sliding local window of size \(w\), dilated strides, and global memory tokens on key financial sections (Balance Sheet, MD&amp;A). This reduces computational complexity to \(\mathcal{O}(n \cdot w)\), enabling single-pass end-to-end filing comprehension.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-res-2">
+            <p class="prompt">Why does fine-tuning a 100M-parameter transformer directly on low-SNR asset returns violate the bias-variance trade-off?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>In financial asset returns where true predictive \(R^2 < 0.02\), an unconstrained 100M-parameter model possesses massive variance capacity \(\frac{P}{N} \sigma_\epsilon^2\). Without aggressive structural inductive biases (e.g. frozen pre-trained weights, low-rank adapters, or massive dropout), the transformer rapidly overfits noise, producing catastrophic generalization failure.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-res-3">
+            <p class="prompt">Explain how attention weights can be audited using counterfactual token masking to verify whether a model relies on genuine financial disclosures versus spuriously correlated metadata.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Researchers systematically mask accounting terms versus company metadata (auditor names, filing dates). If the transformer's predicted return distribution changes significantly when masking auditor names but remains invariant when masking operating earnings, the model has learned spurious historical metadata correlations rather than economic fundamentals.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7">7. Key Results &amp; Verification Matrix</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Transformers replace recurrent sequence loops with parallel multi-head scaled dot-product attention</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><a class="citation" href="#ref-vaswani2017attention" data-target="vaswani2017attention" data-cite="vaswani2017attention" data-locator="pp. 5998–6002">Vaswani et al. (2017)</a></td>
+              </tr>
+              <tr>
+                <td>Scaling dot products by \(1/\sqrt{d_k}\) preserves unit logit variance and prevents softmax gradient vanishing</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 5.1; Problem M1</td>
+              </tr>
+              <tr>
+                <td>Causal upper-triangular masking strictly eliminates attention on future sequence positions (\(j > i\))</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 5.1; Problem P3; Lab 1 (simulation)</td>
+              </tr>
+              <tr>
+                <td>Raw self-attention is strictly permutation equivariant, requiring explicit positional encodings for temporal order</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Problem P1; <a class="citation" href="#ref-vaswani2017attention" data-target="vaswani2017attention" data-cite="vaswani2017attention" data-locator="p. 6002">Vaswani et al. (2017)</a></td>
+              </tr>
+              <tr>
+                <td>Unconstrained fine-tuning of large transformers on low-SNR return data leads to catastrophic variance inflation</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><a class="citation" href="#ref-gu2020empirical" data-target="gu2020empirical" data-cite="gu2020empirical" data-locator="Section 3">Gu, Kelly &amp; Xiu (2020)</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR4" data-page="L05" data-cards="cards.json">
+        <h2 id="s8">8. Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the mathematical definition of scaled dot-product attention?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q1"> <span style="min-width: 0;">\(\operatorname{Softmax}\left(\frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}} + \mathbf{M}\right)\mathbf{V}\)</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span style="min-width: 0;">\(\frac{\mathbf{Q} + \mathbf{K} + \mathbf{V}}{3}\)</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span style="min-width: 0;">\(\mathbf{Q}^\top \mathbf{K} \mathbf{V}\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Definition 5.1, attention is computed by taking the softmax of scaled query-key dot products and multiplying by values.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are query-key dot products divided by the scaling factor \(\sqrt{d_k}\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q2"> <span style="min-width: 0;">To keep logit variance equal to 1.0, preventing softmax saturation into vanishing gradient regions for large \(d_k\).</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span style="min-width: 0;">To convert token representations into integer numbers.</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span style="min-width: 0;">To ensure the attention matrix is orthogonal.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 5.1, the variance of the dot product scales with \(d_k\). Dividing by \(\sqrt{d_k}\) prevents large magnitude logits that saturate softmax.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does a causal upper-triangular mask enforce in an autoregressive sequence model?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q3"> <span style="min-width: 0;">It sets attention weights on future tokens (\(j > i\)) to zero by adding \(-\infty\) to their pre-softmax logits.</span></label>
+              <label class="option"><input type="radio" name="L05q3"> <span style="min-width: 0;">It forces all attention weights to equal 0.5.</span></label>
+              <label class="option"><input type="radio" name="L05q3"> <span style="min-width: 0;">It deletes the first token of every document.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Definition 5.1, setting \(M_{i,j} = -\infty\) for \(j > i\) guarantees that token \(i\) cannot attend to future sequence tokens.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is raw self-attention described as 'permutation equivariant'?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q4"> <span style="min-width: 0;">Because permuting the rows of input matrix \(\mathbf{X}\) permutes the output rows by the exact same permutation.</span></label>
+              <label class="option"><input type="radio" name="L05q4"> <span style="min-width: 0;">Because it only processes sorted vocabularies.</span></label>
+              <label class="option"><input type="radio" name="L05q4"> <span style="min-width: 0;">Because it produces identical scalar outputs for all inputs.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Problem P1, raw self-attention treats inputs as sets, requiring added positional encodings to capture sequence order.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does multi-head attention improve representation learning over single-head attention?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q5"> <span style="min-width: 0;">It allows the model to jointly attend to information from different representation subspaces at different positions.</span></label>
+              <label class="option"><input type="radio" name="L05q5"> <span style="min-width: 0;">It reduces the number of matrix multiplications to zero.</span></label>
+              <label class="option"><input type="radio" name="L05q5"> <span style="min-width: 0;">It guarantees that all training losses reach zero in one epoch.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Different attention heads can focus on different linguistic relationships (e.g. accounting syntax, entity co-occurrence, negation scoping).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What computational complexity bottleneck limits standard self-attention on long 10-K filings?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q6"> <span style="min-width: 0;">Quadratic scaling \(\mathcal{O}(n^2)\) in sequence length \(n\) for memory and computation.</span></label>
+              <label class="option"><input type="radio" name="L05q6"> <span style="min-width: 0;">Logarithmic scaling \(\mathcal{O}(\log n)\).</span></label>
+              <label class="option"><input type="radio" name="L05q6"> <span style="min-width: 0;">Constant time complexity \(\mathcal{O}(1)\).</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Computing pairwise dot products between all \(n\) tokens requires materializing an \(n \times n\) attention matrix, which exceeds GPU memory on 50,000-word filings.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are bidirectional attention architectures (like standard BERT) unsuited for autoregressive return forecasting?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q7"> <span style="min-width: 0;">Because bidirectional attention allows past tokens to attend to future tokens, introducing fatal forward lookahead leakage.</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span style="min-width: 0;">Because BERT cannot be run on Python 3.14.</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span style="min-width: 0;">Because bidirectional matrices have non-real eigenvalues.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Bidirectional models access future tokens in the input sequence, violating chronological causality unless restricted by causal masks.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do attention weights not equate to causal feature importance in financial deep learning?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q8"> <span style="min-width: 0;">Subsequent feedforward layers, residual connections, and non-linearities decouple raw attention maps from marginal output sensitivity.</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span style="min-width: 0;">Attention weights are random numbers that do not sum to 1.</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span style="min-width: 0;">Attention matrices are always singular.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Jain &amp; Wallace (2019) show that multi-layer transformations prevent raw attention weights from serving as faithful explanations of model predictions.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <li data-cite="vaswani2017attention">Vaswani et al. (2017), 'Attention Is All You Need', <em>Advances in Neural Information Processing Systems</em> 30, 5998–6008.</li>
+          <li data-cite="gu2020empirical">Gu, Kelly &amp; Xiu (2020), 'Empirical Asset Pricing via Machine Learning', <em>Review of Financial Studies</em> 33(5), 2223–2273.</li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark lesson complete</button></p>
+    </main>
+  </div>
+</body>
+</html>
