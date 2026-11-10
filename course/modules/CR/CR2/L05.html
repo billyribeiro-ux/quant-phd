@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CR2" data-page="L05" data-hours="9">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CR2 · L05 · Synthetic CDOs &amp; Tranche Pricing</title>
+  <meta name="description" content="Synthetic CDO mechanics, capital structure tranches (equity, mezzanine, senior), cash flow waterfalls, premium and protection legs, and no-arbitrage tranche pricing.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CR2 Credit Derivatives &amp; Correlation</a><span class="sep">›</span>
+      <span>L05 · Synthetic CDOs &amp; Tranche Pricing</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 05 · 9 study hours</p>
+        <h1>Synthetic CDOs &amp; Tranche Pricing</h1>
+        <p class="lede">Capital structure risk tranching, cash flow loss absorption waterfalls, premium and protection leg valuation, the capital structure articulation identity, and tranche correlation sensitivity.</p>
+      </header>
+
+      <p class="why-it-matters">
+        Synthetic Collateralized Debt Obligations (CDOs) transform a portfolio of standardized credit default swaps into a prioritized capital structure of tranched risk. By tranching portfolio credit loss into subordinated layers—Equity [0-3%], Mezzanine [3-7%], Senior [7-10%, 10-15%], and Super Senior [15-30%]—institutions engineered AAA-rated securities from BBB-rated corporate portfolios. Pricing these tranches requires modeling both expected losses and surviving notionals over time using multi-name copula architectures. Understanding tranche mechanics, risk subordination, and the capital structure articulation identity is vital for quantitative credit analysis and post-crisis regulatory oversight.
+      </p>
+
+      <h2 id="cdo-mechanics">1. Architecture of Synthetic Collateralized Debt Obligations</h2>
+      <p>
+        A synthetic Collateralized Debt Obligation is a structured credit instrument whose reference pool consists of a portfolio of single-name <a class="concept" data-concept="credit-default-swap" href="L01.html#def-credit-default-swap">credit default swaps</a>. In standard index tranche trading (such as the CDX North American Investment Grade or iTraxx Europe indices), the reference pool contains \(N = 125\) equally-weighted investment-grade corporate obligors.
+      </p>
+      <p>
+        Rather than issuing debt to purchase physical cash bonds (as in a cash CDO), a synthetic CDO relies on bilateral derivative contracts. The Special Purpose Vehicle (SPV) sells protection on the 125 underlying reference obligors, collecting index premium cash flows, and simultaneously buys protection by issuing tranched claims to investors.
+      </p>
+
+      <div class="block definition" id="def-cdo-tranche-block">
+        <span class="block-title claim" data-grade="A" data-cite="okane2008modelling" data-locator="Chapter 7, pp. 165-172">Definition 5.1 (CDO Tranche)</span>
+        <p>
+          A <dfn id="def-cdo-tranche" data-concept="cdo-tranche">CDO tranche</dfn> is a derivative contract defined on a reference credit portfolio that absorbs cumulative portfolio default losses within a specified interval \([K_1, K_2]\), where \(0 \le K_1 < K_2 \le 1\):
+        </p>
+        <ul>
+          <li>\(K_1\) is the <strong>attachment point</strong>: the lower loss threshold below which the tranche suffers no principal writedown. Losses below \(K_1\) are fully absorbed by more junior subordinated tranches.</li>
+          <li>\(K_2\) is the <strong>detachment point</strong>: the upper loss threshold at which the tranche principal is completely exhausted (100% loss). Losses exceeding \(K_2\) are passed directly to more senior tranches.</li>
+          <li>\(\Delta K = K_2 - K_1\) is the <strong>tranche width</strong> or tranche thickness.</li>
+        </ul>
+      </div>
+
+      <p>
+        The standardized capital structure segmentation for the 125-name CDX North American Investment Grade index is established by standard market convention:
+      </p>
+      <ul>
+        <li><strong>Equity Tranche [0% – 3%]:</strong> Thickness 3%. Absorbs the first 3% of cumulative portfolio default losses. Most vulnerable to early defaults, offering the highest coupon yield.</li>
+        <li><strong>Junior Mezzanine [3% – 7%]:</strong> Thickness 4%. Attaches only after equity is wiped out.</li>
+        <li><strong>Senior Mezzanine [7% – 10%]:</strong> Thickness 3%. Attaches after 7% cumulative portfolio loss.</li>
+        <li><strong>Senior Tranche [10% – 15%]:</strong> Thickness 5%. High investment-grade subordination.</li>
+        <li><strong>Super Senior Tranche [15% – 30%]:</strong> Thickness 15%. Historically perceived as virtually risk-free, carrying AAA credit ratings.</li>
+        <li><strong>Residual Senior Tail [30% – 100%]:</strong> Thickness 70%. Retained by the structuring desk or unhedged.</li>
+      </ul>
+
+      <h2 id="tranche-loss-math">2. Mathematical Formulation of the Tranche Loss Function</h2>
+      <p>
+        Let \(L(t) \in [0, 1 - R]\) represent the cumulative fractional credit loss of the underlying reference portfolio at time \(t \ge 0\):
+      </p>
+      \[
+      L(t) = \sum_{i=1}^N w_i (1 - R_i) \mathbf{1}_{\{\tau_i \le t\}}
+      \]
+      <p>
+        where \(w_i\) is the notional weight of obligor \(i\) (\(\sum w_i = 1\)), \(R_i\) is its recovery rate, and \(\tau_i\) is its default time.
+      </p>
+
+      <div class="block theorem" id="thm-tranche-loss">
+        <span class="block-title claim" data-grade="T">Theorem 5.1 (Tranche Loss Function)</span>
+        <p>
+          For a tranche defined by attachment point \(K_1\) and detachment point \(K_2\), the cumulative fractional loss of the tranche \(L_{[K_1, K_2]}(t) \in [0, 1]\) at time \(t\) is given by:
+        </p>
+        \[
+        L_{[K_1, K_2]}(t) = \frac{\max\left(0, \min(L(t), K_2) - K_1\right)}{K_2 - K_1}
+        \]
+        <p>
+          The outstanding surviving notional fraction of the tranche is:
+        </p>
+        \[
+        N_{[K_1, K_2]}(t) = 1 - L_{[K_1, K_2]}(t)
+        \]
+      </div>
+
+      <p>
+        Notice that the tranche loss function exhibits three piecewise linear operating regimes:
+      </p>
+      \[
+      L_{[K_1, K_2]}(t) = \begin{cases}
+      0 & \text{if } L(t) \le K_1 \\
+      \frac{L(t) - K_1}{K_2 - K_1} & \text{if } K_1 < L(t) < K_2 \\
+      1 & \text{if } L(t) \ge K_2
+      \end{cases}
+      \]
+      <p>
+        Because the function \(\max(0, \min(x, K_2) - K_1)\) can be rewritten as \(\max(0, x - K_1) - \max(0, x - K_2)\), a CDO tranche is mathematically isomorphic to a <strong>call spread</strong> on portfolio credit loss! Buying protection on tranche \([K_1, K_2]\) is equivalent to buying a call option on cumulative portfolio loss with strike \(K_1\) and selling a call option with strike \(K_2\).
+      </p>
+
+      <h2 id="articulation-identity">3. The Capital Structure Articulation Identity</h2>
+      <p>
+        A fundamental mathematical property of structured credit is the conservation of portfolio loss across the tranches.
+      </p>
+
+      <div class="block theorem" id="thm-articulation">
+        <span class="block-title claim" data-grade="T">Theorem 5.2 (Capital Structure Articulation Identity)</span>
+        <p>
+          Let the entire capital structure \([0, 1]\) be partitioned into \(J\) non-overlapping, contiguous tranches with boundary points \(0 = K_0 < K_1 < K_2 < \dots < K_J = 1\). Then for any realized portfolio loss \(L(t) \in [0, 1]\):
+        </p>
+        \[
+        \sum_{j=1}^J (K_j - K_{j-1}) L_{[K_{j-1}, K_j]}(t) = L(t) \quad \text{identically.}
+        \]
+        <p>
+          Consequently, taking mathematical expectations under the pricing measure \(\mathbb{Q}\):
+        </p>
+        \[
+        \sum_{j=1}^J (K_j - K_{j-1}) \mathbb{E}\left[L_{[K_{j-1}, K_j]}(t)\right] = \mathbb{E}[L(t)] = (1 - R) p(t)
+        \]
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>
+          By definition of the tranche loss function:
+        </p>
+        \[
+        (K_j - K_{j-1}) L_{[K_{j-1}, K_j]}(t) = \max\left(0, \min(L(t), K_j) - K_{j-1}\right)
+        \]
+        <p>
+          Suppose the realized portfolio loss falls in bucket \(k\), such that \(K_{k-1} \le L(t) < K_k\). Then:
+        </p>
+        <ol>
+          <li>For all junior tranches \(j < k\), \(L(t) \ge K_j\), so \(\min(L(t), K_j) - K_{j-1} = K_j - K_{j-1}\).</li>
+          <li>For the attaching tranche \(j = k\), \(K_{k-1} \le L(t) < K_k\), so \(\min(L(t), K_k) - K_{k-1} = L(t) - K_{k-1}\).</li>
+          <li>For all senior tranches \(j > k\), \(L(t) \le K_{j-1}\), so \(\max(0, \min(L(t), K_j) - K_{j-1}) = 0\).</li>
+        </ol>
+        <p>
+          Summing over all tranches \(j = 1, \dots, J\):
+        </p>
+        \[
+        \sum_{j=1}^J (K_j - K_{j-1}) L_{[K_{j-1}, K_j]}(t) = \sum_{j=1}^{k-1} (K_j - K_{j-1}) + \left(L(t) - K_{k-1}\right) + \sum_{j=k+1}^J 0
+        \]
+        <p>
+          The first sum is a telescoping series: \(\sum_{j=1}^{k-1} (K_j - K_{j-1}) = K_{k-1} - K_0 = K_{k-1}\). Substituting:
+        </p>
+        \[
+        K_{k-1} + L(t) - K_{k-1} = L(t)
+        \]
+        <p>
+          This equality holds identically for every realization of \(L(t)\). Taking expectations on both sides completes the proof.
+        </p>
+      </div>
+
+      <p>
+        <strong>Operational Significance:</strong> This identity guarantees that structuring cannot create or destroy credit losses. The total dollar default loss suffered by all tranche investors combined must exactly equal the total dollar default loss of the underlying bond portfolio.
+      </p>
+
+      <h2 id="pricing-legs">4. Valuation of Premium and Protection Legs</h2>
+      <p>
+        Like a single-name CDS, a CDO tranche contract consists of two legs exchanged between the protection buyer and protection seller.
+      </p>
+
+      <h3 id="protection-leg">Protection Leg Valuation</h3>
+      <p>
+        The protection seller compensates the protection buyer for incremental principal writedowns as losses occur. Discretizing time into payment periods \([t_{k-1}, t_k]\) (\(k = 1, \dots, M\)):
+      </p>
+      \[
+      \text{ProtPV} = \sum_{k=1}^M D(t_k^*) \left( \mathbb{E}\left[L_{[K_1, K_2]}(t_k)\right] - \mathbb{E}\left[L_{[K_1, K_2]}(t_{k-1})\right] \right)
+      \]
+      <p>
+        where \(D(t_k^*) = e^{-r t_k^*}\) is the risk-free discount factor evaluated at the midpoint \(t_k^* = \frac{t_{k-1} + t_k}{2}\).
+      </p>
+
+      <h3 id="premium-leg">Premium Leg Valuation</h3>
+      <p>
+        The protection buyer pays a periodic coupon spread on the remaining outstanding tranche notional. On payment date \(t_k\), the surviving notional is \(1 - L_{[K_1, K_2]}(t_k)\). Approximating the average surviving notional across period \(k\) by \(\bar{N}_k = 1 - \frac{\mathbb{E}[L(t_{k-1})] + \mathbb{E}[L(t_k)]}{2}\):
+      </p>
+      \[
+      \text{PremPV} = \sum_{k=1}^M \Delta t_k D(t_k) \left( 1 - \frac{\mathbb{E}\left[L_{[K_1, K_2]}(t_{k-1})\right] + \mathbb{E}\left[L_{[K_1, K_2]}(t_k)\right]}{2} \right)
+      \]
+
+      <h3 id="breakeven-par-spread">Break-Even Par Tranche Spread</h3>
+      <p>
+        The break-even par spread \(S_{[K_1, K_2]}\) is the annual running spread that equates the present value of the premium leg to the protection leg:
+      </p>
+      \[
+      S_{[K_1, K_2]} = \frac{\text{ProtPV}}{\text{PremPV}}
+      \]
+
+      <div class="block tip">
+        <span class="block-title claim" data-grade="A" data-cite="hull2021options" data-locator="Chapter 25, pp. 556-558">Market Quoting Conventions</span>
+        <p>
+          In standard credit markets:
+        </p>
+        <ul>
+          <li><strong>Mezzanine and Senior Tranches ([3-7%], [7-10%], [10-15%], [15-30%]):</strong> Quoted as a running par spread in basis points per year with zero upfront payment.</li>
+          <li><strong>Equity Tranches ([0-3%]):</strong> Because the par spread would exceed \(2,000\) to \(3,000\text{ bp}\) (creating massive default risk on running premium payments), equity tranches are quoted with a <em>fixed running coupon of 500 bp</em> plus an <strong>upfront fee</strong>:
+            \[
+            \text{Upfront Fee} = \text{ProtPV} - 0.05 \times \text{PremPV}
+            \]
+            expressed as a percentage of initial tranche notional.
+          </li>
+        </ul>
+      </div>
+
+      <h2 id="lab-section">5. Computational Lab: CDO Capital Structure Valuation</h2>
+      <p>
+        The following lab prices the complete standard CDX NA IG capital structure under the <a class="concept" data-concept="one-factor-gaussian-copula" href="L04.html#def-one-factor-gaussian-copula">one-factor Gaussian copula</a> using Gauss-Legendre quadrature. It calculates expected losses, protection leg PV, premium leg PV, par spreads, and verifies the capital structure articulation identity:
+      </p>
+
+      <section class="lab" id="lab-CR2-L05-1" data-runtime="python">
+        <h3>Lab 5: Synthetic CDO Capital Structure Valuation &amp; Articulation Identity</h3>
+        <p class="hypothesis">Hypothesis: The capital structure articulation identity holds exactly across standard CDO tranches, such that the thickness-weighted sum of tranche expected losses equals total portfolio expected loss (1 - R) * p identically.</p>
+        <pre class="code-block"><code class="language-python" data-run>"""Lab CR2-L05-1: Synthetic CDO tranche pricing across the capital structure under one-factor Gaussian copula.
+
+Calculates tranche expected loss, risky premium duration, default protection leg,
+break-even par spreads, and verifies the tranche portfolio articulation identity.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+from scipy import stats
+
+
+def calc_tranche_expected_loss(
+    k1: float,
+    k2: float,
+    p: float,
+    recovery: float,
+    rho: float,
+    num_points: int = 80,
+) -&gt; float:
+    """Compute expected loss percentage for tranche [k1, k2] under Gaussian copula."""
+    if p &lt;= 1e-12:
+        return 0.0
+    nodes, weights = np.polynomial.legendre.leggauss(num_points)
+    m = nodes * 5.0
+    wm = weights * 5.0
+    inv_p = float(stats.norm.ppf(p))
+    sigma_idio = math.sqrt(max(1e-10, 1.0 - rho))
+    cond_p = stats.norm.cdf((inv_p - math.sqrt(rho) * m) / sigma_idio)
+    loss = (1.0 - recovery) * cond_p
+    tranche_loss = np.maximum(0.0, np.minimum(loss, k2) - k1) / (k2 - k1)
+    return float(np.sum(tranche_loss * stats.norm.pdf(m) * wm))
+
+
+def main() -&gt; None:
+    # Portfolio and market parameters
+    tenor = 5.0
+    coupon_freq = 4
+    dt = 1.0 / coupon_freq
+    r = 0.03
+    p_5y = 0.05
+    recovery = 0.40
+    rho = 0.20
+
+    tranches = [
+        ("Equity", 0.0, 0.03),
+        ("Junior Mezz", 0.03, 0.07),
+        ("Senior Mezz", 0.07, 0.10),
+        ("Senior", 0.10, 0.15),
+        ("Super Senior", 0.15, 0.30),
+    ]
+
+    times = [(k + 1) * dt for k in range(round(tenor * coupon_freq))]
+
+    print("Synthetic CDO Capital Structure Valuation (5Y, p=5.0%, R=40%, rho=20%, r=3%):")
+    print("  Tranche Name   | Attachment-Detachment | Expected Loss | Prot Leg PV | Prem Leg PV | Par Spread")
+    print("-----------------+-----------------------+---------------+-------------+-------------+------------")
+
+    weighted_loss_sum = 0.0
+
+    for name, k1, k2 in tranches:
+        # Time-profile of losses
+        period_losses = [0.0]
+        for tk in times:
+            p_k = p_5y * (tk / tenor)
+            period_losses.append(calc_tranche_expected_loss(k1, k2, p_k, recovery, rho))
+
+        prem_pv = 0.0
+        prot_pv = 0.0
+        for k, tk in enumerate(times):
+            t_prev = times[k - 1] if k &gt; 0 else 0.0
+            df_k = math.exp(-r * tk)
+            df_mid = math.exp(-r * 0.5 * (t_prev + tk))
+            surv_avg = 1.0 - 0.5 * (period_losses[k] + period_losses[k + 1])
+            prem_pv += dt * df_k * surv_avg
+            prot_pv += df_mid * (period_losses[k + 1] - period_losses[k])
+
+        par_spread_bps = (prot_pv / max(1e-10, prem_pv)) * 10000.0
+        final_loss = period_losses[-1]
+        width = k2 - k1
+        weighted_loss_sum += width * final_loss
+
+        if k1 == 0.0:
+            # Equity tranche market quote: 500 bp running + upfront fee
+            upfront_fee_pct = (prot_pv - 0.05 * prem_pv) * 100.0
+            quote_str = f"500 bp + {upfront_fee_pct:5.2f}%"
+        else:
+            quote_str = f"{par_spread_bps:6.1f} bp"
+
+        print(
+            f"  {name:14s} |     {k1 * 100:4.1f}% - {k2 * 100:4.1f}%     |     "
+            f"{final_loss * 100:5.2f}%    |   {prot_pv:7.5f}   |   {prem_pv:7.4f}   | {quote_str}"
+        )
+
+    # Add unhedged senior tail [30%, 100%]
+    final_loss_tail = calc_tranche_expected_loss(0.30, 1.00, p_5y, recovery, rho)
+    weighted_loss_sum += (1.00 - 0.30) * final_loss_tail
+
+    total_portfolio_expected_loss = (1.0 - recovery) * p_5y
+    print("\nCapital Structure Articulation Identity:")
+    print(f"  Sum of Tranche Losses (weighted by tranche width): {weighted_loss_sum * 100:6.4f}%")
+    print(f"  Total Portfolio Expected Loss (1 - R) * p:          {total_portfolio_expected_loss * 100:6.4f}%")
+    discrepancy = abs(weighted_loss_sum - total_portfolio_expected_loss)
+    print(f"  Discrepancy:                                        {discrepancy:1.2e}")
+
+    assert abs(weighted_loss_sum - total_portfolio_expected_loss) &lt; 1e-4
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Synthetic CDO Capital Structure Valuation (5Y, p=5.0%, R=40%, rho=20%, r=3%):
+  Tranche Name   | Attachment-Detachment | Expected Loss | Prot Leg PV | Prem Leg PV | Par Spread
+-----------------+-----------------------+---------------+-------------+-------------+------------
+  Equity         |      0.0% -  3.0%     |     62.71%    |   0.59017   |    2.9510   | 500 bp + 44.26%
+  Junior Mezz    |      3.0% -  7.0%     |     19.52%    |   0.17783   |    4.2988   |  413.7 bp
+  Senior Mezz    |      7.0% - 10.0%     |      6.46%    |   0.05824   |    4.5367   |  128.4 bp
+  Senior         |     10.0% - 15.0%     |      2.20%    |   0.01969   |    4.5994   |   42.8 bp
+  Super Senior   |     15.0% - 30.0%     |      0.23%    |   0.00204   |    4.6233   |    4.4 bp
+
+Capital Structure Articulation Identity:
+  Sum of Tranche Losses (weighted by tranche width): 3.0000%
+  Total Portfolio Expected Loss (1 - R) * p:          3.0000%
+  Discrepancy:                                        1.33e-07</pre>
+        <p class="interpretation">
+          The lab confirms that the thickness-weighted sum of expected tranche losses across the entire capital structure equals exactly 3.0000%, matching (1 - R) * p with a discrepancy of only 1.33e-07. The equity tranche absorbs the brunt of portfolio default risk (62.71% expected loss, quoted at 500 bp + 44.26% upfront fee), while the super senior tranche experiences only 0.23% expected loss (4.4 bp par spread).
+        </p>
+      </section>
+
+      <h2 id="canon-breaks">6. Where the Canon Breaks: Correlation Sensitivity and the Rating Illusion</h2>
+      <p>
+        Prior to the 2008 financial crisis, credit rating agencies (Standard &amp; Poor's, Moody's, Fitch) assigned AAA ratings to super senior [15-30%] and mezzanine repackaged tranches (CDO-squareds) based on one-factor Gaussian copula models calibrated with low historical asset correlations (\(\rho \approx 0.15\) to \(0.20\)).
+      </p>
+
+      <div class="block warning">
+        <span class="block-title claim" data-grade="B" data-cite="okane2008modelling" data-locator="Chapter 9, pp. 225-235">Canon Break 5.1 (The Correlation Sensitivity Paradox)</span>
+        <p>
+          Different tranches across the capital structure exhibit opposing sensitivities to asset correlation \(\rho\):
+        </p>
+        <ul>
+          <li><strong>Equity Tranches ([0-3%]):</strong> <em>Long correlation</em>. When correlation \(\rho \to 1\), all obligors default together or not at all. If no defaults occur (which happens with high probability in normal states), the equity tranche experiences zero losses. As correlation increases, equity tranche expected loss <em>decreases</em>, and its value <em>increases</em>.</li>
+          <li><strong>Senior &amp; Super Senior Tranches ([10-15%], [15-30%]):</strong> <em>Short correlation</em>. When correlation \(\rho \to 0\), portfolio losses are tightly diversified around the 3% mean, never reaching the 10% attachment threshold. The probability of senior tranche loss is virtually zero. But as correlation increases, default clustering widens the tail into senior attachment layers. Senior tranche expected loss <em>increases</em>, and its value <em>drops</em>.</li>
+        </ul>
+        <p>
+          Consequently, a rating agency assuming \(\rho = 0.15\) concluded that super senior tranches had sub-0.01% default risk, justifying AAA ratings. When actual correlation jumped toward 0.50–0.70 during the subprime crisis, senior attachment points were breached, triggering catastrophic downgrades from AAA to junk status within days.
+        </p>
+      </div>
+
+      <div class="block warning">
+        <span class="block-title claim" data-grade="A" data-cite="hull2021options" data-locator="Chapter 25, p. 560">Canon Break 5.2 (The Flaw of a Single Flat Correlation)</span>
+        <p>
+          In a frictionless, complete market, a single structural correlation parameter \(\rho\) should price all tranches of the same portfolio simultaneously. In reality, calibrating the one-factor Gaussian copula to observed market quotes on the equity tranche requires \(\rho \approx 0.12\), while calibrating to the senior mezzanine tranche requires \(\rho \approx 0.35\).
+        </p>
+        <p>
+          A single constant correlation parameter cannot price the capital structure. This breakdown proves that the Gaussian copula is fundamentally misspecified, giving rise to <strong>correlation skew</strong> and the <strong>base correlation smile</strong>.
+        </p>
+      </div>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">A AAA-rated CDO tranche carries the same risk profile as a AAA-rated corporate bond.</p>
+            <p class="why">A corporate AAA bond (such as Microsoft or Johnson &amp; Johnson) has low default probability driven by robust standalone balance sheets and low systematic sensitivity. A AAA CDO tranche is an engineered tail risk derivative: in normal times it never defaults, but during a systemic crisis it suffers catastrophic wipeouts. Its systematic beta and tail risk are vastly higher than a cash AAA corporate bond.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Higher asset correlation increases the risk of every tranche in the capital structure.</p>
+            <p class="why">Higher correlation concentrates losses into extreme all-or-nothing outcomes. While this increases the risk of senior and super senior tranches, it strictly decreases the expected loss of the equity tranche by increasing the probability that zero defaults occur.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">The CDO tranche waterfall eliminates credit risk through structural diversification.</p>
+            <p class="why">Subordination merely redistributes credit loss; by Theorem 5.2 (articulation identity), the total pool loss is preserved. Securitization cannot eliminate portfolio credit risk, it can only shift loss variance between subordinate and senior investors.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem set</h2>
+        <div class="tier" data-tier="mechanics">
+          <div class="problem" id="p-L05-m1">
+            <p class="stem">A synthetic CDO tranche spans attachment point \(K_1 = 3\%\) and detachment point \(K_2 = 7\%\). If the underlying portfolio experiences a cumulative default loss of \(5.5\%\), calculate the tranche fractional loss \(L_{[3\%, 7\%]}\) and the remaining surviving notional fraction.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Tranche thickness is \(K_2 - K_1 = 0.07 - 0.03 = 0.04\) (4%). Portfolio loss exceeds attachment \(K_1\) by \(0.055 - 0.030 = 0.025\) (2.5%). Tranche fractional loss is \(L_{[3\%, 7\%]} = \frac{0.025}{0.040} = 0.625\) (62.5%). The remaining surviving notional fraction is \(N = 1 - 0.625 = 0.375\) (37.5%).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-m2">
+            <p class="stem">For an equity tranche [0% – 3%], the present value of the protection leg is 0.5902 and the present value of the premium leg per unit coupon is 2.9510 years. Under the standard market convention of a 500 bp running coupon, calculate the required upfront fee percentage.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Under the 500 bp convention, running coupon is \(s = 0.0500\). The premium leg generates \(0.0500 \times 2.9510 = 0.14755\). The upfront fee is the shortfall: \(\text{Upfront} = \text{ProtPV} - s \cdot \text{PremPV} = 0.5902 - 0.14755 = 0.44265\) (44.265% of tranche notional).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-m3">
+            <p class="stem">A senior mezzanine tranche [7% – 10%] has protection leg present value 0.05824 and premium leg annuity 4.5367 years. Compute the break-even par spread in basis points.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Par spread is \(S = \frac{\text{ProtPV}}{\text{PremPV}} = \frac{0.05824}{4.5367} \approx 0.0128375\) per year. Converting to basis points gives \(S = 0.0128375 \times 10,000 \approx 128.4\text{ bp}\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <div class="problem" id="p-L05-p1">
+            <p class="stem">Prove that buying protection on tranche \([K_1, K_2]\) with notional \(N_T\) is economically equivalent to buying a portfolio credit loss call option with strike \(K_1\) and writing a portfolio credit loss call option with strike \(K_2\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>A credit loss call option with strike \(K\) pays \(\max(0, L(t) - K)\). A long position in strike \(K_1\) and short position in strike \(K_2\) has net payoff \(\max(0, L(t) - K_1) - \max(0, L(t) - K_2)\). When \(L(t) \le K_1\), both options expire worthless, payoff is 0. When \(K_1 < L(t) \le K_2\), call 1 is in the money while call 2 expires worthless, yielding \(L(t) - K_1\). When \(L(t) > K_2\), payoff is \((L(t) - K_1) - (L(t) - K_2) = K_2 - K_1\). Scaling by \(\frac{1}{K_2 - K_1}\) yields \(\frac{\max(0, \min(L(t), K_2) - K_1)}{K_2 - K_1}\), which is identically the tranche loss function \(L_{[K_1, K_2]}(t)\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-p2">
+            <p class="stem">Prove that the expected loss of the equity tranche [0, \(K\)] is a strictly decreasing function of asset correlation \(\rho\) for small default probabilities \(p < K\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The equity tranche loss is \(L_{[0, K]}(m) = \frac{\min(L(m), K)}{K}\). As correlation \(\rho\) increases, the distribution of systematic factor \(M\) spreads out conditional default probability \(p(m)\). Because \(\min(x, K)\) is a concave function of \(x\), Jensen's inequality implies that mean-preserving spreads in conditional loss \(L(m)\) strictly reduce the expected value \(\mathbb{E}[\min(L(M), K)]\). Since increasing \(\rho\) induces a mean-preserving spread on \(L(m)\) while holding \(\mathbb{E}[L] = (1-R)p\) constant, the expected loss of the equity tranche must strictly decrease with \(\rho\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-p3">
+            <p class="stem">Prove that the break-even par spread of a senior tranche \([K_1, K_2]\) must approach 0 as the attachment point \(K_1 \to 1 - R\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The maximum possible portfolio default loss occurs when 100% of obligors default, delivering fractional loss \(L_{\max} = 1 - R\). If attachment point \(K_1 \ge 1 - R\), then \(\min(L(t), K_2) \le L_{\max} \le K_1\) for all possible states of the world. Consequently, \(\max(0, \min(L(t), K_2) - K_1) = 0\) almost surely. The protection leg present value \(\text{ProtPV}\) is identically zero, and the surviving notional is 100% at all times (\(\text{PremPV} > 0\)). Hence the break-even spread \(S = \frac{0}{\text{PremPV}} = 0\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <div class="problem" id="p-L05-e1">
+            <p class="stem">In the pre-2007 market, the CDX NA IG 5-year index traded at 40 bp, while the equity tranche [0-3%] traded at 500 bp running plus 22% upfront. Reconstruct the implied asset correlation required to match the equity quote and explain why dealer desks ran large long-correlation positions.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>At 40 bp index spread, cumulative 5-year default probability is approximately \(p \approx 3.3\%\). Matching an upfront fee of 22% requires an equity expected loss around 45%, which corresponds to a Gaussian copula asset correlation of \(\rho \approx 0.18\) to \(0.22\). Structuring desks sold mezzanine and senior tranches to pension funds and held the equity tranches (or bought equity protection cheaply). Holding equity tranches generated long correlation exposure, earning massive carry during benign periods but exposing desks to basis dislocations when correlation spiked.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-e2">
+            <p class="stem">Analyze the structural mechanism of "CDO-squared" vehicles. Why did repackaging unsold BBB-rated mezzanine tranches into new CDOs amplify systematic default correlation risk?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>A CDO-squared references mezzanine tranches of underlying CDOs. Mezzanine tranches [3-7%] absorb losses only in severe macro downturns. Repackaging multiple mezzanine tranches creates extreme asset overlap: the underlying pools share the same corporate or subprime obligors. While the structuring models assumed the mezzanine inputs were uncorrelated, in reality their losses were perfectly correlated with the macro cycle. When the housing market turned, all underlying mezzanine tranches attached concurrently, wiping out even senior CDO-squared tranches.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-e3">
+            <p class="stem">Describe how dealer desks delta-hedge CDO tranches against underlying index movements. Why does the tranche delta \(\Delta = \frac{\partial V_{\text{tranche}}}{\partial S_{\text{index}}}\) change non-linearly with spread widening?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Tranche delta measures the sensitivity of tranche value to parallel shifts in index spreads. For a mezzanine tranche [3-7%], delta is initially moderate (e.g., 3x index leverage). As index spreads widen, expected portfolio loss approaches the attachment point (3%), and the tranche's delta surges (gamma risk), forcing desks to sell more index protection to stay hedged. When losses exceed 7%, the tranche is completely written off and its delta drops to zero. This non-linear delta behavior generates severe dynamic hedging feedback during credit sell-offs.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <div class="problem" id="p-L05-r1">
+            <p class="stem">Connect CDO tranche pricing to the credit-spread puzzle in <a class="concept" data-concept="credit-spread-puzzle" href="../../../concepts.html#credit-spread-puzzle">CR1</a>. How does the pricing of super senior tranches [15-30%] demonstrate that credit risk premia are disproportionately concentrated in systemic catastrophe states?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Super senior tranches attach only when portfolio losses exceed 15%, an event requiring more than 25 simultaneous defaults in a 125-name pool. The physical probability of such an event under \(\mathbb{P}\) is near zero. Yet the market demands a non-zero risk premium (e.g. 5 to 15 bp) to hold super senior risk. Because this payout occurs only when the marginal utility of wealth is extraordinarily high (systemic collapse), the risk-neutral probability \(\mathbb{Q}\) is orders of magnitude higher than \(\mathbb{P}\). This demonstrates that the credit-spread puzzle is primarily an extreme tail risk premium rather than compensation for expected default.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-r2">
+            <p class="stem">Evaluate the role of the capital structure articulation identity in regulatory bank stress testing. How can supervisors use Theorem 5.2 to audit dealer CDO book risk without running proprietary copula models?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>By Theorem 5.2, \(\sum_j (K_j - K_{j-1}) \mathbb{E}[L_j] = \mathbb{E}[L_{\text{portfolio}}]\). Regardless of the internal copula model, correlation assumptions, or numerical integration schemes used by individual trading desks, the thickness-weighted expected losses reported across all tranches must sum exactly to the portfolio expected loss \((1 - R)p\). Regulators can use this linear invariant as a global consistency filter: any internal model where the sum of tranche losses diverges from aggregate portfolio expected loss violates basic probability conservation.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-r3">
+            <p class="stem">Formulate the tranche pricing problem under a dynamic intensity-based jump process (Duffie &amp; Gârleanu 2001). How does replacing a static copula with correlated default intensity jumps alter tranche spread dynamics?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>In dynamic intensity models, each obligor's default intensity is governed by \(\lambda_i(t) = \lambda_0(t) + X_i(t) + J_i(t)\), where common jump processes \(J(t)\) trigger simultaneous credit rating downgrades or joint defaults. Unlike the static copula, dynamic jump processes allow default timing to be endogenous and correlated across time, generating non-zero instantaneous default contagion. This produces realistic term structures of tranche spreads and captures the time-variation of correlation risk during credit cycles.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key results</h2>
+        <div class="table-wrap"><table class="key-results">
+          <thead>
+            <tr>
+              <th scope="col">Claim / Formula</th>
+              <th scope="col">Evidence Grade</th>
+              <th scope="col">Basis / Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Tranche loss function: \(L_{[K_1, K_2]}(t) = \frac{\max(0, \min(L(t), K_2) - K_1)}{K_2 - K_1}\); mathematically equivalent to a call spread on portfolio loss.</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>Theorem 5.1</td>
+            </tr>
+            <tr>
+              <td>Capital structure articulation identity: \(\sum_{j=1}^J (K_j - K_{j-1}) \mathbb{E}[L_j(t)] = \mathbb{E}[L(t)] = (1 - R) p(t)\) identically across all tranches.</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>Theorem 5.2</td>
+            </tr>
+            <tr>
+              <td>CDO capital structure segmentation: Equity [0-3%], Junior Mezz [3-7%], Senior Mezz [7-10%], Senior [10-15%], Super Senior [15-30%].</td>
+              <td><span class="grade-tag grade-a">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="okane2008modelling" data-locator="Chapter 7">okane2008modelling</span></td>
+            </tr>
+            <tr>
+              <td>Break-even par tranche spread: \(S_{[K_1, K_2]} = \frac{\text{ProtPV}}{\text{PremPV}}\); equity tranches quoted as 500 bp running plus upfront fee.</td>
+              <td><span class="grade-tag grade-a">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="hull2021options" data-locator="Chapter 25">hull2021options</span></td>
+            </tr>
+            <tr>
+              <td>Correlation sensitivity paradox: Equity tranche is long correlation (\(\frac{\partial \text{Loss}}{\partial \rho} < 0\)); senior tranches are short correlation (\(\frac{\partial \text{Loss}}{\partial \rho} > 0\)).</td>
+              <td><span class="grade-tag grade-b">B</span></td>
+              <td><span class="claim" data-grade="B" data-cite="okane2008modelling" data-locator="Chapter 9">okane2008modelling</span></td>
+            </tr>
+            <tr>
+              <td>A single flat correlation parameter cannot price all capital structure tranches simultaneously, necessitating correlation skew modeling.</td>
+              <td><span class="grade-tag grade-b">B</span></td>
+              <td><span class="claim" data-grade="B" data-cite="li2000default" data-locator="Section 4">li2000default</span></td>
+            </tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CR2" data-page="L05">
+        <h2 id="h-quiz">Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc" id="q-l05-01">
+            <p class="stem">What happens to a CDO tranche with attachment point 3% and detachment point 7% if cumulative portfolio credit loss reaches 2.5%?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql5_1"> <span style="min-width: 0;">The tranche suffers 0% loss because portfolio loss has not breached the 3% attachment point.</span></label>
+              <label class="option"><input type="radio" name="ql5_1"> <span style="min-width: 0;">The tranche loses 2.5% of its principal.</span></label>
+              <label class="option"><input type="radio" name="ql5_1"> <span style="min-width: 0;">The tranche is completely wiped out.</span></label>
+              <label class="option"><input type="radio" name="ql5_1"> <span style="min-width: 0;">The tranche coupon doubles.</span></label>
+            </fieldset>
+            <div class="explain">All portfolio losses below the 3% attachment point are fully absorbed by the subordinate equity tranche [0-3%].</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l05-02">
+            <p class="stem">What financial derivative combination has an identical payoff profile to a CDO tranche \([K_1, K_2]\) written on portfolio credit loss?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql5_2"> <span style="min-width: 0;">A bull call spread on cumulative portfolio loss (long call strike \(K_1\), short call strike \(K_2\)).</span></label>
+              <label class="option"><input type="radio" name="ql5_2"> <span style="min-width: 0;">A straddle on the risk-free rate.</span></label>
+              <label class="option"><input type="radio" name="ql5_2"> <span style="min-width: 0;">A forward contract on the S&amp;P 500 index.</span></label>
+              <label class="option"><input type="radio" name="ql5_2"> <span style="min-width: 0;">A butterfly spread on bond yields.</span></label>
+            </fieldset>
+            <div class="explain">\(\max(0, \min(L, K_2) - K_1) = \max(0, L - K_1) - \max(0, L - K_2)\), which is exactly a call spread.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l05-03">
+            <p class="stem">What does the capital structure articulation identity (Theorem 5.2) state?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql5_3"> <span style="min-width: 0;">The sum of tranche losses weighted by their respective thicknesses equals the total portfolio loss identically.</span></label>
+              <label class="option"><input type="radio" name="ql5_3"> <span style="min-width: 0;">All tranches have identical par spreads.</span></label>
+              <label class="option"><input type="radio" name="ql5_3"> <span style="min-width: 0;">Tranche loss is independent of recovery rates.</span></label>
+              <label class="option"><input type="radio" name="ql5_3"> <span style="min-width: 0;">The equity tranche always experiences 100% loss.</span></label>
+            </fieldset>
+            <div class="explain">Telescoping the piecewise linear tranche intervals proves that tranche losses perfectly reconstruct aggregate portfolio loss in every state.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l05-04">
+            <p class="stem">How are standard CDX NA IG equity tranches [0% – 3%] quoted in the professional credit derivative market?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql5_4"> <span style="min-width: 0;">A fixed running coupon of 500 bp plus an upfront fee as a percentage of notional.</span></label>
+              <label class="option"><input type="radio" name="ql5_4"> <span style="min-width: 0;">A pure running par spread with zero upfront payment.</span></label>
+              <label class="option"><input type="radio" name="ql5_4"> <span style="min-width: 0;">A discount bond price below par.</span></label>
+              <label class="option"><input type="radio" name="ql5_4"> <span style="min-width: 0;">A floating spread over 3-month SOFR.</span></label>
+            </fieldset>
+            <div class="explain">To mitigate extreme credit risk on running coupon payments, equity tranches trade with a standardized 500 bp running coupon and an upfront cash fee.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l05-05">
+            <p class="stem">When asset correlation \(\rho\) increases toward 1.0, what happens to the expected loss of the equity tranche [0% – 3%], assuming portfolio expected loss is held constant?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql5_5"> <span style="min-width: 0;">The expected loss of the equity tranche decreases (equity is long correlation).</span></label>
+              <label class="option"><input type="radio" name="ql5_5"> <span style="min-width: 0;">The expected loss of the equity tranche increases to 100%.</span></label>
+              <label class="option"><input type="radio" name="ql5_5"> <span style="min-width: 0;">The expected loss remains completely unaffected.</span></label>
+              <label class="option"><input type="radio" name="ql5_5"> <span style="min-width: 0;">The equity tranche converts into a risk-free bond.</span></label>
+            </fieldset>
+            <div class="explain">Higher correlation concentrates outcomes: either no defaults happen or all firms default. Zero-default scenarios benefit the equity tranche, lowering its expected loss.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l05-06">
+            <p class="stem">Why are senior and super senior CDO tranches described as "short correlation"?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql5_6"> <span style="min-width: 0;">Higher correlation increases the probability of extreme joint defaults that breach senior attachment points.</span></label>
+              <label class="option"><input type="radio" name="ql5_6"> <span style="min-width: 0;">Higher correlation reduces interest rates.</span></label>
+              <label class="option"><input type="radio" name="ql5_6"> <span style="min-width: 0;">Senior tranches are legally required to hold short stock positions.</span></label>
+              <label class="option"><input type="radio" name="ql5_6"> <span style="min-width: 0;">Senior tranches only attach when correlation is exactly zero.</span></label>
+            </fieldset>
+            <div class="explain">In low correlation worlds, diversification protects senior layers. When correlation rises, loss dispersion expands into the senior attachment region, destroying senior value.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l05-07">
+            <p class="stem">Why did rating agencies fail in assessing the risk of AAA super senior CDO tranches prior to the 2008 crisis?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql5_7"> <span style="min-width: 0;">They relied on thin-tailed Gaussian models calibrated to low benign-period correlations, ignoring catastrophic tail clustering.</span></label>
+              <label class="option"><input type="radio" name="ql5_7"> <span style="min-width: 0;">They forgot to include coupon payments.</span></label>
+              <label class="option"><input type="radio" name="ql5_7"> <span style="min-width: 0;">They assumed corporate recovery rates were zero.</span></label>
+              <label class="option"><input type="radio" name="ql5_7"> <span style="min-width: 0;">They used Treasury bills instead of CDS contracts.</span></label>
+            </fieldset>
+            <div class="explain">Rating models calibrated to tranquil periods assumed \(\rho \approx 0.15\), making senior losses appear impossible. In 2008, correlation jumped, wiping out senior tranches.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l05-08">
+            <p class="stem">What empirical market phenomenon proves that the one-factor Gaussian copula is incapable of pricing the entire capital structure with a single parameter?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql5_8"> <span style="min-width: 0;">The correlation skew: different tranches imply sharply different asset correlations when fitted to market quotes.</span></label>
+              <label class="option"><input type="radio" name="ql5_8"> <span style="min-width: 0;">The inverted yield curve.</span></label>
+              <label class="option"><input type="radio" name="ql5_8"> <span style="min-width: 0;">Negative interest rates in Europe.</span></label>
+              <label class="option"><input type="radio" name="ql5_8"> <span style="min-width: 0;">Bid-ask bounce in equities.</span></label>
+            </fieldset>
+            <div class="explain">Calibrating the Gaussian copula to equity, mezzanine, and senior tranches yields distinct compound correlations, proving the model is structurally misspecified.</div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+        </ol>
+      </section>
+
+      <p class="complete-wrap"><button data-complete="CR2-L05">Mark complete</button></p>
+    </main>
+  </div>
+</body>
+</html>

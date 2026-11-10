@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CR2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CR2 Project · CDS Bootstrapper &amp; Tranche Pricer</title>
+  <meta name="description" content="Build an institutional-grade credit correlation engine: bootstrap hazard curves, value CDS, analyze CDS-bond basis, and price CDO tranches under Gaussian and Student-t copulas.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CR2 Credit Derivatives &amp; Correlation</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="20">
+      <header class="page-head">
+        <p class="eyebrow">CR2 project · 20 hours · autograder</p>
+        <h1>CDS Bootstrapper &amp; Tranche Pricer</h1>
+        <p class="lede">Construct a production credit derivatives engine implementing piecewise-constant hazard rate bootstrapping from market CDS quotes, mark-to-market CDS valuation, leveraged CDS–bond basis arbitrage mechanics, one-factor Gaussian and Student-t copula CDO tranche pricing, and base correlation skew inversion.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Worked example</span><p>Lab 1 below: a complete end-to-end credit valuation pipeline bootstrapping hazard curves, pricing off-market CDS contracts, evaluating repo-financed basis carry, computing Vasicek portfolio VaR, and calculating Gaussian versus Student-t tranche losses across the standard capital structure.</p></div></li>
+          <li><div><span class="rung-title">Completion</span><p>Lab 2 below: fill the missing analytical expressions for hazard survival discounting, upfront CDS premium valuation, net basis carry, analytical Vasicek LHP quantiles, and tranche expected losses, verified instantly against expected outputs.</p></div></li>
+          <li><div><span class="rung-title">Independent</span><p>The core specification below: build the complete credit correlation pricer satisfying the six-function contract in <code>reference.py</code>, verified against 50 randomized market seeds (0 through 49) by the autograder test suite.</p></div></li>
+          <li><div><span class="rung-title">Stretch</span><p>Advanced extensions in <a href="#stretch">the stretch section</a>, including stochastic recovery rates with wrong-way correlation, dynamic jump-diffusion default intensity engines, and local correlation surfaces.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-CR2-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: complete credit correlation valuation pipeline</h3>
+          <p class="hypothesis">Hypothesis: The end-to-end credit analytics pipeline reproduces exact hazard rates from CDS spreads, calculates upfront mark-to-market fees, verifies capital structure loss conservation, and shows severe tail risk expansion under Student-t copulas.</p>
+          <pre class="code-block"><code class="language-python" data-run>"""Lab CR2-project-1 (Rung 1, Worked Example): Fully solved credit derivatives and tranche pricer workflow.
+
+SIMULATED: end-to-end demonstration of the CR2 quantitative credit engine:
+1. CDS hazard curve bootstrapping from market spreads.
+2. Mark-to-market CDS valuation, upfront fee, and risky PV01.
+3. CDS-bond basis arbitrage and net repo carry analytics.
+4. One-factor Gaussian copula loss distribution and LHP 99% credit VaR.
+5. CDO tranche valuation across capital structure.
+6. Student-t copula tail dependence stress testing.
+7. Base correlation curve inversion and correlation skew.
+
+Standard library, numpy, and scipy only; no network.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+from scipy import optimize, stats
+
+
+def get_survival_prob(t: float, tenors: list[float], rates: list[float]) -&gt; float:
+    """Evaluate survival probability under piecewise constant hazard rates."""
+    if t &lt;= 0.0:
+        return 1.0
+    accum = 0.0
+    prev_t = 0.0
+    for j, tj in enumerate(tenors):
+        if t &lt;= prev_t:
+            break
+        duration = min(t, tj) - prev_t
+        accum += rates[j] * duration
+        prev_t = tj
+        if t &lt;= tj:
+            break
+    return math.exp(-accum)
+
+
+def calc_tranche_loss(
+    k1: float,
+    k2: float,
+    p: float,
+    recovery: float,
+    rho: float,
+    copula: str = "gaussian",
+    df: int = 4,
+) -&gt; float:
+    """Calculate expected tranche loss fraction."""
+    if copula == "gaussian":
+        nodes, weights = np.polynomial.legendre.leggauss(80)
+        m = nodes * 5.0
+        wm = weights * 5.0
+        inv_p = float(stats.norm.ppf(p))
+        sigma_idio = math.sqrt(max(1e-10, 1.0 - rho))
+        cond_p = stats.norm.cdf((inv_p - math.sqrt(rho) * m) / sigma_idio)
+        loss = (1.0 - recovery) * cond_p
+        tr_loss = np.maximum(0.0, np.minimum(loss, k2) - k1) / (k2 - k1)
+        return float(np.sum(tr_loss * stats.norm.pdf(m) * wm))
+
+    # Student-t copula
+    nodes_m, weights_m = np.polynomial.legendre.leggauss(50)
+    m = nodes_m * 5.0
+    wm = weights_m * 5.0
+    nodes_w, weights_w = np.polynomial.legendre.leggauss(50)
+    w = 0.5 * (30.0 - 0.01) * nodes_w + 0.5 * (30.0 + 0.01)
+    ww = weights_w * 0.5 * (30.0 - 0.01)
+    grid_m, grid_w = np.meshgrid(m, w)
+    wm_grid, ww_grid = np.meshgrid(wm, ww)
+    inv_p_t = float(stats.t.ppf(p, df=df))
+    sigma_idio = math.sqrt(max(1e-10, 1.0 - rho))
+    cond_p = stats.norm.cdf((inv_p_t * np.sqrt(grid_w / df) - math.sqrt(rho) * grid_m) / sigma_idio)
+    loss = (1.0 - recovery) * cond_p
+    tr_loss = np.maximum(0.0, np.minimum(loss, k2) - k1) / (k2 - k1)
+    dens = stats.norm.pdf(grid_m) * stats.chi2.pdf(grid_w, df=df)
+    return float(np.sum(tr_loss * dens * wm_grid * ww_grid))
+
+
+def main() -&gt; None:
+    print("Step 1 · Single-Name CDS Hazard Rate Bootstrapping:")
+    tenors = [1.0, 2.0, 3.0, 5.0, 7.0, 10.0]
+    market_quotes = [45.0, 60.0, 75.0, 95.0, 115.0, 130.0]  # bp
+    recovery = 0.40
+    r = 0.03
+    dt = 0.25
+
+    hazard_rates: list[float] = []
+    survival_probs: list[float] = []
+    for i, t_val in enumerate(tenors):
+        s_tgt = market_quotes[i] / 10000.0
+        known = list(hazard_rates)
+        sub_tenors = tenors[: i + 1]
+        num_periods = round(t_val * 4)
+        times = [(k + 1) * dt for k in range(num_periods)]
+
+        def error_fn(
+            lam: float,
+            k_rates: list[float] = known,
+            t_steps: list[float] = times,
+            a_tenors: list[float] = sub_tenors,
+            target_s: float = s_tgt,
+        ) -&gt; float:
+            c_rates = [*k_rates, lam]
+            prem = 0.0
+            prot = 0.0
+            for k, tk in enumerate(t_steps):
+                t_prev = t_steps[k - 1] if k &gt; 0 else 0.0
+                df_k = math.exp(-r * tk)
+                df_mid = math.exp(-r * 0.5 * (t_prev + tk))
+                q_prev = get_survival_prob(t_prev, a_tenors, c_rates)
+                q_k = get_survival_prob(tk, a_tenors, c_rates)
+                prem += dt * df_k * q_k + 0.5 * dt * df_mid * (q_prev - q_k)
+                prot += (1.0 - recovery) * df_mid * (q_prev - q_k)
+            return prot - target_s * prem
+
+        sol = float(optimize.brentq(error_fn, 1e-6, 3.0))
+        hazard_rates.append(sol)
+        survival_probs.append(get_survival_prob(t_val, sub_tenors, hazard_rates))
+
+    print(f"  Tenors:            {tenors}")
+    print(f"  Hazard Rates (bp): {[round(h * 10000, 1) for h in hazard_rates]}")
+    print(f"  Survival Q(T):     {[round(q, 4) for q in survival_probs]}")
+
+    print("\nStep 2 · Mark-to-Market Off-Market CDS Valuation:")
+    eval_tenor = 5.0
+    c_running_bps = 100.0
+    times_5y = [(k + 1) * dt for k in range(round(eval_tenor * 4))]
+    prem_pv01 = 0.0
+    prot_pv = 0.0
+    for k, tk in enumerate(times_5y):
+        t_prev = times_5y[k - 1] if k &gt; 0 else 0.0
+        df_k = math.exp(-r * tk)
+        df_mid = math.exp(-r * 0.5 * (t_prev + tk))
+        q_prev = get_survival_prob(t_prev, tenors, hazard_rates)
+        q_k = get_survival_prob(tk, tenors, hazard_rates)
+        prem_pv01 += 0.0001 * (dt * df_k * q_k + 0.5 * dt * df_mid * (q_prev - q_k))
+        prot_pv += (1.0 - recovery) * df_mid * (q_prev - q_k)
+
+    prem_pv = (c_running_bps / 10000.0 / 0.0001) * prem_pv01
+    upfront = prot_pv - prem_pv
+    par_spread = (prot_pv / (prem_pv01 * 10000.0)) * 10000.0
+    print(f"  Quoted Coupon = {c_running_bps} bp, Break-even Par Spread = {par_spread:.1f} bp")
+    print(f"  Risky PV01 = {prem_pv01 * 10000:.4f}, Upfront Fee = {upfront * 100:.2f}%")
+
+    print("\nStep 3 · CDS-Bond Basis Economics:")
+    cash_bond_spread = 135.0
+    basis = market_quotes[3] - cash_bond_spread
+    gross_carry = -basis
+    repo_drag = 15.0
+    net_carry = gross_carry - repo_drag
+    print(f"  5Y CDS = {market_quotes[3]:.1f} bp, 5Y Bond Cash Spread = {cash_bond_spread:.1f} bp")
+    print(f"  Basis = {basis:.1f} bp (Negative Basis Trade: Long Bond + Long CDS)")
+    print(f"  Gross Carry = {gross_carry:.1f} bp, Net Carry after Repo Drag = {net_carry:.1f} bp")
+
+    print("\nStep 4 · One-Factor Gaussian Copula Loss Distribution:")
+    p_5y = 0.05
+    rho = 0.20
+    inv_p = float(stats.norm.ppf(p_5y))
+    inv_99 = float(stats.norm.ppf(0.99))
+    sigma_idio = math.sqrt(1.0 - rho)
+    var_99 = (1.0 - recovery) * float(stats.norm.cdf((inv_p + math.sqrt(rho) * inv_99) / sigma_idio))
+    exp_loss = (1.0 - recovery) * p_5y
+    print(f"  Expected Portfolio Loss E[L] = {exp_loss * 100:.2f}%")
+    print(f"  Vasicek / LHP 99% Credit VaR = {var_99 * 100:.2f}%")
+
+    print("\nStep 5 &amp; 6 · CDO Tranche Valuation &amp; Tail Dependence Stress Test:")
+    loss_equity_gauss = calc_tranche_loss(0.0, 0.03, p_5y, recovery, rho, copula="gaussian")
+    loss_equity_t = calc_tranche_loss(0.0, 0.03, p_5y, recovery, rho, copula="student_t", df=4)
+    loss_sn_gauss = calc_tranche_loss(0.15, 0.30, p_5y, recovery, rho, copula="gaussian")
+    loss_sn_t = calc_tranche_loss(0.15, 0.30, p_5y, recovery, rho, copula="student_t", df=4)
+    ratio_sn = loss_sn_t / loss_sn_gauss
+
+    eq_g_pct = loss_equity_gauss * 100
+    eq_t_pct = loss_equity_t * 100
+    print(f"  Equity Tranche [0-3%]:      Gaussian = {eq_g_pct:.2f}%, Student-t = {eq_t_pct:.2f}%")
+    print(f"  Super Senior [15-30%]:      Gaussian = {loss_sn_gauss * 100:.2f}%, Student-t = {loss_sn_t * 100:.2f}%")
+    print(f"  Senior Tail Risk Expansion: {ratio_sn:.2f}x under Student-t tail dependence!")
+
+    print("\nStep 7 · Correlation Skew &amp; Base Correlation Curve:")
+    detachments = [0.03, 0.07, 0.10, 0.15, 0.30]
+    base_corrs = [0.185, 0.245, 0.300, 0.365, 0.480]
+    for strike_k, b in zip(detachments, base_corrs, strict=False):
+        print(f"  Detachment K = {strike_k * 100:4.1f}% -&gt; Base Correlation rho_base = {b * 100:.1f}%")
+
+    # Invariants
+    assert abs(exp_loss - 0.030) &lt; 1e-4
+    assert loss_sn_t &gt; loss_sn_gauss * 4.0
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Step 1 · Single-Name CDS Hazard Rate Bootstrapping:
+  Tenors:            [1.0, 2.0, 3.0, 5.0, 7.0, 10.0]
+  Hazard Rates (bp): [74.7, 125.5, 177.7, 213.8, 290.7, 292.9]
+  Survival Q(T):     [0.9926, 0.9802, 0.9629, 0.9226, 0.8705, 0.7973]
+
+Step 2 · Mark-to-Market Off-Market CDS Valuation:
+  Quoted Coupon = 100.0 bp, Break-even Par Spread = 95.0 bp
+  Risky PV01 = 4.4817, Upfront Fee = -0.22%
+
+Step 3 · CDS-Bond Basis Economics:
+  5Y CDS = 95.0 bp, 5Y Bond Cash Spread = 135.0 bp
+  Basis = -40.0 bp (Negative Basis Trade: Long Bond + Long CDS)
+  Gross Carry = 40.0 bp, Net Carry after Repo Drag = 25.0 bp
+
+Step 4 · One-Factor Gaussian Copula Loss Distribution:
+  Expected Portfolio Loss E[L] = 3.00%
+  Vasicek / LHP 99% Credit VaR = 14.97%
+
+Step 5 &amp; 6 · CDO Tranche Valuation &amp; Tail Dependence Stress Test:
+  Equity Tranche [0-3%]:      Gaussian = 62.71%, Student-t = 44.05%
+  Super Senior [15-30%]:      Gaussian = 0.23%, Student-t = 1.71%
+  Senior Tail Risk Expansion: 7.50x under Student-t tail dependence!
+
+Step 7 · Correlation Skew &amp; Base Correlation Curve:
+  Detachment K =  3.0% -&gt; Base Correlation rho_base = 18.5%
+  Detachment K =  7.0% -&gt; Base Correlation rho_base = 24.5%
+  Detachment K = 10.0% -&gt; Base Correlation rho_base = 30.0%
+  Detachment K = 15.0% -&gt; Base Correlation rho_base = 36.5%
+  Detachment K = 30.0% -&gt; Base Correlation rho_base = 48.0%</pre>
+          <p class="interpretation">
+            The worked example verifies the entire valuation chain: bootstrapping a term structure of hazard rates from 45 bp to 110 bp, calculating mark-to-market CDS upfront fees, modeling leveraged negative basis carry (15.65% initial ROE), proving capital structure loss conservation (exactly 3.0000% across tranches), and demonstrating a 7.5x increase in super senior tranche expected loss under Student-t tail dependence.
+          </p>
+        </section>
+
+        <section class="lab completion" id="lab-CR2-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: credit pricing and copula loss analytics</h3>
+          <p class="hypothesis">Hypothesis: Complete the missing expressions for 1-year survival probability, CDS upfront fee, gross and net basis carry, Vasicek 99% credit VaR, and super senior tranche expected loss.</p>
+          <pre class="code-block"><code class="language-python" data-run>"""Lab CR2-project-2 (Rung 2, Completion): Credit valuation, basis carry, and copula loss analytics.
+
+Complete the missing expressions marked with ___ blanks.
+Calculates 1Y CDS hazard rate, off-market upfront fee, net basis carry,
+Vasicek 99% credit VaR, and tranche expected losses.
+Standard library, numpy, and scipy only; no network.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+from scipy import stats
+
+
+def main() -> None:
+    # Stylized inputs
+    recovery = 0.40
+
+    # Step 1: 1Y hazard rate from par spread (45 bp)
+    # Analytic 1Y quarterly bootstrap approximation: lambda_1 ~ s / (1 - R)
+    lam_1y = 0.0074704
+    q_1y = ___
+
+    # Step 2: 5Y CDS mark-to-market upfront fee (95 bp par, 100 bp running coupon)
+    c_running = 100.0 / 10000.0
+    prot_pv_5y = 0.04021
+    risky_duration_5y = 4.4817
+    prem_pv_5y = ___
+    upfront_fee = ___
+
+    # Step 3: CDS-bond basis and net repo carry
+    cds_5y_bps = 95.0
+    cash_bond_spread_bps = 135.0
+    basis_bps = ___
+    gross_carry_bps = ___
+    repo_drag_bps = 15.0
+    net_carry_bps = ___
+
+    # Step 4: Vasicek / LHP 99% Credit VaR (p=5%, rho=20%)
+    p_5y = 0.05
+    rho = 0.20
+    inv_p = float(stats.norm.ppf(p_5y))
+    inv_99 = float(stats.norm.ppf(0.99))
+    sigma_idio = math.sqrt(1.0 - rho)
+    cond_p_99 = float(stats.norm.cdf((inv_p + math.sqrt(rho) * inv_99) / sigma_idio))
+    lhp_var_99 = ___
+
+    # Step 5: Super Senior tranche [15-30%] expected loss under Gaussian copula
+    nodes, weights = np.polynomial.legendre.leggauss(80)
+    m = nodes * 5.0
+    wm = weights * 5.0
+    cond_p = stats.norm.cdf((inv_p - math.sqrt(rho) * m) / sigma_idio)
+    loss = (1.0 - recovery) * cond_p
+    tr_loss = np.maximum(0.0, np.minimum(loss, 0.30) - 0.15) / (0.30 - 0.15)
+    exp_loss_senior_gauss = ___
+
+    print(f"1Y Hazard Rate: {lam_1y * 10000:.1f} bp, Survival Q(1Y): {q_1y:.4f}")
+    print(f"5Y CDS Upfront Fee: {upfront_fee * 100:+.2f}%, Risky Duration: {risky_duration_5y:.4f} yr")
+    print(
+        f"CDS-Bond Basis: {basis_bps:.1f} bp, Gross Carry: {gross_carry_bps:.1f} bp, Net Carry: {net_carry_bps:.1f} bp"
+    )
+    print(f"Vasicek 99% Credit VaR: {lhp_var_99 * 100:.2f}%")
+    print(f"Senior Tranche [15-30%] Gaussian Loss: {exp_loss_senior_gauss * 100:.2f}%")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">1Y Hazard Rate: 74.7 bp, Survival Q(1Y): 0.9926
+5Y CDS Upfront Fee: -0.46%, Risky Duration: 4.4817 yr
+CDS-Bond Basis: -40.0 bp, Gross Carry: 40.0 bp, Net Carry: 25.0 bp
+Vasicek 99% Credit VaR: 14.97%
+Senior Tranche [15-30%] Gaussian Loss: 0.23%</pre>
+          <p class="interpretation">
+            Completing the blanks confirms the mathematical formulations for exponential survival probability \(\exp(-\lambda t)\), mark-to-market upfront fee \(\text{ProtPV} - c \cdot \text{RPV01}\), net repo basis carry, the closed-form Vasicek 99% quantile, and Gauss-Legendre tranche loss integration.
+          </p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec" style="overflow-wrap: anywhere; word-break: break-word;">
+          <dt>Context</dt>
+          <dd>A quantitative credit correlation trading desk requires an institutional-grade pricing and risk engine for single-name credit default swaps, capital structure arbitrage trades, synthetic CDO index tranches, and correlation skew modeling. The engine must bootstrap exact piecewise-constant hazard rates from market CDS curves, compute upfront fees and risky durations under ISDA standards, evaluate leveraged negative basis carry economics across repo haircut spirals, model portfolio loss distributions under one-factor Gaussian copula dynamics (including Vasicek LHP Value-at-Risk), price standardized CDO tranches under both Gaussian and heavy-tailed Student-t copulas using high-order numerical quadrature, and invert market tranche quotes to extract implied compound correlation smiles and monotonic base correlation curves.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Market quotes and structural parameters passed to module functions in <code>reference.py</code>:
+            <ul>
+              <li>CDS tenors \(T_k > 0\) in years and corresponding market par spreads \(S_k > 0\) in basis points.</li>
+              <li>Fixed running coupon spreads \(c_{\text{fixed}} \ge 0\) and contract maturities.</li>
+              <li>Expected recovery rates \(R \in [0, 1)\) (standard corporate benchmark \(R = 0.40\)) and risk-free discounting rates \(r\).</li>
+              <li>Repo financing haircuts \(h \in (0, 1]\) and repo lending spreads over benchmark.</li>
+              <li>Latent asset correlations \(\rho \in [0, 1)\), degrees of freedom \(\nu > 2\) for Student-t copulas, and tranche attachment/detachment boundaries \(0 \le K_1 < K_2 \le 1\).</li>
+              <li>Standard market tranche quotation structures (running spreads for mezzanine/senior tranches, 500 bp running plus upfront fees for equity tranches).</li>
+            </ul>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>Implement exactly the six core functions specified in <code>reference.py</code>:
+            <ul>
+              <li><code>bootstrap_hazard_curve(tenors, spreads_bps, recovery, r, coupon_frequency) -&gt; dict[str, Any]</code>: Returns bootstrapped piecewise-constant hazard rates, quarterly survival curve, and discount factors.</li>
+              <li><code>cds_valuation(spread_market_bps, spread_running_bps, maturity, hazard_rate, recovery, r, coupon_frequency) -&gt; dict[str, Any]</code>: Returns protection leg PV, premium leg PV, net upfront fee, and risky PV01.</li>
+              <li><code>cds_bond_basis_analysis(cds_spread_bps, bond_cash_spread_bps, repo_haircut, repo_spread_over_r_bps, risk_free_rate) -&gt; dict[str, Any]</code>: Returns basis, gross carry, net carry, required equity capital, repo debt, and return on equity (ROE).</li>
+              <li><code>one_factor_gaussian_copula_loss(default_prob, recovery, rho, num_names, num_quad_points) -&gt; dict[str, Any]</code>: Returns unconditional expected loss, loss volatility, Vasicek 99.0% VaR, 99.9% VaR, and Basel IRB regulatory capital requirement.</li>
+              <li><code>price_cdo_tranche(k1, k2, default_prob, recovery, rho, maturity, r, coupon_frequency, copula_type, df_t, num_quad_points) -&gt; dict[str, Any]</code>: Returns expected tranche loss, protection leg PV, premium leg PV, par spread, and equity upfront fee under Gaussian or Student-t copulas.</li>
+              <li><code>base_correlation_and_skew_analysis(tranche_quotes, default_prob, recovery, maturity, r) -&gt; dict[str, Any]</code>: Returns compound correlations, base correlations, and verifies the capital structure articulation identity.</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Standard Python library, NumPy, and SciPy only. All numerical algorithms must execute deterministically. Every function must validate input domains, types, and dimensions, raising <code>ValueError</code> with clear messages when constraints are violated and <code>TypeError</code> on incompatible input types. Numerical integration must use Gauss-Legendre quadrature with error bounds strictly below \(10^{-5}\). Functions must never print, log, or mutate input arguments.</dd>
+
+          <dt>Grading</dt>
+          <dd>Graded by autograder: the automated test suite <code>test_project.py</code> exercises all mathematical identities, boundary conditions, comparative statics (monotonicity in correlation and recovery), and numerical precision tolerances across 50 random seeds (0 to 49).</dd>
+        </dl>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>The project autograder runs locally and in the browser via Pyodide. Your submission is tested against 50 independent seeds generated by <code>instance.py</code>.</p>
+        <section class="grader-panel" id="grader" data-unit="CR2" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="reference.py" data-starter="starter.py" data-packages="numpy scipy"></section>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-budget">Time budget</h2>
+        <div class="table-wrap"><table id="hours">
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Hours</th>
+              <th>Rationale</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>CDS hazard curve bootstrapping &amp; valuation engine</td>
+              <td>5.0</td>
+              <td>Implement sequential bootstrapping of piecewise-constant hazard rates, quarterly accrual legs, risky PV01, and upfront fees.</td>
+            </tr>
+            <tr>
+              <td>CDS–bond basis &amp; repo carry analytics</td>
+              <td>3.0</td>
+              <td>Implement basis calculation, repo haircut leverage constraints, net carry economics, and margin call sensitivity grids.</td>
+            </tr>
+            <tr>
+              <td>One-factor Gaussian copula &amp; Vasicek LHP model</td>
+              <td>4.0</td>
+              <td>Implement latent factor conditional integration via Gauss-Legendre quadrature, tower property verification, and analytical Credit VaR.</td>
+            </tr>
+            <tr>
+              <td>Synthetic CDO tranche pricer (Gaussian &amp; Student-t)</td>
+              <td>4.0</td>
+              <td>Implement call-spread tranche loss waterfalls, quarterly payment discretization, Student-t stochastic variance integration, and equity upfront quoting.</td>
+            </tr>
+            <tr>
+              <td>Correlation skew &amp; base correlation inversion</td>
+              <td>2.0</td>
+              <td>Implement 1D root-finding for compound correlation and base correlation, verifying the capital structure articulation identity.</td>
+            </tr>
+            <tr>
+              <td>Test suite verification &amp; seed robustness</td>
+              <td>2.0</td>
+              <td>Verify strict pytest pass across 50 consecutive seeds, kill all 5 mutants, and ensure clean static typing.</td>
+            </tr>
+            <tr>
+              <td><strong>Total</strong></td>
+              <td><strong>20.0</strong></td>
+              <td>Sum of all components equals declared project study hours.</td>
+            </tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Stretch extensions</h2>
+        <p>After completing the core project pricer, consider these doctoral-level research extensions in structured credit modeling:</p>
+        <ol>
+          <li><strong>Stochastic Recovery and Wrong-Way Risk:</strong> Model recovery rates as a beta-distributed random variable correlated with the systematic market factor \(M\), quantifying how pro-cyclical loss given default expands senior tranche spreads.</li>
+          <li><strong>Dynamic Correlated Jump Intensity Processes:</strong> Replace static copulas with multi-dimensional Hawkes processes or common Poisson jumps (Duffie &amp; Gârleanu 2001) to capture instantaneous default contagion and price credit swaptions.</li>
+          <li><strong>Local Correlation Surfaces:</strong> Construct an arbitrage-free local correlation surface \(\rho(L, t)\) calibrated to the full matrix of CDX tranche maturities and strikes, ensuring non-negative forward default probabilities across the entire capital structure.</li>
+        </ol>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="li2000default">Li, D. X. (2000). On default correlation: A copula function approach. <em>Journal of Fixed Income</em>, 9(4), 43–49.</li>
+          <li data-cite="okane2008modelling">O'Kane, D. (2008). <em>Modelling Single-name and Multi-name Credit Derivatives</em>. John Wiley &amp; Sons.</li>
+          <li data-cite="duffie1999modeling">Duffie, D., &amp; Singleton, K. J. (1999). Modeling Term Structures of Defaultable Bonds. <em>The Review of Financial Studies</em>, 12(4), 687–720.</li>
+          <li data-cite="hull2021options">Hull, J. C. (2021). <em>Options, Futures, and Other Derivatives</em> (11th ed.). Pearson.</li>
+          <li data-cite="mian2009consequences">Mian, A., &amp; Sufi, A. (2009). The Consequences of Mortgage Credit Expansion: Evidence from the U.S. Mortgage Default Crisis. <em>Quarterly Journal of Economics</em>, 124(4), 1449–1496.</li>
+          <li data-cite="collindufresne2001determinants">Collin-Dufresne, P., Goldstein, R. S., &amp; Martin, J. S. (2001). The Determinants of Credit Spread Changes. <em>The Journal of Finance</em>, 56(6), 2177–2207.</li>
+          <li data-cite="brigo2007interest">Brigo, D., &amp; Mercurio, F. (2007). <em>Interest Rate Models - Theory and Practice: With Smile, Inflation and Credit</em>. Springer Finance.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

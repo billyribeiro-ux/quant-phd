@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CR2" data-page="L02" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CR2 · L02 · Bootstrapping Hazard Curves</title>
+  <meta name="description" content="Bootstrapping piecewise constant hazard rate curves from market CDS quotes, recursive root-finding, survival probability curve construction, and recovery rate sensitivity.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CR2 Credit Derivatives &amp; Correlation</a><span class="sep">›</span>
+      <span>L02 · Bootstrapping Hazard Curves</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 02 · 8 study hours</p>
+        <h1>Bootstrapping Hazard Curves</h1>
+        <p class="lede">Constructing the risk-neutral default probability term structure from market quotes through sequential root-finding, survival curve extraction, and recovery rate sensitivity analysis.</p>
+      </header>
+
+      <p class="why-it-matters">
+        Market participants do not directly quote survival probabilities; they quote par credit default swap spreads across standard tenors. Bootstrapping hazard curves extracts the underlying term structure of default intensity required to price off-market contracts, compute forward credit spreads, and calibrate multi-name correlation models. A flawed bootstrapper produces arbitrage opportunities and misprices portfolio tranches.
+      </p>
+
+      <h2 id="hazard-parameterization">1. Piecewise-Constant Hazard Rate Model</h2>
+      <p>
+        Market liquid <a class="concept" data-concept="credit-default-swap" href="L01.html#def-credit-default-swap">credit default swap</a> quotes exist across discrete benchmark maturities \(T_1 < T_2 < \dots < T_M\) (typically 1Y, 2Y, 3Y, 5Y, 7Y, and 10Y). To interpolate between observed tenors without assuming an ad-hoc functional form, quantitative finance parameterizes the <a class="concept" data-concept="hazard-rate" href="../../../concepts.html#hazard-rate">default intensity (hazard rate)</a> \(\lambda(t)\) as a piecewise-constant function.
+      </p>
+
+      <div class="block definition" id="def-hazard-bootstrap-proc">
+        <span class="block-title">Definition 2.1 (Hazard Curve Bootstrapping)</span>
+        <p>
+          <dfn id="def-cds-hazard-bootstrapping" data-concept="cds-hazard-bootstrapping">Bootstrapping hazard curves from CDS quotes</dfn> is the sequential, recursive numerical procedure that determines the piecewise-constant hazard rates \(\lambda_1, \lambda_2, \dots, \lambda_M\) defined on intervals \((T_{k-1}, T_k]\) with \(T_0 = 0\):
+        </p>
+        \[
+        \lambda(t) = \lambda_k \quad \text{for } t \in (T_{k-1}, T_k]
+        \]
+        <p>
+          such that each corresponding theoretical model par CDS spread \(S_{\text{model}}(T_k)\) reproduces the observed market par quote \(S_k^{\text{mkt}}\) within machine precision.
+        </p>
+      </div>
+
+      <p>
+        Under this piecewise-constant intensity parameterization, the cumulative survival probability \(Q(t) = \mathbb{Q}(\tau > t) = \exp(-\int_0^t \lambda(u) du)\) possesses a closed analytical representation across any horizon \(t \in (T_{k-1}, T_k]\):
+      </p>
+      \[
+      Q(t) = \exp\left( -\sum_{j=1}^{k-1} \lambda_j (T_j - T_{j-1}) - \lambda_k (t - T_{k-1}) \right) = Q(T_{k-1}) \cdot \exp(-\lambda_k (t - T_{k-1}))
+      \]
+
+      <h2 id="recursive-bootstrapping">2. Recursive Bootstrapping Algorithm</h2>
+      <p>
+        The bootstrapping algorithm proceeds forward in maturity, solving for exactly one unknown hazard rate \(\lambda_k\) at step \(k\), taking the previously calibrated intensities \(\{\lambda_1, \dots, \lambda_{k-1}\}\) as fixed constants (<span class="claim" data-grade="A" data-cite="okane2008modelling" data-locator="Chapter 3, p. 58">O'Kane 2008</span>).
+      </p>
+
+      <div class="block theorem" id="thm-recursive-bootstrap">
+        <span class="block-title claim" data-grade="T">Theorem 2.1 (Existence and Uniqueness of Bootstrapped Hazard Rate)</span>
+        <p>
+          Let \(S_k^{\text{mkt}} > 0\) be the observed market par spread at tenor \(T_k\). For a fixed recovery rate \(R \in [0, 1)\) and previously determined intensities \(\{\lambda_1, \dots, \lambda_{k-1}\}\), the objective function:
+        </p>
+        \[
+        f(\lambda_k) = \text{ProtPV}(T_k; \lambda_k) - S_k^{\text{mkt}} \cdot \text{PremPV}(T_k; \lambda_k)
+        \]
+        <p>
+          satisfies \(f(0) < 0\) and \(\lim_{\lambda_k \to \infty} f(\lambda_k) > 0\). Furthermore, \(f(\lambda_k)\) is strictly monotonically increasing on \([0, \infty)\), guaranteeing a unique positive root \(\lambda_k^* > 0\).
+        </p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>
+          At \(\lambda_k = 0\), the reference entity cannot default in the interval \((T_{k-1}, T_k]\). Thus, \(Q(t) = Q(T_{k-1})\) for all \(t \in (T_{k-1}, T_k]\). The incremental protection payment over \((T_{k-1}, T_k]\) is zero, while the premium leg receives coupon cash flows weighted by the positive constant survival probability \(Q(T_{k-1}) > 0\). If \(S_k^{\text{mkt}} > 0\), the premium leg strictly exceeds the protection leg, so \(f(0) < 0\).
+        </p>
+        <p>
+          As \(\lambda_k \to \infty\), \(Q(t) \to 0\) instantaneously for all \(t > T_{k-1}\). The entity defaults immediately after \(T_{k-1}\) with probability \(Q(T_{k-1})\). The protection leg pays \((1 - R) D(T_{k-1}) Q(T_{k-1}) > 0\), while all premium payments for \(t > T_{k-1}\) vanish. Hence, \(\lim_{\lambda_k \to \infty} f(\lambda_k) = \text{ProtPV}(T_{k-1}) + (1 - R) D(T_{k-1}) Q(T_{k-1}) - S_k^{\text{mkt}} \text{PremPV}(T_{k-1}) > 0\).
+        </p>
+        <p>
+          Monotonicity follows because \(\frac{\partial Q(t)}{\partial \lambda_k} = -(t - T_{k-1}) Q(t) < 0\) for all \(t \in (T_{k-1}, T_k]\). Differentiating \(f(\lambda_k)\) shows that the protection leg increases with default probability while the premium leg decreases, ensuring \(\frac{\partial f}{\partial \lambda_k} > 0\). By the intermediate value theorem, a unique root \(\lambda_k^*\) exists.
+        </p>
+      </div>
+
+      <div class="block example" id="ex-first-step-bootstrap">
+        <span class="block-title claim" data-grade="T">Example 2.1 (First Step Bootstrap Analytical Solution)</span>
+        <p>
+          For a 1-year contract with annual payment (\(\Delta t = 1.0\)), observed spread \(S_1 = 60\text{ bp}\), recovery \(R = 40\%\), and risk-free rate \(r = 3\%\):
+        </p>
+        \[
+        \text{ProtPV} = (1 - 0.40) e^{-0.03 \times 0.5} (1 - e^{-\lambda_1 \times 1.0}) = 0.60 \times 0.98511 \times (1 - e^{-\lambda_1})
+        \]
+        \[
+        \text{PremPV} = 0.0060 \times \left[ 1.0 \times e^{-0.03 \times 1.0} e^{-\lambda_1} + 0.5 \times e^{-0.03 \times 0.5} (1 - e^{-\lambda_1}) \right]
+        \]
+        <p>
+          Equating \(\text{ProtPV} = \text{PremPV}\) and solving for \(e^{-\lambda_1}\) yields \(e^{-\lambda_1} \approx 0.9899\), which gives \(\lambda_1 \approx -\ln(0.9899) = 0.01015\) (101.5 bp). The linear approximation \(S_1 / (1 - R) = 60 / 0.60 = 100\text{ bp}\) approximates this within 1.5 bp.
+        </p>
+      </div>
+
+      <h2 id="recovery-sensitivity">3. Recovery Rate Ambiguity and the Spread-Hazard Coupling</h2>
+      <p>
+        A central structural feature of credit derivatives bootstrapping is the impossibility of disentangling default intensity \(\lambda\) from loss given default \((1 - R)\) using single-name CDS par quotes alone (<span class="claim" data-grade="A" data-cite="okane2008modelling" data-locator="Chapter 3, p. 64">O'Kane 2008</span>).
+      </p>
+
+      <div class="block remark" id="rem-recovery-coupling">
+        <span class="block-title">Remark 2.1 (The Recovery Rate Under-identification Problem)</span>
+        <p>
+          Market standard CDS pricing quotes assume an exogenous fixed recovery rate (typically \(R = 40\%\) for senior unsecured North American and European corporate debt). The continuous-time relationship \(S_{\text{par}} \approx \lambda (1 - R)\) demonstrates that an infinity of pairs \((\lambda, R)\) match the identical market quote. If actual recovery is 20% instead of 40%, the true hazard rate \(\lambda\) is lower:
+        </p>
+        \[
+        \lambda(R = 0.20) \approx \frac{S_{\text{par}}}{0.80} = 0.75 \times \lambda(R = 0.40)
+        \]
+        <p>
+          Conversely, assuming higher recovery (\(R = 60\%\)) requires a higher implied hazard rate \(\lambda \approx S_{\text{par}} / 0.40 = 1.50 \times \lambda(R = 0.40)\). Recovery rate assumptions must therefore be held consistent when pricing cross-sectional derivatives or measuring capital structure arbitrage.
+        </p>
+      </div>
+
+      <section class="lab" id="lab-CR2-L02-1" data-runtime="python">
+        <h3>Lab 2 · CDS Hazard Rate Curve Bootstrapping</h3>
+        <p class="hypothesis">
+          We hypothesize that bootstrapping a 6-tenor CDS curve (45 bp to 130 bp) with recovery \(R = 40\%\) generates strictly positive, increasing hazard rates from 74.7 bp at 1Y to 292.9 bp at 10Y. Lowering recovery to \(R = 20\%\) scales hazard rates by \((1 - 0.40)/(1 - 0.20) = 0.75\), while raising recovery to \(R = 60\%\) scales hazard rates by \((1 - 0.40)/(1 - 0.60) = 1.50\).
+        </p>
+        <pre><code class="language-python" data-run>"""Lab CR2-L02-1: Bootstrapping hazard rate curves from market CDS quotes.
+
+Implements sequential root-finding for piecewise constant default intensities
+and evaluates recovery rate sensitivity across market standard conventions.
+"""
+
+from __future__ import annotations
+
+import math
+
+from scipy import optimize
+
+
+def get_survival_prob(t: float, tenors: list[float], rates: list[float]) -&gt; float:
+    """Evaluate survival probability under piecewise constant hazard rates."""
+    if t &lt;= 0.0:
+        return 1.0
+    accum = 0.0
+    prev_t = 0.0
+    for j, tj in enumerate(tenors):
+        if t &lt;= prev_t:
+            break
+        duration = min(t, tj) - prev_t
+        accum += rates[j] * duration
+        prev_t = tj
+        if t &lt;= tj:
+            break
+    return math.exp(-accum)
+
+
+def bootstrap_curve(
+    tenors: list[float],
+    spreads_bps: list[float],
+    recovery: float,
+    r: float = 0.03,
+    coupon_freq: int = 4,
+) -&gt; tuple[list[float], list[float]]:
+    """Bootstrap piecewise constant hazard rates from par spreads."""
+    dt = 1.0 / coupon_freq
+    hazard_rates: list[float] = []
+    survival_probs: list[float] = []
+
+    for i, tenor_val in enumerate(tenors):
+        s_target = spreads_bps[i] / 10000.0
+        known = list(hazard_rates)
+        sub_tenors = tenors[: i + 1]
+        num_periods = round(tenor_val * coupon_freq)
+        times = [(k + 1) * dt for k in range(num_periods)]
+
+        def error_fn(
+            lam: float,
+            k_rates: list[float] = known,
+            t_steps: list[float] = times,
+            a_tenors: list[float] = sub_tenors,
+            s_tgt: float = s_target,
+        ) -&gt; float:
+            c_rates = [*k_rates, lam]
+            prem = 0.0
+            prot = 0.0
+            for k, tk in enumerate(t_steps):
+                t_prev = t_steps[k - 1] if k &gt; 0 else 0.0
+                df_k = math.exp(-r * tk)
+                df_mid = math.exp(-r * 0.5 * (t_prev + tk))
+                q_prev = get_survival_prob(t_prev, a_tenors, c_rates)
+                q_k = get_survival_prob(tk, a_tenors, c_rates)
+                prem += dt * df_k * q_k + 0.5 * dt * df_mid * (q_prev - q_k)
+                prot += (1.0 - recovery) * df_mid * (q_prev - q_k)
+            return prot - s_tgt * prem
+
+        sol = float(optimize.brentq(error_fn, 1e-6, 3.0))
+        hazard_rates.append(sol)
+        survival_probs.append(get_survival_prob(tenor_val, sub_tenors, hazard_rates))
+
+    return hazard_rates, survival_probs
+
+
+def main() -&gt; None:
+    tenors = [1.0, 2.0, 3.0, 5.0, 7.0, 10.0]
+    market_quotes = [45.0, 60.0, 75.0, 95.0, 115.0, 130.0]  # basis points
+    r = 0.03
+
+    rates_40, surv_40 = bootstrap_curve(tenors, market_quotes, recovery=0.40, r=r)
+    rates_20, _surv_20 = bootstrap_curve(tenors, market_quotes, recovery=0.20, r=r)
+    rates_60, _surv_60 = bootstrap_curve(tenors, market_quotes, recovery=0.60, r=r)
+
+    print("CDS Hazard Rate Bootstrapping (Base Recovery R = 40%, r = 3%):")
+    print("  Tenor (yr) | Par Quote (bp) | Hazard Rate lambda (bp) | Survival Q(T) | 5Y Fwd Intensity")
+    print("-------------+----------------+-------------------------+---------------+------------------")
+
+    for i, t in enumerate(tenors):
+        print(
+            f"    {t:4.1f}     |     {market_quotes[i]:6.1f}     |         {rates_40[i] * 10000:6.1f}          |"
+            f"    {surv_40[i]:6.4f}   |      {rates_40[i] * 10000:6.1f} bp"
+        )
+
+    print("\nRecovery Rate Sensitivity Analysis (lambda ~ s / (1 - R)):")
+    print("  Tenor (yr) | lambda (R=20%) | lambda (R=40%) | lambda (R=60%) | Ratio (R=60% / R=20%)")
+    print("-------------+----------------+----------------+----------------+----------------------")
+    for i, t in enumerate(tenors):
+        r20 = rates_20[i] * 10000
+        r40 = rates_40[i] * 10000
+        r60 = rates_60[i] * 10000
+        ratio = r60 / r20
+        print(f"    {t:4.1f}     |    {r20:6.1f} bp   |    {r40:6.1f} bp   |    {r60:6.1f} bp   |        {ratio:4.2f}x")
+
+    # Invariants
+    assert all(r &gt; 0 for r in rates_40)
+    for i in range(len(surv_40) - 1):
+        assert surv_40[i] &gt; surv_40[i + 1]
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">CDS Hazard Rate Bootstrapping (Base Recovery R = 40%, r = 3%):
+  Tenor (yr) | Par Quote (bp) | Hazard Rate lambda (bp) | Survival Q(T) | 5Y Fwd Intensity
+-------------+----------------+-------------------------+---------------+------------------
+     1.0     |       45.0     |           74.7          |    0.9926   |        74.7 bp
+     2.0     |       60.0     |          125.5          |    0.9802   |       125.5 bp
+     3.0     |       75.0     |          177.7          |    0.9629   |       177.7 bp
+     5.0     |       95.0     |          213.8          |    0.9226   |       213.8 bp
+     7.0     |      115.0     |          290.7          |    0.8705   |       290.7 bp
+    10.0     |      130.0     |          292.9          |    0.7973   |       292.9 bp
+
+Recovery Rate Sensitivity Analysis (lambda ~ s / (1 - R)):
+  Tenor (yr) | lambda (R=20%) | lambda (R=40%) | lambda (R=60%) | Ratio (R=60% / R=20%)
+-------------+----------------+----------------+----------------+----------------------
+     1.0     |      56.0 bp   |      74.7 bp   |     112.1 bp   |        2.00x
+     2.0     |      94.1 bp   |     125.5 bp   |     188.5 bp   |        2.00x
+     3.0     |     133.1 bp   |     177.7 bp   |     267.4 bp   |        2.01x
+     5.0     |     159.9 bp   |     213.8 bp   |     322.7 bp   |        2.02x
+     7.0     |     216.6 bp   |     290.7 bp   |     442.1 bp   |        2.04x
+    10.0     |     217.8 bp   |     292.9 bp   |     447.4 bp   |        2.05x</pre>
+        <p class="interpretation">
+          The numerical output demonstrates that the bootstrapped hazard rate increases monotonically from 74.7 bp to 292.9 bp, reflecting an upward-sloping credit spread term structure. The ratio of hazard rates between \(R = 60\%\) and \(R = 20\%\) is exactly 2.00x at short maturities, confirming the theoretical scaling relationship \(\frac{1 - 0.20}{1 - 0.60} = \frac{0.80}{0.40} = 2.00\).
+        </p>
+      </section>
+
+      <h2 id="canon-breaks">4. Where the Canon Breaks</h2>
+      <p>
+        The piecewise-constant hazard rate model produces non-smooth, saw-toothed forward intensity curves. When the market CDS spread curve inverts sharply—as observed during distressed episodes when short-term protection spikes above long-term spreads—the bootstrapped forward intensity \(\lambda_k\) on subsequent intervals can become negative. A negative hazard rate implies that survival probability increases over time (\(Q(T_k) > Q(T_{k-1})\)), violating no-arbitrage.
+      </p>
+      <p>
+        In practice, practitioners address inverted curves by using constrained optimization or smooth spline interpolations (such as monotonic cubic Hermite splines on cumulative hazard rates) to enforce \(\lambda(t) \ge 0\) across the entire horizon.
+      </p>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">A flat CDS term structure implies that the probability of default is constant in each year.</p>
+            <p class="why">A flat CDS spread term structure implies a constant hazard rate (default intensity) \(\lambda\). Because the cumulative survival probability decays exponentially (\(Q(t) = e^{-\lambda t}\)), the marginal probability of default in year \(k\), given by \(Q(k-1) - Q(k) = e^{-\lambda(k-1)}(1 - e^{-\lambda})\), strictly decreases over time because fewer surviving entities remain at risk.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Bootstrapped hazard rates are model-independent empirical observations.</p>
+            <p class="why">Bootstrapped intensities depend fundamentally on the assumed recovery rate convention, the risk-free discount curve, the payment frequency, and the accrual interpolation scheme. A change in the benchmark interest rate curve directly shifts the bootstrapped hazard rates even when market CDS quotes remain unchanged.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A steeper CDS curve always implies increasing distress for the reference entity.</p>
+            <p class="why">Healthy investment-grade issuers typically exhibit upward-sloping CDS curves because long-term credit uncertainty is naturally higher than near-term default risk. In contrast, extreme distress is characterized by an inverted CDS curve, where near-term default risk outweighs long-term uncertainty.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem set</h2>
+        <div class="tier" data-tier="mechanics">
+          <div class="problem" id="p-L02-m1">
+            <p class="stem">Given bootstrapped hazard rates \(\lambda_1 = 0.0120\) on \([0, 1]\), \(\lambda_2 = 0.0180\) on \((1, 3]\), and \(\lambda_3 = 0.0240\) on \((3, 5]\), calculate the cumulative survival probability \(Q(5)\) and the 5-year cumulative default probability.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The cumulative integrated hazard is \(\int_0^5 \lambda(s) ds = \lambda_1 (1 - 0) + \lambda_2 (3 - 1) + \lambda_3 (5 - 3) = 0.0120 \times 1 + 0.0180 \times 2 + 0.0240 \times 2 = 0.0120 + 0.0360 + 0.0480 = 0.0960\). The survival probability is \(Q(5) = \exp(-0.0960) \approx 0.90846\) (90.85%). The cumulative default probability is \(\mathbb{Q}(\tau \le 5) = 1 - Q(5) \approx 0.09154\) (9.15%).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-m2">
+            <p class="stem">A 1-year CDS trades at 80 bp and a 2-year CDS trades at 110 bp on the same obligor. Assuming annual coupon payment, zero interest rates (\(r = 0\)), and recovery \(R = 40\%\), calculate the bootstrapped hazard rates \(\lambda_1\) and \(\lambda_2\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>With \(r = 0\), \(\text{ProtPV}_1 = (1 - R)(1 - Q_1) = 0.60(1 - Q_1)\) and \(\text{PremPV}_1 = S_1 [Q_1 + 0.5(1 - Q_1)] = 0.0080 [0.5 + 0.5 Q_1]\). Equating gives \(0.60 - 0.60 Q_1 = 0.0040 + 0.0040 Q_1 \implies 0.6040 Q_1 = 0.5960 \implies Q_1 = 0.98675\). Thus \(\lambda_1 = -\ln(0.98675) \approx 0.01333\) (133.3 bp). For 2-year, \(\text{ProtPV}_2 = 0.60(1 - Q_2)\) and \(\text{PremPV}_2 = 0.0110 [Q_1 + Q_2 + 0.5(1 - Q_2)]\). Solving for \(Q_2\) and using \(Q_2 = Q_1 e^{-\lambda_2}\) yields \(\lambda_2 \approx 0.0238\) (238 bp).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-m3">
+            <p class="stem">Suppose market consensus for senior unsecured recovery increases from 40% to 50% following a restructuring reform. By what percentage does the bootstrapped hazard rate change for a firm whose CDS spread remains fixed at 150 bp?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Under the continuous approximation \(S \approx \lambda (1 - R)\), \(\lambda_1 = \frac{S}{1 - 0.40} = \frac{S}{0.60}\) and \(\lambda_2 = \frac{S}{1 - 0.50} = \frac{S}{0.50}\). The ratio is \(\frac{\lambda_2}{\lambda_1} = \frac{0.60}{0.50} = 1.20\). Therefore, the implied hazard rate increases by exactly \(+20\%\) to offset the higher recovery assumption.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <div class="problem" id="p-L02-p1">
+            <p class="stem">Prove that a downward-sloping CDS curve (\(S_1 > S_2\)) can produce a negative forward hazard rate \(\lambda_2 < 0\) if the term structure drop exceeds a threshold determined by the recovery rate.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>For two annual tenors with \(r = 0\), the 2-year par spread is a weighted average of the first year par spread and the forward spread: \(S_2 \approx \frac{S_1 Q_1 + S_{1,2} Q_1 e^{-\lambda_2}}{Q_1 + Q_1 e^{-\lambda_2}}\). If \(S_2 < S_1\), the forward spread \(S_{1,2}\) must be lower than \(S_2\). If \(S_2\) is sufficiently below \(S_1\) such that the required premium leg exceeds the maximum possible default protection in period 2, the required forward default intensity satisfies \(\lambda_2 = \frac{S_{1,2}}{1 - R} < 0\). Survival probability would then satisfy \(Q_2 > Q_1\), violating the monotonicity of probability measures.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-p2">
+            <p class="stem">Prove that under deterministic interest rates, the order in which tenors are bootstrapped (from shortest to longest) is strictly necessary and sufficient for finding a unique piecewise-constant hazard curve.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>At tenor \(T_k\), the survival curve \(Q(t)\) for \(t \le T_{k-1}\) depends exclusively on \(\{\lambda_1, \dots, \lambda_{k-1}\}\). The pricing equation at \(T_k\) contains only one unknown variable: \(\lambda_k\). The system of equations is strictly lower triangular with respect to \(\{\lambda_k\}_{k=1}^M\). Because Theorem 2.1 proves that each diagonal entry has a unique strictly monotonic root, forward substitution (sequential bootstrapping) is both necessary (due to dependency on history) and sufficient to uniquely determine the full hazard curve.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-p3">
+            <p class="stem">Show that the sensitivity of the bootstrapped survival probability \(Q(T_k)\) with respect to an earlier hazard rate \(\lambda_j\) (\(j < k\)) is proportional to the duration of interval \(j\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>From \(Q(T_k) = \exp(-\sum_{i=1}^k \lambda_i \Delta T_i)\), taking the partial derivative with respect to \(\lambda_j\) gives \(\frac{\partial Q(T_k)}{\partial \lambda_j} = -\Delta T_j \exp(-\sum_{i=1}^k \lambda_i \Delta T_i) = -\Delta T_j Q(T_k)\). Dividing by \(Q(T_k)\) yields the log-derivative \(\frac{\partial \ln Q(T_k)}{\partial \lambda_j} = -\Delta T_j\), confirming that the sensitivity is exactly equal to the length of interval \(j\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <div class="problem" id="p-L02-e1">
+            <p class="stem">During the European sovereign debt crisis in 2011, Greek 1-year sovereign CDS traded above 3,500 bp while 5-year CDS traded near 1,800 bp. Explain how this extreme curve inversion affected bootstrapping algorithms and how dealers quoted contracts.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>An inverted curve of this magnitude caused standard piecewise-constant bootstrapping algorithms to fail because forward survival probabilities exceeded 1.0 (negative forward hazard rates). Dealers responded by quoting contracts entirely on points upfront with fixed 100 bp or 500 bp running coupons, shifting from par-spread models to cash-dollar settlement models based on estimated time-to-restructuring.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-e2">
+            <p class="stem">Contrast the hazard curves bootstrapped from corporate CDS against hazard curves implied by corporate bond yield spreads (<span class="claim" data-grade="A" data-cite="duffie1999modeling" data-locator="Figure 2, p. 712">Duffie &amp; Singleton 1999</span>). What explains the systemic discrepancy between synthetic and cash credit curves?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Cash corporate bond yield spreads incorporate tax considerations, repo financing costs, and bond market illiquidity premia. Consequently, hazard curves bootstrapped directly from bond yield spreads typically imply higher default intensities than CDS hazard curves during normal periods, but lower intensities during credit crunches when repo financing freezes. This spread difference is the CDS–bond basis.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-e3">
+            <p class="stem">Evaluate the impact of the standard ISDA 40% recovery assumption on distressed credit names. When a firm's equity drops toward zero and restructuring is imminent, why does the 40% assumption break down empirically?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>For distressed entities, secondary bond market prices frequently trade at 15 to 25 cents on the dollar, indicating expected recoveries well below 40%. Imposing a 40% recovery in the bootstrapper forces the implied hazard rate to artificially high levels (sometimes exceeding 100% per annum). Market participants replace standard 40% assumptions with bespoke recovery estimates derived from deliverable bond quotes.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <div class="problem" id="p-L02-r1">
+            <p class="stem">Formulate a continuous-time spline bootstrapping model for cumulative hazard rates. How does penalizing curvature (\(\int (\lambda''(t))^2 dt\)) resolve the forward rate discontinuities of piecewise-constant bootstrapping?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Parameterize cumulative hazard \(\Lambda(t) = \int_0^t \lambda(s) ds\) as a cubic spline with knots at market tenors, subject to monotonicity constraints \(\Lambda'(t) \ge 0\). The objective minimizes pricing error plus a smoothing penalty \(\alpha \int_0^T (\Lambda'''(t))^2 dt\). This guarantees that the instantaneous forward hazard rate \(\lambda(t) = \Lambda'(t)\) is strictly continuous and non-negative, eliminating artificial jump shocks at contract maturity boundaries.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-r2">
+            <p class="stem">Investigate the interaction between stochastic interest rates and hazard rate curve bootstrapping. Under what conditions is the assumption of independence between default intensity and interest rates empirically invalidated?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Empirical macroeconomic data shows a pronounced negative correlation between risk-free interest rates and corporate default intensities: during recessions, central banks cut benchmark policy rates while corporate defaults surge. As derived by <span class="claim" data-grade="B" data-cite="brigo2007interest" data-locator="Chapter 21, p. 745">Brigo &amp; Mercurio (2007)</span>, neglecting this negative correlation leads to overestimation of protection leg present values and distorts long-dated hazard curve bootstrapping.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-r3">
+            <p class="stem">Design a dual-calibration framework that simultaneously bootstraps the survival curve \(Q(t)\) and the expected recovery rate \(R(t)\) by incorporating digital default swaps and recovery locks.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>A digital default swap pays a fixed unit payout upon default regardless of recovery, isolating \(Q(t)\). Standard CDS pays \((1 - R)\). Combining digital swap quotes (which pin down \(\text{DigitalPV} = \int_0^T D(u) dQ(u)\)) with standard CDS quotes allows the model to uniquely identify the survival curve \(Q(t)\) and the implied recovery rate \(R(t)\) simultaneously without exogenous recovery assumptions.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key results</h2>
+        <div class="table-wrap"><table class="key-results">
+          <thead>
+            <tr>
+              <th>Claim</th>
+              <th>Grade</th>
+              <th>Basis / Keys</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Sequential bootstrapping on piecewise-constant hazard rates possesses a unique positive solution \(\lambda_k^* > 0\) for every positive CDS quote.</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>Theorem 2.1; O'Kane (2008) Chapter 3</td>
+            </tr>
+            <tr>
+              <td>Survival probability factors recursively: \(Q(T_k) = Q(T_{k-1}) \exp(-\lambda_k(T_k - T_{k-1}))\).</td>
+              <td><span class="grade-tag grade-t">T</span></td>
+              <td>Definition 2.1</td>
+            </tr>
+            <tr>
+              <td>Recovery rate under-identification: bootstrapped hazard rates scale inversely with loss given default: \(\lambda \approx S / (1 - R)\).</td>
+              <td><span class="grade-tag grade-a">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="okane2008modelling" data-locator="p. 64">okane2008modelling</span></td>
+            </tr>
+            <tr>
+              <td>Empirical 6-tenor CDS curve (45 bp to 130 bp) yields bootstrapped hazard rates rising from \(74.7\text{ bp}\) (1Y) to \(292.9\text{ bp}\) (10Y).</td>
+              <td><span class="grade-tag grade-c">C</span></td>
+              <td>Lab 2 (simulation)</td>
+            </tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CR2" data-page="L02">
+        <h2 id="h-quiz">Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc" id="q-l02-01">
+            <p class="stem">Why is hazard curve bootstrapping solved sequentially from the shortest tenor to the longest tenor?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql2_1"> <span style="min-width: 0;">Because survival probabilities up to tenor \(T_{k-1}\) are already fixed, leaving exactly one unknown parameter \(\lambda_k\) in a lower-triangular system.</span></label>
+              <label class="option"><input type="radio" name="ql2_1"> <span style="min-width: 0;">Because long-tenor CDS contracts settle before short-tenor contracts.</span></label>
+              <label class="option"><input type="radio" name="ql2_1"> <span style="min-width: 0;">Because interest rate discount factors are only defined forward in time.</span></label>
+              <label class="option"><input type="radio" name="ql2_1"> <span style="min-width: 0;">To ensure that recovery rates increase with maturity.</span></label>
+            </fieldset>
+            <div class="explain">The cash flows of a \(T_k\) CDS contract up to \(T_{k-1}\) depend only on prior intensities. Fixing prior intensities isolates \(\lambda_k\) as the unique single-variable root.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l02-02">
+            <p class="stem">Under a piecewise-constant hazard rate \(\lambda(t) = \lambda_k\) for \(t \in (T_{k-1}, T_k]\), how does survival probability evolve?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql2_2"> <span style="min-width: 0;">It decays exponentially at constant rate \(\lambda_k\) from the base survival level \(Q(T_{k-1})\).</span></label>
+              <label class="option"><input type="radio" name="ql2_2"> <span style="min-width: 0;">It decays linearly at slope \(-\lambda_k\).</span></label>
+              <label class="option"><input type="radio" name="ql2_2"> <span style="min-width: 0;">It remains strictly flat until cliff-defaulting at \(T_k\).</span></label>
+              <label class="option"><input type="radio" name="ql2_2"> <span style="min-width: 0;">It equals \(1 - \lambda_k t\).</span></label>
+            </fieldset>
+            <div class="explain">Cumulative survival probability is \(Q(t) = Q(T_{k-1}) e^{-\lambda_k (t - T_{k-1})}\), exhibiting exponential decay on each piecewise segment.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l02-03">
+            <p class="stem">If the market recovery convention for a corporate CDS is changed from 40% to 20%, what happens to the bootstrapped hazard rate for a fixed spread?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql2_3"> <span style="min-width: 0;">The bootstrapped hazard rate decreases by approximately 25%, because each default delivers a larger loss (80% vs 60%).</span></label>
+              <label class="option"><input type="radio" name="ql2_3"> <span style="min-width: 0;">The hazard rate doubles.</span></label>
+              <label class="option"><input type="radio" name="ql2_3"> <span style="min-width: 0;">The hazard rate remains unchanged because recovery only affects bonds.</span></label>
+              <label class="option"><input type="radio" name="ql2_3"> <span style="min-width: 0;">The hazard rate becomes negative.</span></label>
+            </fieldset>
+            <div class="explain">From \(S \approx \lambda (1 - R)\), \(\lambda \approx S / (1 - R)\). When recovery drops from 40% to 20%, loss given default rises from 0.60 to 0.80. The implied intensity becomes \(S / 0.80 = 0.75 \times (S / 0.60)\), a 25% decrease.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l02-04">
+            <p class="stem">What numerical phenomenon occurs when a market CDS term structure is severely inverted?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql2_4"> <span style="min-width: 0;">The bootstrapped forward hazard rate on later intervals can become negative, implying impossible negative default probabilities.</span></label>
+              <label class="option"><input type="radio" name="ql2_4"> <span style="min-width: 0;">The survival probability immediately drops to zero.</span></label>
+              <label class="option"><input type="radio" name="ql2_4"> <span style="min-width: 0;">The risky PV01 exceeds the maturity \(T\).</span></label>
+              <label class="option"><input type="radio" name="ql2_4"> <span style="min-width: 0;">The Brent root-finder diverges to infinity.</span></label>
+            </fieldset>
+            <div class="explain">A sharp downward drop in CDS quotes across consecutive tenors forces the forward intensity to turn negative to pull down cumulative protection payments, violating the axiom of non-decreasing default risk.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l02-05">
+            <p class="stem">What is the standard market recovery assumption for senior unsecured debt of North American and European corporate entities?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql2_5"> <span style="min-width: 0;">40%</span></label>
+              <label class="option"><input type="radio" name="ql2_5"> <span style="min-width: 0;">0%</span></label>
+              <label class="option"><input type="radio" name="ql2_5"> <span style="min-width: 0;">25%</span></label>
+              <label class="option"><input type="radio" name="ql2_5"> <span style="min-width: 0;">70%</span></label>
+            </fieldset>
+            <div class="explain">ISDA and Markit standard models fix senior corporate recovery at 40% (and subordinated financial debt typically at 20%).</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l02-06">
+            <p class="stem">If \(\lambda_1 = 0.0100\) on \([0, 1]\) and \(\lambda_2 = 0.0200\) on \((1, 2]\), what is the survival probability \(Q(2)\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql2_6"> <span style="min-width: 0;">\(\exp(-0.0100 \times 1 - 0.0200 \times 1) = \exp(-0.0300) \approx 0.9704\).</span></label>
+              <label class="option"><input type="radio" name="ql2_6"> <span style="min-width: 0;">\(\exp(-0.0200 \times 2) = \exp(-0.0400) \approx 0.9608\).</span></label>
+              <label class="option"><input type="radio" name="ql2_6"> <span style="min-width: 0;">\(1 - 0.0100 - 0.0200 = 0.9700\).</span></label>
+              <label class="option"><input type="radio" name="ql2_6"> <span style="min-width: 0;">\(\exp(-0.0150) \approx 0.9851\).</span></label>
+            </fieldset>
+            <div class="explain">Survival probability is the exponential of the negative sum of integrated hazard rates: \(\exp(-(0.0100 \times 1 + 0.0200 \times 1)) = \exp(-0.0300) \approx 0.9704\).</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l02-07">
+            <p class="stem">Which root-finding algorithm is standard for single-dimensional CDS hazard rate bootstrapping?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql2_7"> <span style="min-width: 0;">Brent's method (combining bisection, secant, and inverse quadratic interpolation).</span></label>
+              <label class="option"><input type="radio" name="ql2_7"> <span style="min-width: 0;">Simulated annealing.</span></label>
+              <label class="option"><input type="radio" name="ql2_7"> <span style="min-width: 0;">Markov chain Monte Carlo (MCMC).</span></label>
+              <label class="option"><input type="radio" name="ql2_7"> <span style="min-width: 0;">Nelder-Mead simplex search.</span></label>
+            </fieldset>
+            <div class="explain">Brent's method guarantees robust bracketing convergence with superlinear speed for 1D monotonic continuous root-finding.</div>
+          </li>
+
+          <li class="item" data-kind="mc" id="q-l02-08">
+            <p class="stem">What is the shape of the default intensity curve for a typical solvent investment-grade corporate obligor?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="ql2_8"> <span style="min-width: 0;">Upward-sloping, reflecting low near-term default risk and increasing cumulative uncertainty over longer horizons.</span></label>
+              <label class="option"><input type="radio" name="ql2_8"> <span style="min-width: 0;">Inverted (downward-sloping).</span></label>
+              <label class="option"><input type="radio" name="ql2_8"> <span style="min-width: 0;">Strictly U-shaped.</span></label>
+              <label class="option"><input type="radio" name="ql2_8"> <span style="min-width: 0;">Zero across all maturities.</span></label>
+            </fieldset>
+            <div class="explain">Solvent investment-grade firms possess ample near-term liquidity and cash flows; their credit curves slope upward due to long-term business cycle risks and leverage drift.</div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+        </ol>
+      </section>
+
+      <p class="complete-wrap"><button data-complete="CR2-L02">Mark complete</button></p>
+    </main>
+  </div>
+</body>
+</html>
