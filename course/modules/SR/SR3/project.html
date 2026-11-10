@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="SR3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · Atlas Milestone A19: Systemic Risk Monitor · SR3</title>
+  <meta name="description" content="Doctoral project for SR3 delivering Atlas milestone A19: an enterprise systemic-risk monitor implementing CoVaR, Marginal Expected Shortfall, SRISK capital shortfall indices, and Eisenberg-Noe network clearing with automated alert thresholds.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">SR3 Measuring Systemic Risk</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="10">
+      <header class="page-head">
+        <p class="eyebrow">SR3 · Milestone A19 Independent Deliverable · 10 study hours</p>
+        <h1>Project · Atlas Milestone A19: Systemic Risk Monitor</h1>
+        <p class="lede">Construct an enterprise-grade quantitative systemic risk monitoring engine (<a href="../../../atlas.html">Atlas</a> milestone A19, <code>atlas.systemic</code>). Your engine unifies linear quantile regression CoVaR and \(\Delta\text{CoVaR}\) (Adrian &amp; Brunnermeier 2016), non-parametric Marginal Expected Shortfall and multi-month LRMES (Acharya et al. 2017), the Brownlees and Engle (2017) SRISK conditional capital shortfall index, and the Eisenberg–Noe (2001) interbank contractual default cascade solver, integrated with a multi-indicator prudential alert monitor.</p>
+        <div class="hours-split" role="img" aria-label="10 project hours">
+          <span class="project" style="width:100%"></span>
+        </div>
+        <p class="eyebrow">10 h independent implementation deliverable (20% of module hours)</p>
+      </header>
+
+      <section id="ladder">
+        <h2>Project ladder</h2>
+        <ol class="ladder">
+          <li>
+            <div>
+              <span class="rung-title">Worked example</span>
+              <p>Execute the end-to-end systemic risk measurement pipeline on a simulated 4-bank financial network, observing CoVaR quantile optimization, MES and LRMES projections, SRISK capital shortfalls, Eisenberg-Noe fixed-point clearing, and multi-tier prudential alerts.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Completion</span>
+              <p>Complete the missing relative liability transition matrix normalization, interbank inflow aggregation, and Picard fixed-point contraction operator in the Eisenberg–Noe network clearing lab. Graded instantly in-browser.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Independent</span>
+              <p>Author the complete reference module <code>atlas/systemic.py</code> meeting the exact contract in <a href="../../../atlas/A19.contract.md"><code>atlas/A19.contract.md</code></a>. Passes the 50-seed automated pytest suite and withstands adversarial mutant testing.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Stretch</span>
+              <p>Construct a dynamic multi-horizon stress cascade engine coupling interbank contractual defaults with endogenous fire-sale price depressions and liquidity spirals.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="spec">
+        <h2>Specification</h2>
+        <dl class="spec" style="overflow-wrap: anywhere; word-break: break-word;">
+          <dt>Context</dt>
+          <dd>A macroprudential financial stability authority monitors a network of interconnected financial intermediaries. Standalone Value-at-Risk fails to signal outward fire-sale spillovers, equity capital depletion during market crashes, or contractual cascade failures across bilateral interbank liabilities. The authority requires an automated systemic risk engine to calculate CoVaR, MES, SRISK, and Eisenberg-Noe network clearing in real time, triggering calibrated alert warnings when systemic thresholds are breached.</dd>
+
+          <dt>Inputs</dt>
+          <dd>
+            <ul>
+              <li><code>r_system</code>: 1D NumPy array of aggregate financial sector returns of length \(T\).</li>
+              <li><code>r_institutions</code>: 2D NumPy array of shape \((N, T)\) or list of 1D arrays of institutional returns.</li>
+              <li><code>state_vars</code>: Optional 2D NumPy array of shape \((T, K)\) containing lagged macroeconomic conditioning variables (VIX, liquidity spread, term slope, credit spread).</li>
+              <li><code>equities</code>: 1D NumPy array of length \(N\) containing market capitalizations \(W_i > 0\).</li>
+              <li><code>debts</code>: 1D NumPy array of length \(N\) containing book debt liabilities \(D_i \ge 0\).</li>
+              <li><code>nominal_liabilities</code>: 2D NumPy array \(L \in \R^{N \times N}\) with \(L_{ij} \ge 0\) and \(L_{ii} = 0\).</li>
+              <li><code>external_assets</code>: 1D NumPy array \(z \in \R_+^N\) of outside liquid asset endowments.</li>
+              <li><code>senior_liabilities</code>: Optional 1D NumPy array \(b \in \R_+^N\) of outside senior debt obligations.</li>
+            </ul>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            A pure Python module <code>atlas/systemic.py</code> implementing the public API specified in <a href="../../../atlas/A19.contract.md"><code>atlas/A19.contract.md</code></a>:
+            <ul>
+              <li><code>fit_linear_quantile_regression(y, x, q=0.05) -&gt; np.ndarray</code></li>
+              <li><code>compute_covar(r_system, r_institution, state_vars=None, alpha=0.05) -&gt; dict[str, float]</code></li>
+              <li><code>compute_mes(r_system, r_institution, alpha=0.05) -&gt; float</code></li>
+              <li><code>compute_lrmes(r_system, r_institution, alpha=0.05, crisis_drop=0.40) -&gt; float</code></li>
+              <li><code>compute_srisk(equity_value, debt_value, lrmes, prudential_ratio=0.08) -&gt; float</code></li>
+              <li><code>compute_systemic_srisk_panel(equities, debts, lrmes_values, prudential_ratio=0.08) -&gt; dict[str, Any]</code></li>
+              <li><code>compute_network_clearing(nominal_liabilities, external_assets, senior_liabilities=None, max_iter=1000, tol=1e-10) -&gt; dict[str, Any]</code></li>
+              <li><code>class SystemicRiskMonitor(thresholds=None)</code> with <code>evaluate(metrics) -&gt; dict[str, Any]</code></li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Strictly pure Python, NumPy 2.4, SciPy 1.18. Deterministic execution; no random seeds without fixed initialization; no network calls; no filesystem access outside input reading; complete suite executes in under 60 seconds across all 50 seeds; full compliance with mypy strict type checking.</dd>
+
+          <dt>Grading</dt>
+          <dd>Autograder evaluation across 50 seeded test instances generated by <code>grader/instance.py</code>, testing mathematical properties, monotonicity, non-negativity of SRISK, Picard contraction convergence, and multi-tier alert threshold evaluation.</dd>
+
+          <dt>Atlas milestone</dt>
+          <dd>Delivers milestone <a href="../../../atlas/A19.contract.md">A19</a> (<code>atlas.systemic</code> in <code>atlas/systemic.py</code>).</dd>
+        </dl>
+      </section>
+
+      <section id="budget">
+        <h2>Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th>Phase</th>
+                <th>Hours</th>
+                <th>Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Rung 1 · Worked example analysis</td>
+                <td>1.5</td>
+                <td>Trace complete CoVaR, MES, SRISK, and network clearing execution on simulated 4-bank network.</td>
+              </tr>
+              <tr>
+                <td>Rung 2 · Completion problem</td>
+                <td>2.0</td>
+                <td>Implement relative liability normalization and Picard fixed-point contraction operator in-browser.</td>
+              </tr>
+              <tr>
+                <td>Rung 3 · Independent implementation</td>
+                <td>5.0</td>
+                <td>Author <code>atlas/systemic.py</code> passing acceptance suite across 50 seeds and killing all mutants.</td>
+              </tr>
+              <tr>
+                <td>Rung 4 · Stretch extension</td>
+                <td>1.5</td>
+                <td>Implement coupled multi-horizon network clearing with endogenous fire-sale price feedback.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>10.0</strong></td>
+                <td>Full independent delivery of Atlas milestone A19 (20% of 50 module hours).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="rung-1">
+        <h2>Rung 1 · Worked example: End-to-end systemic risk pipeline</h2>
+        <p>The worked example below simulates a 4-bank financial network, computes static and state-conditioned CoVaR, estimates non-parametric MES and multi-month LRMES, constructs the dollar SRISK panel, clears interbank contractual liabilities via Eisenberg-Noe, and evaluates the multi-tier prudential alert monitor.</p>
+
+        <section class="lab" id="lab-SR3-project-1" data-runtime="python">
+          <p class="hypothesis">Executing the reference systemic risk monitor pipeline evaluates CoVaR, MES, SRISK ($28.05B total shortfall), and network default clearing (1 default, $12.0B shortfall), triggering a CRITICAL alert status across 4 breached indicators.</p>
+          <pre><code class="language-python" data-run>"""Lab SR3-project-1 (Rung 1 Worked Example): Full Systemic Risk Monitor Pipeline.
+
+SIMULATED: fully solved instance of the Atlas A19 Systemic Risk Monitor (`atlas.systemic`),
+incorporating CoVaR, Marginal Expected Shortfall, SRISK capital shortfall index,
+Eisenberg-Noe network clearing, and prudential alert monitoring.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from scipy.optimize import linprog
+
+
+def fit_quantile_reg(y: np.ndarray, x: np.ndarray, q: float) -&gt; np.ndarray:
+    t_obs, k_vars = x.shape
+    c = np.concatenate([np.zeros(k_vars), q * np.ones(t_obs), (1.0 - q) * np.ones(t_obs)])
+    eye_t = np.eye(t_obs)
+    res = linprog(
+        c,
+        A_eq=np.hstack([x, eye_t, -eye_t]),
+        b_eq=y,
+        bounds=[(None, None)] * k_vars + [(0.0, None)] * (2 * t_obs),
+        method="highs",
+    )
+    return np.asarray(res.x[:k_vars], dtype=np.float64)
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(303)
+    t_obs = 500
+
+    # Macro volatility state M_t
+    vol_state = np.zeros(t_obs)
+    for t in range(1, t_obs):
+        vol_state[t] = 0.60 * vol_state[t - 1] + rng.normal(0.0, 0.01)
+
+    # Market returns R_sys
+    scale = np.sqrt(rng.chisquare(df=4, size=t_obs) / 4.0)
+    r_sys = 0.0003 - 0.20 * vol_state + rng.normal(0.0, 0.011, size=t_obs) / np.maximum(scale, 1e-4)
+
+    # 4 Institutions: returns, equities, debts
+    names = ["Bank 1", "Bank 2", "Bank 3", "Bank 4"]
+    betas = [1.50, 1.20, 0.90, 0.70]
+    equities = np.array([120.0, 85.0, 210.0, 55.0])
+    debts = np.array([850.0, 620.0, 1600.0, 440.0])
+
+    r_insts: list[np.ndarray] = []
+    for b in betas:
+        noise = rng.normal(0.0, 0.012, size=t_obs)
+        r_insts.append(b * r_sys + 0.05 * vol_state + noise)
+
+    # 1. CoVaR and Delta-CoVaR
+    ones = np.ones((t_obs, 1))
+    delta_covars: list[float] = []
+    for r_i in r_insts:
+        # Static institution VaR
+        var_i_05 = float(np.quantile(r_i, 0.05))
+        var_i_50 = float(np.quantile(r_i, 0.50))
+        x_sys = np.column_stack([ones, r_i])
+        b_sys = fit_quantile_reg(r_sys, x_sys, q=0.05)
+        d_cov = float(b_sys[1] * (var_i_05 - var_i_50))
+        delta_covars.append(d_cov)
+
+    # 2. MES and LRMES
+    var_sys_05 = float(np.quantile(r_sys, 0.05))
+    crisis_mask = r_sys &lt;= var_sys_05
+    mes_values = [float(-np.mean(r_i[crisis_mask])) for r_i in r_insts]
+    var_s = float(np.var(r_sys, ddof=1))
+    lrmes_values = [float(1.0 - (1.0 - 0.40) ** (np.cov(r_i, r_sys, ddof=1)[0, 1] / var_s)) for r_i in r_insts]
+
+    # 3. SRISK Panel
+    k = 0.08
+    cs = k * debts - (1.0 - k) * (1.0 - np.array(lrmes_values)) * equities
+    srisks = np.maximum(0.0, cs)
+    total_srisk = float(np.sum(srisks))
+    srisk_pcts = (srisks / total_srisk * 100.0) if total_srisk &gt; 0 else np.zeros_like(srisks)
+
+    # 4. Network Clearing under targeted shock
+    l_mat = np.array(
+        [
+            [0.0, 20.0, 15.0, 10.0],
+            [15.0, 0.0, 20.0, 15.0],
+            [20.0, 15.0, 0.0, 15.0],
+            [10.0, 20.0, 15.0, 0.0],
+        ]
+    )
+    p_bar = np.sum(l_mat, axis=1)
+    z_external = np.array([0.0, 25.0, 35.0, 20.0])  # Bank 1 wiped out
+    b_senior = np.array([12.0, 10.0, 15.0, 8.0])
+
+    pi = l_mat / p_bar[:, None]
+    p = p_bar.copy()
+    for _ in range(500):
+        p_next = np.minimum(p_bar, np.maximum(0.0, z_external + pi.T @ p - b_senior))
+        if np.max(np.abs(p_next - p)) &lt; 1e-10:
+            break
+        p = p_next
+    defaults = (p &lt; p_bar - 1e-7).astype(int)
+
+    # 5. Alert Monitor
+    monitor_thresholds = {"delta_covar": -0.015, "mes": 0.035, "srisk_pct": 30.0, "network_defaults": 1}
+    breaches = {
+        "delta_covar": any(dc &lt; monitor_thresholds["delta_covar"] for dc in delta_covars),
+        "mes": any(m &gt; monitor_thresholds["mes"] for m in mes_values),
+        "srisk_pct": any(sp &gt; monitor_thresholds["srisk_pct"] for sp in srisk_pcts),
+        "network_defaults": int(np.sum(defaults)) &gt;= monitor_thresholds["network_defaults"],
+    }
+    severity = "CRITICAL" if sum(breaches.values()) &gt;= 3 else "WARNING"
+
+    print("=== Atlas A19 Systemic-Risk Monitor (Full Pipeline) ===")
+    print(f"Systemic SRISK (Total): ${total_srisk:.2f}B")
+    print("-" * 75)
+    print(f"{'Bank':&lt;10} {'Delta-CoVaR':&lt;15} {'MES (5%)':&lt;12} {'LRMES':&lt;10} {'SRISK ($B)':&lt;12} {'Share (%)':&lt;10}")
+    print("-" * 75)
+    for i, name in enumerate(names):
+        mes_str = f"{mes_values[i] * 100:&lt;11.2f}%"
+        lrmes_str = f"{lrmes_values[i] * 100:&lt;9.1f}%"
+        srisk_str = f"${srisks[i]:&lt;11.2f}"
+        pct_str = f"{srisk_pcts[i]:&lt;9.1f}%"
+        print(f"{name:&lt;10} {delta_covars[i]:&lt;15.4f} {mes_str} {lrmes_str} {srisk_str} {pct_str}")
+    print("-" * 75)
+    print(f"Network Cascade: {int(np.sum(defaults))}/4 defaults. Clearing shortfall: ${np.sum(p_bar - p):.1f}B")
+    print(f"Alert Monitor Status: {severity} ({sum(breaches.values())}/4 indicators breached)")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">=== Atlas A19 Systemic-Risk Monitor (Full Pipeline) ===
+Systemic SRISK (Total): $28.05B
+---------------------------------------------------------------------------
+Bank       Delta-CoVaR     MES (5%)     LRMES      SRISK ($B)   Share (%) 
+---------------------------------------------------------------------------
+Bank 1     -0.0209         5.74       % 54.7     % $17.99       64.1     %
+Bank 2     -0.0221         3.99       % 45.0     % $6.56        23.4     %
+Bank 3     -0.0234         3.48       % 35.6     % $3.50        12.5     %
+Bank 4     -0.0161         2.95       % 30.2     % $0.00        0.0      %
+---------------------------------------------------------------------------
+Network Cascade: 1/4 defaults. Clearing shortfall: $12.0B
+Alert Monitor Status: CRITICAL (4/4 indicators breached)</pre>
+          <p class="interpretation">The worked pipeline demonstrates that Bank 1 dominates systemic capital risk with $17.99B in SRISK (64.1% systemic share) driven by its 1.50 beta and 54.7% LRMES. When Bank 1 experiences an asset shock wiping out external equity, Eisenberg-Noe clearing propagates a $12.0B shortfall across counterparties, triggering 4 of 4 alert indicators and elevating the monitor status to CRITICAL.</p>
+        </section>
+      </section>
+
+      <section id="rung-2">
+        <h2>Rung 2 · Completion problem: Eisenberg–Noe network clearing engine</h2>
+        <p>Implement the missing components in the Eisenberg–Noe network clearing solver: (1) row-normalize the relative liabilities matrix \(\Pi_{ij} = L_{ij} / \bar{p}_i\); (2) compute incoming payment inflows \(\Pi^\top p\); and (3) apply the non-linear lattice clearing operator \(\min(\bar{p}, \max(0, z + \text{Inflows} - b))\). Every line must match the twin solution or contain a <code>___</code> blank.</p>
+
+        <section class="lab completion" id="lab-SR3-project-2" data-runtime="python">
+          <p class="hypothesis">Completing the missing relative liability transition matrix and Picard lattice operator will solve the 5-node interbank network, identifying 2 defaulting institutions (Nodes 0 and 4) and a total systemic payment shortfall of $29.80B.</p>
+          <pre><code class="language-python" data-run>"""Lab SR3-project-2 (Rung 2 Completion Problem): Eisenberg-Noe Network Clearing.
+
+SIMULATED: completion twin for the Eisenberg-Noe financial network clearing engine.
+Implements the relative liability transition matrix, interbank inflow aggregation,
+and the Picard fixed-point contraction operator.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def solve_eisenberg_noe(
+    l_mat: np.ndarray,
+    z_vec: np.ndarray,
+    b_vec: np.ndarray,
+    tol: float = 1e-10,
+    max_iter: int = 500,
+) -> tuple[np.ndarray, np.ndarray, int, float]:
+    """Compute the clearing payment vector p* under Eisenberg-Noe (2001)."""
+    p_bar = np.sum(l_mat, axis=1)
+
+    # Relative liabilities matrix Pi: Pi[i, j] = L[i, j] / p_bar[i]
+    pi_mat = np.zeros_like(l_mat)
+    has_obligations = p_bar > 1e-12
+    pi_mat[has_obligations] = ___
+
+    # Initialize at full nominal payments p = p_bar
+    p = p_bar.copy()
+    rounds = 0
+
+    for _ in range(max_iter):
+        rounds += 1
+        # Interbank payment inflows to institution i: sum_j Pi[j, i] * p[j]
+        inflows = ___
+
+        # Eisenberg-Noe lattice operator: min(p_bar, max(0, z + inflows - b))
+        p_next = ___
+
+        if np.max(np.abs(p_next - p)) < tol:
+            p = p_next
+            break
+        p = p_next
+
+    defaults = (p < p_bar - 1e-7).astype(int)
+    total_shortfall = float(np.sum(p_bar - p))
+    return p, defaults, rounds, total_shortfall
+
+
+def main() -> None:
+    # 5-node interbank network fixture
+    l_mat = np.array(
+        [
+            [0.0, 25.0, 15.0, 10.0, 0.0],
+            [10.0, 0.0, 20.0, 10.0, 10.0],
+            [15.0, 15.0, 0.0, 20.0, 10.0],
+            [5.0, 15.0, 15.0, 0.0, 15.0],
+            [10.0, 10.0, 10.0, 20.0, 0.0],
+        ]
+    )
+    p_bar = np.sum(l_mat, axis=1)
+
+    # External assets z and senior liabilities b
+    z_stressed = np.array([0.0, 20.0, 25.0, 18.0, 22.0])  # Node 0 asset collapse
+    b_senior = np.array([15.0, 12.0, 14.0, 10.0, 11.0])
+
+    p_star, defaults, rounds, shortfall = solve_eisenberg_noe(l_mat, z_stressed, b_senior)
+
+    print("=== Eisenberg-Noe Network Clearing Solution (Completion) ===")
+    print(f"Nodes in Network: {len(p_bar)}")
+    print(f"Total Nominal Liabilities: ${np.sum(p_bar):.1f}B")
+    print("-" * 65)
+    print(f"Picard Contraction Iterations: {rounds}")
+    print(f"Defaulting Institutions: {int(np.sum(defaults))}/{len(p_bar)} (Default vector: {defaults})")
+    print(f"Total Systemic Shortfall: ${shortfall:.2f}B")
+    print("-" * 65)
+    for i in range(len(p_bar)):
+        status = "DEFAULT" if defaults[i] else "SOLVENT"
+        print(f"Node {i}: Promised ${p_bar[i]:<5.1f}B | Paid ${p_star[i]:<5.2f}B | Status: {status}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">=== Eisenberg-Noe Network Clearing Solution (Completion) ===
+Nodes in Network: 5
+Total Nominal Liabilities: $260.0B
+-----------------------------------------------------------------
+Picard Contraction Iterations: 3
+Defaulting Institutions: 2/5 (Default vector: [1 0 0 0 1])
+Total Systemic Shortfall: $29.80B
+-----------------------------------------------------------------
+Node 0: Promised $50.0 B | Paid $24.20B | Status: DEFAULT
+Node 1: Promised $50.0 B | Paid $50.00B | Status: SOLVENT
+Node 2: Promised $60.0 B | Paid $60.00B | Status: SOLVENT
+Node 3: Promised $50.0 B | Paid $50.00B | Status: SOLVENT
+Node 4: Promised $50.0 B | Paid $46.00B | Status: DEFAULT</pre>
+          <p class="interpretation">The completed Eisenberg-Noe clearing engine converges in 3 Picard contraction iterations, correctly identifying that the asset shock on Node 0 triggers a cascade default on Node 4 (clearing payment $46.00B against $50.00B promised), generating an aggregate systemic shortfall of $29.80B.</p>
+        </section>
+      </section>
+
+      <section id="rung-3">
+        <h2>Rung 3 · Independent project: Atlas A19 Systemic-Risk Monitor</h2>
+        <p>Implement the complete enterprise systemic risk engine in <code>atlas/systemic.py</code> adhering to <a href="../../../atlas/A19.contract.md"><code>atlas/A19.contract.md</code></a>. Test your implementation against the automated test suite below. Your code must pass all tests across 50 consecutive seeds (0–49) and kill all adversarial mutants.</p>
+
+        <section class="grader-panel" id="grader" data-unit="SR3" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="atlas/systemic.py" data-starter="starter.py" data-packages="numpy scipy"></section>
+      </section>
+
+      <section id="rung-4">
+        <h2>Rung 4 · Stretch: Dynamic multi-horizon stress cascade engine</h2>
+        <p>In actual financial crises, interbank contractual defaults do not occur in a vacuum; defaulting banks liquidate illiquid asset holdings, driving down asset market prices and triggering secondary fire-sale spirals on surviving balance sheets. The stretch lab below implements a coupled multi-horizon stress cascade engine combining Eisenberg–Noe network clearing with endogenous price impacts.</p>
+
+        <section class="lab" id="lab-SR3-project-3" data-runtime="python">
+          <p class="hypothesis">Coupling interbank contractual defaults with endogenous fire-sale price impact over a 3-horizon stress simulation demonstrates that initial asset price drops trigger forced liquidations, propagating secondary defaults and expanding cumulative systemic payment shortfalls from $19.00B to $29.93B.</p>
+          <pre><code class="language-python" data-run>"""Lab SR3-project-3 (Rung 4 Stretch Extension): Dynamic Multi-Horizon Stress Cascade Engine.
+
+SIMULATED: couples interbank default clearing with endogenous fire-sale price impact
+over multiple stress horizons, evaluating systemic liquidation spirals.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def clear_network(l_mat: np.ndarray, z_vec: np.ndarray, b_vec: np.ndarray) -&gt; tuple[np.ndarray, np.ndarray]:
+    p_bar = np.sum(l_mat, axis=1)
+    pi_mat = np.zeros_like(l_mat)
+    has_liab = p_bar &gt; 1e-12
+    pi_mat[has_liab] = l_mat[has_liab] / p_bar[has_liab, None]
+
+    p = p_bar.copy()
+    for _ in range(300):
+        p_next = np.minimum(p_bar, np.maximum(0.0, z_vec + pi_mat.T @ p - b_vec))
+        if np.max(np.abs(p_next - p)) &lt; 1e-9:
+            p = p_next
+            break
+        p = p_next
+    defaults = (p &lt; p_bar - 1e-7).astype(int)
+    return p, defaults
+
+
+def main() -&gt; None:
+    n_banks = 4
+    n_periods = 3
+    fire_sale_alpha = 0.015  # Linear price impact parameter (1.5% drop per $1B liquidated)
+
+    # Base interbank network
+    l_mat = np.array(
+        [
+            [0.0, 30.0, 20.0, 10.0],
+            [20.0, 0.0, 25.0, 15.0],
+            [15.0, 25.0, 0.0, 20.0],
+            [10.0, 15.0, 25.0, 0.0],
+        ]
+    )
+    p_bar = np.sum(l_mat, axis=1)
+
+    # Holdings of illiquid common asset (units): [20, 35, 45, 30]
+    asset_holdings = np.array([20.0, 35.0, 45.0, 30.0])
+    price_t = 1.0  # Initial asset price
+
+    # Liquid cash reserves z_cash and senior outside liabilities b
+    z_cash = np.array([2.0, 4.0, 6.0, 3.0])
+    b_senior = np.array([20.0, 15.0, 18.0, 14.0])
+
+    print("=== Dynamic Multi-Horizon Stress Cascade Engine (Stretch) ===")
+    print(f"Network Size: N={n_banks} banks | Stress Horizons: T={n_periods}")
+    print("-" * 75)
+
+    cumulative_defaults = np.zeros(n_banks, dtype=int)
+
+    for t in range(1, n_periods + 1):
+        # Exogenous macro shock in period 1: 30% fundamental asset price decline
+        if t == 1:
+            price_t = 0.70
+
+        # Outside asset valuation: cash + mark-to-market illiquid assets
+        z_total = z_cash + asset_holdings * price_t
+
+        # Solve interbank clearing
+        p_star, period_defaults = clear_network(l_mat, z_total, b_senior)
+        new_defaults = (period_defaults == 1) &amp; (cumulative_defaults == 0)
+        cumulative_defaults = np.maximum(cumulative_defaults, period_defaults)
+
+        # Forced fire sales: newly defaulting banks liquidate 70% of illiquid assets
+        liquidated_units = float(np.sum(asset_holdings[new_defaults] * 0.70))
+        liquidation_dollar = liquidated_units * price_t
+
+        # Endogenous price impact: Delta P / P = - alpha * liquidation_dollar
+        price_drop_pct = fire_sale_alpha * liquidation_dollar
+        next_price = price_t * max(0.20, 1.0 - price_drop_pct)
+
+        print(f"Horizon t={t}:")
+        print(f"  Asset Price: ${price_t:.4f} (Fire-Sale Impact: -{price_drop_pct * 100:.2f}%)")
+        n_new = int(np.sum(new_defaults))
+        n_cum = int(np.sum(cumulative_defaults))
+        print(f"  New Defaults: {n_new} | Cumulative Defaults: {n_cum}/{n_banks}")
+        print(f"  Forced Fire Sales: ${liquidation_dollar:.2f}B | Systemic Shortfall: ${np.sum(p_bar - p_star):.2f}B")
+
+        price_t = next_price
+
+    print("-" * 75)
+    print("Coupled Contagion Outcome: Feedback between interbank contractual insolvencies")
+    print("and fire-sale asset devaluations amplifies cumulative defaults across horizons.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">=== Dynamic Multi-Horizon Stress Cascade Engine (Stretch) ===
+Network Size: N=4 banks | Stress Horizons: T=3
+---------------------------------------------------------------------------
+Horizon t=1:
+  Asset Price: $0.7000 (Fire-Sale Impact: -14.70%)
+  New Defaults: 1 | Cumulative Defaults: 1/4
+  Forced Fire Sales: $9.80B | Systemic Shortfall: $19.00B
+Horizon t=2:
+  Asset Price: $0.5971 (Fire-Sale Impact: -18.81%)
+  New Defaults: 1 | Cumulative Defaults: 2/4
+  Forced Fire Sales: $12.54B | Systemic Shortfall: $23.04B
+Horizon t=3:
+  Asset Price: $0.4848 (Fire-Sale Impact: -0.00%)
+  New Defaults: 0 | Cumulative Defaults: 2/4
+  Forced Fire Sales: $0.00B | Systemic Shortfall: $29.93B
+---------------------------------------------------------------------------
+Coupled Contagion Outcome: Feedback between interbank contractual insolvencies
+and fire-sale asset devaluations amplifies cumulative defaults across horizons.</pre>
+          <p class="interpretation">The dynamic stress simulation illustrates the feedback loop between contractual interbank defaults and fire-sale liquidations: the initial 30% asset price drop forces Bank 0 into default, liquidating $9.80B in assets and depressing the market price by a further 14.70%. In horizon 2, this depressed valuation pushes Bank 1 into default, liquidating $12.54B and cascading cumulative defaults to 2 of 4 banks with a final systemic shortfall of $29.93B.</p>
+        </section>
+      </section>
+
+      <section id="rubric">
+        <h2>Evaluation rubric</h2>
+        <div class="table-wrap">
+          <table class="rubric">
+            <thead>
+              <tr>
+                <th>Criterion</th>
+                <th>Level 4 · Exemplary</th>
+                <th>Level 3 · Proficient</th>
+                <th>Level 2 · Developing</th>
+                <th>Level 1 · Inadequate</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>C1: Quantile Regression &amp; CoVaR Formulation</strong></td>
+                <td>Formulates the linear programming pinball loss objective with positive and negative slack residuals; solves CoVaR and \(\Delta\text{CoVaR}\) with and without macroeconomic state variables; verifies pinball loss optimality against OLS.</td>
+                <td>Implements linear quantile regression and evaluates static CoVaR correctly; state-variable conditioning handles only scalar inputs.</td>
+                <td>Estimates CoVaR using OLS Gaussian approximations rather than linear quantile programming; fails pinball loss optimality checks.</td>
+                <td>Fails to implement quantile regression; CoVaR returns arbitrary or unconstrained estimates.</td>
+              </tr>
+              <tr>
+                <td><strong>C2: Marginal Expected Shortfall &amp; Crisis LRMES</strong></td>
+                <td>Computes non-parametric sample MES over conditional market crisis days; implements multi-month LRMES power projection \(1 - (1 - d)^\beta\) and daily exponential approximation; handles zero crisis observations safely.</td>
+                <td>Computes sample MES and power LRMES correctly; lacks input validation for negative market crash parameters \(d\).</td>
+                <td>Confuses MES with standalone Expected Shortfall; conditions on institution distress instead of market distress.</td>
+                <td>Fails to compute conditional expectations; returns static unconditional means.</td>
+              </tr>
+              <tr>
+                <td><strong>C3: SRISK Panel &amp; Capital Shortfall Invariants</strong></td>
+                <td>Calculates gross shortfall \(\text{CS}\) and non-negative \(\text{SRISK} = \max(0, \text{CS})\); aggregates total \(\text{SRISK}_{\text{sys}}\) without netting capital surpluses; computes percentage contribution shares; verifies \(\partial\text{SRISK}/\partial D = k\).</td>
+                <td>Computes individual SRISK and aggregate shortfall correctly; allows negative shortfalls to partially net out in multi-firm panels.</td>
+                <td>Omits prudential capital ratio \(k\) or ignores surviving equity \((1 - \text{LRMES})W\) in post-crisis balance sheets.</td>
+                <td>Calculates purely accounting debt ratios with zero incorporation of market tail risk.</td>
+              </tr>
+              <tr>
+                <td><strong>C4: Eisenberg–Noe Clearing &amp; Picard Contraction</strong></td>
+                <td>Constructs row-normalized relative liabilities \(\Pi\); enforces senior outside debt priority \(b\); executes monotone Picard iteration terminating within \(N\) rounds; validates \(0 \le p_i^* \le \bar{p}_i\).</td>
+                <td>Implements Picard contraction and identifies defaults correctly; ignores outside senior debt priority or handles only zero senior claims.</td>
+                <td>Clearing payments violate limited liability or exceed nominal obligations; fails to converge on cyclic networks.</td>
+                <td>Fails to implement matrix fixed-point clearing; reports static nominal obligations.</td>
+              </tr>
+              <tr>
+                <td><strong>C5: Prudential Monitor Alert Engine &amp; Numerical Robustness</strong></td>
+                <td>Constructs <code>SystemicRiskMonitor</code> with configurable thresholds; evaluates breaches across CoVaR, MES, SRISK, and network cascade depth; assigns calibrated alert statuses (NORMAL, WATCH, WARNING, CRITICAL); validates all domain constraints with informative errors.</td>
+                <td>Implements monitor class with fixed default thresholds; correctly flags warning and critical states on standard inputs.</td>
+                <td>Alert monitor assigns hard-coded status without evaluating threshold breaches; input validation is incomplete.</td>
+                <td>Fails to implement monitor class; raises unhandled runtime exceptions on invalid inputs.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="exemplars">
+        <h2>Annotated exemplars</h2>
+        <div class="exemplar" data-level="4">
+          <h3>Exemplar · Level 4 (Exemplary implementation)</h3>
+          <p>The code cleanly solves linear quantile regression via HiGHS linear programming with slack decomposition, evaluates static and state-conditioned \(\Delta\text{CoVaR}\), computes non-parametric MES and LRMES with boundary safeguards, tracks non-negative SRISK without netting surpluses, executes Eisenberg-Noe Picard clearing with strict monotonicity checks, and implements the complete <code>SystemicRiskMonitor</code> with comprehensive exception handling.</p>
+        </div>
+        <div class="exemplar" data-level="2">
+          <h3>Exemplar · Level 2 (Developing implementation)</h3>
+          <p>The code attempts quantile regression via unconstrained gradient descent, leading to non-convergence on collinear macro variables; permits capital surpluses to offset deficits in multi-firm SRISK panels; and implements network clearing using simple matrix inversion without enforcing the non-linear \(\min(\bar{p}, \max(0, \cdot))\) boundary constraints.</p>
+        </div>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="adrian2016covar">Adrian, T., &amp; Brunnermeier, M. K. (2016). CoVaR. <em>American Economic Review</em>, 106(7), 1705–1741.</li>
+          <li data-cite="acharya2016measuring">Acharya, V. V., Pedersen, L. H., Philippon, T., &amp; Richardson, M. (2017). Measuring systemic risk. <em>Review of Financial Studies</em>, 30(1), 2–47.</li>
+          <li data-cite="brownlees2016srisk">Brownlees, C., &amp; Engle, R. F. (2017). SRISK: A conditional capital shortfall measure of systemic risk. <em>Review of Financial Studies</em>, 30(1), 48–79.</li>
+          <li data-cite="acemoglu2015systemic">Acemoglu, D., Ozdaglar, A., &amp; Tahbaz-Salehi, A. (2015). Systemic risk and stability in financial networks. <em>American Economic Review</em>, 105(2), 564–608.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
