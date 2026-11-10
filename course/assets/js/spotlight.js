@@ -230,3 +230,4 @@ export function initSpotlight(root) {
     headerActions.prepend(btn);
   }
 }
+
