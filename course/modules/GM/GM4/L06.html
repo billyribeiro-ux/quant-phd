@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="GM4" data-page="L06" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L06 · Scenario P&amp;L, Tail Stress &amp; Execution Architecture · GM4</title>
+  <meta name="description" content="Lesson 6 of GM4: Macro Strategy Construction. Scenario P&L, full non-linear revaluation, macro stress testing, Almgren-Chriss market impact, and execution architecture. 8 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">GM4</a><span class="sep">›</span>
+      <span>L06 Scenario P&amp;L, Tail Stress &amp; Execution</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson L06 · 8 study hours · Tier M</p>
+        <h1>Scenario P&amp;L, Tail Stress &amp; Execution Architecture</h1>
+        <p class="why-it-matters">Traditional risk management relies heavily on local Greek linearizations and historical Value-at-Risk, both of which fatally underestimate portfolio damage during regime breaks. In complex macroeconomic portfolios combining cash bonds, foreign exchange forwards, interest rate swaps, and non-linear options, linear approximations fail to capture curvature, volatility shocks, and cross-asset correlation breakdowns. True resilience demands full non-linear scenario revaluation across historical and hypothetical macroeconomic stress shocks, paired with execution models that account for Almgren-Chriss market impact drag, dealer balance sheet constraints, and margin spiral stop-out boundaries.</p>
+      </header>
+
+      <section id="scenario-pnl-principles">
+        <h2 id="h-scenario-pnl-principles">1. Scenario P&amp;L: Full Non-Linear Revaluation vs Greek Approximations</h2>
+        <p>In quantitative macro management, evaluating trade expressions solely through infinitesimal Greeks (\(\Delta, \Gamma, \text{DV01}, \mathcal{V}\)) introduces massive blind spots when markets experience non-marginal macro shocks <span class="claim" data-grade="A" data-cite="pedersen2015efficiently hull2021options">(Pedersen 2015; Hull 2021)</span>.</p>
+
+        <div class="block definition">
+          <p><span class="block-title claim" data-grade="A" data-cite="pedersen2015efficiently">Definition 6.1 (<dfn id="def-scenario-pnl" data-concept="scenario-pnl">scenario P&amp;L</dfn>)</span> The <em>scenario P&amp;L</em> of a multi-asset macro portfolio under a discrete macroeconomic scenario \(\mathbf{s} \in \mathcal{S}\) is the exact change in net portfolio market value computed via full non-linear revaluation of every underlying contract under the joint state shift \(\mathbf{s} = (\Delta \mathbf{S}, \Delta \mathbf{y}, \Delta \boldsymbol{\sigma}, \Delta t)\):</p>
+          <p>\[
+          \Pi(\mathbf{s}) = \sum_{i=1}^M N_i \cdot \left[ V_i\big(\mathbf{S}_0 + \Delta \mathbf{S}(\mathbf{s}), \mathbf{y}_0 + \Delta \mathbf{y}(\mathbf{s}), \boldsymbol{\sigma}_0 + \Delta \boldsymbol{\sigma}(\mathbf{s}), T_i - \Delta t\big) - V_i(\mathbf{S}_0, \mathbf{y}_0, \boldsymbol{\sigma}_0, T_i) \right] - \text{Financing}(\mathbf{s})
+          \]</p>
+          <p>where \(V_i(\cdot)\) is the exact contract pricing function (Black-Scholes-Merton formula, discounted cash flow curve, or forward pricing model), \(N_i\) is the contract position quantity, and \(\text{Financing}(\mathbf{s})\) represents accrued repo financing drag and margin borrow costs over scenario horizon \(\Delta t\).</p>
+        </div>
+
+        <div class="block theorem">
+          <p><span class="block-title claim" data-grade="T">Theorem 6.1 (The Convexity Error of Linear Greek Approximations)</span> Let \(\Delta \Pi_{\text{linear}}(\mathbf{s})\) be the first-order Greek approximation of portfolio P&amp;L:</p>
+          <p>\[
+          \Delta \Pi_{\text{linear}}(\mathbf{s}) = \boldsymbol{\Delta}^T \Delta \mathbf{S} - 10^4 \cdot \mathbf{DV01}^T \Delta \mathbf{y} + \boldsymbol{\mathcal{V}}^T \Delta \boldsymbol{\sigma} + \Theta \Delta t
+          \]</p>
+          <p>The discrepancy between true scenario P&amp;L and the linear approximation is the non-linear <em>convexity gap</em> \(\mathcal{G}(\mathbf{s}) = \Pi(\mathbf{s}) - \Delta \Pi_{\text{linear}}(\mathbf{s})\). For a portfolio with positive net gamma (\(\boldsymbol{\Gamma} \succ 0\)) and positive vega (\(\boldsymbol{\mathcal{V}} &gt; 0\)), the linear approximation systematically understates portfolio gains under large symmetric market moves (\(\|\Delta \mathbf{S}\| \gg 0\)):</p>
+          <p>\[
+          \mathcal{G}(\mathbf{s}) \approx \frac{1}{2} \Delta \mathbf{S}^T \boldsymbol{\Gamma} \Delta \mathbf{S} + \Delta \mathbf{S}^T \mathbf{Vanna} \Delta \boldsymbol{\sigma} + \frac{1}{2} \Delta \boldsymbol{\sigma}^T \mathbf{Volga} \Delta \boldsymbol{\sigma} &gt; 0
+          \]</p>
+        </div>
+
+        <p>Conversely, for short-option expressions (such as unhedged currency carry trades or short variance swaps), \(\boldsymbol{\Gamma} \prec 0\), causing linear models to catastrophically underestimate downside tail losses during volatility spikes.</p>
+      </section>
+
+      <section id="canonical-stress-scenarios">
+        <h2 id="h-canonical-stress-scenarios">2. Designing Canonical Macro Stress Scenarios</h2>
+        <p>A rigorous macro stress testing framework does not merely simulate historical 99% VaR quantiles. It evaluates portfolio behavior across canonical macroeconomic regime breaks <span class="claim" data-grade="A" data-cite="pedersen2015efficiently brunnermeier2008carry">(Pedersen 2015; Brunnermeier et al. 2008)</span>:</p>
+
+        <ul>
+          <li><strong>2008 Lehman Liquidity Freeze:</strong> Massive bull steepening in sovereign curves (front-end rates collapse), violent FX carry unwind (JPY and USD surge, high-yield FX plummets 25%), equity markets drop 35%, and implied volatility explodes (+30 to +50 points).</li>
+          <li><strong>2020 Covid Flash Crash:</strong> Extreme global equity liquidation (-30%), flight-to-safety sovereign curve rally, credit spread blowout, and severe basis disruptions between cash Treasuries and futures.</li>
+          <li><strong>2022 Fed Hawkish Inflation Shock:</strong> Rapid bear flattening and inversion of sovereign curves (-100 to -150 bps in 2s10s slope), simultaneous drop in both equities (-20%) and long-duration bonds (-25%), positive equity-bond correlation destroying classical 60/40 diversification.</li>
+          <li><strong>2024 JPY Carry Trade Unwind:</strong> Sudden Bank of Japan hawkish rate hike triggering an abrupt +15% surge in the Japanese Yen over 3 trading sessions, forcing global margin liquidations in technology equities and high-beta assets.</li>
+        </ul>
+      </section>
+
+      <section id="execution-architecture">
+        <h2 id="h-execution-architecture">3. Execution Architecture, Market Impact, and Stop-Out Boundaries</h2>
+        <p>Paper macroeconomic strategies often fail in live institutional deployment because of transaction costs, dealer balance sheet constraints, and price impact during liquidation <span class="claim" data-grade="A" data-cite="almgren2001optimal brunnermeier2008carry">(Almgren and Chriss 2001; Brunnermeier and Pedersen 2009)</span>.</p>
+
+        <div class="block definition">
+          <p><span class="block-title claim" data-grade="A" data-cite="almgren2001optimal">Definition 6.2 (Almgren-Chriss Optimal Liquidation Impact)</span> When unwinding a macro position of \(X_0\) shares or contracts over horizon \(T\) divided into intervals \(t_k\), trading at rate \(v_k = \frac{x_k - x_{k-1}}{\tau}\), the total expected execution cost \(\mathcal{C}_{\text{exec}}\) combines permanent price impact \(\gamma\) and temporary price impact \(\eta\):</p>
+          <p>\[
+          \mathcal{C}_{\text{exec}} = \frac{1}{2} \gamma X_0^2 + \tau \sum_{k=1}^K \eta \left( \frac{x_k - x_{k-1}}{\tau} \right)^2
+          \]</p>
+        </div>
+
+        <p>In stressed macro environments, market depth \(\frac{1}{\eta}\) contracts by 80% to 95%. Attempting to liquidate a multi-billion dollar relative-value position in illiquid sovereign bonds or emerging market FX creates self-inflicted execution drag that exceeds the original trade margin. Consequently, quantitative macro risk engines enforce strict <strong>stop-out boundaries</strong> calibrated to position liquidation horizons rather than instantaneous mark-to-market prices.</p>
+      </section>
+
+      <section class="lab" id="lab-GM4-L06-1" data-runtime="python">
+        <h3>Lab 1 · Macro Portfolio Tail Stress Revaluation Engine</h3>
+        <p class="hypothesis">Hypothesis: Across four canonical macroeconomic crisis scenarios, linear Greek approximations fail to capture option convexity, resulting in multi-million dollar convexity gaps where non-linear options protect capital during market crashes.</p>
+        <pre><code class="language-python" data-run>"""Lab GM4-L06-1: Scenario P&amp;L and Non-Linear Tail Stress Testing.
+
+Evaluates a multi-asset macro portfolio across four canonical macroeconomic
+stress scenarios, comparing linear Greek approximations with full non-linear revaluation.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Scenario:
+    name: str
+    rates_slope_shock_bps: float
+    fx_carry_shock_pct: float
+    equity_spot_shock_pct: float
+    vol_shock_pts: float
+
+
+def bsm_call_pnl(s0: float, s1: float, k: float, v0: float, v1: float, t: float, r: float) -> tuple[float, float]:
+    """Calculate (full_nonlinear_pnl, linear_delta_approx_pnl)."""
+
+    # Helper for analytical price
+    def price(s: float, vol: float) -> float:
+        sqt = vol * math.sqrt(t)
+        d1 = (math.log(s / k) + (r + 0.5 * vol * vol) * t) / sqt
+        d2 = d1 - sqt
+        c1 = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+        c2 = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0)))
+        return s * c1 - k * math.exp(-r * t) * c2
+
+    p0 = price(s0, v0)
+    p1 = price(s1, v1)
+    nonlinear_pnl = p1 - p0
+
+    # Initial Delta
+    sqt = v0 * math.sqrt(t)
+    d1 = (math.log(s0 / k) + (r + 0.5 * v0 * v0) * t) / sqt
+    delta = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+    linear_pnl = delta * (s1 - s0)
+
+    return nonlinear_pnl, linear_pnl
+
+
+def main() -> None:
+    # Portfolio composition:
+    # 1. 2s10s Curve Steepener ($10M notional, DV01 neutrality, pays off when slope widens)
+    # 2. FX Carry: Long AUD, Short JPY ($5M notional)
+    # 3. Long Equity Volatility Straddle ($2M notional in options)
+
+    scenarios = [
+        Scenario(
+            name="2008 Lehman Liquidity Freeze",
+            rates_slope_shock_bps=120.0,
+            fx_carry_shock_pct=-0.22,
+            equity_spot_shock_pct=-0.35,
+            vol_shock_pts=0.30,
+        ),
+        Scenario(
+            name="2020 Covid Flash Crash",
+            rates_slope_shock_bps=65.0,
+            fx_carry_shock_pct=-0.14,
+            equity_spot_shock_pct=-0.28,
+            vol_shock_pts=0.45,
+        ),
+        Scenario(
+            name="2022 Fed Hawkish Inflation Shock",
+            rates_slope_shock_bps=-110.0,
+            fx_carry_shock_pct=0.08,
+            equity_spot_shock_pct=-0.18,
+            vol_shock_pts=0.06,
+        ),
+        Scenario(
+            name="2024 JPY Carry Trade Unwind",
+            rates_slope_shock_bps=30.0,
+            fx_carry_shock_pct=-0.16,
+            equity_spot_shock_pct=-0.10,
+            vol_shock_pts=0.25,
+        ),
+    ]
+
+    print("=== Macro Portfolio Tail Stress Revaluation ($17M Gross Exposure) ===")
+    print(f"{'Scenario Name':<34}{'Non-Linear P&amp;L':<18}{'Linear Approx P&amp;L':<18}{'Convexity Gap':<14}")
+    print("-" * 84)
+
+    for sc in scenarios:
+        slope_shock = sc.rates_slope_shock_bps
+        fx_shock = sc.fx_carry_shock_pct
+        eq_shock = sc.equity_spot_shock_pct
+        vol_shock = sc.vol_shock_pts
+
+        # 1. Steepener P&amp;L: DV01 of $10M spread is ~$3,500 per bp
+        # Slope change in bps * DV01
+        pnl_steepener = slope_shock * 3500.0
+
+        # 2. FX Carry P&amp;L: delta-one cash return
+        pnl_carry = 5_000_000.0 * fx_shock
+
+        # 3. Equity Option Straddle P&amp;L: Non-linear revaluation vs linear delta
+        s0 = 100.0
+        s1 = s0 * (1.0 + eq_shock)
+        v0 = 0.18
+        v1 = v0 + vol_shock
+        t = 0.25
+        r = 0.045
+        nl_call, lin_call = bsm_call_pnl(s0, s1, 100.0, v0, v1, t, r)
+        # Put via parity / symmetry
+        nl_put, lin_put = bsm_call_pnl(s0, 2 * s0 - s1, 100.0, v0, v1, t, r)
+        straddle_nl_pct = (nl_call + nl_put) / 20.0  # Normalized to option budget
+        straddle_lin_pct = (lin_call + lin_put) / 20.0
+
+        pnl_straddle_nl = 2_000_000.0 * straddle_nl_pct
+        pnl_straddle_lin = 2_000_000.0 * straddle_lin_pct
+
+        total_nonlinear = pnl_steepener + pnl_carry + pnl_straddle_nl
+        total_linear = pnl_steepener + pnl_carry + pnl_straddle_lin
+        convexity_gap = total_nonlinear - total_linear
+
+        print(f"{sc.name:<34}${total_nonlinear:>12,.0f}     ${total_linear:>12,.0f}     ${convexity_gap:>10,.0f}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-4">=== Macro Portfolio Tail Stress Revaluation ($17M Gross Exposure) ===
+Scenario Name                     Non-Linear P&amp;L    Linear Approx P&amp;L Convexity Gap 
+------------------------------------------------------------------------------------
+2008 Lehman Liquidity Freeze      $   2,258,034     $    -680,000     $ 2,938,034
+2020 Covid Flash Crash            $   2,233,421     $    -472,500     $ 2,705,921
+2022 Fed Hawkish Inflation Shock  $   1,163,472     $      15,000     $ 1,148,472
+2024 JPY Carry Trade Unwind       $     471,131     $    -695,000     $ 1,166,131</pre>
+        <p class="interpretation">The stress engine demonstrates that under severe tail scenarios (2008 and 2020), the linear approximation predicts massive portfolio losses (-$680k and -$472k), whereas full non-linear revaluation reveals positive net P&amp;L (+$2.25M and +$2.23M) driven by positive straddle gamma and vega expansion (the $2.9M convexity gap).</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">4. Where the Canon Breaks</h2>
+        <p>Standard risk management frameworks often presume that scenario stress testing can be conducted in a static, friction-free environment where all contracts can be settled at marked mid-market prices. In severe financial crises, this assumption breaks down completely <span class="claim" data-grade="A" data-cite="pedersen2015efficiently almgren2001optimal">(Pedersen 2015; Almgren and Chriss 2001)</span>.</p>
+
+        <p>First, market liquidity is endogenously dependent on fund solvency (Brunnermeier and Pedersen 2009). When multiple macro hedge funds hold overlapping relative-value positions (such as the Treasury basis or short volatility), an initial price shock forces simultaneous margin calls. The collective liquidation attempts overwhelm dealer absorption capacity, widening bid-ask spreads by orders of magnitude.</p>
+
+        <p>Second, correlation structures do not merely shift; markets suffer complete asset class decoupling. In March 2020, even US Treasury bonds—the world's deepest safe haven—experienced sudden intraday sell-offs alongside equities as foreign central banks and levered basis funds rushed to raise USD cash.</p>
+
+        <p>Third, counterparty risk and exchange circuit breakers freeze trade execution. When futures markets limit-up or limit-down, hedging cannot occur, and dynamic delta-hedging algorithms fail to execute, converting intended market-neutral books into unhedged tail liabilities.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">5. Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><strong>Misconception:</strong> Portfolio delta and duration provide an accurate forecast of crisis P&amp;L under a 30% market drop.</p>
+            <p><strong>Why it is wrong:</strong> First-order Greeks are local linear derivatives accurate only for infinitesimal price moves (\(\Delta S \to 0\)). Under a 30% drop, option delta shifts radically due to gamma, vega expands during panic, and bond duration changes as yields plunge, creating enormous non-linear convexity gaps.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Misconception:</strong> If a macro portfolio passes historical VaR at 99% confidence, it is protected against future market crises.</p>
+            <p><strong>Why it is wrong:</strong> Historical VaR only reflects shocks observed in the backward-looking lookback window. Novel macroeconomic shocks (such as 2022's stagflationary bond-equity crash) fall outside historical tranquil distributions and inflict catastrophic losses on VaR-compliant books.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Misconception:</strong> Liquidating a portfolio during a market panic can be achieved at quoted screen bid prices.</p>
+            <p><strong>Why it is wrong:</strong> Liquidating large institutional notional consumes multiple tiers of the limit order book, generating severe temporary and permanent market impact (Almgren and Chriss 2001) that severely degrades realized exit prices.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">6. Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3 id="h-mechanics">Mechanics</h3>
+
+          <div class="problem" id="p6-1">
+            <h4>Problem 6.1 · Convexity Gap in a Single Call Option</h4>
+            <p>A portfolio holds 10,000 European call options on an equity index with current spot \(S_0 = 100\), strike \(K = 100\), initial delta \(\Delta = 0.50\), and gamma \(\Gamma = 0.03\). The market experiences a sudden 10% upward shock (\(\Delta S = +10\)). Compute the linear delta P&amp;L, the second-order Delta-Gamma P&amp;L, and the resulting convexity gain.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>1. Linear Delta P&amp;L per option: \(\Delta P_{\text{lin}} = \Delta \times \Delta S = 0.50 \times 10.0 = \$5.00\).</p>
+              <p>2. Second-order term per option: \(\frac{1}{2} \Gamma (\Delta S)^2 = 0.5 \times 0.03 \times (10.0)^2 = 0.5 \times 0.03 \times 100 = \$1.50\).</p>
+              <p>3. Delta-Gamma P&amp;L per option: \(\$5.00 + \$1.50 = \$6.50\).</p>
+              <p>4. Total portfolio convexity gain (for 10,000 options): \(10,000 \times \$1.50 = \$15,000\).</p>
+              <p>The linear model misses $15,000 of positive P&amp;L by ignoring the option's expanding delta as spot rallies.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-2">
+            <h4>Problem 6.2 · Almgren-Chriss Execution Cost Calculation</h4>
+            <p>A macro fund needs to liquidate \(X_0 = 500,000\) shares of an ETF over \(T = 5\) days in equal daily blocks (\(x_k = 100,000\) shares/day). Permanent impact parameter is \(\gamma = 2.5 \times 10^{-7}\) $/share, and temporary impact parameter is \(\eta = 5.0 \times 10^{-6}\) $/share/day. Calculate the total expected execution price impact drag.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>1. Permanent price impact cost: \(\mathcal{C}_{\text{perm}} = \frac{1}{2} \gamma X_0^2 = 0.5 \times (2.5 \times 10^{-7}) \times (500,000)^2 = 0.5 \times (2.5 \times 10^{-7}) \times (2.5 \times 10^{11}) = 0.5 \times 62,500 = \$31,250\).</p>
+              <p>2. Temporary price impact cost: For constant daily rate \(v = 100,000\), daily temporary cost is \(\eta v^2 = (5.0 \times 10^{-6}) \times (100,000)^2 = (5.0 \times 10^{-6}) \times 10^{10} = \$50,000\) per day. Over 5 days: \(5 \times \$50,000 = \$250,000\).</p>
+              <p>3. Total execution drag: \(\mathcal{C}_{\text{total}} = \$31,250 + \$250,000 = \$281,250\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-3">
+            <h4>Problem 6.3 · Multileg Scenario P&amp;L Aggregation</h4>
+            <p>A macro portfolio contains: (1) Long $20M 10Y Treasury note (\(\text{DV01} = \$16,000/\text{bp}\)), (2) Short $15M S&amp;P 500 futures (\(\Delta = -1.0\)), and (3) Long 1,000 ATM S&amp;P 500 straddles (vega \(\mathcal{V} = \$2,500/\text{vol pt}\), net gamma \(\Gamma = 0.05\)). Under a "Flight to Quality" scenario, 10Y yields drop 40 bps, S&amp;P 500 falls 8%, and implied volatility rises 12 points. Compute the net scenario P&amp;L (assume S&amp;P spot = 100).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>1. Bond P&amp;L: Yield falls 40 bps \(\implies \Delta \Pi_{\text{bond}} = - \text{DV01} \times (-40) = \$16,000 \times 40 = +\$640,000\).</p>
+              <p>2. Equity Short Futures P&amp;L: S&amp;P falls 8% on $15M notional \(\implies \Delta \Pi_{\text{eq}} = -1.0 \times (-0.08) \times \$15,000,000 = +\$1,200,000\).</p>
+              <p>3. Straddle Vega P&amp;L: \(\mathcal{V} \times \Delta \sigma = \$2,500 \times 12 = +\$30,000\). Gamma P&amp;L: \(0.5 \times 0.05 \times (-8)^2 \times 1,000 = 0.025 \times 64 \times 1,000 = +\$1,600\). Total straddle = \(+\$31,600\).</p>
+              <p>4. Net Scenario P&amp;L: \(\$640,000 + \$1,200,000 + \$31,600 = +\$1,871,600\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3 id="h-proof">Proof</h3>
+
+          <div class="problem" id="p6-4">
+            <h4>Problem 6.4 · Non-Negative Convexity Gap of Long Vanilla Options</h4>
+            <p>Prove that for any standard European call or put option under the Black-Scholes model with constant implied volatility, the convexity gap \(\mathcal{G}(\Delta S) = V(S_0 + \Delta S) - [V(S_0) + \Delta \cdot \Delta S]\) is strictly non-negative for all price shocks \(\Delta S \in (-S_0, \infty)\), and strictly positive for all \(\Delta S \neq 0\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>By Taylor's theorem with Lagrange remainder, for any twice continuously differentiable function \(V(S)\), there exists \(\xi\) strictly between \(S_0\) and \(S_0 + \Delta S\) such that:</p>
+              <p>\[
+              V(S_0 + \Delta S) = V(S_0) + V'(S_0) \Delta S + \frac{1}{2} V''(\xi) (\Delta S)^2
+              \]</p>
+              <p>Under the Black-Scholes model, \(V'(S_0) = \Delta\) and \(V''(S) = \Gamma(S)\). Thus, the convexity gap is:</p>
+              <p>\[
+              \mathcal{G}(\Delta S) = \frac{1}{2} \Gamma(\xi) (\Delta S)^2
+              \]</p>
+              <p>In Problem 3.4, it was proven that Black-Scholes gamma \(\Gamma(S) = \frac{\phi(d_1)}{S \sigma \sqrt{T}} &gt; 0\) strictly for all \(S &gt; 0\). Since \(\xi &gt; 0\), \(\Gamma(\xi) &gt; 0\) strictly.</p>
+              <p>Furthermore, for any \(\Delta S \neq 0\), \((\Delta S)^2 &gt; 0\). Therefore, \(\mathcal{G}(\Delta S) = \frac{1}{2} \Gamma(\xi) (\Delta S)^2 &gt; 0\) strictly, proving that linear approximations strictly underestimate the value of long options under any non-zero price shock. \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-5">
+            <h4>Problem 6.5 · Optimality of Linear Liquidation Trajectories under Quadratic Impact</h4>
+            <p>Prove that under the Almgren-Chriss framework with risk neutrality (\(\lambda = 0\)) and pure quadratic temporary price impact, the trading schedule that minimizes total execution cost is strictly constant-rate linear liquidation: \(x_k = X_0 \left(1 - \frac{k}{K}\right)\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Let \(X_0\) be the total shares to liquidate over \(K\) identical time intervals \(\tau = T / K\). Let \(n_k = x_{k-1} - x_k\) be the shares sold in step \(k\), subject to the conservation constraint \(\sum_{k=1}^K n_k = X_0\).</p>
+              <p>The total temporary impact cost is \(\mathcal{C}_{\text{temp}} = \eta \sum_{k=1}^K \left( \frac{n_k}{\tau} \right) n_k = \frac{\eta}{\tau} \sum_{k=1}^K n_k^2\). Permanent impact depends only on \(X_0\): \(\frac{1}{2} \gamma X_0^2\).</p>
+              <p>Form the Lagrangian for minimizing temporary cost subject to \(\sum_{k=1}^K n_k = X_0\):</p>
+              <p>\[
+              \mathcal{L}(n_1, \dots, n_K, \lambda) = \frac{\eta}{\tau} \sum_{k=1}^K n_k^2 - \lambda \left( \sum_{k=1}^K n_k - X_0 \right)
+              \]</p>
+              <p>Taking the first-order condition with respect to each \(n_k\): \(\frac{\partial \mathcal{L}}{\partial n_k} = \frac{2 \eta}{\tau} n_k - \lambda = 0 \implies n_k = \frac{\lambda \tau}{2 \eta}\).</p>
+              <p>Since the right-hand side is independent of \(k\), all trade sizes must be identical: \(n_k = n\) for all \(k\). Summing gives \(K n = X_0 \implies n = \frac{X_0}{K}\).</p>
+              <p>Thus, remaining position is \(x_k = X_0 - k n = X_0 \left(1 - \frac{k}{K}\right)\), proving that a uniform linear execution trajectory strictly minimizes price impact under quadratic friction. \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-6">
+            <h4>Problem 6.6 · Reverse Stress Testing Invariance Principle</h4>
+            <p>Prove that for a linear portfolio with factor exposures \(\boldsymbol{\beta} \in \R^K\) and a loss threshold \(L &gt; 0\), the minimum Mahalanobis distance factor shock \(\mathbf{f}^* \in \R^K\) satisfying \(\boldsymbol{\beta}^T \mathbf{f} \le -L\) is collinear with \(\mathbf{\Sigma}_f \boldsymbol{\beta}\), and find the exact formula for \(\mathbf{f}^*\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>The reverse stress testing problem seeks the most plausible factor shock (minimizing Mahalanobis distance \(\mathbf{f}^T \mathbf{\Sigma}_f^{-1} \mathbf{f}\)) that causes a portfolio loss of at least \(L\):</p>
+              <p>\[
+              \min_{\mathbf{f}} \frac{1}{2} \mathbf{f}^T \mathbf{\Sigma}_f^{-1} \mathbf{f} \quad \text{subject to} \quad \boldsymbol{\beta}^T \mathbf{f} = -L
+              \]</p>
+              <p>Set up the Lagrangian: \(\mathcal{L}(\mathbf{f}, \lambda) = \frac{1}{2} \mathbf{f}^T \mathbf{\Sigma}_f^{-1} \mathbf{f} + \lambda (\boldsymbol{\beta}^T \mathbf{f} + L)\).</p>
+              <p>First-order condition: \(\nabla_{\mathbf{f}} \mathcal{L} = \mathbf{\Sigma}_f^{-1} \mathbf{f} + \lambda \boldsymbol{\beta} = \mathbf{0} \implies \mathbf{f} = -\lambda \mathbf{\Sigma}_f \boldsymbol{\beta}\).</p>
+              <p>Multiply by \(\boldsymbol{\beta}^T\): \(\boldsymbol{\beta}^T \mathbf{f} = -\lambda \boldsymbol{\beta}^T \mathbf{\Sigma}_f \boldsymbol{\beta} = -L \implies \lambda = \frac{L}{\boldsymbol{\beta}^T \mathbf{\Sigma}_f \boldsymbol{\beta}}\).</p>
+              <p>Substituting \(\lambda\) back gives the unique optimal shock:</p>
+              <p>\[
+              \mathbf{f}^* = -\frac{L}{\boldsymbol{\beta}^T \mathbf{\Sigma}_f \boldsymbol{\beta}} \mathbf{\Sigma}_f \boldsymbol{\beta}
+              \]</p>
+              <p>This proves that the most likely ruin scenario is perfectly aligned with the covariance-projected factor exposure vector \(\mathbf{\Sigma}_f \boldsymbol{\beta}\). \(\blacksquare\)</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3 id="h-empirical">Empirical</h3>
+
+          <div class="problem" id="p6-7">
+            <h4>Problem 6.7 · Empirical Liquidity Breakdown in March 2020 Treasury Market</h4>
+            <p>During normal market conditions, the bid-ask spread on the on-the-run 10-year US Treasury note is approximately 1/64th of 1% (1.56 bps of price, or ~$150 per $1M). On March 16, 2020, bid-ask spreads blew out to 8/64ths (12.5 bps of price). For a $500,000,000 Treasury liquidation, compute the additional transaction friction incurred solely from bid-ask widening.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>1. Normal half-spread cost: \(0.5 \times \frac{1.5625}{10,000} \times \$500,000,000 = 0.5 \times 0.00015625 \times \$500,000,000 = \$39,062.50\).</p>
+              <p>2. Crisis half-spread cost: \(0.5 \times \frac{12.5}{10,000} \times \$500,000,000 = 0.5 \times 0.00125 \times \$500,000,000 = \$312,500\).</p>
+              <p>3. Additional transaction friction: \(\$312,500 - \$39,062.50 = \$273,437.50\).</p>
+              <p>Even in the world's most liquid sovereign debt instrument, emergency liquidation during dealer inventory congestion imposed over a quarter-million dollars in immediate crossing penalty.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-8">
+            <h4>Problem 6.8 · August 2024 Japanese Yen Carry Unwind Dynamics</h4>
+            <p>On August 5, 2024 ("Black Monday" in Tokyo), the Nikkei 225 plummeted 12.4% while USD/JPY dropped from 153.0 to 142.0 as leveraged currency carry trades unwound. Analyze why an unhedged long USD/JPY trade experienced a multi-sigma drawdown that wiped out 4 years of accumulated carry in 72 hours.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Over 2021–2024, the USD/JPY rate differential was roughly +5.0% per annum, accumulating ~20% in nominal interest carry over 4 years.</p>
+              <p>When the Bank of Japan raised its policy rate to 0.25% alongside weak US payroll data, USD/JPY plunged from 153 to 142, a spot drop of \(\frac{142 - 153}{153} = -7.19\%\) in 3 days, following an earlier drop from 161 (-11.8%). Leveraged macro accounts faced margin calls from retail brokers and prime brokers simultaneously.</p>
+              <p>For a typical 5x levered carry position, a 7.2% currency decline translates into a -36% loss of equity capital in 72 hours, perfectly illustrating the extreme negative return skewness of unhedged carry trades.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-9">
+            <h4>Problem 6.9 · Stagflation Tail Scenario: 2022 Performance Decomposition</h4>
+            <p>In 2022, the S&amp;P 500 declined 18.1% while the Bloomberg US Aggregate Bond Index dropped 13.0%. For a classical 60/40 balanced portfolio ($60M equity, $40M bond), compute the annual dollar P&amp;L and explain why linear diversification models failed to protect institutional investors.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>1. Equity dollar loss: \(0.60 \times \$100,000,000 \times (-0.181) = -\$10,860,000\).</p>
+              <p>2. Bond dollar loss: \(0.40 \times \$100,000,000 \times (-0.130) = -\$5,200,000\).</p>
+              <p>3. Total portfolio loss: \(-\$10,860,000 - \$5,200,000 = -\$16,060,000\) (-16.06%).</p>
+              <p>Linear risk models relied on the 20-year sample correlation of \(\rho(\text{stocks}, \text{bonds}) \approx -0.30\) characteristic of the disinflationary Great Moderation. In a supply-driven inflation shock, central bank rate hikes depress both equity multiples (via discount rates) and bond prices simultaneously, shifting correlation to +0.60 and invalidating classical duration hedging.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3 id="h-research">Research</h3>
+
+          <div class="problem" id="p6-10">
+            <h4>Problem 6.10 · Dynamic Liquidation Horizons under Balance Sheet Constraints</h4>
+            <p>Synthesize Gârleanu and Pedersen's (2011) model of margin-based asset pricing. How do dealer regulatory capital constraints (such as the Supplementary Leverage Ratio, SLR) restrict liquidity provision and alter optimal execution trajectories?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Gârleanu and Pedersen (2011) demonstrate that assets requiring higher margin or balance sheet space trade at a discount, offering higher expected returns to compensate for margin friction. Under Basel III SLR rules, bank-affiliated primary dealers face non-risk-weighted capital charges on total unweighted assets, including risk-free Treasuries and reverse repos.</p>
+              <p>During macroeconomic crises, when funds seek to borrow cash or dealers must warehouse customer inventory, dealer balance sheet limits bind. Dealers widen bid-ask spreads and refuse repo financing. In an Almgren-Chriss liquidation model, this causes temporary price impact \(\eta\) to become a convex function of cumulative dealer inventory, forcing optimal liquidation horizons to lengthen significantly to avoid catastrophic price slippage.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-11">
+            <h4>Problem 6.11 · Reverse Stress Testing via Generative Adversarial Networks (GANs)</h4>
+            <p>Critique how generative neural architectures (such as Wasserstein GANs or Variational Autoencoders) can be used to generate plausible, high-dimensional macroeconomic stress scenarios that violate Gaussian copula assumptions.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Traditional parametric stress scenarios rely on linear factor models that fail to capture tail dependencies, volatility clustering, and asymmetry. WGANs trained on multidecade macro time series learn the non-linear manifold of joint market returns without restrictive distributional priors.</p>
+              <p>To perform reverse stress testing, the generator is coupled with an adversarial loss function penalized by portfolio P&amp;L: \(\mathcal{L} = \mathcal{L}_{\text{WGAN}} + \lambda \max(0, \Pi(\mathbf{s}) + L_{\text{threshold}})\). The generator synthesizes synthetic crisis states that look statistically indistinguishable from historical market regimes while specifically targeting the portfolio's idiosyncratic vulnerabilities, revealing multi-factor blind spots that traditional historical replays miss.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-12">
+            <h4>Problem 6.12 · Automated Stop-Out Boundary Calibration under Jump Discontinuities</h4>
+            <p>Formulate the optimal dynamic liquidation threshold (stop-out boundary) for a leveraged macro relative-value fund subject to discrete jump risk and margin margin-call triggers.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Let fund equity \(E_t\) follow a jump-diffusion process \(d E_t = \mu E_t dt + \sigma E_t d W_t + (Y - 1) E_{t-} d q_t\), where \(q_t\) is a Poisson counter with intensity \(\lambda\) and \(Y\) is the jump distribution. The fund faces an external regulatory or prime broker liquidation threshold \(E_{\min}\).</p>
+              <p>To avoid fire-sale liquidation at \(E_{\min}\), the manager establishes an internal voluntary stop-out boundary \(E^* &gt; E_{\min}\). The optimal boundary solves an optimal stopping problem balancing the expected opportunity cost of abandoning positive-alpha positions against the catastrophic cost of bankruptcy slippage:</p>
+              <p>\[
+              E^* = \arg\min_E \left\{ \E\left[\int_0^{\tau_E} e^{-r t} \text{Carry}_t dt + e^{-r \tau_E} \mathcal{C}_{\text{liquidation}}(E_{\tau_E})\right] \right\}
+              \]</p>
+              <p>Under discrete jump risk, the boundary \(E^*\) must include a substantial buffer: \(E^* - E_{\min} \ge \text{VaR}_\alpha(\text{Jump Magnitude})\) to prevent discrete overnight price jumps from skipping past the stop-loss order directly into liquidation default.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">7. Key Results and Formulas</h2>
+        <div class="table-wrap">
+        <table class="key-results">
+          <thead>
+            <tr>
+              <th scope="col">Concept / Formula</th>
+              <th scope="col">Mathematical Expression</th>
+              <th scope="col">Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Scenario P&amp;L</td>
+              <td>\(\Pi(\mathbf{s}) = \sum_i N_i [V_i(\mathbf{x}_0 + \Delta \mathbf{x}(\mathbf{s})) - V_i(\mathbf{x}_0)] - \text{Fin}(\mathbf{s})\)</td>
+              <td>Exact portfolio P&amp;L computed via full non-linear contract revaluation under scenario \(\mathbf{s}\).</td>
+            </tr>
+            <tr>
+              <td>Convexity Gap</td>
+              <td>\(\mathcal{G}(\mathbf{s}) = \Pi(\mathbf{s}) - \Delta \Pi_{\text{linear}}(\mathbf{s})\)</td>
+              <td>Discrepancy between exact non-linear revaluation and first-order Greek approximations.</td>
+            </tr>
+            <tr>
+              <td>Permanent Market Impact</td>
+              <td>\(\Delta P_{\text{perm}} = \gamma X_0\)</td>
+              <td>Irreversible price shift induced by net cumulative executed order volume (Almgren-Chriss).</td>
+            </tr>
+            <tr>
+              <td>Temporary Market Impact</td>
+              <td>\(\Delta P_{\text{temp}} = \eta \left(\frac{dX}{dt}\right)\)</td>
+              <td>Instantaneous liquidity concession proportional to execution velocity.</td>
+            </tr>
+            <tr>
+              <td>Reverse Stress Shock</td>
+              <td>\(\mathbf{f}^* = -\frac{L}{\boldsymbol{\beta}^T \mathbf{\Sigma}_f \boldsymbol{\beta}} \mathbf{\Sigma}_f \boldsymbol{\beta}\)</td>
+              <td>Most plausible factor shock producing a portfolio loss of magnitude \(L\).</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="GM4" data-page="L06" data-mastery="0.8">
+        <h2 id="h-quiz">8. Spaced Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What defines the "scenario P&amp;L" of a multi-asset macro portfolio?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q1"> <span>A linear Taylor series approximation based only on portfolio delta</span></label>
+              <label class="option" data-correct><input type="radio" name="q1"> <span>The exact change in portfolio value computed via full non-linear contract revaluation under a joint shock</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>The historical return over the preceding 252 trading days</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>The net dividend income received from index components</span></label>
+            </fieldset>
+            <div class="explain"><p>Scenario P&amp;L revalues all underlying options, bonds, and derivatives through exact pricing formulas rather than first-order Greek approximations.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a linear Greek approximation significantly underestimate the payoff of a long straddle during a crisis?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q2"> <span>Straddle contracts are exempt from exchange margin rules</span></label>
+              <label class="option" data-correct><input type="radio" name="q2"> <span>Linear delta at ATM is near zero, completely missing positive gamma curvature and vega expansion</span></label>
+              <label class="option"><input type="radio" name="q2"> <span>Interest rates fall to negative infinity during panics</span></label>
+              <label class="option"><input type="radio" name="q2"> <span>Option expiration dates automatically extend by 1 year</span></label>
+            </fieldset>
+            <div class="explain"><p>An ATM straddle has delta near zero. Linear approximations predict zero P&amp;L, missing the large gains generated by positive gamma and surging implied volatility.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">In the Almgren-Chriss market impact model, what distinguishes permanent impact from temporary impact?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q3"> <span>Permanent impact affects only equities, while temporary impact affects only bonds</span></label>
+              <label class="option" data-correct><input type="radio" name="q3"> <span>Permanent impact reflects information and inventory absorption shifting the equilibrium price, while temporary impact is liquidity concession that dissipates immediately after trading stops</span></label>
+              <label class="option"><input type="radio" name="q3"> <span>Permanent impact is always zero for algorithmic orders</span></label>
+              <label class="option"><input type="radio" name="q3"> <span>Temporary impact accumulates quadratically with total portfolio size</span></label>
+            </fieldset>
+            <div class="explain"><p>Permanent impact permanently moves the market price due to net order flow, whereas temporary impact reflects the temporary price concession demanded by liquidity providers.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under risk neutrality and quadratic temporary impact, what is the optimal execution trajectory to liquidate a position?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q4"> <span>Liquidating the entire position in a single market order at the opening bell</span></label>
+              <label class="option" data-correct><input type="radio" name="q4"> <span>A constant-rate uniform linear liquidation schedule across all trading intervals</span></label>
+              <label class="option"><input type="radio" name="q4"> <span>An exponentially front-loaded schedule selling 90% in the first minute</span></label>
+              <label class="option"><input type="radio" name="q4"> <span>Waiting until 10 seconds before market close to execute</span></label>
+            </fieldset>
+            <div class="explain"><p>Because temporary impact is quadratic in trade velocity, Jensen's inequality implies that spreading execution uniformly minimizes total quadratic drag.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What unique macroeconomic dynamic caused both equities and sovereign bonds to collapse simultaneously in 2022?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q5"> <span>A global banking collapse akin to Lehman Brothers</span></label>
+              <label class="option" data-correct><input type="radio" name="q5"> <span>A supply-driven stagflationary inflation shock forcing aggressive central bank policy rate hikes</span></label>
+              <label class="option"><input type="radio" name="q5"> <span>A complete shutdown of US Treasury repo clearing facilities</span></label>
+              <label class="option"><input type="radio" name="q5"> <span>The elimination of capital gains taxation</span></label>
+            </fieldset>
+            <div class="explain"><p>Unexpected inflation forced central banks to raise rates aggressively, driving discount rates higher and simultaneously depressing equity valuations and bond prices.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is "reverse stress testing" in institutional risk architecture?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q6"> <span>Testing whether the portfolio can generate 100% returns in bull markets</span></label>
+              <label class="option" data-correct><input type="radio" name="q6"> <span>Searching mathematically for the minimal, most plausible macroeconomic factor shock that would cause portfolio ruin or breach capital limits</span></label>
+              <label class="option"><input type="radio" name="q6"> <span>Running backtests backward in chronological time</span></label>
+              <label class="option"><input type="radio" name="q6"> <span>Auditing the personal bank accounts of portfolio managers</span></label>
+            </fieldset>
+            <div class="explain"><p>Reverse stress testing starts from a predefined catastrophic loss threshold and identifies the exact combination of market moves most likely to trigger it.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do dealer regulatory leverage ratio constraints (SLR) exacerbate liquidity crises in sovereign bond markets?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q7"> <span>SLR rules require dealers to pay 100% tax on Treasury coupons</span></label>
+              <label class="option" data-correct><input type="radio" name="q7"> <span>Because SLR requires equity capital against unweighted total assets, dealers cannot expand their balance sheets to intermediate Treasuries and repo during panics</span></label>
+              <label class="option"><input type="radio" name="q7"> <span>Dealers are legally forced to liquidate customer portfolios within 60 seconds</span></label>
+              <label class="option"><input type="radio" name="q7"> <span>SLR rules apply only to physical commodity trading</span></label>
+            </fieldset>
+            <div class="explain"><p>Under non-risk-weighted leverage ratios, low-risk Treasury inventory consumes precious balance sheet equity, forcing dealers to withdraw from market making during stress.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why must a voluntary stop-out boundary include a safety buffer above the prime broker liquidation threshold?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q8"> <span>Prime brokers do not allow cash withdrawals</span></label>
+              <label class="option" data-correct><input type="radio" name="q8"> <span>Discrete overnight market jump shocks can cause asset prices to gap down, blowing through narrow thresholds before orders can execute</span></label>
+              <label class="option"><input type="radio" name="q8"> <span>Stop-loss orders are illegal on regulated futures exchanges</span></label>
+              <label class="option"><input type="radio" name="q8"> <span>Option deltas are legally capped at 0.10</span></label>
+            </fieldset>
+            <div class="explain"><p>Discrete price jumps and market illiquidity cause execution slippage; without a buffer, a jump shock pushes equity directly into forced liquidation default.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">9. References</h2>
+        <ol data-references>
+          <li><span class="claim" data-grade="A" data-cite="pedersen2015efficiently">Pedersen, L. H. (2015). <em>Efficiently Inefficient: How Smart Money Invests and Market Prices Are Determined</em>. Princeton University Press.</span></li>
+          <li><span class="claim" data-grade="A" data-cite="almgren2001optimal">Almgren, R., &amp; Chriss, N. (2001). Optimal execution of portfolio transactions. <em>Journal of Risk</em>, 3(2), 5–40.</span></li>
+          <li><span class="claim" data-grade="A" data-cite="brunnermeier2008carry">Brunnermeier, M. K., Nagel, S., &amp; Pedersen, L. H. (2008). Carry Trades and Currency Crashes. <em>NBER Macroeconomics Annual</em>, 23(1), 313–347.</span></li>
+          <li><span class="claim" data-grade="A" data-cite="hull2021options">Hull, J. C. (2021). <em>Options, Futures, and Other Derivatives</em> (11th ed.). Pearson.</span></li>
+          <li><span class="claim" data-grade="A" data-cite="black1973pricing">Black, F., &amp; Scholes, M. (1973). The Pricing of Options and Corporate Liabilities. <em>Journal of Political Economy</em>, 81(3), 637–654.</span></li>
+        </ol>
+      </section>
+
+      <div class="complete-button-wrap">
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
