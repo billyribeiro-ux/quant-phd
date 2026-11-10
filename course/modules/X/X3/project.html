@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="X3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X3 Project · Oil-Shock Decomposition</title>
+  <meta name="description" content="Autograded structural vector autoregression (SVAR) engine and analytical research memo decomposing global crude oil price shocks into supply, aggregate demand, and precautionary demand components. 25 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">X3 Commodities</a><span class="sep">›</span><span>Project</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="25">
+      <header class="page-head">
+        <p class="eyebrow">Project · X3 · Tier M · 25 hours</p>
+        <h1>Oil-Shock Decomposition</h1>
+        <p class="lede">In his landmark macroeconomic investigation, <span class="claim" data-grade="A" data-cite="kilian2009not">Kilian (2009)</span> overturned decades of traditional modeling by proving that not all oil price shocks are alike. While conventional accounts attributed oil price spikes to physical crude supply disruptions, structural vector autoregression demonstrates that global aggregate demand shocks and oil-market-specific precautionary demand shocks drive the overwhelming majority of real oil price fluctuations. In this capstone project, you will build a structural VAR engine (<code>oil_var.py</code>) implementing OLS parameter estimation, recursive Cholesky identification, structural impulse response functions (IRFs), forecast error variance decompositions (FEVD), and historical shock decompositions across 50 seeded instances. In addition, you will author an analytical research memo (<code>report.md</code>) evaluated by rubric that applies the structural decomposition to an oil shock episode.</p>
+        <div class="hours-split" role="img" aria-label="45 lesson hours and 25 project hours">
+          <span class="lessons" style="width:64.3%"></span><span class="project" style="width:35.7%"></span>
+        </div>
+        <p class="eyebrow">45 h lessons · 25 h project (35.7%)</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The four-rung project ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: Trace the complete estimation of a 3-variable Kilian structural VAR on seed 42, deriving the lower-triangular impact matrix, structural shocks, dynamic impulse response functions, and FEVD shares.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: Complete the missing algorithmic blocks for Cholesky factorization, structural shock orthogonalization, and variance decomposition normalization.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement the complete solver module <code>oil_var.py</code> satisfying the 50-seed autograder suite and author the structural research memo <code>report.md</code> evaluated by rubric.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extend the structural VAR to sign-restriction identification (Baumeister &amp; Hamilton 2019) or narrative identification around historical geopolitical events.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="worked-example">
+        <h2 id="h-worked-example">Rung 1 · Worked example</h2>
+        <p>In this worked example, a 3-variable monthly macroeconomic system of 140 observations (seed 42) is analyzed using a VAR(2) model. We estimate the system via ordinary least squares, factorize the innovation covariance matrix via Cholesky decomposition to identify the structural impact matrix \(P = A_0^{-1}\), and compute 24-month impulse responses and forecast error variance shares.</p>
+
+        <section class="lab" id="lab-X3-project-1" data-runtime="python">
+          <h3>Lab 1 · Kilian Structural VAR Worked Example</h3>
+          <p class="hypothesis">Estimating the 3-variable VAR(2) on seed 42 will confirm the Kilian (2009) identification: the lower-triangular impact matrix satisfies contemporaneous timing restrictions (P[0, 1]=0, P[0, 2]=0, P[1, 2]=0), and oil-specific demand shocks account for over 85% of contemporaneous oil price variance while aggregate demand shocks account for over 70% of long-term variance.</p>
+          <pre><code class="language-python" data-run>"""Lab X3-project-1: Rung 1 worked example for Kilian Structural VAR Oil-Shock Decomposition.
+
+Executes the complete VAR estimation, Cholesky identification, IRF computation,
+and FEVD calculation on seed 42.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+
+def cholesky(a_mat: list[list[float]]) -&gt; list[list[float]]:
+    """Compute lower-triangular Cholesky factorization L such that L L^T = A."""
+    n = len(a_mat)
+    l_mat = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1):
+            s = sum(l_mat[i][k] * l_mat[j][k] for k in range(j))
+            if i == j:
+                val = a_mat[i][i] - s
+                if val &lt;= 1e-14:
+                    raise ValueError("Matrix is not positive definite")
+                l_mat[i][j] = math.sqrt(val)
+            else:
+                l_mat[i][j] = (a_mat[i][j] - s) / l_mat[j][j]
+    return l_mat
+
+
+def invert_matrix(a_mat: list[list[float]]) -&gt; list[list[float]]:
+    """Invert square matrix via Gauss-Jordan elimination."""
+    n = len(a_mat)
+    m = [row[:] + [1.0 if i == j else 0.0 for j in range(n)] for i, row in enumerate(a_mat)]
+    for i in range(n):
+        max_row = max(range(i, n), key=lambda r: abs(m[r][i]))
+        if abs(m[max_row][i]) &lt; 1e-12:
+            raise ValueError("Matrix is singular")
+        m[i], m[max_row] = m[max_row], m[i]
+        pivot = m[i][i]
+        for c in range(2 * n):
+            m[i][c] /= pivot
+        for r in range(n):
+            if r != i:
+                factor = m[r][i]
+                for c in range(2 * n):
+                    m[r][c] -= factor * m[i][c]
+    return [[m[r][c + n] for c in range(n)] for r in range(n)]
+
+
+def matmul(a_mat: list[list[float]], b_mat: list[list[float]]) -&gt; list[list[float]]:
+    """Multiply two 2D matrices."""
+    n = len(a_mat)
+    m = len(b_mat[0])
+    p = len(b_mat)
+    return [[sum(a_mat[i][k] * b_mat[k][j] for k in range(p)) for j in range(m)] for i in range(n)]
+
+
+def transpose(a_mat: list[list[float]]) -&gt; list[list[float]]:
+    """Transpose a 2D matrix."""
+    return [[a_mat[i][j] for i in range(len(a_mat))] for j in range(len(a_mat[0]))]
+
+
+def estimate_var(data: list[list[float]], lags: int) -&gt; dict[str, Any]:
+    """Estimate VAR(p) via OLS."""
+    t_obs = len(data)
+    k_vars = len(data[0])
+    n_eff = t_obs - lags
+    num_params = 1 + k_vars * lags
+
+    x_mat = []
+    y_mat = []
+    for t in range(lags, t_obs):
+        row_x = [1.0]
+        for lag_idx in range(1, lags + 1):
+            row_x.extend(data[t - lag_idx])
+        x_mat.append(row_x)
+        y_mat.append(data[t][:])
+
+    xt = transpose(x_mat)
+    xtx_inv = invert_matrix(matmul(xt, x_mat))
+    b_hat = matmul(xtx_inv, matmul(xt, y_mat))
+
+    xb = matmul(x_mat, b_hat)
+    e_mat = [[y_mat[t][k] - xb[t][k] for k in range(k_vars)] for t in range(n_eff)]
+    et = transpose(e_mat)
+    ete = matmul(et, e_mat)
+    dof = float(n_eff - num_params)
+    sigma_u = [[round(ete[i][j] / dof, 8) for j in range(k_vars)] for i in range(k_vars)]
+
+    intercepts = [round(b_hat[0][k], 6) for k in range(k_vars)]
+    coefficients: list[list[list[float]]] = []
+    for lag_idx in range(lags):
+        bl: list[list[float]] = []
+        for i in range(k_vars):
+            row: list[float] = []
+            for j in range(k_vars):
+                idx = 1 + lag_idx * k_vars + j
+                row.append(round(b_hat[idx][i], 6))
+            bl.append(row)
+        coefficients.append(bl)
+
+    residuals = [[round(val, 6) for val in row] for row in e_mat]
+    return {
+        "intercepts": intercepts,
+        "coefficients": coefficients,
+        "residuals": residuals,
+        "sigma_u": sigma_u,
+    }
+
+
+def compute_irf(
+    coefficients: list[list[list[float]]], p_matrix: list[list[float]], horizon: int
+) -&gt; list[list[list[float]]]:
+    """Compute structural impulse response functions Theta_h = Phi_h * P."""
+    k_vars = len(p_matrix)
+    p_lags = len(coefficients)
+
+    phi: list[list[list[float]]] = [[[1.0 if i == j else 0.0 for j in range(k_vars)] for i in range(k_vars)]]
+    for h in range(1, horizon + 1):
+        phi_h = [[0.0] * k_vars for _ in range(k_vars)]
+        for j in range(1, min(h, p_lags) + 1):
+            b_phi = matmul(coefficients[j - 1], phi[h - j])
+            for r in range(k_vars):
+                for c in range(k_vars):
+                    phi_h[r][c] += b_phi[r][c]
+        phi.append(phi_h)
+
+    irfs: list[list[list[float]]] = []
+    for h in range(horizon + 1):
+        theta_h = matmul(phi[h], p_matrix)
+        irfs.append([[round(theta_h[i][j], 6) for j in range(k_vars)] for i in range(k_vars)])
+    return irfs
+
+
+def compute_fevd(irf: list[list[list[float]]]) -&gt; list[list[list[float]]]:
+    """Compute forecast error variance decomposition shares."""
+    h_max = len(irf) - 1
+    k_vars = len(irf[0])
+    fevd: list[list[list[float]]] = []
+    cum_mse = [[0.0] * k_vars for _ in range(k_vars)]
+    for h in range(h_max + 1):
+        fevd_h = [[0.0] * k_vars for _ in range(k_vars)]
+        for i in range(k_vars):
+            for j in range(k_vars):
+                cum_mse[i][j] += irf[h][i][j] ** 2
+            total_var_i = sum(cum_mse[i])
+            for j in range(k_vars):
+                fevd_h[i][j] = round(cum_mse[i][j] / total_var_i, 6) if total_var_i &gt; 1e-12 else 0.0
+        fevd.append(fevd_h)
+    return fevd
+
+
+def main() -&gt; None:
+    # Inline make_instance(42) logic to keep standalone
+    import random
+
+    rng = random.Random(42)
+    n_obs = 140
+    p = 2
+    k_vars = 3
+
+    b1 = [
+        [0.15 + rng.uniform(-0.02, 0.02), 0.01 + rng.uniform(-0.002, 0.002), -0.05 + rng.uniform(-0.01, 0.01)],
+        [0.50 + rng.uniform(-0.05, 0.05), 0.70 + rng.uniform(-0.02, 0.02), -0.50 + rng.uniform(-0.05, 0.05)],
+        [0.02 + rng.uniform(-0.005, 0.005), 0.008 + rng.uniform(-0.001, 0.001), 0.82 + rng.uniform(-0.02, 0.02)],
+    ]
+    b2 = [
+        [0.05 + rng.uniform(-0.01, 0.01), 0.005 + rng.uniform(-0.001, 0.001), -0.02 + rng.uniform(-0.005, 0.005)],
+        [-0.20 + rng.uniform(-0.02, 0.02), 0.15 + rng.uniform(-0.02, 0.02), -0.20 + rng.uniform(-0.02, 0.02)],
+        [-0.01 + rng.uniform(-0.002, 0.002), 0.002 + rng.uniform(-0.001, 0.001), 0.06 + rng.uniform(-0.01, 0.01)],
+    ]
+    mu = [0.10, 0.0, 4.0]
+    i_minus_b = [
+        [1.0 - b1[0][0] - b2[0][0], -b1[0][1] - b2[0][1], -b1[0][2] - b2[0][2]],
+        [-b1[1][0] - b2[1][0], 1.0 - b1[1][1] - b2[1][1], -b1[1][2] - b2[1][2]],
+        [-b1[2][0] - b2[2][0], -b1[2][1] - b2[2][1], 1.0 - b1[2][2] - b2[2][2]],
+    ]
+    intercepts = [sum(i_minus_b[i][j] * mu[j] for j in range(k_vars)) for i in range(k_vars)]
+    p_mat_true = [
+        [1.20, 0.0, 0.0],
+        [0.60 + rng.uniform(-0.05, 0.05), 8.00, 0.0],
+        [-0.03 + rng.uniform(-0.005, 0.005), 0.04 + rng.uniform(-0.005, 0.005), 0.12],
+    ]
+
+    burn = 100
+    y = [mu[:] for _ in range(p)]
+    for _ in range(burn + n_obs - p):
+        eps = [rng.gauss(0.0, 1.0) for _ in range(k_vars)]
+        e = [sum(p_mat_true[i][j] * eps[j] for j in range(k_vars)) for i in range(k_vars)]
+        yt = [
+            intercepts[i]
+            + sum(b1[i][j] * y[-1][j] for j in range(k_vars))
+            + sum(b2[i][j] * y[-2][j] for j in range(k_vars))
+            + e[i]
+            for i in range(k_vars)
+        ]
+        y.append(yt)
+
+    data = [[round(val, 6) for val in row] for row in y[burn:]]
+
+    print("Lab X3-project-1 | Kilian Structural VAR Worked Example (Seed 42)")
+    print("-" * 75)
+    print(f"Step 1 | Data loaded: N = {len(data)} monthly observations across 3 variables")
+    print(f"       | Variables: [0: delta_prod, 1: rea, 2: rpo], Lag order p = {p}")
+
+    var_res = estimate_var(data, lags=p)
+    l_mat = cholesky(var_res["sigma_u"])
+    p_est = [[round(l_mat[i][j], 4) for j in range(k_vars)] for i in range(k_vars)]
+
+    print("Step 2 | Estimated Cholesky Impact Matrix P (A_0^-1):")
+    for i, vname in enumerate(["delta_prod", "rea", "rpo"]):
+        print(f"       | {vname:&lt;12} [ {p_est[i][0]:8.4f}  {p_est[i][1]:8.4f}  {p_est[i][2]:8.4f} ]")
+
+    irf = compute_irf(var_res["coefficients"], p_est, horizon=24)
+    fevd = compute_fevd(irf)
+
+    print("-" * 75)
+    print("Step 3 | Forecast Error Variance Decomposition of Real Oil Price (rpo):")
+    print(f"{'Horizon':&gt;12} {'Oil Supply Shock':&gt;20} {'Aggregate Demand':&gt;20} {'Precautionary Demand':&gt;20}")
+    print("-" * 75)
+    for h in [0, 1, 6, 12, 24]:
+        shares = fevd[h][2]
+        print(f"{h:10d}M {shares[0] * 100:19.1f}% {shares[1] * 100:19.1f}% {shares[2] * 100:19.1f}%")
+
+    print("-" * 75)
+    print("Step 4 | Identification Verification: P[0, 1] == 0, P[0, 2] == 0, P[1, 2] == 0.")
+    print("       | At horizon 0, oil supply is 100% explained by supply shock.")
+    print(f"       | Actual FEVD(0, delta_prod) = {fevd[0][0][0] * 100:.1f}%.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Lab X3-project-1 | Kilian Structural VAR Worked Example (Seed 42)
+---------------------------------------------------------------------------
+Step 1 | Data loaded: N = 140 monthly observations across 3 variables
+       | Variables: [0: delta_prod, 1: rea, 2: rpo], Lag order p = 2
+Step 2 | Estimated Cholesky Impact Matrix P (A_0^-1):
+       | delta_prod   [   1.3388    0.0000    0.0000 ]
+       | rea          [   1.4120    7.7235    0.0000 ]
+       | rpo          [  -0.0396    0.0126    0.1071 ]
+---------------------------------------------------------------------------
+Step 3 | Forecast Error Variance Decomposition of Real Oil Price (rpo):
+     Horizon     Oil Supply Shock     Aggregate Demand Precautionary Demand
+---------------------------------------------------------------------------
+         0M                11.9%                 1.2%                86.9%
+         1M                 6.9%                20.2%                72.9%
+         6M                 9.0%                58.2%                32.8%
+        12M                 8.8%                68.8%                22.4%
+        24M                 8.7%                72.1%                19.2%
+---------------------------------------------------------------------------
+Step 4 | Identification Verification: P[0, 1] == 0, P[0, 2] == 0, P[1, 2] == 0.
+       | At horizon 0, oil supply is 100% explained by supply shock.
+       | Actual FEVD(0, delta_prod) = 100.0%.</pre>
+          <p class="interpretation">The empirical results confirm that crude oil production is predetermined with respect to global demand within the month. At horizon 0, oil supply shocks explain 100% of crude supply variance, whereas the real price of oil is driven primarily by precautionary demand at short horizons and by global aggregate economic demand at longer horizons.</p>
+        </section>
+      </section>
+
+      <section id="completion-problem">
+        <h2 id="h-completion-problem">Rung 2 · Completion problem</h2>
+        <p>In this completion exercise, you must supply the mathematical logic for lower-triangular Cholesky factorization, structural shock extraction via triangular inversion, and forecast error variance decomposition normalization.</p>
+
+        <section class="lab completion" id="lab-X3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion Problem: Cholesky &amp; FEVD Normalization</h3>
+          <p class="hypothesis">Filling the missing mathematical formulas for Cholesky factorization and FEVD variance normalization will produce an impact matrix satisfying P P^T = Sigma_u and FEVD shares that sum to exactly 1.0 across all variables and forecast horizons.</p>
+          <pre><code class="language-python" data-run>"""Lab X3-project-2: Rung 2 completion problem for Kilian SVAR identification and FEVD.
+
+Tests completed implementation of Cholesky factorization, structural shock extraction,
+and forecast error variance decomposition normalization.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def cholesky(a_mat: list[list[float]]) -> list[list[float]]:
+    """Compute lower-triangular Cholesky factorization L such that L L^T = A."""
+    n = len(a_mat)
+    l_mat = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(i + 1):
+            s = sum(l_mat[i][k] * l_mat[j][k] for k in range(j))
+            if i == j:
+                val = a_mat[i][i] - s
+                if val &lt;= 1e-14:
+                    raise ValueError("Matrix is not positive definite")
+                l_mat[i][j] = ___
+            else:
+                l_mat[i][j] = ___
+    return l_mat
+
+
+def invert_lower_triangular(l_mat: list[list[float]]) -> list[list[float]]:
+    """Invert lower triangular matrix via forward substitution."""
+    n = len(l_mat)
+    inv = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        inv[i][i] = 1.0 / l_mat[i][i]
+        for j in range(i):
+            s = sum(l_mat[i][k] * inv[k][j] for k in range(j, i))
+            inv[i][j] = -s / l_mat[i][i]
+    return inv
+
+
+def compute_structural_shocks(residuals: list[list[float]], p_mat: list[list[float]]) -> list[list[float]]:
+    """Compute structural innovations eps_t = P^-1 e_t."""
+    p_inv = invert_lower_triangular(p_mat)
+    k_vars = len(p_mat)
+    shocks: list[list[float]] = []
+    for e in residuals:
+        eps = [___ for i in range(k_vars)]
+        shocks.append([round(x, 6) for x in eps])
+    return shocks
+
+
+def compute_fevd_shares(cum_mse: list[list[float]]) -> list[list[float]]:
+    """Compute FEVD percentage shares normalizing by total variable forecast error variance."""
+    k_vars = len(cum_mse)
+    fevd_matrix = [[0.0] * k_vars for _ in range(k_vars)]
+    for i in range(k_vars):
+        total_var = sum(cum_mse[i])
+        for j in range(k_vars):
+            fevd_matrix[i][j] = ___
+    return fevd_matrix
+
+
+def main() -> None:
+    print("Lab X3-project-2 | Completion Problem: Cholesky &amp; FEVD Normalization")
+    print("-" * 75)
+
+    # Sample covariance matrix Sigma_u
+    sigma_u = [
+        [1.4400, 0.7200, -0.0360],
+        [0.7200, 64.3600, 0.2880],
+        [-0.0360, 0.2880, 0.0169],
+    ]
+
+    p_mat = cholesky(sigma_u)
+    print("1. Cholesky Factorization P (A_0^-1):")
+    for i, row in enumerate(p_mat):
+        print(f"   Row {i}: [{row[0]:8.4f}, {row[1]:8.4f}, {row[2]:8.4f}]")
+
+    # Sample residuals (2 periods)
+    sample_e = [
+        [1.2000, 8.0000, 0.1200],
+        [-0.6000, 4.0000, -0.0500],
+    ]
+    shocks = compute_structural_shocks(sample_e, p_mat)
+    print("\n2. Extracted Structural Shocks eps_t:")
+    for t, eps in enumerate(shocks):
+        print(f"   t={t}: [{eps[0]:8.4f}, {eps[1]:8.4f}, {eps[2]:8.4f}]")
+
+    # Sample cumulative MSE matrix at horizon 12
+    sample_mse = [
+        [2.5000, 0.2000, 0.1000],  # var 0 (delta_prod): total = 2.80
+        [4.0000, 45.0000, 1.0000],  # var 1 (rea): total = 50.00
+        [0.0080, 0.0620, 0.0200],  # var 2 (rpo): total = 0.090
+    ]
+    shares = compute_fevd_shares(sample_mse)
+    print("\n3. Normalized FEVD Shares (H=12M):")
+    for name, row in zip(["delta_prod", "rea       ", "rpo       "], shares, strict=True):
+        print(f"   {name}: Supply={row[0] * 100:5.1f}%, Demand={row[1] * 100:5.1f}%, Oil-Spec={row[2] * 100:5.1f}%")
+
+    # Row sum verification
+    sums_ok = all(abs(sum(shares[i]) - 1.0) &lt; 1e-6 for i in range(3))
+    print(f"\n4. Verification: All FEVD rows sum to 1.0: {sums_ok}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Lab X3-project-2 | Completion Problem: Cholesky &amp; FEVD Normalization
+---------------------------------------------------------------------------
+1. Cholesky Factorization P (A_0^-1):
+   Row 0: [  1.2000,   0.0000,   0.0000]
+   Row 1: [  0.6000,   8.0000,   0.0000]
+   Row 2: [ -0.0300,   0.0382,   0.1206]
+
+2. Extracted Structural Shocks eps_t:
+   t=0: [  1.0000,   0.9250,   0.9506]
+   t=1: [ -0.5000,   0.5375,  -0.7096]
+
+3. Normalized FEVD Shares (H=12M):
+   delta_prod: Supply= 89.3%, Demand=  7.1%, Oil-Spec=  3.6%
+   rea       : Supply=  8.0%, Demand= 90.0%, Oil-Spec=  2.0%
+   rpo       : Supply=  8.9%, Demand= 68.9%, Oil-Spec= 22.2%
+
+4. Verification: All FEVD rows sum to 1.0: True</pre>
+          <p class="interpretation">The blanks are filled by completing the Cholesky recursion formulas, matrix vector dot-products for structural shocks, and dividing cumulative mean-squared errors by total variable variance. The normalization guarantees that the forecast error variance across all structural shocks sums to 100%.</p>
+        </section>
+      </section>
+
+      <section id="model">
+        <h2 id="h-model">The theoretical model and econometric framework</h2>
+        <p>The structural vector autoregression framework formalizes the identification of macroeconomic oil market shocks established by <span class="claim" data-grade="A" data-cite="kilian2009not">Kilian (2009)</span> and reviewed in time series foundations by <span class="claim" data-grade="A" data-cite="hamilton1994time">Hamilton (1994)</span>.</p>
+
+        <h3 id="assumptions">Assumptions</h3>
+        <ol class="assumptions">
+          <li><strong>A1 · Structural VAR representation.</strong> Let \(y_t = [\Delta \text{prod}_t, \text{rea}_t, \text{rpo}_t]'\) denote the \(3 \times 1\) vector of endogenous variables, where \(\Delta \text{prod}_t\) is the percentage change in world crude oil production, \(\text{rea}_t\) is an index of global real economic activity, and \(\text{rpo}_t\) is the real price of crude oil. The structural data-generating process satisfies \(A_0 y_t = c_0 + \sum_{l=1}^p A_l y_{t-l} + \varepsilon_t\), where \(\varepsilon_t\) is a vector of serially and mutually uncorrelated structural innovations with \(\E[\varepsilon_t \varepsilon_t'] = I_3\).</li>
+          <li><strong>A2 · Reduced-form VAR representation.</strong> Pre-multiplying by \(A_0^{-1}\) yields the reduced-form VAR(p): \(y_t = c + \sum_{l=1}^p B_l y_{t-l} + e_t\), where \(c = A_0^{-1} c_0\), \(B_l = A_0^{-1} A_l\), and reduced-form residuals satisfy \(e_t = A_0^{-1} \varepsilon_t\) with \(\E[e_t e_t'] = \Sigma_e = A_0^{-1} (A_0^{-1})'\).</li>
+          <li><strong>A3 · Recursive Cholesky timing restrictions.</strong> The structural impact matrix \(P = A_0^{-1}\) is strictly lower triangular:
+          \[\begin{pmatrix} e_t^{\Delta \text{prod}} \\ e_t^{\text{rea}} \\ e_t^{\text{rpo}} \end{pmatrix} = \begin{pmatrix} p_{11} & 0 & 0 \\ p_{21} & p_{22} & 0 \\ p_{31} & p_{32} & p_{33} \end{pmatrix} \begin{pmatrix} \varepsilon_t^{\text{oil supply shock}} \\ \varepsilon_t^{\text{aggregate demand shock}} \\ \varepsilon_t^{\text{oil-specific demand shock}} \end{pmatrix}\]
+          Crude oil supply does not respond contemporaneously to global aggregate demand shocks or oil-market-specific demand shocks within the same month (\(p_{12} = 0, p_{13} = 0\)). Global real economic activity does not respond contemporaneously to oil-specific demand shocks within the month (\(p_{23} = 0\)). The real oil price responds contemporaneously to all three structural shocks.</li>
+          <li><strong>A4 · Moving average representation and impulse responses.</strong> The reduced-form moving average representation is \(y_t = \mu + \sum_{s=0}^\infty \Phi_s e_{t-s}\), where \(\Phi_0 = I_3\) and \(\Phi_s = \sum_{j=1}^{\min(s, p)} B_j \Phi_{s-j}\). The structural impulse response matrix at horizon \(h\) is \(\Theta_h = \Phi_h P = \Phi_h A_0^{-1}\).</li>
+          <li><strong>A5 · Forecast error variance decomposition (FEVD).</strong> The \(h\)-step-ahead forecast error variance of variable \(i\) explained by structural shock \(j\) is \(\text{MSE}_{i, j}(h) = \sum_{s=0}^h \Theta_{i, j, s}^2\). The proportion of forecast error variance is \(\text{FEVD}_{i, j}(h) = \frac{\text{MSE}_{i, j}(h)}{\sum_{k=1}^3 \text{MSE}_{i, k}(h)}\), satisfying \(\sum_{j=1}^3 \text{FEVD}_{i, j}(h) = 1.0\).</li>
+        </ol>
+
+        <h3 id="propositions">Theoretical propositions</h3>
+        <p><span class="block-title claim" data-grade="T">Proposition 1 · Exact identification under recursive triangularity.</span> Under Assumptions A1–A3, the lower-triangular Cholesky factor \(P\) of the positive-definite reduced-form covariance matrix \(\Sigma_e\) uniquely satisfies \(P P' = \Sigma_e\) with positive diagonal elements \(p_{ii} &gt; 0\). The structural innovations are uniquely identified as \(\varepsilon_t = P^{-1} e_t\) and have identity covariance \(\E[\varepsilon_t \varepsilon_t'] = I_3\).</p>
+
+        <p><span class="block-title claim" data-grade="T">Proposition 2 · Orthogonal variance decomposition.</span> Under Assumptions A1–A5, because structural shocks are mutually orthogonal, the total mean-squared forecast error of variable \(i\) at horizon \(h\) exactly equals the sum of the individual shock contributions: \(\Var(y_{i, t+h} - \E_t[y_{i, t+h}]) = \sum_{j=1}^3 \sum_{s=0}^h \Theta_{i, j, s}^2\). Normalization ensures \(\sum_{j=1}^3 \text{FEVD}_{i, j}(h) = 1.0\) for all \(i\) and \(h\ge 0\).</p>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A commodity research desk and macroeconomic policy institute evaluates the fundamental drivers of global crude oil price surges. Historical intuition attributed oil spikes to Middle Eastern supply shocks, whereas modern structural econometrics proves that aggregate demand and precautionary storage demand dominate price formation. You will construct an end-to-end structural VAR engine (<code>oil_var.py</code>) implementing parameter estimation, Cholesky orthogonalization, impulse response generation, FEVD computation, and historical shock decomposition across 50 seeded instances, and author an analytical research memo (<code>report.md</code>) evaluated by rubric.</dd>
+          <dt>Inputs</dt>
+          <dd>(1) Synthetically generated monthly oil market data from <code>make_instance(seed)</code> in <code>grader/instance.py</code>, returning a dictionary containing <code>seed</code>, <code>n_obs</code>, <code>lags</code>, <code>horizon</code>, <code>variable_names</code>, and <code>data</code> (an \(N \times 3\) matrix of floats for \(\Delta \text{prod}_t\), \(\text{rea}_t\), and \(\text{rpo}_t\)). All simulated series carry a visible SIMULATED label. (2) Optional user-provided CSV dataset with columns <code>delta_prod,rea,rpo</code>, validated client-side.</dd>
+          <dt>Required outputs</dt>
+          <dd>Implement the module <code>oil_var.py</code> exposing the following frozen signatures:
+          <pre><code class="language-pseudocode">def cholesky(a_mat: list[list[float]]) -> list[list[float]]:
+    """Compute lower-triangular Cholesky factorization L such that L L^T = A."""
+
+def invert_matrix(a_mat: list[list[float]]) -> list[list[float]]:
+    """Invert a square matrix using Gauss-Jordan elimination with partial pivoting."""
+
+def estimate_var(data: list[list[float]], lags: int) -> dict[str, Any]:
+    """Estimate a VAR(p) model with constant intercepts via ordinary least squares."""
+
+def cholesky_identification(sigma_u: list[list[float]]) -> list[list[float]]:
+    """Compute the lower-triangular structural impact matrix P such that P P^T = Sigma_u."""
+
+def compute_structural_shocks(residuals: list[list[float]], p_matrix: list[list[float]]) -> list[list[float]]:
+    """Extract structural innovations eps_t = P^-1 e_t."""
+
+def compute_irf(
+    coefficients: list[list[list[float]]], p_matrix: list[list[float]], horizon: int
+) -> list[list[list[float]]]:
+    """Compute structural impulse response functions Theta_h = Phi_h * P for h = 0 ... H."""
+
+def compute_fevd(irf: list[list[list[float]]]) -> list[list[list[float]]]:
+    """Compute forecast error variance decomposition shares (summing to 1.0 across shocks)."""
+
+def compute_historical_decomposition(
+    residuals: list[list[float]], coefficients: list[list[list[float]]], p_matrix: list[list[float]]
+) -> dict[str, Any]:
+    """Compute cumulative historical shock contributions to each variable's trajectory."""
+
+def run_oil_shock_var(instance: dict[str, Any]) -> dict[str, Any]:
+    """Execute the complete Kilian structural VAR estimation and decomposition pipeline."""</code></pre>
+          The returned dictionary must contain <code>seed</code>, <code>intercepts</code>, <code>coefficients</code>, <code>sigma_u</code>, <code>p_matrix</code>, <code>structural_shocks</code>, <code>irf</code>, <code>fevd</code>, and <code>historical_decomposition</code>. In addition, author an analytical research memo <code>report.md</code> evaluated by rubric.</dd>
+          <dt>Constraints</dt>
+          <dd>Pure Python standard library only (<code>math</code>, <code>typing</code>). All floating point calculations operate at double precision. Input parameters must be strictly validated according to <a href="#exceptions">the exception table</a> below.</dd>
+          <dt>Grading</dt>
+          <dd>The curriculum grades this project by both autograder and rubric: the Python solver <code>oil_var.py</code> is evaluated by the autograder test suite across 50 seeded instances, and the analytical research memo <code>report.md</code> is evaluated by rubric across five criteria with observable performance levels.</dd>
+          <dt>Reading list</dt>
+          <dd>See <a href="#reading">the reading list</a> below for verified empirical foundations by Kilian (2009), Hamilton (1994), Tang &amp; Xiong (2012), Gorton &amp; Rouwenhorst (2006), and Kaldor (1939).</dd>
+        </dl>
+
+        <h3 id="exceptions">Exception table</h3>
+        <p>The solver must validate inputs and raise <code>ValueError</code> under the following conditions:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Condition</th><th>Exception</th><th>Required message substring</th></tr></thead>
+            <tbody>
+              <tr><td><code>lags &lt; 1</code></td><td><code>ValueError</code></td><td><code>"Lag order must be at least 1"</code></td></tr>
+              <tr><td><code>len(data) == 0</code></td><td><code>ValueError</code></td><td><code>"Data cannot be empty"</code></td></tr>
+              <tr><td><code>len(data) - lags &lt;= 1 + K * lags</code></td><td><code>ValueError</code></td><td><code>"Insufficient observations for lag order"</code></td></tr>
+              <tr><td><code>horizon &lt; 0</code></td><td><code>ValueError</code></td><td><code>"Horizon must be non-negative"</code></td></tr>
+              <tr><td>Matrix non-square or not positive-definite</td><td><code>ValueError</code></td><td><code>"Matrix is not positive definite"</code></td></tr>
+              <tr><td>Singular matrix in inversion</td><td><code>ValueError</code></td><td><code>"Matrix is singular"</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Submit your <code>kilian_svar.py</code> implementation below to execute the verification suite against your unique workspace seed.</p>
+        <section class="grader-panel" id="grader" data-unit="X3" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="kilian_svar.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="rubric">
+        <h2 id="h-rubric">Project rubric</h2>
+        <p>The analytical research memo (<code>report.md</code>) is evaluated across five criteria with four observable performance levels. You must score Level 3 or Level 4 across all criteria to achieve mastery.</p>
+
+        <div class="table-wrap">
+          <table class="rubric">
+            <thead>
+              <tr>
+                <th>Criterion</th>
+                <th>Level 1 · Unsatisfactory</th>
+                <th>Level 2 · Developing</th>
+                <th>Level 3 · Proficient</th>
+                <th>Level 4 · Exemplary</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">C1 · SVAR Identification &amp; Econometric Grounding</th>
+                <td>States recursive ordering without economic defense or misidentifies contemporaneous timing restrictions.</td>
+                <td>Defines lower triangularity but provides superficial rationale for why oil production is predetermined within the month.</td>
+                <td>Rigourously justifies the recursive Cholesky ordering citing capital installation lags and planning delays (Kilian 2009).</td>
+                <td>Complete econometric defense of contemporaneous zero restrictions, contrasting Cholesky identification with non-recursive and sign-restriction alternatives.</td>
+              </tr>
+              <tr>
+                <th scope="row">C2 · Estimation &amp; Orthogonalization Mechanics</th>
+                <td>Fails to verify positive definiteness of Sigma_u or produces non-orthogonal structural innovations.</td>
+                <td>Estimates VAR parameters but omits degrees of freedom adjustment or fails to check empirical shock correlation matrix.</td>
+                <td>Correctly estimates OLS coefficients with degrees of freedom correction, verifies P P^T = Sigma_u, and confirms shock orthogonality.</td>
+                <td>Exhaustively validates empirical orthogonality, checks spectral radius of companion matrix for stability, and tests sensitivity to lag order.</td>
+              </tr>
+              <tr>
+                <th scope="row">C3 · Dynamic Transmission &amp; IRF Analysis</th>
+                <td>Omits higher-order lags in moving-average recursion or confuses reduced-form with structural impulse responses.</td>
+                <td>Computes IRFs but misinterprets the dynamic response of real oil price to supply versus demand innovations.</td>
+                <td>Accurately computes 24-month structural IRFs, rigorously differentiating transient supply shocks from persistent demand shifts.</td>
+                <td>Proves mathematical convergence of MA representation, plots cumulative production responses, and quantifies economic impact magnitudes with confidence bounds.</td>
+              </tr>
+              <tr>
+                <th scope="row">C4 · Historical Decomposition of Target Episode</th>
+                <td>Provides no historical decomposition or attributes historical oil spikes entirely to physical supply disruptions.</td>
+                <td>Decomposes historical series but fails to connect structural shock contributions to specific historical developments.</td>
+                <td>Quantifies the relative contributions of supply, aggregate demand, and precautionary demand during target episode (e.g. 2007–2008 or 2020–2022).</td>
+                <td>Produces full historical shock accounting showing cumulative contributions sum to fitted series, and defends conclusions against supply-side counter-narratives.</td>
+              </tr>
+              <tr>
+                <th scope="row">C5 · Structural Memo Quality &amp; Canon-Break Critique</th>
+                <td>Memo contains conversational filler, unsubstantiated conjectures, or lacks structured mathematical sections.</td>
+                <td>Memo follows template but ignores published counter-evidence or limitations of contemporaneous zero restrictions.</td>
+                <td>Professional executive memo with dense analytical rigor, verified citations, and explicit discussion of identification limitations.</td>
+                <td>Publication-grade research memo addressing Baumeister &amp; Hamilton (2019) critique of zero restrictions, analyzing potential reverse causality, and proposing empirical tests.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="exemplars">
+        <h2 id="h-exemplars">Annotated exemplars</h2>
+
+        <div class="exemplar" data-level="4">
+          <h3>Exemplar 1 · Level 4 (Exemplary Memo Excerpt)</h3>
+          <div class="passage">
+            <p><strong>Decomposing the 2007–2008 Crude Oil Price Surge: Demand Expansion vs Precautionary Hoarding</strong></p>
+            <p>Applying the 3-variable structural vector autoregression model of <span class="claim" data-grade="A" data-cite="kilian2009not">Kilian (2009)</span> to monthly global crude oil production growth (\(\Delta \text{prod}_t\)), real economic activity (\(\text{rea}_t\)), and real crude oil prices (\(\text{rpo}_t\)) identifies the primary structural drivers of the mid-2008 oil price peak of $140/bbl. The recursive identification imposes the economic hypothesis that crude oil production does not respond contemporaneously to innovations in global demand within the same month, reflecting physical extraction constraints and multi-month tanker charter commitments. Contemporaneously, \(\Sigma_e = P P'\) yields lower-triangular impact matrix \(P\) with positive diagonal entries, ensuring that positive shocks expand supply, raise global activity, and increase real prices respectively.</p>
+            <p>The historical decomposition demonstrates that physical crude oil supply disruptions accounted for less than 11% of the cumulative price surge between January 2006 and June 2008. Instead, broad global aggregate demand expansion—driven by rapid industrialization in emerging East Asian economies—contributed 62% of the cumulative price appreciation. Precautionary inventory demand shocks, reflecting heightened anxiety concerning future Middle Eastern supply security and spare OPEC capacity depletion, contributed the remaining 27%. At 12-month and 24-month forecast horizons, the forecast error variance decomposition confirms that aggregate demand shocks account for 68.8% and 72.1% of real price variance respectively, whereas physical supply shocks account for only 8.8% and 8.7%.</p>
+            <p>We critically evaluate the contemporaneous zero restriction \(p_{12} = 0\) against the Bayesian sign-restriction critique of Baumeister &amp; Hamilton (2019). If oil producers exhibit a non-zero short-run supply elasticity \(\epsilon_s &gt; 0\), the Cholesky identification overstates the role of demand shocks. However, instrumental variable estimates using unexpected OPEC quota revisions demonstrate that short-run global supply elasticity does not statistically differ from zero (\(\hat{\epsilon}_s \approx 0.02, \text{se}=0.03\)), confirming the structural validity of Kilian's recursive baseline.</p>
+          </div>
+          <div class="annotations">
+            <h4>Rubric Mapping: Level 4</h4>
+            <ul>
+              <li><strong>C1 (Level 4):</strong> Grounded defense of recursive identification with economic constraints and explicit comparison to Baumeister &amp; Hamilton (2019).</li>
+              <li><strong>C2 (Level 4):</strong> Explicit mathematical statement of covariance factorization and signs of diagonal entries.</li>
+              <li><strong>C3 (Level 4):</strong> Precise quantification of FEVD shares across 12-month and 24-month horizons (68.8% and 72.1%).</li>
+              <li><strong>C4 (Level 4):</strong> Historical decomposition accounting with exact percentages for supply (11%), aggregate demand (62%), and precautionary demand (27%).</li>
+              <li><strong>C5 (Level 4):</strong> Rigorous, dense PhD register with exact citations, econometric defense, and counter-evidence evaluation.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="exemplar" data-level="2">
+          <h3>Exemplar 2 · Level 2 (Developing Memo Excerpt)</h3>
+          <div class="passage">
+            <p><strong>Analysis of Oil Price Shocks</strong></p>
+            <p>We estimated a VAR on oil production, real activity, and oil prices. We used a Cholesky decomposition because it is the standard method in time series analysis. Oil production is ordered first because supply comes before demand in economics.</p>
+            <p>Looking at the 2008 oil price spike, our model shows that demand was more important than supply. Oil prices went up because of China's economic growth. When we ran the historical decomposition, aggregate demand had a big positive effect on oil prices. Supply shocks did not do very much during 2008. The impulse response functions show that oil prices go up after a positive demand shock.</p>
+          </div>
+          <div class="annotations">
+            <h4>Rubric Mapping: Level 2</h4>
+            <ul>
+              <li><strong>C1 (Level 2):</strong> Asserts that "supply comes before demand in economics" rather than providing rigorous economic justification based on extraction frictions or delivery lags.</li>
+              <li><strong>C2 (Level 2):</strong> Mentions Cholesky decomposition without specifying matrix equations, degrees of freedom, or orthogonality checks.</li>
+              <li><strong>C3 (Level 2):</strong> Reports vague qualitative statements ("had a big positive effect") without quoting exact FEVD percentages or IRF magnitudes.</li>
+              <li><strong>C4 (Level 2):</strong> Lacks numerical decomposition breakdown of historical cumulative shock contributions.</li>
+              <li><strong>C5 (Level 2):</strong> Superficial register, lacks verified citations, and ignores published econometric critiques of zero restrictions.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Hours</th>
+                <th>Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Econometric framework &amp; identification derivation</td>
+                <td>4.0</td>
+                <td>Deriving recursive Cholesky zero restrictions, companion form, and structural MA representations.</td>
+              </tr>
+              <tr>
+                <td>VAR estimation &amp; companion matrix implementation</td>
+                <td>4.0</td>
+                <td>Writing OLS multi-equation regression, Gauss-Jordan matrix inversion, and degrees of freedom correction.</td>
+              </tr>
+              <tr>
+                <td>Cholesky impact matrix &amp; structural shock extraction</td>
+                <td>4.0</td>
+                <td>Implementing positive-definite Cholesky factorization and structural innovation orthogonalization.</td>
+              </tr>
+              <tr>
+                <td>Impulse response functions &amp; FEVD computation</td>
+                <td>5.0</td>
+                <td>Implementing recursive moving-average dynamics, structural impact propagation, and variance share normalization.</td>
+              </tr>
+              <tr>
+                <td>Historical decomposition &amp; episode accounting</td>
+                <td>4.0</td>
+                <td>Coding cumulative historical shock trajectories and verifying convergence to fitted time series.</td>
+              </tr>
+              <tr>
+                <td>Analytical research memo preparation &amp; critique</td>
+                <td>4.0</td>
+                <td>Authoring research memo defending structural identification against hostile peer review.</td>
+              </tr>
+              <tr>
+                <td><strong>Total time budget</strong></td>
+                <td><strong>25.0</strong></td>
+                <td><strong>Declared project hours (sum of 6 components matches data-hours-project).</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="kilian2009not">Kilian (2009), "Not All Oil Price Shocks Are Alike: Disentangling Demand and Supply Shocks in the Crude Oil Market", American Economic Review 99(3): 1053–1069.</li>
+          <li data-cite="hamilton1994time">Hamilton (1994), Time Series Analysis, Princeton University Press. Chapters 10–11 (Vector Autoregressions).</li>
+          <li data-cite="tang2012index">Tang &amp; Xiong (2012), "Index Investment and the Financialization of Commodities", Financial Analysts Journal 68(6): 54–74.</li>
+          <li data-cite="gorton2006facts">Gorton &amp; Rouwenhorst (2006), "Facts and Fantasies about Commodity Futures", Financial Analysts Journal 62(2): 47–68.</li>
+          <li data-cite="kaldor1939speculation">Kaldor (1939), "Speculation and Economic Stability", Review of Economic Studies 7(1): 1–27.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
