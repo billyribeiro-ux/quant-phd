@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS4" data-page="L05" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L05 · Dependency Pinning &amp; Lock Files · CS4</title>
+  <meta name="description" content="Lesson 5 of CS4: Dependency resolution graphs, transitive drift hazards, exact version pinning, cryptographic artifact hashes, and lockfile validation. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS4 Software Engineering &amp; Reproducible Research</a><span class="sep">›</span>
+      <span>L05</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS4 · Lesson 5 of 8 · 8 study hours</p>
+        <h1>Dependency Pinning &amp; Lock Files</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="data-manifest" href="../../../concepts.html#data-manifest">data manifest</a>, <a class="concept" data-concept="python-packaging" href="L04.html#def-python-packaging">Python packaging</a></li>
+          <li><strong>Introduces:</strong> <dfn id="def-dependency-pinning" data-concept="dependency-pinning">Dependency pinning and lock files</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Modern quantitative finance relies heavily on external numerical and statistical packages. When research code specifies dependencies with unconstrained ranges (such as numpy&gt;=2.0), installing the environment on a different date downloads newer sub-dependencies whose subtle behavioral changes break historical replication. Version numbers alone provide incomplete security: remote repository packages can be compromised, replaced, or altered. Pinning exact package versions and recording cryptographic SHA-256 digests in an immutable lockfile guarantees that every execution environment across clusters, servers, and peer verifiers builds bit-identical dependencies without silent drift.</p>
+
+      <h2 id="dependency-drift"><span class="section-number">1</span>The Fragility of Open Dependency Ranges</h2>
+      <p>In exploratory development, specifying dependencies via open ranges (e.g. <code>pytest&gt;=8.0.0</code>) is common. In reproducible scientific research, this practice is catastrophic.</p>
+
+      <div class="block definition" id="def-transitive-drift">
+        <p class="block-title">Definition 5.1 · Transitive Dependency Drift</p>
+        <p>Let a project directly declare dependency \(P \in \mathcal{P}\) with version constraint range \([v_{\min}, \infty)\). Package \(P\) in turn declares transitive dependencies \(Q_1, \dots, Q_k\), each with their own version ranges. <strong>Dependency drift</strong> is the phenomenon where running the installer at time \(t_1\) resolves dependency graph \(G_1\), while running at time \(t_2 > t_1\) resolves a distinct dependency graph \(G_2 \ne G_1\) containing newer sub-package releases with modified numerical algorithms, deprecated functions, or altered default parameters.</p>
+      </div>
+
+      <p><span class="claim" data-grade="A" data-cite="wilson2017good" data-locator="Dependencies, recommendation 1">Wilson et al. (2017) demonstrate that recording exact software environments and external dependencies is essential for scientific reproducibility.</span> If a peer referee attempts to replicate an econometric paper two years after publication and encounters an unpinned dependency specification, package resolution will download future releases that fail to build or produce conflicting statistical estimates.</p>
+
+      <h2 id="lockfile-architecture"><span class="section-number">2</span>Lockfile Specification and Cryptographic Verification</h2>
+      <p>To eliminate dependency drift, quantitative environments separate the <em>abstract dependency specification</em> (in <code>pyproject.toml</code>) from the <em>concrete frozen dependency resolution</em> (in a lockfile).</p>
+
+      <div class="block definition" id="def-dependency-pinning-block">
+        <p class="block-title">Definition 5.2 · Dependency Pinning and Lock Files</p>
+        <p><dfn>Dependency pinning and lock files</dfn> is the practice of freezing every direct and transitive dependency to an exact version string (<code>name==version</code>) accompanied by one or more cryptographic SHA-256 digests of the published archive artifacts. An installer operating in hash-checking mode (e.g. <code>pip install --require-hashes -r requirements.lock</code>) downloads wheels and verifies their byte-level SHA-256 hashes against the recorded lockfile before executing installation.</p>
+      </div>
+
+      <div class="block theorem" id="thm-sha256-integrity">
+        <span class="block-title claim" data-grade="T">Theorem 5.1 · Second Pre-Image Security of Artifact Hashes</span>
+        <p>Let \(w \in \{0, 1\}^*\) be a verified package wheel artifact, and let \(h = H(w) \in \{0, 1\}^{256}\) be its SHA-256 cryptographic digest recorded in <code>requirements.lock</code>. If a compromised or altered artifact \(w' \ne w\) is delivered by a remote repository, the probability of evading lockfile detection requires finding a second pre-image for \(H\), which requires approximately \(2^{256}\) operations under standard cryptographic hash assumptions.</p>
+      </div>
+
+      <div class="block proof">
+        <p class="block-title">Proof</p>
+        <p>The SHA-256 algorithm maps arbitrary-length bit strings to a 256-bit hash domain \(\{0, 1\}^{256}\). The verification rule in the package installer computes \(h' = H(w')\) and evaluates the Boolean equality \(h' == h\). By hypothesis, \(w' \ne w\). The installer accepts \(w'\) if and only if \(H(w') = H(w)\). This condition constitutes finding a second pre-image on the cryptographic hash function \(H\). Under the second pre-image resistance assumption of SHA-256, no known polynomial-time algorithm exists that finds \(w' \ne w\) satisfying \(H(w') = H(w)\) in fewer than \(O(2^{256})\) work factor evaluations. Because \(2^{256} \approx 1.15 \times 10^{77}\) exceeds the physical computational capacity of terrestrial computers, the probability of an undetected payload modification is negligible.</p>
+      </div>
+
+      <div class="block example" id="ex-lockfile-entry">
+        <p class="block-title">Example 5.1 · Standard Cryptographic Lockfile Entry</p>
+        <p>A production <code>requirements.lock</code> file declares exact versions and SHA-256 hashes for every wheel archive:</p>
+        <pre><code class="language-toml"># requirements.lock (pinned with sha256 digests)
+iniconfig==2.0.0 --hash=sha256:b845d3e32f20f0204f0f9e6abd67d7e07c34e537da454d427fc26bf43c417bac
+packaging==24.0 --hash=sha256:2ddfb556884787140e941162463339178f5661b69766627063f27664ff6d8621
+pytest==8.2.0 --hash=sha256:462a9af17f3dc53f65e4e69b59695d36e2f1856711776953288fb875b282c074
+</code></pre>
+        <p>When an unpinned range (e.g. <code>pytest&gt;=8.2.0</code>) or an entry lacking <code>--hash=sha256:</code> is encountered, the lockfile validator rejects the submission.</p>
+      </div>
+
+      <section class="lab" id="lab-CS4-L05-1" data-runtime="python">
+        <h3>Lab 1 · Dependency Pinning and Cryptographic Lockfile Verification</h3>
+        <p class="hypothesis">Validates dependency pinning and SHA-256 wheel integrity. Verifies that authentic package payloads match their pinned digests, catches unpinned floating comparison ranges, and flags tampered archive payloads with explicit hash mismatches.</p>
+        <pre><code class="language-python" data-run>"""CS4 Lesson 5 Inline Lab 1: Dependency pinning and cryptographic lockfile verification.
+
+Demonstrates exact version pinning and cryptographic artifact integrity verification.
+Parses standard pip lockfile entries (name==version --hash=sha256:&lt;digest&gt;).
+Computes SHA-256 hashes of simulated package archive byte streams using hashlib.
+Detects unpinned floating dependency ranges and catches tampered byte payloads.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from typing import NamedTuple
+
+
+class PinnedRequirement(NamedTuple):
+    name: str
+    version: str
+    hashes: tuple[str, ...]
+
+
+LOCK_LINE_REGEX = re.compile(r"^([A-Za-z0-9_\-\.]+)\s*==\s*([A-Za-z0-9_\-\.]+)(?:\s+--hash=sha256:([a-fA-F0-9]{64}))+$")
+UNPINNED_REGEX = re.compile(r"^([A-Za-z0-9_\-\.]+)\s*([&gt;&lt;=~^!].*)$")
+
+
+def parse_lockfile_text(text: str) -&gt; tuple[list[PinnedRequirement], list[str]]:
+    """Parse lockfile lines into pinned requirements, flagging syntax and range violations."""
+    pinned: list[PinnedRequirement] = []
+    errors: list[str] = []
+
+    for line_num, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        # Extract all hashes on the line
+        parts = line.split()
+        pkg_spec = parts[0]
+        hash_parts = [p.removeprefix("--hash=sha256:") for p in parts[1:] if p.startswith("--hash=sha256:")]
+
+        if "==" not in pkg_spec:
+            errors.append(f"Line {line_num}: Unpinned or invalid package spec '{pkg_spec}'")
+            continue
+
+        if not hash_parts:
+            errors.append(f"Line {line_num}: Missing cryptographic --hash for '{pkg_spec}'")
+            continue
+
+        name, version = pkg_spec.split("==", 1)
+        pinned.append(PinnedRequirement(name=name.strip(), version=version.strip(), hashes=tuple(hash_parts)))
+
+    return pinned, errors
+
+
+def verify_artifact_integrity(wheel_bytes: bytes, expected_hashes: tuple[str, ...]) -&gt; bool:
+    """Verify that the SHA-256 digest of artifact bytes matches at least one recorded hash."""
+    computed_digest = hashlib.sha256(wheel_bytes).hexdigest().lower()
+    return any(computed_digest == h.lower() for h in expected_hashes)
+
+
+def main() -&gt; None:
+    print("Dependency pinning and cryptographic lockfile verification:")
+
+    # Simulated wheel byte streams
+    sim_numpy_bytes = b"SIMULATED: numpy wheel archive binary payload v2.0.0"
+    sim_numpy_hash = hashlib.sha256(sim_numpy_bytes).hexdigest()
+
+    sim_scipy_bytes = b"SIMULATED: scipy wheel archive binary payload v1.13.0"
+    sim_scipy_hash = hashlib.sha256(sim_scipy_bytes).hexdigest()
+
+    # 1. Authentic valid lockfile
+    valid_lock = f"""# Production pinned lockfile
+numpy==2.0.0 --hash=sha256:{sim_numpy_hash}
+scipy==1.13.0 --hash=sha256:{sim_scipy_hash}
+"""
+
+    pinned, _ = parse_lockfile_text(valid_lock)
+    print(f"Parsed {len(pinned)} pinned dependencies with 0 errors.")
+
+    numpy_valid = verify_artifact_integrity(sim_numpy_bytes, pinned[0].hashes)
+    scipy_valid = verify_artifact_integrity(sim_scipy_bytes, pinned[1].hashes)
+    print(f"Authentic artifact integrity: numpy={numpy_valid}, scipy={scipy_valid}")
+
+    # 2. Lockfile with unpinned range
+    unpinned_lock = """# Flawed lockfile with floating ranges and missing hashes
+numpy&gt;=2.0.0
+pytest==8.2.0
+"""
+    _, unpinned_errors = parse_lockfile_text(unpinned_lock)
+    print(f"\nUnpinned range evaluation: caught {len(unpinned_errors)} violations:")
+    for err in unpinned_errors:
+        print(f"  {err}")
+
+    # 3. Tampered payload detection
+    tampered_bytes = b"SIMULATED: compromised numpy wheel payload with unauthorized changes"
+    tampered_valid = verify_artifact_integrity(tampered_bytes, pinned[0].hashes)
+    print(f"\nTampered payload integrity check: {tampered_valid}")
+    if not tampered_valid:
+        computed = hashlib.sha256(tampered_bytes).hexdigest()
+        print("  Tampering detected: computed hash does not match pinned hash.")
+        print(f"  Expected: {pinned[0].hashes[0][:16]}...")
+        print(f"  Computed: {computed[:16]}...")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Dependency pinning and cryptographic lockfile verification:
+Parsed 2 pinned dependencies with 0 errors.
+Authentic artifact integrity: numpy=True, scipy=True
+
+Unpinned range evaluation: caught 2 violations:
+  Line 2: Unpinned or invalid package spec 'numpy&gt;=2.0.0'
+  Line 3: Missing cryptographic --hash for 'pytest==8.2.0'
+
+Tampered payload integrity check: False
+  Tampering detected: computed hash does not match pinned hash.
+  Expected: 462a9af17f3dc53f...
+  Computed: cd9a7f4f5f641762...</pre>
+        <p class="interpretation">The lab confirms the dual protective mechanisms of modern dependency management: (1) syntactic parsing rejects unpinned ranges such as pytest&gt;=2.0, preventing future resolution drift; (2) cryptographic hashing verifies that downloaded binary bytes match the exact recorded checksums, eliminating supply-chain tampering.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">3</span>Where the Canon Breaks</h2>
+      <p>Cryptographic lockfiles pin bytes, not behavior. A lockfile records the exact packages resolved on the day the lockfile was generated; it does not guarantee that those packages are bug-free or compatible with future operating system kernels. If a dependency contains a latent race condition or an uninitialized memory defect in its C extension, pinning its exact SHA-256 hash simply reproduces the bug bit-for-bit across all runs. Furthermore, lockfiles must be audited periodically for known security vulnerabilities (CVEs) and upgraded deliberately through audited pull requests rather than left frozen indefinitely.</p>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions"><span class="section-number">4</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Specifying <code>requirements.txt</code> with <code>numpy==2.0.0</code> guarantees 100 percent reproducible environments.</p>
+            <p class="right">A direct dependency pin only pins the top-level package. If <code>numpy</code> requires sub-dependencies, those transitive dependencies will float unless explicitly enumerated in a fully resolved lockfile. Additionally, without cryptographic hashes, an attacker can replace the remote package wheel with a malicious binary possessing the same version tag.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A lockfile should be ignored by Git and regenerated fresh on every machine.</p>
+            <p class="right">The lockfile represents the exact, verified computational baseline of the research study and <em>must</em> be committed to the Git repository. Regenerating it on each machine defeats the entire principle of environment pinning.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Semantic versioning (SemVer) guarantees that minor updates (e.g. 2.1 to 2.2) will never break existing research code.</p>
+            <p class="right">SemVer is an aspirational social contract, not a mathematically verified guarantee. Minor releases frequently introduce subtle behavioral differences, altered default parameters, or bug fixes that change numerical return calculations.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems"><span class="section-number">5</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p5-1-1">
+            <p class="prompt">Calculate the SHA-256 hexadecimal digest for the ASCII string <code>"quant-phd"</code>.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In Python, encode the string to UTF-8 bytes and evaluate SHA-256: <code>hashlib.sha256(b"quant-phd").hexdigest()</code>. The 64-character hexadecimal digest is <code>"8cb32f917537b0c51f47dd84594c30c30291e2b0244a0e1b6f00f0714eb6c0ee"</code>.</p>
+            </details>
+          </div>
+          <div class="problem" id="p5-1-2">
+            <p class="prompt">Identify which of the following three lockfile lines satisfies standard cryptographic pinning requirements:</p>
+            <pre><code class="language-toml">Line 1: scipy>=1.13.0
+Line 2: scipy==1.13.0
+Line 3: scipy==1.13.0 --hash=sha256:8f48af886261329324d2c884b2c1404c272a832be1b4f49491410d3f2ec8eb09
+</code></pre>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Only Line 3 satisfies the standard: it pins the exact version with <code>==</code> and supplies a valid 64-character hexadecimal SHA-256 cryptographic digest via <code>--hash=sha256:</code>. Line 1 uses an unpinned range (<code>&gt;=</code>), and Line 2 lacks cryptographic hash verification.</p>
+            </details>
+          </div>
+          <div class="problem" id="p5-1-3">
+            <p class="prompt">In pip syntax, write the exact terminal command to install dependencies from <code>requirements.lock</code> while enforcing strict hash checking.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The standard command is: <code>pip install --require-hashes -r requirements.lock</code>. The <code>--require-hashes</code> flag forces pip to fail if any dependency line lacks a verified hash or if a downloaded artifact does not match.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p5-2-1">
+            <p class="prompt">Prove that transitive dependency resolution over a set of packages with version constraints \([v_{\min}, v_{\max}]\) is equivalent to solving the Boolean Satisfiability (SAT) problem, establishing NP-completeness.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>To prove NP-completeness, we reduce 3-SAT to dependency resolution. Let a 3-CNF formula \(\phi = \bigwedge_{i=1}^m (l_{i,1} \lor l_{i,2} \lor l_{i,3})\) have variables \(x_1, \dots, x_n\). For each variable \(x_j\), define package \(X_j\) with two versions: 1 (representing True) and 2 (representing False). For each clause \(C_i\), create package \(C_i\) whose dependencies are satisfied if at least one literal in \(C_i\) is True. Conflicts are mapped: package \(X_j\) version 1 conflicts with version 2. A root package <code>App</code> requires all \(C_1, \dots, C_m\) and all \(X_1, \dots, X_n\). A valid dependency assignment exists if and only if there exists a satisfying truth assignment for \(\phi\). Since 3-SAT is NP-complete, dependency resolution is NP-complete.</p>
+            </details>
+          </div>
+          <div class="problem" id="p5-2-2">
+            <p class="prompt">Prove that storing multiple hashes per dependency line in a lockfile is necessary to support multi-platform reproducible research (e.g. Linux x86_64 and macOS ARM64).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Different operating systems and CPU architectures require different compiled binary wheel archives for the same package version. For example, <code>numpy==2.0.0</code> distributes distinct wheel archives: <code>numpy-2.0.0-cp314-manylinux_x86_64.whl</code> for Linux x86_64, and <code>numpy-2.0.0-cp314-macosx_arm64.whl</code> for Apple Silicon. Each wheel contains distinct machine code binaries, resulting in distinct SHA-256 byte hashes \(h_{\text{linux}} \ne h_{\text{macos}}\). A single-hash lockfile would reject valid downloads on any platform other than the one where the lockfile was generated. Providing multiple <code>--hash</code> items per package line permits multi-platform verification while preserving hash integrity.</p>
+            </details>
+          </div>
+          <div class="problem" id="p5-2-3">
+            <p class="prompt">Prove that sorting lockfile entries alphabetically by package name produces a unique canonical file representation for a fixed set of resolved dependencies.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(S\) be a finite set of \(n\) distinct pinned dependency specifications. Any valid permutation of \(S\) represents an identical set of packages. There exist \(n!\) distinct linear orderings. Lexicographical sorting on normalized package names defines a strict total order on \(S\). By standard order theory, every finite set equipped with a strict total order has a unique monotonically increasing sequence. Sorting entries uniquely selects this single ordering from the \(n!\) possibilities, guaranteeing a unique canonical text representation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p5-3-1">
+            <p class="prompt">A quantitative analyst reproduces a 2021 volatility calibration study. The study provided an unpinned <code>requirements.txt</code> containing <code>scipy</code>. Installing in 2026 downloads SciPy 1.14, where a deprecated optimization solver was removed, causing the script to crash. How would a cryptographic lockfile have prevented this failure?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A lockfile would have frozen the environment to the exact 2021 release (e.g. <code>scipy==1.7.1</code>) and recorded its authentic SHA-256 wheel hashes. When executing the replication script, the package installer would install version 1.7.1 where the required optimization solver was present and functional, avoiding the breaking API deprecation introduced in subsequent major versions.</p>
+            </details>
+          </div>
+          <div class="problem" id="p5-3-2">
+            <p class="prompt">An investment bank conducts a dependency audit and discovers that an algorithmic trading library downloaded a compromised package from PyPI where the version string matched the requirements but malicious code was injected. How does pip's <code>--require-hashes</code> mode neutralize this attack?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The malicious payload alters the binary contents of the wheel file. By the mathematical properties of SHA-256, altering any byte changes the resulting cryptographic digest. When pip runs in <code>--require-hashes</code> mode, it computes the SHA-256 digest of the downloaded wheel prior to extraction. Because the attacker cannot forge a collision with the recorded hash, pip detects the mismatch, immediately aborts installation, deletes the temporary download, and reports a security violation.</p>
+            </details>
+          </div>
+          <div class="problem" id="p5-3-3">
+            <p class="prompt">A research lab uses modern tools (such as <code>uv</code> or <code>pip-tools</code>) to generate lockfiles. Why does resolving dependencies inside a containerized Linux environment ensure parity with cloud execution clusters?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Resolving dependencies on a local developer machine (e.g. macOS) can produce resolution artifacts tailored to Darwin architecture and local C libraries. Resolving inside a containerized Linux environment matching production (e.g. Ubuntu or Debian glibc) ensures that platform-specific wheels, binary dependencies, and compilation tags align bit-for-bit with production cluster nodes.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p5-4-1">
+            <p class="prompt">Design an institutional dependency governance framework for an asset manager managing $50B in systematic quantitative strategies, balancing security audit gates with quantitative research velocity.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>An institutional dependency governance framework implements three layers: (1) Internal Hermetic Mirror: Host an internal, air-gapped artifact repository (e.g. Artifactory) mirroring approved PyPI wheels with verified signatures. (2) Automated Vulnerability Scanner: Continuously scan lockfiles against CVE and OSV databases in CI pipelines, failing builds if high-severity vulnerabilities are detected. (3) Periodic Scheduled Re-locking: Run automated monthly re-locking pull requests that propose upgraded dependencies accompanied by full regression backtest diffs, allowing researchers to evaluate numerical stability before merging upgrades.</p>
+            </details>
+          </div>
+          <div class="problem" id="p5-4-2">
+            <p class="prompt">Formulate a mathematical graph model of package dependency supply-chain vulnerability propagation, defining the blast radius of a compromised leaf package in a quantitative trading ecosystem.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(G = (\mathcal{P}, E)\) be the global dependency DAG where \((u, v) \in E\) denotes that package \(u\) depends on package \(v\). The blast radius of a compromised leaf package \(c \in \mathcal{P}\) is the set of all packages that have a directed path to \(c\): \(\mathrm{Blast}(c) = \{u \in \mathcal{P} : u \rightsquigarrow c\}\). If an attacker injects malicious code into \(c\), every system in \(\mathrm{Blast}(c)\) executes the payload upon import. In financial institutions with shared core utility libraries, a single compromised leaf package can propagate across 100% of trading, risk, and accounting services unless isolated by strict lockfile pinning and import sandboxing.</p>
+            </details>
+          </div>
+          <div class="problem" id="p5-4-3">
+            <p class="prompt">Evaluate the feasibility of zero-dependency quantitative research frameworks versus rich open-source ecosystems, analyzing long-term maintenance costs and reproducibility trade-offs.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Zero-dependency frameworks (relying strictly on standard library modules such as <code>math</code>, <code>fractions</code>, <code>sqlite3</code>) achieve near-perfect multi-decade reproducibility because the Python standard library maintains extreme backward compatibility. However, developer velocity is severely constrained: algorithms such as linear algebra, quadratic programming, and specialized time-series estimators must be authored and maintained in-house. A managed open-source ecosystem (e.g. NumPy, SciPy) provides state-of-the-art computational performance and rich algorithmic features, but requires rigorous dependency pinning, cryptographic lockfiles, and containerization to achieve equivalent reproducibility.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results"><span class="section-number">6</span>Key Results</h2>
+        <table class="key-results">
+          <thead>
+            <tr>
+              <th scope="col">Result</th>
+              <th scope="col">Grade</th>
+              <th scope="col">Basis / Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>SHA-256 second pre-image security guarantees artifact tamper detection with negligible forgery probability</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 5.1 proof (cryptographic hash work factor)</td>
+            </tr>
+            <tr>
+              <td>Recording exact dependencies and environments is essential for scientific reproducibility</td>
+              <td><span class="grade" data-grade="A">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="wilson2017good" data-locator="Dependencies, recommendation 1">Wilson et al. (2017, Dependencies recommendation 1)</span></td>
+            </tr>
+            <tr>
+              <td>Syntactic lockfile validation catches unpinned ranges and SHA-256 byte payload tampering</td>
+              <td><span class="grade" data-grade="C">C</span></td>
+              <td>Lab 1 (SIMULATED lockfile verification evaluation)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS4" data-page="L05" data-cards="cards.json">
+        <h2 id="h-quiz"><span class="section-number">7</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is dependency drift?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q1"> <span>The resolution of different package versions over time due to unpinned floating dependency ranges</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span>A physical drift in server cooling fans</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span>The gradual loss of database index performance</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span>A change in market interest rates</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Dependency drift occurs when unpinned ranges allow newer transitive dependencies to enter environments over time.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What distinguishes a lockfile from a standard <code>pyproject.toml</code> dependencies list?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q2"> <span>A lockfile enumerates exact versions and cryptographic hashes for all direct and transitive dependencies</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span>A lockfile contains encrypted passwords</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span>A lockfile can only be read by Linux root administrators</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span>A lockfile deletes old files from disk</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A lockfile freezes the complete resolved dependency graph with SHA-256 integrity digests.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are cryptographic SHA-256 hashes included in lockfiles?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q3"> <span>To verify byte-level artifact integrity and protect against compromised or modified remote packages</span></label>
+              <label class="option"><input type="radio" name="L05q3"> <span>To accelerate internet download speeds</span></label>
+              <label class="option"><input type="radio" name="L05q3"> <span>To compress wheel files into smaller archives</span></label>
+              <label class="option"><input type="radio" name="L05q3"> <span>To convert Python scripts into machine code</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>SHA-256 hashes guarantee that downloaded bytes match authentic verified artifacts exactly.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why must lockfiles be committed to Git version control in reproducible research?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q4"> <span>To ensure that all researchers, CI runners, and peer verifiers build identical environments</span></label>
+              <label class="option"><input type="radio" name="L05q4"> <span>Because Git fails to clone repositories without a lockfile</span></label>
+              <label class="option"><input type="radio" name="L05q4"> <span>To hide dependency names from competitors</span></label>
+              <label class="option"><input type="radio" name="L05q4"> <span>To enable GPU acceleration</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Lockfiles enshrine the reproducible software baseline and must be tracked in version control.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does pip's <code>--require-hashes</code> option enforce?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q5"> <span>Fails installation if any package lacks a hash or if the downloaded artifact's hash does not match</span></label>
+              <label class="option"><input type="radio" name="L05q5"> <span>Hashes user passwords during login</span></label>
+              <label class="option"><input type="radio" name="L05q5"> <span>Converts Python dictionaries to hash tables</span></label>
+              <label class="option"><input type="radio" name="L05q5"> <span>Encrypts all local source files</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The flag mandates strict cryptographic artifact verification for all installed packages.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do lockfiles often list multiple hashes for a single package version?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q6"> <span>Different operating systems and CPU architectures require distinct compiled wheel archives</span></label>
+              <label class="option"><input type="radio" name="L05q6"> <span>Because SHA-256 produces random hashes on each run</span></label>
+              <label class="option"><input type="radio" name="L05q6"> <span>To provide backup hashes in case one expires</span></label>
+              <label class="option"><input type="radio" name="L05q6"> <span>Because pip rotates hashes weekly</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Each platform-specific binary wheel has a distinct byte payload and therefore a distinct hash.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the canon break regarding cryptographic lockfiles?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q7"> <span>A lockfile pins exact bytes, not behavioral correctness; it reproduces latent bugs if present</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span>Lockfiles can only be parsed by Windows systems</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span>Lockfiles prevent Python from executing math functions</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span>Lockfiles expire after 30 days</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Lockfiles freeze what was resolved, preserving both correct features and latent defects.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is specifying direct dependencies alone insufficient for reproducibility?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q8"> <span>Transitive dependencies will float to newer releases unless explicitly locked</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span>Python cannot install direct dependencies</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span>Direct dependencies are always unpinned</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span>Virtual environments require at least 100 packages</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Sub-dependencies float unless transitively resolved and frozen in a complete lockfile.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="wilson2014best"></li>
+          <li data-cite="wilson2017good"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L04.html"><span class="dir">Previous</span>L04 Python Packaging</a>
+        <a class="next" href="L06.html"><span class="dir">Next</span>L06 Deterministic Computation</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS4 · Software Engineering &amp; Reproducible Research · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

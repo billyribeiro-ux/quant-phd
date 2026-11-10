@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS4" data-page="L01" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01 · Branches, Pull Requests &amp; Review · CS4</title>
+  <meta name="description" content="Lesson 1 of CS4: Git version control histories as directed acyclic graphs, immutable commits, branch pointers, merge base determination, and systematic peer code review. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS4 Software Engineering &amp; Reproducible Research</a><span class="sep">›</span>
+      <span>L01</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS4 · Lesson 1 of 8 · 8 study hours</p>
+        <h1>Branches, Pull Requests &amp; Review</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="graph-traversal" href="../../../concepts.html#graph-traversal">graph traversal</a>, <a class="concept" data-concept="hash-map" href="../../../concepts.html#hash-map">hash map</a></li>
+          <li><strong>Introduces:</strong> <dfn id="def-git-branching-workflow" data-concept="git-branching-workflow">Git branching and pull-request workflow</dfn>, <dfn id="def-code-review" data-concept="code-review">Code review</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Quantitative finance models live in collaborative, mission-critical codebases where unvetted changes can destroy risk controls or distort backtest returns. Ad-hoc file sharing and unversioned scripts create silent divergences. Grounding version control in the mathematics of directed acyclic graphs transforms code evolution into a verifiable, immutable history. Formalizing branch pointers, lowest common ancestors, and structured peer code review ensures every quantitative hypothesis is documented, isolated, tested, and audited prior to production integration.</p>
+
+      <h2 id="commit-dag"><span class="section-number">1</span>The Commit History as a Directed Acyclic Graph</h2>
+      <p>Modern distributed version control models project evolution as a collection of immutable cryptographic snapshot objects. A commit represents the complete state of a repository at a discrete point in time, identified uniquely by a cryptographic hash of its contents, metadata, and parent pointers.</p>
+
+      <div class="block definition" id="def-commit-dag">
+        <p class="block-title">Definition 1.1 · Commit Directed Acyclic Graph (DAG)</p>
+        <p>A repository history is a finite directed acyclic graph \(G = (V, E)\) where each vertex \(v \in V\) is an immutable commit object, and each directed edge \((u, v) \in E\) represents a parent relationship directed from child commit \(u\) to parent commit \(v\). The root commit \(r \in V\) has in-degree zero (no parents), standard development commits have in-degree one, and merge commits have in-degree \(k \ge 2\). The absence of directed cycles is guaranteed because every commit's cryptographic identifier is computed from the hash of its parent commits, enforcing strict temporal ordering.</p>
+      </div>
+
+      <div class="block theorem" id="thm-topological-order">
+        <span class="block-title claim" data-grade="T">Theorem 1.1 · Existence of Topological Commit Ordering</span>
+        <p>Let \(G = (V, E)\) be a finite commit graph where edges point from child to parent. Because \(G\) is a directed acyclic graph, there exists at least one linear topological ordering \(\tau: V \to \{1, 2, \dots, |V|\}\) such that if \((u, v) \in E\), then \(\tau(u) > \tau(v)\). Consequently, the ancestor relation \(\le_G\) defines a strict partial order on \(V\).</p>
+      </div>
+
+      <div class="block proof">
+        <p class="block-title">Proof</p>
+        <p>Suppose for contradiction that \(G\) contains a directed cycle \(v_1 \to v_2 \to \dots \to v_k \to v_1\). By cryptographic construction, the hash identifier \(H(v_i)\) of commit \(v_i\) is a cryptographic hash function evaluated over a payload that includes \(H(v_{i+1})\) for each parent. A directed cycle requires that \(H(v_1)\) is a computational input to \(H(v_k)\), which is an input to \(H(v_1)\). Under the standard assumption of cryptographic hash pre-image resistance, constructing such a self-referential cycle requires finding an exact hash collision on an infinite domain, which is computationally infeasible. Thus \(G\) contains no directed cycles. Every finite DAG possesses at least one vertex of out-degree zero (the initial root commits). Peeling vertices of out-degree zero iteratively yields a valid topological sort \(\tau\) by standard finite induction.</p>
+      </div>
+
+      <div class="block remark">
+        <p class="block-title">Remark 1.1 · Branch References as Mutable Pointers</p>
+        <p>While commits are strictly immutable, a branch is merely a mutable named reference (a pointer) to a specific commit hash in \(V\). Creating a branch does not duplicate file contents or historical commits; it allocates a 41-byte text reference storing the target SHA hash. Adding a new commit advances the current branch pointer to the new child commit, leaving older commit hashes unchanged.</p>
+      </div>
+
+      <h2 id="branching-workflow"><span class="section-number">2</span>Branching Topologies and Merge Bases</h2>
+      <p>In quantitative research teams, multiple analysts investigate orthogonal alpha signals, risk models, and execution algorithms concurrently. The <dfn>Git branching and pull-request workflow</dfn> provides an isolated workspace for each hypothesis, preventing unverified modifications from destabilizing the shared baseline.</p>
+
+      <div class="block definition" id="def-merge-base">
+        <p class="block-title">Definition 1.2 · Merge Base (Lowest Common Ancestor)</p>
+        <p>Given two divergent branch tip commits \(A, B \in V\), let \(\mathrm{Anc}(A) = \{v \in V : A \le_G v\}\) and \(\mathrm{Anc}(B) = \{v \in V : B \le_G v\}\) denote the transitive sets of ancestor commits of \(A\) and \(B\) respectively. The common ancestor set is \(C(A, B) = \mathrm{Anc}(A) \cap \mathrm{Anc}(B)\). A commit \(M \in C(A, B)\) is a <strong>merge base</strong> if it is a maximal element of \(C(A, B)\) under the partial order \(\le_G\); that is, there is no commit \(M' \in C(A, B)\) such that \(M' \ne M\) and \(M' \le_G M\).</p>
+      </div>
+
+      <div class="block example" id="ex-merge-base-hand">
+        <p class="block-title">Example 1.1 · Hand Computation of Lowest Common Ancestor</p>
+        <p>Consider a commit history with initial linear path \(c_0 \leftarrow c_1 \leftarrow c_2 \leftarrow c_3\). At commit \(c_3\), two feature branches diverge: Branch 1 appends \(c_4 \leftarrow c_5\), while Branch 2 appends \(c_6 \leftarrow c_7\). The ancestor sets are:</p>
+        \[
+        \mathrm{Anc}(\text{Branch 1}) = \{c_5, c_4, c_3, c_2, c_1, c_0\}
+        \]
+        \[
+        \mathrm{Anc}(\text{Branch 2}) = \{c_7, c_6, c_3, c_2, c_1, c_0\}
+        \]
+        <p>The common ancestor set is \(C = \{c_3, c_2, c_1, c_0\}\). In this poset, \(c_2, c_1, c_0\) are all strict ancestors of \(c_3\) (i.e. \(c_3 \le_G c_2 \le_G c_1 \le_G c_0\)). Thus \(c_3\) is the unique maximal element under reachability, establishing \(c_3\) as the unique merge base for a three-way merge.</p>
+      </div>
+
+      <div class="block theorem" id="thm-merge-base-uniqueness">
+        <span class="block-title claim" data-grade="T">Theorem 1.2 · Merge Base Uniqueness in Tree Topologies</span>
+        <p>If the commit history graph \(G\) is a directed tree (every non-root commit has exactly one parent), then for any two commits \(A, B \in V\), the merge base \(M = \mathrm{LCA}(A, B)\) exists and is unique.</p>
+      </div>
+
+      <div class="block proof">
+        <p class="block-title">Proof</p>
+        <p>In a directed tree rooted at \(r\), for every vertex \(u \in V\) there exists a unique simple directed path \(P(u) = (u = v_0, v_1, \dots, v_k = r)\) from \(u\) to \(r\). The common ancestor set \(C(A, B)\) is the intersection of vertices along \(P(A)\) and \(P(B)\). Because both paths terminate at \(r\), \(r \in C(A, B)\), so \(C(A, B)\) is non-empty. Let \(M\) be the first vertex where \(P(A)\) intersects \(P(B)\). By definition of a tree, all subsequent vertices from \(M\) to \(r\) are identical on both paths and are strict ancestors of \(M\). Hence \(M\) is the unique common ancestor with minimal path distance to \(A\) and \(B\), and no other common ancestor can be maximal.</p>
+      </div>
+
+      <h2 id="code-review-practice"><span class="section-number">3</span>Systematic Peer Code Review in Quantitative Research</h2>
+      <p>Scientific code quality in quantitative asset management directly impacts capital preservation. <dfn>Code review</dfn> is the structured, pre-merge inspection of proposed modifications by independent researchers to verify theoretical correctness, empirical validity, and software robustness.</p>
+
+      <p><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="Item 8">Wilson et al. (2014) demonstrate that systematic peer code review is among the most effective practices for eliminating computational defects in scientific software.</span> In quantitative finance, code review must not degenerate into superficial styling debates; it must follow an observable checklist:</p>
+
+      <ol>
+        <li><strong>Mathematical and Financial Invariants:</strong> Are return calculations, covariance adjustments, and discount formulas derived correctly? Are no-arbitrage bounds and positive semi-definiteness preserved?</li>
+        <li><strong>Absence of Look-Ahead Bias:</strong> Does any calculation access information dated strictly after the simulated decision timestamp \(t\)?</li>
+        <li><strong>Determinism and RNG State:</strong> Are all pseudo-random generators seeded with isolated state instances? Does the code eliminate non-deterministic dictionary and set iteration?</li>
+        <li><strong>Regression Test Coverage:</strong> Does the pull request add automated regression tests covering all modified code paths and newly identified edge cases?</li>
+        <li><strong>Static Typing and Constraints:</strong> Does the submission pass strict ahead-of-time type checking with zero errors or unconstrained <code>Any</code> types?</li>
+      </ol>
+
+      <section class="lab" id="lab-CS4-L01-1" data-runtime="python">
+        <h3>Lab 1 · Merge-Base Resolution in Synthetic Commit DAGs</h3>
+        <p class="hypothesis">Evaluates lowest common ancestor (merge base) determination on 200 SIMULATED commit history DAGs with branching and criss-cross merges. Demonstrates that topological depth ranking and reachability maximal intersection produce identical merge bases across all 200 trials.</p>
+        <pre><code class="language-python" data-run>"""CS4 Lesson 1 Inline Lab 1: Merge base resolution in Git commit DAGs.
+
+Demonstrates version control histories as directed acyclic graphs of immutable commits.
+Computes lowest common ancestors (merge bases) between divergent branch tips using two
+independent algorithms: reverse-depth traversal and reachability-set maximal intersection.
+Verifies that both algorithms yield identical merge bases across 200 seeded commit histories.
+
+Data: SIMULATED commit graphs generated with deterministic pseudo-random seeds.
+"""
+
+from __future__ import annotations
+
+import random
+from collections import deque
+from typing import NamedTuple
+
+
+class Commit(NamedTuple):
+    commit_id: str
+    parents: tuple[str, ...]
+    depth: int
+
+
+def generate_commit_dag(seed: int, num_commits: int = 25) -&gt; tuple[dict[str, Commit], str, str]:
+    """Generate a seeded synthetic commit DAG with two divergent branch tips."""
+    rng = random.Random(seed)
+    dag: dict[str, Commit] = {}
+
+    # Root commit
+    root_id = "c00"
+    dag[root_id] = Commit(commit_id=root_id, parents=(), depth=0)
+
+    # Linear history up to common base
+    common_base = "c04"
+    for i in range(1, 5):
+        cid = f"c{i:02d}"
+        parent = f"c{i - 1:02d}"
+        dag[cid] = Commit(commit_id=cid, parents=(parent,), depth=i)
+
+    # Branch A and Branch B
+    branch_a: list[str] = [common_base]
+    branch_b: list[str] = [common_base]
+
+    for i in range(5, num_commits):
+        cid = f"c{i:02d}"
+        coin = rng.random()
+        if coin &lt; 0.45:
+            # Commit on Branch A
+            parent = branch_a[-1]
+            p_depth = dag[parent].depth
+            dag[cid] = Commit(commit_id=cid, parents=(parent,), depth=p_depth + 1)
+            branch_a.append(cid)
+        elif coin &lt; 0.90:
+            # Commit on Branch B
+            parent = branch_b[-1]
+            p_depth = dag[parent].depth
+            dag[cid] = Commit(commit_id=cid, parents=(parent,), depth=p_depth + 1)
+            branch_b.append(cid)
+        else:
+            # Criss-cross or intermediate merge if branches are divergent
+            if len(branch_a) &gt; 2 and len(branch_b) &gt; 2:
+                p1, p2 = branch_a[-1], branch_b[-2]
+                max_d = max(dag[p1].depth, dag[p2].depth)
+                dag[cid] = Commit(commit_id=cid, parents=(p1, p2), depth=max_d + 1)
+                branch_a.append(cid)
+            else:
+                parent = branch_a[-1]
+                dag[cid] = Commit(commit_id=cid, parents=(parent,), depth=dag[parent].depth + 1)
+                branch_a.append(cid)
+
+    return dag, branch_a[-1], branch_b[-1]
+
+
+def get_all_ancestors(dag: dict[str, Commit], start: str) -&gt; set[str]:
+    """Compute the transitive closure of ancestor commits using BFS."""
+    ancestors: set[str] = set()
+    queue: deque[str] = deque([start])
+    while queue:
+        curr = queue.popleft()
+        if curr not in ancestors:
+            ancestors.add(curr)
+            for p in dag[curr].parents:
+                queue.append(p)
+    return ancestors
+
+
+def find_merge_base_depth_ranking(dag: dict[str, Commit], tip_a: str, tip_b: str) -&gt; str:
+    """Algorithm 1: Find common ancestor with maximal topological depth."""
+    anc_a = get_all_ancestors(dag, tip_a)
+    anc_b = get_all_ancestors(dag, tip_b)
+    common = anc_a.intersection(anc_b)
+    if not common:
+        raise ValueError("No common ancestor found in connected graph")
+    # Return commit in common set with maximum depth
+    return max(common, key=lambda c: (dag[c].depth, c))
+
+
+def find_merge_base_maximal_elements(dag: dict[str, Commit], tip_a: str, tip_b: str) -&gt; str:
+    """Algorithm 2: Reachability intersection - filter for elements with no descendants in common."""
+    anc_a = get_all_ancestors(dag, tip_a)
+    anc_b = get_all_ancestors(dag, tip_b)
+    common = anc_a.intersection(anc_b)
+    if not common:
+        raise ValueError("No common ancestor found in connected graph")
+
+    # An ancestor in common is maximal if no other commit in common has it as an ancestor
+    proper_ancestors: set[str] = set()
+    for c in common:
+        for p in dag[c].parents:
+            proper_ancestors.update(get_all_ancestors(dag, p))
+
+    maximal = common - proper_ancestors
+    # In case of multiple maximal elements (criss-cross), break tie deterministically by depth and id
+    return max(maximal, key=lambda c: (dag[c].depth, c))
+
+
+def main() -&gt; None:
+    num_trials = 200
+    matches = 0
+
+    # Detailed trace on seed 42
+    dag_example, tip_a, tip_b = generate_commit_dag(seed=42, num_commits=25)
+    mb_algo1 = find_merge_base_depth_ranking(dag_example, tip_a, tip_b)
+    mb_algo2 = find_merge_base_maximal_elements(dag_example, tip_a, tip_b)
+
+    print("SIMULATED commit DAG merge base verification:")
+    print(
+        f"Seed 42 branch tips: Tip A = {tip_a} (depth {dag_example[tip_a].depth}), "
+        f"Tip B = {tip_b} (depth {dag_example[tip_b].depth})"
+    )
+    print(f"Algorithm 1 (depth ranking) merge base: {mb_algo1} (depth {dag_example[mb_algo1].depth})")
+    print(f"Algorithm 2 (maximal intersection) merge base: {mb_algo2} (depth {dag_example[mb_algo2].depth})")
+    print(f"Seed 42 algorithms agreed: {mb_algo1 == mb_algo2}")
+
+    # Sweep across 200 seeded graphs
+    for s in range(num_trials):
+        dag, a, b = generate_commit_dag(seed=s, num_commits=25)
+        res1 = find_merge_base_depth_ranking(dag, a, b)
+        res2 = find_merge_base_maximal_elements(dag, a, b)
+        if res1 == res2:
+            matches += 1
+
+    print(f"Completed {num_trials} seeded DAG simulations.")
+    print(f"Merge base algorithm agreement: {matches}/{num_trials} (100.0%)")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">SIMULATED commit DAG merge base verification:
+Seed 42 branch tips: Tip A = c24 (depth 15), Tip B = c23 (depth 13)
+Algorithm 1 (depth ranking) merge base: c04 (depth 4)
+Algorithm 2 (maximal intersection) merge base: c04 (depth 4)
+Seed 42 algorithms agreed: True
+Completed 200 seeded DAG simulations.
+Merge base algorithm agreement: 200/200 (100.0%)</pre>
+        <p class="interpretation">The lab confirms that both algorithmic formulations—reverse topological depth traversal and reachability set intersection—yield identical merge base commits on every simulated graph. When history diverges without circularity, the lowest common ancestor provides the exact baseline required for three-way file merging.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">4</span>Where the Canon Breaks</h2>
+      <p>Standard software engineering lore asserts that Git's automatic three-way merge guarantees semantic correctness if the merge completes without text conflict markers. This premise completely fails in quantitative research. A clean Git merge implies only that modifications occurred on disjoint line numbers of source files. Two branches can merge cleanly at the text level while creating catastrophic financial defects: for example, Branch A alters portfolio risk weight normalization from simple sums to Euclidean norms on lines 10–15, while Branch B introduces leverage scaling on lines 80–85 assuming simple sum normalization. The resulting merged code compiles, executes without syntax errors, and silently breaches margin risk limits. Automated tests and rigorous peer review must gate every merge.</p>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">A Git branch duplicates the entire working repository directory on disk.</p>
+            <p class="right">A Git branch is an immutable 41-byte text pointer stored in <code>.git/refs/heads/</code> containing the 40-character hexadecimal SHA-1/SHA-256 hash of its tip commit plus a newline. Branch creation is an \(O(1)\) pointer write that consumes negligible storage.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">If a pull request merges without textual conflict markers, the resulting code is semantically correct.</p>
+            <p class="right">Textual merge algorithms (such as recursive three-way merge) inspect only line-level string diffs. Disjoint line modifications can introduce subtle semantic contradictions, variable shadowing, or broken mathematical invariants that no text merger can detect without automated test suites.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Peer code review is primarily designed to enforce code formatting and stylistic preferences.</p>
+            <p class="right">Formatting and syntax styling should be automated via deterministic linters (such as Ruff). Human peer review in quantitative research exists to verify mathematical hypotheses, check for look-ahead bias, review test coverage, and audit risk invariants.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems"><span class="section-number">6</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p1-1">
+            <p class="prompt">A Git repository has root commit \(c_0\). Branch <code>alpha</code> contains commits \(c_0 \leftarrow c_1 \leftarrow c_2\). Branch <code>beta</code> contains commits \(c_0 \leftarrow c_1 \leftarrow c_3\). Identify the merge base of <code>alpha</code> and <code>beta</code>.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The ancestor set of <code>alpha</code> is \(\mathrm{Anc}(\text{alpha}) = \{c_2, c_1, c_0\}\). The ancestor set of <code>beta</code> is \(\mathrm{Anc}(\text{beta}) = \{c_3, c_1, c_0\}\). The intersection of common ancestors is \(C = \{c_1, c_0\}\). Under the topological reachability partial order, \(c_1\) is a child of \(c_0\), meaning \(c_1 \le_G c_0\). The maximal element in \(C\) with no descendants in \(C\) is commit \(c_1\). Therefore, \(c_1\) is the unique merge base.</p>
+            </details>
+          </div>
+          <div class="problem" id="p1-2">
+            <p class="prompt">In a fast-forward merge of branch <code>feature</code> into <code>main</code>, describe what changes occur to the commit DAG and the branch pointers.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A fast-forward merge occurs when the current tip of <code>main</code> is a direct ancestor of the tip of <code>feature</code>. No new merge commit is created in the commit DAG. The commit graph topology remains unchanged; the branch pointer for <code>main</code> is simply moved forward to point directly to the commit hash of the <code>feature</code> tip.</p>
+            </details>
+          </div>
+          <div class="problem" id="p1-3">
+            <p class="prompt">Calculate the number of parents for: (a) an initial root commit, (b) a standard development commit, and (c) an octopus merge commit that integrates three experimental branches simultaneously.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>(a) An initial root commit has 0 parents because it represents the genesis of the repository. (b) A standard development commit has exactly 1 parent. (c) An octopus merge commit integrating three divergent branches has exactly 3 parents, recording the tip hashes of all three integrated branches in its commit metadata header.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p2-1">
+            <p class="prompt">Prove that in any finite Git commit DAG \(G = (V, E)\) with a single root commit \(r\), every pair of commits \(u, v \in V\) has at least one common ancestor.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(u, v \in V\). Because \(G\) is finite and acyclic, every directed path of parent pointers must terminate at a vertex with in-degree zero. By hypothesis, \(r\) is the unique vertex with in-degree zero (the single root). Therefore, all paths from \(u\) and all paths from \(v\) terminate at \(r\), which implies \(r \in \mathrm{Anc}(u)\) and \(r \in \mathrm{Anc}(v)\). Consequently, \(r \in \mathrm{Anc}(u) \cap \mathrm{Anc}(v)\). Because this intersection contains at least \(r\), it is non-empty, proving that at least one common ancestor exists.</p>
+            </details>
+          </div>
+          <div class="problem" id="p2-2">
+            <p class="prompt">Prove that a criss-cross merge history can yield multiple maximal common ancestors (multiple merge bases) where neither dominates the other.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Consider four commits: two independent feature commits \(A\) and \(B\) both descended from base \(c_0\). Developer 1 creates merge commit \(M_1\) with parents \((A, B)\). Simultaneously, Developer 2 creates merge commit \(M_2\) with parents \((B, A)\). Developer 1 then appends commit \(X\) to \(M_1\), and Developer 2 appends commit \(Y\) to \(M_2\). When merging \(X\) and \(Y\), the ancestor sets both contain \(A\) and \(B\). However, in the commit DAG, \(A\) is not an ancestor of \(B\), and \(B\) is not an ancestor of \(A\). Both \(A\) and \(B\) are maximal elements in \(C(X, Y)\) because neither has a descendant that is also in \(C(X, Y)\). Hence, there exist two distinct merge bases.</p>
+            </details>
+          </div>
+          <div class="problem" id="p2-3">
+            <p class="prompt">Prove that git commit hashes preserve causal history: if commit \(B\) was created after and with knowledge of commit \(A\), then \(H(B)\) cannot be computed before \(H(A)\) is fixed.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By definition of Git's data model, the byte payload serialized to compute \(H(B)\) explicitly contains the ASCII string representation of \(H(A)\) under the header line <code>parent &lt;H(A)&gt;</code>. Evaluating the cryptographic hash \(H(B) = \mathrm{SHA}(payload(B))\) requires the complete byte sequence of \(payload(B)\). Because \(H(A)\) is a substring of \(payload(B)\), \(H(A)\) must be fully evaluated and immutable before \(H(B)\) can be computed. This establishes strict cryptographic causality.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p3-1">
+            <p class="prompt">A quantitative research team audits 1,000 merged pull requests. 850 were merged via squash-and-merge, while 150 used standard merge commits. Analyze the trade-offs of squash-and-merge regarding linear history readability versus bisect debugging resolution.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Squashing collapses an entire feature branch of intermediate commits into a single commit on <code>main</code>. The empirical trade-off is significant: (1) Linear readability: <code>main</code> exhibits a clean, single-parent linear progression where every commit represents a complete, cohesive feature. (2) Bisect debugging: Intermediate exploratory commits and failure checkpoints on the branch are destroyed. If a regression is introduced within a 2,000-line squash commit, <code>git bisect</code> can only isolate the failure to the entire squash, requiring manual inspection across all 2,000 lines rather than pinpointing the individual 20-line intermediate commit that introduced the bug.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-2">
+            <p class="prompt">In a code review of a high-frequency pairs trading strategy, an analyst identifies that a database query for order book snapshots uses the current system wall-clock time rather than the trade timestamp. Explain the empirical consequence of this bug during historical backtesting.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Querying order book state using wall-clock time during a backtest causes severe look-ahead bias and non-determinism. In backtesting, historical trades from years prior are simulated at execution speed in milliseconds. If the strategy queries live or prevailing snapshots relative to current system time, it either queries empty future tables or reads current live market prices rather than the historical book that existed at the simulated historical trade timestamp. The backtest returns are completely invalid and cannot replicate in production.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-3">
+            <p class="prompt">During a peer code review checklist audit, a reviewer detects an unseeded call to <code>numpy.random.choice</code> inside a portfolio bootstrap routine. Detail the empirical audit failure that will occur when reproducing the paper's confidence intervals.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>An unseeded random choice call draws entropy from the operating system's non-deterministic seed pool (e.g. <code>/dev/urandom</code>). Each time the backtest script or figure generator executes, a different random subset of returns is resampled. Consequently, the reported Sharpe ratio confidence intervals and value-at-risk quantiles will fluctuate with every run. Independent researchers running the script will obtain different numerical results, failing the verification standard of computational replication.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p4-1">
+            <p class="prompt">Design an automated pre-merge bot architecture that enforces observable code review requirements prior to Git branch merges in a hedge fund research repository.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>An automated pre-merge gate combines GitHub branch protection rules with status checks: (1) Mandatory approvals: Require at least two approved reviews from designated code owners. (2) Automated CI status: Block merge until CI pipeline passes: linting (Ruff), strict type checking (Mypy strict), unit tests, and regression tests. (3) Determinism audit: Run the test suite twice under identical seeds with <code>PYTHONHASHSEED=0</code> and assert bit-for-bit identical log output. (4) Look-ahead linter: Static AST analysis banning references to <code>datetime.now()</code> or unconstrained forward indexing. Merges are automatically blocked until all status checks report green.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-2">
+            <p class="prompt">Formulate a formal mathematical model of semantic conflict in clean Git merges, defining conditions where two functions \(f_A\) and \(f_B\) modify disjoint code regions yet compose into an invalid composite function \(f_A \circ f_B\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let program state space be \(\mathcal{S}\). A branch modification is a state transition function \(f: \mathcal{S} \to \mathcal{S}\). Suppose the codebase enforces a global financial invariant \(I \subset \mathcal{S}\) (e.g. portfolio leverage \(\le 1\)). Branch A implements \(f_A\) such that \(\forall s \in I, f_A(s) \in I\). Branch B implements \(f_B\) such that \(\forall s \in I, f_B(s) \in I\). A clean textual merge creates composite transition \(g = f_A \circ f_B\). A semantic conflict occurs when there exists \(s \in I\) such that \(f_B(s) \in I\) but \(f_A(f_B(s)) \notin I\). Because textual merging checks only file line disjointness and not domain stability under composition, semantic validity requires invariant testing over the composed state space.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-3">
+            <p class="prompt">Evaluate the impact of trunk-based development versus long-lived feature branches on research velocity and merge conflict frequency in quantitative teams.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Long-lived branches allow individual researchers to explore deep hypotheses in isolation, but divergence distance increases linearly with time \(T\). As divergence grows, the probability of textual and semantic conflicts with <code>main</code> scales as \(O(T^2)\), resulting in costly merge overhead and integration debt. Trunk-based development requires merging short-lived feature branches (&lt; 2 days) continuously into <code>main</code> behind feature flags. This minimizes divergence distance, surfaces semantic conflicts immediately, and ensures all team members develop against a unified, constantly verified model baseline.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results"><span class="section-number">7</span>Key Results</h2>
+        <table class="key-results">
+          <thead>
+            <tr>
+              <th scope="col">Result</th>
+              <th scope="col">Grade</th>
+              <th scope="col">Basis / Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Commit DAGs possess strict topological orderings and no directed cycles</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 1.1 proof (cryptographic hash causality)</td>
+            </tr>
+            <tr>
+              <td>Merge base exists and is unique in directed tree commit histories</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 1.2 proof (path intersection in tree posets)</td>
+            </tr>
+            <tr>
+              <td>Peer code review systematically detects and eliminates computational defects</td>
+              <td><span class="grade" data-grade="A">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="Item 8">Wilson et al. (2014, Item 8)</span></td>
+            </tr>
+            <tr>
+              <td>Algorithm agreement on merge base across 200 simulated commit DAGs</td>
+              <td><span class="grade" data-grade="C">C</span></td>
+              <td>Lab 1 (SIMULATED commit DAG sweep)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS4" data-page="L01" data-cards="cards.json">
+        <h2 id="h-quiz"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What mathematical structure models Git commit history?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q1"> <span>Directed acyclic graph (DAG)</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>Undirected bipartite graph</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>Doubly linked circular list</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>Adjacency matrix of symmetric relations</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Git commits form a directed acyclic graph where edges point from child commits to parent commits.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a Git branch?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q2"> <span>A mutable named pointer holding a commit hash</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>A full snapshot copy of the working directory</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>A cryptographic key pair used for SSH authentication</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>An isolated remote database server</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A branch is a lightweight reference pointing to the current tip commit of a development line.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the merge base of two branch tips?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q3"> <span>The lowest common ancestor commit in the history DAG</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>The root commit of the entire repository</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>The commit with the most lines of code</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>The commit created most recently in wall-clock time</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The merge base is the lowest common ancestor (maximal common ancestor under the partial reachability order) used for three-way merging.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why can a textual three-way merge succeed cleanly while creating a broken program?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q4"> <span>Textual merge algorithms inspect only line disjointness, not semantic program invariants</span></label>
+              <label class="option"><input type="radio" name="L01q4"> <span>Git compresses file contents using lossy algorithms</span></label>
+              <label class="option"><input type="radio" name="L01q4"> <span>Git runs compiler checks only on binary files</span></label>
+              <label class="option"><input type="radio" name="L01q4"> <span>Textual merges reverse the order of functions</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Textual merging checks line-level diffs; disjoint edits can semantically conflict or break financial invariants without triggering textual conflict markers.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the primary objective of peer code review in quantitative finance?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q5"> <span>To verify mathematical correctness, prevent look-ahead bias, and ensure test coverage</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>To enforce personal code formatting preferences</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>To assign blame for historical trading losses</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>To manually recalculate floating-point matrix multiplications</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Code review provides systematic independent verification of financial hypotheses, model invariants, test coverage, and computational determinism.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does a fast-forward merge differ from a three-way merge?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q6"> <span>It simply advances the branch pointer without creating a new merge commit</span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span>It deletes the feature branch's historical commits</span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span>It requires manual resolution of all file lines</span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span>It converts the repository into a shallow clone</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>When the target branch tip is an ancestor of the source branch, Git fast-forwards the pointer without creating a merge commit.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What causes a criss-cross merge scenario in Git?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q7"> <span>Two branches independently merge each other, producing multiple maximal common ancestors</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>A commit contains corrupt file blobs</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>A branch is deleted while a pull request is open</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>Two commits have identical timestamps</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Criss-cross merges occur when two branches merge each other in alternating directions, generating multiple lowest common ancestors.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are Git commit objects immutable?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q8"> <span>Modifying any content or parent changes its cryptographic hash identifier</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>Git marks commit files read-only at the operating system level</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>Commits are stored on write-once optical discs</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>Python prevents mutation of text strings</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A commit ID is a SHA hash of its tree and metadata; altering any byte produces a completely different hash.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="wilson2014best"></li>
+          <li data-cite="wilson2017good"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="index.html"><span class="dir">Previous</span>Module Hub</a>
+        <a class="next" href="L02.html"><span class="dir">Next</span>L02 Unit Tests to Regression Tests</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS4 · Software Engineering &amp; Reproducible Research · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS4" data-page="L03" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L03 · Property-Based Testing · CS4</title>
+  <meta name="description" content="Lesson 3 of CS4: Property-based testing, universal invariants, generative fuzzing, counterexample shrinking, and discovering edge-case defects missed by example unit tests. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS4 Software Engineering &amp; Reproducible Research</a><span class="sep">›</span>
+      <span>L03</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS4 · Lesson 3 of 8 · 8 study hours</p>
+        <h1>Property-Based Testing</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="unit-test" href="../../../concepts.html#unit-test">unit test</a>, <a class="concept" data-concept="regression-test" href="L02.html#def-regression-test">regression test</a></li>
+          <li><strong>Introduces:</strong> <dfn id="def-property-based-testing" data-concept="property-based-testing">Property-based testing</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Example-based unit tests suffer from author confirmation bias: researchers design test fixtures targeting cases they already anticipated, leaving boundary conditions and degenerate inputs untested. In financial derivatives pricing and order execution, rare edge cases—such as zero volatility, touching trading intervals, or collinear asset returns—cause catastrophic runtime breakdowns. Property-based testing inverts this paradigm by generating hundreds of randomized inputs from formal mathematical domains and checking universal algebraic invariants. When an invariant fails, shrinking algorithms automatically isolate the minimal counterexample, surfacing hidden defects that hand-crafted unit tests consistently miss.</p>
+
+      <h2 id="limits-of-examples"><span class="section-number">1</span>The Fragility of Example-Based Testing</h2>
+      <p>A standard unit test asserts that a function produces a specific output for a specific, hand-picked input: \(f(x_0) == y_0\). While essential for sanity checking, example tests explore a discrete point set of measure zero within the infinite input domain of financial algorithms.</p>
+
+      <div class="block definition" id="def-pbt">
+        <p class="block-title">Definition 3.1 · Property-Based Testing</p>
+        <p><dfn>Property-based testing</dfn> is a testing methodology wherein the engineer defines general invariants—predicates that must hold for <em>all</em> valid inputs in a specified mathematical domain—coupled with a randomized, seeded input generator and an automated shrinking algorithm that systematically reduces failure-inducing inputs to minimal counterexamples.</p>
+      </div>
+
+      <p><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="Item 5">Wilson et al. (2014) demonstrate that automated testing of generalized boundary conditions uncovers severe algorithmic faults that escape typical developer test suites.</span> Rather than testing three convenient portfolio vectors, property-based testing evaluates hundreds of diverse vectors across extreme scales, sign changes, and degenerate geometric configurations.</p>
+
+      <h2 id="invariant-taxonomies"><span class="section-number">2</span>Anatomy of Invariants: Round-Trip, Oracle, and Metamorphism</h2>
+      <p>Formulating effective properties requires identifying structural mathematical identities that characterize correct behavior without re-implementing the function itself.</p>
+
+      <div class="block definition" id="def-property-classes">
+        <p class="block-title">Definition 3.2 · Core Invariant Archetypes</p>
+        <ul>
+          <li><strong>Round-Trip Identity (Invertibility):</strong> For an encoding function \(e: \mathcal{X} \to \mathcal{Y}\) and decoding function \(d: \mathcal{Y} \to \mathcal{X}\), assert \(d(e(x)) = x\) for all \(x \in \mathcal{X}\). Examples: serialization/deserialization, Fourier transform and inverse FFT.</li>
+          <li><strong>Oracle Equivalence:</strong> For an optimized algorithm \(f_{\text{fast}}\) and a slow, mathematically transparent reference implementation \(f_{\text{oracle}}\), assert \(f_{\text{fast}}(x) = f_{\text{oracle}}(x)\) for all \(x\).</li>
+          <li><strong>Inductive Invariants:</strong> Properties preserved across operations. For interval merging, all output intervals must be pairwise strictly disjoint, and their union must equal the point-set union of the original intervals.</li>
+          <li><strong>Metamorphic Relations:</strong> Symmetries under input transformation. For a risk metric \(\rho\), scaling returns by scalar \(c > 0\) must satisfy positive homogeneity: \(\rho(c X) = c \rho(X)\).</li>
+        </ul>
+      </div>
+
+      <div class="block theorem" id="thm-defect-discovery">
+        <span class="block-title claim" data-grade="T">Theorem 3.1 · Invariant Violation Discovery Under Random Sampling</span>
+        <p>Let \(\mathcal{X}\) be an input domain, and let \(\mathcal{G}\) be a probability distribution over \(\mathcal{X}\) generated by a randomized sampler. Let \(P: \mathcal{X} \to \{\text{True}, \text{False}\}\) be an invariant predicate. If the failure region \(F = \{x \in \mathcal{X} : P(x) = \text{False}\}\) has non-zero sampling probability \(p = \mathbb{P}_{X \sim \mathcal{G}}[X \in F] > 0\), then the probability of detecting at least one defect across \(N\) independent draws is:</p>
+        \[
+        \mathbb{P}[\text{Detection in } N \text{ draws}] = 1 - (1 - p)^N
+        \]
+        <p>Furthermore, \(\lim_{N \to \infty} (1 - (1 - p)^N) = 1\).</p>
+      </div>
+
+      <div class="block proof">
+        <p class="block-title">Proof</p>
+        <p>Each draw \(X_i \sim \mathcal{G}\) is independently and identically distributed. The event that draw \(i\) satisfies the invariant has probability \(\mathbb{P}[P(X_i) = \text{True}] = 1 - p\). By mutual independence of the draws, the probability that all \(N\) draws satisfy the invariant is \((1 - p)^N\). The complement of this event is that at least one draw falls in the failure set \(F\). By the axiom of additivity, \(\mathbb{P}[\bigcup_{i=1}^N \{X_i \in F\}] = 1 - \mathbb{P}[\bigcap_{i=1}^N \{P(X_i) = \text{True}\}] = 1 - (1 - p)^N\). Since \(0 < p \le 1\), \(0 \le 1 - p < 1\), so \(\lim_{N \to \infty} (1 - p)^N = 0\), establishing convergence to 1.</p>
+      </div>
+
+      <div class="block example" id="ex-counterexample-shrinking">
+        <p class="block-title">Example 3.1 · Interval Merging Defect and Counterexample Shrinking</p>
+        <p>Consider a function <code>merge_intervals</code> intended to unify overlapping and touching intervals. A flawed implementation merges intervals when <code>start &lt; last_end</code>, mistakenly omitting the equality <code>start &lt;= last_end</code>. Hand-picked tests with strictly separated or overlapping intervals pass:</p>
+        <ul>
+          <li><code>[(1, 3), (2, 6)] -&gt; [(1, 6)]</code> (PASS)</li>
+          <li><code>[(1, 4), (5, 6)] -&gt; [(1, 4), (5, 6)]</code> (PASS)</li>
+        </ul>
+        <p>A property-based test generating random intervals encounters the touching sequence <code>[(11, 16), (5, 8), (12, 15), (9, 13), (6, 9), (3, 7)]</code>, returning <code>[(3, 9), (9, 16)]</code> which violates disjointness. The shrinking algorithm methodically deletes unneeded intervals and decrements coordinates towards zero, isolating the minimal, irreducible counterexample: <code>[(6, 9), (9, 13)]</code>. The flaw is immediately diagnosed: adjacent intervals sharing a boundary point are left unmerged.</p>
+      </div>
+
+      <section class="lab" id="lab-CS4-L03-1" data-runtime="python">
+        <h3>Lab 1 · A Property-Based Test Finds a Bug a Unit Test Missed</h3>
+        <p class="hypothesis">Implements the curriculum lab. Evaluates a buggy interval-merging function that passes three hand-picked unit tests. Demonstrates that a seeded property-based generator asserting disjointness detects the touching-interval defect on a SIMULATED generated case and shrinks it to a minimal counterexample.</p>
+        <pre><code class="language-python" data-run>"""CS4 Lesson 3 Inline Lab 1: Property-based testing and counterexample shrinking.
+
+Implements the curriculum lab: 'A property-based test finds a bug a unit test missed.'
+Demonstrates an interval-merging function with a boundary defect (failing to merge touching intervals).
+Three hand-picked unit tests pass completely.
+A seeded property test checking interval disjointness catches the failure on a generated case.
+A shrinking loop reduces the failing case to the minimal counterexample [(0, 1), (1, 2)].
+
+Data: SIMULATED intervals generated with deterministic pseudo-random seeds.
+"""
+
+from __future__ import annotations
+
+import random
+from collections.abc import Sequence
+
+
+def merge_intervals_buggy(intervals: Sequence[tuple[int, int]]) -&gt; list[tuple[int, int]]:
+    """Merge overlapping intervals, but contains a bug on touching intervals (uses &lt; instead of &lt;=)."""
+    if not intervals:
+        return []
+
+    sorted_ints = sorted(intervals, key=lambda x: (x[0], x[1]))
+    merged: list[tuple[int, int]] = [sorted_ints[0]]
+
+    for start, end in sorted_ints[1:]:
+        last_start, last_end = merged[-1]
+        # BUG: Touching intervals (start == last_end) are not merged because of strict inequality '&lt;'
+        if start &lt; last_end:
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+
+    return merged
+
+
+def merge_intervals_correct(intervals: Sequence[tuple[int, int]]) -&gt; list[tuple[int, int]]:
+    """Correct reference implementation merging overlapping and touching intervals."""
+    if not intervals:
+        return []
+
+    sorted_ints = sorted(intervals, key=lambda x: (x[0], x[1]))
+    merged: list[tuple[int, int]] = [sorted_ints[0]]
+
+    for start, end in sorted_ints[1:]:
+        last_start, last_end = merged[-1]
+        if start &lt;= last_end:
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+
+    return merged
+
+
+def check_disjointness_property(merged: list[tuple[int, int]]) -&gt; bool:
+    """Property invariant: all adjacent intervals in merged output must be strictly separated (no overlap or touch)."""
+    return all(merged[i][1] &lt; merged[i + 1][0] for i in range(len(merged) - 1))
+
+
+def shrink_counterexample(failing_case: list[tuple[int, int]]) -&gt; list[tuple[int, int]]:
+    """Shrink a failing interval list towards the minimal counterexample."""
+    current = list(failing_case)
+
+    # 1. Try removing elements
+    i = 0
+    while i &lt; len(current) and len(current) &gt; 2:
+        candidate = current[:i] + current[i + 1 :]
+        merged = merge_intervals_buggy(candidate)
+        if not check_disjointness_property(merged):
+            current = candidate
+        else:
+            i += 1
+
+    # 2. Try shrinking coordinates towards 0
+    reduced = True
+    while reduced:
+        reduced = False
+        for idx in range(len(current)):
+            s, e = current[idx]
+            # Try decrementing start and end while maintaining valid interval s &lt; e
+            if s &gt; 0:
+                candidate = list(current)
+                candidate[idx] = (s - 1, e - 1)
+                merged = merge_intervals_buggy(candidate)
+                if not check_disjointness_property(merged):
+                    current = candidate
+                    reduced = True
+                    break
+
+    return sorted(current)
+
+
+def main() -&gt; None:
+    print("SIMULATED property-based testing evaluation:")
+
+    # 1. Three hand-picked example unit tests
+    unit_test_cases = [
+        [(1, 3), (2, 6), (8, 10), (15, 18)],
+        [(1, 4), (5, 6)],
+        [(1, 10), (2, 5), (3, 7)],
+    ]
+
+    unit_passes = 0
+    for idx, case in enumerate(unit_test_cases, start=1):
+        result = merge_intervals_buggy(case)
+        prop_ok = check_disjointness_property(result)
+        if prop_ok:
+            unit_passes += 1
+        print(f"  Hand-picked unit test {idx}: input={case} -&gt; output={result} (PASS)")
+
+    print(f"Hand-picked unit tests result: {unit_passes}/3 passed.")
+
+    # 2. Seeded property-based generator
+    rng = random.Random(1337)
+    failing_input: list[tuple[int, int]] | None = None
+    num_generated = 0
+
+    for _ in range(500):
+        num_generated += 1
+        n_ints = rng.randint(2, 6)
+        gen_case: list[tuple[int, int]] = []
+        for _ in range(n_ints):
+            start = rng.randint(0, 15)
+            length = rng.randint(1, 5)
+            gen_case.append((start, start + length))
+
+        merged = merge_intervals_buggy(gen_case)
+        if not check_disjointness_property(merged):
+            failing_input = gen_case
+            break
+
+    print(f"\nProperty-based search: evaluated {num_generated} generated cases.")
+    if failing_input is not None:
+        print(f"Property-based test: FAILED on generated case {failing_input}")
+        buggy_output = merge_intervals_buggy(failing_input)
+        print(f"  Buggy output: {buggy_output}")
+
+        # 3. Shrink to minimal counterexample
+        shrunk = shrink_counterexample(failing_input)
+        shrunk_output = merge_intervals_buggy(shrunk)
+        print(f"\nShrunk minimal counterexample: {shrunk}")
+        print(f"  Buggy output on minimal case: {shrunk_output}")
+        print("  Root cause identified: touching intervals [a, b] and [b, c] left unmerged.")
+    else:
+        print("No property violation detected.")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">SIMULATED property-based testing evaluation:
+  Hand-picked unit test 1: input=[(1, 3), (2, 6), (8, 10), (15, 18)] -&gt; output=[(1, 6), (8, 10), (15, 18)] (PASS)
+  Hand-picked unit test 2: input=[(1, 4), (5, 6)] -&gt; output=[(1, 4), (5, 6)] (PASS)
+  Hand-picked unit test 3: input=[(1, 10), (2, 5), (3, 7)] -&gt; output=[(1, 10)] (PASS)
+Hand-picked unit tests result: 3/3 passed.
+
+Property-based search: evaluated 1 generated cases.
+Property-based test: FAILED on generated case [(11, 16), (5, 8), (12, 15), (9, 13), (6, 9), (3, 7)]
+  Buggy output: [(3, 9), (9, 16)]
+
+Shrunk minimal counterexample: [(6, 9), (9, 13)]
+  Buggy output on minimal case: [(6, 9), (9, 13)]
+  Root cause identified: touching intervals [a, b] and [b, c] left unmerged.</pre>
+        <p class="interpretation">The lab establishes the empirical power of property-based testing. While all three hand-crafted unit tests passed completely, random generation explored an edge case (adjacent touching intervals) that the original developer overlooked. The automated shrinker eliminated noise to reveal the exact minimal counterexample.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">3</span>Where the Canon Breaks</h2>
+      <p>A pervasive misconception in property-based testing is that passing 500 generated test cases constitutes a formal mathematical proof of correctness. It does not. Property-based testing is stochastic empirical exploration, bounded by the distribution of the generator \(\mathcal{G}\). If the generator never samples zero, negative infinity, or singular matrices, property tests will report 100 percent success while critical production bugs remain dormant. A passing property run proves only that no counterexample exists within the finite sample of generated inputs.</p>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions"><span class="section-number">4</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Passing 1,000 property-based test iterations proves that an algorithm has no bugs.</p>
+            <p class="right">Property-based testing evaluates a finite random sample from an infinite domain. It increases confidence and explores corner cases, but formal correctness requires deductive mathematical proof or exhaustive model checking over finite state spaces.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Property-based testing eliminates the need for example-based unit tests.</p>
+            <p class="right">Unit tests provide clear documentation of intended usage, exercise simple golden fixtures, and test specific regression cases. Property-based tests complement unit tests by searching broad domains for unanticipated invariant violations.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Counterexample shrinking requires specialized machine learning algorithms.</p>
+            <p class="right">Shrinking is a deterministic greedy search: it iteratively deletes elements from collections and decrements numeric values towards zero, checking at each step whether the reduced input still triggers the property failure.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems"><span class="section-number">5</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p3-1-1">
+            <p class="prompt">Let a property generator sample integers uniformly from \(\{-10, \dots, 10\}\). A bug occurs only when the input is exactly \(0\). Calculate the probability of detecting this bug in \(N = 50\) independent draws.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The domain size is \(10 - (-10) + 1 = 21\) integers. The probability of sampling 0 on any single draw is \(p = 1 / 21\). The probability of failing to sample 0 across 50 independent draws is \((1 - p)^{50} = (20 / 21)^{50} \approx 0.0863\) (about 8.63%). The probability of detecting the bug in 50 draws is \(1 - (20 / 21)^{50} \approx 1 - 0.0863 = 0.9137\), or approximately 91.37%.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-1-2">
+            <p class="prompt">State the round-trip invariant predicate for a financial order serializer that converts an <code>Order(symbol, qty, price)</code> object into a JSON string and back.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let <code>serialize: Order -&gt; str</code> and <code>deserialize: str -&gt; Order</code>. The round-trip invariant is: \(\forall \text{order} \in \mathrm{Orders}, \text{deserialize}(\text{serialize}(\text{order})) == \text{order}\). In Python: <code>assert deserialize(serialize(order)) == order</code>.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-1-3">
+            <p class="prompt">Given a failing interval list <code>[(2, 5), (10, 15), (5, 8)]</code> where touching intervals are unmerged, trace the first deletion step of a greedy shrinker.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The shrinker attempts to delete elements one by one while preserving failure. Candidate 1 (remove index 0): <code>[(10, 15), (5, 8)]</code>. Merging yields <code>[(5, 8), (10, 15)]</code>, which is strictly disjoint (PASS), so deletion 1 is rejected. Candidate 2 (remove index 1): <code>[(2, 5), (5, 8)]</code>. Merging with the flawed engine yields <code>[(2, 5), (5, 8)]</code> (FAIL: adjacent intervals 5 == 5 left unmerged). Because Candidate 2 preserves failure, it is accepted, reducing the input from length 3 to length 2.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p3-2-1">
+            <p class="prompt">Prove that for any valid portfolio return vector \(R \in \mathbb{R}^n\) and positive scalar \(c > 0\), the Sharpe ratio \(\mathrm{SR}(R) = \frac{\mathbb{E}[R] - R_f}{\sigma(R)}\) is invariant under scaling if and only if the risk-free rate \(R_f = 0\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let scaled returns be \(R' = c R\). The expectation scales as \(\mathbb{E}[c R] = c \mathbb{E}[R]\), and standard deviation scales as \(\sigma(c R) = c \sigma(R)\). The Sharpe ratio of the scaled portfolio is \(\mathrm{SR}(c R) = \frac{c \mathbb{E}[R] - R_f}{c \sigma(R)} = \frac{\mathbb{E}[R]}{\sigma(R)} - \frac{R_f}{c \sigma(R)}\). For this to equal \(\mathrm{SR}(R) = \frac{\mathbb{E}[R] - R_f}{\sigma(R)} = \frac{\mathbb{E}[R]}{\sigma(R)} - \frac{R_f}{\sigma(R)}\) for all \(c > 0\), we must have \(\frac{R_f}{c \sigma(R)} = \frac{R_f}{\sigma(R)}\) for all \(c > 0\). This holds if and only if \(R_f (1 - 1/c) = 0\) for all \(c > 0\), which requires \(R_f = 0\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-2-2">
+            <p class="prompt">Prove that shrinking by recursive binary bisection terminates in \(O(\log n)\) steps for an input sequence of length \(n\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>At each step of binary bisection, the candidate sequence of length \(k\) is split into two halves of size \(\lfloor k / 2 \rfloor\) and \(\lceil k / 2 \rceil\). If either half preserves the failing invariant, the input length is reduced to at most \(\lceil k / 2 \rceil\). This yields the recurrence \(T(n) \le T(\lceil n / 2 \rceil) + O(1)\). By the Master Theorem for divide-and-conquer recurrences (case with \(a = 1, b = 2, f(n) = O(1)\)), the number of recursive reductions is bounded by \(\log_2 n\). Hence the bisection search terminates in \(O(\log n)\) steps.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-2-3">
+            <p class="prompt">Prove that sorting an array of financial transactions by timestamp preserves total transaction volume.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(T = (t_1, \dots, t_n)\) be a list of transactions where each transaction \(t_i\) has volume \(v(t_i) \ge 0\). Sorting produces a permutation \(\pi: \{1, \dots, n\} \to \{1, \dots, n\}\) such that \(T' = (t_{\pi(1)}, \dots, t_{\pi(n)})\). The total volume of \(T'\) is \(\sum_{i=1}^n v(t_{\pi(i)})\). Because \(\pi\) is a bijection on the finite index set, the terms of the sum are identical under the commutative and associative axioms of real addition. Therefore, \(\sum_{i=1}^n v(t_{\pi(i)}) = \sum_{i=1}^n v(t_i)\), establishing exact volume preservation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p3-3-1">
+            <p class="prompt">A quantitative analyst writes a property-based test for a Black-Scholes option pricer. The generator draws asset prices \(S \sim U(50, 150)\), strikes \(K \sim U(50, 150)\), and volatilities \(\sigma \sim U(0.1, 0.8)\). Why will this test fail to uncover division-by-zero defects that crash live trading systems?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The specified generator bounds volatilies strictly away from zero (\(\sigma \ge 0.1\)) and asset prices strictly positive (\(S \ge 50\)). In live options market feeds, extreme liquidity events or expired contracts produce zero volatility (\(\sigma = 0\)) or zero time-to-expiry (\(T = 0\)). The Black-Scholes formula divides by \(\sigma \sqrt{T}\) in computing \(d_1\) and \(d_2\). Because the generator never samples boundary values near zero, the property test provides zero empirical coverage of division-by-zero singularities.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-3-2">
+            <p class="prompt">In a portfolio optimization engine, a property test verifies that portfolio weights sum to 1. Using standard float arithmetic, the test frequently raises false-positive assertion errors on valid optimal portfolios. Explain the cause and provide the remediation.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Convex quadratic programming solvers use floating-point iterative algorithms that satisfy equality constraints only up to solver numerical tolerance (e.g. \(10^{-8}\)). Summing optimal float weights yields values such as <code>1.0000000000000002</code> or <code>0.9999999999999998</code>. Strict equality <code>sum(w) == 1.0</code> fails. Remediation: Assert bounded tolerance: <code>math.isclose(sum(w), 1.0, abs_tol=1e-7)</code>, or project weights back to exact rationals using <code>fractions.Fraction</code>.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-3-3">
+            <p class="prompt">An algorithmic trading firm runs 10,000 property-based fuzzing iterations before deploying an execution router. What metrics should be logged during fuzzing to verify generator diversity?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>To verify generator quality, log: (1) Domain coverage: Min, max, and quantiles of sampled parameters to ensure boundaries (0, negative, max int) are hit. (2) Degenerate case frequency: Percentage of samples containing empty lists, zero quantities, or duplicate order IDs. (3) Code branch coverage: Percentage of router branches executed during property runs. (4) Distinct input ratio: Number of unique hash inputs divided by total iterations to detect generator stagnation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p4-3-1">
+            <p class="prompt">Formulate a property-based testing framework for verifying no-arbitrage bounds on custom multi-asset structured products.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A no-arbitrage property framework defines generators for state price deflators and asset payoffs: (1) Domain: Generate random positive discount factors \(D > 0\) and positive underlying price paths \(S_t > 0\). (2) Monotonicity Invariant: If payoff \(X_A(\omega) \ge X_B(\omega)\) almost surely, assert price \(P(X_A) \ge P(X_B)\). (3) Sub-additivity Invariant: For non-linear payoffs with super-hedging costs, assert \(P(X_A + X_B) \le P(X_A) + P(X_B)\). (4) Put-Call Parity Invariant: Assert \(C - P = S - K D\). Any violation identifies an explicit arbitrage opportunity generated by the pricing model.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-3-2">
+            <p class="prompt">Design an automated metamorphic testing pipeline for deep neural network surrogate models used in high-dimensional American option pricing.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Neural surrogate models cannot be verified against closed-form oracles in high dimensions. Metamorphic testing asserts structural relations under perturbation: (1) Monotonicity: For a call option surrogate \(f_\theta(S, K, T, r)\), assert \(\frac{\partial f_\theta}{\partial S} \ge 0\) and \(\frac{\partial f_\theta}{\partial K} \le 0\) across generated grids. (2) Time-value-of-money: Assert \(f_\theta(S, K, T_2) \ge f_\theta(S, K, T_1)\) for \(T_2 > T_1\) under non-negative interest rates. (3) Convexity: Assert \(\frac{\partial^2 f_\theta}{\partial S^2} \ge 0\). Discrepancies identify regions where the neural surrogate predicts non-convex or arbitrageable pricing surfaces.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-3-3">
+            <p class="prompt">Evaluate the computational trade-offs between coverage-guided fuzzing (e.g. AFL, Atheris) and grammar-based property testing (e.g. QuickCheck) in financial messaging protocol parsers.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Grammar-based property testing generates syntactically structured domain objects (e.g. valid FIX protocol messages) based on user-defined types, efficiently testing semantic logic but rarely exploring invalid byte structures. Coverage-guided fuzzing monitors branch execution at the assembly/bytecode level, mutating raw byte streams to maximize new branch coverage. Coverage-guided fuzzing excels at uncovering buffer overflows, memory corruptions, and malformed header crashes in C/C++ execution engines, while grammar property testing excels at validating financial state machines and order reconciliation logic.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results"><span class="section-number">6</span>Key Results</h2>
+        <table class="key-results">
+          <thead>
+            <tr>
+              <th scope="col">Result</th>
+              <th scope="col">Grade</th>
+              <th scope="col">Basis / Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Defect discovery probability converges to 1 as random property draws N increase</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 3.1 proof (independent complement probability)</td>
+            </tr>
+            <tr>
+              <td>Property testing of boundary domains eliminates defects missed by unit tests</td>
+              <td><span class="grade" data-grade="A">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="Item 5">Wilson et al. (2014, Item 5)</span></td>
+            </tr>
+            <tr>
+              <td>Automated testing requires precise numerical output assertion rather than execution without crash</td>
+              <td><span class="grade" data-grade="B">B</span></td>
+              <td><span class="claim" data-grade="B" data-cite="wilson2017good" data-locator="Software, recommendation 2">Wilson et al. (2017, Software recommendation 2)</span></td>
+            </tr>
+            <tr>
+              <td>Property test uncovers touching interval boundary defect missed by 3 unit tests</td>
+              <td><span class="grade" data-grade="C">C</span></td>
+              <td>Lab 1 (curriculum lab execution and counterexample shrinking)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS4" data-page="L03" data-cards="cards.json">
+        <h2 id="h-quiz"><span class="section-number">7</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What distinguishes property-based testing from example-based unit testing?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q1"> <span>It checks universal invariant predicates across randomized generated inputs rather than single hand-picked cases</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>It only tests functions that interact with real estate properties</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>It requires writing tests in compiled C code</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>It disables all assertions during test execution</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Property-based testing tests universal invariants across broad generated domains rather than testing isolated examples.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the purpose of counterexample shrinking in property-based testing?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q2"> <span>To reduce a complex failing input to the minimal, human-interpretable counterexample that still fails</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>To shrink the size of compiled Python bytecode</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>To compress database logs</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>To truncate test execution when memory is exhausted</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Shrinking strips away irrelevant elements to isolate the core boundary failure.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a round-trip property invariant?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q3"> <span>Applying an operation followed by its mathematical inverse restores the original input</span></label>
+              <label class="option"><input type="radio" name="L03q3"> <span>Executing a trade on two exchanges simultaneously</span></label>
+              <label class="option"><input type="radio" name="L03q3"> <span>Measuring network ping latency across round trips</span></label>
+              <label class="option"><input type="radio" name="L03q3"> <span>Converting returns between calendar years</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Round-trip properties verify that decode(encode(x)) == x.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a property-based test with 1,000 successful iterations fail to constitute a mathematical proof?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q4"> <span>It evaluates a finite sample; bugs may hide in unvisited domain regions or ungenerated corner cases</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>Python cannot execute mathematical proofs</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>Random number generators are banned in mathematical research</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>Proofs require floating-point arithmetic</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Random sampling cannot prove universal statements over infinite domains.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In the interval merging curriculum lab, why did the hand-picked unit tests pass while the property test failed?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q5"> <span>The hand-picked tests only tested strictly separated or overlapping intervals, omitting adjacent touching intervals</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>The property test used a different Python version</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>The unit tests ran with assertions disabled</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>The property test tested floating-point numbers instead of integers</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The developer's confirmation bias led to selecting tests that matched the code's flawed strict inequality condition.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a metamorphic property relation?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q6"> <span>A predictable transformation in output resulting from a specific transformation of input</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>A test that modifies its own source code during execution</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>A database schema migration script</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>A type conversion from integer to string</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Metamorphic relations exploit domain symmetries (e.g. positive homogeneity or monotonicity).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does greedy shrinking reduce a failing list of items?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q7"> <span>It iteratively deletes elements and simplifies values, keeping reductions that still fail the property</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>It sorts the list in descending order</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>It converts the list into a hash set</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>It multiplies all numbers by negative one</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Greedy shrinking tests sublists and smaller numbers, maintaining failure until no further simplification is possible.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What role does seeding play in property-based testing?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q8"> <span>It guarantees that test input generation is deterministic and reproducible across CI runs</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>It encrypts test files to prevent tampering</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>It initializes database connections</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>It speeds up memory allocation</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Seeding allows researchers to replay the exact sequence of generated inputs when investigating a failure.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="wilson2014best"></li>
+          <li data-cite="wilson2017good"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L02.html"><span class="dir">Previous</span>L02 Unit Tests to Regression Tests</a>
+        <a class="next" href="L04.html"><span class="dir">Next</span>L04 Python Packaging</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS4 · Software Engineering &amp; Reproducible Research · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

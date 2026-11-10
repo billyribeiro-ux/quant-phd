@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS4" data-page="L08" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L08 · Continuous Integration · CS4</title>
+  <meta name="description" content="Lesson 8 of CS4: Automated continuous integration pipelines, ephemeral hermetic runners, sequential verification gates, early-exit failure semantics, and branch protection rules. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS4 Software Engineering &amp; Reproducible Research</a><span class="sep">›</span>
+      <span>L08</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS4 · Lesson 8 of 8 · 8 study hours</p>
+        <h1>Continuous Integration</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="git-branching-workflow" href="L01.html#def-git-branching-workflow">Git branching workflow</a>, <a class="concept" data-concept="regression-test" href="L02.html#def-regression-test">regression test</a>, <a class="concept" data-concept="unit-test" href="../../../concepts.html#unit-test">unit test</a></li>
+          <li><strong>Introduces:</strong> <dfn id="def-continuous-integration" data-concept="continuous-integration">Continuous integration</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Manual testing is vulnerable to human oversight: under production deadlines, researchers skip verification steps or test only subsets of code on personal laptops. Code that works on a local developer workstation frequently fails on cluster compute nodes due to uncommitted files, differing environment paths, or operating system differences. Continuous integration automates the scientific verification cycle by executing a deterministic pipeline of formatters, strict type checkers, unit tests, and regression suites in an ephemeral clean environment on every commit. Enforcing automated continuous integration gates ensures that unverified code is blocked from protected branches.</p>
+
+      <h2 id="ci-principles"><span class="section-number">1</span>The Continuous Integration Principle</h2>
+      <p>Continuous integration transforms testing from an episodic, manual chore into an automated, invariant property of the version control workflow.</p>
+
+      <div class="block definition" id="def-ci-block">
+        <p class="block-title">Definition 8.1 · Continuous Integration</p>
+        <p><dfn>Continuous integration</dfn> (CI) is the software engineering practice where members of a research team integrate their code into a shared repository frequently (often multiple times per day). Every proposed integration (via push or pull request) triggers an automated build and test pipeline in an isolated, clean virtual environment to detect static errors, typing violations, and regression failures immediately.</p>
+      </div>
+
+      <p><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="Item 5">Wilson et al. (2014) demonstrate that automated continuous build and test workflows detect integration incompatibilities within minutes of introduction, dramatically reducing the cost of debugging complex scientific software.</span> In quantitative investment funds, an automated CI gate prevents broken code from entering production execution branches.</p>
+
+      <h2 id="gate-architectures"><span class="section-number">2</span>Sequential Gate Architecture and Fail-Fast Semantics</h2>
+      <p>An effective CI pipeline structures verification checks into a sequential hierarchy of increasing computational cost, known as fail-fast gating.</p>
+
+      <div class="block definition" id="def-gate-pipeline">
+        <p class="block-title">Definition 8.2 · Sequential Verification Pipeline</p>
+        <p>A verification pipeline is an ordered sequence of deterministic verification operators \(\mathcal{C} = (c_1, c_2, \dots, c_K)\) evaluated over repository state \(R\). Each check \(c_i: \mathcal{R} \to \{0\} \cup \mathbb{Z}^+\) returns exit code 0 on success and a positive integer exit code on failure. The pipeline terminates at index \(j = \min \{i : c_i(R) \ne 0\}\), halting execution immediately without evaluating downstream checks \(c_{j+1}, \dots, c_K\).</p>
+      </div>
+
+      <div class="block theorem" id="thm-ci-early-exit">
+        <span class="block-title claim" data-grade="T">Theorem 8.1 · Deterministic Pipeline Halting Monotonicity</span>
+        <p>Let \(\mathcal{C} = (c_1, \dots, c_K)\) be a sequence of deterministic verification checks executed under early-exit semantics. For any repository state \(R\), the pipeline halts at a unique, deterministic index \(j^*(R) \in \{1, \dots, K, K+1\}\) defined by:</p>
+        \[
+        j^*(R) = \begin{cases} \min \{i \in \{1, \dots, K\} : c_i(R) \ne 0\} & \text{if } \exists i \text{ with } c_i(R) \ne 0 \\ K + 1 & \text{if } \forall i, c_i(R) = 0 \end{cases}
+        \]
+        <p>Furthermore, the subset of executed checks is strictly prefix-closed: check \(c_m\) executes if and only if \(m \le j^*(R)\).</p>
+      </div>
+
+      <div class="block proof">
+        <p class="block-title">Proof</p>
+        <p>By mathematical induction on check index \(m\). For base case \(m = 1\), \(c_1\) always executes. If \(c_1(R) \ne 0\), the early-exit rule triggers, halting execution. Then \(j^*(R) = 1\), and exactly check 1 executed. If \(c_1(R) = 0\), execution transitions to \(m = 2\). For induction step, suppose checks \(c_1, \dots, c_{k-1}\) all evaluated to 0. Then check \(c_k\) executes. If \(c_k(R) \ne 0\), execution halts, yielding \(j^*(R) = k\). If \(c_k(R) = 0\), execution advances to \(k + 1\). If all \(K\) checks evaluate to 0, execution reaches the end, defined as \(j^*(R) = K + 1\). Because each \(c_i\) is a deterministic function of \(R\), each return value is uniquely determined, so \(\min \{i : c_i(R) \ne 0\}\) is unique. Because checks only execute if all predecessors evaluated to 0, the set of executed checks is \(\{1, \dots, \min(j^*(R), K)\}\), which is strictly prefix-closed.</p>
+      </div>
+
+      <div class="block example" id="ex-ci-hierarchy">
+        <p class="block-title">Example 8.1 · Standard Quantitative CI Gate Hierarchy</p>
+        <p>A production quantitative research pipeline arranges checks to minimize compute resources and developer wait time:</p>
+        <ol>
+          <li><strong>Gate 1 · Formatting &amp; Syntax (0.5 s):</strong> Ruff linter checking syntax errors, unused imports, and formatting compliance.</li>
+          <li><strong>Gate 2 · Strict Type Checking (2.0 s):</strong> Mypy strict enforcing type hints, function signatures, and absence of <code>Any</code> escapes.</li>
+          <li><strong>Gate 3 · Unit Test Suite (5.0 s):</strong> Pytest running isolated mathematical and algorithmic unit tests in memory.</li>
+          <li><strong>Gate 4 · Golden Regression Suite (15.0 s):</strong> Pytest validating deterministic models against pinned golden baselines across multiple seeds.</li>
+        </ol>
+        <p>If Gate 1 detects a syntax error, the runner halts immediately in 0.5 seconds, saving 22 seconds of downstream test execution.</p>
+      </div>
+
+      <h2 id="ephemeral-environments"><span class="section-number">3</span>Hermetic Runners and Branch Protection</h2>
+      <p>A critical architectural requirement for CI is execution within an <em>ephemeral hermetic runner</em>. A runner must instantiate a fresh, isolated virtual machine or container image containing only the base operating system, clone the exact commit from Git, install dependencies strictly from the cryptographic lockfile, and execute the test pipeline.</p>
+
+      <div class="block remark">
+        <p class="block-title">Remark 8.1 · Branch Protection Rules</p>
+        <p>A continuous integration pipeline has no institutional force unless paired with repository branch protection rules. Standard research governance dictates that direct pushes to <code>main</code> are disabled: code can enter <code>main</code> only via a pull request that has: (1) obtained required peer code review approvals, and (2) received green status checks from the automated CI runner.</p>
+      </div>
+
+      <section class="lab" id="lab-CS4-L08-1" data-runtime="python">
+        <h3>Lab 1 · Continuous Integration Pipeline Gating and Early-Exit Semantics</h3>
+        <p class="hypothesis">Evaluates a sequential CI pipeline runner across clean and defective branch states. Demonstrates that a clean feature branch passes all four verification gates (formatting, typing, unit testing, regression), whereas a defective branch halts execution early at the first failing gate, skipping subsequent checks.</p>
+        <pre><code class="language-python" data-run>"""CS4 Lesson 8 Inline Lab 1: Continuous integration pipeline gating and early-exit semantics.
+
+Demonstrates continuous integration pipeline architectures and sequential verification gates.
+Executes an automated verification pipeline comprising formatting, typing, unit testing,
+and regression checks with deterministic early-exit semantics on failure.
+Compares pipeline behavior and diagnostic reporting across clean and defective branch states.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import NamedTuple
+
+
+class PipelineStep(NamedTuple):
+    name: str
+    check: Callable[[], tuple[bool, str]]
+
+
+def run_pipeline(steps: list[PipelineStep]) -&gt; tuple[bool, list[str]]:
+    """Execute pipeline steps sequentially; halt execution immediately on first failure."""
+    logs: list[str] = []
+    for step in steps:
+        passed, msg = step.check()
+        if passed:
+            logs.append(f"  Step [{step.name}]: PASS - {msg}")
+        else:
+            logs.append(f"  Step [{step.name}]: FAIL - {msg}")
+            logs.append(f"Pipeline halted early: '{step.name}' failed. Subsequent steps skipped.")
+            return False, logs
+    logs.append("All pipeline gates passed successfully.")
+    return True, logs
+
+
+def main() -&gt; None:
+    print("Continuous integration pipeline gate evaluation:")
+
+    # Clean branch checks
+    clean_steps: list[PipelineStep] = [
+        PipelineStep("format-check", lambda: (True, "Ruff formatting verified")),
+        PipelineStep("type-check", lambda: (True, "Mypy strict passed 0 errors")),
+        PipelineStep("unit-tests", lambda: (True, "Pytest 42 passed in 0.12s")),
+        PipelineStep("regression-tests", lambda: (True, "Golden outputs match 100%")),
+    ]
+
+    print("\nExecuting CI pipeline on clean feature branch:")
+    clean_ok, clean_logs = run_pipeline(clean_steps)
+    for log in clean_logs:
+        print(log)
+    print(f"Clean branch CI pipeline verdict: {'SUCCESS' if clean_ok else 'FAILED'}")
+
+    # Defective branch checks (typing failure at step 2)
+    defective_steps: list[PipelineStep] = [
+        PipelineStep("format-check", lambda: (True, "Ruff formatting verified")),
+        PipelineStep("type-check", lambda: (False, "Incompatible return type 'float' expected 'Fraction'")),
+        PipelineStep("unit-tests", lambda: (True, "Pytest 42 passed")),
+        PipelineStep("regression-tests", lambda: (True, "Golden outputs match")),
+    ]
+
+    print("\nExecuting CI pipeline on defective feature branch:")
+    defective_ok, defective_logs = run_pipeline(defective_steps)
+    for log in defective_logs:
+        print(log)
+    print(f"Defective branch CI pipeline verdict: {'SUCCESS' if defective_ok else 'FAILED'}")
+
+    print("\nConclusion: CI gates protect branch integrity by blocking unverified changes.")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Continuous integration pipeline gate evaluation:
+
+Executing CI pipeline on clean feature branch:
+  Step [format-check]: PASS - Ruff formatting verified
+  Step [type-check]: PASS - Mypy strict passed 0 errors
+  Step [unit-tests]: PASS - Pytest 42 passed in 0.12s
+  Step [regression-tests]: PASS - Golden outputs match 100%
+All pipeline gates passed successfully.
+Clean branch CI pipeline verdict: SUCCESS
+
+Executing CI pipeline on defective feature branch:
+  Step [format-check]: PASS - Ruff formatting verified
+  Step [type-check]: FAIL - Incompatible return type 'float' expected 'Fraction'
+Pipeline halted early: 'type-check' failed. Subsequent steps skipped.
+Defective branch CI pipeline verdict: FAILED
+
+Conclusion: CI gates protect branch integrity by blocking unverified changes.</pre>
+        <p class="interpretation">The lab confirms the operational mechanics of automated continuous integration. On a clean branch, all four gates execute and pass, producing SUCCESS. On a defective branch where Gate 2 (type checking) fails, the pipeline halts immediately, reporting FAILED and skipping the remaining two gates.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">4</span>Where the Canon Breaks</h2>
+      <p>A pervasive organizational delusion is the <em>green badge fallacy</em>: the belief that a repository with a passing CI badge is free from mathematical defects. Continuous integration is an execution engine, not an oracle. CI runs only the commands specified in its workflow file. If a workflow runs <code>pytest</code> but the test suite asserts nothing, or if the workflow runs only linter checks while skipping regression tests, the CI badge will shine green on a thoroughly broken model. A green CI status is only as trustworthy as the mathematical rigor and fault-detection power of the test suite it executes.</p>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">A passing continuous integration pipeline proves that a trading strategy will be profitable.</p>
+            <p class="right">CI verifies software engineering correctness, static types, and computational regression baselines; it has no ability to predict market profitability, economic regime shifts, or slippage costs.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">CI should be run only right before a major release to save compute costs.</p>
+            <p class="right">The defining principle of continuous integration is running on <em>every commit</em> or pull request. Infrequent integration accumulates merge conflicts and makes isolating failure causes costly.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">If tests pass on a developer's laptop, failure in CI indicates the CI runner is broken.</p>
+            <p class="right">The CI runner executes in a pristine, isolated environment. Local test passes often rely on uncommitted local files, dirty working directories, or globally installed system libraries that do not exist in clean environments.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems"><span class="section-number">6</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p8-1-1">
+            <p class="prompt">In a GitHub Actions CI workflow, write the exact YAML step that installs dependencies from <code>requirements.lock</code> with strict hash verification.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The standard GitHub Actions step is:</p>
+              <pre><code class="language-toml">- name: Install dependencies
+  run: pip install --require-hashes -r requirements.lock
+</code></pre>
+            </details>
+          </div>
+          <div class="problem" id="p8-1-2">
+            <p class="prompt">A CI pipeline executes 4 checks taking 1 s, 3 s, 10 s, and 60 s respectively. If Check 2 fails under early-exit semantics, calculate total execution time and time saved compared to running all checks.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under early exit, execution stops when Check 2 fails. Total execution time is \(1 + 3 = 4\) seconds. Running all checks would have required \(1 + 3 + 10 + 60 = 74\) seconds. Time saved is \(74 - 4 = 70\) seconds (a 94.6% reduction in compute time).</p>
+            </details>
+          </div>
+          <div class="problem" id="p8-1-3">
+            <p class="prompt">State the exit code convention for POSIX command-line processes executed in CI pipelines.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In standard POSIX environments, exit code 0 indicates success (no errors). Any non-zero exit code (1 to 255) indicates an error or failure condition. CI runners inspect this return code to determine whether a step succeeded or failed.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p8-2-1">
+            <p class="prompt">Prove that under fail-fast sequential execution, ordering checks by increasing expected runtime \(\mathbb{E}[T_i]\) minimizes expected CI duration when failure probabilities \(p_i\) are equal.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let checks be \(1, \dots, K\). Suppose each check has independent failure probability \(p \in (0, 1)\) and deterministic duration \(T_i\). Check \(i\) executes only if all previous \(i - 1\) checks passed, which occurs with probability \((1 - p)^{i-1}\). The expected total pipeline duration is \(\mathbb{E}[T] = \sum_{i=1}^K T_i (1 - p)^{i-1}\). Because \(0 < 1 - p < 1\), the multipliers \(w_i = (1 - p)^{i-1}\) form a strictly decreasing sequence \(w_1 > w_2 > \dots > w_K > 0\). By the Rearrangement Inequality, to minimize the sum of products \(\sum w_i T_i\), the sequence \(T_i\) must be ordered in ascending order: \(T_1 \le T_2 \le \dots \le T_K\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p8-2-2">
+            <p class="prompt">Prove that a CI pipeline running without network access (offline mode) guarantees build hermeticity against remote package repository outages.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let the build function be \(B(S, E, N)\), where \(S\) is source code, \(E\) is local cached environment artifacts, and \(N\) represents remote network endpoints (e.g. PyPI). If a remote outage occurs, \(N = \emptyset\). A pipeline running in offline mode enforces \(N \equiv \emptyset\) at all times. Because \(B(S, E, \emptyset)\) has zero dependencies on \(N\), any network failure, DNS outage, or remote repository downtime has zero impact on the execution of \(B\), guaranteeing hermetic build reliability.</p>
+            </details>
+          </div>
+          <div class="problem" id="p8-2-3">
+            <p class="prompt">Prove that requiring linear Git history (rebase or squash) before CI integration guarantees that the integrated commit was tested in an identical topological state to <code>main</code>.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In a standard merge, feature branch tip \(F\) was branched from historical commit \(M_0\). Meanwhile, <code>main</code> advanced to \(M_1\). CI tests \(F\) on its branch, where its parent is \(M_0\). When merged into <code>main</code>, the new state is \(M_2 = \mathrm{merge}(M_1, F)\), which was never tested in CI prior to merge. Conversely, with rebase, \(F\) is replayed directly on top of current <code>main</code> tip \(M_1\), producing \(F'\) whose parent is exactly \(M_1\). CI runs directly on \(F'\). Because \(F'\) incorporates all changes from \(M_1\), the code tested in CI is topologically identical to the state that will land on <code>main</code>.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p8-3-1">
+            <p class="prompt">A quantitative research team notices that a CI test suite passes 98 percent of the time on <code>main</code>, but fails intermittently 2 percent of the time with no code changes. Diagnose three common sources of "flaky" CI tests in quantitative codebases.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Three primary sources of flaky tests: (1) Unseeded Randomness: Tests calling unseeded random generators that occasionally sample extreme outliers triggering threshold assertions. (2) Asynchronous Race Conditions: Multi-threaded tests with unpadded sleep calls or non-deterministic lock acquisition timing. (3) Floating-Point Precision Flukes: Assertions testing exact float equality or borderline tolerances that round differently due to thread scheduling or background CPU load.</p>
+            </details>
+          </div>
+          <div class="problem" id="p8-3-2">
+            <p class="prompt">An investment bank migrates its CI runners from on-premise dedicated servers to ephemeral cloud spot instances. Nightly regression build time increases from 12 minutes to 35 minutes. Analysis reveals that 20 minutes is spent downloading package wheels. Propose the optimal remedy.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Remedy: Implement dependency wheel caching: (1) Use GitHub Actions <code>actions/cache</code> or cloud storage to cache <code>~/.cache/pip</code> keyed on the SHA-256 hash of <code>requirements.lock</code>. (2) If the lockfile is unchanged, the runner restores pre-downloaded wheels in 15 seconds, eliminating the 20-minute download bottleneck. (3) Alternatively, build a pre-baked base Docker container image containing all locked dependencies pre-installed.</p>
+            </details>
+          </div>
+          <div class="problem" id="p8-3-3">
+            <p class="prompt">A researcher commits a model change that passes local tests. In CI, the test fails with <code>FileNotFoundError: 'data/fx_rates.csv'</code>. Explain why this error occurred in CI but not locally.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The file <code>data/fx_rates.csv</code> was present on the researcher's local filesystem but was either omitted from <code>git add</code> or excluded by <code>.gitignore</code>. When CI clones the repository in a fresh container, only tracked files are present. The missing file caused the test to fail immediately, demonstrating how clean CI environments detect uncommitted dependency defects.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p8-4-1">
+            <p class="prompt">Design a continuous integration and deployment (CI/CD) pipeline for an automated high-frequency trading firm, detailing safety gates before algorithmic strategies are authorized to submit live exchange orders.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A multi-stage institutional HFT safety gate: (1) Static &amp; Unit Gate: Ruff linting, Mypy strict, unit tests. (2) Determinism Gate: Dual-run execution asserting bit-for-bit identical log output. (3) Paper Exchange Simulation Gate: Run strategy against live historical market replay feed for simulated trading day, asserting that maximum drawdown, order cancellation ratio, and message rate stay within pre-trade risk limits. (4) Circuit Breaker Verification: Inject synthetic market dislocation events (flash crash) and verify that the strategy activates emergency shutdown and cancels all open limit orders within 5 milliseconds. (5) Cryptographic Signoff: Merge is authorized only when all gates pass and two risk officer PGP signatures are attached.</p>
+            </details>
+          </div>
+          <div class="problem" id="p8-4-2">
+            <p class="prompt">Formulate a mathematical model for optimal test subset selection in massive quantitative codebases, framing test impact analysis as a cost-benefit optimization problem.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let codebase have \(M\) modules and \(N\) tests. Define dependency incidence matrix \(A \in \{0, 1\}^{N \times M}\), where \(A_{ij} = 1\) if test \(i\) covers module \(j\). Given commit diff modifying module subset \(\Delta \subset \{1, \dots, M\}\), the impacted test set is \(T_{\Delta} = \{i : \sum_{j \in \Delta} A_{ij} > 0\}\). Let each test have execution cost \(c_i\) and historical fault-detection probability \(p_i\). Under a CI time budget \(B\), the optimal selection problem is a 0-1 Knapsack problem: \(\max \sum_{i \in T_\Delta} p_i x_i\) subject to \(\sum_{i \in T_\Delta} c_i x_i \le B\), where \(x_i \in \{0, 1\}\). Solving via dynamic programming maximizes defect detection under strict CI latency constraints.</p>
+            </details>
+          </div>
+          <div class="problem" id="p8-4-3">
+            <p class="prompt">Evaluate the security vulnerabilities of continuous integration environments in quantitative hedge funds, analyzing the threat of malicious pull requests attempting to exfiltrate proprietary trading signals.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>CI runners execute arbitrary code defined in repository test scripts. If pull requests from untrusted contributors or compromised researcher credentials trigger CI builds with access to repository secrets (e.g. production database credentials or AWS keys), the test script can read secrets from environment variables and exfiltrate proprietary alpha model weights via outbound HTTP requests. Remediation: (1) Zero-secret CI runners: Tests must operate entirely on synthetic mock fixtures with zero access to live credentials. (2) Fork protection: External pull requests must not execute CI workflows without explicit human maintainer approval. (3) Egress network filtering: Block all outbound internet access from CI worker containers.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results"><span class="section-number">7</span>Key Results</h2>
+        <table class="key-results">
+          <thead>
+            <tr>
+              <th scope="col">Result</th>
+              <th scope="col">Grade</th>
+              <th scope="col">Basis / Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Early-exit sequential CI pipeline halting is deterministic and strictly prefix-closed</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 8.1 proof (induction on deterministic exit codes)</td>
+            </tr>
+            <tr>
+              <td>Automated continuous build and test workflows detect integration defects within minutes</td>
+              <td><span class="grade" data-grade="A">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="Item 5">Wilson et al. (2014, Item 5)</span></td>
+            </tr>
+            <tr>
+              <td>Simulated CI pipeline halts early at first failing gate, preventing unverified deployment</td>
+              <td><span class="grade" data-grade="C">C</span></td>
+              <td>Lab 1 (simulated CI gate runner evaluation)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS4" data-page="L08" data-cards="cards.json">
+        <h2 id="h-quiz"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the primary function of continuous integration (CI)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q1"> <span>To automatically build and test code in an isolated clean environment on every commit</span></label>
+              <label class="option"><input type="radio" name="L08q1"> <span>To execute financial trades on public exchanges</span></label>
+              <label class="option"><input type="radio" name="L08q1"> <span>To replace software developers with neural networks</span></label>
+              <label class="option"><input type="radio" name="L08q1"> <span>To compress database tables</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>CI automates building and testing code on every integration to catch defects immediately.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is early-exit failure semantics in a verification pipeline?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q2"> <span>Execution stops immediately when the first check fails, skipping subsequent checks to save compute time</span></label>
+              <label class="option"><input type="radio" name="L08q2"> <span>The computer shuts down when tests pass</span></label>
+              <label class="option"><input type="radio" name="L08q2"> <span>Tests exit without checking assertions</span></label>
+              <label class="option"><input type="radio" name="L08q2"> <span>Failed tests are deleted from the repository</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Early-exit semantics abort the pipeline as soon as any gate fails.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are verification checks arranged in order of increasing runtime?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q3"> <span>To fail fast on fast checks (linting/types), saving time by skipping expensive tests when errors exist</span></label>
+              <label class="option"><input type="radio" name="L08q3"> <span>Because Python requires tests to be sorted alphabetically</span></label>
+              <label class="option"><input type="radio" name="L08q3"> <span>To confuse unauthorized hackers</span></label>
+              <label class="option"><input type="radio" name="L08q3"> <span>To increase memory usage</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Fast checks surface common errors in seconds, saving compute resources.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is an ephemeral hermetic runner?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q4"> <span>A fresh, temporary virtual environment or container created for a single build and destroyed immediately after</span></label>
+              <label class="option"><input type="radio" name="L08q4"> <span>A permanent server that retains all files forever</span></label>
+              <label class="option"><input type="radio" name="L08q4"> <span>A mechanical clock in a server room</span></label>
+              <label class="option"><input type="radio" name="L08q4"> <span>A laptop used by lead researchers</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Ephemeral runners eliminate cross-build contamination by building in pristine environments.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the green badge fallacy?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q5"> <span>The mistaken belief that a passing CI badge proves code is mathematically correct, even if tests assert nothing</span></label>
+              <label class="option"><input type="radio" name="L08q5"> <span>A color-blindness issue in web design</span></label>
+              <label class="option"><input type="radio" name="L08q5"> <span>A bug in GitHub's image rendering engine</span></label>
+              <label class="option"><input type="radio" name="L08q5"> <span>The belief that green badges consume less electrical power</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>CI only verifies what its tests actually assert; trivial tests produce a false sense of security.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What do repository branch protection rules enforce?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q6"> <span>Merging into protected branches requires passing CI checks and approved peer reviews</span></label>
+              <label class="option"><input type="radio" name="L08q6"> <span>Branches can only be created by senior executives</span></label>
+              <label class="option"><input type="radio" name="L08q6"> <span>All commits must be encrypted with AES-256</span></label>
+              <label class="option"><input type="radio" name="L08q6"> <span>Branches are automatically deleted after 24 hours</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Branch protection guarantees that no unverified or unreviewed code reaches production.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do tests pass on a developer's machine but fail in CI?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q7"> <span>Local tests often rely on uncommitted files, dirty working directories, or globally installed libraries</span></label>
+              <label class="option"><input type="radio" name="L08q7"> <span>CI servers run at lower clock speeds</span></label>
+              <label class="option"><input type="radio" name="L08q7"> <span>Git alters code during push</span></label>
+              <label class="option"><input type="radio" name="L08q7"> <span>Python ignores unit tests in CI</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>CI exposes missing dependency declarations and uncommitted files.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What standard exit code indicates a passing CI step in POSIX systems?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q8"> <span>0</span></label>
+              <label class="option"><input type="radio" name="L08q8"> <span>1</span></label>
+              <label class="option"><input type="radio" name="L08q8"> <span>255</span></label>
+              <label class="option"><input type="radio" name="L08q8"> <span>-1</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Exit code 0 signals success; any non-zero exit code indicates failure.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="wilson2014best"></li>
+          <li data-cite="wilson2017good"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L07.html"><span class="dir">Previous</span>L07 Bit-for-Bit Reproducibility</a>
+        <a class="next" href="project.html"><span class="dir">Next</span>Capstone Project</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS4 · Software Engineering &amp; Reproducible Research · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

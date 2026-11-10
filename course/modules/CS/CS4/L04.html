@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS4" data-page="L04" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L04 · Python Packaging · CS4</title>
+  <meta name="description" content="Lesson 4 of CS4: Modern Python packaging standards, pyproject.toml specifications, build backends, src directory layouts, editable installs, and dependency isolation. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS4 Software Engineering &amp; Reproducible Research</a><span class="sep">›</span>
+      <span>L04</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS4 · Lesson 4 of 8 · 8 study hours</p>
+        <h1>Python Packaging</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="python-modules-packages" href="../../../concepts.html#python-modules-packages">modules and packages</a></li>
+          <li><strong>Introduces:</strong> <dfn id="def-python-packaging" data-concept="python-packaging">Python packaging</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Ad-hoc quantitative research frequently relies on loose Python scripts executed from dirty working directories, manipulating sys.path or assuming local file arrangements. When shared with colleagues or deployed to production execution clusters, uninstalled code fails with missing modules, conflicting namespaces, and unresolvable relative imports. Python packaging formalizes research code into standardized, distributable libraries with declared build systems, explicit dependencies, and isolated namespaces. Packaging turns fleeting computational experiments into modular, versioned assets that integrate reliably into production quantitative research pipelines.</p>
+
+      <h2 id="script-vs-package"><span class="section-number">1</span>From Ad-Hoc Scripts to Installable Libraries</h2>
+      <p>A loose script run via <code>python script.py</code> implicitly prepends the current working directory to Python's module search path (<code>sys.path</code>). This path dependence masks missing dependency declarations and allows the script to import local files unintentionally, creating severe deployment failures.</p>
+
+      <div class="block definition" id="def-python-packaging-block">
+        <p class="block-title">Definition 4.1 · Python Packaging</p>
+        <p><dfn>Python packaging</dfn> is the engineering process of structuring source code, metadata, build specifications, and asset manifests into a standard, self-describing directory layout that can be built by an isolated build backend into a distributable archive (source distribution or wheel) and installed into any isolated Python virtual environment.</p>
+      </div>
+
+      <p><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="Item 4">Wilson et al. (2014) demonstrate that modularizing scientific code into reusable, installable packages eliminates code duplication and enables automated testing across independent research environments.</span> Transforming quantitative models into installable packages enforces clear interface boundaries between analytical libraries, data ingestion pipelines, and interactive visualization notebooks.</p>
+
+      <h2 id="pyproject-spec"><span class="section-number">2</span>The pyproject.toml Standard and Build Systems</h2>
+      <p>Modern Python packaging standards replace legacy, arbitrary imperative execution scripts (such as <code>setup.py</code>) with a declarative configuration file: <code>pyproject.toml</code>.</p>
+
+      <div class="block definition" id="def-pyproject-tables">
+        <p class="block-title">Definition 4.2 · Core pyproject.toml Tables</p>
+        <ul>
+          <li><strong><code>[build-system]</code>:</strong> Specifies the build frontend requirements and build backend entry point. Must define <code>requires</code> (a list of build dependency strings, e.g. <code>["setuptools&gt;=68.0", "wheel"]</code>) and <code>build-backend</code> (the string name of the backend object, e.g. <code>"setuptools.build_meta"</code>).</li>
+          <li><strong><code>[project]</code>:</strong> Defines package metadata, including <code>name</code> (distribution identifier), <code>version</code>, <code>description</code>, <code>requires-python</code> (supported runtime constraint), <code>dependencies</code> (runtime requirements), and optional entry points.</li>
+        </ul>
+      </div>
+
+      <div class="block theorem" id="thm-topological-build">
+        <span class="block-title claim" data-grade="T">Theorem 4.1 · Topological Resolution of Build Dependencies</span>
+        <p>Let \(\mathcal{P}\) be a set of packages with build dependency relation \(D \subset \mathcal{P} \times \mathcal{P}\), where \((A, B) \in D\) denotes that package \(A\) requires package \(B\) in its <code>[build-system].requires</code> table. If \(D\) contains no directed cycles, then there exists a valid sequential installation schedule \(\sigma: \mathcal{P} \to \{1, \dots, |\mathcal{P}|\}\) such that every build dependency is fully installed prior to invoking the dependent package's build backend.</p>
+      </div>
+
+      <div class="block proof">
+        <p class="block-title">Proof</p>
+        <p>The relation \(D\) defines a directed graph \(G = (\mathcal{P}, D)\). By hypothesis, \(G\) is finite and acyclic (a DAG). By Theorem 1.1, every finite DAG admits a topological ordering \(\tau: \mathcal{P} \to \{1, \dots, |\mathcal{P}|\}\) such that if \((A, B) \in D\), then \(\tau(B) < \tau(A)\). Reversing or indexing according to \(\tau\) provides the sequential build sequence \(\sigma\). When building package \(A\) at step \(\sigma(A)\), any dependency \(B\) with \((A, B) \in D\) has \(\sigma(B) < \sigma(A)\) and is already installed in the environment. Hence, the build backend for \(A\) can be invoked without missing dependency failures.</p>
+      </div>
+
+      <div class="block example" id="ex-pyproject-spec">
+        <p class="block-title">Example 4.1 · Standard Declarative pyproject.toml Configuration</p>
+        <p>A standardized quantitative research package configuration declares build requirements and dependencies explicitly:</p>
+        <pre><code class="language-toml">[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-research-core"
+version = "1.0.0"
+description = "Deterministic quantitative research library"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.0.0",
+    "scipy>=1.13.0",
+]
+</code></pre>
+        <p>This declarative schema allows modern build tools (such as <code>pip</code> or <code>build</code>) to provision an ephemeral isolated build environment, install the backend tools, and produce an immutable wheel artifact.</p>
+      </div>
+
+      <h2 id="directory-layout"><span class="section-number">3</span>Source Layouts: The src-Layout Defense</h2>
+      <p>A critical architectural decision in Python packaging is directory layout. A flat layout places the package directory directly in the repository root (e.g. <code>./mypackage/</code>). A <code>src</code> layout nests the code under a dedicated source directory (e.g. <code>src/mypackage/</code>).</p>
+
+      <div class="block remark">
+        <p class="block-title">Remark 4.1 · Preventing Dirty Import Contamination via src-Layout</p>
+        <p>In a flat layout, executing <code>pytest</code> from the repository root adds <code>.</code> to <code>sys.path</code>. The test suite imports the uninstalled local directory <code>./mypackage/</code> rather than the installed package wheel. Consequently, bugs in packaging metadata (such as omitted sub-packages or missing data files) remain completely undetected during testing. The <code>src</code> layout guarantees that tests fail unless the package has been properly installed via <code>pip install -e .</code> or as a wheel, verifying packaging integrity before deployment.</p>
+      </div>
+
+      <section class="lab" id="lab-CS4-L04-1" data-runtime="python">
+        <h3>Lab 1 · Modern Python Packaging and pyproject.toml Validation</h3>
+        <p class="hypothesis">Validates package configuration specifications using the standard library tomllib parser. Demonstrates that a valid pyproject.toml passes all structural checks, while malformed specifications missing the [build-system] table or required [project] metadata are caught and rejected.</p>
+        <pre><code class="language-python" data-run>"""CS4 Lesson 4 Inline Lab 1: Modern Python packaging and pyproject.toml validation.
+
+Demonstrates the structure and specification requirements of installable Python packages.
+Uses the standard library tomllib module to parse pyproject.toml configuration strings.
+Verifies the presence of required [build-system] and [project] tables and fields.
+Tests validator behavior across valid and deliberately malformed package specifications.
+"""
+
+from __future__ import annotations
+
+import tomllib
+from typing import Any
+
+
+def validate_pyproject_toml(toml_content: str) -&gt; tuple[bool, list[str]]:
+    """Validate a pyproject.toml configuration string against standard packaging rules."""
+    errors: list[str] = []
+    try:
+        data = tomllib.loads(toml_content)
+    except tomllib.TOMLDecodeError as err:
+        return False, [f"Syntax error: {err}"]
+
+    # 1. Validate [build-system]
+    if "build-system" not in data or not isinstance(data["build-system"], dict):
+        errors.append("Missing required table [build-system]")
+    else:
+        bs: dict[str, Any] = data["build-system"]
+        if "requires" not in bs or not isinstance(bs["requires"], list) or not bs["requires"]:
+            errors.append("[build-system] missing non-empty list 'requires'")
+        if "build-backend" not in bs or not isinstance(bs["build-backend"], str) or not bs["build-backend"].strip():
+            errors.append("[build-system] missing non-empty string 'build-backend'")
+
+    # 2. Validate [project]
+    if "project" not in data or not isinstance(data["project"], dict):
+        errors.append("Missing required table [project]")
+    else:
+        proj: dict[str, Any] = data["project"]
+        for required_field in ("name", "version", "requires-python"):
+            if required_field not in proj or not str(proj[required_field]).strip():
+                errors.append(f"[project] missing required field '{required_field}'")
+
+    return len(errors) == 0, errors
+
+
+def main() -&gt; None:
+    # 1. Valid package specification
+    valid_toml = """[build-system]
+requires = ["setuptools&gt;=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-research-core"
+version = "1.0.0"
+description = "Deterministic quantitative research library"
+readme = "README.md"
+requires-python = "&gt;=3.14"
+dependencies = [
+    "numpy&gt;=2.0.0",
+]
+"""
+
+    # 2. Missing build-system table
+    missing_build_sys = """[project]
+name = "broken-package"
+version = "0.1.0"
+requires-python = "&gt;=3.14"
+"""
+
+    # 3. Missing project name and version
+    missing_fields = """[build-system]
+requires = ["flit_core&gt;=3.9.0"]
+build-backend = "flit_core.buildapi"
+
+[project]
+requires-python = "&gt;=3.14"
+"""
+
+    print("Python packaging pyproject.toml validation suite:")
+
+    ok1, errs1 = validate_pyproject_toml(valid_toml)
+    print(f"Case 1 (Valid package): {'PASS' if ok1 else 'FAIL'}")
+    if errs1:
+        for e in errs1:
+            print(f"  Error: {e}")
+
+    ok2, errs2 = validate_pyproject_toml(missing_build_sys)
+    print(f"\nCase 2 (Missing [build-system]): {'PASS' if ok2 else 'FAIL (caught expected defect)'}")
+    for e in errs2:
+        print(f"  Reported: {e}")
+
+    ok3, errs3 = validate_pyproject_toml(missing_fields)
+    print(f"\nCase 3 (Missing [project] name/version): {'PASS' if ok3 else 'FAIL (caught expected defect)'}")
+    for e in errs3:
+        print(f"  Reported: {e}")
+
+    print("\nPackaging specification checks completed successfully.")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Python packaging pyproject.toml validation suite:
+Case 1 (Valid package): PASS
+
+Case 2 (Missing [build-system]): FAIL (caught expected defect)
+  Reported: Missing required table [build-system]
+
+Case 3 (Missing [project] name/version): FAIL (caught expected defect)
+  Reported: [project] missing required field 'name'
+  Reported: [project] missing required field 'version'
+
+Packaging specification checks completed successfully.</pre>
+        <p class="interpretation">The lab confirms that declarative packaging metadata is machine-verifiable. The parser validates the existence of build-system requirements and core project fields (name, version, requires-python), rejecting malformed configurations with explicit error diagnostics.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">4</span>Where the Canon Breaks</h2>
+      <p>A common fallacy among data scientists is that if all unit tests pass when running <code>pytest</code> in the terminal, the repository is ready for production. This belief routinely fails when the codebase is executed from its development working directory. Tests run in a working directory import raw local files by relative path, masking missing <code>pyproject.toml</code> dependencies, unbundled binary shared objects, and broken entry points. A package is only verified when it has been built into a wheel artifact in an isolated container, installed into an empty virtual environment, and tested from outside the source directory.</p>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><code>setup.py</code> is the recommended modern mechanism for configuring Python packages.</p>
+            <p class="right">Modern Python packaging standards replace imperative <code>setup.py</code> execution with declarative <code>pyproject.toml</code> configuration. Running arbitrary code during package build introduces severe security and reproducibility hazards.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">An editable install (<code>pip install -e .</code>) copies package files into the site-packages directory.</p>
+            <p class="right">An editable install creates a <code>.pth</code> link or loader redirecting Python's import machinery to the source directory. Edits to source files take effect immediately without rebuilding, which is ideal for development but must not be used in production container images.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Placing Python files in any directory automatically makes them an installable package.</p>
+            <p class="right">Installable packages require standardized structure: valid <code>pyproject.toml</code> configuration with <code>[build-system]</code> and <code>[project]</code> tables, proper namespace boundaries, and build backend integration.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems"><span class="section-number">6</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p4-1-1">
+            <p class="prompt">Identify the missing required table and field in the following <code>pyproject.toml</code> excerpt:</p>
+            <pre><code class="language-toml">[project]
+name = "risk-engine"
+version = "0.2.0"
+</code></pre>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The excerpt is missing the required <code>[build-system]</code> table entirely (including its <code>requires</code> and <code>build-backend</code> fields). Additionally, within <code>[project]</code>, it is missing the required <code>requires-python</code> constraint (e.g. <code>requires-python = "&gt;=3.14"</code>).</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-1-2">
+            <p class="prompt">Explain the difference between a source distribution (<code>sdist</code>, <code>.tar.gz</code>) and a binary built distribution (<code>wheel</code>, <code>.whl</code>).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A source distribution (sdist) contains raw source code, build scripts, and documentation; installing an sdist requires executing the build backend and compiling any C/Rust extensions on the target machine. A wheel is a pre-built zip archive with standard metadata; installing a wheel requires only unpacking files into <code>site-packages</code> without compilation, making installation fast and deterministic.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-1-3">
+            <p class="prompt">Given a repository layout with <code>src/study/core.py</code>, write the Python import statement that client code uses once the package <code>study</code> is installed.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Once installed, the <code>src/</code> directory is stripped, and the package root is placed directly on <code>sys.path</code>. The client imports the module as: <code>from study.core import run, summarize</code> or <code>import study.core</code>.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p4-2-1">
+            <p class="prompt">Prove that a circular build dependency between two packages \(A\) and \(B\) (where \(A\) requires \(B\) to build, and \(B\) requires \(A\) to build) prevents hermetic installation from source.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let an ephemeral clean environment \(\mathcal{E}_0 = \emptyset\) have no pre-installed packages. To build \(A\) from source, the build system requires environment state \(\mathcal{E}_A\) such that \(B \in \mathcal{E}_A\). To obtain \(B \in \mathcal{E}_A\) from source, \(B\) must be built, which requires environment state \(\mathcal{E}_B\) such that \(A \in \mathcal{E}_B\). This induces the circular condition: installing \(A\) requires \(A \in \mathcal{E}\) before \(A\) is built. In finite discrete steps, no sequence of builds can transition from \(\emptyset\) to an environment satisfying both build requirements. Hermetic build from source is impossible without breaking the cycle.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-2-2">
+            <p class="prompt">Prove that package name normalization in Python (converting hyphens, underscores, and periods to single hyphens in lowercase) defines an equivalence relation on distribution names.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\Sigma^*\) be the set of valid distribution strings. Define mapping \(\phi(s) = \mathrm{re.sub}(r"[-_.]+", "-", s).lower()\). The relation \(s_1 \sim s_2\) is defined by \(\phi(s_1) = \phi(s_2)\). (1) Reflexivity: \(\phi(s) = \phi(s)\), so \(s \sim s\). (2) Symmetry: If \(\phi(s_1) = \phi(s_2)\), then \(\phi(s_2) = \phi(s_1)\), so \(s_2 \sim s_1\). (3) Transitivity: If \(\phi(s_1) = \phi(s_2)\) and \(\phi(s_2) = \phi(s_3)\), then \(\phi(s_1) = \phi(s_3)\), so \(s_1 \sim s_3\). Because \(\sim\) is the kernel of function \(\phi\), it is an equivalence relation.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-2-3">
+            <p class="prompt">Prove that packaging assets in a wheel archive with deterministic file timestamps and sorted member paths guarantees bit-for-bit identical wheel SHA-256 hashes.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A wheel archive is formatted as a ZIP file. Standard ZIP serialization writes file headers containing file path, uncompressed/compressed size, CRC-32 checksum, modification timestamp, and file permissions, followed by file data. Non-determinism in zip creation arises from filesystem iteration order and filesystem modification timestamps. If file modification timestamps are clamped to a constant epoch (e.g. <code>SOURCE_DATE_EPOCH = 0</code>) and archive members are sorted lexicographically by relative path, every byte in the ZIP central directory and local headers is a deterministic function of file contents. By the deterministic property of SHA-256, identical byte payloads yield identical cryptographic hashes.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p4-3-1">
+            <p class="prompt">A quantitative analyst builds an options backtest package. When running tests locally from the repository root, all tests pass. When testing the packaged wheel inside a fresh Alpine Linux container, the test suite crashes with <code>ModuleNotFoundError: No module named 'options_engine.calibrators'</code>. Diagnose the packaging flaw.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Diagnosis: The repository used a flat layout, and the sub-package directory <code>options_engine/calibrators/</code> was omitted from the build backend's package discovery configuration (e.g. missing <code>__init__.py</code> or excluded in <code>pyproject.toml</code>). When running locally, Python imported directly from the filesystem where the directory existed. When the wheel was built, <code>calibrators</code> was excluded, producing an incomplete distribution that failed in clean container environments.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-3-2">
+            <p class="prompt">Compare the installation latency and bandwidth consumption of deploying a C-extension-based volatility pricer via sdist versus pre-compiled manylinux wheel across a 100-node compute cluster.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>With an sdist, each of the 100 worker nodes must download the source, invoke a C++ compiler (e.g. GCC/Clang), compile translation units, and link binaries. This consumes high CPU overhead, requires system compilation toolchains on all nodes, and introduces 2–5 minutes of build latency per node. With a pre-compiled <code>manylinux</code> wheel, nodes download a pre-built binary wheel (consuming identical or lower bandwidth) and extract files into <code>site-packages</code> in &lt; 0.5 seconds without compilation toolchains.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-3-3">
+            <p class="prompt">In an automated CI pipeline, why should researchers execute tests against the installed wheel rather than running <code>pytest</code> directly against the source tree?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Testing against the installed wheel validates the complete build and installation lifecycle. It verifies that: (1) <code>pyproject.toml</code> package discovery correctly bundled all sub-packages, (2) non-Python data files (e.g. configuration JSONs) are properly packaged, (3) package entry-point scripts are correctly installed in <code>bin/</code>, and (4) runtime dependencies are fully specified.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p4-4-1">
+            <p class="prompt">Design an automated package audit protocol for evaluating third-party open-source quantitative libraries before admission to a production trading infrastructure.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>An institutional package admission protocol evaluates four pillars: (1) Build &amp; Source Integrity: Verify that published wheels correspond to reproducible git tags with verified cryptographic commit signatures. (2) Static Security Analysis: Scan AST for execution of network calls, subprocesses, or dynamic <code>eval()</code> calls during package import. (3) Dependency Tree Audit: Reject packages with unbounded version ranges or unmaintained transitive dependencies. (4) Licensing: Verify that package license permits commercial distribution without copyleft infection (e.g. Apache 2.0, MIT, BSD).</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-4-2">
+            <p class="prompt">Formulate a mathematical optimization model for resolving multi-package dependency version constraints under semantic versioning rules, framing dependency resolution as a Boolean Satisfiability (SAT) problem.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\mathcal{P}\) be packages, each with available versions \(V(P) = \{v_{P,1}, \dots, v_{P,m}\}\). Define Boolean variable \(x_{P,v} = 1\) if version \(v\) of package \(P\) is selected, 0 otherwise. Formulate SAT clauses: (1) Uniqueness: For each required package \(P\), exactly one version is chosen: \(\bigvee_{v \in V(P)} x_{P,v} \land \bigwedge_{v \ne w} (\neg x_{P,v} \lor \neg x_{P,w})\). (2) Dependency implication: If version \(v\) of \(P\) requires package \(Q\) in range \([v_{\min}, v_{\max}]\), add clause: \(x_{P,v} \implies \bigvee_{u \in V(Q) \cap [v_{\min}, v_{\max}]} x_{Q,u}\). (3) Conflict clauses: If two packages conflict, add mutual exclusion clauses. Modern resolvers (such as <code>pip</code>'s resolvelib or <code>uv</code>) solve this SAT problem using conflict-driven clause learning (CDCL).</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-4-3">
+            <p class="prompt">Evaluate the architectural trade-offs between a monorepo containing multiple quantitative packages versus a multi-repo strategy with independent versioned packages in an institutional hedge fund.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Monorepo advantages: Atomic commits across libraries (e.g. updating a pricing engine interface and its risk consumers simultaneously), unified CI testing, and elimination of version synchronization overhead. Monorepo challenges: Scalability of CI runners, access control granularity, and large repository checkout sizes. Multi-repo advantages: Clear ownership boundaries, independent release cadences, and isolated deployment artifacts. Multi-repo challenges: Diamond dependency conflicts, cross-repository testing lag, and cascading version release coordination overhead.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results"><span class="section-number">7</span>Key Results</h2>
+        <table class="key-results">
+          <thead>
+            <tr>
+              <th scope="col">Result</th>
+              <th scope="col">Grade</th>
+              <th scope="col">Basis / Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Acyclic build dependency graphs admit topological installation orderings without deadlock</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 4.1 proof (topological sort on finite DAGs)</td>
+            </tr>
+            <tr>
+              <td>Modularizing scientific code into installable packages eliminates duplication and enables automated testing</td>
+              <td><span class="grade" data-grade="A">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="Item 4">Wilson et al. (2014, Item 4)</span></td>
+            </tr>
+            <tr>
+              <td>Declaring standardized metadata in pyproject.toml provides machine-verifiable packaging integrity</td>
+              <td><span class="grade" data-grade="C">C</span></td>
+              <td>Lab 1 (pyproject.toml validation evaluation)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS4" data-page="L04" data-cards="cards.json">
+        <h2 id="h-quiz"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What configuration file serves as the modern declarative standard for Python packaging?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q1"> <span><code>pyproject.toml</code></span></label>
+              <label class="option"><input type="radio" name="L04q1"> <span><code>setup.cfg</code></span></label>
+              <label class="option"><input type="radio" name="L04q1"> <span><code>Makefile</code></span></label>
+              <label class="option"><input type="radio" name="L04q1"> <span><code>package.json</code></span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>pyproject.toml</code> is the standardized declarative packaging specification for modern Python.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What table in <code>pyproject.toml</code> specifies the build backend and its requirements?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q2"> <span><code>[build-system]</code></span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span><code>[project.engine]</code></span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span><code>[compiler]</code></span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span><code>[backend]</code></span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The <code>[build-system]</code> table defines the build tools and backend engine (e.g. setuptools.build_meta).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a <code>src</code> layout provide superior protection against false-positive test runs compared to a flat layout?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q3"> <span>It prevents the test runner from importing uninstalled local source files from the working directory</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span>It encrypts the source code</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span>It automatically speeds up code execution</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span>It prevents developers from modifying files</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A src layout forces the test suite to import the installed package rather than loose local directory files.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a Python wheel (<code>.whl</code>)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q4"> <span>A standardized zip archive containing pre-built package files and metadata that installs without compilation</span></label>
+              <label class="option"><input type="radio" name="L04q4"> <span>A circular dependency loop in import statements</span></label>
+              <label class="option"><input type="radio" name="L04q4"> <span>A database index algorithm</span></label>
+              <label class="option"><input type="radio" name="L04q4"> <span>An operating system kernel extension</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A wheel is a built distribution format that unpacks directly into site-packages without invoking build scripts.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does an editable install (<code>pip install -e .</code>) do?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q5"> <span>Creates a development link to the source directory so edits take effect immediately without re-installation</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>Converts all Python files into editable text documents</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>Disables version control in the project</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>Permanently compiles source files into machine code</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Editable installs link development trees directly to the environment's module search path.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which field in the <code>[project]</code> table specifies the minimum supported Python version?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q6"> <span><code>requires-python</code></span></label>
+              <label class="option"><input type="radio" name="L04q6"> <span><code>python-version</code></span></label>
+              <label class="option"><input type="radio" name="L04q6"> <span><code>target-runtime</code></span></label>
+              <label class="option"><input type="radio" name="L04q6"> <span><code>interpreter-min</code></span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The standardized specification uses <code>requires-python = "&gt;=3.14"</code>.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are arbitrary code executions in <code>setup.py</code> deprecated in modern packaging standards?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q7"> <span>Executing arbitrary code during build creates severe security vulnerabilities and non-deterministic build outputs</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span>Python 3.14 removed support for functions in scripts</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span>TOML files run faster than Python scripts</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span>Setup scripts cannot access the internet</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Declarative packaging avoids executing unvetted imperative code during metadata resolution.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What mathematical condition ensures that multi-package build dependencies can be installed without deadlock?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q8"> <span>The build dependency graph must be a directed acyclic graph (DAG)</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>All packages must have equal version numbers</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>The dependency graph must be complete and fully connected</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>Packages must be compiled in alphabetical order</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>An acyclic dependency graph guarantees the existence of a topological installation sort.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="wilson2014best"></li>
+          <li data-cite="wilson2017good"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L03.html"><span class="dir">Previous</span>L03 Property-Based Testing</a>
+        <a class="next" href="L05.html"><span class="dir">Next</span>L05 Dependency Pinning &amp; Lock Files</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS4 · Software Engineering &amp; Reproducible Research · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

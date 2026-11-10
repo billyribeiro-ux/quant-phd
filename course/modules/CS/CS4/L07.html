@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS4" data-page="L07" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L07 · Bit-for-Bit Reproducibility · CS4</title>
+  <meta name="description" content="Lesson 7 of CS4: Bit-for-bit computational reproducibility, binary representation, IEEE 754 floating-point non-associativity, exact rational arithmetic, and canonical serialization. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS4 Software Engineering &amp; Reproducible Research</a><span class="sep">›</span>
+      <span>L07</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS4 · Lesson 7 of 8 · 8 study hours</p>
+        <h1>Bit-for-Bit Reproducibility</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="deterministic-computation" href="L06.html#def-deterministic-computation">deterministic computation</a>, <a class="concept" data-concept="welford-algorithm" href="../../../concepts.html#welford-algorithm">Welford's algorithm</a></li>
+          <li><strong>Introduces:</strong> <dfn id="def-bit-for-bit-reproducibility" data-concept="bit-for-bit-reproducibility">Bit-for-bit reproducibility</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">In quantitative asset management, regulatory compliance and financial audits require mathematical verification: two independent executions of an accounting ledger, risk report, or backtest must produce identical byte streams. Approximate agreement within loose tolerances is insufficient when settling multi-million dollar cash balances or defending research against hostile audits. Achieving bit-for-bit reproducibility requires mastering the exact physics of computation: understanding IEEE 754 floating-point non-associativity, deploying exact rational arithmetic, enforcing canonical data serialization, and eliminating hardware architecture dependencies.</p>
+
+      <h2 id="gold-standard"><span class="section-number">1</span>The Gold Standard of Exact Reproduction</h2>
+      <p>Scientific replication operates across a hierarchy of rigor, ranging from general qualitative agreement to exact computational identity.</p>
+
+      <div class="block definition" id="def-bit-reproducibility">
+        <p class="block-title">Definition 7.1 · Bit-for-Bit Reproducibility</p>
+        <p><dfn>Bit-for-bit reproducibility</dfn> is the condition wherein rerunning a computational pipeline from raw source code and frozen inputs produces output artifacts whose binary representations are byte-identical (matching cryptographic SHA-256 digests exactly) across independent runs and verifiers.</p>
+      </div>
+
+      <p><span class="claim" data-grade="A" data-cite="wilson2017good" data-locator="Software, recommendation 2">Wilson et al. (2017) emphasize that automated computational verification must hold systems to exact reference baselines to prevent cumulative analytical drift.</span> While statistical robustness checks tolerate small empirical variations, the underlying software pipeline itself must be deterministic and verifiable byte-for-byte.</p>
+
+      <h2 id="floating-point-hazards"><span class="section-number">2</span>Floating-Point Arithmetic and Non-Associativity</h2>
+      <p>The primary computational barrier to bit-for-bit reproducibility in numerical algorithms is the algebraic nature of binary floating-point arithmetic.</p>
+
+      <div class="block theorem" id="thm-float-non-associative">
+        <span class="block-title claim" data-grade="T">Theorem 7.1 · Non-Associativity of IEEE 754 Floating-Point Addition</span>
+        <p>In IEEE 754 binary floating-point arithmetic with round-to-nearest rounding mode, addition \(\oplus\) is commutative (\(a \oplus b = b \oplus a\)), but strictly non-associative in general: there exist representable floating-point numbers \(a, b, c \in \mathbb{F}\) such that:</p>
+        \[
+        (a \oplus b) \oplus c \ne a \oplus (b \oplus c)
+        \]
+      </div>
+
+      <div class="block proof">
+        <p class="block-title">Proof</p>
+        <p>We prove non-associativity by explicit construction of a counterexample in standard IEEE 754 double precision (64-bit float, with 53 significand bits, so \(\epsilon_{\text{mach}} = 2^{-52} \approx 2.22 \times 10^{-16}\)). Choose \(a = 10^{16}\), \(b = 1.0\), and \(c = -10^{16}\). First evaluate \((a \oplus b) \oplus c\):</p>
+        \[
+        a \oplus b = 10^{16} \oplus 1.0 = \mathrm{round}(10^{16} + 1.0)
+        \]
+        <p>Because \(10^{16} \approx 2^{53.15}\), the binary representation of \(10^{16}\) requires 54 bits. The least significant bit represents \(2^1 = 2\). The value \(1.0\) lies entirely below the 53-bit significand window and rounds to zero under round-to-nearest. Thus \(a \oplus b = 10^{16}\). Then:</p>
+        \[
+        (a \oplus b) \oplus c = 10^{16} \oplus (-10^{16}) = 0.0
+        \]
+        <p>Now evaluate \(a \oplus (b \oplus c)\) under commutativity as \((a \oplus c) \oplus b\):</p>
+        \[
+        a \oplus c = 10^{16} \oplus (-10^{16}) = 0.0
+        \]
+        \[
+        (a \oplus c) \oplus b = 0.0 \oplus 1.0 = 1.0
+        \]
+        <p>Because \(0.0 \ne 1.0\), the values are distinct in their bit representations (<code>0x0.0p+0</code> versus <code>0x1.0p+0</code>). Hence floating-point addition is non-associative.</p>
+      </div>
+
+      <div class="block remark">
+        <p class="block-title">Remark 7.1 · Order-Dependent Summation in Portfolio Aggregation</p>
+        <p>Because floating-point addition is non-associative, the result of summing an array of numbers depends strictly on summation order. If portfolio return observations are summed in ascending order versus descending order, or accumulated via multi-threaded parallel reductions with dynamic chunk scheduling, the low-order bits of the resulting sum fluctuate. In a long backtest, this floating-point drift cascades through non-linear functions, causing two runs on the same dataset to produce different portfolio weights.</p>
+      </div>
+
+      <h2 id="exact-rational-arithmetic"><span class="section-number">3</span>Exact Rational Arithmetic for Audit Trails</h2>
+      <p>To eliminate floating-point non-associativity in audit logs and financial benchmarks, quantitative engineering deploys exact rational arithmetic.</p>
+
+      <div class="block definition" id="def-fraction-arithmetic">
+        <p class="block-title">Definition 7.2 · Exact Rational Field Arithmetic</p>
+        <p>The field of rational numbers \(\mathbb{Q} = \{p / q : p \in \mathbb{Z}, q \in \mathbb{Z} \setminus \{0\}, \gcd(p, q) = 1\}\) implemented via Python's <code>fractions.Fraction</code> evaluates addition, subtraction, multiplication, and division using arbitrary-precision coprime integers. Because \(\mathbb{Q}\) satisfies the field axioms, addition and multiplication are strictly associative, commutative, and distributive, guaranteeing that summation order has zero impact on the resulting value.</p>
+      </div>
+
+      <div class="block example" id="ex-fraction-invariance">
+        <p class="block-title">Example 7.1 · Order Invariance of Fraction Sums</p>
+        <p>Re-evaluating the counterexample from Theorem 7.1 using <code>Fraction</code>:</p>
+        \[
+        a = \mathrm{Fraction}(10^{16}, 1), \quad b = \mathrm{Fraction}(1, 1), \quad c = \mathrm{Fraction}(-10^{16}, 1)
+        \]
+        <p>Evaluating forward: \((a + b) + c = \mathrm{Fraction}(10^{16} + 1, 1) + \mathrm{Fraction}(-10^{16}, 1) = \mathrm{Fraction}(1, 1)\). Evaluating reverse: \(a + (b + c) = \mathrm{Fraction}(10^{16}, 1) + \mathrm{Fraction}(1 - 10^{16}, 1) = \mathrm{Fraction}(1, 1)\). Both evaluations yield identical coprime integer representations (numerator 1, denominator 1) byte-for-byte.</p>
+      </div>
+
+      <section class="lab" id="lab-CS4-L07-1" data-runtime="python">
+        <h3>Lab 1 · Bit-for-Bit Reproducibility and Floating-Point Non-Associativity</h3>
+        <p class="hypothesis">Evaluates floating-point accumulation order versus exact rational arithmetic. Demonstrates that summing a fixed set of floating-point values in forward versus reverse order produces distinct bit patterns (float.hex), whereas exact Fraction sums are identical independent of summation order.</p>
+        <pre><code class="language-python" data-run>"""CS4 Lesson 7 Inline Lab 1: Bit-for-bit reproducibility and floating-point non-associativity.
+
+Demonstrates that IEEE 754 binary floating-point addition is non-associative: summing the
+identical set of numbers in different summation orders produces distinct bit representations.
+Compares floating-point accumulation against exact rational arithmetic using fractions.Fraction,
+proving that rational summation is strictly commutative and associative, yielding bit-for-bit
+identical output independent of summation order.
+"""
+
+from __future__ import annotations
+
+from fractions import Fraction
+
+
+def sum_floats(values: list[float]) -&gt; float:
+    """Accumulate floating-point numbers in specified list order."""
+    total = 0.0
+    for v in values:
+        total += v
+    return total
+
+
+def sum_fractions(values: list[Fraction]) -&gt; Fraction:
+    """Accumulate exact rational numbers in specified list order."""
+    total = Fraction(0, 1)
+    for v in values:
+        total += v
+    return total
+
+
+def main() -&gt; None:
+    print("Bit-for-bit reproducibility and numerical representation evaluation:")
+
+    # Four floating-point values where magnitude differences expose non-associativity
+    # 1e16 + 1.0 loses the 1.0 in float64 precision, but 1.0 + -1.0 cancels exactly
+    float_forward = [1e16, 1.0, -1e16, 1e-16]
+    float_reverse = list(reversed(float_forward))
+
+    sum_fwd = sum_floats(float_forward)
+    sum_rev = sum_floats(float_reverse)
+
+    print(f"Float forward values: {float_forward}")
+    print(f"Float forward sum:    {sum_fwd} (hex: {sum_fwd.hex()})")
+    print(f"Float reverse sum:    {sum_rev} (hex: {sum_rev.hex()})")
+    floats_identical = sum_fwd.hex() == sum_rev.hex()
+    print(f"Floating-point bit-for-bit equality: {floats_identical}")
+
+    # Exact rational equivalents: 10^16, 1, -10^16, 10^-16
+    frac_forward = [
+        Fraction(10**16, 1),
+        Fraction(1, 1),
+        Fraction(-(10**16), 1),
+        Fraction(1, 10**16),
+    ]
+    frac_reverse = list(reversed(frac_forward))
+
+    sum_frac_fwd = sum_fractions(frac_forward)
+    sum_frac_rev = sum_fractions(frac_reverse)
+
+    print(f"\nExact Fraction forward sum: {sum_frac_fwd}")
+    print(f"Exact Fraction reverse sum: {sum_frac_rev}")
+    fracs_identical = sum_frac_fwd == sum_frac_rev
+    print(f"Fraction bit-for-bit equality: {fracs_identical}")
+
+    print("\nConclusion: Exact rational arithmetic guarantees order-invariant bit reproducibility.")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Bit-for-bit reproducibility and numerical representation evaluation:
+Float forward values: [1e+16, 1.0, -1e+16, 1e-16]
+Float forward sum:    1e-16 (hex: 0x1.cd2b297d889bcp-54)
+Float reverse sum:    0.0 (hex: 0x0.0p+0)
+Floating-point bit-for-bit equality: False
+
+Exact Fraction forward sum: 10000000000000001/10000000000000000
+Exact Fraction reverse sum: 10000000000000001/10000000000000000
+Fraction bit-for-bit equality: True
+
+Conclusion: Exact rational arithmetic guarantees order-invariant bit reproducibility.</pre>
+        <p class="interpretation">The lab confirms the physical mechanism of floating-point bit divergence. In float64, forward summation yields 0x1.cd2b297d889bcp-54 while reverse summation yields 0x0.0p+0. Replacing floats with exact Fraction arithmetic produces identical irreducible rational values (10000000000000001/10000000000000000) in both directions.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">4</span>Where the Canon Breaks</h2>
+      <p>A frequent assertion in quantitative computing is that executing identical Python source code inside identical Docker containers guarantees bit-for-bit identical floating-point results across all host computers. This premise fails across different CPU architectures. Even within x86_64, differences in microarchitectural support for Fused Multiply-Add (FMA3/FMA4) instructions alter floating-point rounding. On an Intel Skylake host, a dot product compiles to hardware FMA instructions that perform \(a \cdot b + c\) with a single final rounding step; on an older host without FMA, the CPU performs separate multiplication and addition, rounding twice. The resulting floats differ in their lowest mantissa bits. Bit-for-bit guarantees across heterogeneous hardware require exact rational representations, integer fixed-point math, or software-emulated soft-float libraries.</p>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Floating-point numbers that round to the same value on screen are bit-for-bit identical.</p>
+            <p class="right">Standard decimal printing truncates low-order bits. Two floating-point numbers can print identically as <code>0.12345678</code> while possessing distinct hexadecimal representations (<code>float.hex()</code>) that diverge when serialized or hashed.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Bit-for-bit reproducibility across all machines can be achieved using native Python floats.</p>
+            <p class="right">Hardware CPU differences (such as FMA contraction, SSE vs AVX vectorization, and platform math libraries) introduce 1-ULP differences across host architectures. True bit-for-bit portability requires exact rational, integer, or fixed-point arithmetic.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Docker containerization eliminates all sources of numerical divergence between different computers.</p>
+            <p class="right">Docker containerizes the user-space filesystem and operating system libraries, but container processes execute directly on the host CPU hardware. Host CPU instruction set differences pass straight into the container.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems"><span class="section-number">6</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p7-1-1">
+            <p class="prompt">Calculate the hexadecimal representation (<code>float.hex()</code>) of the floating-point number \(1.0\) and \(0.5\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In IEEE 754 double precision: (1) \(1.0 = 1.0 \times 2^0\), represented in C99 hex format as <code>"0x1.0000000000000p+0"</code>. (2) \(0.5 = 1.0 \times 2^{-1}\), represented as <code>"0x1.0000000000000p-1"</code>.</p>
+            </details>
+          </div>
+          <div class="problem" id="p7-1-2">
+            <p class="prompt">Evaluate the exact rational sum \(\frac{1}{3} + \frac{1}{6} + \frac{1}{10}\) using <code>fractions.Fraction</code>. Express the result as an irreducible fraction.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Find the least common multiple of denominators 3, 6, 10, which is 30. (1) \(\frac{1}{3} = \frac{10}{30}\). (2) \(\frac{1}{6} = \frac{5}{30}\). (3) \(\frac{1}{10} = \frac{3}{30}\). Summing: \(\frac{10 + 5 + 3}{30} = \frac{18}{30}\). Dividing numerator and denominator by \(\gcd(18, 30) = 6\) yields irreducible fraction \(\frac{3}{5}\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p7-1-3">
+            <p class="prompt">In a financial ledger, why is storing currency balances as integer cents (or micro-dollars) preferred over storing float dollars?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Floating-point numbers cannot represent base-10 fractional decimals like <code>0.10</code> or <code>0.01</code> exactly in base-2 binary, causing repeating binary fractions and rounding drift. Integer fixed-point math (e.g. cents as integer <code>100</code>) operates strictly over \(\mathbb{Z}\), which is closed under addition, subtraction, and multiplication, guaranteeing exact debit-credit articulation without rounding leakage.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p7-2-1">
+            <p class="prompt">Prove that the decimal fraction \(0.1\) cannot be represented as a finite binary floating-point number in any finite base-2 format.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A rational number \(p / q\) in reduced form has a finite expansion in base \(b\) if and only if every prime factor of denominator \(q\) divides base \(b\). Here, the value is \(0.1 = 1 / 10\). The denominator is \(10 = 2 \times 5\). The base of binary arithmetic is \(b = 2\). The prime factor 5 does not divide 2. Therefore, \(1 / 10\) cannot be expressed as a terminating binary fraction; it yields the infinitely repeating binary sequence \(0.0001100110011\dots_2\). In any finite binary format, truncating or rounding this repeating expansion introduces representation error.</p>
+            </details>
+          </div>
+          <div class="problem" id="p7-2-2">
+            <p class="prompt">Prove that Welford's algorithm for online variance accumulation achieves greater numerical stability than the naive textbook formula \(\sum x^2 - (\sum x)^2 / n\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let observations have large mean \(\mu\) and small variance \(\sigma^2\) with \(\mu \gg \sigma\). The naive formula computes \(S_2 = \sum x_i^2 \approx n \mu^2 + n \sigma^2\) and \((\sum x_i)^2 / n \approx n \mu^2\). Both terms are of magnitude \(O(n \mu^2)\). Subtracting these two nearly equal large floating-point numbers causes catastrophic cancellation, losing up to \(2 \log_{10}(\mu / \sigma)\) digits of precision in the mantissa. Welford's algorithm accumulates deviations \(M_{2,k} = M_{2,k-1} + (x_k - \bar{x}_{k-1})(x_k - \bar{x}_k)\). Here, each update term is directly of magnitude \(O(\sigma^2)\), completely avoiding the subtraction of large squared quantities and preserving all 53 bits of precision.</p>
+            </details>
+          </div>
+          <div class="problem" id="p7-2-3">
+            <p class="prompt">Prove that sorting an array of positive floating-point numbers in ascending order prior to summation minimizes upper bounds on floating-point accumulation error.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let positive floats be \(0 < x_1 \le x_2 \le \dots \le x_n\). When summing iteratively \(s_k = s_{k-1} \oplus x_k\), each intermediate addition introduces a relative error bounded by \(\epsilon_{\text{mach}}\): \(s_k = (s_{k-1} + x_k)(1 + \delta_k)\) with \(|\delta_k| \le \epsilon_{\text{mach}}\). Expanding terms shows that early inputs are compounded through \(n - i + 1\) error factors: the total error bound is approximately \(\epsilon_{\text{mach}} \sum_{i=1}^n (n - i + 1) x_i\). To minimize this linear combination of positive coefficients \((n, n - 1, \dots, 2, 1)\), the smallest numbers \(x_i\) must be paired with the largest compounding multipliers \(n - i + 1\). This requires ordering \(x_1 \le x_2 \le \dots \le x_n\) in ascending order.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p7-3-1">
+            <p class="prompt">A quantitative backtest script executed on an AWS Graviton (ARM64) instance produces a final portfolio return differing by $4.20 from an identical run on an AMD EPYC (x86_64) instance. Both runs executed within the identical Docker container image. Diagnose the cause.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The discrepancy is caused by microarchitectural instruction differences. ARM64 processors support native fused multiply-add (FMA) instructions by default, evaluating \(a \cdot b + c\) with a single rounding step at the end. Older x86_64 CPU paths or different C runtime math libraries evaluate separate multiplication and addition operations, rounding twice. Over a 10-year simulation of millions of compounding matrix multiplications, these 1-ULP differences accumulate into a observable $4.20 discrepancy.</p>
+            </details>
+          </div>
+          <div class="problem" id="p7-3-2">
+            <p class="prompt">An audit team requires verification that a financial risk report reproduces bit-for-bit across five auditor machines. Propose three concrete serialization rules to ensure the resulting report file matches SHA-256 digests.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Three serialization rules: (1) Format: Use JSON serialized via <code>json.dumps(obj, sort_keys=True, indent=2, ensure_ascii=True)</code> with a trailing Unix newline <code>\n</code>. (2) Numerical Values: Convert all exact rational calculations to reduced fraction strings (e.g. <code>"7/3"</code>) or exact integer cents, avoiding float decimal approximations. (3) Metadata: Strip all runtime metadata (system hostname, process ID, unseeded timestamps), ensuring that every byte in the file is a pure function of input parameters.</p>
+            </details>
+          </div>
+          <div class="problem" id="p7-3-3">
+            <p class="prompt">In an autograded homework assignment, a student formats floating-point values using Python's <code>f"{val:.6f}"</code>. Why does this create edge-case grading failures for numbers ending in exact ties like <code>0.1250005</code>?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Python's <code>f-string</code> formatting and built-in <code>round()</code> use round-half-to-even (banker's rounding). For exact ties, the value rounds to the nearest even last digit. However, because binary floats cannot represent decimal 0.0000005 exactly, the internal binary representation is either slightly above or slightly below the exact tie. A calculation that produces <code>0.12500050000000001</code> rounds up, while an order-reversed calculation that produces <code>0.12500049999999999</code> rounds down, resulting in different formatted strings.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p7-4-1">
+            <p class="prompt">Design an exact arithmetic settlement engine for a central clearing counterparty (CCP) processing multi-currency interest rate swaps, guaranteeing zero rounding leakage across millions of daily margin calls.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>An exact settlement engine utilizes arbitrary-precision rational arithmetic: (1) Value Representation: All cash flows, discount factors, and accrual fractions are represented as exact rational numbers \(\frac{p}{q} \in \mathbb{Q}\). (2) Netting: Cash netting operations perform rational addition and subtraction over \(\mathbb{Q}\), which satisfies field axioms with zero representation loss. (3) Discretization &amp; Rounding: Rounding to currency minimum increment units (e.g. cents) is performed only once at final cash delivery using Banker's round-half-to-even with exact integer tie-breaking. (4) Remainder Articulation: Rounding residuals \(\Delta = q_{\text{exact}} - q_{\text{settled}}\) are credited to a designated clearinghouse rounding accumulator, ensuring exact balance sheet conservation.</p>
+            </details>
+          </div>
+          <div class="problem" id="p7-4-2">
+            <p class="prompt">Evaluate the feasibility of compiling quantitative research models to WebAssembly (Wasm) to enforce cross-platform bit-for-bit floating-point determinism across heterogeneous operating systems.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>WebAssembly provides an abstracted virtual instruction set architecture with strict IEEE 754 compliance rules: Wasm specifies standard 32-bit and 64-bit floating-point semantics, NaN payload bit representations, and prevents non-deterministic FMA contraction unless explicitly opted into via relaxed-simd proposals. Compiling research models to Wasm (via Pyodide or Rust/C++ wasm targets) eliminates host CPU microarchitecture differences, ensuring that floating-point operations produce identical binary outputs on macOS, Linux, and Windows browsers alike.</p>
+            </details>
+          </div>
+          <div class="problem" id="p7-4-3">
+            <p class="prompt">Formulate a mathematical proof establishing that no finite-precision floating-point system can simultaneously satisfy strict associativity, monotonicity, and exact round-trip conversion for all real numbers.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\mathbb{F}\) be a finite subset of \(\mathbb{R}\) with cardinality \(|\mathbb{F}| = K < \infty\). Let \(\mathrm{fl}: \mathbb{R} \to \mathbb{F}\) be a projection operator. Because \(\mathbb{R}\) is uncountable and \(\mathbb{F}\) is finite, by the Pigeonhole Principle there exist uncountably many reals mapped to identical representable floats. Consider spacing between representable floats: let \(x_1 < x_2\) be consecutive elements of \(\mathbb{F}\), with gap \(\Delta = x_2 - x_1 > 0\). For any \(\delta < \Delta / 2\), \(\mathrm{fl}(x_1 + \delta) = x_1\). Consider \(a = x_1\), \(b = \Delta / 3\), \(c = \Delta / 3\). In exact arithmetic, \(b + c = 2\Delta / 3 > \Delta / 2\). Then \(\mathrm{fl}(a + \mathrm{fl}(b + c)) = \mathrm{fl}(x_1 + \Delta) = x_2\). Conversely, \(\mathrm{fl}(\mathrm{fl}(a + b) + c) = \mathrm{fl}(x_1 + c) = \mathrm{fl}(x_1 + \Delta / 3) = x_1\). Because \(x_1 \ne x_2\), associativity \((a \oplus b) \oplus c = a \oplus (b \oplus c)\) fails. Finite precision fundamentally breaks continuous algebraic field axioms.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results"><span class="section-number">7</span>Key Results</h2>
+        <table class="key-results">
+          <thead>
+            <tr>
+              <th scope="col">Result</th>
+              <th scope="col">Grade</th>
+              <th scope="col">Basis / Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>IEEE 754 binary floating-point addition is non-associative</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 7.1 proof (explicit counterexample evaluation)</td>
+            </tr>
+            <tr>
+              <td>Automated computational verification requires exact reference baselines to prevent drift</td>
+              <td><span class="grade" data-grade="A">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="wilson2017good" data-locator="Software, recommendation 2">Wilson et al. (2017, Software recommendation 2)</span></td>
+            </tr>
+            <tr>
+              <td>Exact Fraction arithmetic achieves bit-for-bit order-invariant summation while float hex diverges</td>
+              <td><span class="grade" data-grade="C">C</span></td>
+              <td>Lab 1 (floating-point non-associativity vs Fraction evaluation)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS4" data-page="L07" data-cards="cards.json">
+        <h2 id="h-quiz"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is bit-for-bit reproducibility?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q1"> <span>Output artifacts match the baseline byte-for-byte with identical cryptographic SHA-256 digests</span></label>
+              <label class="option"><input type="radio" name="L07q1"> <span>Numbers match within 5 percent tolerance</span></label>
+              <label class="option"><input type="radio" name="L07q1"> <span>Code runs without throwing an out-of-memory error</span></label>
+              <label class="option"><input type="radio" name="L07q1"> <span>Charts look visually similar on screen</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Bit-for-bit reproducibility demands exact byte-level identity across runs.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is floating-point addition non-associative?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q2"> <span>Intermediate rounding to finite mantissa precision depends on the magnitudes of terms being added</span></label>
+              <label class="option"><input type="radio" name="L07q2"> <span>Computer processors execute instructions in reverse order</span></label>
+              <label class="option"><input type="radio" name="L07q2"> <span>Python disables associativity for performance</span></label>
+              <label class="option"><input type="radio" name="L07q2"> <span>Floating-point numbers can only be added twice</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Rounding after each addition means (a + b) + c rounds intermediate values differently than a + (b + c).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does exact rational arithmetic (<code>fractions.Fraction</code>) achieve order-invariant summation?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q3"> <span>It represents numbers as arbitrary-precision coprime integers, satisfying exact field axioms without rounding</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span>It converts all numbers to 32-bit floats</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span>It sorts all inputs automatically</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span>It uses GPU matrix acceleration</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Fraction operates over \(\mathbb{Q}\), which is an exact algebraic field with associative addition.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why can decimal 0.1 not be represented exactly in binary floating-point?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q4"> <span>Denominator 10 has prime factor 5, which does not divide base 2, creating an infinitely repeating binary fraction</span></label>
+              <label class="option"><input type="radio" name="L07q4"> <span>0.1 is an irrational number</span></label>
+              <label class="option"><input type="radio" name="L07q4"> <span>Python does not support decimals</span></label>
+              <label class="option"><input type="radio" name="L07q4"> <span>IEEE 754 only represents integers</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Fraction 1/10 repeats infinitely in binary \(0.000110011\dots_2\), requiring rounding in finite bits.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does <code>float.hex()</code> display?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q5"> <span>The exact binary floating-point representation in C99 hexadecimal format</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span>An encrypted hash of the float</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span>The memory address where the float is stored</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span>The execution time in hexadecimal seconds</span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>float.hex()</code> gives the exact, unrounded hexadecimal significand and binary exponent.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does running inside a Docker container fail to guarantee cross-CPU floating-point parity?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q6"> <span>Containers run directly on the host CPU, so host microarchitecture differences (e.g. FMA) still affect rounding</span></label>
+              <label class="option"><input type="radio" name="L07q6"> <span>Docker modifies floating-point numbers during network transfer</span></label>
+              <label class="option"><input type="radio" name="L07q6"> <span>Containers cannot run Python code</span></label>
+              <label class="option"><input type="radio" name="L07q6"> <span>Docker forces 16-bit floating-point math</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Host CPU instructions (such as Fused Multiply-Add) execute natively, bypassing container abstraction.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is Welford's algorithm numerically superior to the textbook variance formula?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q7"> <span>It updates squared deviations incrementally, avoiding catastrophic cancellation from subtracting large squared sums</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span>It runs ten times faster</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span>It converts all floats to integers</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span>It calculates variance without division</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Welford's algorithm accumulates small deviation updates directly, avoiding loss of precision.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the canonical format for storing reproducible financial report outputs?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q8"> <span>JSON with sorted keys, exact rational/integer values, and stripped system metadata</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span>Raw binary memory dumps</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span>Unsorted CSV files with floating-point decimals</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span>Proprietary binary spreadsheet files</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Canonical JSON with sorted keys and rational strings provides deterministic, platform-independent serialization.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="wilson2014best"></li>
+          <li data-cite="wilson2017good"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L06.html"><span class="dir">Previous</span>L06 Deterministic Computation</a>
+        <a class="next" href="L08.html"><span class="dir">Next</span>L08 Continuous Integration</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS4 · Software Engineering &amp; Reproducible Research · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>
