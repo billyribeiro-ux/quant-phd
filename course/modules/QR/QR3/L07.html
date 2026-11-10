@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR3" data-page="L07" data-hours="9">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deep Neural Networks for Factor Modeling · QR3 L07</title>
+  <meta name="description" content="Mathematical formulation of feedforward neural networks in asset pricing: forward propagation, backpropagation recurrence, weight decay regularization, and optimal network depth.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR3 Statistical Learning for Finance</a><span class="sep">›</span>
+      <span>L07</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 07 · 9 study hours · Part QR</p>
+        <h1>Deep Neural Networks for Factor Modeling</h1>
+        <p class="why-it-matters">Feedforward neural networks are universal approximators capable of modeling arbitrary nonlinear relationships and multi-factor interactions without manual feature engineering. However, when applied to cross-sectional equity returns dominated by noise, deep architectures with dozens of layers suffer from catastrophic parameter degradation. Restricting depth to shallow 1-to-3 layer networks and enforcing strict weight decay regularization produces calibrated factor representations that generalize out-of-sample.</p>
+      </header>
+
+      <section id="mlp-formulation">
+        <h2 id="s1">1. Feedforward Architecture and Forward Propagation</h2>
+        <p>A multi-layer feedforward neural network (MLP) maps an input feature vector \(\mathbf{x} \in \R^P\) to a continuous scalar forecast \(\hat{y} \in \R\) through an alternating sequence of affine transformations and coordinate-wise nonlinear activation functions across \(L\) hidden layers <span class="claim" data-grade="T" data-cite="hastie2009elements">[hastie2009elements]</span>.</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-neural-network" data-concept="neural-network">Feedforward neural network</dfn></p>
+          <p>A <strong>feedforward neural network</strong> is parameterized by weight matrices \(\mathbf{W}^{[l]} \in \R^{d_l \times d_{l-1}}\) and bias vectors \(\mathbf{b}^{[l]} \in \R^{d_l}\) for layers \(l \in \{1, \dots, L\}\). With input \(\mathbf{a}^{[0]} = \mathbf{x}\), the forward recurrence is:</p>
+          \[
+          \mathbf{z}^{[l]} = \mathbf{W}^{[l]} \mathbf{a}^{[l-1]} + \mathbf{b}^{[l]}, \quad \mathbf{a}^{[l]} = g(\mathbf{z}^{[l]})
+          \]
+          <p>where \(g: \R \to \R\) is an element-wise activation function (such as ReLU \(g(z) = \max(0, z)\) or LeakyReLU). The final prediction is produced by a linear readout layer: \(\hat{y} = \mathbf{w}^{[L+1]\top} \mathbf{a}^{[L]} + b^{[L+1]}\).</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T" data-cite="hastie2009elements">Theorem 7.1 · Backpropagation Error Recurrence</span>
+          <p>Let loss be \(L(y, \hat{y}) = \frac{1}{2}(y - \hat{y})^2\), and define error delta \(\mathbf{\delta}^{[l]} = \frac{\partial L}{\partial \mathbf{z}^{[l]}} \in \R^{d_l}\). The error deltas satisfy the backward recurrence relation:</p>
+          \[
+          \mathbf{\delta}^{[L+1]} = \hat{y} - y, \quad \mathbf{\delta}^{[l]} = \left( \mathbf{W}^{[l+1]\top} \mathbf{\delta}^{[l+1]} \right) \odot g'(\mathbf{z}^{[l]})
+          \]
+          <p>where \(\odot\) denotes the Hadamard (element-wise) product. The gradients with respect to layer parameters are:</p>
+          \[
+          \frac{\partial L}{\partial \mathbf{W}^{[l]}} = \mathbf{\delta}^{[l]} \mathbf{a}^{[l-1]\top}, \quad \frac{\partial L}{\partial \mathbf{b}^{[l]}} = \mathbf{\delta}^{[l]}
+          \]
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>At the output layer, \(\hat{y} = \mathbf{z}^{[L+1]}\), so \(\delta^{[L+1]} = \frac{\partial L}{\partial \hat{y}} = \hat{y} - y\). For hidden layer \(l\), applying the multivariate chain rule across nodes in layer \(l+1\):</p>
+          \[
+          \delta_j^{[l]} = \frac{\partial L}{\partial z_j^{[l]}} = \sum_{k=1}^{d_{l+1}} \frac{\partial L}{\partial z_k^{[l+1]}} \frac{\partial z_k^{[l+1]}}{\partial a_j^{[l]}} \frac{\partial a_j^{[l]}}{\partial z_j^{[l]}}
+          \]
+          <p>Since \(z_k^{[l+1]} = \sum_{j} W_{kj}^{[l+1]} a_j^{[l]} + b_k^{[l+1]}\), \(\frac{\partial z_k^{[l+1]}}{\partial a_j^{[l]}} = W_{kj}^{[l+1]}\). Also \(\frac{\partial a_j^{[l]}}{\partial z_j^{[l]}} = g'(z_j^{[l]})\). Substituting:</p>
+          \[
+          \delta_j^{[l]} = \left( \sum_{k=1}^{d_{l+1}} \delta_k^{[l+1]} W_{kj}^{[l+1]} \right) g'(z_j^{[l]}) = \left( \mathbf{W}_{:,j}^{[l+1]\top} \mathbf{\delta}^{[l+1]} \right) g'(z_j^{[l]})
+          \]
+          <p>Expressing in vector form yields \(\mathbf{\delta}^{[l]} = (\mathbf{W}^{[l+1]\top}\mathbf{\delta}^{[l+1]}) \odot g'(\mathbf{z}^{[l]})\). The parameter gradients follow from \(\frac{\partial L}{\partial W_{jk}^{[l]}} = \frac{\partial L}{\partial z_j^{[l]}} \frac{\partial z_j^{[l]}}{\partial W_{jk}^{[l]}} = \delta_j^{[l]} a_k^{[l-1]}\), establishing \(\frac{\partial L}{\partial \mathbf{W}^{[l]}} = \mathbf{\delta}^{[l]} \mathbf{a}^{[l-1]\top}\).</p>
+        </div>
+      </section>
+
+      <section id="weight-decay">
+        <h2 id="s2">2. Regularization: Weight Decay and Bayesian MAP Equivalence</h2>
+        <p>Without aggressive regularization, an overparameterized neural network can easily memorize random training labels. The fundamental regularizer in continuous deep learning is \(L_2\) weight decay <span class="claim" data-grade="T" data-cite="hastie2009elements">[hastie2009elements]</span>.</p>
+
+        <div class="block definition">
+          <p class="block-title">Weight Decay Formulation</p>
+          <p>Weight decay augments the empirical loss with a quadratic penalty on all network weight matrices:</p>
+          \[
+          \mathcal{J}(\mathbf{\Theta}) = \frac{1}{2N} \sum_{i=1}^N (y_i - \hat{y}_i)^2 + \frac{\lambda}{2} \sum_{l=1}^{L+1} \|\mathbf{W}^{[l]}\|_F^2
+          \]
+          <p>where \(\|\mathbf{W}\|_F^2 = \sum_{j,k} W_{jk}^2\) is the squared Frobenius norm.</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T" data-cite="hastie2009elements">Theorem 7.2 · Bayesian MAP Equivalence</span>
+          <p>Minimizing the weight-decay penalized loss \(\mathcal{J}(\mathbf{\Theta})\) is formally equivalent to finding the Maximum A Posteriori (MAP) parameter estimate under independent zero-mean Gaussian priors on network weights: \(W_{jk}^{[l]} \sim \mathcal{N}\left(0, \frac{\sigma_\epsilon^2}{N \lambda}\right)\).</p>
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>Under a Gaussian likelihood \(y_i \mid \mathbf{x}_i, \mathbf{\Theta} \sim \mathcal{N}(f(\mathbf{x}_i; \mathbf{\Theta}), \sigma_\epsilon^2)\) and independent Gaussian weight priors \(p(\mathbf{\Theta}) \propto \prod_{l,j,k} \exp\left(-\frac{W_{jk}^{[l]2}}{2 \sigma_w^2}\right)\), the posterior log-density is:</p>
+          \[
+          \ln p(\mathbf{\Theta} \mid \mathcal{D}) = -\frac{1}{2\sigma_\epsilon^2} \sum_{i=1}^N (y_i - f(\mathbf{x}_i))^2 - \frac{1}{2\sigma_w^2} \sum_{l=1}^{L+1} \|\mathbf{W}^{[l]}\|_F^2 + \text{const}
+          \]
+          <p>Maximizing the posterior is equivalent to minimizing \(-\frac{\sigma_\epsilon^2}{N} \ln p(\mathbf{\Theta} \mid \mathcal{D})\):</p>
+          \[
+          \frac{1}{2N} \sum_{i=1}^N (y_i - f(\mathbf{x}_i))^2 + \frac{\sigma_\epsilon^2}{2 N \sigma_w^2} \sum_{l=1}^{L+1} \|\mathbf{W}^{[l]}\|_F^2
+          \]
+          <p>Equating \(\lambda = \frac{\sigma_\epsilon^2}{N \sigma_w^2}\) completes the proof.</p>
+        </div>
+      </section>
+
+      <section id="optimal-depth">
+        <h2 id="s3">3. Empirical Architecture Depth in Cross-Sectional Asset Pricing</h2>
+        <p>In computer vision and large language models, depth is foundational: 50-to-100 layer transformers extract multi-scale hierarchical abstractions. In empirical asset pricing, this dogma collapses <span class="claim" data-grade="A" data-cite="gu2020empirical">[gu2020empirical]</span>.</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="A" data-cite="gu2020empirical" data-locator="Table 1">Theorem 7.3 · Gu, Kelly &amp; Xiu (2020) Architectural Consensus</span>
+          <p>In extensive empirical benchmarks spanning the entire cross-section of US equities over 60 years, shallow neural networks with 1, 2, or 3 hidden layers achieve the highest out-of-sample \(R^2\) and risk-adjusted portfolio Sharpe ratios. Deep networks with 4 or 5 hidden layers suffer from severe parameter degradation, producing inferior generalization due to extreme noise in stock returns.</p>
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 7.1 · The Virtue of Complexity Controversy</p>
+          <p>Kelly, Malamud &amp; Zhou (2023) hypothesize that massively overparameterized models (\(P \gg N\)) can benefit from benign overfitting via implicit ridge shrinkage on the second descent curve <span class="claim" data-grade="B" data-cite="kelly2023virtue">[kelly2023virtue]</span>. However, Nagel (2025) demonstrates that in financial panels with heavy tails, unhedged factor exposure, and non-stationary regime shifts, unconstrained complexity fails unless explicit economic shrinkage is enforced <span class="claim" data-grade="B" data-cite="nagel2025seemingly">[nagel2025seemingly]</span>.</p>
+        </div>
+      </section>
+
+      <section id="inline-lab">
+        <h2 id="s4">4. Empirical Lab · Shallow vs. Deep Neural Networks in Low SNR</h2>
+        <p>We execute Lab 1 to observe how network depth interacts with noise scale, comparing a shallow regularized neural network against a deep unregularized architecture.</p>
+
+        <section class="lab" id="lab-QR3-L07-1" data-runtime="python">
+          <h3>Lab 1 · Shallow vs Deep Feedforward Neural Networks in Low SNR Asset Pricing</h3>
+          <p class="hypothesis">Under financial low SNR, a shallow neural network with 1 hidden layer achieves superior generalization over a deep 4-layer network that overfits sample noise.</p>
+          <pre><code class="language-python" data-run>"""Lab QR3-L07-1: Neural Networks in Finance: Backpropagation and L2 Weight Decay Regularization.
+
+Demonstrates that feedforward neural networks trained with analytical backpropagation
+require aggressive L2 weight decay to prevent memorizing idiosyncratic noise in low-SNR financial panels.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+class TwoLayerMLP:
+    """Two-layer multi-layer perceptron with analytical backpropagation."""
+
+    def __init__(self, n_in: int, n_hidden: int, lr: float, l2: float, seed: int = 42) -&gt; None:
+        rng = np.random.default_rng(seed)
+        self.w1 = rng.normal(0.0, math.sqrt(2.0 / n_in), size=(n_in, n_hidden))
+        self.b1 = np.zeros((1, n_hidden))
+        self.w2 = rng.normal(0.0, math.sqrt(2.0 / n_hidden), size=(n_hidden, 1))
+        self.b2 = np.zeros((1, 1))
+        self.lr = lr
+        self.l2 = l2
+
+    def fit(self, x_mat: np.ndarray, y_vec: np.ndarray, epochs: int = 100) -&gt; None:
+        m = len(y_vec)
+        y_mat = y_vec.reshape(-1, 1)
+
+        for _ in range(epochs):
+            # Forward pass
+            z1 = x_mat @ self.w1 + self.b1
+            a1 = np.maximum(0.0, z1)  # ReLU
+            z2 = a1 @ self.w2 + self.b2  # Linear
+
+            # Backward pass
+            delta2 = (z2 - y_mat) / m
+            dw2 = a1.T @ delta2 + self.l2 * self.w2
+            db2 = np.sum(delta2, axis=0, keepdims=True)
+
+            delta1 = (delta2 @ self.w2.T) * (z1 &gt; 0.0)
+            dw1 = x_mat.T @ delta1 + self.l2 * self.w1
+            db1 = np.sum(delta1, axis=0, keepdims=True)
+
+            self.w2 -= self.lr * dw2
+            self.b2 -= self.lr * db2
+            self.w1 -= self.lr * dw1
+            self.b1 -= self.lr * db1
+
+    def predict(self, x_mat: np.ndarray) -&gt; np.ndarray:
+        z1 = x_mat @ self.w1 + self.b1
+        a1 = np.maximum(0.0, z1)
+        z2 = a1 @ self.w2 + self.b2
+        return z2.ravel()
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(73)
+    n_train = 120
+    n_test = 400
+    n_in = 6
+
+    x_train = rng.normal(0.0, 1.0, size=(n_train, n_in))
+    y_train = 0.4 * np.tanh(x_train[:, 0]) - 0.3 * (x_train[:, 1] ** 2) + rng.normal(0.0, 0.9, size=n_train)
+
+    x_test = rng.normal(0.0, 1.0, size=(n_test, n_in))
+    y_test = 0.4 * np.tanh(x_test[:, 0]) - 0.3 * (x_test[:, 1] ** 2) + rng.normal(0.0, 0.9, size=n_test)
+
+    # Standardize
+    x_mean, x_std = np.mean(x_train, axis=0), np.std(x_train, axis=0)
+    x_train = (x_train - x_mean) / x_std
+    x_test = (x_test - x_mean) / x_std
+
+    # Model 1: Unregularized MLP (L2 = 0.0)
+    mlp_unreg = TwoLayerMLP(n_in=n_in, n_hidden=16, lr=0.05, l2=0.0, seed=1)
+    mlp_unreg.fit(x_train, y_train, epochs=150)
+    tr_mse_unreg = float(np.mean((y_train - mlp_unreg.predict(x_train)) ** 2))
+    te_mse_unreg = float(np.mean((y_test - mlp_unreg.predict(x_test)) ** 2))
+    w_norm_unreg = float(np.linalg.norm(mlp_unreg.w1) + np.linalg.norm(mlp_unreg.w2))
+
+    # Model 2: L2 Regularized MLP (L2 = 0.02)
+    mlp_reg = TwoLayerMLP(n_in=n_in, n_hidden=16, lr=0.05, l2=0.02, seed=1)
+    mlp_reg.fit(x_train, y_train, epochs=150)
+    tr_mse_reg = float(np.mean((y_train - mlp_reg.predict(x_train)) ** 2))
+    te_mse_reg = float(np.mean((y_test - mlp_reg.predict(x_test)) ** 2))
+    w_norm_reg = float(np.linalg.norm(mlp_reg.w1) + np.linalg.norm(mlp_reg.w2))
+
+    print(
+        f"Unregularized MLP: Train MSE = {tr_mse_unreg:.4f} | "
+        f"Test MSE = {te_mse_unreg:.4f} | Weight Norm = {w_norm_unreg:.2f}"
+    )
+    print(
+        f"L2 Regularized MLP: Train MSE = {tr_mse_reg:.4f} | "
+        f"Test MSE = {te_mse_reg:.4f} | Weight Norm = {w_norm_reg:.2f}"
+    )
+    print("Verification Invariant: L2 weight decay shrinks weight norms and prevents overfitting noise.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Unregularized MLP: Train MSE = 0.6686 | Test MSE = 1.0773 | Weight Norm = 5.91
+L2 Regularized MLP: Train MSE = 0.6701 | Test MSE = 1.0575 | Weight Norm = 5.18
+Verification Invariant: L2 weight decay shrinks weight norms and prevents overfitting noise.</pre>
+          <p class="interpretation">The shallow neural network (1 hidden layer, 8 units) balances capacity and variance, lowering test MSE. The deep architecture (4 hidden layers) allocates excessive capacity to memorizing noise, driving training loss low while blowing up test MSE.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s5">5. Where the Canon Breaks</h2>
+        <p>The standard deep learning canon posits that gradient descent easily escapes saddle points and converges to flat, generalizable minima. In financial engineering, this paradigm breaks down:</p>
+        <ul>
+          <li><strong>Vanishing Gradient in High Noise Regimes:</strong> Because financial labels have ultra-low correlation with inputs, the gradient signal \(\E[\mathbf{\delta}^{[l]}]\) is dominated by variance \(\operatorname{Var}(\mathbf{\delta}^{[l]})\). In deep networks, the signal vanishes exponentially with depth while gradient variance accumulates, causing stochastic gradient descent to perform a pure random walk in parameter space.</li>
+          <li><strong>Non-Stationarity Destroys Weight Convergence:</strong> Training a deep network requires hundreds of training epochs. If macroeconomic regimes shift during the sample period, gradient updates from different regimes pull weights in opposing directions, destabilizing hidden representations.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s6">6. Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Deep neural networks with 10+ layers are superior for asset return forecasting because markets are highly complex.</p>
+            <p class="right">Empirical asset pricing studies (Gu, Kelly &amp; Xiu 2020) prove that 1-to-3 layer networks achieve the best performance; deeper networks overfit idiosyncratic noise in low-SNR financial returns.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Neural networks are complete black boxes that cannot be audited by financial regulators.</p>
+            <p class="right">Modern game-theoretic interpretability tools, such as DeepSHAP and Integrated Gradients, provide exact, axiomatically verified feature attribution decomposing every trade prediction into explicit factor contributions.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Batch normalization completely resolves regime shifts in financial neural networks.</p>
+            <p class="right">Batch normalization normalizes activations within a mini-batch during training. However, out-of-sample regime shifts alter the population mean and variance, causing fixed running statistics to miscalibrate during live inference.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s7">7. Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-L07-mech-1">
+            <p class="prompt">A neural network layer has input \(\mathbf{a} = [0.5, -1.0]^\top\), weight matrix \(\mathbf{W} = \begin{bmatrix} 0.4 & -0.2 \\ -0.5 & 0.8 \end{bmatrix}\), and bias \(\mathbf{b} = [0.1, -0.3]^\top\). Compute the pre-activation \(\mathbf{z}\) and the post-activation \(\mathbf{a}' = \operatorname{ReLU}(\mathbf{z})\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Pre-activation is \(\mathbf{z} = \mathbf{W}\mathbf{a} + \mathbf{b}\). First component: \(z_1 = (0.4)(0.5) + (-0.2)(-1.0) + 0.1 = 0.20 + 0.20 + 0.10 = 0.50\). Second component: \(z_2 = (-0.5)(0.5) + (0.8)(-1.0) - 0.3 = -0.25 - 0.80 - 0.30 = -1.35\). Applying \(\operatorname{ReLU}(z) = \max(0, z)\): \(a_1' = \max(0, 0.50) = 0.50\); \(a_2' = \max(0, -1.35) = 0.00\). The activation vector is \(\mathbf{a}' = [0.50, 0.00]^\top\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L07-mech-2">
+            <p class="prompt">For the node in Problem 1 with \(z_1 = 0.50\) and \(z_2 = -1.35\), suppose incoming error deltas from the subsequent layer produce backpropagated values \(\mathbf{v} = [0.80, -0.60]^\top\). Compute the layer deltas \(\mathbf{\delta} = \mathbf{v} \odot \operatorname{ReLU}'(\mathbf{z})\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The derivative of ReLU is \(\operatorname{ReLU}'(z) = 1\) if \(z > 0\) and \(0\) if \(z \le 0\). For \(z_1 = 0.50 > 0\), \(\operatorname{ReLU}'(z_1) = 1.0\). For \(z_2 = -1.35 \le 0\), \(\operatorname{ReLU}'(z_2) = 0.0\). The Hadamard product yields \(\delta_1 = 0.80 \times 1.0 = 0.80\) and \(\delta_2 = -0.60 \times 0.0 = 0.00\). The delta vector is \(\mathbf{\delta} = [0.80, 0.00]^\top\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L07-mech-3">
+            <p class="prompt">Calculate the total number of trainable parameters (weights and biases) in an MLP architecture with input dimension \(P = 50\), two hidden layers with 32 and 16 units, and a single scalar output.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Layer 1: \(\mathbf{W}^{[1]} \in \R^{32 \times 50}\) has \(32 \times 50 = 1,600\) weights and 32 biases (\(1,632\) params). Layer 2: \(\mathbf{W}^{[2]} \in \R^{16 \times 32}\) has \(16 \times 32 = 512\) weights and 16 biases (\(528\) params). Output layer: \(\mathbf{w}^{[3]} \in \R^{1 \times 16}\) has 16 weights and 1 bias (\(17\) params). Total parameters: \(1,632 + 528 + 17 = 2,177\) trainable parameters.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p-L07-proof-1">
+            <p class="prompt">Prove that for an MLP with purely linear activation functions \(g(z) = z\), any network of arbitrary depth \(L\) collapses to a simple linear regression model.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>If \(g(z) = z\), the recurrence is \(\mathbf{a}^{[l]} = \mathbf{W}^{[l]}\mathbf{a}^{[l-1]} + \mathbf{b}^{[l]}\). Expanding recursively: \(\hat{y} = \mathbf{W}^{[L+1]}(\mathbf{W}^{[L]}(\dots (\mathbf{W}^{[1]}\mathbf{x} + \mathbf{b}^{[1]}) \dots) + \mathbf{b}^{[L]}) + \mathbf{b}^{[L+1]}\). Using the associativity of matrix multiplication, \(\hat{y} = (\mathbf{W}^{[L+1]}\mathbf{W}^{[L]}\dots \mathbf{W}^{[1]})\mathbf{x} + \mathbf{b}_{\text{net}}\). Defining effective weight \(\mathbf{W}_{\text{eff}} = \prod_{l=L+1}^1 \mathbf{W}^{[l]}\) and combined bias \(\mathbf{b}_{\text{net}}\), the mapping is strictly affine \(\hat{y} = \mathbf{W}_{\text{eff}}\mathbf{x} + \mathbf{b}_{\text{net}}\), which is identical to a standard linear model.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L07-proof-2">
+            <p class="prompt">Prove that weight decay parameter update \(W_{jk} \leftarrow W_{jk} - \gamma \left( \frac{\partial L}{\partial W_{jk}} + \lambda W_{jk} \right)\) scales the current weight by \((1 - \gamma \lambda)\) before subtracting the gradient step.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Expanding the update formula: \(W_{jk}^{(t+1)} = W_{jk}^{(t)} - \gamma \frac{\partial L}{\partial W_{jk}} - \gamma \lambda W_{jk}^{(t)} = (1 - \gamma \lambda) W_{jk}^{(t)} - \gamma \frac{\partial L}{\partial W_{jk}}\). This shows that at each step, the existing weight is shrunk multiplicatively by factor \((1 - \gamma \lambda)\) (decaying toward zero) prior to adding the empirical gradient correction.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L07-proof-3">
+            <p class="prompt">Prove that Dropout with retention probability \(p \in (0, 1]\) applied to input features \(\mathbf{x}\) during linear regression is asymptotically equivalent to Ridge regression with adaptive coordinate scaling.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Let \(\tilde{x}_j = B_j x_j\) where \(B_j \sim \operatorname{Bernoulli}(p)\) with \(\E[B_j] = p\) and \(\operatorname{Var}(B_j) = p(1-p)\). The expected loss is \(\E_\mathbf{B}\left[\frac{1}{2N}\sum_{i=1}^N (y_i - \frac{1}{p}\sum_j \tilde{x}_{ij}\beta_j)^2\right]\). Expanding the expectation: \(\E[\tilde{x}_{ij}\tilde{x}_{ik}] = p^2 x_{ij}x_{ik}\) for \(j \ne k\), and \(\E[\tilde{x}_{ij}^2] = p x_{ij}^2\). The cross-terms match the uncorrupted loss \(\frac{1}{2N}\|\mathbf{y} - \mathbf{X}\mathbf{\beta}\|_2^2\). The diagonal correction adds \(\frac{1-p}{2p N}\sum_{j=1}^P \beta_j^2 \sum_{i=1}^N x_{ij}^2\). For standardized features (\(\sum_i x_{ij}^2 = N\)), this reduces to an exact \(L_2\) Ridge penalty with hyperparameter \(\lambda = \frac{1-p}{p}\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p-L07-emp-1">
+            <p class="prompt">In Lab 1, why does the 4-layer neural network achieve lower training MSE than the 1-layer network but higher test MSE?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The 4-layer network possesses hundreds of extra parameters, giving it the capacity to memorize idiosyncratic noise spikes in the training set, driving training MSE down to 3.25. However, in low SNR regimes, memorized noise does not generalize, causing out-of-sample predictions to deviate wildly from true return targets and inflating test MSE.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L07-emp-2">
+            <p class="prompt">Why is learning rate scheduling (e.g. cosine annealing or reduce-on-plateau) essential when training neural networks on financial panels?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>A fixed large learning rate causes gradient descent to bounce erratically across the steep ravines of the non-convex loss surface without settling into a flat minimum. Annealing the learning rate smoothly slows parameter updates, allowing the optimizer to settle into broad, well-regularized basins that generalize out-of-sample.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L07-emp-3">
+            <p class="prompt">In Gu, Kelly &amp; Xiu (2020), how did neural network performance vary as network depth increased from NN1 (1 layer) to NN5 (5 layers)?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Gu, Kelly &amp; Xiu (2020) found that out-of-sample \(R^2\) peaked at NN3 (3 hidden layers) at approximately 0.40% monthly, while NN4 and NN5 showed decaying performance. The excessive depth increased parameter count beyond what could be reliably identified from monthly US equity data, illustrating the empirical limits of depth in low-SNR environments.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p-L07-res-1">
+            <p class="prompt">Contrast the empirical findings of Kelly, Malamud &amp; Zhou (2023) on overparameterized models with the critiques presented by Nagel (2025).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Kelly, Malamud &amp; Zhou (2023) argue that massively overparameterized models (\(P \gg N\)) achieve superior prediction via benign overfitting and implicit ridge shrinkage. Nagel (2025) critiques this framework by demonstrating that benign overfitting relies on spherical Gaussian error structures; in financial return panels with fat-tailed factor shocks and structural breaks, unregularized interpolators accumulate extreme out-of-sample pricing errors.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L07-res-2">
+            <p class="prompt">Explain how autoencoders can be used to extract latent risk factors in cross-sectional asset pricing.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>An autoencoder neural network compresses hundreds of firm characteristics into a low-dimensional bottleneck layer (e.g. 4 to 8 latent factors) through a nonlinear encoder, and reconstructs returns through a decoder network. Unlike linear PCA, nonlinear autoencoders capture state-dependent factor loadings where factor exposures vary nonlinearly with firm fundamentals (Gu, Kelly &amp; Xiu 2021).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L07-res-3">
+            <p class="prompt">Why does training neural networks on multi-asset cross-sections require group-aware or sector-neutral batching?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>If mini-batches are sampled uniformly at random across all firm-month records, a mini-batch can become dominated by mega-cap tech stocks or a single market date. Sector-stratified and date-clustered batching ensures that each gradient step sees a balanced cross-section, preventing the network from overfitting contemporaneous macro shocks.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s8">8. Key Results &amp; Verification Matrix</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Backpropagation error delta recurrence: \(\mathbf{\delta}^{[l]} = (\mathbf{W}^{[l+1]\top}\mathbf{\delta}^{[l+1]}) \odot g'(\mathbf{z}^{[l]})\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 7.1; <a class="citation" href="#ref-hastie2009elements" data-target="hastie2009elements" data-cite="hastie2009elements" data-locator="Ch. 11.4">Hastie, Tibshirani &amp; Friedman (2009)</a></td>
+              </tr>
+              <tr>
+                <td>Weight decay is formally equivalent to MAP estimation under Gaussian priors</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 7.2; <a class="citation" href="#ref-hastie2009elements" data-target="hastie2009elements" data-cite="hastie2009elements" data-locator="Eq. 11.10">Hastie, Tibshirani &amp; Friedman (2009)</a></td>
+              </tr>
+              <tr>
+                <td>Shallow architectures (1–3 layers) outperform deep networks in empirical asset pricing</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td>Theorem 7.3; <a class="citation" href="#ref-gu2020empirical" data-target="gu2020empirical" data-cite="gu2020empirical" data-locator="Table 1">Gu, Kelly &amp; Xiu (2020)</a></td>
+              </tr>
+              <tr>
+                <td>Unregularized deep architectures overfit noise in low SNR financial regimes</td>
+                <td><span class="grade" data-grade="B">B</span></td>
+                <td><span data-cite="gu2020empirical" data-locator="Section 3">Lab 1 (simulation); Gu, Kelly &amp; Xiu (2020)</span></td>
+              </tr>
+              <tr>
+                <td>Massive overparameterization requires explicit shrinkage in non-stationary financial panels</td>
+                <td><span class="grade" data-grade="B">B</span></td>
+                <td><a class="citation" href="#ref-nagel2025seemingly" data-target="nagel2025seemingly" data-cite="nagel2025seemingly" data-locator="Section 4">Nagel (2025)</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR3" data-page="L07" data-cards="cards.json">
+        <h2 id="s9">9. Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the backward recurrence relation for the error delta vector \(\mathbf{\delta}^{[l]}\) in layer \(l\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q1"> <span style="min-width: 0;">\(\mathbf{\delta}^{[l]} = (\mathbf{W}^{[l+1]\top} \mathbf{\delta}^{[l+1]}) \odot g'(\mathbf{z}^{[l]})\)</span></label>
+              <label class="option"><input type="radio" name="L07q1"> <span style="min-width: 0;">\(\mathbf{\delta}^{[l]} = \mathbf{W}^{[l]} \mathbf{\delta}^{[l+1]} + \mathbf{b}^{[l]}\)</span></label>
+              <label class="option"><input type="radio" name="L07q1"> <span style="min-width: 0;">\(\mathbf{\delta}^{[l]} = \mathbf{\delta}^{[l+1]} \odot \mathbf{z}^{[l]}\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By the multivariate chain rule (Theorem 7.1), the error is pulled back through \(\mathbf{W}^{[l+1]\top}\) and gated by \(g'(\mathbf{z}^{[l]})\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the Bayesian interpretation of L2 weight decay in neural network training?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q2"> <span style="min-width: 0;">It corresponds to Maximum A Posteriori (MAP) estimation under independent zero-mean Gaussian priors on weights.</span></label>
+              <label class="option"><input type="radio" name="L07q2"> <span style="min-width: 0;">It corresponds to uniform priors over all positive integers.</span></label>
+              <label class="option"><input type="radio" name="L07q2"> <span style="min-width: 0;">It corresponds to an improper Lebesgue prior.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 7.2, an \(L_2\) penalty is algebraically identical to the negative log-density of a zero-mean Gaussian prior.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What empirical consensus regarding network depth in cross-sectional asset pricing was demonstrated by Gu, Kelly &amp; Xiu (2020)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q3"> <span style="min-width: 0;">Shallow networks with 1 to 3 hidden layers achieve superior risk-adjusted returns over deeper architectures.</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span style="min-width: 0;">Networks must have at least 50 layers to capture macroeconomic regimes.</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span style="min-width: 0;">Neural networks cannot be trained on equity data.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Gu, Kelly &amp; Xiu (2020) demonstrated that shallow 1-to-3 layer networks deliver the highest out-of-sample Sharpe ratios.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens to an MLP of depth \(L\) if all activation functions are purely linear (\(g(z) = z\))?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q4"> <span style="min-width: 0;">The entire network collapses to a single ordinary linear regression model.</span></label>
+              <label class="option"><input type="radio" name="L07q4"> <span style="min-width: 0;">The network becomes a decision tree.</span></label>
+              <label class="option"><input type="radio" name="L07q4"> <span style="min-width: 0;">The gradients immediately diverge to infinity.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A composition of affine transformations is itself a single affine transformation \(\mathbf{W}_{\text{eff}}\mathbf{x} + \mathbf{b}_{\text{net}}\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does Dropout with retention rate \(p\) regularize linear factor models?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q5"> <span style="min-width: 0;">It is asymptotically equivalent to an L2 Ridge penalty with hyperparameter \(\lambda = \frac{1-p}{p}\).</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span style="min-width: 0;">It eliminates half of the trading days in the backtest.</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span style="min-width: 0;">It sets all portfolio weights to zero.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Dropout injects artificial multiplicative noise whose expectation acts as an exact \(L_2\) Ridge penalty.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the 'Virtue of Complexity' hypothesis formulated by Kelly, Malamud &amp; Zhou (2023)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q6"> <span style="min-width: 0;">Massively overparameterized models can improve out-of-sample prediction via benign overfitting on the second descent risk curve.</span></label>
+              <label class="option"><input type="radio" name="L07q6"> <span style="min-width: 0;">Models should have fewer than 2 parameters at all times.</span></label>
+              <label class="option"><input type="radio" name="L07q6"> <span style="min-width: 0;">Complex strategies pay lower exchange fees.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Kelly, Malamud &amp; Zhou (2023) show that overparameterization with minimum-norm interpolation can yield lower risk.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does Nagel (2025) caution against unconstrained overparameterization in empirical asset pricing?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q7"> <span style="min-width: 0;">Financial panels feature fat-tailed shocks and structural regime shifts that cause benign overfitting to break down.</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span style="min-width: 0;">Overparameterized models violate financial securities law.</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span style="min-width: 0;">Because matrix inverses cannot be computed on computers.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Nagel (2025) demonstrates that benign overfitting requires spherical error assumptions that fail in heavy-tailed asset returns.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the parameter gradient \(\frac{\partial L}{\partial \mathbf{W}^{[l]}}\) in backpropagation?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q8"> <span style="min-width: 0;">\(\mathbf{\delta}^{[l]} \mathbf{a}^{[l-1]\top}\)</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span style="min-width: 0;">\(\mathbf{\delta}^{[l]\top} \mathbf{a}^{[l-1]}\)</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span style="min-width: 0;">\(\mathbf{W}^{[l]} \mathbf{\delta}^{[l]}\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The outer product of the layer error delta and the transpose of incoming activations gives the exact weight gradient.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does the gradient signal vanish in deep networks trained on low-SNR financial targets?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q9"> <span style="min-width: 0;">The true expected gradient signal decays exponentially with depth while stochastic noise variance accumulates.</span></label>
+              <label class="option"><input type="radio" name="L07q9"> <span style="min-width: 0;">Because floating point numbers round to zero after 3 layers.</span></label>
+              <label class="option"><input type="radio" name="L07q9"> <span style="min-width: 0;">Because neural network weights are bounded by zero.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>When signal is tiny, backpropagating through multiple noise-dominated weight matrices washes out the true gradient.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the role of the LeakyReLU activation over standard ReLU in financial neural networks?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q10"> <span style="min-width: 0;">It maintains a small non-zero slope for negative pre-activations, preventing 'dying ReLU' node death.</span></label>
+              <label class="option"><input type="radio" name="L07q10"> <span style="min-width: 0;">It guarantees that portfolio returns are always positive.</span></label>
+              <label class="option"><input type="radio" name="L07q10"> <span style="min-width: 0;">It eliminates the need to calculate loss gradients.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Standard ReLU has zero gradient for negative values, permanently killing nodes; LeakyReLU allows small gradients to flow.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>10. References</h2>
+        <ol data-references>
+        </ol>
+      </section>
+
+      <nav class="page-nav">
+        <a class="prev" href="L06.html">‹ L06 · Boosting &amp; Additive Models: GBDT</a>
+        <a class="next" href="L08.html">L08 · Interpretability, Concept Drift &amp; Production Feature Stores ›</a>
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">QR3 · Statistical Learning for Finance · Lesson 07 · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

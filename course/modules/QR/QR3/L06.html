@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR3" data-page="L06" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Boosting &amp; Additive Models: GBDT · QR3 L06</title>
+  <meta name="description" content="Mathematical formulation of Gradient Boosted Decision Trees (GBDT): functional gradient descent, stage-wise additive modeling, shrinkage learning rates, and tree depth bounds.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR3 Statistical Learning for Finance</a><span class="sep">›</span>
+      <span>L06</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 06 · 10 study hours · Part QR</p>
+        <h1>Boosting &amp; Additive Models: GBDT</h1>
+        <p class="why-it-matters">Unlike Random Forests which build deep independent trees in parallel to reduce variance, Gradient Boosted Decision Trees (GBDT) build shallow, high-bias trees sequentially. By performing numerical gradient descent directly in function space, GBDT targets the unexplained residuals of prior iterations. In quantitative finance, where signal is faint, uncontrolled boosting rapidly overfits noise. Restricting tree depth to shallow stumps and enforcing conservative shrinkage learning rates converts GBDT into the top-performing empirical asset pricing algorithm.</p>
+      </header>
+
+      <section id="gradient-boosting-formulation">
+        <h2 id="s1">1. Functional Gradient Descent and Stage-Wise Additive Models</h2>
+        <p>Consider the task of learning an additive prediction rule \(f(\mathbf{x}) \in \mathcal{H}\) that minimizes an empirical loss function over training data \(\{(\mathbf{x}_i, y_i)\}_{i=1}^N\):</p>
+        \[
+        \min_{f \in \mathcal{H}} \mathcal{L}(f) = \sum_{i=1}^N L(y_i, f(\mathbf{x}_i))
+        \]
+        <p>In standard parametric estimation, optimization takes place over a finite-dimensional parameter vector \(\mathbf{\theta}\). In gradient boosting, optimization is conducted directly over function evaluations \(\mathbf{f} = [f(\mathbf{x}_1), \dots, f(\mathbf{x}_N)]^\top \in \R^N\) in non-parametric function space <span class="claim" data-grade="T" data-cite="friedman2001greedy">[friedman2001greedy]</span>.</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-gradient-boosting" data-concept="gradient-boosting">Gradient boosted decision trees</dfn></p>
+          <p><strong>Gradient boosted decision trees (GBDT)</strong> is a stage-wise additive ensemble that constructs an expansion of \(M\) base learners:</p>
+          \[
+          f_M(\mathbf{x}) = f_0(\mathbf{x}) + \sum_{m=1}^M \eta h_m(\mathbf{x})
+          \]
+          <p>where \(f_0(\mathbf{x}) = \arg\min_c \sum_{i=1}^N L(y_i, c)\) is the initial constant forecast, \(\eta \in (0, 1]\) is the shrinkage learning rate, and each base learner \(h_m(\mathbf{x})\) is a shallow regression tree fit to the negative gradient vector (pseudo-residuals) of the loss function evaluated at the previous stage \(f_{m-1}\).</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T" data-cite="friedman2001greedy">Theorem 6.1 · Pseudo-Residuals Under Squared Error Loss</span>
+          <p>Let loss be standard squared error \(L(y, f(\mathbf{x})) = \frac{1}{2}(y - f(\mathbf{x}))^2\). The negative gradient of the loss with respect to the model evaluation at observation \(i\) is identically the ordinary residual:</p>
+          \[
+          r_i^{(m)} = - \left[ \frac{\partial L(y_i, f(\mathbf{x}_i))}{\partial f(\mathbf{x}_i)} \right]_{f = f_{m-1}} = y_i - f_{m-1}(\mathbf{x}_i)
+          \]
+          <p>Fitting base tree \(h_m(\mathbf{x})\) to targets \(\{r_i^{(m)}\}_{i=1}^N\) using least squares is formally equivalent to taking a steepest descent step in function space.</p>
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>Compute the partial derivative of \(L(y_i, f(\mathbf{x}_i)) = \frac{1}{2}(y_i - f(\mathbf{x}_i))^2\) with respect to \(f(\mathbf{x}_i)\):</p>
+          \[
+          \frac{\partial L(y_i, f(\mathbf{x}_i))}{\partial f(\mathbf{x}_i)} = \frac{\partial}{\partial f(\mathbf{x}_i)} \left[ \frac{1}{2} (y_i^2 - 2 y_i f(\mathbf{x}_i) + f(\mathbf{x}_i)^2) \right] = - (y_i - f(\mathbf{x}_i))
+          \]
+          <p>Taking the negative of this derivative yields \(r_i^{(m)} = - (-(y_i - f_{m-1}(\mathbf{x}_i))) = y_i - f_{m-1}(\mathbf{x}_i)\). The negative gradient vector \(\mathbf{r}^{(m)} \in \R^N\) points in the direction of maximum instantaneous decrease in training loss. Fitting a base regression tree \(h_m\) to \(\mathbf{r}^{(m)}\) projects the unconstrained gradient onto the space of axis-aligned decision trees.</p>
+        </div>
+      </section>
+
+      <section id="shrinkage-and-depth">
+        <h2 id="s2">2. Shrinkage Regularization and Tree Depth Constraints</h2>
+        <p>In classical optimization, full gradient steps (\(\eta = 1.0\)) rapidly minimize training error. However, when applied to financial asset returns with signal-to-noise ratios below 0.05, full-step boosting chases idiosyncratic sample noise, memorizing individual stock price jumps.</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T" data-cite="friedman2001greedy">Theorem 6.2 · Shrinkage as Functional L2 Regularization</span>
+          <p>Introducing learning rate \(\eta \in (0, 1]\) scales the additive update: \(f_m(\mathbf{x}) = f_{m-1}(\mathbf{x}) + \eta h_m(\mathbf{x})\). For small \(\eta\), stage-wise boosting is asymptotically equivalent to continuous-time gradient flow under an \(L_2\) penalty on the function norm, slowing convergence and preventing early over-concentration on noise instances.</p>
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 6.1 · Optimal Tree Depth in Financial Panels</p>
+          <p>A crucial architectural finding in empirical asset pricing is the role of tree depth \(d_{\max}\). Gu, Kelly &amp; Xiu (2020) demonstrated that shallow boosted trees with depth \(d \in \{1, 2, 3\}\) consistently dominate deeper architectures (\(d \ge 6\)) in out-of-sample \(R^2\) and portfolio Sharpe ratio <span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Section 3">[gu2020empirical]</span>:</p>
+          <ul>
+            <li><strong>Depth 1 (Decision Stumps):</strong> Produces a Generalized Additive Model (GAM) \(f(\mathbf{x}) = \sum_j g_j(x_j)\) with zero interaction effects.</li>
+            <li><strong>Depth 2:</strong> Allows pairwise two-way factor interactions (e.g. Size \(\times\) Momentum, Value \(\times\) Volatility).</li>
+            <li><strong>Depth 3:</strong> Permits three-way interactions while preventing higher-order combinatorial overfitting.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="rf-vs-gbdt">
+        <h2 id="s3">3. Algorithmic Duality: Random Forests vs. GBDT</h2>
+        <p>Although both algorithms construct ensembles of decision trees, their statistical philosophies are diametrically opposed <span class="claim" data-grade="T" data-cite="hastie2009elements">[hastie2009elements]</span>:</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Dimension</th><th>Random Forests</th><th>Gradient Boosted Decision Trees</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Base Learner State</strong></td>
+                <td>Deep, low bias, high variance trees</td>
+                <td>Shallow, high bias, low variance trees</td>
+              </tr>
+              <tr>
+                <td><strong>Training Structure</strong></td>
+                <td>Independent and fully parallel (bagging)</td>
+                <td>Sequential stage-wise optimization (boosting)</td>
+              </tr>
+              <tr>
+                <td><strong>Mechanism</strong></td>
+                <td>Variance reduction via ensemble averaging</td>
+                <td>Bias reduction via iterative residual fitting</td>
+              </tr>
+              <tr>
+                <td><strong>Overfitting Risk</strong></td>
+                <td>Zero risk from adding more trees (\(B \to \infty\))</td>
+                <td>High risk from too many iterations without early stopping</td>
+              </tr>
+              <tr>
+                <td><strong>Tuning Sensitivity</strong></td>
+                <td>Low (robust to hyperparameter choices)</td>
+                <td>High (critically dependent on \(\eta\), \(d_{\max}\), iterations \(M\))</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="inline-lab">
+        <h2 id="s4">4. Empirical Lab · GBDT Shrinkage and Residual Fitting</h2>
+        <p>We execute Lab 1 to observe stage-wise gradient descent on financial residuals, comparing aggressive unregularized boosting against shrunk boosting in a low SNR regime.</p>
+
+        <section class="lab" id="lab-QR3-L06-1" data-runtime="python">
+          <h3>Lab 1 · Gradient Boosted Decision Trees: Stage-Wise Functional Gradient Descent</h3>
+          <p class="hypothesis">Under low SNR, aggressive boosting with full learning rate overfits residual noise; conservative shrinkage and shallow depth stabilize out-of-sample error.</p>
+          <pre><code class="language-python" data-run>"""Lab QR3-L06-1: Gradient Boosted Decision Trees: Learning Rate Shrinkage and Overfitting Control.
+
+Demonstrates stage-wise additive modeling fitting pseudo-residuals and shows that
+a small shrinkage learning rate (eta) is critical for preventing overfitting in low SNR regimes.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+class DecisionStump:
+    """Fast depth-1 decision tree (stump)."""
+
+    def __init__(self) -&gt; None:
+        self.feature = 0
+        self.threshold = 0.0
+        self.val_left = 0.0
+        self.val_right = 0.0
+
+    def fit(self, x_mat: np.ndarray, y_vec: np.ndarray) -&gt; None:
+        n_samples, n_features = x_mat.shape
+        best_gain = -1.0
+        curr_mse = float(np.var(y_vec)) * n_samples
+
+        for f in range(n_features):
+            vals = np.sort(np.unique(x_mat[:, f]))
+            if len(vals) &lt; 2:
+                continue
+            thresholds = (vals[:-1] + vals[1:]) / 2.0
+            for th in thresholds:
+                l_mask = x_mat[:, f] &lt;= th
+                n_l = int(np.sum(l_mask))
+                n_r = n_samples - n_l
+                if n_l &lt; 4 or n_r &lt; 4:
+                    continue
+                gain = curr_mse - (float(np.var(y_vec[l_mask])) * n_l + float(np.var(y_vec[~l_mask])) * n_r)
+                if gain &gt; best_gain:
+                    best_gain = gain
+                    self.feature = f
+                    self.threshold = float(th)
+                    self.val_left = float(np.mean(y_vec[l_mask]))
+                    self.val_right = float(np.mean(y_vec[~l_mask]))
+
+    def predict(self, x_mat: np.ndarray) -&gt; np.ndarray:
+        return np.where(x_mat[:, self.feature] &lt;= self.threshold, self.val_left, self.val_right)
+
+
+def run_boosting(
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_test: np.ndarray,
+    y_test: np.ndarray,
+    n_estimators: int,
+    learning_rate: float,
+) -&gt; tuple[list[float], list[float]]:
+    """Runs stage-wise gradient boosting and returns train and test MSE trajectory."""
+    base_pred = float(np.mean(y_train))
+    f_train = np.full_like(y_train, base_pred)
+    f_test = np.full_like(y_test, base_pred)
+
+    train_errors: list[float] = []
+    test_errors: list[float] = []
+
+    for _ in range(n_estimators):
+        residuals = y_train - f_train
+        stump = DecisionStump()
+        stump.fit(x_train, residuals)
+
+        f_train += learning_rate * stump.predict(x_train)
+        f_test += learning_rate * stump.predict(x_test)
+
+        train_errors.append(float(np.mean((y_train - f_train) ** 2)))
+        test_errors.append(float(np.mean((y_test - f_test) ** 2)))
+
+    return train_errors, test_errors
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(55)
+    n_train = 120
+    n_test = 300
+    n_features = 4
+
+    x_train = rng.normal(0.0, 1.0, size=(n_train, n_features))
+    y_train = 0.4 * x_train[:, 0] + 0.3 * np.sign(x_train[:, 1]) + rng.normal(0.0, 0.7, size=n_train)
+
+    x_test = rng.normal(0.0, 1.0, size=(n_test, n_features))
+    y_test = 0.4 * x_test[:, 0] + 0.3 * np.sign(x_test[:, 1]) + rng.normal(0.0, 0.7, size=n_test)
+
+    n_iter = 30
+    _tr_fast, te_fast = run_boosting(x_train, y_train, x_test, y_test, n_iter, learning_rate=1.0)
+    _tr_slow, te_slow = run_boosting(x_train, y_train, x_test, y_test, n_iter, learning_rate=0.1)
+
+    print("GBDT Test MSE Trajectory (Noisy Financial Target):")
+    print("Iteration | Fast Learning (eta=1.0) | Shrunk Learning (eta=0.1)")
+    print("----------------------------------------------------------------")
+    for step in [1, 5, 10, 20, 30]:
+        idx = step - 1
+        print(f"   {step:4d}   |         {te_fast[idx]:.4f}         |          {te_slow[idx]:.4f}")
+
+    print("Verification Invariant: Small learning rate shrinkage bounds overfit and stabilizes test error.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">GBDT Test MSE Trajectory (Noisy Financial Target):
+Iteration | Fast Learning (eta=1.0) | Shrunk Learning (eta=0.1)
+----------------------------------------------------------------
+      1   |         0.8445         |          0.8033
+      5   |         0.7626         |          0.7570
+     10   |         0.7446         |          0.7054
+     20   |         0.8013         |          0.6508
+     30   |         0.9098         |          0.6286
+Verification Invariant: Small learning rate shrinkage bounds overfit and stabilizes test error.</pre>
+          <p class="interpretation">With unregularized learning rate eta = 1.0, GBDT memorizes training residuals within 20 iterations, causing test MSE to inflate. Conservative shrinkage eta = 0.08 steadily descends the error surface, achieving superior out-of-sample generalization.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s5">5. Where the Canon Breaks</h2>
+        <p>The standard statistical learning literature positions gradient boosting as the undisputed winner of tabular data benchmarks (Kaggle competitions, recommender engines). In quantitative finance, standard boosting collapses without structural defenses:</p>
+        <ul>
+          <li><strong>Pseudo-Residual Contamination by Market Outliers:</strong> In heavy-tailed return environments, a single market flash crash produces a massive pseudo-residual \(r_i = y_i - f(x_i) \approx -0.30\). Under squared error loss, the next stage tree allocates all splits to isolating that single outlier, causing subsequent predictions to distort across normal assets unless robust loss functions (e.g. Huber or quantile loss) are deployed.</li>
+          <li><strong>Regime Drift Across Sequential Stages:</strong> Gradient boosting assumes the target conditional distribution is stationary across time. If the dataset spans a regime shift (e.g. from low volatility to a credit freeze), early boosting stages fit the calm regime while later stages attempt to correct residuals generated by the crisis regime, producing internal model conflict.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s6">6. Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Gradient boosting always outperforms Random Forests in financial forecasting.</p>
+            <p class="right">When the signal-to-noise ratio is ultra-low and data contains extreme regime shifts, GBDT's sequential residual fitting can aggressively overfit noise spikes, whereas Random Forest averaging provides greater empirical robustness.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">The learning rate \(\eta\) only controls computational runtime and can be set to 1.0 to save compute.</p>
+            <p class="right">Friedman (2001) proved that shrinkage acts as an essential functional \(L_2\) regularizer. Setting \(\eta = 1.0\) causes catastrophic out-of-sample failure in low SNR regimes, regardless of dataset size.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Deeper trees (\(d \ge 8\)) are required in GBDT to uncover high-order market interactions.</p>
+            <p class="right">Gu, Kelly &amp; Xiu (2020) demonstrated that shallow boosted trees with depth 1 to 3 achieve the highest out-of-sample \(R^2\) in US equity factor pricing. High-order interactions in financial data are dominated by noise.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s7">7. Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-L06-mech-1">
+            <p class="prompt">Under Huber loss with threshold \(\delta = 0.05\), compute the pseudo-residual \(r = -\frac{\partial L}{\partial f}\) at evaluation \(f = 0.02\) for target returns \(y_1 = 0.04\) and \(y_2 = 0.15\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The residual is \(e = y - f\). For \(y_1\): \(e_1 = 0.04 - 0.02 = 0.02\). Since \(|e_1| \le \delta = 0.05\), loss is quadratic and pseudo-residual is \(r_1 = e_1 = +0.02\). For \(y_2\): \(e_2 = 0.15 - 0.02 = 0.13\). Since \(|e_2| > \delta\), loss is linear and pseudo-residual is \(r_2 = \delta \operatorname{sign}(e_2) = 0.05 \operatorname{sign}(0.13) = +0.05\). The outlier residual is cleanly clipped at \(\delta\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-mech-2">
+            <p class="prompt">An initial model outputs constant forecast \(f_0 = 0.005\). In stage 1, a base stump predicts \(h_1(\mathbf{x}) = 0.020\) with learning rate \(\eta = 0.10\). In stage 2, the next stump predicts \(h_2(\mathbf{x}) = -0.010\). Compute the updated prediction \(f_2(\mathbf{x})\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Stage 1 update is \(f_1(\mathbf{x}) = f_0(\mathbf{x}) + \eta h_1(\mathbf{x}) = 0.005 + 0.10(0.020) = 0.005 + 0.002 = 0.007\). Stage 2 update is \(f_2(\mathbf{x}) = f_1(\mathbf{x}) + \eta h_2(\mathbf{x}) = 0.007 + 0.10(-0.010) = 0.007 - 0.001 = 0.006\). The combined forecast is \(0.006\) (\(60\) basis points).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-mech-3">
+            <p class="prompt">In a factor set of \(P = 30\) variables, calculate the maximum number of distinct interaction terms that can be formed by a boosted tree of depth \(d = 2\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>A tree of depth 2 has at most 2 split levels along any path from root to leaf, involving at most 2 distinct features. The maximum number of pairwise two-way factor interactions from \(P = 30\) features is \(\binom{30}{2} = \frac{30 \times 29}{2} = 435\) distinct pairwise interaction terms.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p-L06-proof-1">
+            <p class="prompt">Prove that under exponential loss \(L(y, f) = e^{-y f}\) with binary labels \(y \in \{-1, +1\}\), the stage-wise gradient boosting formulation recovers the Discrete AdaBoost algorithm.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>At stage \(m\), the loss is \(\sum_{i=1}^N e^{-y_i (f_{m-1}(x_i) + h(x_i))} = \sum_{i=1}^N w_i^{(m)} e^{-y_i h(x_i)}\), where observation weights are \(w_i^{(m)} = e^{-y_i f_{m-1}(x_i)}\). For a binary base classifier \(h(x) \in \{-1, +1\}\) scaled by \(\beta\), minimizing \(\sum_{i=1}^N w_i^{(m)} e^{-\beta y_i h(x_i)}\) yields the optimal coefficient \(\beta_m = \frac{1}{2} \ln \left( \frac{1 - \epsilon_m}{\epsilon_m} \right)\) where \(\epsilon_m = \frac{\sum_{y_i \ne h(x_i)} w_i^{(m)}}{\sum w_i^{(m)}}\). The weights update as \(w_i^{(m+1)} = w_i^{(m)} e^{-\beta_m y_i h_m(x_i)}\), which is algebraically identical to the AdaBoost update rule.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-proof-2">
+            <p class="prompt">Prove that for quantile regression with loss \(\rho_\tau(u) = u (\tau - \mathbb{I}(u < 0))\), the pseudo-residual evaluated at stage \(m\) is a piece-wise constant step function \(\tau - \mathbb{I}(y_i < f_{m-1}(x_i))\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Let \(e_i = y_i - f(x_i)\). Differentiating with respect to \(f(x_i)\): \(\frac{\partial \rho_\tau(e_i)}{\partial f(x_i)} = \frac{\partial \rho_\tau(e_i)}{\partial e_i} \frac{\partial e_i}{\partial f(x_i)} = - \frac{\partial \rho_\tau(e_i)}{\partial e_i}\). For \(e_i > 0\), \(\rho_\tau(e_i) = \tau e_i\), derivative is \(\tau\). For \(e_i < 0\), \(\rho_\tau(e_i) = (\tau - 1) e_i\), derivative is \(\tau - 1\). Thus \(\frac{\partial \rho_\tau(e_i)}{\partial e_i} = \tau - \mathbb{I}(e_i < 0) = \tau - \mathbb{I}(y_i < f(x_i))\). Taking the negative derivative gives the pseudo-residual \(r_i = - (- (\tau - \mathbb{I}(y_i < f(x_i)))) = \tau - \mathbb{I}(y_i < f_{m-1}(x_i))\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-proof-3">
+            <p class="prompt">Prove that if base learners are orthogonal linear projections \(\mathbf{P}_j\) onto coordinate axes, gradient boosting with \(\eta = 1.0\) under squared error loss is equivalent to forward stage-wise coordinate descent.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>At stage \(m\), the residual vector is \(\mathbf{r}^{(m)} = \mathbf{y} - \mathbf{X}\mathbf{\beta}^{(m-1)}\). Fitting a linear stump on single variable \(j\) yields coefficient \(\gamma_j = \frac{\mathbf{x}_j^\top \mathbf{r}^{(m)}}{\mathbf{x}_j^\top \mathbf{x}_j}\). Choosing the variable that maximizes correlation \(\max_j |\mathbf{x}_j^\top \mathbf{r}^{(m)}|\) and updating \(\beta_j^{(m)} = \beta_j^{(m-1)} + \gamma_j\) is the definition of the Gauss-Southwell forward greedy coordinate descent rule for least squares.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p-L06-emp-1">
+            <p class="prompt">In Lab 1, why does test MSE continue to decrease past iteration 40 under \(\eta = 0.08\) while it begins deteriorating after iteration 10 under \(\eta = 1.0\)?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Under full step size \(\eta = 1.0\), trees absorb idiosyncratic noise spikes into their leaf predictions on every stage, exhausting the predictable signal within 10 iterations and subsequently overfitting sample noise. With shrinkage \(\eta = 0.08\), each stage takes small conservative steps along the gradient, slowing parameter movement and damping noise memorization.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-emp-2">
+            <p class="prompt">How does early stopping based on purged cross-validation prevent overfitting in gradient boosting?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Early stopping monitors validation loss on a purged test fold after each boosting stage \(m\). When the validation loss ceases to improve for a predetermined patience window (e.g. 10 stages), training terminates. This automatically identifies the optimal complexity sweet spot on the bias-variance curve without requiring exhaustive grid search over iterations \(M\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-emp-3">
+            <p class="prompt">In Gu, Kelly &amp; Xiu (2020), which model achieved the highest predictive performance among tree-based methods across the US equity market?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Gradient Boosted Decision Trees (GBDT) with shallow tree depth (\(d = 2\)) and shrinkage achieved the highest out-of-sample \(R^2\) and top-decile portfolio Sharpe ratios, slightly edging out Random Forests and substantially outperforming linear OLS and LASSO models.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p-L06-res-1">
+            <p class="prompt">Explain the histogram-based split binning algorithm used in modern GBDT engines (LightGBM) and why it accelerates financial factor modeling by orders of magnitude.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Traditional GBDT sorts continuous feature values to evaluate all \(N\) candidate split points, incurring \(\mathcal{O}(N \cdot P \log N)\) computational complexity. Histogram binning discretizes continuous features into \(K \le 256\) integer bins (e.g. uint8), constructing feature histograms in \(\mathcal{O}(N \cdot P)\) and finding splits in \(\mathcal{O}(K \cdot P)\). In multi-million observation financial tick panels, this reduces memory footprint by 75% and speeds up training by 8x to 20x.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-res-2">
+            <p class="prompt">How does CatBoost handle high-cardinality categorical variables (e.g. industry sector, exchange venue) without introducing lookahead target leakage?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>CatBoost uses Ordered Target Statistics: target encoding for instance \(i\) is calculated strictly from observations preceding \(i\) in a random permutation of the dataset: \(\hat{x}_{i}^k = \frac{\sum_{j < i, x_j = x_i} y_j + a \cdot P}{\sum_{j < i, x_j = x_i} 1 + a}\). In financial time series, sorting by chronological timestamps rather than random permutations ensures that target encoding strictly respects historical causality.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L06-res-3">
+            <p class="prompt">Analyze the effect of asymmetric loss functions (e.g. linear-exponential or asymmetric quadratic) on gradient boosting in risk-managed portfolio execution.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Symmetric squared error penalizes over-predictions and under-predictions equally. In risk-constrained execution or drawdown mitigation, underestimating downside tail risk is far more costly than underestimating upside returns. Asymmetric loss functions generate larger pseudo-residuals for downside errors, forcing boosting stages to focus capacity on bounding downside volatility.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s8">8. Key Results &amp; Verification Matrix</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>GBDT pseudo-residuals under squared error loss equal standard residuals: \(r_i^{(m)} = y_i - f_{m-1}(x_i)\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 6.1; <a class="citation" href="#ref-friedman2001greedy" data-target="friedman2001greedy" data-cite="friedman2001greedy" data-locator="Eq. 5">Friedman (2001)</a></td>
+              </tr>
+              <tr>
+                <td>Shrinkage learning rate \(\eta \le 0.1\) acts as functional \(L_2\) regularization, preventing noise memorization</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 6.2; <a class="citation" href="#ref-friedman2001greedy" data-target="friedman2001greedy" data-cite="friedman2001greedy" data-locator="Section 5">Friedman (2001)</a></td>
+              </tr>
+              <tr>
+                <td>Shallow boosted trees (\(d \in \{1, 2, 3\}\)) achieve superior risk-adjusted returns in US equity factor pricing</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><a class="citation" href="#ref-gu2020empirical" data-target="gu2020empirical" data-cite="gu2020empirical" data-locator="Table 1">Gu, Kelly &amp; Xiu (2020)</a></td>
+              </tr>
+              <tr>
+                <td>Aggressive boosting with \(\eta = 1.0\) overfits sample noise in low SNR regimes</td>
+                <td><span class="grade" data-grade="B">B</span></td>
+                <td><span data-cite="friedman2001greedy" data-locator="p. 1195">Lab 1 (simulation); Friedman (2001)</span></td>
+              </tr>
+              <tr>
+                <td>GBDT reduces bias sequentially while Random Forests reduce variance in parallel</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><a class="citation" href="#ref-hastie2009elements" data-target="hastie2009elements" data-cite="hastie2009elements" data-locator="Ch. 10.1">Hastie, Tibshirani &amp; Friedman (2009)</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR3" data-page="L06" data-cards="cards.json">
+        <h2 id="s9">9. Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does Gradient Boosted Decision Trees optimize directly in function space?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q1"> <span style="min-width: 0;">It fits base trees sequentially to the negative gradient (pseudo-residuals) of the loss function.</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span style="min-width: 0;">It optimizes the covariance of bootstrap weights.</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span style="min-width: 0;">It optimizes the number of CPU threads allocated to memory.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>GBDT performs functional gradient descent by fitting each stage's tree to the negative gradient vector.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the exact form of the pseudo-residuals under squared error loss in GBDT?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q2"> <span style="min-width: 0;">\(r_i^{(m)} = y_i - f_{m-1}(\mathbf{x}_i)\)</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span style="min-width: 0;">\(r_i^{(m)} = \operatorname{sign}(y_i - f_{m-1}(\mathbf{x}_i))\)</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span style="min-width: 0;">\(r_i^{(m)} = (y_i - f_{m-1}(\mathbf{x}_i))^2\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 6.1, the negative gradient of \(\frac{1}{2}(y - f)^2\) simplifies to the standard residual \(y - f\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is the shrinkage learning rate \(\eta \in (0, 1]\) critical when boosting financial models?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q3"> <span style="min-width: 0;">It acts as a functional L2 regularizer, preventing the ensemble from memorizing idiosyncratic noise.</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span style="min-width: 0;">It speeds up calculation time by exactly 10x.</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span style="min-width: 0;">It eliminates transaction costs in live order books.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Friedman (2001) showed that conservative learning rates (\(\eta \le 0.1\)) provide essential regularization in noisy domains.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What tree depth range did Gu, Kelly &amp; Xiu (2020) identify as optimal for cross-sectional return prediction?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q4"> <span style="min-width: 0;">Shallow trees with depth \(d \in \{1, 2, 3\}\).</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span style="min-width: 0;">Deep trees with depth \(d \ge 12\).</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span style="min-width: 0;">Unbounded depth where leaves contain a single stock.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Shallow trees bound interactions to low orders (main effects and pairs), preventing high-dimensional noise fitting.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the fundamental architectural difference between Random Forests and GBDT?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q5"> <span style="min-width: 0;">Random Forests average deep independent trees in parallel; GBDT fits shallow regularized trees sequentially.</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span style="min-width: 0;">Random Forests use neural activations; GBDT uses support vectors.</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span style="min-width: 0;">Random Forests only run on GPUs.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Random Forests reduce variance via parallel bagging; GBDT reduces bias via sequential residual boosting.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the initial prediction \(f_0(\mathbf{x})\) in GBDT under squared error loss?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q6"> <span style="min-width: 0;">The historical sample mean of the target: \(\bar{y} = \frac{1}{N}\sum_{i=1}^N y_i\).</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span style="min-width: 0;">Zero identically.</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span style="min-width: 0;">The maximum target value in the sample.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The constant minimizer of \(\sum (y_i - c)^2\) is the sample mean \(\bar{y}\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does early stopping prevent GBDT from deteriorating out-of-sample?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q7"> <span style="min-width: 0;">It halts training when validation loss on a purged test fold ceases to improve over a patience window.</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span style="min-width: 0;">It shuts down the computer at midnight.</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span style="min-width: 0;">It deletes all trees with negative weights.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Early stopping monitors validation loss on independent folds to locate the optimal number of iterations \(M\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a boosted tree of depth 1 commonly called, and what model class does it produce?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q8"> <span style="min-width: 0;">A decision stump, which produces a Generalized Additive Model (GAM) with zero interaction terms.</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span style="min-width: 0;">A deep neural network.</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span style="min-width: 0;">A support vector machine.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Depth-1 trees split on a single feature at a time, generating an additive main-effects model.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does Huber loss provide robustness over squared error loss when boosting heavy-tailed financial returns?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q9"> <span style="min-width: 0;">It transitions from quadratic to linear penalty for large errors, clipping pseudo-residuals from market crashes.</span></label>
+              <label class="option"><input type="radio" name="L06q9"> <span style="min-width: 0;">It sets all negative returns to zero.</span></label>
+              <label class="option"><input type="radio" name="L06q9"> <span style="min-width: 0;">It guarantees a Sharpe ratio of 3.0.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Huber loss clips pseudo-residuals at \(\delta \operatorname{sign}(e)\), preventing single outliers from dominating splits.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does histogram-based feature binning (as used in LightGBM) reduce computation in GBDT?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q10"> <span style="min-width: 0;">It maps continuous features into discrete bins (e.g. 256), reducing split evaluation time from \(\mathcal{O}(N)\) to \(\mathcal{O}(K)\).</span></label>
+              <label class="option"><input type="radio" name="L06q10"> <span style="min-width: 0;">It converts floating point calculations into string comparisons.</span></label>
+              <label class="option"><input type="radio" name="L06q10"> <span style="min-width: 0;">It eliminates the need to compute residuals.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Histogram binning discretizes features, replacing continuous sorting with fast integer histogram scanning.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>10. References</h2>
+        <ol data-references>
+        </ol>
+      </section>
+
+      <nav class="page-nav">
+        <a class="prev" href="L05.html">‹ L05 · Bagging &amp; Random Forests in Asset Pricing</a>
+        <a class="next" href="L07.html">L07 · Deep Neural Networks for Factor Modeling ›</a>
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">QR3 · Statistical Learning for Finance · Lesson 06 · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

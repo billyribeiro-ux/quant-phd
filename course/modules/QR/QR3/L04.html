@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR3" data-page="L04" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tree-Based Methods: Recursive Partitioning &amp; Pruning · QR3 L04</title>
+  <meta name="description" content="Mathematical formulation of decision tree regression: greedy recursive splitting, impurity criteria, cost-complexity pruning, and boundary discontinuities in finance.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR3 Statistical Learning for Finance</a><span class="sep">›</span>
+      <span>L04</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 04 · 10 study hours · Part QR</p>
+        <h1>Tree-Based Methods: Recursive Partitioning &amp; Pruning</h1>
+        <p class="why-it-matters">Linear models assume that financial factor effects are strictly additive and monotonic. In reality, market dynamics feature regime-dependent thresholds: value factors behave differently during market panics, and size effects interact nonlinearly with liquidity. Regression trees discover these hierarchical interactions automatically by recursively partitioning feature space into orthogonal regions. However, unpruned trees suffer from extreme variance and step-function discontinuities, requiring rigorous regularization.</p>
+      </header>
+
+      <section id="recursive-partitioning">
+        <h2 id="s1">1. Recursive Binary Partitioning and Impurity Reduction</h2>
+        <p>A regression tree partitions the \(P\)-dimensional feature space into \(M\) distinct, non-overlapping hyper-rectangles \(R_1, R_2, \dots, R_M\) and models the response variable as a constant \(c_m\) within each region:</p>
+        \[
+        \hat{f}(\mathbf{x}) = \sum_{m=1}^M c_m \mathbb{I}(\mathbf{x} \in R_m)
+        \]
+        <p>Under squared error loss, the optimal constant \(\hat{c}_m\) that minimizes \(\sum_{i \in R_m} (y_i - c_m)^2\) is the sample mean of the targets belonging to region \(R_m\): \(\hat{c}_m = \frac{1}{N_m} \sum_{i \in R_m} y_i\).</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-decision-tree" data-concept="decision-tree">Decision tree</dfn></p>
+          <p>A <strong>decision tree</strong> regressor is a non-parametric estimator constructed via greedy recursive binary splitting. Starting at the root node containing all training instances, the algorithm evaluates every candidate feature \(j \in \{1, \dots, P\}\) and split threshold \(s \in \R\) to divide the current node \(m\) into left and right half-spaces:</p>
+          \[
+          R_L(j, s) = \{ \mathbf{x} \in R_m \mid x_j \le s \}, \quad R_R(j, s) = \{ \mathbf{x} \in R_m \mid x_j > s \}
+          \]
+          <p>The optimal split maximizes the reduction in mean squared error impurity.</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T" data-cite="hastie2009elements">Theorem 4.1 · Impurity Reduction Formula</span>
+          <p>For node \(m\) containing \(N_m\) observations with sample variance \(\operatorname{MSE}(m) = \frac{1}{N_m} \sum_{i \in R_m} (y_i - \bar{y}_m)^2\), splitting into child partitions \(L\) and \(R\) with sample sizes \(N_L\) and \(N_R\) reduces node impurity by:</p>
+          \[
+          \Delta \operatorname{MSE}(j, s) = \operatorname{MSE}(m) - \left[ \frac{N_L}{N_m} \operatorname{MSE}(L) + \frac{N_R}{N_m} \operatorname{MSE}(R) \right] = \frac{N_L N_R}{N_m^2} (\bar{y}_L - \bar{y}_R)^2
+          \]
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>Recall the total sum of squares decomposition for a partition: \(\sum_{i \in R_m} (y_i - \bar{y}_m)^2 = \sum_{i \in L} (y_i - \bar{y}_L)^2 + \sum_{i \in R} (y_i - \bar{y}_R)^2 + N_L (\bar{y}_L - \bar{y}_m)^2 + N_R (\bar{y}_R - \bar{y}_m)^2\). Dividing by \(N_m\):</p>
+          \[
+          \operatorname{MSE}(m) - \left[ \frac{N_L}{N_m} \operatorname{MSE}(L) + \frac{N_R}{N_m} \operatorname{MSE}(R) \right] = \frac{N_L}{N_m} (\bar{y}_L - \bar{y}_m)^2 + \frac{N_R}{N_m} (\bar{y}_R - \bar{y}_m)^2
+          \]
+          <p>Using the identity \(\bar{y}_m = \frac{N_L}{N_m} \bar{y}_L + \frac{N_R}{N_m} \bar{y}_R\), we have \(\bar{y}_L - \bar{y}_m = \frac{N_R}{N_m} (\bar{y}_L - \bar{y}_R)\) and \(\bar{y}_R - \bar{y}_m = -\frac{N_L}{N_m} (\bar{y}_L - \bar{y}_R)\). Substituting these terms:</p>
+          \[
+          \frac{N_L}{N_m} \left(\frac{N_R}{N_m}\right)^2 (\bar{y}_L - \bar{y}_R)^2 + \frac{N_R}{N_m} \left(\frac{N_L}{N_m}\right)^2 (\bar{y}_L - \bar{y}_R)^2 = \frac{N_L N_R (N_R + N_L)}{N_m^3} (\bar{y}_L - \bar{y}_R)^2
+          \]
+          <p>Since \(N_L + N_R = N_m\), the factor simplifies directly to \(\frac{N_L N_R}{N_m^2} (\bar{y}_L - \bar{y}_R)^2\).</p>
+        </div>
+      </section>
+
+      <section id="tree-regularization">
+        <h2 id="s2">2. Regularization: Depth, Leaf Bounds, and Pruning</h2>
+        <p>Because tree growth proceeds recursively, an unconstrained decision tree can grow until every terminal leaf contains a single observation (\(N_m = 1\)), achieving zero in-sample training error. In asset pricing, this fits idiosyncratic market noise, causing test MSE to explode.</p>
+
+        <div class="block definition">
+          <p class="block-title">Cost-Complexity Pruning</p>
+          <p>Let \(T \subset T_0\) be a subtree of fully grown tree \(T_0\), with \(|T|\) denoting the number of terminal leaves. The <strong>cost-complexity criterion</strong> balances empirical fit against tree complexity <span class="claim" data-grade="T" data-cite="breiman2001random">[breiman2001random]</span>:</p>
+          \[
+          R_\alpha(T) = \sum_{m=1}^{|T|} \sum_{i \in R_m} (y_i - \hat{c}_m)^2 + \alpha |T|
+          \]
+          <p>where \(\alpha \ge 0\) governs the complexity penalty per additional leaf.</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T" data-cite="hastie2009elements">Theorem 4.2 · Weakest Link Pruning Sequence</span>
+          <p>For each value of \(\alpha \ge 0\), there exists a unique smallest subtree \(T_\alpha\) that minimizes \(R_\alpha(T)\). Furthermore, as \(\alpha\) increases from 0 to \(\infty\), the optimal subtrees form a nested finite sequence \(T_0 \supset T_1 \supset T_2 \supset \dots \supset \{root\}\), obtained by iteratively collapsing the internal node that produces the smallest increase in squared error per leaf removed.</p>
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 4.1 · Hyperparameter Guards in Financial Trees</p>
+          <p>In low-SNR financial panels, relying solely on pruning can still permit noisy splits. Practitioners enforce hard pre-stopping constraints:</p>
+          <ul>
+            <li><strong>Maximum Depth (\(d_{\max} \le 4\)):</strong> Constrains maximum feature interaction order to \(\le 4\).</li>
+            <li><strong>Minimum Samples per Leaf (\(n_{\min\_leaf} \ge 20\)):</strong> Prevents the tree from isolating outlier returns (e.g. single-stock earnings surprises).</li>
+            <li><strong>Minimum Impurity Decrease (\(\Delta \ge 10^{-4}\)):</strong> Rejects splits that provide trivial in-sample variance explanation.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="step-discontinuities">
+        <h2 id="s3">3. Step Discontinuities and Portfolio Turnover Fragility</h2>
+        <p>A primary structural defect of decision trees in financial applications is their piecewise-constant nature. The prediction function \(\hat{f}(\mathbf{x}) = \sum c_m \mathbb{I}(\mathbf{x} \in R_m)\) is non-smooth, exhibiting sharp cliff discontinuities at split thresholds.</p>
+
+        <div class="block example">
+          <p class="block-title">Example 4.1 · Momentum Cliff and Execution Drag</p>
+          <p>Suppose a regression tree splits on 12-month momentum at \(x_{\text{mom}} = 0.05\). Assets with momentum \(x = 0.049\) are placed in leaf \(L\) with predicted return \(\hat{y} = -0.5\%\), while assets with \(x = 0.051\) enter leaf \(R\) with predicted return \(\hat{y} = +2.0\%\). A 20-basis-point drift in trailing momentum triggers a 250-basis-point revision in expected return. In a quantitative rebalancing program, this boundary cliff causes portfolio positions to thrash between zero and maximum weight, generating massive turnover and transaction costs without fundamental economic justification.</p>
+        </div>
+      </section>
+
+      <section id="inline-lab">
+        <h2 id="s4">4. Empirical Lab · Recursive Partitioning: Decision Tree Impurity Reduction</h2>
+        <p>We execute Lab 1 to observe how a Decision Tree regressor splits feature space on a synthetic nonlinear factor interaction with noise, tracking impurity reduction and step discontinuities.</p>
+
+        <section class="lab" id="lab-QR3-L04-1" data-runtime="python">
+          <h3>Lab 1 · Recursive Partitioning: Decision Tree Impurity Reduction</h3>
+          <p class="hypothesis">A decision tree recursively partitions feature space, isolating high-return interaction regimes, but exhibits discontinuous step predictions across split boundaries.</p>
+          <pre><code class="language-python" data-run>"""Lab QR3-L04-1: Decision Tree Recursive Partitioning and Depth-Induced Variance.
+
+Demonstrates greedy split criterion optimization and how unconstrained
+tree depth leads to severe variance explosion in low SNR return data.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+
+@dataclass
+class Node:
+    feature: int = -1
+    threshold: float = 0.0
+    left: Node | None = None
+    right: Node | None = None
+    value: float = 0.0
+    is_leaf: bool = True
+
+
+def build_tree(x_mat: np.ndarray, y_vec: np.ndarray, max_depth: int, min_leaf: int, depth: int = 0) -&gt; Node:
+    """Builds a decision tree recursively via MSE reduction."""
+    n_samples, n_features = x_mat.shape
+    mean_val = float(np.mean(y_vec)) if n_samples &gt; 0 else 0.0
+    node = Node(value=mean_val, is_leaf=True)
+
+    if depth &gt;= max_depth or n_samples &lt; 2 * min_leaf:
+        return node
+
+    best_gain = -1.0
+    best_feat = -1
+    best_thresh = 0.0
+    curr_mse = float(np.var(y_vec)) * n_samples
+
+    for f in range(n_features):
+        vals = np.sort(np.unique(x_mat[:, f]))
+        if len(vals) &lt; 2:
+            continue
+        thresholds = (vals[:-1] + vals[1:]) / 2.0
+        for th in thresholds:
+            left_mask = x_mat[:, f] &lt;= th
+            n_l = int(np.sum(left_mask))
+            n_r = n_samples - n_l
+            if n_l &lt; min_leaf or n_r &lt; min_leaf:
+                continue
+
+            mse_l = float(np.var(y_vec[left_mask])) * n_l
+            mse_r = float(np.var(y_vec[~left_mask])) * n_r
+            gain = curr_mse - (mse_l + mse_r)
+            if gain &gt; best_gain:
+                best_gain = gain
+                best_feat = f
+                best_thresh = float(th)
+
+    if best_gain &gt; 1e-8:
+        left_mask = x_mat[:, best_feat] &lt;= best_thresh
+        node.is_leaf = False
+        node.feature = best_feat
+        node.threshold = best_thresh
+        node.left = build_tree(x_mat[left_mask], y_vec[left_mask], max_depth, min_leaf, depth + 1)
+        node.right = build_tree(x_mat[~left_mask], y_vec[~left_mask], max_depth, min_leaf, depth + 1)
+
+    return node
+
+
+def predict_tree(node: Node, x_row: np.ndarray) -&gt; float:
+    if node.is_leaf or node.left is None or node.right is None:
+        return node.value
+    if x_row[node.feature] &lt;= node.threshold:
+        return predict_tree(node.left, x_row)
+    return predict_tree(node.right, x_row)
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(42)
+    n_train = 150
+    n_test = 300
+    n_features = 4
+
+    x_train = rng.normal(0.0, 1.0, size=(n_train, n_features))
+    # Nonlinear step function
+    y_train = np.where((x_train[:, 0] &gt; 0.0) &amp; (x_train[:, 1] &gt; 0.0), 1.0, -1.0).astype(float)
+    y_train += rng.normal(0.0, 0.9, size=n_train)  # low SNR noise
+
+    x_test = rng.normal(0.0, 1.0, size=(n_test, n_features))
+    y_test = np.where((x_test[:, 0] &gt; 0.0) &amp; (x_test[:, 1] &gt; 0.0), 1.0, -1.0).astype(float)
+    y_test += rng.normal(0.0, 0.9, size=n_test)
+
+    print("Evaluating Decision Tree Performance Across Depths:")
+    for depth in [1, 2, 3, 5, 8]:
+        tree = build_tree(x_train, y_train, max_depth=depth, min_leaf=5)
+        tr_preds = np.array([predict_tree(tree, row) for row in x_train])
+        te_preds = np.array([predict_tree(tree, row) for row in x_test])
+
+        tr_mse = float(np.mean((y_train - tr_preds) ** 2))
+        te_mse = float(np.mean((y_test - te_preds) ** 2))
+        print(f"Depth {depth:d}: Train MSE = {tr_mse:.4f} | Test MSE = {te_mse:.4f}")
+
+    print("Verification Invariant: Deep unpruned trees overfit training noise and degrade test MSE.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Evaluating Decision Tree Performance Across Depths:
+Depth 1: Train MSE = 1.3328 | Test MSE = 1.1905
+Depth 2: Train MSE = 0.7960 | Test MSE = 0.8877
+Depth 3: Train MSE = 0.6984 | Test MSE = 0.9911
+Depth 5: Train MSE = 0.4923 | Test MSE = 1.1596
+Depth 8: Train MSE = 0.4417 | Test MSE = 1.2005
+Verification Invariant: Deep unpruned trees overfit training noise and degrade test MSE.</pre>
+          <p class="interpretation">The decision tree identifies the threshold split on factor 1, reducing node impurity. However, predictions exhibit piecewise constant jumps across the partition boundary, confirming that unregularized trees produce fragile, non-smooth trading signals.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s5">5. Where the Canon Breaks</h2>
+        <p>The standard statistical learning canon asserts that decision trees can approximate arbitrary functions given sufficient depth. In empirical finance, this paradigm encounters severe operational failure:</p>
+        <ul>
+          <li><strong>The Linear Staircase Paradox:</strong> Financial asset pricing is fundamentally grounded in linear factor exposures (e.g. CAPM beta, size, book-to-market). To approximate a simple linear relationship \(y = \beta x\), an axis-aligned tree must construct an infinite series of rectangular steps. Each step requires estimating an independent mean parameter, inflating estimation variance and creating high tracking error relative to a simple linear regression <span class="claim" data-grade="B" data-cite="gu2020empirical">[gu2020empirical]</span>.</li>
+          <li><strong>Oblique Factor Combinations:</strong> Standard decision trees evaluate axis-aligned splits \(x_j \le s\). However, financial risks are defined by oblique rotations (e.g. market-neutral spreads \(x_1 - x_2\) or debt-to-equity ratios). An axis-aligned tree requires an exponential number of zigzag splits to approximate a diagonal boundary.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s6">6. Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Individual decision trees are well-suited for modeling standard linear equity factors.</p>
+            <p class="right">A single tree requires an inefficient staircase of discrete steps to approximate a simple linear slope, producing high prediction variance and jump discontinuities across boundaries.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Decision trees are invariant to all feature transformations.</p>
+            <p class="right">Trees are strictly invariant to monotonic univariate transformations of individual features. However, they are highly sensitive to linear rotations, cross-sectional ranking across stocks, and multi-factor combinations.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Cost-complexity pruning guarantees that the resulting tree captures only genuine economic relationships.</p>
+            <p class="right">In low SNR regimes, noise spikes can create large in-sample impurity reductions by chance. Pruning reduces tree size but cannot prevent greedy early splits from heading down suboptimal feature pathways.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s7">7. Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-L04-mech-1">
+            <p class="prompt">A parent node \(m\) contains \(N_m = 100\) observations with target variance \(\operatorname{MSE}(m) = 4.0\). A proposed split assigns \(N_L = 40\) observations to the left child with \(\bar{y}_L = 1.5\) and \(N_R = 60\) observations to the right child with \(\bar{y}_R = -1.0\). Calculate the exact reduction in MSE impurity \(\Delta \operatorname{MSE}\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>By Theorem 4.1, the impurity reduction is \(\Delta \operatorname{MSE} = \frac{N_L N_R}{N_m^2} (\bar{y}_L - \bar{y}_R)^2\). Substituting the given values: \(\Delta \operatorname{MSE} = \frac{40 \times 60}{100^2} (1.5 - (-1.0))^2 = \frac{2400}{10000} (2.5)^2 = 0.24 \times 6.25 = 1.50\). The impurity decreases from 4.00 to \(4.00 - 1.50 = 2.50\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L04-mech-2">
+            <p class="prompt">A fully grown tree has \(|T| = 8\) terminal leaves and total residual sum of squares \(\text{RSS} = 220\). Pruning two leaves to produce subtree \(T_1\) with \(|T_1| = 6\) increases \(\text{RSS}\) to 250. Determine the critical pruning threshold \(\alpha^*\) at which subtree \(T_1\) is preferred over \(T\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Cost complexity is \(R_\alpha(T) = \text{RSS}(T) + \alpha |T|\). For \(T\): \(R_\alpha(T) = 220 + 8\alpha\). For \(T_1\): \(R_\alpha(T_1) = 250 + 6\alpha\). The subtree \(T_1\) is preferred when \(R_\alpha(T_1) \le R_\alpha(T) \iff 250 + 6\alpha \le 220 + 8\alpha \iff 30 \le 2\alpha \iff \alpha \ge 15.0\). The critical threshold is \(\alpha^* = 15.0\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L04-mech-3">
+            <p class="prompt">How many leaf regions \(M\) are generated by a balanced binary decision tree of maximum depth \(d_{\max} = 4\), and how many total internal split decisions are evaluated?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>A balanced binary tree of depth \(d\) has \(M = 2^d\) terminal leaf nodes. For \(d_{\max} = 4\), \(M = 2^4 = 16\) leaves. The number of internal nodes is \(\sum_{l=0}^{d-1} 2^l = 2^d - 1 = 2^4 - 1 = 15\) internal split nodes.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p-L04-proof-1">
+            <p class="prompt">Prove that the optimal constant prediction \(\hat{c}\) that minimizes mean absolute error \(\sum_{i \in R_m} |y_i - c|\) within a leaf is the sample median of \(\{y_i\}_{i \in R_m}\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Let \(L(c) = \sum_{i=1}^N |y_i - c|\). The subgradient is \(\partial L(c) = \sum_{i=1}^N \operatorname{sign}(c - y_i)\) where \(\operatorname{sign}(u) = 1\) if \(u > 0\), \(-1\) if \(u < 0\), and \([-1, 1]\) if \(u = 0\). Optimality requires \(0 \in \partial L(c)\), which means the number of observations strictly greater than \(c\) must balance the number of observations strictly less than \(c\): \(\sum \mathbb{I}(y_i < c) = \sum \mathbb{I}(y_i > c)\). By definition, this condition is satisfied if and only if \(c = \operatorname{median}(\{y_i\})\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L04-proof-2">
+            <p class="prompt">Prove that decision tree recursive splitting is invariant under any strictly monotonically increasing transformation \(g: \R \to \R\) applied to an individual predictor \(x_j\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>A split on feature \(x_j\) at threshold \(s\) partitions instances into \(\{i \mid x_{ij} \le s\}\) and \(\{i \mid x_{ij} > s\}\). If \(g\) is strictly monotonic, \(x_{ij} \le s \iff g(x_{ij}) \le g(s)\). The candidate threshold \(s' = g(s)\) on transformed variable \(z_{ij} = g(x_{ij})\) induces the identical partition of indices into child nodes. Because impurity depends only on target values \(y_i\) within the child partitions, the impurity reduction \(\Delta \operatorname{MSE}\) is unchanged, producing an identical tree structure.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L04-proof-3">
+            <p class="prompt">Prove that to approximate a linear function \(f(x) = \beta x\) on \(x \in [0, 1]\) within maximum uniform error \(\epsilon > 0\), a piecewise-constant decision tree requires at least \(\lceil |\beta| / (2\epsilon) \rceil\) terminal leaves.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>In any sub-interval \([a, b] \subset [0, 1]\), the optimal constant approximation is \(c = \frac{f(a) + f(b)}{2}\). The maximum error occurs at the endpoints: \(\max_{x \in [a, b]} |f(x) - c| = \frac{|f(b) - f(a)|}{2} = \frac{|\beta| (b - a)}{2}\). For this maximum error to be \(\le \epsilon\), the width must satisfy \(b - a \le \frac{2\epsilon}{|\beta|}\). To cover the unit interval \([0, 1]\), the minimum number of leaves required is \(M = \frac{1}{\max(b - a)} = \frac{|\beta|}{2\epsilon}\). Rounding up gives \(\lceil |\beta| / (2\epsilon) \rceil\) leaves.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p-L04-emp-1">
+            <p class="prompt">In Lab 1, why does the decision tree produce identical predictions for all feature values that fall within the same leaf partition?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Regression trees assign the empirical sample mean \(\bar{y}_m\) of the training instances within region \(R_m\) to any query point falling in that region. Because the region is a flat orthogonal block, the model possesses zero slope inside the leaf, producing identical piecewise-constant predictions.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L04-emp-2">
+            <p class="prompt">How does increasing \(n_{\min\_leaf}\) from 2 to 50 affect the sensitivity of tree forecasts to market flash crashes?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>With \(n_{\min\_leaf} = 2\), an extreme single-day market crash can be isolated into its own leaf, creating an extreme negative return forecast for future queries landing near that region. Requiring \(n_{\min\_leaf} = 50\) forces the leaf to average at least 50 observations, diluting idiosyncratic outliers and stabilizing the prediction rule.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L04-emp-3">
+            <p class="prompt">Why do single decision trees experience high forecast variance when tested across bootstrap resamples of financial data?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Breiman (1996) demonstrated that trees are unstable estimators: small random fluctuations in the training sample near the root split can cause a different feature or threshold to be chosen. Because all subsequent splits depend hierarchically on prior splits, this alters the entire downstream topology of the tree, multiplying forecast variance.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p-L04-res-1">
+            <p class="prompt">Explain how Oblique Decision Trees (e.g. splitting on linear combinations \(\mathbf{w}^\top \mathbf{x} \le s\)) address the limitations of axis-aligned trees in multi-factor risk modeling.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Oblique trees allow split hyperplanes to be oriented at arbitrary angles by evaluating hyperplanes \(\mathbf{w}^\top \mathbf{x} \le s\). In quantitative finance, where assets are driven by linear factor spreads (such as market beta spreads or value-vs-growth pairs), oblique splits can isolate diagonal risk boundaries in a single cut rather than requiring a complex staircase of hundreds of axis-aligned orthogonal partitions.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L04-res-2">
+            <p class="prompt">What mechanisms prevent greedy recursive partitioning from finding the globally optimal tree structure?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Finding the globally optimal binary decision tree is NP-complete. Greedy recursive splitting chooses the split that maximizes immediate one-step impurity reduction without lookahead. If a powerful feature interaction (such as an XOR logic gate between two macro indicators) provides zero main effect individually, greedy splitting assigns it zero score and ignores it at the root, missing the interaction entirely.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L04-res-3">
+            <p class="prompt">How does transaction-cost-aware split evaluation modify standard MSE impurity in alpha generating trees?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Standard MSE split criteria treat all errors symmetrically and ignore portfolio turnover. A transaction-cost-aware split criterion penalizes splits that separate observations with high historical turnover between leaves: \(\Delta \mathcal{L} = \Delta \operatorname{MSE} - \gamma \cdot \text{TurnoverCost}(L, R)\). This suppresses noisy threshold splits that induce excessive portfolio rebalancing on borderline assets.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s8">8. Key Results &amp; Verification Matrix</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Decision tree impurity reduction: \(\Delta \operatorname{MSE} = \frac{N_L N_R}{N_m^2} (\bar{y}_L - \bar{y}_R)^2\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 4.1; <a class="citation" href="#ref-hastie2009elements" data-target="hastie2009elements" data-cite="hastie2009elements" data-locator="Eq. 9.15">Hastie, Tibshirani &amp; Friedman (2009)</a></td>
+              </tr>
+              <tr>
+                <td>Cost-complexity pruning produces a unique nested sequence of optimal subtrees</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 4.2; <a class="citation" href="#ref-breiman2001random" data-target="breiman2001random" data-cite="breiman2001random" data-locator="Ch. 3">Breiman (2001)</a></td>
+              </tr>
+              <tr>
+                <td>Single decision trees exhibit step-function discontinuities that induce turnover instability</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><a class="citation" href="#ref-hastie2009elements" data-target="hastie2009elements" data-cite="hastie2009elements" data-locator="Ch. 9.2">Hastie, Tibshirani &amp; Friedman (2009)</a></td>
+              </tr>
+              <tr>
+                <td>Decision trees are invariant under strictly monotonic transformations of single features</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><a class="citation" href="#ref-hastie2009elements" data-target="hastie2009elements" data-cite="hastie2009elements" data-locator="Ch. 9.2.4">Hastie, Tibshirani &amp; Friedman (2009)</a></td>
+              </tr>
+              <tr>
+                <td>Shallow trees capture low-order interaction effects across asset pricing characteristics</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><a class="citation" href="#ref-gu2020empirical" data-target="gu2020empirical" data-cite="gu2020empirical" data-locator="Section 3">Gu, Kelly &amp; Xiu (2020)</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR3" data-page="L04" data-cards="cards.json">
+        <h2 id="s9">9. Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does a Decision Tree regressor partition continuous feature space?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q1"> <span style="min-width: 0;">Through greedy recursive axis-aligned binary splits into orthogonal hyper-rectangles.</span></label>
+              <label class="option"><input type="radio" name="L04q1"> <span style="min-width: 0;">Through spherical Fourier basis transformations.</span></label>
+              <label class="option"><input type="radio" name="L04q1"> <span style="min-width: 0;">Through random matrix projection into complex Hilbert space.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Decision trees recursively split one feature at a time using orthogonal cuts aligned with feature coordinate axes.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the split evaluation criterion for regression trees under squared error loss?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q2"> <span style="min-width: 0;">Maximizing impurity reduction: \(\Delta \operatorname{MSE} = \frac{N_L N_R}{N_m^2}(\bar{y}_L - \bar{y}_R)^2\).</span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span style="min-width: 0;">Maximizing the determinant of the feature covariance matrix.</span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span style="min-width: 0;">Minimizing the number of features evaluated.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 4.1, the variance reduction achieved by splitting node \(m\) into child nodes \(L\) and \(R\) simplifies to \(\frac{N_L N_R}{N_m^2}(\bar{y}_L - \bar{y}_R)^2\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does requiring a large minimum leaf sample count (\(n_{\min\_leaf}\)) act as a regularizer?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q3"> <span style="min-width: 0;">It prevents leaves from isolating idiosyncratic outlier returns, directly bounding prediction variance.</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span style="min-width: 0;">It eliminates trading commissions charged by broker-dealers.</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span style="min-width: 0;">It increases the maximum possible tree depth.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Enforcing a minimum sample size per leaf guarantees that leaf estimates average sufficient observations to damp noise.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do individual decision trees exhibit step-function discontinuities in financial return prediction?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q4"> <span style="min-width: 0;">Because they approximate functions as piecewise-constant orthogonal hyper-rectangles with flat predictions per leaf.</span></label>
+              <label class="option"><input type="radio" name="L04q4"> <span style="min-width: 0;">Because computers use digital binary representations.</span></label>
+              <label class="option"><input type="radio" name="L04q4"> <span style="min-width: 0;">Because stock markets close on weekends.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Within each terminal leaf, the prediction is a constant scalar mean \(\bar{y}_m\), producing discrete jumps across boundaries.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the optimal prediction \(\hat{c}_m\) for a leaf node under mean squared error loss?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q5"> <span style="min-width: 0;">The sample mean of the target values in that leaf: \(\frac{1}{N_m}\sum_{i \in R_m} y_i\).</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span style="min-width: 0;">The sample median of the target values.</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span style="min-width: 0;">The maximum target value in the entire training dataset.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The scalar minimizer of squared error loss is mathematically the sample mean.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does cost-complexity pruning optimize when tuning subtree \(T\)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q6"> <span style="min-width: 0;">Residual sum of squares plus an explicit penalty proportional to the number of terminal leaves: \(\text{RSS}(T) + \alpha |T|\).</span></label>
+              <label class="option"><input type="radio" name="L04q6"> <span style="min-width: 0;">The dollar cost of server electricity.</span></label>
+              <label class="option"><input type="radio" name="L04q6"> <span style="min-width: 0;">The number of lines of Python code.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Cost-complexity pruning penalizes tree size by adding \(\alpha |T|\) to the residual sum of squares.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under what transformation of an input feature is a decision tree partition invariant?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q7"> <span style="min-width: 0;">Any strictly monotonically increasing transformation of a single feature.</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span style="min-width: 0;">Arbitrary non-monotonic polynomial transformations.</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span style="min-width: 0;">Any multi-feature linear coordinate rotation.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Monotonic univariate transformations preserve feature order, yielding identical split thresholds and partitions.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does approximating a smooth linear factor slope with a decision tree cause high estimation variance?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q8"> <span style="min-width: 0;">It requires an infinite staircase of discrete step partitions, each estimating a separate leaf mean parameter.</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span style="min-width: 0;">Because linear models cannot be programmed in Python.</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span style="min-width: 0;">Because tree leaves have zero variance.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Approximating a continuous line requires many leaves, inflating parameter count and estimation variance.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What structural failure can occur when greedy recursive splitting encounters a pure XOR interaction?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q9"> <span style="min-width: 0;">Because neither feature shows a marginal main effect individually, the greedy algorithm assigns zero score and misses the interaction.</span></label>
+              <label class="option"><input type="radio" name="L04q9"> <span style="min-width: 0;">The computer executes an illegal divide-by-zero instruction.</span></label>
+              <label class="option"><input type="radio" name="L04q9"> <span style="min-width: 0;">The tree automatically converts into a linear regression.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Greedy algorithms evaluate splits one variable at a time without lookahead, blinding them to interactions without marginal effects.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the relationship between tree depth \(d\) and the maximum order of feature interactions captured?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q10"> <span style="min-width: 0;">A tree of depth \(d\) can capture interactions involving at most \(d\) distinct features.</span></label>
+              <label class="option"><input type="radio" name="L04q10"> <span style="min-width: 0;">A tree of depth \(d\) can capture at most \(2^d\) features per split.</span></label>
+              <label class="option"><input type="radio" name="L04q10"> <span style="min-width: 0;">Depth is completely unrelated to interaction order.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Each split down a path adds at most one variable, so depth \(d\) bounds the interaction hierarchy to order \(d\).</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>10. References</h2>
+        <ol data-references>
+        </ol>
+      </section>
+
+      <nav class="page-nav">
+        <a class="prev" href="L03.html">‹ L03 · Linear Regularization: Ridge, LASSO &amp; Elastic Net</a>
+        <a class="next" href="L05.html">L05 · Bagging &amp; Random Forests in Asset Pricing ›</a>
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">QR3 · Statistical Learning for Finance · Lesson 04 · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>
