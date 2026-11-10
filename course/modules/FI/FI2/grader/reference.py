@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from scipy import optimize  # type: ignore[import-untyped]
+from scipy import optimize
 
 
 def solve_riccati_ode(

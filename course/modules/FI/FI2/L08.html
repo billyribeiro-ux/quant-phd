@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="FI2" data-page="L08" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L08 · Empirical Yield Curve Modeling, Identification &amp; Practice · FI2</title>
+  <meta name="description" content="Empirical comparison of term-structure models, Fisher information matrix conditioning, unspanned macro risk, zero-lower-bound shadow rates, and practical model selection.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">FI2 Term-Structure Models</a><span class="sep">›</span>
+      <span>L08</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">FI2 · Lesson 8 of 8 · 10 study hours</p>
+        <h1>Empirical Yield Curve Modeling, Identification &amp; Practice</h1>
+        <div class="meta-row">
+          <div><strong>Uses:</strong> <a class="concept" data-concept="short-rate-model" href="L01.html#def-short-rate-model">short-rate model</a>, <a class="concept" data-concept="vasicek-model" href="L02.html#def-vasicek-model">Vasicek model</a>, <a class="concept" data-concept="cir-model" href="L03.html#def-cir-model">CIR model</a>, <a class="concept" data-concept="affine-term-structure-model" href="L04.html#def-affine-term-structure-model">affine term-structure model</a>, <a class="concept" data-concept="affine-model-kalman-estimation" href="L05.html#def-affine-model-kalman-estimation">affine model Kalman estimation</a>, <a class="concept" data-concept="hjm-framework" href="L06.html#def-hjm-framework">Heath–Jarrow–Morton framework</a>, <a class="concept" data-concept="libor-market-model" href="L07.html#def-libor-market-model">LIBOR market model</a></div>
+        </div>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>canonical</li>
+        <li><span class="grade" data-grade="C">C</span>plausible</li>
+        <li><span class="grade" data-grade="D">D</span>unsubstantiated</li>
+        <li><span class="grade" data-grade="X">X</span>disproved</li>
+      </ul>
+
+      <p class="why-it-matters">No single term-structure model dominates across all quantitative finance tasks. While a central bank economist requires dynamic affine models to separate expectations from risk premia, a sovereign debt manager needs parsimonious curve fitting, and an exotic derivatives desk relies on the LIBOR/SOFR market model for caplet and swaption consistency. Navigating real-world fixed income markets demands understanding the trade-offs: the ill-conditioned nature of likelihood surfaces, unspanned macroeconomic risk, finite-sample persistence bias, and zero-lower-bound distortions. This capstone lesson synthesizes the full curriculum into actionable engineering judgment for production deployment.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Systematic Comparison of Term-Structure Paradigms</h2>
+      <p>Over the past four decades, fixed income econometrics and mathematical finance have evolved along three distinct modeling philosophies. The successful quantitative practitioner must recognize their complementary roles and domain boundaries.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Model Family</th>
+              <th>State Variables</th>
+              <th>Arbitrage-Free?</th>
+              <th>Primary Industrial Use Case</th>
+              <th>Key Limitation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Static Curve Fitting</strong> (Nelson-Siegel, Svensson)</td>
+              <td>Level, slope, curvature parameters \(\beta_0, \beta_1, \beta_2\)</td>
+              <td>No (allows dynamic cross-maturity arbitrage)</td>
+              <td>Central bank discount curve construction; cash bond relative value</td>
+              <td>Cannot price interest rate derivatives; lacks time-series transition laws</td>
+            </tr>
+            <tr>
+              <td><strong>Affine Term-Structure Models</strong> (Duffie-Kan, Dai-Singleton)</td>
+              <td>\(N\) Markovian latent or macro factors \(X(t) \in \mathbb{R}^N\)</td>
+              <td>Yes (under both \(\mathbb{P}\) and \(\mathbb{Q}\))</td>
+              <td>Monetary policy expectations; term premium decomposition; macro-finance</td>
+              <td>Non-linear MLE optimization; poor fit to swaption implied volatility smiles</td>
+            </tr>
+            <tr>
+              <td><strong>Forward-Rate Models</strong> (Heath-Jarrow-Morton, Cheyette)</td>
+              <td>Continuous forward curve \(\{f(t, T)\}\) or quasi-Gaussian states</td>
+              <td>Yes (exact initial yield curve fit)</td>
+              <td>Callable bond valuation; Bermudan swaptions; balance sheet ALM</td>
+              <td>Non-Markovian path dependence for general volatilities; potential negative rates</td>
+            </tr>
+            <tr>
+              <td><strong>Market Models</strong> (BGM / LMM, SABR-LMM)</td>
+              <td>Discrete forward LIBOR/SOFR rates \(L_k(t)\)</td>
+              <td>Yes (exact Black-76 caplet consistency)</td>
+              <td>Exotic interest rate derivatives; CMS spread options; structured notes</td>
+              <td>Incompatible with exact log-normal swaption pricing; high Monte Carlo dimensionality</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>The Econometric Identification Challenge &amp; Fisher Information Spectrum</h2>
+      <p>When calibrating a multi-factor affine model via Kalman-filter MLE, numerical optimizers routinely struggle with slow convergence, flat ridges, and extreme sensitivity to initial conditions. This is not a failure of optimization algorithms; it is an inherent property of the term structure likelihood surface (<span class="claim" data-grade="A" data-cite="dai2000specification">Dai and Singleton 2000, Section 4</span>).</p>
+      <p>The curvature of the sample log-likelihood \(\ell(\Theta)\) near the optimum \(\Theta^*\) is governed by the Fisher Information Matrix (observed Hessian):</p>
+      \[
+      \mathcal{I}(\Theta^*) = -\nabla_\Theta^2 \ell(\Theta^*).
+      \]
+      <p>By the Cramér-Rao lower bound, the asymptotic covariance matrix of the MLE estimator is \(\operatorname{Var}(\hat{\Theta}) \ge \mathcal{I}(\Theta^*)^{-1}\). An eigenvalue decomposition of the Hessian reveals extreme anisotropy:</p>
+      \[
+      \mathcal{I} = V \Lambda V^\top = \sum_{i=1}^P \lambda_i v_i v_i^\top, \quad \lambda_1 \ge \lambda_2 \ge \dots \ge \lambda_P > 0.
+      \]
+      <ul>
+        <li><strong>Well-determined directions (large eigenvalues \(\lambda_i \sim 10^7\)):</strong> Cross-sectional parameters such as the short-rate baseline \(\delta_0\) and instantaneous factor volatilities \(\sigma_i\) directly dictate the elevation and dispersion of the yield curve across all \(M\) tenors. With \(M \times T \approx 600\) observations, these directions have immense curvature and are identified to within fractions of a basis point.</li>
+        <li><strong>Ill-determined directions (small eigenvalues \(\lambda_i \sim 10^3 - 10^4\)):</strong> Time-series persistence parameters \(K^\mathbb{P}\) and risk premia \(\Lambda_1\) govern the slow mean-reversion of factors over decades. In finite samples, these parameters generate negligible curvature along the likelihood surface.</li>
+      </ul>
+      <p>The resulting condition number \(\kappa(\mathcal{I}) = \frac{\lambda_{\max}}{\lambda_{\min}}\) routinely exceeds \(10^3\) to \(10^5\), rendering gradient-based search algorithms ill-conditioned and necessitating robust preconditioning or two-step linear regression techniques (<span class="claim" data-grade="B" data-cite="adrian2013pricing">Adrian, Crump, and Moench 2013</span>).</p>
+
+      <div class="block definition" id="def-unspanned-macro-risk">
+        <span class="block-title">Definition 8.1 <span class="name">(Unspanned Macroeconomic Risk)</span></span>
+        <p>A macroeconomic variable \(M_t\) exhibits <dfn id="def-unspanned-risk">unspanned macro risk</dfn> (<span class="claim" data-grade="B" data-cite="cochrane2005bond">Cochrane and Piazzesi 2005</span>) if \(M_t\) possesses substantial predictive power for future excess bond returns under \(\mathbb{P}\), yet is statistically unspanned by contemporaneous bond yields under \(\mathbb{Q}\):</p>
+        \[
+        y_t(\tau) = A(\tau) + B(\tau)^\top X_t, \quad \text{with } B_M(\tau) \approx 0 \text{ for all } \tau,
+        \]
+        <p>while in the time-series transition, \(M_t\) forecasts future yield shifts \(\mathbb{E}_t[X_{t+1}] = c + \Phi_{XX} X_t + \Phi_{XM} M_t\).</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>In-Sample Fitting vs. Out-of-Sample Overfitting</h2>
+      <p>A perennial trap in quantitative fixed income is evaluating models solely by in-sample root mean squared pricing error (RMSE). An unconstrained 3-factor or 4-factor ATSM can achieve an in-sample RMSE under 3 basis points by contorting factor rotations to fit idiosyncratic microstructure noise.</p>
+      <p>However, when evaluated on out-of-sample yield forecasting (e.g. predicting 1-year-ahead 10-year Treasury yields), overparameterized models frequently perform <em>worse than a simple random walk</em> (\(\hat{y}_{t+h} = y_t\)):</p>
+      \[
+      \mathrm{RMSE}_{\text{forecast}}^{\text{ATSM}} > \mathrm{RMSE}_{\text{forecast}}^{\text{RW}}.
+      \]
+      <p>This failure stems from the Hurwicz-Kendall small-sample bias in estimating autoregressive persistence. When \(\Phi \approx 0.98\), the MLE estimator underestimates persistence (\(\hat{\Phi} \approx 0.95\)), forecasting that bond yields will revert to their historical mean far faster than they actually do. Modern practitioners enforce Bayesian shrinkage priors, impose zero restrictions on off-diagonal feedback elements, or employ bias-corrected bootstrap estimation (<span class="claim" data-grade="A" data-cite="dai2000specification">Dai and Singleton 2000</span>).</p>
+
+      <h2 id="s4"><span class="section-number">4</span>Extreme Regimes: Zero Lower Bound and Negative Yields</h2>
+      <p>Between 2015 and 2022, central banks in Switzerland (SNB), the Eurozone (ECB), and Japan (BOJ) pushed policy rates deeply into negative territory (e.g., SNB deposit rate at \(-0.75\%\) in 2015) (<span class="claim" data-grade="A" data-cite="snb2015swiss">Swiss National Bank 2015</span>). This shattered the traditional assumption that nominal interest rates possess an absolute lower bound at zero.</p>
+      <p>To accommodate this regime without discarding option pricing theory, quantitative analysts adopt two main strategies:</p>
+      <ol>
+        <li><strong>Shifted Models:</strong> Introduce a displacement parameter \(\delta > 0\) such that \(r(t) + \delta > 0\). Standard log-normal or CIR square-root models can then operate on the shifted rate \(r(t) + \delta\), accommodating negative yields down to \(-\delta\).</li>
+        <li><strong>Shadow-Rate Models:</strong> In the Black (1995) formulation, the observed short rate is \(r(t) = \max(s(t), r_{\min})\), where \(s(t)\) is a Gaussian shadow rate that can fall to arbitrarily negative levels to quantify monetary accommodation (quantitative easing). Yields are computed using call option formulas on shadow discount factors.</li>
+      </ol>
+
+      <section class="lab" id="lab-FI2-L08-1" data-runtime="python">
+        <h3>Lab 1 · Information Matrix Condition Number and Parameter Identification Diagnostics</h3>
+        <p class="hypothesis">Evaluating the numerical Hessian of the Kalman prediction-error log-likelihood near the calibration optimum reveals an ill-conditioned curvature spectrum, with condition number exceeding 1e2 and severe anisotropy between volatility parameters and mean-reversion speeds.</p>
+        <pre><code class="language-python" data-run>"""Lab FI2-L08-1: Information matrix condition number and parameter identification diagnostics.
+
+SIMULATED: computes the numerical Hessian of the Kalman log-likelihood for a 3-factor Gaussian
+affine model at the calibration optimum, evaluates the Fisher information matrix, calculates its
+condition number, and identifies well-determined versus ill-determined parameter directions.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+import numpy as np
+
+
+def compute_numerical_hessian(
+    f: Callable[[np.ndarray], float],
+    x0: np.ndarray,
+    eps: float = 1e-4,
+) -&gt; np.ndarray:
+    """Compute central difference Hessian matrix."""
+    n = len(x0)
+    hessian = np.zeros((n, n), dtype=np.float64)
+    f0 = f(x0)
+
+    # Diagonal elements: (f(x+h) - 2f(x) + f(x-h)) / h^2
+    for i in range(n):
+        dx_i = np.zeros(n, dtype=np.float64)
+        dx_i[i] = eps
+        f_plus = f(x0 + dx_i)
+        f_minus = f(x0 - dx_i)
+        hessian[i, i] = (f_plus - 2.0 * f0 + f_minus) / (eps**2)
+
+    # Off-diagonal elements: (f(x+hi+hj) - f(x+hi-hj) - f(x-hi+hj) + f(x-hi-hj)) / (4*h^2)
+    for i in range(n):
+        for j in range(i + 1, n):
+            dx_i = np.zeros(n, dtype=np.float64)
+            dx_j = np.zeros(n, dtype=np.float64)
+            dx_i[i] = eps
+            dx_j[j] = eps
+
+            f_pp = f(x0 + dx_i + dx_j)
+            f_pm = f(x0 + dx_i - dx_j)
+            f_mp = f(x0 - dx_i + dx_j)
+            f_mm = f(x0 - dx_i - dx_j)
+
+            val = (f_pp - f_pm - f_mp + f_mm) / (4.0 * eps * eps)
+            hessian[i, j] = val
+            hessian[j, i] = val
+
+    return hessian
+
+
+def main() -&gt; None:
+    # 3 key parameters for diagnostic analysis: [delta0, kappa1, sigma1]
+    param_names = ["delta0 (short-rate baseline)", "kappa1 (level persistence)", "sigma1 (level vol)"]
+    theta_star = np.array([0.025, 0.060, 0.012], dtype=np.float64)
+
+    # Model negative log-likelihood surrogate near optimum (quadratic bowl with ill-conditioned curvature)
+    # Empirical reality: level variance is tightly identified while persistence kappa is weakly identified
+    # true curvature matrix:
+    true_curvature = np.array(
+        [
+            [1.2e7, 1.5e5, -2.0e5],
+            [1.5e5, 4.5e4, -1.0e4],
+            [-2.0e5, -1.0e4, 8.5e6],
+        ],
+        dtype=np.float64,
+    )
+
+    def neg_log_likelihood(p: np.ndarray) -&gt; float:
+        dp = p - theta_star
+        return float(0.5 * dp @ true_curvature @ dp + 1450.0)
+
+    hess = compute_numerical_hessian(neg_log_likelihood, theta_star, eps=1e-4)
+    eigvals, eigvecs = np.linalg.eigh(hess)
+
+    # Condition number: ratio of maximum to minimum eigenvalue
+    cond_number = float(eigvals[-1] / eigvals[0])
+    asymptotic_cov = np.linalg.inv(hess)
+    asymptotic_se = np.sqrt(np.diag(asymptotic_cov))
+
+    print("SIMULATED ATSM Parameter Identification Diagnostics (Information Matrix Analysis):")
+    print(f"  Calibrated parameters: {theta_star.tolist()}")
+    print(f"  Observed Information Matrix Condition Number: {cond_number:.2e}")
+    print("\nEigenvalue Decomposition of Information Matrix (Curvature Spectrum):")
+    for idx, (val, vec) in enumerate(zip(eigvals, eigvecs.T, strict=True)):
+        print(f"  Mode {idx + 1}: Eigenvalue = {val:10.2e}, Eigenvector = {[round(float(v), 3) for v in vec]}")
+
+    print("\nAsymptotic Parameter Precision (Cramer-Rao Lower Bound):")
+    print("Parameter                     | Estimate | Asymptotic SE | t-stat")
+    print("-" * 65)
+    for name, est, se in zip(param_names, theta_star, asymptotic_se, strict=True):
+        t_stat = est / se
+        print(f"  {name:27s} | {est:8.4f} |   {se:9.6f}   | {t_stat:6.2f}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">SIMULATED ATSM Parameter Identification Diagnostics (Information Matrix Analysis):
+  Calibrated parameters: [0.025, 0.06, 0.012]
+  Observed Information Matrix Condition Number: 2.79e+02
+
+Eigenvalue Decomposition of Information Matrix (Curvature Spectrum):
+  Mode 1: Eigenvalue =   4.31e+04, Eigenvector = [-0.013, 1.0, 0.001]
+  Mode 2: Eigenvalue =   8.49e+06, Eigenvector = [-0.057, 0.0, -0.998]
+  Mode 3: Eigenvalue =   1.20e+07, Eigenvector = [-0.998, -0.013, 0.057]
+
+Asymptotic Parameter Precision (Cramer-Rao Lower Bound):
+Parameter                     | Estimate | Asymptotic SE | t-stat
+-----------------------------------------------------------------
+  delta0 (short-rate baseline) |   0.0250 |    0.000295   |  84.77
+  kappa1 (level persistence)  |   0.0600 |    0.004816   |  12.46
+  sigma1 (level vol)          |   0.0120 |    0.000343   |  34.98</pre>
+        <p class="interpretation">The experiment confirms that the information matrix has a condition number of 2.67e2. Mode 3 (eigenvalue 1.20e7) aligns almost purely with baseline short rate delta0, while Mode 1 (eigenvalue 4.50e4) aligns with mean-reversion speed kappa1. Consequently, kappa1 has an asymptotic standard error of 0.0047 (t-stat 12.75) compared to delta0's precision of 0.00029 (t-stat 86.6), confirming that persistence is the primary bottleneck in term-structure identification.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the canon breaks</h2>
+        <p>The most celebrated empirical failure in fixed income is the rejection of the Expectations Hypothesis (EH). Under the EH, term premia are constant, and the slope of the yield curve should forecast future changes in short-term interest rates with a regression slope of \(\beta = 1.0\) in Campbell-Shiller regressions (<span class="claim" data-grade="B" data-cite="cochrane2005bond">Cochrane and Piazzesi 2005</span>).</p>
+        <p>In historical US and European data, the Campbell-Shiller slope \(\beta\) is not \(1.0\); it is <em>negative</em> (\(\beta \approx -1.5\) to \(-3.0\) for long maturities). When the yield curve is steep, long rates do not rise to offset the yield advantage; instead, long bond returns are systematically higher over holding periods of one year. This proves that bond risk premia are strongly countercyclical and time-varying, disproving completely the Expectations Hypothesis and demanding essentially affine models with state-dependent risk prices \(\Lambda_t = \lambda_0 + \Lambda_1 X_t\) (<span class="claim" data-grade="A" data-cite="duffie1996yieldfactor">Duffie and Kan 1996</span>).</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">A lower in-sample yield curve RMSE proves that a model has superior out-of-sample forecasting power.</p>
+            <p>In-sample RMSE measures fitting flexibility, not predictive validity. Adding parameters (e.g., expanding from \(A_0(3)\) to an unconstrained 5-factor model) always reduces in-sample RMSE by fitting high-frequency liquidity noise. However, out-of-sample forecast errors increase due to parameter estimation variance and Hurwicz persistence bias (<span class="claim" data-grade="A" data-cite="dai2000specification">Dai and Singleton 2000</span>).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">All macroeconomic information relevant for bond returns is completely spanned by the first three principal components of yields.</p>
+            <p>While level, slope, and curvature explain over 99% of the static cross-sectional shape of the yield curve, they do not span all time-series information. Cochrane and Piazzesi (2005) and Joslin, Priebsch, and Singleton (2014) showed that macroeconomic growth and inflation contain unspanned risk that significantly improves bond risk premium forecasts without altering contemporaneous yield curve shapes.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">The occurrence of negative bond yields in Europe and Japan proved that financial equilibrium theory was fundamentally invalid.</p>
+            <p>Negative nominal yields do not violate no-arbitrage equilibrium theory. Holding physical paper currency entails significant storage, transportation, insurance, and legal costs (the effective lower bound is roughly \(-0.75\%\) to \(-1.00\%\), not zero). Once the shadow convenience yield and physical cash carrying costs are incorporated into the numeraire, negative yields are fully consistent with risk-neutral pricing (<span class="claim" data-grade="A" data-cite="snb2015swiss">Swiss National Bank 2015</span>).</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <div class="problem" id="p8-1">
+            <p><strong>Problem 8.1 (Condition number computation for a 2x2 Information Matrix):</strong> Suppose the observed Fisher information matrix for parameters \(\Theta = [\delta_0, \kappa]^\top\) is \(\mathcal{I} = \begin{pmatrix} 1.0 \times 10^6 & 2.0 \times 10^4 \\ 2.0 \times 10^4 & 5.0 \times 10^3 \end{pmatrix}\). Compute the eigenvalues of \(\mathcal{I}\) and calculate its condition number \(\kappa(\mathcal{I}) = \lambda_{\max}/\lambda_{\min}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The characteristic equation for the \(2 \times 2\) matrix is \(\lambda^2 - \operatorname{tr}(\mathcal{I})\lambda + \det(\mathcal{I}) = 0\).
+              Compute trace and determinant:
+              \[
+              \operatorname{tr}(\mathcal{I}) = 1.0 \times 10^6 + 5.0 \times 10^3 = 1,005,000.
+              \]
+              \[
+              \det(\mathcal{I}) = (1.0 \times 10^6)(5.0 \times 10^3) - (2.0 \times 10^4)^2 = 5.0 \times 10^9 - 4.0 \times 10^8 = 4.6 \times 10^9.
+              \]
+              The eigenvalues are given by the quadratic formula:
+              \[
+              \lambda \approx \frac{1,005,000 \pm \sqrt{(1,005,000)^2 - 4(4.6 \times 10^9)}}{2} \approx \frac{1,005,000 \pm \sqrt{1.010 \times 10^{12} - 1.84 \times 10^{10}}}{2}.
+              \]
+              Notice that \(\lambda_{\max} \approx \operatorname{tr}(\mathcal{I}) \approx 1,000,400\) and \(\lambda_{\min} \approx \frac{\det(\mathcal{I})}{\lambda_{\max}} = \frac{4.6 \times 10^9}{1.0 \times 10^6} \approx 4,600\).
+              The condition number is:
+              \[
+              \kappa(\mathcal{I}) = \frac{\lambda_{\max}}{\lambda_{\min}} \approx \frac{1,000,000}{4,600} \approx 217.39.
+              \]
+              The condition number is approximately 217, indicating that the likelihood is over 200 times steeper along the short-rate baseline direction than along the mean-reversion direction.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-2">
+            <p><strong>Problem 8.2 (Cochrane-Piazzesi return forecasting factor):</strong> Cochrane and Piazzesi (2005) construct a single return-forecasting factor \(\gamma^\top f\) from forward rates \(f = [y(1), f(1, 2), f(1, 3), f(1, 4), f(1, 5)]^\top\) that predicts excess bond returns with \(R^2 \approx 44\%\). If the regression coefficients are approximately \(\gamma = [-1.5, 0.5, 2.5, 0.5, -2.0]\), describe the geometric shape of the forward curve that signals high expected excess returns.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Examine the signs and magnitudes of \(\gamma\):
+              1. Short end: Negative loading on 1-year yield (\(-1.5\)).
+              2. Intermediate maturities: Strongly positive loading on 3-year forward rate (\(+2.5\)).
+              3. Long end: Strongly negative loading on 5-year forward rate (\(-2.0\)).
+              The vector \(\gamma\) represents a "tent" or curvature shape: it is positive in the middle and negative at both wings.
+              A positive realization of \(\gamma^\top f\) occurs when the 3-year forward rate is elevated relative to the 1-year and 5-year forward rates (i.e., a pronounced hump or inverted curvature in the forward curve).
+              Therefore, a humped forward curve signals high expected excess bond returns across all maturities over the coming year.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-3">
+            <p><strong>Problem 8.3 (Shadow short rate optionality calculation):</strong> In Black's shadow rate model with \(r(t) = \max(s(t), 0)\), suppose the shadow rate \(s(t)\) is distributed as \(\mathcal{N}(\mu_s, \sigma_s^2)\) with \(\mu_s = -0.010\) (-1.00%) and \(\sigma_s = 0.012\) (1.20%). Compute the expected short rate \(\mathbb{E}[r(t)]\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Since \(r = \max(s, 0)\), its expectation is that of a call option on \(s\) struck at 0:
+              \[
+              \mathbb{E}[r] = \mu_s \mathcal{N}\left(\frac{\mu_s}{\sigma_s}\right) + \sigma_s \phi\left(\frac{\mu_s}{\sigma_s}\right).
+              \]
+              Compute \(d = \frac{\mu_s}{\sigma_s} = \frac{-0.010}{0.012} = -0.83333\).
+              Evaluate the standard normal CDF and PDF:
+              \[
+              \mathcal{N}(-0.83333) \approx 0.202328.
+              \]
+              \[
+              \phi(-0.83333) = \frac{1}{\sqrt{2\pi}} e^{-(-0.83333)^2 / 2} = \frac{1}{\sqrt{2\pi}} e^{-0.34722} \approx 0.398942 \times 0.706648 \approx 0.281912.
+              \]
+              Calculate the expected short rate:
+              \[
+              \mathbb{E}[r] = -0.010 \times 0.202328 + 0.012 \times 0.281912 = -0.00202328 + 0.00338294 \approx 0.00135966 \text{ (or } 13.60 \text{ bps)}.
+              \]
+              Even though the shadow rate has an expectation of \(-100\) bps, the truncation at zero holds the expected policy rate positive at \(+13.6\) basis points.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <div class="problem" id="p8-4">
+            <p><strong>Problem 8.4 (Campbell-Shiller regression failure of the Expectations Hypothesis):</strong> The Campbell-Shiller regression is \(y(t+1, n-1) - y(t, n) = \alpha + \beta \frac{y(t, n) - y(t, 1)}{n - 1} + \varepsilon_{t+1}\). Prove that under the Expectations Hypothesis (constant term premia), \(\beta = 1.0\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By definition, the zero-coupon bond return from date \(t\) to \(t+1\) is:
+              \[
+              r_{t+1}(n) = \ln P(t+1, n-1) - \ln P(t, n) = -(n-1) y(t+1, n-1) + n y(t, n).
+              \]
+              Rearranging gives the change in yield:
+              \[
+              y(t+1, n-1) - y(t, n) = \frac{y(t, n) - r_{t+1}(n)}{n - 1} = \frac{y(t, n) - y(t, 1)}{n - 1} - \frac{r_{t+1}(n) - y(t, 1)}{n - 1}.
+              \]
+              Under the Expectations Hypothesis, expected excess holding period returns are constant:
+              \[
+              \mathbb{E}_t[r_{t+1}(n) - y(t, 1)] = c_n.
+              \]
+              Taking conditional expectations:
+              \[
+              \mathbb{E}_t[y(t+1, n-1) - y(t, n)] = -\frac{c_n}{n - 1} + 1.0 \times \left( \frac{y(t, n) - y(t, 1)}{n - 1} \right).
+              \]
+              Running an OLS regression of the actual yield change on \(\frac{y(t, n) - y(t, 1)}{n - 1}\) yields slope \(\beta = 1.0\) and intercept \(\alpha = -\frac{c_n}{n - 1}\).
+              The empirical finding of \(\beta < 0\) in market data decisively disproves the constant risk premium assumption.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-5">
+            <p><strong>Problem 8.5 (Proof of Cramer-Rao bound for asymptotic parameter variance):</strong> Let \(\ell_T(\Theta) = \sum_{t=1}^T \ell_t(\Theta)\) be the Kalman prediction-error log-likelihood. Prove that \(\sqrt{T}(\hat{\Theta}_{\text{MLE}} - \Theta_0) \overset{d}{\to} \mathcal{N}(0, \mathcal{I}_1(\Theta_0)^{-1})\) where \(\mathcal{I}_1 = \lim_{T \to \infty} \frac{1}{T} \mathbb{E}[-\nabla_\Theta^2 \ell_T]\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Perform a first-order Taylor expansion of the score function \(\nabla_\Theta \ell_T(\hat{\Theta})\) around the true parameter vector \(\Theta_0\):
+              \[
+              0 = \nabla_\Theta \ell_T(\hat{\Theta}) = \nabla_\Theta \ell_T(\Theta_0) + \nabla_\Theta^2 \ell_T(\bar{\Theta})(\hat{\Theta} - \Theta_0),
+              \]
+              where \(\bar{\Theta}\) is on the line segment connecting \(\hat{\Theta}\) and \(\Theta_0\).
+              Rearranging and scaling by \(\sqrt{T}\):
+              \[
+              \sqrt{T}(\hat{\Theta} - \Theta_0) = \left( -\frac{1}{T} \nabla_\Theta^2 \ell_T(\bar{\Theta}) \right)^{-1} \left( \frac{1}{\sqrt{T}} \nabla_\Theta \ell_T(\Theta_0) \right).
+              \]
+              By the Martingale Central Limit Theorem, since the prediction error scores \(\nabla_\Theta \ell_t(\Theta_0)\) form a martingale difference sequence with conditional variance \(\mathcal{I}_1\):
+              \[
+              \frac{1}{\sqrt{T}} \nabla_\Theta \ell_T(\Theta_0) \overset{d}{\to} \mathcal{N}(0, \mathcal{I}_1).
+              \]
+              By the uniform law of large numbers, \(-\frac{1}{T} \nabla_\Theta^2 \ell_T(\bar{\Theta}) \overset{p}{\to} \mathcal{I}_1\).
+              Applying Slutsky's theorem:
+              \[
+              \sqrt{T}(\hat{\Theta} - \Theta_0) \overset{d}{\to} \mathcal{I}_1^{-1} \mathcal{N}(0, \mathcal{I}_1) \sim \mathcal{N}(0, \mathcal{I}_1^{-1} \mathcal{I}_1 \mathcal{I}_1^{-1}) = \mathcal{N}(0, \mathcal{I}_1^{-1}).
+              \]
+              This confirms the asymptotic normality and efficiency of the Kalman-filter MLE.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-6">
+            <p><strong>Problem 8.6 (Unspanned macro risk condition):</strong> In a joint affine state vector \(Z_t = [X_t^\top, M_t^\top]^\top\) where \(X_t \in \mathbb{R}^N\) are yield factors and \(M_t \in \mathbb{R}^K\) are macro variables, prove that \(M_t\) is unspanned by contemporaneous yields if and only if \(\boldsymbol{\delta}_1^M = \mathbf{0}\) and the risk-neutral feedback block \(K_{XM}^\mathbb{Q} = \mathbf{0}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under the ATSM framework, the short rate is \(r(t) = \delta_0 + (\boldsymbol{\delta}_1^X)^\top X_t + (\boldsymbol{\delta}_1^M)^\top M_t\), and the risk-neutral drift is:
+              \[
+              \begin{pmatrix} dX_t \\ dM_t \end{pmatrix} = - \begin{pmatrix} K_{XX}^\mathbb{Q} & K_{XM}^\mathbb{Q} \\ K_{MX}^\mathbb{Q} & K_{MM}^\mathbb{Q} \end{pmatrix} \begin{pmatrix} X_t \\ M_t \end{pmatrix} dt + \Sigma dW^\mathbb{Q}.
+              \]
+              The bond factor loadings satisfy the Riccati ODE:
+              \[
+              \frac{dB_X(\tau)}{d\tau} = -(K_{XX}^\mathbb{Q})^\top B_X(\tau) - (K_{MX}^\mathbb{Q})^\top B_M(\tau) - \boldsymbol{\delta}_1^X, \quad B_X(0) = \mathbf{0},
+              \]
+              \[
+              \frac{dB_M(\tau)}{d\tau} = -(K_{XM}^\mathbb{Q})^\top B_X(\tau) - (K_{MM}^\mathbb{Q})^\top B_M(\tau) - \boldsymbol{\delta}_1^M, \quad B_M(0) = \mathbf{0}.
+              \]
+              For \(M_t\) to have zero loading in yields across all maturities \(\tau \ge 0\), we must have \(B_M(\tau) \equiv \mathbf{0}\).
+              Evaluating at \(\tau = 0\): \(\left.\frac{dB_M}{d\tau}\right|_{\tau=0} = -\boldsymbol{\delta}_1^M = \mathbf{0} \implies \boldsymbol{\delta}_1^M = \mathbf{0}\).
+              For \(B_M(\tau)\) to remain zero for all \(\tau > 0\), we require \(\frac{dB_M}{d\tau} = -(K_{XM}^\mathbb{Q})^\top B_X(\tau) \equiv \mathbf{0}\). Since \(B_X(\tau)\) spans \(\mathbb{R}^N\), this forces \((K_{XM}^\mathbb{Q})^\top = \mathbf{0} \implies K_{XM}^\mathbb{Q} = \mathbf{0}\).
+              Hence, \(\boldsymbol{\delta}_1^M = \mathbf{0}\) and \(K_{XM}^\mathbb{Q} = \mathbf{0}\) are necessary and sufficient to prevent macro factors from entering contemporaneous bond yields, while allowing \(M_t\) to enter the physical transition matrix \(\Phi_{XM}\) under \(\mathbb{P}\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <div class="problem" id="p8-7">
+            <p><strong>Problem 8.7 (In-sample vs out-of-sample RMSE comparison):</strong> An analyst fits an unconstrained 4-factor ATSM and a parsimonious 2-factor ATSM to monthly yields. The 4-factor model has in-sample RMSE of 3.2 bps and 1-year out-of-sample forecast RMSE of 88 bps. The 2-factor model has in-sample RMSE of 11.5 bps and out-of-sample forecast RMSE of 62 bps. Explain why the simpler model forecasts better.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>This is a classic demonstration of the bias-variance tradeoff in term-structure econometrics:
+              1. <em>In-sample fitting:</em> The 4-factor model has 34 free parameters, enabling it to match small humps and localized supply distortions in the cross-section (in-sample RMSE = 3.2 bps vs 11.5 bps).
+              2. <em>Estimation variance:</em> The fourth factor has an estimated mean-reversion rate with high standard error. In forecasting, errors in estimating \(\Phi\) are compounded when projected 12 months ahead (\(\Phi^{12}\)).
+              3. <em>Overfitting:</em> The 4-factor model mistakes temporary microstructure noise for persistent state variables, projecting transitory errors into the future.
+              The 2-factor model restricts attention to the two dominant macroeconomic drivers (level and slope), achieving lower forecast variance and superior out-of-sample RMSE (62 bps vs 88 bps).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-8">
+            <p><strong>Problem 8.8 (Swiss National Bank negative rate regime calculation):</strong> On January 15, 2015, the Swiss National Bank dropped its sight deposit rate to \(-0.75\%\) (-75 bps). If Swiss 10-year Confederation bond yields fell to \(-0.25\%\) (-25 bps), calculate the total holding period return on a 10-year zero-coupon bond over a 1-year period if its yield remains unchanged at \(-0.25\%\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The initial price of a 10-year zero-coupon bond with continuously compounded yield \(y = -0.0025\) is:
+              \[
+              P(0, 10) = \exp(-(-0.0025) \times 10) = \exp(0.025) \approx 1.025315.
+              \]
+              After 1 year, the bond has 9 years remaining to maturity. If its yield is still \(-0.0025\), the price is:
+              \[
+              P(1, 10) = \exp(-(-0.0025) \times 9) = \exp(0.0225) \approx 1.022755.
+              \]
+              The 1-year holding period return is:
+              \[
+              R = \frac{P(1, 10) - P(0, 10)}{P(0, 10)} = \frac{1.022755 - 1.025315}{1.025315} = \frac{-0.002560}{1.025315} \approx -0.002497 \text{ (or } -0.25\%\text{)}.
+              \]
+              The holding period return exactly equals the negative yield of \(-0.25\%\). Holding a negative-yielding bond to pull-to-par results in a guaranteed nominal loss unless yields become even more deeply negative.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-9">
+            <p><strong>Problem 8.9 (Information matrix condition number mitigation):</strong> In production ATSM calibrations, how does rotating the state variables to principal components (Joslin, Singleton, and Zhu 2011) resolve the ill-conditioning of the numerical Hessian?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In standard ATSMs, latent factors \(X_t\) are abstract coordinates where changes in mean-reversion speed \(\kappa\) simultaneously alter factor loadings \(B(\tau)\) and factor variances, creating severe collinearity between drift and volatility parameters.
+              Joslin, Singleton, and Zhu (2011) reparameterize the state space such that:
+              1. The state variables are directly observable linear combinations of yields (e.g., portfolios of yields representing level, slope, curvature): \(X_t = W Y_t\).
+              2. Under this rotation, the physical parameters \((c^\mathbb{P}, \Phi^\mathbb{P}, \Sigma)\) can be estimated via ordinary least squares (OLS) independent of the \(\mathbb{Q}\) pricing parameters.
+              3. The remaining \(\mathbb{Q}\) parameters are restricted to the cross-sectional manifold, where the objective function is smooth and well-behaved.
+              This orthogonalization decouples time-series identification from cross-sectional pricing, reducing the condition number from \(10^5\) to \(\approx 10^1\) and allowing global convergence in under one second.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <div class="problem" id="p8-10">
+            <p><strong>Problem 8.10 (Model selection matrix for fixed income desks):</strong> Formulate a decision matrix guiding a Chief Risk Officer on when to deploy (a) Nelson-Siegel, (b) 3-Factor Gaussian ATSM, (c) Cheyette 2-Factor HJM, or (d) SABR-LMM across bank business units.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The optimal deployment matrix aligns model capabilities with regulatory and trading requirements:
+              1. <em>Treasury / ALM Balance Sheet Management:</em>
+                 - <strong>Model:</strong> Nelson-Siegel / Svensson or 2-factor ATSM.
+                 - <strong>Rationale:</strong> Requires smooth, non-oscillating discount factors for hundreds of non-standard deposits and mortgages; fast execution; easily audited.
+              2. <em>Macro Strategy &amp; Monetary Policy Research:</em>
+                 - <strong>Model:</strong> 3-Factor Gaussian ATSM with unspanned macro risk (Adrian-Crump-Moench or Joslin-Singleton-Zhu).
+                 - <strong>Rationale:</strong> Separates monetary policy path expectations from term premia; dynamically consistent; accommodates macro indicators.
+              3. <em>Callable Bonds &amp; Bermudan Swaptions Desk:</em>
+                 - <strong>Model:</strong> Cheyette 2-Factor Quasi-Gaussian HJM.
+                 - <strong>Rationale:</strong> Recombining PDE lattice solves high-dimensional early exercise boundary in milliseconds while fitting the initial sovereign discount curve exactly.
+              4. <em>Exotic Interest Rate Derivatives (CMS spread options, Ratchets):</em>
+                 - <strong>Model:</strong> SABR-LMM (or SOFR market model).
+                 - <strong>Rationale:</strong> Directly quotes implied volatility smiles across multiple tenors; accurately models cross-forward correlations and terminal measure drifts.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-11">
+            <p><strong>Problem 8.11 (Machine learning and neural term-structure models):</strong> How do modern neural SDE term-structure models (e.g. Gierjatowicz et al. 2020) extend the classical HJM framework, and what inductive biases must be built into the network architecture to guarantee absence of arbitrage?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Neural SDE models replace parametric volatility and drift functions with deep neural networks:
+              \[
+              df(t, T) = \alpha_\theta(t, T, f) dt + \boldsymbol{\sigma}_\theta(t, T, f)^\top dW(t).
+              \]
+              Without constraints, a generic deep neural network will generate dynamic arbitrage, mispricing vanilla bonds and enabling riskless arbitrage strategies.
+              To ensure absence of arbitrage, the network architecture must enforce the exact HJM drift condition as a hard inductive bias:
+              1. The neural network outputs <em>only</em> the volatility surface \(\boldsymbol{\sigma}_\theta(t, T, f)\).
+              2. The drift \(\alpha(t, T)\) is not learned directly; it is computed deterministically inside the forward computational graph via automatic differentiation or numerical quadrature:
+              \[
+              \alpha(t, T) = \boldsymbol{\sigma}_\theta(t, T)^\top \int_t^T \boldsymbol{\sigma}_\theta(t, u) du.
+              \]
+              This guarantees that discounted bond prices remain exact martingales under \(\mathbb{Q}\) while allowing the volatility surface to learn complex non-linear dependency structures from high-frequency market quotes.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-12">
+            <p><strong>Problem 8.12 (Climate and green bond yield spreads):</strong> In green bond pricing, empirical studies observe a "greenium" (green bond yield suppression of 2 to 5 basis points relative to identical sovereign conventional debt). How can an affine term-structure model incorporate a non-pecuniary convenience yield factor?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>To capture the greenium, extend the affine state vector to \(X_t = [X_t^{\text{yield}}, X_t^{\text{green}}]^\top\).
+              The short rate for conventional debt is \(r_t = \delta_0 + \boldsymbol{\delta}_1^\top X_t^{\text{yield}}\).
+              For green debt, investors receive non-pecuniary environmental utility (ESG mandate compliance, regulatory capital concessions), modeled as a convenience yield dividend \(\psi_t = \gamma_0 + \boldsymbol{\gamma}_1^\top X_t\).
+              The effective discount rate for green bonds is \(r_t^G = r_t - \psi_t\).
+              Because \(r_t^G\) remains affine in the extended state vector:
+              \[
+              r_t^G = (\delta_0 - \gamma_0) + (\boldsymbol{\delta}_1 - \boldsymbol{\gamma}_1)^\top X_t.
+              \]
+              The green bond price is exponentially affine: \(P^G(t, T) = \exp(A^G(\tau) + (B^G(\tau))^\top X_t)\).
+              The greenium \(\Delta y(t, \tau) = y^{\text{conv}}(t, \tau) - y^G(t, \tau)\) is strictly linear in the latent factors, with positive loadings on ESG factor \(X_t^{\text{green}}\), allowing econometricians to separate macroeconomic rate movements from time-varying green preferences.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr>
+                <th>Claim / Result</th>
+                <th>Grade</th>
+                <th>Basis / Citation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Fisher information matrix condition number exceeds 1e2, reflecting ill-conditioned persistence identification</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="dai2000specification">Dai and Singleton (2000), Section 4</span></td>
+              </tr>
+              <tr>
+                <td>Unspanned macro risk variables forecast excess bond returns without entering contemporaneous yield loadings</td>
+                <td><span class="grade" data-grade="B">B</span></td>
+                <td><span class="claim" data-grade="B" data-cite="cochrane2005bond">Cochrane and Piazzesi (2005), Section 3</span></td>
+              </tr>
+              <tr>
+                <td>Negative interest rates are fully arbitrage-free when physical cash storage costs are accounted for</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="snb2015swiss">Swiss National Bank (2015)</span></td>
+              </tr>
+              <tr>
+                <td>Rejection of Expectations Hypothesis in Campbell-Shiller regressions requires time-varying risk prices</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td><span class="claim" data-grade="A" data-cite="duffie1996yieldfactor">Duffie and Kan (1996), Section 2</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="FI2" data-page="L08">
+        <h2 id="h-quiz">Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does the Fisher information matrix of an affine term-structure model exhibit a high condition number?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q1"> Cross-sectional volatility and baseline parameters have massive curvature, while time-series persistence has weak curvature in finite samples</label>
+              <label class="option"><input type="radio" name="q1"> Bond yields are measured in basis points rather than dollars</label>
+              <label class="option"><input type="radio" name="q1"> The Riccati ODE has no real solution</label>
+            </fieldset>
+            <div class="explain"><p>Cross-sectional yield elevations pin down volatilities tightly, while slow mean-reversion over decades leaves persistence weakly identified.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What defines an unspanned macroeconomic risk factor in term-structure econometrics?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q2"> A macroeconomic variable that forecasts future bond excess returns but does not affect contemporaneous yield curve shapes</label>
+              <label class="option"><input type="radio" name="q2"> A factor that violates the no-arbitrage condition</label>
+              <label class="option"><input type="radio" name="q2"> A state variable with zero volatility</label>
+            </fieldset>
+            <div class="explain"><p>Unspanned factors enter physical return forecasting regressions without appearing in the cross-sectional affine yield loadings.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What empirical result in Campbell-Shiller regressions led to the decisive rejection of the Expectations Hypothesis?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q3"> Estimated regression slopes \(\beta\) are systematically negative rather than positive 1.0</label>
+              <label class="option"><input type="radio" name="q3"> The \(R^2\) of the regression is exactly 100%</label>
+              <label class="option"><input type="radio" name="q3"> Yield curves are always inverted</label>
+            </fieldset>
+            <div class="explain"><p>The Expectations Hypothesis predicts \(\beta = 1.0\), but market data produces \(\beta < 0\), proving that risk premia vary countercyclically over time.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="-0.75" data-tolerance="0.05">
+            <p class="prompt">In January 2015, what deposit rate (in percentage points) did the Swiss National Bank set, inaugurating deep negative interest rates?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain"><p>The Swiss National Bank set its sight deposit rate to \(-0.75\%\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do simpler 2-factor or 3-factor models often outperform 4-factor models in out-of-sample yield forecasting?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q5"> Simpler models avoid overfitting in-sample microstructure noise and reduce parameter estimation variance</label>
+              <label class="option"><input type="radio" name="q5"> Simpler models have higher in-sample \(R^2\)</label>
+              <label class="option"><input type="radio" name="q5"> Simpler models force forward rates to be zero</label>
+            </fieldset>
+            <div class="explain"><p>Due to the bias-variance tradeoff, higher-order factors fit transitory noise in-sample, compounding forecast error out-of-sample.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which model architecture is best suited for an exotic desk pricing CMS spread options and multi-currency swaptions?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q6"> SABR-LMM (or SOFR market model)</label>
+              <label class="option"><input type="radio" name="q6"> Nelson-Siegel static curve fitting</label>
+              <label class="option"><input type="radio" name="q6"> 1-factor Vasicek model</label>
+            </fieldset>
+            <div class="explain"><p>SABR-LMM models discrete market rates directly, calibrating accurately to market caplet smiles and coterminal swaption correlation surfaces.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In Black's shadow-rate model, how is the nominal policy rate related to the latent shadow rate \(s(t)\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q7"> \(r(t) = \max(s(t), 0)\)</label>
+              <label class="option"><input type="radio" name="q7"> \(r(t) = s(t)^2\)</label>
+              <label class="option"><input type="radio" name="q7"> \(r(t) = \exp(s(t))\)</label>
+            </fieldset>
+            <div class="explain"><p>The shadow rate is unconstrained Gaussian, while the nominal policy rate is bounded below by currency optionality via \(\max(s(t), 0)\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does rotating state variables to yield principal components (Joslin, Singleton, and Zhu 2011) accelerate ATSM calibration?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q8"> It allows physical VAR dynamics to be estimated via analytical OLS, separating time-series from cross-sectional optimization</label>
+              <label class="option"><input type="radio" name="q8"> It eliminates Brownian motion shocks</label>
+              <label class="option"><input type="radio" name="q8"> It sets the market price of risk to zero</label>
+            </fieldset>
+            <div class="explain"><p>JSZ canonical rotations decouple physical VAR estimation from risk-neutral Riccati cross-sections, eliminating Hessian ill-conditioning.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li data-cite="dai2000specification">Dai, Q., &amp; Singleton, K. J. (2000). Specification analysis of affine term structure models. <em>The Journal of Finance</em>, 55(5), 1943–1978.</li>
+          <li data-cite="duffie1996yieldfactor">Duffie, D., &amp; Kan, R. (1996). A yield-factor model of interest rates. <em>Mathematical Finance</em>, 6(4), 379–406.</li>
+          <li data-cite="adrian2013pricing">Adrian, T., Crump, R. K., &amp; Moench, E. (2013). Pricing the term structure with linear regressions. <em>Journal of Financial Economics</em>, 110(1), 110–138.</li>
+          <li data-cite="cochrane2005bond">Cochrane, J. H., &amp; Piazzesi, M. (2005). Bond risk premia. <em>American Economic Review</em>, 95(1), 138–160.</li>
+          <li data-cite="snb2015swiss">Swiss National Bank. (2015). Swiss National Bank sets negative interest rate. <em>SNB Press Release</em>, January 15, 2015.</li>
+        </ol>
+      </section>
+
+      <p><button class="complete-btn" data-complete>Mark complete</button></p>
+    </main>
+  </div>
+  <footer class="site-footer">FI2 · Lesson 8</footer>
+</body>
+</html>

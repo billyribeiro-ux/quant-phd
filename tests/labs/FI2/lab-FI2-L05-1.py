@@ -128,7 +128,7 @@ def main() -> None:
     ll, x_filt, innov, errors = run_kalman(yields, a_yield, h_yield, c_vec, phi_mat, q_cov, r_cov)
 
     rmse_bps = float(np.sqrt(np.mean(errors**2)) * 10_000.0)
-    corr_factors = [float(np.corrcoef(x_filt[:, i], x_true[:, i])[0, 1]) for i in range(3)]
+    corr_factors = [round(float(np.corrcoef(x_filt[:, i], x_true[:, i])[0, 1]), 4) for i in range(3)]
 
     print("SIMULATED 3-Factor ATSM Kalman Filter Estimation Diagnostics:")
     print(f"  Sample length T = {n_periods} months, Maturities M = {n_maturities} tenors")

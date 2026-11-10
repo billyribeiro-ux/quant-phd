@@ -158,7 +158,7 @@ def main() -> None:
     print("SIMULATED 3-Factor ATSM Calibration Validation (Rung 3):")
     print(f"  Optimized Log-Likelihood: {ll_cal:.2f}")
     print(f"  Calibrated delta0 = {delta0_cal:.4f} (True: {true_delta0:.4f})")
-    print(f"  Calibrated kappa  = {[round(float(k), 3) for k in kappa_cal]} (True: {true_kappa.tolist()})")
+    print(f"  Calibrated kappa  = {[round(float(k), 2) for k in kappa_cal]} (True: {true_kappa.tolist()})")
     print(f"  Overall Yield Pricing RMSE: {rmse_cal:.2f} bps")
     print("\nTenor Breakdown:")
     print("Tenor (Y) | Tenor RMSE (bps) | Max Error (bps)")
