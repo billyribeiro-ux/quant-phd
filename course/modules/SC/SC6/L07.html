@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="SC6" data-page="L07" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L07 · Policy Iteration &amp; Constrained HJB Solvers · SC6 Stochastic Control</title>
+  <meta name="description" content="Howard's policy iteration algorithm for continuous-time HJB equations, Newton's method interpretation, monotone quadratic convergence, and portfolio optimization under borrowing constraints.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a>
+      <span class="sep">›</span>
+      <a href="index.html">SC6 Stochastic Control</a>
+      <span class="sep">›</span>
+      <span>L07</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">SC6 · Lesson 7 of 7 · 8 study hours</p>
+        <h1>Policy Iteration &amp; Constrained HJB Solvers</h1>
+        <ul class="meta-row">
+          <li><strong>Prerequisites:</strong> <a class="concept" data-concept="hjb-equation" href="L02.html#def-hjb-equation">HJB equation</a>, <a class="concept" data-concept="merton-portfolio-problem" href="L04.html#def-merton-portfolio-problem">Merton portfolio problem</a>, <a class="concept" data-concept="merton-fraction" href="L05.html#def-merton-fraction">Merton fraction</a>, <a class="concept" data-concept="value-function-iteration" href="../../../concepts.html#value-function-iteration">value function iteration</a>, <a class="concept" data-concept="contraction-mapping" href="../../../concepts.html#contraction-mapping">contraction mapping</a></li>
+          <li><strong>Introduces:</strong> Policy iteration</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>conjecture</li>
+      </ul>
+
+      <section id="why-it-matters" aria-labelledby="why-it-matters-heading">
+        <h2 id="why-it-matters-heading">Why Policy Iteration Matters</h2>
+        <p>Continuous-time portfolio optimization rarely yields closed-form solutions once realistic trading frictions, short-sale bans, or borrowing caps are imposed. While value iteration (explicit pseudo-time stepping) suffers severe diffusion stiffness requiring \(\mathcal{O}(\Delta w^2)\) time steps, Howard's policy iteration alternates between linear sparse tridiagonal solves (policy evaluation) and pointwise Hamiltonian maximization (policy improvement). Policy iteration converges monotonically and exhibits local quadratic convergence as a generalized Newton–Kantorovich method. In quantitative trading and asset management, this enables solving multi-asset portfolio choice and consumption models with binding leverage constraints in milliseconds.</p>
+      </section>
+
+      <section id="s1" aria-labelledby="s1-heading">
+        <h2 id="s1-heading"><span class="section-number">1</span>The Non-Linear Bellman Operator &amp; Computational Complexity</h2>
+        <p>Let \(\Omega = (w_{\min}, w_{\max})\) with \(0 &lt; w_{\min} &lt; w_{\max} &lt; \infty\) be the bounded state space for investor wealth. Consider the stationary Hamilton–Jacobi–Bellman equation for the Merton model:</p>
+        \[
+        \rho V(w) - \sup_{(\pi, c) \in U} \left\{ \left[ (r + \pi(\mu - r)) w - c \right] V'(w) + \frac{1}{2} \pi^2 \sigma^2 w^2 V''(w) + U(c) \right\} = 0, \quad w \in \Omega.
+        \]
+        <p>We represent this non-linear boundary value problem compactly as \(\mathcal{F}(V) = 0\), where the non-linear Bellman operator \(\mathcal{F}\) acts on candidate value functions \(V \in C^2(\Omega)\):</p>
+        \[
+        \mathcal{F}(V)(w) \coloneqq \rho V(w) - \sup_{u \in U} \left\{ \mathcal{L}^u V(w) + f(w, u) \right\},
+        \]
+        <p>with drift-diffusion generator \(\mathcal{L}^u V(w) = b(w, u) V'(w) + \frac{1}{2} \sigma(w, u)^2 V''(w)\) and running utility \(f(w, u) = U(c)\) under control vector \(u = (\pi, c)\).</p>
+
+        <p>In discrete-time dynamic programming, the standard technique is <a class="concept" data-concept="value-function-iteration" href="../../../concepts.html#value-function-iteration">value function iteration</a> (VFI), which computes successive Picard iterates \(V^{(k+1)} = \mathcal{T}(V^{(k)})\) where \(\mathcal{T}\) is the Bellman <a class="concept" data-concept="contraction-mapping" href="../../../concepts.html#contraction-mapping">contraction mapping</a>. In continuous-time finite differences, naive value iteration corresponds to explicit Euler pseudo-time stepping:</p>
+        \[
+        \frac{V^{(k+1)} - V^{(k)}}{\Delta \tau} + \rho V^{(k)} = \max_{u \in U} \left\{ A[u] V^{(k)} + f[u] \right\}.
+        \]
+        <p>However, the explicit parabolic stability condition dictates:</p>
+        \[
+        \Delta \tau \le \frac{\Delta w^2}{\sup_u \sigma(w, u)^2} = \frac{\Delta w^2}{\pi_{\max}^2 \sigma^2 w_{\max}^2}.
+        \]
+        <p>On a mesh with \(N = 200\) nodes spanning \([1, 10]\), \(\Delta w = 0.045\), requiring \(\Delta \tau \approx 10^{-4}\). To reach stationary equilibrium (\(\tau \to \infty\)), explicit value iteration requires over \(100{,}000\) iterations, each bounded by the linear convergence rate \(\mathcal{O}(1 - \rho \Delta \tau)\). This extreme stiffness motivates an implicit, operator-level solution strategy: Howard's policy iteration.</p>
+      </section>
+
+      <section id="s2" aria-labelledby="s2-heading">
+        <h2 id="s2-heading"><span class="section-number">2</span>Howard's Policy Iteration Algorithm</h2>
+        <p>The central insight of Ronald Howard (1960) is that the non-linearity in the HJB equation stems entirely from the supremum over controls \(u \in U\). For any <em>fixed</em> policy \(\mathbf{u}: \Omega \to U\), the operator \(\rho I - \mathcal{L}^{\mathbf{u}}\) is strictly linear and invertible.</p>
+
+        <div class="block definition">
+          <span class="block-title">Definition 2.1 <span class="name">(Policy Iteration)</span></span>
+          <p><dfn id="def-policy-iteration" data-concept="policy-iteration">Policy iteration</dfn> is an iterative algorithm for solving non-linear HJB and Bellman equations by alternating between policy evaluation (solving a linear boundary value problem for the value function under a frozen policy) and policy improvement (pointwise maximization of the Hamiltonian given the current value function gradient and curvature).</p>
+        </div>
+
+        <div class="block algorithm">
+          <span class="block-title">Algorithm 2.2 <span class="name">(Continuous-State Policy Iteration on Finite-Difference Mesh)</span></span>
+          <p><strong>Input:</strong> Mesh \(\{w_i\}_{i=0}^N\), boundary conditions \(V(w_0), V(w_N)\), tolerance \(\varepsilon_{\mathrm{tol}} &gt; 0\), initial policy \(u^{(0)} = (\pi^{(0)}, c^{(0)})\).</p>
+          <p>For iteration \(k = 0, 1, 2, \dots\):</p>
+          <ol>
+            <li><strong>Policy Evaluation:</strong> Given fixed policy \(u^{(k)} = \{(\pi_i^{(k)}, c_i^{(k)})\}_{i=1}^{N-1}\), construct the tridiagonal generator matrix \(A[u^{(k)}] \in \R^{(N-1) \times (N-1)}\) using upwind drift differencing and central diffusion differencing. Solve the linear system for the interior value vector \(V^{(k)} \in \R^{N-1}\):
+              \[
+              \left( \rho I - A[u^{(k)}] \right) V^{(k)} = f[u^{(k)}].
+              \]
+              Because \(\rho I - A[u^{(k)}]\) is a strictly diagonally dominant M-matrix, this tridiagonal system is solved in \(\mathcal{O}(N)\) operations via the Thomas algorithm.</li>
+            <li><strong>Policy Improvement:</strong> Using finite differences of \(V^{(k)}\), compute discrete approximations for the first derivative \(V_i'^{(k)}\) and second derivative \(V_i''^{(k)}\) at each interior node \(i = 1, \dots, N-1\). Update the policy pointwise:
+              \[
+              u_i^{(k+1)} = \arg\max_{u \in U} \left\{ b(w_i, u) V_i'^{(k)} + \frac{1}{2} \sigma(w_i, u)^2 V_i''^{(k)} + f(w_i, u) \right\}.
+              \]
+              </li>
+            <li><strong>Stopping Criterion:</strong> Compute the maximum absolute policy and value update:
+              \[
+              \|V^{(k)} - V^{(k-1)}\|_\infty \coloneqq \max_{1 \le i \le N-1} |V_i^{(k)} - V_i^{(k-1)}|.
+              \]
+              If \(\|V^{(k)} - V^{(k-1)}\|_\infty &lt; \varepsilon_{\mathrm{tol}}\) (or if the discrete policy stabilizes \(u^{(k+1)} = u^{(k)}\)), terminate and return \(V^* = V^{(k)}\) and \(u^* = u^{(k+1)}\).</li>
+          </ol>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 2.3 <span class="name">(Monotone Convergence of Policy Iteration)</span></span>
+          <p>Let the spatial discretization matrix \(M[u] \coloneqq \rho I - A[u]\) be an M-matrix for all admissible controls \(u \in U\), so that \(M[u]^{-1} \ge 0\) entrywise. Let \(V^{(k)}\) be the sequence of iterates generated by Algorithm 2.2 starting from an arbitrary initial policy \(u^{(0)}\). Then:</p>
+          <ol>
+            <li><strong>Monotonicity:</strong> The value sequence is non-decreasing pointwise:
+              \[
+              V_i^{(0)} \le V_i^{(1)} \le V_i^{(2)} \le \dots \le V_i^* \quad \text{for all } i = 1, \dots, N-1.
+              \]
+            </li>
+            <li><strong>Finite Convergence on Finite Action Sets:</strong> If the admissible control set \(U\) is finite with \(|U| &lt; \infty\), the policy iteration algorithm terminates in a finite number of steps with the exact solution to the discretized Bellman equation.</li>
+            <li><strong>Global Convergence for Compact Controls:</strong> If \(U\) is compact and the Hamiltonian is strictly concave, \(V^{(k)}\) converges globally to the unique discrete viscosity solution \(V^*\) <span class="claim" data-grade="B" data-cite="pham2009continuous" data-locator="pham2009continuous Chapter 3, p. 95-102">as proved in Pham (2009)</span>.</li>
+          </ol>
+        </div>
+
+        <div class="block proof">
+          <span class="block-title">Proof of Monotonicity</span>
+          <p>Let \(V^{(k)}\) satisfy the policy evaluation equation for policy \(u^{(k)}\):</p>
+          \[
+          M[u^{(k)}] V^{(k)} = f[u^{(k)}].
+          \]
+          <p>In the policy improvement step, \(u^{(k+1)}\) is chosen to maximize the Hamiltonian pointwise node-by-node. Therefore, at each interior node:</p>
+          \[
+          A[u^{(k+1)}] V^{(k)} + f[u^{(k+1)}] \ge A[u^{(k)}] V^{(k)} + f[u^{(k)}] = \rho V^{(k)}.
+          \]
+          <p>Rearranging this inequality in matrix notation:</p>
+          \[
+          f[u^{(k+1)}] - (\rho I - A[u^{(k+1)}]) V^{(k)} \ge 0 \implies f[u^{(k+1)}] - M[u^{(k+1)}] V^{(k)} \ge 0.
+          \]
+          <p>Now consider the next iterate \(V^{(k+1)}\), which satisfies \(M[u^{(k+1)}] V^{(k+1)} = f[u^{(k+1)}]\). Subtracting \(M[u^{(k+1)}] V^{(k)}\) from both sides yields:</p>
+          \[
+          M[u^{(k+1)}] \left( V^{(k+1)} - V^{(k)} \right) = f[u^{(k+1)}] - M[u^{(k+1)}] V^{(k)} \ge 0.
+          \]
+          <p>Because the spatial discretization guarantees that \(M[u^{(k+1)}]\) is an M-matrix, its inverse is entrywise non-negative (\(M[u^{(k+1)}]^{-1} \ge 0\)). Multiplying both sides by \(M[u^{(k+1)}]^{-1}\) preserves the inequality:</p>
+          \[
+          V^{(k+1)} - V^{(k)} = M[u^{(k+1)}]^{-1} \left( f[u^{(k+1)}] - M[u^{(k+1)}] V^{(k)} \right) \ge 0.
+          \]
+          <p>Hence \(V^{(k+1)} \ge V^{(k)}\) at every node. Since the discrete value function is bounded from above by the true supremum, the monotone sequence must converge to the unique solution of the discrete HJB equation.</p>
+        </div>
+      </section>
+
+      <section id="s3" aria-labelledby="s3-heading">
+        <h2 id="s3-heading"><span class="section-number">3</span>Newton's Method Interpretation &amp; Quadratic Local Convergence</h2>
+        <p>Policy iteration is not merely an intuitive heuristic; it is mathematically equivalent to the <strong>generalized Newton–Kantorovich method</strong> applied to the non-linear discrete Bellman operator <span class="claim" data-grade="B" data-cite="pham2009continuous" data-locator="pham2009continuous p. 110-114">studied in continuous-time optimal control</span>.</p>
+
+        <p>Define the discrete non-linear mapping \(\mathcal{F}: \R^{N-1} \to \R^{N-1}\) by:</p>
+        \[
+        \mathcal{F}(V) \coloneqq \rho V - \max_{u \in U} \left\{ A[u] V + f[u] \right\}.
+        \]
+        <p>For any vector \(V\), let \(\mathbf{u}^*(V) = \arg\max_{u \in U} \{ A[u] V + f[u] \}\). By Danskin's theorem, whenever the maximizer is unique, the directional derivative (Jacobian) of \(\mathcal{F}\) with respect to \(V\) is given by the linear operator associated with the optimal policy:</p>
+        \[
+        D\mathcal{F}(V) = \rho I - A[\mathbf{u}^*(V)] = M[\mathbf{u}^*(V)].
+        \]
+        <p>The standard Newton step for solving \(\mathcal{F}(V) = 0\) given current guess \(V^{(k)}\) is:</p>
+        \[
+        V^{(k+1)} = V^{(k)} - \left[ D\mathcal{F}(V^{(k)}) \right]^{-1} \mathcal{F}(V^{(k)}).
+        \]
+        <p>Substituting \(D\mathcal{F}(V^{(k)}) = M[u^{(k+1)}]\) and \(\mathcal{F}(V^{(k)}) = M[u^{(k+1)}] V^{(k)} - f[u^{(k+1)}]\):</p>
+        \[
+        V^{(k+1)} = V^{(k)} - M[u^{(k+1)}]^{-1} \left( M[u^{(k+1)}] V^{(k)} - f[u^{(k+1)}] \right) = M[u^{(k+1)}]^{-1} f[u^{(k+1)}].
+        \]
+        <p>This is precisely the policy evaluation step of Howard's algorithm! Because policy iteration is a realization of Newton's method:</p>
+        <ul>
+          <li><strong>Local Quadratic Convergence:</strong> In the neighborhood of the solution \(V^*\), the error decays quadratically:
+            \[
+            \|V^{(k+1)} - V^*\| \le C \|V^{(k)} - V^*\|^2.
+            \]
+          </li>
+          <li><strong>Global Monotonicity:</strong> Unlike standard Newton methods for general non-linear equations—which frequently diverge or cycle if initialized far from the root—policy iteration possesses <em>global convergence</em> with unconditional monotonic increase, guaranteed by the concavity of the Hamiltonian and the M-matrix inverse positivity.</li>
+        </ul>
+      </section>
+
+      <section id="s4" aria-labelledby="s4-heading">
+        <h2 id="s4-heading"><span class="section-number">4</span>Enforcing Portfolio &amp; Borrowing Constraints</h2>
+        <p>In practical quantitative portfolio management, leverage and borrowing are restricted by regulatory margins or risk mandates. Consider the constrained control set:</p>
+        \[
+        U = [0, \pi_{\max}] \times (0, \infty), \quad \text{where } \pi_{\max} \ge 0.
+        \]
+        <p>The unconstrained first-order condition for the optimal portfolio fraction in the HJB Hamiltonian yields:</p>
+        \[
+        \pi_{\mathrm{unc}}(w) = -\frac{\mu - r}{\sigma^2 w} \frac{V'(w)}{V''(w)}.
+        \]
+        <p>Because the Hamiltonian \(\pi \mapsto (\mu - r) \pi w V'(w) + \frac{1}{2} \pi^2 \sigma^2 w^2 V''(w)\) is strictly concave in \(\pi\) (as \(V''(w) &lt; 0\)), the constrained maximizer over the compact interval \([0, \pi_{\max}]\) is obtained by simple projection (clamping):</p>
+        \[
+        \pi^*(w) = \min\left( \max\left( \pi_{\mathrm{unc}}(w), 0 \right), \pi_{\max} \right).
+        \]
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="B" data-cite="merton1969lifetime merton1971optimum pham2009continuous" data-locator="merton1971optimum p. 392; pham2009continuous Chapter 3, p. 95">Theorem 4.1 <span class="name">(Analytical Solution under Binding Borrowing Constraint)</span></span>
+          <p>Suppose the unconstrained Merton fraction exceeds the borrowing bound, \(\pi^*_{\mathrm{unc}} = \frac{\mu - r}{\gamma \sigma^2} &gt; \pi_{\max}\). If the investor is constrained to \(\pi_t \le \pi_{\max}\) for all \(t \ge 0\), the optimal portfolio weight is constant and clamped to the upper bound:</p>
+          \[
+          \pi^*(w) = \pi_{\max} \quad \text{for all } w &gt; 0.
+          \]
+          <p>The constrained value function retains the power-law homothetic form \(V(w) = \frac{A_{\mathrm{constr}}}{1 - \gamma} w^{1 - \gamma}\), with constant:</p>
+          \[
+          A_{\mathrm{constr}} = \nu_{\mathrm{constr}}^{-\gamma}, \quad \text{where } \nu_{\mathrm{constr}} \coloneqq \frac{1}{\gamma} \left[ \rho - (1 - \gamma) k_{\mathrm{constr}} \right],
+          \]
+          <p>and the effective growth rate under the constrained portfolio is:</p>
+          \[
+          k_{\mathrm{constr}} \coloneqq r + \pi_{\max}(\mu - r) - \frac{1}{2} \gamma \pi_{\max}^2 \sigma^2.
+          \]
+          <p>The optimal consumption policy remains strictly linear in wealth: \(c^*(w) = \nu_{\mathrm{constr}} w\).</p>
+        </div>
+
+        <p>Notice that when \(\pi_{\max} = \pi^*_{\mathrm{unc}}\), \(k_{\mathrm{constr}}\) attains its global maximum \(k = r + \frac{(\mu - r)^2}{2 \gamma \sigma^2}\), reducing exactly to Merton's unconstrained solution. When \(\pi_{\max} &lt; \pi^*_{\mathrm{unc}}\), \(k_{\mathrm{constr}} &lt; k\), reducing the effective risk-adjusted growth rate and decreasing total investor welfare (\(V_{\mathrm{constr}}(w) &lt; V_{\mathrm{unc}}(w)\)).</p>
+      </section>
+
+      <section id="s5" aria-labelledby="s5-heading">
+        <h2 id="s5-heading"><span class="section-number">5</span>Computational Implementation &amp; Convergence Lab</h2>
+        <p>In this laboratory experiment, we execute policy iteration on a 100-node wealth mesh under a binding borrowing cap \(\pi_{\max} = 0.35\), where the unconstrained Merton fraction is \(\pi^* = 0.50\). We verify that:</p>
+        <ol>
+          <li>Policy iteration converges in approximately 10 iterations to machine precision;</li>
+          <li>The optimal numerical policy \(\pi^*(w)\) clamps to \(\pi_{\max} = 0.3500\) across the wealth domain;</li>
+          <li>The maximum iterate change \(\|V^{(k)} - V^{(k-1)}\|_\infty\) decays rapidly, illustrating Newton-like superlinear convergence.</li>
+        </ol>
+
+        <div class="lab-runner" data-lab="lab-SC6-L07-1">
+          <div class="lab-controls">
+            <button type="button" class="button" data-action="run">Run Lab Simulation</button>
+            <span class="lab-status" aria-live="polite">Ready</span>
+          </div>
+          <pre class="lab-output"><code></code></pre>
+        </div>
+      </section>
+
+      <section id="canon-breaks" aria-labelledby="canon-breaks-heading">
+        <h2 id="canon-breaks-heading">Where Canonical Assumptions Break Down</h2>
+        <p>In academic finance textbooks, Merton's problem is frequently presented as an idealized closed-form equation. In production quantitative finance, canonical assumptions fail in three critical dimensions:</p>
+        <ul>
+          <li><strong>Homotheticity Collapse under Asymmetric Margin Borrowing:</strong> When borrowing costs exceed lending rates (\(r_{\mathrm{borrow}} &gt; r_{\mathrm{lend}}\)), the wealth process is no longer homothetic. The value function ceases to be a simple power law \(A w^{1-\gamma}\); instead, it develops three distinct economic regimes: a lending regime (\(\pi &lt; 1\)), an unleveraged equity regime (\(\pi = 1\)), and a leveraged borrowing regime (\(\pi &gt; 1\)). Closed-form solutions do not exist, and numerical policy iteration is required to resolve the free boundaries between regimes.</li>
+          <li><strong>Catastrophic Stiffness of Value Iteration:</strong> Relying on explicit pseudo-time stepping (VFI) to solve continuous-time HJB equations requires an unfeasible number of time steps (\(\Delta \tau \le \mathcal{O}(\Delta w^2)\)). Attempting to accelerate VFI with larger time steps creates severe numerical oscillations that violate the discrete maximum principle, whereas policy iteration solves the implicit system directly in 5 to 15 iterations.</li>
+          <li><strong>Degeneracy of Gradient at Domain Boundaries:</strong> Standard central differencing for \(\partial_w V\) at the wealth boundaries \(w_{\min}\) and \(w_{\max}\) evaluates ghost points outside the admissible domain. If the boundary conditions are not strictly enforced via one-sided upwind stencils, the policy improvement step produces unconstrained feedback controls that drive simulated wealth into negative territory, terminating execution.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions" aria-labelledby="misconceptions-heading">
+        <h2 id="misconceptions-heading">Common Misconceptions</h2>
+        <ul class="misconceptions-list">
+          <li>
+            <article class="misconception-card">
+              <h3>Misconception 1: "Policy iteration requires solving a non-linear system at every step."</h3>
+              <p><strong>Correction:</strong> Policy iteration completely decouples the non-linearity from the spatial differential operator. Step 1 (Policy Evaluation) solves a strictly <em>linear</em> sparse tridiagonal system \((\rho I - A) V = f\), which is solved in \(\mathcal{O}(N)\) operations via forward-backward substitution. Step 2 (Policy Improvement) performs uncoupled 1D scalar maximizations independently at each spatial node. At no point is a non-linear multivariate algebraic system solved.</p>
+            </article>
+          </li>
+          <li>
+            <article class="misconception-card">
+              <h3>Misconception 2: "Because policy iteration is Newton's method, it requires a close initial guess to avoid divergence."</h3>
+              <p><strong>Correction:</strong> Standard Newton methods for arbitrary non-linear equations can diverge or cycle from poor initializations. However, for HJB equations discretized with an M-matrix stencil, the operator \(\mathcal{F}\) is concave. Under concavity and M-matrix monotonicity, the Newton–Howard iteration enjoys <em>global monotone convergence</em> starting from any arbitrary initial policy, such as \(\pi^{(0)} = 0\).</p>
+            </article>
+          </li>
+          <li>
+            <article class="misconception-card">
+              <h3>Misconception 3: "Adding borrowing constraints requires solving a quadratic program with Lagrange multipliers at each node."</h3>
+              <p><strong>Correction:</strong> For 1D portfolio selection with CRRA utility, the Hamiltonian is a strictly concave parabola in the risky asset weight \(\pi\). The unconstrained vertex is \(\pi_{\mathrm{unc}} = -\frac{\mu - r}{\sigma^2 w} \frac{V'}{V''}\). By Karush–Kuhn–Tucker (KKT) theory for 1D bound constraints, the constrained maximizer is simply the projection (clamping) of \(\pi_{\mathrm{unc}}\) onto \([0, \pi_{\max}]\), computable in \(\mathcal{O}(1)\) arithmetic operations without iterative quadratic programming solvers.</p>
+            </article>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems" aria-labelledby="problems-heading">
+        <h2 id="problems-heading">Practice Problems</h2>
+
+        <h3 id="p-tier-1">Tier 1: Warmup &amp; Foundational Mechanics</h3>
+        <ol class="problems-list">
+          <li>
+            <p><strong>Problem 1.1:</strong> Under policy evaluation, a frozen policy \(\pi(w) = 0.40\) generates an upwind drift \(b_i = 0.08 w_i\) and diffusion \(a_i = 0.5 \times (0.40)^2 \times (0.20)^2 w_i^2 = 0.0032 w_i^2\). For \(w_i = 2.0\), \(\Delta w = 0.05\), and \(\rho = 0.05\), compute the central diffusion coefficient \(\alpha_i = \frac{a_i}{\Delta w^2}\) and upwind drift coefficient \(\beta_i = \frac{b_i}{\Delta w}\).</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">First compute the state-dependent coefficients at \(w_i = 2.0\): \(a_i = 0.0032 \times (2.0)^2 = 0.0128\), and \(b_i = 0.08 \times 2.0 = 0.16\). The central diffusion coefficient is \(\alpha_i = \frac{a_i}{\Delta w^2} = \frac{0.0128}{0.0025} = 5.12\). The forward upwind drift coefficient is \(\beta_i = \frac{b_i}{\Delta w} = \frac{0.16}{0.05} = 3.20\). Both coefficients are strictly positive, ensuring diagonal dominance.</span></p>
+            </div>
+          </li>
+          <li>
+            <p><strong>Problem 1.2:</strong> An investor with \(\gamma = 2.0\) faces market parameters \(r = 0.03\), \(\mu = 0.09\), and \(\sigma = 0.20\). The borrowing mandate restricts \(\pi \le 0.60\). Calculate the unconstrained Merton fraction and determine whether the borrowing constraint binds.</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">The unconstrained Merton fraction is \(\pi^* = \frac{\mu - r}{\gamma \sigma^2} = \frac{0.09 - 0.03}{2.0 \times 0.04} = \frac{0.06}{0.08} = 0.75\). Because the borrowing mandate caps risky exposure at \(\pi_{\max} = 0.60\), the constraint binds strictly, forcing the constrained optimal allocation to \(\pi^*(w) = 0.60\).</span></p>
+            </div>
+          </li>
+          <li>
+            <p><strong>Problem 1.3:</strong> State the computational complexity of solving an \(N\)-node tridiagonal linear system using the Thomas algorithm, and explain why this makes policy evaluation efficient.</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">The Thomas algorithm solves an \(N \times N\) tridiagonal system in exactly \(\mathcal{O}(N)\) floating point operations and \(\mathcal{O}(N)\) memory storage, compared to \(\mathcal{O}(N^3)\) for dense Gaussian elimination. This linear complexity allows policy evaluation on fine meshes with hundreds of grid points to execute in under one millisecond.</span></p>
+            </div>
+          </li>
+        </ol>
+
+        <h3 id="p-tier-2">Tier 2: Core Procedural &amp; Algorithmic Tasks</h3>
+        <ol class="problems-list" start="4">
+          <li>
+            <p><strong>Problem 2.1:</strong> At mesh node \(i\), numerical differentiation yields \(V_i' = 0.50\) and \(V_i'' = -1.25\) at wealth \(w_i = 1.0\). For market parameters \(\mu = 0.08\), \(r = 0.02\), and \(\sigma = 0.20\), evaluate the unconstrained portfolio update \(\pi_{\mathrm{unc}}\). If the policy constraint is \(0 \le \pi \le 0.50\), find the updated control \(\pi_i^{(k+1)}\).</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">The unconstrained policy update evaluates the vertex of the quadratic Hamiltonian: \(\pi_{\mathrm{unc}} = -\frac{\mu - r}{\sigma^2 w_i} \frac{V_i'}{V_i''} = -\frac{0.06}{0.04 \times 1.0} \frac{0.50}{-1.25} = (-1.5) \times (-0.40) = 0.60\). Projecting onto the admissible interval \([0, 0.50]\) yields \(\pi_i^{(k+1)} = \min(0.60, 0.50) = 0.50\).</span></p>
+            </div>
+          </li>
+          <li>
+            <p><strong>Problem 2.2:</strong> Consider the constrained effective growth rate \(k_{\mathrm{constr}} = r + \pi_{\max}(\mu - r) - \frac{1}{2} \gamma \pi_{\max}^2 \sigma^2\). For \(r = 0.04\), \(\mu = 0.10\), \(\sigma = 0.20\), \(\gamma = 3.0\), and \(\pi_{\max} = 0.40\), calculate \(k_{\mathrm{constr}}\) and compare it to the unconstrained growth rate \(k_{\mathrm{unc}}\).</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">First compute unconstrained \(\pi^* = \frac{0.06}{3.0 \times 0.04} = 0.50\), yielding \(k_{\mathrm{unc}} = 0.04 + \frac{(0.06)^2}{2 \times 3.0 \times 0.04} = 0.04 + \frac{0.0036}{0.24} = 0.0550\). For constrained \(\pi_{\max} = 0.40\), \(k_{\mathrm{constr}} = 0.04 + 0.40 \times 0.06 - 0.5 \times 3.0 \times (0.40)^2 \times 0.04 = 0.04 + 0.0240 - 0.0096 = 0.0544\). The leverage constraint causes a welfare drag of \(0.0550 - 0.0544 = 0.0006\) (6 basis points in annualized growth rate).</span></p>
+            </div>
+          </li>
+          <li>
+            <p><strong>Problem 2.3:</strong> In a numerical HJB solver, the maximum iterate difference satisfies \(\|V^{(k+1)} - V^{(k)}\|_\infty = 0.015\) at \(k = 4\), and \(\|V^{(k+2)} - V^{(k+1)}\|_\infty = 0.000225\) at \(k = 5\). Demonstrate whether this behavior is consistent with quadratic convergence.</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">Quadratic convergence requires \(\|e_{k+1}\| \approx C \|e_k\|^2\). Here, \(\|e_4\|^2 = (0.015)^2 = 0.000225\), which exactly matches \(\|e_5\| = 0.000225\) with constant \(C = 1.0\). This rapid squaring of the residual error is the signature of Newton–Kantorovich quadratic convergence inherent to policy iteration.</span></p>
+            </div>
+          </li>
+        </ol>
+
+        <h3 id="p-tier-3">Tier 3: Proof &amp; Mathematical Rigor</h3>
+        <ol class="problems-list" start="7">
+          <li>
+            <p><strong>Problem 3.1:</strong> Prove that if \(\rho &gt; 0\) and \(A[u]\) is a continuous-time Markov generator matrix satisfying \(A_{ii} &lt; 0\), \(A_{ij} \ge 0\) for \(j \ne i\), and \(\sum_j A_{ij} \le 0\), then \(M[u] = \rho I - A[u]\) is an M-matrix with strictly positive diagonal elements and entrywise non-negative inverse.</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">The diagonal entries are \(M_{ii} = \rho - A_{ii} &gt; \rho &gt; 0\). The off-diagonal entries are \(M_{ij} = -A_{ij} \le 0\) for \(i \ne j\), establishing that \(M\) is a Z-matrix. Furthermore, the row sums satisfy \(\sum_j M_{ij} = \rho - \sum_j A_{ij} \ge \rho &gt; 0\). Thus \(M\) is strictly row diagonally dominant with positive diagonal entries. By the standard M-matrix characterization theorem, \(M\) is non-singular and its inverse is entrywise non-negative (\(M^{-1} \ge 0\)).</span></p>
+            </div>
+          </li>
+          <li>
+            <p><strong>Problem 3.2:</strong> Prove that the policy improvement step is guaranteed to find the unique global maximum of the Hamiltonian \(\mathcal{H}(\pi; w, V', V'') = (\mu - r) \pi w V' + \frac{1}{2} \pi^2 \sigma^2 w^2 V''\) over \(\pi \in [0, \pi_{\max}]\) whenever \(V'' &lt; 0\).</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">Compute the second derivative with respect to \(\pi\): \(\frac{\partial^2 \mathcal{H}}{\partial \pi^2} = \sigma^2 w^2 V''\). Since \(\sigma &gt; 0\), \(w &gt; 0\), and \(V'' &lt; 0\), we have \(\frac{\partial^2 \mathcal{H}}{\partial \pi^2} &lt; 0\) strictly. Hence \(\mathcal{H}\) is strictly concave in \(\pi\). A strictly concave continuous function on a closed interval \([0, \pi_{\max}]\) possesses a unique global maximum, which is either the unconstrained stationary point \(\pi_{\mathrm{unc}}\) if \(\pi_{\mathrm{unc}} \in [0, \pi_{\max}]\), or the boundary endpoint closest to \(\pi_{\mathrm{unc}}\).</span></p>
+            </div>
+          </li>
+          <li>
+            <p><strong>Problem 3.3:</strong> Prove that the sequence of value functions \(V^{(k)}\) in policy iteration is bounded above by the optimal discrete value function \(V^*\).</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">For any iterate \(k\), \(M[u^*] V^* = f[u^*] \ge M[u^{(k)}] V^* + f[u^{(k)}] - M[u^{(k)}] V^*\). By definition of policy evaluation, \(M[u^{(k)}] V^{(k)} = f[u^{(k)}]\). Therefore, \(M[u^{(k)}] (V^* - V^{(k)}) = M[u^{(k)}] V^* - f[u^{(k)}] \ge M[u^*] V^* - f[u^*] = 0\). Multiplying by \(M[u^{(k)}]^{-1} \ge 0\) yields \(V^* - V^{(k)} \ge 0\), proving \(V^{(k)} \le V^*\) for all \(k\).</span></p>
+            </div>
+          </li>
+        </ol>
+
+        <h3 id="p-tier-4">Tier 4: Applied Diagnostic &amp; Implementation Debugging</h3>
+        <ol class="problems-list" start="10">
+          <li>
+            <p><strong>Problem 4.1:</strong> A quantitative researcher implements policy iteration but finds that on coarse grids (\(N = 30\)), the algorithm cycles between two policies \(\pi_A\) and \(\pi_B\) and never terminates. Inspecting the code reveals central differencing was used for the drift term. Explain the root cause of this failure.</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">When central differencing is used for the convective drift on a coarse grid, the mesh Peclet number \(P_e = \frac{|b_i| \Delta w}{2 a_i} &gt; 1\). This causes off-diagonal elements in the discretization matrix to become positive, violating the Z-matrix condition. As a result, \(M[u]^{-1}\) is no longer entrywise non-negative, destroying the monotone property of policy iteration and permitting limit cycles and policy oscillation.</span></p>
+            </div>
+          </li>
+          <li>
+            <p><strong>Problem 4.2:</strong> Suppose your solver produces \(\pi^*(w)\) that exceeds \(\pi_{\max}\) by \(0.001\) at the rightmost boundary node \(w_N\). Diagnosing the boundary condition implementation, what error is most likely present?</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">The policy improvement step was mistakenly executed at the boundary node \(i = N\) using a centered difference stencil that sampled an undefined ghost node \(w_{N+1}\). Boundary nodes are Dirichlet nodes whose values and policies must be fixed analytically from the asymptotic boundary conditions; the policy improvement step should only be executed at interior nodes \(1 \le i \le N-1\).</span></p>
+            </div>
+          </li>
+          <li>
+            <p><strong>Problem 4.3:</strong> In evaluating \(V_i''^{(k)}\) during policy improvement, what safeguard should be applied before dividing by \(V_i''^{(k)}\) in the unconstrained Merton fraction formula, and why?</p>
+            <div class="solution">
+              <p><strong>Solution:</strong> <span class="claim" data-grade="T">Numerical rounding errors or initial transients can cause \(V_i''^{(k)}\) to become positive or zero (\(V_i'' \ge -\varepsilon\)), which would invert the sign of the policy or cause a division-by-zero exception. The implementation must safeguard against this by enforcing strict negativity, for example by clipping \(V_i'' \le -\delta\) with \(\delta = 10^{-12}\), or directly evaluating the Hamiltonian on a discrete control grid if curvature degenerates.</span></p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="key-results" aria-labelledby="key-results-heading">
+        <h2 id="key-results-heading">Key Results &amp; Algorithmic Summary</h2>
+        <div class="table-wrap">
+          <table>
+            <caption>Table 7.1: Comparison of Numerical Solution Methods for Continuous-Time HJB Equations</caption>
+            <thead>
+              <tr>
+                <th scope="col">Method</th>
+                <th scope="col">Step Type</th>
+                <th scope="col">Per-Iteration Cost</th>
+                <th scope="col">Convergence Rate</th>
+                <th scope="col">Stability &amp; Monotonicity</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Explicit Value Iteration</strong></td>
+                <td>Forward Euler</td>
+                <td>\(\mathcal{O}(N)\)</td>
+                <td>Linear, \(\mathcal{O}(1 - \rho \Delta \tau)\)</td>
+                <td>Conditionally stable; requires \(\Delta \tau \le \mathcal{O}(\Delta w^2)\)</td>
+              </tr>
+              <tr>
+                <td><strong>Implicit Value Iteration</strong></td>
+                <td>Non-linear backward Euler</td>
+                <td>\(\mathcal{O}(N \cdot K_{\mathrm{inner}})\)</td>
+                <td>Linear</td>
+                <td>Unconditionally stable, but requires inner non-linear solver</td>
+              </tr>
+              <tr>
+                <td><strong>Howard's Policy Iteration</strong></td>
+                <td>Alternating Linear Solve + Projection</td>
+                <td>\(\mathcal{O}(N)\) (Thomas algorithm)</td>
+                <td>Local Quadratic (Newton)</td>
+                <td>Globally monotone and unconditionally stable under M-matrix upwind discretization</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="quiz" aria-labelledby="quiz-heading">
+        <h2 id="quiz-heading">Self-Assessment Quiz</h2>
+
+        <form class="quiz-item" data-correct="b">
+          <fieldset>
+            <legend>1. What are the two alternating phases of Howard's policy iteration algorithm?</legend>
+            <label><input type="radio" name="q1" value="a"> Forward Euler time-stepping and backward smoothing</label>
+            <label><input type="radio" name="q1" value="b"> Policy evaluation (linear BVP solve) and policy improvement (pointwise Hamiltonian maximization)</label>
+            <label><input type="radio" name="q1" value="c"> Monte Carlo simulation and regression on Chebyshev polynomials</label>
+            <label><input type="radio" name="q1" value="d"> Conjugate gradient iteration and preconditioner updates</label>
+            <span class="feedback"></span>
+          </fieldset>
+        </form>
+
+        <form class="quiz-item" data-correct="c">
+          <fieldset>
+            <legend>2. Why does policy iteration converge quadratically near the solution?</legend>
+            <label><input type="radio" name="q2" value="a"> It applies Picard iteration to a contractive operator</label>
+            <label><input type="radio" name="q2" value="b"> It uses Richardson extrapolation across grid refinements</label>
+            <label><input type="radio" name="q2" value="c"> It is mathematically equivalent to Newton's method on the discrete non-linear Bellman operator</label>
+            <label><input type="radio" name="q2" value="d"> The spatial discretization uses fourth-order central differences</label>
+            <span class="feedback"></span>
+          </fieldset>
+        </form>
+
+        <form class="quiz-item" data-correct="a">
+          <fieldset>
+            <legend>3. What structural property of the spatial discretization matrix guarantees monotonic convergence \(V^{(k+1)} \ge V^{(k)}\)?</legend>
+            <label><input type="radio" name="q3" value="a"> Strict diagonal dominance and M-matrix property ensuring inverse positivity \(M^{-1} \ge 0\)</label>
+            <label><input type="radio" name="q3" value="b"> Skew-symmetry of the convective operator</label>
+            <label><input type="radio" name="q3" value="c"> Exact conservation of total probability mass</label>
+            <label><input type="radio" name="q3" value="d"> Unit condition number of the mass matrix</label>
+            <span class="feedback"></span>
+          </fieldset>
+        </form>
+
+        <form class="quiz-item" data-correct="d">
+          <fieldset>
+            <legend>4. How is a borrowing constraint \(\pi \le \pi_{\max}\) enforced in the policy improvement step for 1D Merton control?</label>
+            <label><input type="radio" name="q4" value="a"> By introducing an interior point barrier penalty function</label>
+            <label><input type="radio" name="q4" value="b"> By reformulating the HJB as a linear complementarity problem</label>
+            <label><input type="radio" name="q4" value="c"> By solving a quadratic program with active-set iterations at each node</label>
+            <label><input type="radio" name="q4" value="d"> By clamping the unconstrained vertex: \(\pi_{\mathrm{new}} = \min(\max(\pi_{\mathrm{unc}}, 0), \pi_{\max})\)</label>
+            <span class="feedback"></span>
+          </fieldset>
+        </form>
+
+        <form class="quiz-item" data-correct="b">
+          <fieldset>
+            <legend>5. What is the per-iteration computational cost of solving the policy evaluation tridiagonal system on an \(N\)-node mesh?</legend>
+            <label><input type="radio" name="q5" value="a"> \(\mathcal{O}(N \log N)\)</label>
+            <label><input type="radio" name="q5" value="b"> \(\mathcal{O}(N)\) using the Thomas algorithm</label>
+            <label><input type="radio" name="q5" value="c"> \(\mathcal{O}(N^2)\)</label>
+            <label><input type="radio" name="q5" value="d"> \(\mathcal{O}(N^3)\)</label>
+            <span class="feedback"></span>
+          </fieldset>
+        </form>
+
+        <form class="quiz-item" data-correct="c">
+          <fieldset>
+            <legend>6. If the unconstrained Merton fraction is \(\pi^* = 0.80\) but the borrowing cap is \(\pi_{\max} = 0.50\), what is the analytical constrained value function \(V(w)\)?</legend>
+            <label><input type="radio" name="q6" value="a"> It becomes a non-homothetic transcendental function requiring numerical quadrature</label>
+            <label><input type="radio" name="q6" value="b"> It is identically zero everywhere</label>
+            <label><input type="radio" name="q6" value="c"> \(V(w) = \frac{\nu_{\mathrm{constr}}^{-\gamma}}{1 - \gamma} w^{1 - \gamma}\) with effective growth rate \(k_{\mathrm{constr}} = r + \pi_{\max}(\mu - r) - \frac{1}{2} \gamma \pi_{\max}^2 \sigma^2\)</label>
+            <label><input type="radio" name="q6" value="d"> It equals the unconstrained Merton value function because the constraint does not bind</label>
+            <span class="feedback"></span>
+          </fieldset>
+        </form>
+
+        <form class="quiz-item" data-correct="a">
+          <fieldset>
+            <legend>7. Why does explicit value iteration fail on fine spatial grids for HJB equations?</legend>
+            <label><input type="radio" name="q7" value="a"> Parabolic diffusion stiffness requires \(\Delta \tau \le \mathcal{O}(\Delta w^2)\), demanding hundreds of thousands of steps</label>
+            <label><input type="radio" name="q7" value="b"> The continuous value function is discontinuous</label>
+            <label><input type="radio" name="q7" value="c"> Explicit steps violate conservation of total wealth</label>
+            <label><input type="radio" name="q7" value="d"> Tridiagonal matrices cannot be inverted explicitly</label>
+            <span class="feedback"></span>
+          </fieldset>
+        </form>
+
+        <form class="quiz-item" data-correct="b">
+          <fieldset>
+            <legend>8. Under what condition does policy iteration terminate in a finite number of iterations?</legend>
+            <label><input type="radio" name="q8" value="a"> Whenever the discount rate \(\rho &gt; 1\)</label>
+            <label><input type="radio" name="q8" value="b"> Whenever the control action space \(U\) is finite</label>
+            <label><input type="radio" name="q8" value="c"> Only when the true solution is linear in wealth</label>
+            <label><input type="radio" name="q8" value="d"> Never; it always produces an infinite asymptotic sequence</label>
+            <span class="feedback"></span>
+          </fieldset>
+        </form>
+      </section>
+
+      <section id="references" aria-labelledby="references-heading">
+        <h2 id="references-heading">References</h2>
+        <ul>
+          <li>Merton, R. C. (1969). Lifetime portfolio selection under uncertainty: The continuous-time case. <em>The Review of Economics and Statistics</em>, 51(3), 247–257. <span class="claim" data-grade="B" data-cite="merton1969lifetime" data-locator="merton1969lifetime p. 247-257">[merton1969lifetime]</span></li>
+          <li>Merton, R. C. (1971). Optimum consumption and portfolio rules in a continuous-time model. <em>Journal of Economic Theory</em>, 3(4), 373–413. <span class="claim" data-grade="B" data-cite="merton1971optimum" data-locator="merton1971optimum p. 373-413">[merton1971optimum]</span></li>
+          <li>Pham, H. (2009). <em>Continuous-time Stochastic Control and Optimization with Financial Applications</em>. Springer Science &amp; Business Media. <span class="claim" data-grade="B" data-cite="pham2009continuous" data-locator="pham2009continuous Chapter 3, p. 88-115">[pham2009continuous]</span></li>
+        </ul>
+      </section>
+
+      <div class="completion-wrap">
+        <button type="button" class="complete-btn" data-complete>Mark Lesson Complete</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
