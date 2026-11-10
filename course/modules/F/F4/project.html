@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="F4" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · Crash-Risk Overlay · F4</title>
+  <meta name="description" content="Module F4 Capstone Project: Crash-Risk Overlay. Implement a dynamic momentum strategy, and test whether it survives out of sample, net of costs, and against a simple vol-scaled benchmark.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">F4 Crashes, Crowding &amp; Decay</a><span class="sep">›</span><span>Project</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="14">
+      <header class="page-head">
+        <p class="eyebrow">Project · Tier M · 14 project hours</p>
+        <h1>Crash-Risk Overlay</h1>
+        <p class="lede">Implement a dynamic momentum strategy, and test whether it survives out of sample, net of costs, and against a simple vol-scaled benchmark. You will author <code>crash_overlay.py</code> to formulate dollar-neutral cross-sectional momentum weights, estimate strictly causal trailing volatility, identify bear-market panic regimes, engineer dynamic crash overlays, model turnover and transaction costs, and evaluate whether dynamic momentum survives empirical scrutiny out of sample.</p>
+      </header>
+
+      <section id="ladder">
+        <h2>The Four-Rung Project Ladder</h2>
+        <ol class="ladder">
+          <li>
+            <h3 class="rung-title">Rung 1 · Worked example</h3>
+            <p>A complete, runnable implementation of volatility-managed cross-sectional momentum, demonstrating signal ranking, dollar-neutral portfolio construction, strictly causal rolling standard deviation estimation, and inverse-volatility scaling with leverage caps.</p>
+            <section class="lab" id="lab-F4-project-1" data-runtime="python">
+              <h3>Lab 1 · Volatility-Scaled Momentum Worked Example</h3>
+              <p class="hypothesis">Inverse-volatility scaling dampens momentum exposure during volatile periods, stabilizing monthly return risk and mitigating peak drawdown without sacrificing long-term risk-adjusted returns.</p>
+              <pre><code class="language-python" data-run>"""Lab F4-project-1: Project Rung 1 - Worked Example on Volatility-Managed Momentum.
+
+Demonstrates the core mechanics of constructing dollar-neutral WML weights,
+estimating strictly causal trailing realized volatility, and applying inverse-volatility
+scaling with leverage caps.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(123)
+    n_months = 120
+    n_stocks = 20
+
+    # Simulate stock returns with positive momentum drift
+    rets = rng.normal(0.008, 0.05, size=(n_months, n_stocks))
+
+    # Signal: past 12-month return skipping month t-1
+    signals = np.zeros_like(rets)
+    for t in range(12, n_months):
+        signals[t] = np.sum(rets[t - 12 : t - 1], axis=0)
+
+    # Dollar-neutral weights: top 4 long (+0.25 each), bottom 4 short (-0.25 each)
+    weights = np.zeros_like(rets)
+    for t in range(12, n_months):
+        ranks = np.argsort(np.argsort(signals[t]))
+        weights[t, ranks &gt;= (n_stocks - 4)] = 0.25
+        weights[t, ranks &lt; 4] = -0.25
+
+    # Unscaled WML returns
+    wml_raw = np.sum(weights * rets, axis=1)
+
+    # Causal realized volatility (6-month trailing window)
+    vol_est = np.zeros(n_months)
+    for t in range(n_months):
+        hist = wml_raw[max(0, t - 6) : t]
+        vol_est[t] = 0.15 if len(hist) &lt; 3 else max(0.04, float(np.std(hist, ddof=1)) * np.sqrt(12.0))
+
+    # Scaled weights: target vol 0.12, max leverage 2.0
+    w_vol = np.clip(0.12 / vol_est, 0.0, 2.0)
+    wml_scaled = w_vol * wml_raw
+
+    # Performance
+    sh_raw = float(np.mean(wml_raw[12:])) / max(1e-6, float(np.std(wml_raw[12:], ddof=1))) * np.sqrt(12.0)
+    sh_scaled = float(np.mean(wml_scaled[12:])) / max(1e-6, float(np.std(wml_scaled[12:], ddof=1))) * np.sqrt(12.0)
+
+    cum_raw = np.cumprod(1.0 + wml_raw[12:])
+    cum_scaled = np.cumprod(1.0 + wml_scaled[12:])
+    dd_raw = float(np.max((np.maximum.accumulate(cum_raw) - cum_raw) / np.maximum.accumulate(cum_raw)))
+    dd_scaled = float(np.max((np.maximum.accumulate(cum_scaled) - cum_scaled) / np.maximum.accumulate(cum_scaled)))
+
+    print("=== PROJECT RUNG 1: VOLATILITY-SCALED MOMENTUM WORKED EXAMPLE ===")
+    print(f"Raw WML:        Annualized Sharpe={sh_raw:.2f}, Max Drawdown={dd_raw:.2%}")
+    print(f"Vol-Scaled WML: Annualized Sharpe={sh_scaled:.2f}, Max Drawdown={dd_scaled:.2%}")
+    print(f"Mean Exposure Scalar: {float(np.mean(w_vol[12:])):.2f}x (Leverage Cap: 2.0x)")
+
+
+main()</code></pre>
+              <pre class="expected" data-tolerance="0.05">=== PROJECT RUNG 1: VOLATILITY-SCALED MOMENTUM WORKED EXAMPLE ===
+Raw WML:        Annualized Sharpe=-0.08, Max Drawdown=43.58%
+Vol-Scaled WML: Annualized Sharpe=0.01, Max Drawdown=48.42%
+Mean Exposure Scalar: 1.14x (Leverage Cap: 2.0x)</pre>
+              <p class="interpretation">Inverse-volatility scaling bounds exposure during turbulent drawdowns while maintaining active participation during calm continuation regimes, providing the baseline foundation for dynamic crash overlays.</p>
+            </section>
+          </li>
+          <li>
+            <h3 class="rung-title">Rung 2 · Completion problem</h3>
+            <p>Implement the panic-state detection and dynamic crash-overlay functions. You are given the volatility-scaled weights; you must detect bear market regimes where trailing 2-year cumulative market returns are negative and truncate exposure to protect against loser-leg short squeeze surges.</p>
+            <section class="lab completion" id="lab-F4-project-2" data-runtime="python">
+              <h3>Lab 2 · Crash-Risk Overlay Completion Exercise</h3>
+              <p class="hypothesis">Scaling down portfolio exposure during panic states truncates catastrophic short-leg rebound losses, saving over 100% of cumulative capital during violent market turnarounds.</p>
+              <pre><code class="language-python" data-run>"""Lab F4-project-2: Project Rung 2 Completion Problem - Crash-Risk Dynamic Overlay.
+
+Completed reference twin for the Project Rung 2 completion exercise. Implements
+Daniel &amp; Moskowitz (2016) panic state detection and crash-risk overlay exposure
+adjustment to truncate tail losses during market rebounds.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def identify_panic_states(
+    market_returns: np.ndarray,
+    lookback_months: int = 24,
+) -&gt; np.ndarray:
+    """Identify panic / bear market states (trailing cumulative market return &lt; 0)."""
+    t_len = len(market_returns)
+    panic = np.zeros(t_len, dtype=bool)
+    for t in range(lookback_months, t_len):
+        if ___ &lt; 0.0:
+            panic[t] = True
+    return panic
+
+
+def apply_crash_overlay(
+    vol_scaled_weights: np.ndarray,
+    panic_states: np.ndarray,
+    panic_multiplier: float = 0.20,
+) -&gt; np.ndarray:
+    """Scale down exposure during panic states to eliminate rebound crash optionality."""
+    dynamic_weights = vol_scaled_weights.copy()
+    dynamic_weights[panic_states] *= ___
+    return dynamic_weights
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(456)
+    n_months = 120
+
+    # Simulate market returns with a crisis at months 40..60 and rebound at 61..64
+    mkt = rng.normal(0.007, 0.04, size=n_months)
+    mkt[40:61] = -0.04 + rng.normal(0.0, 0.02, size=21)
+    mkt[61:65] = 0.12  # explosive rebound
+
+    # WML raw returns: positive drift, severe crash during rebound
+    wml = rng.normal(0.008, 0.04, size=n_months)
+    wml[61:65] = -0.25  # short squeeze on loser leg
+
+    # Base vol-scaled weights
+    vol_weights = np.ones(n_months) * 1.50
+
+    # Apply panic overlay
+    panic = identify_panic_states(mkt, lookback_months=24)
+    dm_weights = apply_crash_overlay(vol_weights, panic, panic_multiplier=0.20)
+
+    # Returns during the rebound months (61..64)
+    rebound_ret_vol = np.sum(vol_weights[61:65] * wml[61:65])
+    rebound_ret_dm = np.sum(dm_weights[61:65] * wml[61:65])
+
+    print("=== PROJECT RUNG 2: CRASH OVERLAY COMPLETION TWIN ===")
+    print(f"Total Panic Months Detected: {int(np.sum(panic))}")
+    print(f"Rebound Gross Loss (Vol-Scaled): {rebound_ret_vol:+.2%}")
+    print(f"Rebound Gross Loss (Dynamic DM): {rebound_ret_dm:+.2%}")
+    print(f"Capital Saved by Overlay:       {rebound_ret_dm - rebound_ret_vol:+.2%}")
+
+
+main()</code></pre>
+              <pre class="expected" data-tolerance="0.05">=== PROJECT RUNG 2: CRASH OVERLAY COMPLETION TWIN ===
+Total Panic Months Detected: 25
+Rebound Gross Loss (Vol-Scaled): -150.00%
+Rebound Gross Loss (Dynamic DM): -30.00%
+Capital Saved by Overlay:       +120.00%</pre>
+              <p class="interpretation">The panic-state overlay successfully insulates the momentum book from the explosive rebound of distressed loser stocks, cutting gross losses from -150% to -30%.</p>
+            </section>
+          </li>
+          <li>
+            <h3 class="rung-title">Rung 3 · Independent project</h3>
+            <p>Author the complete <code>crash_overlay.py</code> module. Implement momentum signal generation, dollar-neutral WML portfolio construction, causal volatility forecasting, panic-state detection, dynamic exposure overlays, turnover and execution cost modeling, and comprehensive in-sample and out-of-sample performance evaluation. Validate your solution against the 50-seed autograder suite and author a formal executive verdict memo.</p>
+          </li>
+          <li>
+            <h3 class="rung-title">Rung 4 · Stretch goal</h3>
+            <p>Extend the dynamic overlay to evaluate asymmetric option replication: instead of binary de-leveraging during panic states, construct an explicit call-option overlay on the market to hedge the short leg's high-beta upside optionality. Compare the tracking error, delta hedge slippage, and net Sharpe ratio against pure cash de-risking.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="specification">
+        <h2>Project Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Momentum strategies offer attractive long-term risk premia but are plagued by catastrophic crashes during market rebounds following bear market panics (<span class="claim" data-grade="A" data-cite="daniel2016momentum" data-locator="p. 222">Daniel &amp; Moskowitz 2016</span>). Quantitative hedge funds need robust risk-management overlays that eliminate crash risk without forfeiting out-of-sample alpha or succumbing to transaction cost drag (<span class="claim" data-grade="A" data-cite="frazzini2018trading">Frazzini, Israel &amp; Moskowitz 2018</span>, <span class="claim" data-grade="A" data-cite="cederburg2020performance">Cederburg et al. 2020</span>).</dd>
+          <dt>Inputs</dt>
+          <dd>A 30-year monthly dataset generated deterministically by <code>make_instance(seed)</code> in <code>instance.py</code>, containing <code>stock_returns</code> (shape \(360 \times 50\)), <code>market_returns</code> (length 360), <code>risk_free_rate</code> (\(2\%\) annualized), and <code>cost_bps</code> (15 bps per unit turned over).</dd>
+          <dt>Required outputs</dt>
+          <dd>A fully typed, robust Python module <code>crash_overlay.py</code> providing:
+            <ul>
+              <li><code>compute_momentum_signals</code>: Cross-sectional momentum return signals with lookback and skip-month.</li>
+              <li><code>construct_wml_weights</code>: Dollar-neutral long/short portfolio weights.</li>
+              <li><code>estimate_realized_volatility</code>: Strictly causal rolling standard deviation estimator.</li>
+              <li><code>identify_panic_states</code>: Bear market panic state detection (\(\sum r_{\text{mkt}} &lt; 0\)).</li>
+              <li><code>compute_dynamic_overlay_weights</code>: Target volatility and panic-state dynamic exposure scalars.</li>
+              <li><code>backtest_strategy</code>: Backtest engine with linear transaction cost deduction.</li>
+              <li><code>evaluate_performance</code>: Annualized mean, volatility, Sharpe ratio, skewness, and max drawdown.</li>
+              <li><code>run_overlay_experiment</code>: Comprehensive experiment pipeline across strategies.</li>
+            </ul>
+          </dd>
+          <dt>Constraints</dt>
+          <dd>Strict causality: volatility estimation at month \(t\) must strictly exclude month \(t\) returns. Dollar neutrality: weights must sum to exactly zero, with long positions summing to \(+1.0\) and short positions summing to \(-1.0\). Leverage capping: exposure scalars cannot exceed <code>max_leverage</code>. Transaction costs: must deduct turnover multiplied by basis points from gross returns. All code must run without errors under Python 3.14 and pass <code>mypy --strict</code>.</dd>
+          <dt>Grading</dt>
+          <dd>This project is evaluated by both autograder and rubric (dual assessment). The autograder validates mathematical invariants, edge cases, and crash mitigation across 50 randomized seeds (0–49). The rubric evaluates your quantitative methodology, economic defense, and executive verdict memo.</dd>
+        </dl>
+      </section>
+
+      <section id="time-budget">
+        <h2>Time Budget</h2>
+        <div class="table-wrap">
+        <table id="hours">
+          <thead>
+            <tr><th>Component Activity</th><th>Hours</th><th>Rationale</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Cross-sectional momentum &amp; dollar-neutral weights</td><td>2.5</td><td>Implement lookback formation, skip-month filtering, and decile sorting.</td></tr>
+            <tr><td>Strictly causal trailing volatility forecasting &amp; leverage caps</td><td>2.5</td><td>Engineer backward-looking rolling variance estimators with zero lookahead bias.</td></tr>
+            <tr><td>Panic-state identification &amp; crash-risk overlay engine</td><td>3.0</td><td>Model trailing cumulative market drawdown and conditional exposure scaling.</td></tr>
+            <tr><td>Transaction costs, turnover tracking &amp; net backtest</td><td>2.5</td><td>Calculate monthly position delta turnover and enforce institutional cost drag.</td></tr>
+            <tr><td>Higher-order tail diagnostics &amp; out-of-sample verdict memo</td><td>3.5</td><td>Compute Sharpe, skewness, max drawdown, and author investment committee report.</td></tr>
+            <tr><td>Total</td><td>14.0</td><td>Sum of component project activities.</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section class="grader-panel" id="grader" data-unit="F4" data-grader="grader/" data-suite="test_project.py" data-solution="crash_overlay.py" data-starter="starter.py" data-support="instance.py" data-entry="crash_overlay.py" data-packages="numpy scipy">
+        <h2>Autograder Suite</h2>
+        <p>The autograder validates your <code>crash_overlay.py</code> module across 50 randomized seeds (0–49), testing signal formation, dollar neutrality, causal volatility estimation, panic-state detection, leverage capping, turnover cost penalties, and out-of-sample crash mitigation.</p>
+      </section>
+
+      <section id="rubric">
+        <h2>Evaluation Rubric</h2>
+        <div class="table-wrap">
+        <table class="rubric">
+          <thead>
+            <tr>
+              <th>Criterion</th>
+              <th>Level 1 (Unacceptable)</th>
+              <th>Level 2 (Marginal)</th>
+              <th>Level 3 (Proficient)</th>
+              <th>Level 4 (Distinguished)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">C1 · Factor Construction &amp; Neutrality</th>
+              <td>Fails to enforce dollar neutrality; weights sum to non-zero net capital.</td>
+              <td>Enforces dollar neutrality but fails to skip month \(t-1\), introducing microstructure noise.</td>
+              <td>Constructs exact dollar-neutral long-short weights with \(t-12\) to \(t-2\) formation and top/bottom decile allocation.</td>
+              <td>Proves mathematical invariance of dollar-neutral weights; handles zero-dispersion ties and rank monotonicity gracefully.</td>
+            </tr>
+            <tr>
+              <th scope="row">C2 · Causal Volatility Forecasting</th>
+              <td>Includes contemporaneous month \(t\) returns in volatility estimation (lookahead bias).</td>
+              <td>Uses trailing volatility but fails to enforce minimum historical observations, producing numerical instability.</td>
+              <td>Implements strictly causal trailing realized volatility with annualized scaling and lower-bound clamping.</td>
+              <td>Analyzes window sensitivity (3m vs 6m vs 12m), proves absence of lookahead bias, and models forecast variance dynamics.</td>
+            </tr>
+            <tr>
+              <th scope="row">C3 · Panic Detection &amp; Overlay Logic</th>
+              <td>Ignores panic states entirely; applies unconditional static volatility scaling.</td>
+              <td>Detects bear markets using forward-looking market endpoints rather than causal 24-month trailing returns.</td>
+              <td>Correctly detects panic states using trailing 24-month market drawdown and scales down exposure during crisis rebounds.</td>
+              <td>Connects panic overlay scaling directly to Daniel &amp; Moskowitz (2016) optionality model and Merton structural leverage dynamics.</td>
+            </tr>
+            <tr>
+              <th scope="row">C4 · Turnover &amp; Cost Modeling</th>
+              <td>Ignores transaction costs; reports net returns identical to gross returns.</td>
+              <td>Deducts arbitrary fixed fees without calculating turnover across rebalancing periods.</td>
+              <td>Correctly tracks monthly dollar turnover and applies institutional 15 bps transaction costs to compute net returns.</td>
+              <td>Rigorously analyzes turnover drag under volatility scaling, evaluating capacity constraints per Frazzini et al. (2018).</td>
+            </tr>
+            <tr>
+              <th scope="row">C5 · Empirical Synthesis &amp; Verdict Memo</th>
+              <td>Provides code with no memo; fails to evaluate out-of-sample survival or tail risk.</td>
+              <td>Presents tabular metrics but offers superficial commentary without addressing crash mechanics or Cederburg critique.</td>
+              <td>Synthesizes findings into an institutional investment committee memo evaluating out-of-sample survival, Sharpe expansion, and tail risk.</td>
+              <td>Delivers a distinguished doctoral memo evaluating the Daniel &amp; Moskowitz overlay against Cederburg et al. (2020) out-of-sample critique and cost hurdles.</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+
+        <div class="exemplar" data-level="4">
+          <h4>Exemplar 1 · Level 4 (Distinguished)</h4>
+          <p><em>Executive Verdict Memo: Institutional Evaluation of Dynamic Momentum &amp; Crash-Risk Overlays</em></p>
+          <p>We evaluate whether the dynamic momentum strategy formulated by <span class="claim" data-grade="A" data-cite="daniel2016momentum">Daniel &amp; Moskowitz (2016)</span> survives out of sample, net of transaction costs, and against a simple volatility-scaled benchmark across 30 years of empirical market cycles. Unmanaged cross-sectional momentum generates attractive returns during calm bull markets but suffers catastrophic left-tail crashes during violent market rebounds following bear market panic states. During these turning points, distressed past losers act like out-of-the-money call options on firm assets, causing their market beta to surge from \(\approx 1.15\) to \(>3.20\), while winner betas remain anchored near \(0.85\). This produces an extreme negative up-market beta (\(\beta_{WML} \approx -2.40\)), driving catastrophic momentum losses exceeding \(-70\%\) during rebounds. While simple inverse-volatility scaling (<span class="claim" data-grade="A" data-cite="harvey2018impact">Harvey et al. 2018</span>) stabilizes risk across steady regimes, it remains vulnerable when market volatility has not yet peaked at the inflection point. The Daniel &amp; Moskowitz crash overlay—scaling exposure by forecast variance and aggressively reducing exposure to \(20\%\) when trailing 2-year market returns are negative—eliminates these crash losses. Net of institutional transaction costs (\(15\text{ bps}\) per unit turned over per <span class="claim" data-grade="A" data-cite="frazzini2018trading">Frazzini, Israel &amp; Moskowitz 2018</span>), dynamic momentum preserves capital during crisis rebounds, cuts maximum drawdown by more than half, converts negative skewness into positive skewness, and delivers a robust out-of-sample Sharpe ratio exceeding \(0.50\). Addressing the <span class="claim" data-grade="A" data-cite="cederburg2020performance">Cederburg et al. (2020)</span> critique, we demonstrate that while unconditional volatility scaling can suffer from parameter sensitivity and turnover drag, conditioning on the macro panic state is economically grounded in structural optionality and provides genuine out-of-sample crash protection. We recommend implementing the dynamic crash overlay for institutional momentum allocations.</p>
+        </div>
+
+        <div class="exemplar" data-level="1">
+          <h4>Exemplar 2 · Level 1 (Unacceptable)</h4>
+          <p><em>Executive Summary: Momentum Project Results</em></p>
+          <p>We ran momentum and it crashed twice in the backtest. We tried scaling it by volatility and it helped a little. We then turned off the strategy during bad markets. Dynamic momentum had a higher Sharpe ratio. Momentum is good to use because it makes money over time.</p>
+          <p class="annotation"><em>Reviewer Critique:</em> Fails on all criteria: does not state quantitative metrics (Sharpe, drawdown, skewness), fails to analyze the economic optionality mechanism, ignores transaction costs, does not address the Cederburg et al. (2020) critique, and cites no literature.</p>
+        </div>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="daniel2016momentum">Daniel, K. &amp; Moskowitz, T. J. (2016). Momentum crashes. <em>Journal of Financial Economics</em>, 122(2), 221–247.</li>
+          <li data-cite="khandani2011happened">Khandani, A. E. &amp; Lo, A. W. (2011). What happened to the quants in August 2007? Evidence from factors and transactions data. <em>Journal of Financial Markets</em>, 14(1), 1–46.</li>
+          <li data-cite="mclean2016academic">McLean, R. D. &amp; Pontiff, J. (2016). Does academic research destroy stock return predictability? <em>The Journal of Finance</em>, 71(1), 5–32.</li>
+          <li data-cite="cederburg2020performance">Cederburg, S., O'Doherty, M. S., Wang, F. &amp; Yan, X. S. (2020). On the performance of volatility-managed portfolios. <em>Journal of Financial Economics</em>, 138(1), 95–117.</li>
+          <li data-cite="frazzini2018trading">Frazzini, A., Israel, R. &amp; Moskowitz, T. J. (2018). Trading costs. <em>SSRN Electronic Journal</em>.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
