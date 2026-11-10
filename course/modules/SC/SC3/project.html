@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="SC3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SC3 Project · Numeraire Toolkit</title>
+  <meta name="description" content="Derive the closed-form pricing equations for Margrabe exchange options and quanto derivatives under appropriate numeraires, implement the verification toolkit numeraire_toolkit.py, and verify against Monte Carlo. 24 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">SC3 Change of Measure</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="24">
+      <header class="page-head">
+        <p class="eyebrow">SC3 project · 24 hours · Graded by autograder and rubric (both)</p>
+        <h1>Numeraire Toolkit</h1>
+        <p class="lede">In multi-asset derivative pricing and cross-currency risk management, choosing the traditional money-market account as numeraire frequently creates intractable pricing problems involving coupled diffusions or multi-dimensional numerical integration. By selecting an appropriate tradable asset as numeraire—such as the underlying deliverable asset in an exchange option or the domestic money market in a quanto—the pricing equation simplifies to a univariate expectation. This project develops a production-grade software toolkit implementing closed-form solutions and Monte Carlo engines alongside a rigorous mathematical derivations workbook.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>A fully solved derivation and numerical verification of Margrabe's exchange option formula on the seed 0 SIMULATED instance, comparing closed-form pricing with bivariate Monte Carlo under the risk-neutral measure.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Complete the missing Margrabe effective volatility and quanto drift adjustment in the verification script, graded instantly in the browser.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement the full numeraire toolkit module <code>numeraire_toolkit.py</code>, derive the mathematical formulas under their respective measures, and compile an exhaustive analytical workbook. Graded by the autograder and rubric.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extend the numeraire framework to three-asset spread options and cross-currency quanto exchange options under coupled measure changes.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Rung 1 evaluates the Margrabe exchange option formula on the seed 0 SIMULATED instance. Rung 2 provides the same task with the Margrabe volatility and quanto drift adjustment blanked with <code>___</code>.</p>
+
+        <section class="lab" id="lab-SC3-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: Margrabe exchange option pricing and Monte Carlo verification on seed 0</h3>
+          <p class="hypothesis">Under asset 2 as numeraire, the exchange option price is given by the Margrabe (1978) closed form V_0 = S_1(0) e^{-q_1 T} \Phi(d_1) - S_2(0) e^{-q_2 T} \Phi(d_2). On the seed 0 SIMULATED instance, the analytical price is 15.538676. A 2D Monte Carlo simulation across 5,000 paths produces 15.637391 (standard error 0.305782), agreeing within two standard errors.</p>
+          <pre><code class="language-python" data-run>"""Lab 1 · Worked example: Margrabe exchange option pricing and Monte Carlo verification on seed 0.
+
+An exchange option gives the holder the right to exchange asset 2 for asset 1, payoff max(S_1(T) - S_2(T), 0).
+On seed 0 (SIMULATED), parameters are:
+    S_1 = 113.777, S_2 = 110.318, sigma_1 = 0.234, sigma_2 = 0.202, rho = 0.014,
+    q_1 = 0.026, q_2 = 0.041, T = 0.955, r = 0.039.
+By Margrabe (1978), using asset 2 as numeraire yields relative volatility:
+    sigma_M = sqrt(sigma_1^2 - 2 * rho * sigma_1 * sigma_2 + sigma_2^2) = 0.306917
+and closed-form price V_0 = 15.538676.
+This lab computes the exact closed-form price, simulates 5,000 bivariate paths under the risk-neutral measure Q,
+and confirms that the simulated price 15.637391 matches the analytical price within 2 standard errors (se = 0.305782).
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def norm_cdf(x: float) -&gt; float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def main() -&gt; None:
+    # Seed 0 instance parameters (SIMULATED)
+    s1 = 113.777
+    s2 = 110.318
+    sig1 = 0.234
+    sig2 = 0.202
+    rho = 0.014
+    q1 = 0.026
+    q2 = 0.041
+    t = 0.955
+    r = 0.039
+    n_paths = 5000
+    seed = 0
+
+    # Margrabe closed-form price
+    sig_m = math.sqrt(sig1**2 - 2.0 * rho * sig1 * sig2 + sig2**2)
+    f1 = s1 * math.exp(-q1 * t)
+    f2 = s2 * math.exp(-q2 * t)
+    sq_t = math.sqrt(t)
+    d1 = (math.log(f1 / f2) + 0.5 * (sig_m**2) * t) / (sig_m * sq_t)
+    d2 = d1 - sig_m * sq_t
+    exact_price = f1 * norm_cdf(d1) - f2 * norm_cdf(d2)
+
+    # 2D Monte Carlo simulation under Q
+    rng = random.Random(seed)
+    drift1 = (r - q1 - 0.5 * (sig1**2)) * t
+    vol1 = sig1 * sq_t
+    drift2 = (r - q2 - 0.5 * (sig2**2)) * t
+    vol2 = sig2 * sq_t
+    df = math.exp(-r * t)
+
+    payoffs: list[float] = []
+    for _ in range(n_paths):
+        z1 = rng.gauss(0.0, 1.0)
+        z2 = rng.gauss(0.0, 1.0)
+        w1 = z1
+        w2 = rho * z1 + math.sqrt(1.0 - rho**2) * z2
+
+        s1_t = s1 * math.exp(drift1 + vol1 * w1)
+        s2_t = s2 * math.exp(drift2 + vol2 * w2)
+        payoffs.append(df * max(s1_t - s2_t, 0.0))
+
+    mc_price = sum(payoffs) / n_paths
+    var_mc = sum((x - mc_price) ** 2 for x in payoffs) / (n_paths - 1)
+    se_mc = math.sqrt(var_mc / n_paths)
+
+    print(f"seed 0 parameters: S1={s1:.3f}, S2={s2:.3f}, sig1={sig1:.3f}, sig2={sig2:.3f}, rho={rho:.3f}")
+    print(f"Margrabe volatility sigma_M: {sig_m:.6f}")
+    print(f"analytical Margrabe price: {exact_price:.6f}")
+    print(f"Monte Carlo price: {mc_price:.6f} (se {se_mc:.6f})")
+    print(f"absolute difference: {abs(mc_price - exact_price):.6f}")
+    print("simulation within 2*se of analytical price:", abs(mc_price - exact_price) &lt;= 2.0 * se_mc)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">seed 0 parameters: S1=113.777, S2=110.318, sig1=0.234, sig2=0.202, rho=0.014
+Margrabe volatility sigma_M: 0.306980
+analytical Margrabe price: 15.538676
+Monte Carlo price: 15.637391 (se 0.305782)
+absolute difference: 0.098715
+simulation within 2*se of analytical price: True</pre>
+          <p class="interpretation">Step 1 calculates the effective relative volatility \(\sigma_M = \sqrt{\sigma_1^2 - 2\rho\sigma_1\sigma_2 + \sigma_2^2} = 0.306980\). Step 2 evaluates the Margrabe closed form, yielding 15.538676. Step 3 runs 5,000 bivariate Monte Carlo paths under the risk-neutral measure \(\mathbb{Q}\). The resulting estimate of 15.637391 differs by only 0.098715, well within the sampling standard error of 0.305782, validating the analytical derivation.</p>
+        </section>
+
+        <section class="lab completion" id="lab-SC3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: completing the Margrabe volatility and quanto drift adjustment</h3>
+          <p class="hypothesis">Complete the two blanked formulas marked <code>___</code>: the first is the Margrabe effective volatility \(\sigma_M = \sqrt{\sigma_1^2 - 2\rho\sigma_1\sigma_2 + \sigma_2^2}\), and the second is the quanto drift adjustment under the domestic risk-neutral measure \(r_f - \rho_{SX}\sigma_S\sigma_X\).</p>
+          <pre><code class="language-python" data-run>"""Lab 2 · Completion problem: completing the Margrabe volatility and quanto drift adjustment.
+
+This lab implements the completed verification of the Margrabe exchange option formula and
+the quanto European call price on seed 0 (SIMULATED).
+The two key analytical formulas are:
+1. Margrabe relative volatility: sigma_M = sqrt(sigma_1^2 - 2 * rho * sigma_1 * sigma_2 + sigma_2^2)
+2. Quanto drift adjustment under domestic measure Q^d: drift_adj = r_f - rho_SX * sigma_S * sigma_X
+This script evaluates both closed-form prices on seed 0 and verifies that both match their contract-pinned
+values within 1e-6.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def norm_cdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def main() -> None:
+    # Seed 0 parameters (SIMULATED)
+    s1 = 113.777
+    s2 = 110.318
+    sig1 = 0.234
+    sig2 = 0.202
+    rho = 0.014
+    q1 = 0.026
+    q2 = 0.041
+    t = 0.955
+
+    s_f = 107.501
+    k_quanto = 100.141
+    r_d = 0.038
+    r_f = 0.033
+    sig_s = 0.273
+    sig_x = 0.125
+    rho_sx = 0.410
+
+    # Blank 1: Margrabe effective volatility
+    sig_m = ___
+    f1 = s1 * math.exp(-q1 * t)
+    f2 = s2 * math.exp(-q2 * t)
+    sq_t = math.sqrt(t)
+    d1_m = (math.log(f1 / f2) + 0.5 * (sig_m**2) * t) / (sig_m * sq_t)
+    d2_m = d1_m - sig_m * sq_t
+    margrabe_val = f1 * norm_cdf(d1_m) - f2 * norm_cdf(d2_m)
+
+    # Blank 2: Quanto drift adjustment
+    drift_adj = ___
+    f_q = s_f * math.exp(drift_adj * t)
+    d1_q = (math.log(f_q / k_quanto) + 0.5 * (sig_s**2) * t) / (sig_s * sq_t)
+    d2_q = d1_q - sig_s * sq_t
+    quanto_val = math.exp(-r_d * t) * (f_q * norm_cdf(d1_q) - k_quanto * norm_cdf(d2_q))
+
+    print(f"completed Margrabe volatility sigma_M: {sig_m:.6f}")
+    print(f"completed Margrabe price: {margrabe_val:.6f}")
+    print(f"completed quanto drift adjustment: {drift_adj:.6f}")
+    print(f"completed quanto call price: {quanto_val:.6f}")
+    print("Margrabe price matches pinned value 15.538676:", abs(margrabe_val - 15.538676) < 1e-5)
+    print("quanto price matches pinned value 15.812105:", abs(quanto_val - 15.812105) < 1e-5)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">completed Margrabe volatility sigma_M: 0.306980
+completed Margrabe price: 15.538676
+completed quanto drift adjustment: 0.019009
+completed quanto call price: 15.812105
+Margrabe price matches pinned value 15.538676: True
+quanto price matches pinned value 15.812105: True</pre>
+          <p class="interpretation">The first blank completes the relative volatility calculation: without the cross-term \(-2\rho\sigma_1\sigma_2\), the variance of the price ratio would ignore correlation. The second blank provides the foreign asset drift shift: covariance between the foreign asset and the exchange rate alters the expected growth rate of the foreign asset under the domestic risk-neutral measure.</p>
+        </section>
+
+        <section class="lab" id="lab-SC3-project-3" data-runtime="python">
+          <h3>Lab 3 · Rung 3 reference verification: contract-pinned simulation values</h3>
+          <p class="hypothesis">Evaluates Margrabe exchange option pricing and quanto European call pricing on seed 0 (SIMULATED). Pinned reference values are Margrabe analytical 15.538676, Margrabe MC 15.637391 (se 0.305782), quanto analytical 15.812105, and quanto MC 15.850822 (se 0.318629).</p>
+          <pre><code class="language-python" data-run>"""Lab 3 · Rung 3 reference verification: contract-pinned simulation values on seed 0.
+
+Evaluates the numeraire toolkit reference solution on seed 0 (SIMULATED) under the contract-pinned draw order.
+Seed 0 parameters produce:
+1. Margrabe exchange option:
+   Analytical closed-form price: 15.538676
+   Monte Carlo estimate (5,000 paths): 15.637391 with standard error 0.305782
+2. Quanto European call option:
+   Analytical closed-form price: 15.812105
+   Monte Carlo estimate (5,000 paths): 15.850822 with standard error 0.318629
+This script verifies that the numerical implementation reproduces these contract-pinned values
+within 1e-5.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def norm_cdf(x: float) -&gt; float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def main() -&gt; None:
+    # Seed 0 parameters (SIMULATED)
+    s1 = 113.777
+    s2 = 110.318
+    sig1 = 0.234
+    sig2 = 0.202
+    rho = 0.014
+    q1 = 0.026
+    q2 = 0.041
+    t = 0.955
+    r = 0.039
+
+    s_f = 107.501
+    k_quanto = 100.141
+    r_d = 0.038
+    r_f = 0.033
+    sig_s = 0.273
+    sig_x = 0.125
+    rho_sx = 0.410
+    n_paths = 5000
+    seed = 0
+
+    # 1. Margrabe closed-form and Monte Carlo
+    sig_m = math.sqrt(sig1**2 - 2.0 * rho * sig1 * sig2 + sig2**2)
+    f1 = s1 * math.exp(-q1 * t)
+    f2 = s2 * math.exp(-q2 * t)
+    sq_t = math.sqrt(t)
+    d1_m = (math.log(f1 / f2) + 0.5 * (sig_m**2) * t) / (sig_m * sq_t)
+    d2_m = d1_m - sig_m * sq_t
+    margrabe_closed = f1 * norm_cdf(d1_m) - f2 * norm_cdf(d2_m)
+
+    rng_m = random.Random(seed)
+    drift1 = (r - q1 - 0.5 * (sig1**2)) * t
+    vol1 = sig1 * sq_t
+    drift2 = (r - q2 - 0.5 * (sig2**2)) * t
+    vol2 = sig2 * sq_t
+    df_m = math.exp(-r * t)
+
+    payoffs_m: list[float] = []
+    for _ in range(n_paths):
+        z1 = rng_m.gauss(0.0, 1.0)
+        z2 = rng_m.gauss(0.0, 1.0)
+        w1 = z1
+        w2 = rho * z1 + math.sqrt(1.0 - rho**2) * z2
+        s1_t = s1 * math.exp(drift1 + vol1 * w1)
+        s2_t = s2 * math.exp(drift2 + vol2 * w2)
+        payoffs_m.append(df_m * max(s1_t - s2_t, 0.0))
+
+    margrabe_sim = sum(payoffs_m) / n_paths
+    var_m = sum((x - margrabe_sim) ** 2 for x in payoffs_m) / (n_paths - 1)
+    se_m = math.sqrt(var_m / n_paths)
+
+    # 2. Quanto closed-form and Monte Carlo
+    drift_adj = r_f - rho_sx * sig_s * sig_x
+    f_q = s_f * math.exp(drift_adj * t)
+    d1_q = (math.log(f_q / k_quanto) + 0.5 * (sig_s**2) * t) / (sig_s * sq_t)
+    d2_q = d1_q - sig_s * sq_t
+    quanto_closed = math.exp(-r_d * t) * (f_q * norm_cdf(d1_q) - k_quanto * norm_cdf(d2_q))
+
+    rng_q = random.Random(seed)
+    drift_qd = (r_f - rho_sx * sig_s * sig_x - 0.5 * (sig_s**2)) * t
+    vol_qd = sig_s * sq_t
+    df_q = math.exp(-r_d * t)
+
+    payoffs_q: list[float] = []
+    for _ in range(n_paths):
+        z = rng_q.gauss(0.0, 1.0)
+        sf_t = s_f * math.exp(drift_qd + vol_qd * z)
+        payoffs_q.append(df_q * max(sf_t - k_quanto, 0.0))
+
+    quanto_sim = sum(payoffs_q) / n_paths
+    var_q = sum((x - quanto_sim) ** 2 for x in payoffs_q) / (n_paths - 1)
+    se_q = math.sqrt(var_q / n_paths)
+
+    print(f"seed 0 Margrabe analytical price: {margrabe_closed:.6f}")
+    print(f"seed 0 Margrabe MC price: {margrabe_sim:.6f} (se {se_m:.6f})")
+    print(f"seed 0 quanto analytical price: {quanto_closed:.6f}")
+    print(f"seed 0 quanto MC price: {quanto_sim:.6f} (se {se_q:.6f})")
+    print("Margrabe MC matches pinned value 15.637391:", abs(margrabe_sim - 15.637391) &lt; 1e-5)
+    print("quanto MC matches pinned value 15.850822:", abs(quanto_sim - 15.850822) &lt; 1e-5)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">seed 0 Margrabe analytical price: 15.538676
+seed 0 Margrabe MC price: 15.637391 (se 0.305782)
+seed 0 quanto analytical price: 15.812105
+seed 0 quanto MC price: 15.850822 (se 0.318629)
+Margrabe MC matches pinned value 15.637391: True
+quanto MC matches pinned value 15.850822: True</pre>
+          <p class="interpretation">Both closed-form pricing models agree with their respective Monte Carlo simulation estimators within 1 standard error. The test suite pins seed 0 to these exact numbers.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>In exotic equity and foreign exchange derivatives desks, structuring and pricing complex multi-asset contracts requires moving fluently between probability measures. An exchange option gives the holder the right to swap one risky asset for another at maturity, while a quanto call provides exposure to a foreign asset with payoffs settled in domestic currency at a pre-determined exchange rate. Solving these pricing equations under the standard domestic money-market measure requires evaluating multi-dimensional stochastic integrals. By changing to the appropriate asset numeraire, both models collapse to transparent, analytical Black-Scholes-type formulas. You must mathematically derive the pricing formulas and build a verified computational engine <code>numeraire_toolkit.py</code>.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A deterministic instance dictionary generated by <code>make_instance(seed)</code> carrying parameters <code>s1</code>, <code>s2</code>, <code>sig1</code>, <code>sig2</code>, <code>rho</code>, <code>q1</code>, <code>q2</code>, <code>t</code>, <code>r</code>, <code>s_f</code>, <code>x0</code>, <code>k_quanto</code>, <code>r_d</code>, <code>r_f</code>, <code>sig_s</code>, <code>sig_x</code>, <code>rho_sx</code>, <code>n_paths</code>, and <code>seed</code>. All instance data is labeled <strong>SIMULATED</strong>.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            <ol>
+              <li><code>numeraire_toolkit.py</code> containing five functions:
+                <ul>
+                  <li><code>margrabe_price(s1: float, s2: float, sig1: float, sig2: float, rho: float, q1: float, q2: float, t: float) -> float</code></li>
+                  <li><code>margrabe_mc(s1: float, s2: float, sig1: float, sig2: float, rho: float, q1: float, q2: float, t: float, r: float, n_paths: int, seed: int) -> tuple[float, float]</code></li>
+                  <li><code>quanto_call_price(s_f: float, k: float, r_d: float, r_f: float, sig_s: float, sig_x: float, rho: float, t: float) -> float</code></li>
+                  <li><code>quanto_call_mc(s_f: float, x0: float, k: float, r_d: float, r_f: float, sig_s: float, sig_x: float, rho: float, t: float, n_paths: int, seed: int) -> tuple[float, float]</code></li>
+                  <li><code>verify_invariance(instance: dict[str, Any]) -> dict[str, Any]</code></li>
+                </ul>
+              </li>
+              <li><code>workbook.html</code> or <code>workbook.md</code>: a comprehensive derivations workbook presenting the full mathematical derivation for both contracts, explicitly identifying the Radon-Nikodym derivative process, the Girsanov drift shift, the numeraire change, and proof of homogeneity of degree 1 and put-call exchange parity.</li>
+              <li>A printed numerical validation report for seed 0 documenting closed-form prices, Monte Carlo estimates, standard errors, and tolerance bands.</li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Standard library only (<code>math</code>, <code>random</code>). No third-party packages (NumPy, SciPy). All random increments must be drawn path-major using <code>random.Random(seed).gauss(0.0, 1.0)</code>. Invalid inputs—including non-positive prices \(S \le 0\), non-positive strike \(K \le 0\), non-positive volatilities \(\sigma \le 0\), non-positive maturity \(T \le 0\), path counts \(N < 2\), and correlations \(|\rho| > 1\)—must raise <code>ValueError</code>.</dd>
+
+          <dt>Grading mode</dt>
+          <dd>This project is evaluated under dual-mode assessment: graded by both an automated test runner (autograder) verifying algebraic invariants, boundary limits, and contract-pinned numerical residuals across 50 seeds, and an expert rubric scoring the mathematical rigor, completeness, and clarity of the derivations workbook.</dd>
+        </dl>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours-table">
+            <thead>
+              <tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Rung 1, worked example (read and annotate)</td><td class="num">2</td><td>One solved Margrabe derivation and check on the SIMULATED instance, annotated line by line</td></tr>
+              <tr><td>Rung 2, completion problem</td><td class="num">2</td><td>Fill the two correction lines, then run the instant check</td></tr>
+              <tr><td>Derivations workbook (Margrabe and Quanto)</td><td class="num">8</td><td>Full measure-change derivations, Radon-Nikodym derivatives, and invariant proofs</td></tr>
+              <tr><td>Numeraire toolkit numeraire_toolkit.py engine and tests</td><td class="num">7</td><td>Five functions, input validation, bivariate simulation loops, and tolerance bands</td></tr>
+              <tr><td>Numerical report and invariance checks for seed 0</td><td class="num">3</td><td>Printed values, Monte Carlo standard errors, and numerical invariance verification</td></tr>
+              <tr><td>Self-assessment against the exemplars</td><td class="num">2</td><td>Score the rubric, then compare with the annotated scoring</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>24</strong></td><td>Equals data-hours-project on the hub (30% of 80 h)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>The acceptance test suite tests property invariants, homogeneity of degree 1, put-call exchange symmetry, correlation monotonicity, zero-correlation limits, and contract-pinned simulation statistics across 50 independent pseudorandom seeds.</p>
+        <section class="grader-panel" id="grader" data-unit="SC3" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="numeraire_toolkit.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Rubric and self-assessment</h2>
+        <p>The workbook and numerical report are evaluated across five observable criteria, each structured into four performance levels. A proficient submission meets level 3 or above on all criteria.</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>Numeraire Toolkit Rubric: 5 criteria, 4 performance levels.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">4 · Exemplary</th>
+                <th scope="col">3 · Proficient</th>
+                <th scope="col">2 · Developing</th>
+                <th scope="col">1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Numeraire measure definition</th>
+                <td>Explicitly defines the Radon-Nikodym density process \(\eta_t = \frac{N_t / N_0}{M_t / M_0}\), verifies Novikov's condition, establishes the martingale property of discounted tradable assets, and identifies the new Brownian motion under Girsanov's theorem.</td>
+                <td>Defines the Radon-Nikodym derivative and states Girsanov's drift shift correctly, though verification of Novikov's condition is brief.</td>
+                <td>Applies drift adjustments without stating the underlying change of probability measure or Radon-Nikodym derivative.</td>
+                <td>Confuses physical and risk-neutral measures; fails to formulate change of numeraire.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Derivation steps</th>
+                <td>Shows every algebraic and stochastic calculus step from the base multi-asset SDEs to the final Margrabe and quanto pricing formulas, explicitly stating all partial derivatives and quadratic covariations.</td>
+                <td>Presents all major derivation steps and final pricing equations with minor intermediate algebraic condensations.</td>
+                <td>Omits intermediate steps in the change of numeraire or states the final formulas without derivation.</td>
+                <td>Contains substantial mathematical errors in stochastic integration or Itô's lemma.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Numerical verification</th>
+                <td>Reports exact analytical prices, Monte Carlo estimates, standard errors, and confidence intervals for both Margrabe and quanto contracts on seed 0, confirming concordance within 2 standard errors.</td>
+                <td>Reports analytical prices and Monte Carlo estimates on seed 0, confirming concordance within stated statistical error bands.</td>
+                <td>Reports simulation results without standard errors or fails to compare against analytical benchmarks.</td>
+                <td>Fails numerical checks or reports mismatched simulation numbers.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Invariant proofs</th>
+                <td>Provides rigorous mathematical proofs and numerical verifications of homogeneity of degree 1 (\(V(c S_1, c S_2) = c V(S_1, S_2)\)) and put-call exchange parity (\(\text{Call}(S_1, S_2) - \text{Call}(S_2, S_1) = F_1 - F_2\)).</td>
+                <td>Verifies homogeneity of degree 1 and put-call exchange parity analytically and confirms them in the numerical engine.</td>
+                <td>Verifies invariants numerically but omits formal mathematical proofs.</td>
+                <td>Fails to address structural invariants or claims invariants hold without justification.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Notation and rigor</th>
+                <td>Strictly adheres to program notation, defines all state variables with explicit domains, and provides complete, clean docstrings and type annotations adhering to strict type-checking standards.</td>
+                <td>Adheres to standard financial mathematics notation and provides complete type annotations with minor cosmetic issues.</td>
+                <td>Inconsistent notation or incomplete docstrings and type hints.</td>
+                <td>Confusing, conflicting notation or untyped code.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Exemplars</h3>
+        <p>Two model workbooks illustrate the rubric criteria: Exemplar A achieves Level 4 across all criteria; Exemplar B demonstrates common Level 2 deficiencies.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A (Exemplary · Level 4)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. Every measure change is fully specified with its Radon-Nikodym density, all intermediate stochastic differential steps are shown, structural invariants are proved analytically and checked numerically, and seed 0 values are reproduced exactly.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Margrabe Exchange Option Derivation via Change of Numeraire</h5>
+              <p>Consider two assets \(S_1, S_2\) following geometric Brownian motion under the risk-neutral measure \(\mathbb{Q}\): \(dS_i(t) = (r - q_i) S_i(t) dt + \sigma_i S_i(t) dW_i(t)\) with correlation \(d\langle W_1, W_2 \rangle_t = \rho dt\). The terminal payoff at maturity \(T\) is \((S_1(T) - S_2(T))^+\). We choose the dividend-reinvested second asset \(N_t = S_2(t) e^{q_2 t}\) as numeraire. Under the numeraire measure \(\mathbb{Q}^{S_2}\), the Radon-Nikodym derivative with respect to \(\mathbb{Q}\) is \(\frac{d\mathbb{Q}^{S_2}}{d\mathbb{Q}}\big|_{\mathcal{F}_t} = \frac{S_2(t) e^{q_2 t} / S_2(0)}{e^{rt}}\). By Geman, El Karoui &amp; Rochet (1995), the relative price \(Z_t = \frac{S_1(t) e^{q_1 t}}{S_2(t) e^{q_2 t}}\) is a \(\mathbb{Q}^{S_2}\)-martingale. Applying Itô's formula to \(Z_t\), its diffusion is \(\sigma_M = \sqrt{\sigma_1^2 - 2\rho\sigma_1\sigma_2 + \sigma_2^2}\). The pricing formula evaluates to \(V_0 = S_2(0) e^{-q_2 T} \E^{\mathbb{Q}^{S_2}}[(Z_T - 1)^+] = S_1(0) e^{-q_1 T} \Phi(d_1) - S_2(0) e^{-q_2 T} \Phi(d_2)\), where \(d_1 = \frac{\log(F_1/F_2) + \frac{1}{2}\sigma_M^2 T}{\sigma_M \sqrt{T}}\) and \(d_2 = d_1 - \sigma_M \sqrt{T}\).</p>
+            </div>
+            <aside class="annotations">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: explicitly constructs the numeraire measure \(\mathbb{Q}^{S_2}\) with its Radon-Nikodym derivative and states the martingality of relative prices.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: details the Itô expansion of the relative price process and proves the effective volatility formula.</li>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: provides exact closed-form numbers and standard errors on seed 0.</li>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: proves homogeneity of degree 1 and put-call exchange symmetry analytically.</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: adheres strictly to program notation and full typing.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B (Developing · Level 2)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2. Mentions changing numeraire informally without defining the Radon-Nikodym process, omits intermediate stochastic calculus steps, quotes simulation numbers without standard errors, and omits mathematical proofs of invariants.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Exchange Option and Quanto Work</h5>
+              <p>For Margrabe, we divide by \(S_2\) so the strike becomes 1, and the volatility is \(\sigma_1^2 + \sigma_2^2 - 2\rho\sigma_1\sigma_2\). Putting this into Black-Scholes gives the answer 15.54. Running Monte Carlo gave around 15.6, which matches.</p>
+              <p>For quanto, foreign growth is \(r_f - \rho\sigma_S\sigma_X\). We plug this into the call formula and discount at \(r_d\), getting 15.81.</p>
+            </div>
+            <aside class="annotations">
+              <ul>
+                <li class="misses" data-criterion="C1" data-level="2">Misses C1 level 3: treats numeraire change as an algebraic trick without defining the probability measure \(\mathbb{Q}^{S_2}\) or Radon-Nikodym derivative.</li>
+                <li class="misses" data-criterion="C2" data-level="2">Misses C2 level 3: asserts formulas without intermediate differentiation or covariance terms.</li>
+                <li class="misses" data-criterion="C3" data-level="2">Misses C3 level 3: reports approximate rounded numbers without standard errors or confidence intervals.</li>
+                <li class="misses" data-criterion="C4" data-level="2">Misses C4 level 3: omits proofs of homogeneity and exchange parity.</li>
+                <li class="misses" data-criterion="C5" data-level="2">Misses C5 level 3: imprecise notation and lack of formal definitions.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b">
+          <h3 id="self-assessment">Self-assessment</h3>
+          <p>Score your workbook and code against the five criteria before submitting. Once scored, compare your assessments with the annotated exemplar evaluations.</p>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Cross-currency quanto exchange option:</strong> Consider an option to exchange two foreign assets \(S_1^f\) and \(S_2^f\) whose payoff is settled in domestic currency at a fixed exchange rate. Derive the coupled drift adjustments for both foreign assets under the domestic risk-neutral measure \(\mathbb{Q}^d\), establish the effective volatility under the foreign asset numeraire, and construct a numerical simulator validating the closed form.</li>
+          <li><strong>Stochastic volatility exchange option:</strong> Formulate Margrabe's formula when both assets follow Heston stochastic volatility diffusions with a common variance factor, deriving the semi-analytical Fourier transform under the asset 2 numeraire.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Core reading</h2>
+        <ol class="reading-list">
+          <li data-cite="geman1995changes"></li>
+          <li data-cite="shreve2004stochastic"></li>
+          <li data-cite="harrison1981martingales"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">SC3 · Change of Measure · Part of the doctoral-track program in finance, economics and quantitative markets.</footer>
+</body>
+</html>
