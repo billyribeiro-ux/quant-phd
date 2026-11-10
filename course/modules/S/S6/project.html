@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../../../" data-unit="S6" data-page="project">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Capstone project for S6 Causal Inference &amp; Event Studies: Policy-shock event study engine. Measure asset-price reactions to scheduled macroeconomic announcements with clustered inference, correct abnormal return variance, and placebo falsification.">
+    <title>Policy-Shock Event Study · S6 Project · Quant PhD</title>
+    <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+    <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="../../../assets/css/course.css">
+    <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+    <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+    <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+    <script type="module" src="../../../assets/js/site.js"></script>
+  </head>
+  <body>
+    <header class="course-header">
+      <nav class="course-nav">
+        <a href="../../../index.html" class="nav-link">Home</a>
+        <a href="../../index.html" class="nav-link">Curriculum</a>
+        <a href="index.html" class="nav-link">S6: Causal Inference &amp; Event Studies</a>
+        <span class="nav-current">Project</span>
+      </nav>
+      <h1 class="course-title">Project: Policy-Shock Event Study</h1>
+      <p class="course-subtitle">Measuring Asset-Price Reactions to Scheduled Announcements with Clustered Inference and Placebos (30 Hours · Tier M)</p>
+    </header>
+
+    <main class="course-main" data-hours-project="30">
+      <section id="ladder">
+        <h2>Project Ladder</h2>
+        <p>This project advances through a four-rung pedagogical sequence, bridging microeconometric causal theory and production-grade event study analytics.</p>
+        <ol class="ladder">
+          <li class="rung">
+            <h3 class="rung-title">Rung 1 · Worked Example</h3>
+            <p>An end-to-end walkthrough tracing estimation window regression, abnormal return evaluation, analytical variance derivation, cumulative abnormal return (CAR) aggregation, and clustered inference.</p>
+          </li>
+          <li class="rung">
+            <h3 class="rung-title">Rung 2 · Completion</h3>
+            <p>An interactive completion problem where missing abnormal-return variance calculation and multi-day CAR accumulation logic must be filled in and verified against instant feedback.</p>
+          </li>
+          <li class="rung">
+            <h3 class="rung-title">Rung 3 · Independent Project</h3>
+            <p>The primary deliverable: author the production-ready <code>event_study.py</code> module satisfying all contract requirements across 50 randomized seeds, and compose a rigorous research note evaluated by rubric.</p>
+          </li>
+          <li class="rung">
+            <h3 class="rung-title">Rung 4 · Stretch</h3>
+            <p>An open-ended extension implementing multi-factor benchmark models (e.g. Fama-French), non-parametric rank tests (Corrado), or high-frequency intraday price response jump diagnostics.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2>Rung 1 · Worked Example</h2>
+        <p>A macroeconomic desk seeks to quantify whether policy announcements move asset prices. The desk accepts an empirical finding only when accompanied by explicit estimation windows, normal return models, correct abnormal return variances, and clustering-robust test statistics. We trace the complete pipeline on a simulated asset history.</p>
+
+        <section class="lab" id="lab-S6-project-1" data-runtime="python">
+          <h3>Lab 1 · End-to-End Event Study Pipeline</h3>
+          <p class="hypothesis">Simulating 40 days of pre-event estimation history and a 3-day event window demonstrates that analytical abnormal-return variance properly expands beyond residual variance, and evaluates the single-event t-statistic.</p>
+          <pre><code class="language-python" data-run>"""Lab S6-project-1: Rung 1 worked example for Policy-Shock Event Study.
+
+SIMULATED: end-to-end execution of the market-model event-study pipeline,
+evaluating abnormal returns, analytical variance, cumulative abnormal returns,
+cross-sectional t-statistics, and cluster-robust inference on synthetic data.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def main() -&gt; None:
+    rng = random.Random(42)
+
+    # 1. Timeline and simulation configuration
+    est_len = 40
+    window = (-1, 1)  # 3 trading days
+
+    # Market model parameters
+    alpha_true = 0.0004
+    beta_true = 1.10
+    sigma_true = 0.012
+
+    # Simulate estimation window returns
+    mkt_est = [round(rng.gauss(0.0005, 0.012), 6) for _ in range(est_len)]
+    stk_est = [round(alpha_true + beta_true * m + rng.gauss(0.0, sigma_true), 6) for m in mkt_est]
+
+    # Step 1: Fit market model by OLS on estimation window
+    m_bar = sum(mkt_est) / est_len
+    s_bar = sum(stk_est) / est_len
+    ss_m = sum((m - m_bar) ** 2 for m in mkt_est)
+    sp_ms = sum((m - m_bar) * (s - s_bar) for m, s in zip(mkt_est, stk_est, strict=True))
+
+    beta_hat = sp_ms / ss_m
+    alpha_hat = s_bar - beta_hat * m_bar
+    ss_res = sum((s - (alpha_hat + beta_hat * m)) ** 2 for s, m in zip(stk_est, mkt_est, strict=True))
+    sigma2_hat = ss_res / (est_len - 2)
+
+    # Step 2: Simulate event window with planted announcement reaction (+0.022 on day 0)
+    mkt_ev = [0.0010, -0.0005, 0.0020]
+    stk_ev = [
+        alpha_true + beta_true * mkt_ev[0] + rng.gauss(0.0, sigma_true),
+        alpha_true + beta_true * mkt_ev[1] + 0.0220 + rng.gauss(0.0, sigma_true),
+        alpha_true + beta_true * mkt_ev[2] + rng.gauss(0.0, sigma_true),
+    ]
+
+    # Step 3: Compute abnormal returns and analytical variance
+    ar_list: list[float] = []
+    var_list: list[float] = []
+    for s_val, m_val in zip(stk_ev, mkt_ev, strict=True):
+        ar = s_val - (alpha_hat + beta_hat * m_val)
+        ar_list.append(ar)
+        dev_m = (m_val - m_bar) ** 2
+        var_ar = sigma2_hat * (1.0 + 1.0 / est_len + dev_m / ss_m)
+        var_list.append(var_ar)
+
+    # Step 4: Aggregate to Cumulative Abnormal Return (CAR)
+    car_val = sum(ar_list)
+    car_var = sum(var_list)
+    car_se = math.sqrt(car_var)
+
+    # Step 5: Inference
+    t_stat = car_val / car_se
+
+    print("Policy-Shock Event Study Pipeline (SIMULATED):")
+    print(f"  Estimation Window Length: {est_len} trading days")
+    print(f"  Estimated Alpha:          {alpha_hat:+.6f}")
+    print(f"  Estimated Beta:           {beta_hat:+.4f}")
+    print(f"  Residual Variance (s^2):  {sigma2_hat:.6f}\n")
+    print("Event Window Abnormal Returns [-1, +1]:")
+    for day, (ar, var_ar) in enumerate(zip(ar_list, var_list, strict=True), start=window[0]):
+        print(f"  Day {day:+d}: AR = {ar:+7.4f}, Var(AR) = {var_ar:.6f}, SE = {math.sqrt(var_ar):.4f}")
+    print(f"\nCumulative Abnormal Return (CAR): {car_val:+7.4f}")
+    print(f"CAR Analytical Variance:          {car_var:.6f}")
+    print(f"CAR Standard Error:               {car_se:.4f}")
+    print(f"Single-Firm Event t-Statistic:    {t_stat:+7.4f}")
+    print(f"Significant at 5% Level (|t|&gt;1.96): {abs(t_stat) &gt; 1.96}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Policy-Shock Event Study Pipeline (SIMULATED):
+  Estimation Window Length: 40 trading days
+  Estimated Alpha:          +0.002628
+  Estimated Beta:           +1.1818
+  Residual Variance (s^2):  0.000114
+
+Event Window Abnormal Returns [-1, +1]:
+  Day -1: AR = -0.0110, Var(AR) = 0.000117, SE = 0.0108
+  Day +0: AR = +0.0163, Var(AR) = 0.000117, SE = 0.0108
+  Day +1: AR = -0.0245, Var(AR) = 0.000117, SE = 0.0108
+
+Cumulative Abnormal Return (CAR): -0.0192
+CAR Analytical Variance:          0.000351
+CAR Standard Error:               0.0187
+Single-Firm Event t-Statistic:    -1.0239
+Significant at 5% Level (|t|&gt;1.96): False</pre>
+          <p class="interpretation">The worked example illustrates why estimation uncertainty matters: parameter estimation adds variance proportional to \(1/L + (R_m - \bar{R}_m)^2/SS_m\), ensuring that hypothesis tests do not over-reject under market turbulence.</p>
+        </section>
+      </section>
+
+      <section id="rung-2" class="completion">
+        <h2>Rung 2 · Completion Problem</h2>
+        <p>Complete the missing expressions for analytical abnormal return variance and cumulative abnormal return sum in the completion lab below.</p>
+
+        <section class="lab completion" id="lab-S6-project-2" data-runtime="python">
+          <h3>Lab 2 · Variance Formula and CAR Completion</h3>
+          <p class="hypothesis">Completing the analytical variance formula incorporating regressor deviation and evaluating the window CAR reproduces the exact benchmark values with valid variance inflation.</p>
+          <pre><code class="language-python" data-run>"""Lab S6-project-2: Rung 2 completion problem for Policy-Shock Event Study.
+
+SIMULATED: completion twin containing the full solution for abnormal-return variance
+and cumulative abnormal return aggregation.
+"""
+
+from __future__ import annotations
+
+import random
+
+
+def main() -> None:
+    rng = random.Random(77)
+
+    # Synthetic estimation parameters
+    n_est = 50
+    mkt_est = [rng.gauss(0.0004, 0.010) for _ in range(n_est)]
+    stk_est = [0.0002 + 1.05 * m + rng.gauss(0.0, 0.015) for m in mkt_est]
+
+    m_bar = sum(mkt_est) / n_est
+    s_bar = sum(stk_est) / n_est
+    ss_m = sum((m - m_bar) ** 2 for m in mkt_est)
+    sp_ms = sum((m - m_bar) * (s - s_bar) for m, s in zip(mkt_est, stk_est, strict=True))
+
+    beta_hat = sp_ms / ss_m
+    alpha_hat = s_bar - beta_hat * m_bar
+    ss_res = sum((s - (alpha_hat + beta_hat * m)) ** 2 for s, m in zip(stk_est, mkt_est, strict=True))
+    sigma2_hat = ss_res / (n_est - 2)
+
+    # Event day observation
+    event_mkt = 0.0080
+    event_stk = 0.0250
+
+    # Step 1: Complete abnormal return and analytical variance
+    ar = event_stk - (alpha_hat + beta_hat * event_mkt)
+    dev2 = (event_mkt - m_bar) ** 2
+    var_ar = ___
+
+    # Multi-day event window abnormal returns
+    window_ars = [0.0040, ar, -0.0020]
+
+    # Step 2: Complete CAR evaluation
+    car_val = ___
+
+    print("Rung 2 Completion Audit Check (SIMULATED):")
+    print(f"  Event Day Abnormal Return (AR): {ar:+7.4f}")
+    print(f"  Residual Variance (s^2):        {sigma2_hat:.6f}")
+    print(f"  Analytical AR Variance:         {var_ar:.6f}")
+    print(f"  Variance Inflation Ratio:       {var_ar / sigma2_hat:.4f}")
+    print(f"  Window CAR:                     {car_val:+7.4f}")
+    print(f"  Analytical Variance Check:      {var_ar > sigma2_hat}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Rung 2 Completion Audit Check (SIMULATED):
+  Event Day Abnormal Return (AR): +0.0154
+  Residual Variance (s^2):        0.000255
+  Analytical AR Variance:         0.000261
+  Variance Inflation Ratio:       1.0248
+  Window CAR:                     +0.0174
+  Analytical Variance Check:      True</pre>
+          <p class="interpretation">The completion verification confirms that analytical variance strictly exceeds residual variance by a factor reflecting sample size \(n = 50\) and market return deviation.</p>
+        </section>
+      </section>
+
+      <section id="rung-3">
+        <h2>Rung 3 · Independent Project Specification</h2>
+
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A macro trading desk requires an econometric audit of asset-price reactions to scheduled macroeconomic announcements. The desk insists on unbiased parameter estimation, analytical variance bounds accounting for estimation error, clustering-robust cross-sectional inference, and empirical null validation via randomized placebo calendars. Your engine performs the quantitative calculations; your research note explains and defends the findings against adversarial scrutiny.</dd>
+
+          <dt>Inputs</dt>
+          <dd>
+            <ol>
+              <li><strong>Autograder instance:</strong> Generated deterministically by <code>grader/instance.py</code> from the workspace seed, providing simulated calendar series, market benchmarks, asset returns, and clustered event dates.</li>
+              <li><strong>Historical market datasets (optional for research note):</strong> Daily 10-year Treasury yields from Federal Reserve release H.15 (<code>ust_daily</code> snapshot, column <code>cmt_10y</code> in percent per year) and daily foreign exchange rates from Board release H.10 (<code>fx_daily</code> snapshot in USD per foreign currency unit).</li>
+              <li><strong>Announcement dates:</strong> In bring-your-own-data mode, a CSV file containing columns <code>date</code> (YYYY-MM-DD) and <code>label</code>.</li>
+            </ol>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            <ol>
+              <li><code>event_study.py</code>: Pure, fully typed Python module implementing all eight core functions: <code>fit_normal_model</code>, <code>abnormal_returns</code>, <code>abnormal_return_variance</code>, <code>car</code>, <code>event_t_statistic</code>, <code>clustered_t_statistic</code>, <code>placebo_dates</code>, and <code>event_window_car</code>.</li>
+              <li><code>note/research_note.md</code>: A 2-to-4 page formal econometric research note analyzing policy reactions, documenting estimation windows, reporting clustered test statistics, evaluating placebo tests, and addressing potential confounds.</li>
+              <li><code>analysis/run_note.py</code>: Script that executes the event study analysis and prints every quoted numerical figure in the research note.</li>
+              <li><code>note/self_assessment.md</code>: Self-assessment scoring comparing the student's submission against the rubric exemplars.</li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ul>
+              <li>Pure Python standard library or NumPy. All functions in <code>event_study.py</code> must be pure: validate arguments, raise <code>ValueError</code> on specified invalid conditions, and never modify input sequences.</li>
+              <li>Every statistic in the research note must be quoted from unrounded computations and specify its rounding precision. Yield changes must be stated in basis points (1 percentage point = 100 basis points).</li>
+              <li>Simulated data must be explicitly labeled as <strong>SIMULATED</strong>. Real data must cite source releases, date ranges, and transforms.</li>
+              <li>Execution time must not exceed 5 seconds per test in Pyodide, with the full suite finishing within 60 seconds.</li>
+            </ul>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>Graded by both <strong>autograder</strong> (evaluating code correctness against the <code>test_project.py</code> acceptance suite across 50 seeds) and <strong>rubric</strong> (evaluating the methodology, statistical rigor, and evidence standards of the research note across five observable criteria).</dd>
+        </dl>
+
+        <section class="lab" id="lab-S6-project-3" data-runtime="python">
+          <h3>Lab 3 · Independent Engine Invariant Verification</h3>
+          <p class="hypothesis">Executing the reference pipeline on a 200-day simulated history confirms residual orthogonality, guarantees that AR variance strictly exceeds residual variance, and verifies that placebo dates stay outside exclusion zones.</p>
+          <pre><code class="language-python" data-run>"""Lab S6-project-3: Rung 3 independent verification check for Policy-Shock Event Study.
+
+SIMULATED: runs the reference event study engine across simulated instance data,
+validating mathematical invariants, residual orthogonality, analytical variance bounds,
+and cluster-robust test statistics.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def fit_ols(stock: list[float], market: list[float]) -&gt; tuple[float, float, float]:
+    n = len(stock)
+    m_bar = sum(market) / n
+    s_bar = sum(stock) / n
+    ss_m = sum((m - m_bar) ** 2 for m in market)
+    sp_ms = sum((m - m_bar) * (s - s_bar) for m, s in zip(market, stock, strict=True))
+    beta = sp_ms / ss_m
+    alpha = s_bar - beta * m_bar
+    ss_res = sum((s - (alpha + beta * m)) ** 2 for s, m in zip(stock, market, strict=True))
+    sig2 = ss_res / (n - 2)
+    return alpha, beta, sig2
+
+
+def main() -&gt; None:
+    rng = random.Random(42)
+    calendar_length = 200
+    est_len = 50
+    event_day = 80
+    window = (-1, 1)
+
+    mkt = [rng.gauss(0.0004, 0.012) for _ in range(calendar_length)]
+    stk = [0.0003 + 1.15 * m + rng.gauss(0.0, 0.014) for m in mkt]
+    # Plant a shock of +0.020 on event day
+    stk[event_day] += 0.020
+
+    # 1. Estimation window
+    s_est = event_day + window[0] - est_len
+    e_est = event_day + window[0] - 1
+    est_stk = stk[s_est : e_est + 1]
+    est_mkt = mkt[s_est : e_est + 1]
+
+    alpha, beta, sig2 = fit_ols(est_stk, est_mkt)
+
+    # Invariant 1: Residual orthogonality in OLS
+    m_bar = sum(est_mkt) / est_len
+    residuals = [s - (alpha + beta * m) for s, m in zip(est_stk, est_mkt, strict=True)]
+    sum_res = sum(residuals)
+    cov_res_m = sum(r * (m - m_bar) for r, m in zip(residuals, est_mkt, strict=True))
+    assert abs(sum_res) &lt; 1e-10, "OLS residuals must sum to 0"
+    assert abs(cov_res_m) &lt; 1e-10, "OLS residuals must be orthogonal to market regressor"
+
+    # 2. Event window
+    s_ev = event_day + window[0]
+    e_ev = event_day + window[1]
+    ev_stk = stk[s_ev : e_ev + 1]
+    ev_mkt = mkt[s_ev : e_ev + 1]
+
+    ars = [s - (alpha + beta * m) for s, m in zip(ev_stk, ev_mkt, strict=True)]
+    car_val = sum(ars)
+
+    ss_m = sum((m - m_bar) ** 2 for m in est_mkt)
+    ar_vars = [sig2 * (1.0 + 1.0 / est_len + ((m - m_bar) ** 2) / ss_m) for m in ev_mkt]
+    car_var = sum(ar_vars)
+
+    # Invariant 2: Analytical AR variance &gt; residual variance
+    assert all(v &gt; sig2 for v in ar_vars), "AR variance must exceed residual variance due to estimation error"
+
+    # 3. Placebo dates exclusion check
+    half_w = 4
+    forbidden = set()
+    for d in range(event_day - half_w, event_day + half_w + 1):
+        forbidden.add(d)
+    eligible = [d for d in range(calendar_length) if d not in forbidden]
+    placebos = rng.sample(eligible, 5)
+    for p in placebos:
+        assert abs(p - event_day) &gt; half_w, "placebo date violated exclusion zone"
+
+    print("Policy-Shock Event Study Invariant Verification Check (SIMULATED):")
+    print(f"  Processed Calendar Length:      {calendar_length} days")
+    print(f"  Residual Sum (Orthogonality):   {sum_res:.2e}")
+    print(f"  Residual-Regressor Covariance:  {cov_res_m:.2e}")
+    print(f"  Residual Variance (s^2):        {sig2:.6f}")
+    print(f"  Mean Event Day AR Variance:     {sum(ar_vars) / len(ar_vars):.6f}")
+    print(f"  All AR Variances &gt; Residual:    {all(v &gt; sig2 for v in ar_vars)}")
+    print(f"  Computed Window CAR:            {car_val:+7.4f}")
+    print(f"  CAR Standard Error:             {math.sqrt(car_var):.4f}")
+    print(f"  Placebo Date Exclusion Check:   {all(abs(p - event_day) &gt; half_w for p in placebos)}")
+    print("  Status: All mathematical invariants verified.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Policy-Shock Event Study Invariant Verification Check (SIMULATED):
+  Processed Calendar Length:      200 days
+  Residual Sum (Orthogonality):   -8.24e-18
+  Residual-Regressor Covariance:  1.23e-18
+  Residual Variance (s^2):        0.000263
+  Mean Event Day AR Variance:     0.000270
+  All AR Variances &gt; Residual:    True
+  Computed Window CAR:            +0.0278
+  CAR Standard Error:             0.0285
+  Placebo Date Exclusion Check:   True
+  Status: All mathematical invariants verified.</pre>
+          <p class="interpretation">The invariant checks prove that ordinary least squares residuals sum to zero and satisfy orthogonality to regressors within floating-point precision, establishing the mathematical integrity of the abnormal return calculations.</p>
+        </section>
+
+        <h3>Time Budget</h3>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th scope="col">Component</th>
+                <th scope="col">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Rung 1 · Worked example</td>
+                <td>2</td>
+                <td>Trace and annotate the complete reference pipeline step by step.</td>
+              </tr>
+              <tr>
+                <td>Rung 2 · Completion problem</td>
+                <td>2</td>
+                <td>Fill in missing variance and CAR summation expressions with instant feedback.</td>
+              </tr>
+              <tr>
+                <td>Engine implementation (Rung 3a)</td>
+                <td>12</td>
+                <td>Implement the eight core functions and pass the 22 acceptance checks across 50 seeds.</td>
+              </tr>
+              <tr>
+                <td>Data intake and validation (Rung 3b)</td>
+                <td>5</td>
+                <td>Handle announcement calendars, parse dates, and validate inputs.</td>
+              </tr>
+              <tr>
+                <td>Research note authoring (Rung 3c)</td>
+                <td>6</td>
+                <td>Write the 2-to-4 page research note documenting methodology, clustered statistics, and placebos.</td>
+              </tr>
+              <tr>
+                <td>Self-assessment and calibration (Rung 3d)</td>
+                <td>3</td>
+                <td>Score against the rubric, compare against exemplars, and document score divergences.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>30</strong></td>
+                <td>Full capstone project allocation matching hub metadata.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="grader-panel" id="grader"
+                 data-unit="S6"
+                 data-grader="grader/"
+                 data-suite="test_project.py"
+                 data-support="instance.py"
+                 data-solution="event_study.py"
+                 data-starter="starter.py"
+                 data-packages="numpy">
+          <h3>Autograder Panel</h3>
+          <p>The acceptance suite tests the frozen <code>event_study.py</code> interface across 50 randomized seeds, validating parameter estimates, analytical variances, cluster corrections, and error handling.</p>
+        </section>
+
+        <section id="rubric-section">
+          <h3>Evaluation Rubric</h3>
+          <p>The research note is evaluated across five criteria at four observable performance levels:</p>
+          <div class="table-wrap">
+            <table class="rubric" id="rubric">
+              <thead>
+                <tr>
+                  <th scope="col">Criterion</th>
+                  <th scope="col">Level 4 (Exemplary)</th>
+                  <th scope="col">Level 3 (Proficient)</th>
+                  <th scope="col">Level 2 (Developing)</th>
+                  <th scope="col">Level 1 (Deficient)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-criterion="c1">
+                  <th scope="row">C1: Data Hygiene &amp; Event Timing</th>
+                  <td>Explicitly defines event day \(t=0\), event window \([a, b]\), estimation window length \(L\), and gap; specifies date ranges, transforms, and units; visibly labels simulated vs real data.</td>
+                  <td>Specifies event window and estimation window length, but omits gap details or transform notes.</td>
+                  <td>States event window dates but leaves estimation window bounds ambiguous.</td>
+                  <td>Mentions data vaguely without stating window lengths or timing conventions.</td>
+                </tr>
+                <tr data-criterion="c2">
+                  <th scope="row">C2: Normal Model &amp; AR Variance</th>
+                  <td>Specifies market or constant-mean model; derives or cites exact abnormal-return variance formula incorporating estimation uncertainty with degrees of freedom \(L-2\) or \(L-1\).</td>
+                  <td>Fits normal model and reports residual variance, but uses naive variance omitting the parameter estimation error term.</td>
+                  <td>Estimates returns with incorrect degrees of freedom or undefined benchmark model.</td>
+                  <td>Computes returns without estimating a counterfactual normal return model.</td>
+                </tr>
+                <tr data-criterion="c3">
+                  <th scope="row">C3: Inference &amp; Clustering</th>
+                  <td>Reports CAR, cross-sectional t-statistic with \(ddof=1\), and cluster-robust CR1 t-statistic with small-sample factor \(G/(G-1)\); contrasts clustered vs naive standard errors.</td>
+                  <td>Reports CAR and t-statistic with \(ddof=1\), but omits cluster corrections or the small-sample adjustment.</td>
+                  <td>Reports t-statistic using population standard deviation (\(ddof=0\)) or reports p-values without test statistics.</td>
+                  <td>Asserts statistical significance without reporting standard errors or test statistics.</td>
+                </tr>
+                <tr data-criterion="c4">
+                  <th scope="row">C4: Placebo Falsification</th>
+                  <td>Executes randomized placebo dates strictly outside true event windows; compares empirical null rejection rate against nominal \(\alpha\) and multi-date rate against \(1 - (1-\alpha)^m\).</td>
+                  <td>Runs placebo tests on unshocked dates but does not enforce an explicit half-window exclusion zone.</td>
+                  <td>Discusses placebo testing conceptually without evaluating empirical false rejection rates.</td>
+                  <td>Omits placebo testing and falsification diagnostics entirely.</td>
+                </tr>
+                <tr data-criterion="c5">
+                  <th scope="row">C5: Methodological Limits &amp; Evidence</th>
+                  <td>Explicitly details limitations: joint-hypothesis problem, event clustering, thin trading, and potential confounding news; grades all substantive claims (T/A/B/C) with locators.</td>
+                  <td>Discusses methodological limits and cites primary references, but omits claim grading or specific locators.</td>
+                  <td>Mentions some caveats in passing without addressing identification assumptions.</td>
+                  <td>Presents causal conclusions dogmatically without acknowledging model limitations.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="exemplars">
+          <h3>Rubric Exemplars</h3>
+
+          <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4">
+            <h4>Exemplar A · High-Distinction Research Note Excerpt (Level 4)</h4>
+            <div class="memo-prose">
+              <p><strong>Methodological Setup:</strong> We examine 8 scheduled macroeconomic announcements across a 260-trading-day sample of daily asset returns (labeled <strong>SIMULATED</strong> for audit verification). The event window is defined as \([a, b] = [-1, +1]\) (3 trading days centered on announcement day \(t=0\)). The estimation window comprises \(L = 50\) trading days ending immediately prior to the event window (\([-51, -2]\)), leaving a clean 1-day pre-event gap to eliminate pre-announcement drift contamination.</p>
+              <p><strong>Normal Model and Variance:</strong> Market-model parameters are estimated via ordinary least squares over the 50-day estimation window: \(\hat{\alpha} = +0.000280\), \(\hat{\beta} = 1.0420\), and residual variance \(s^2 = 0.000142\) with \(L - 2 = 48\) degrees of freedom. For each event day \(\tau \in [-1, +1]\), abnormal returns are evaluated as \(AR_\tau = r_\tau - (\hat{\alpha} + \hat{\beta} R_{m\tau})\). The exact analytical variance is evaluated as \(\Var(AR_\tau) = s^2 [1 + 1/L + (R_{m\tau} - \bar{R}_m)^2 / SS_m]\), correctly expanding variance by an average of 2.45% above naive residual variance.</p>
+              <p><strong>Inference &amp; Clustering:</strong> Cumulative abnormal returns average \(\overline{CAR} = +0.0215\) across the 8 events. The cross-sectional sample standard deviation is \(s = 0.0078\) (\(ddof=1\)), yielding an iid t-statistic of \(t_{\text{iid}} = 7.79\). Because announcements are clustered into \(G = 4\) distinct calendar quarters, we evaluate the CR1 cluster-robust t-statistic with small-sample correction factor \(\sqrt{G/(G-1)} = \sqrt{4/3} = 1.1547\). The clustered standard error expands to \(SE_{\text{clustered}} = 0.0036\), yielding \(t_{\text{clustered}} = 5.97\) (\(p < 0.001\)), confirming rejection of the zero-reaction null hypothesis even under quarterly shock correlation.</p>
+              <p><strong>Placebo Falsification:</strong> To validate the null distribution, we sampled \(m = 6\) placebo dates under random seed 42 with a half-window exclusion zone of 4 days (\(|t - e| > 4\) for all event days \(e\)). Across 1000 null simulation draws, the individual placebo rejection rate was 5.10% (nominal 5%), and the family-wise multi-date rejection rate was 26.8% (closely matching the theoretical independent rate \(1 - (1 - 0.05)^6 = 26.49\%\)).</p>
+              <p><strong>Methodological Caveats:</strong> Following <span class="claim" data-grade="A" data-cite="angrist2009mostly">Angrist &amp; Pischke (2009)</span>, identification rests on the unconfoundedness of scheduled timing. Potential confounding arises if simultaneous private corporate news leaks occur within the 3-day window or if the market model beta is time-varying during macroeconomic stress.</p>
+            </div>
+            <div class="score-summary" data-scores='{"c1": 4, "c2": 4, "c3": 4, "c4": 4, "c5": 4}'>
+              <p><strong>Score Breakdown:</strong> C1: 4/4 · C2: 4/4 · C3: 4/4 · C4: 4/4 · C5: 4/4 · Total: 20/20 (Level 4)</p>
+            </div>
+          </article>
+
+          <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,1,2">
+            <h4>Exemplar B · Developing Research Note Excerpt (Level 2)</h4>
+            <div class="memo-prose">
+              <p>We studied stock reactions around news announcements. The event window is 3 days. We ran a regression of stock returns on market returns to get beta and subtracted expected returns to get abnormal returns.</p>
+              <p>The average cumulative abnormal return was 2.15%, which is positive. The t-statistic was 8.2, calculated by dividing the mean CAR by the standard deviation divided by square root of N, which shows high significance with p &lt; 0.01.</p>
+              <p>We ran some placebo dates and they looked normal. The policy announcements directly caused the stock prices to increase significantly.</p>
+            </div>
+            <div class="score-summary" data-scores='{"c1": 2, "c2": 2, "c3": 2, "c4": 1, "c5": 2}'>
+              <p><strong>Score Breakdown:</strong> C1: 2/4 (omits estimation window length and dates) · C2: 2/4 (uses naive variance without estimation error) · C3: 2/4 (uses ddof=0, omits clustering) · C4: 1/4 (no exclusion zone or rejection rates) · C5: 2/4 (asserts causality dogmatically, no evidence grades) · Total: 9/20 (Level 2)</p>
+            </div>
+          </article>
+        </section>
+
+        <section class="rubric-self" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b">
+          <h3>Self-Assessment &amp; Calibration</h3>
+          <p>Score your draft against each rubric criterion before reviewing the official benchmark scores. Document divergences in <code>note/self_assessment.md</code>.</p>
+        </section>
+      </section>
+
+      <section id="rung-4">
+        <h2>Rung 4 · Stretch Extensions</h2>
+        <p>Advanced students seeking doctoral portfolio depth may pursue these open-ended research extensions:</p>
+        <ul>
+          <li><strong>Intraday High-Frequency Response:</strong> Measure policy reactions in 1-minute or 5-minute return intervals around scheduled announcements (e.g. FOMC rate statements at 14:00 ET), isolating the announcement jump from daily drift.</li>
+          <li><strong>Yield Curve Level, Slope, and Curvature Reactions:</strong> Decompose multi-maturity Treasury yield responses into Nelson-Siegel or PCA factor shifts following unexpected policy changes.</li>
+          <li><strong>Non-Parametric Rank Tests:</strong> Implement the Corrado rank test and Cowan sign test to verify event-study robustness against non-normality and return asymmetries.</li>
+        </ul>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="angrist2009mostly">Angrist, J. D., &amp; Pischke, J.-S. (2009). <em>Mostly Harmless Econometrics: An Empiricist's Companion</em>. Princeton University Press.</li>
+          <li data-cite="goodmanbacon2021difference">Goodman-Bacon, A. (2021). Difference-in-differences with variation in treatment timing. <em>Journal of Econometrics</em>, 225(2), 254–277.</li>
+          <li data-cite="abadie2010synthetic">Abadie, A., Diamond, A., &amp; Hainmueller, J. (2010). Synthetic control methods for comparative case studies: Estimating the effect of California's tobacco control program. <em>Journal of the American Statistical Association</em>, 105(490), 493–505.</li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="course-footer">
+      <nav class="course-nav">
+        <a href="../../../index.html" class="nav-link">Home</a>
+        <a href="../../index.html" class="nav-link">Curriculum</a>
+        <a href="index.html" class="nav-link">Module Hub</a>
+      </nav>
+      <p class="course-meta">Doctoral Track in Quantitative Finance · Part S: Statistics &amp; Econometrics</p>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../../../" data-unit="S6" data-page="L09" data-hours="7">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Lesson 9 of S6 Causal Inference &amp; Event Studies: Synthetic control methods, donor pool selection, simplex weight optimization, pre-intervention MSPE minimization, and in-space placebo inference.">
+    <title>Synthetic Control Methods · S6 L09 · Quant PhD</title>
+    <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+    <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="../../../assets/css/course.css">
+    <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+    <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+    <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+    <script type="module" src="../../../assets/js/site.js"></script>
+  </head>
+  <body>
+    <header class="course-header">
+      <nav class="course-nav">
+        <a href="../../../index.html" class="nav-link">Home</a>
+        <a href="../../index.html" class="nav-link">Curriculum</a>
+        <a href="index.html" class="nav-link">S6: Causal Inference &amp; Event Studies</a>
+        <span class="nav-current">Lesson 9</span>
+      </nav>
+      <h1 class="course-title">Synthetic Control Methods</h1>
+      <p class="course-subtitle">Comparative Case Studies, Simplex Optimization, and Donor Pool Falsification</p>
+    </header>
+
+    <main class="course-main">
+      <section id="why">
+        <h2 id="h-why">Why It Matters</h2>
+        <p class="why-it-matters">In macroeconomics and quantitative asset pricing, policy shocks frequently affect an entire aggregate entity—such as a single sovereign nation exiting a currency union, a state implementing a localized financial tax, or a systemically important financial institution receiving government bailouts. In these comparative case studies, standard econometric methods fail because the treated sample size is exactly one (\(N_1 = 1\)). The synthetic control method solves this fundamental identification hurdle by algorithmically constructing a data-driven counterfactual: a convex combination of untreated donor units optimized over the unit simplex to reproduce the treated unit's pre-intervention trajectory without unconstrained extrapolation.</p>
+      </section>
+
+      <section id="synthetic-control-foundations">
+        <h2 id="h-synthetic-control-foundations">1. The Synthetic Control Architecture</h2>
+        <p><span class="claim" data-grade="A" data-cite="abadie2010synthetic">Abadie, Diamond, and Hainmueller (2010) formulate the synthetic control methodology as a systematic, non-parametric alternative to traditional comparative case studies and linear panel regressions.</span></p>
+
+        <p>Consider a balanced panel of \(J + 1\) units observed across periods \(t = 1, \dots, T\). Unit 1 is exposed to an intervention starting in period \(T_0 + 1\), with \(1 \le T_0 < T\). The remaining \(J\) units constitute the untreated <em>donor pool</em>.</p>
+
+        <div class="block definition" id="def-synthetic-control-block">
+          <span class="block-title">Definition 1.1 · Synthetic Control</span>
+          <p>A <dfn id="def-synthetic-control" data-concept="synthetic-control">synthetic control</dfn> is a weighted combination of untreated donor units designed to approximate the counterfactual outcome trajectory that the treated unit would have experienced in the absence of the intervention.</p>
+          <p>Let \(\boldsymbol{w} = (w_2, \dots, w_{J+1})^\top\) denote a vector of weights assigned to the donor pool. The weights are constrained to lie on the unit simplex \(\Delta^J\):</p>
+          \[
+          w_j \ge 0 \quad \forall j \in \{2, \dots, J+1\}, \quad \text{and} \quad \sum_{j=2}^{J+1} w_j = 1.
+          \]
+          <p>For any period \(t\), the synthetic counterfactual prediction for the treated unit is:</p>
+          \[
+          \hat{Y}_{1t}(0) \equiv \sum_{j=2}^{J+1} w_j Y_{jt}.
+          \]
+        </div>
+
+        <div class="block remark" id="rem-simplex-vs-ols">
+          <span class="block-title">Remark 1.1 · Why the Simplex Constraint Prevents Extrapolation</span>
+          <p>Standard OLS linear regression allows weights to be negative and unconstrained in magnitude. When fitting pre-intervention data, OLS frequently uses massive positive weights offset by massive negative weights, extrapolating far outside the convex hull of observable donor data.</p>
+          <p>In contrast, the simplex constraints \(w_j \ge 0\) and \(\sum w_j = 1\) ensure that the synthetic control is a convex combination. Every counterfactual prediction is strictly bounded by the support of the donor pool, eliminating dangerous out-of-support extrapolation and ensuring transparent donor interpretability.</p>
+        </div>
+      </section>
+
+      <section id="optimization-and-treatment-gap">
+        <h2 id="h-optimization-and-treatment-gap">2. Pre-Intervention MSPE Minimization &amp; Treatment Gaps</h2>
+        <p>Optimal donor weights \(\boldsymbol{w}^*\) are chosen to minimize the Mean Squared Prediction Error (MSPE) over the pre-intervention timeline \(t \in \{1, \dots, T_0\}\).</p>
+
+        <div class="block definition" id="def-mspe-optimization">
+          <span class="block-title">Definition 1.2 · Simplex MSPE Optimization</span>
+          <p>The optimal synthetic control weight vector \(\boldsymbol{w}^*\) solves the constrained quadratic optimization problem:</p>
+          \[
+          \boldsymbol{w}^* = \argmin_{\boldsymbol{w} \in \Delta^J} \frac{1}{T_0} \sum_{t=1}^{T_0} \left( Y_{1t} - \sum_{j=2}^{J+1} w_j Y_{jt} \right)^2.
+          \]
+          <p>For post-intervention periods \(t \in \{T_0 + 1, \dots, T\}\), the estimated causal treatment effect (the dynamic treatment gap) is:</p>
+          \[
+          \hat{\tau}_{1t} \equiv Y_{1t} - \hat{Y}_{1t}(0) = Y_{1t} - \sum_{j=2}^{J+1} w_j^* Y_{jt}.
+          \]
+        </div>
+
+        <div class="block theorem" id="thm-synthetic-control-unbiasedness">
+          <span class="block-title claim" data-grade="T">Theorem 1.1 · Bound on Synthetic Control Pre-Fit Discrepancy</span>
+          <p><strong>Assumptions:</strong></p>
+          <ol>
+            <li><strong>Linear Factor DGP (A1):</strong> Untreated potential outcomes follow \(Y_{it}(0) = \delta_t + \boldsymbol{\theta}_t \boldsymbol{Z}_i + \boldsymbol{\lambda}_t \boldsymbol{\mu}_i + \varepsilon_{it}\), where \(\boldsymbol{Z}_i\) are observed covariates and \(\boldsymbol{\mu}_i\) are unobserved factor loadings.</li>
+            <li><strong>Exact Pre-Intervention Match (A2):</strong> There exist weights \(\boldsymbol{w}^* \in \Delta^J\) such that \(\sum_{j=2}^{J+1} w_j^* Y_{jt} = Y_{1t}\) for all \(t \in \{1, \dots, T_0\}\).</li>
+            <li><strong>Transient Noise (A3):</strong> Errors \(\varepsilon_{it}\) are independent across units and time with mean zero and bounded variance \(\sigma^2\).</li>
+          </ol>
+          <p><strong>Conclusion:</strong> As the pre-intervention window length \(T_0 \to \infty\), the post-intervention bias in the estimated treatment effect \(\E[\hat{\tau}_{1t} - \tau_{1t}]\) converges to zero.</p>
+        </div>
+
+        <div class="block proof">
+          <span class="block-title">Proof</span>
+          <p>By assumption A2, the synthetic control matches the treated unit across all \(T_0\) pre-intervention periods: \(\sum_j w_j^* Y_{jt} - Y_{1t} = \boldsymbol{\lambda}_t (\sum_j w_j^* \boldsymbol{\mu}_j - \boldsymbol{\mu}_1) + \sum_j w_j^* \varepsilon_{jt} - \varepsilon_{1t} = 0\). As \(T_0\) grows large, the time-varying factor realizations \(\boldsymbol{\lambda}_t\) span the factor space. Because the transient disturbances \(\varepsilon_{it}\) average to zero over long horizons by assumption A3, the only way to match \(Y_{1t}\) across many periods is to match the unobserved factor loadings: \(\sum_j w_j^* \boldsymbol{\mu}_j \to \boldsymbol{\mu}_1\). Consequently, in post-intervention periods \(t > T_0\), \(\boldsymbol{\lambda}_t (\sum_j w_j^* \boldsymbol{\mu}_j - \boldsymbol{\mu}_1) \to 0\), establishing asymptotic unbiasedness.</p>
+        </div>
+      </section>
+
+      <section id="inline-lab">
+        <h2 id="h-inline-lab">3. Empirical Demonstration: Simplex Optimization and Gap Recovery</h2>
+        <p>We evaluate synthetic control optimization on a simulated panel spanning \(T_0 = 8\) pre-intervention periods and \(T_1 = 4\) post-intervention periods. The treated unit is generated from two donor series with true latent weights \(w_1 = 0.65\) and \(w_2 = 0.35\), subject to a true policy shock of \(\tau = +4.00\) at \(t \ge T_0\). We perform grid search over the 1-dimensional simplex \(w_1 \in [0, 1]\) with \(w_2 = 1 - w_1\).</p>
+
+        <section class="lab" id="lab-S6-L09-1" data-runtime="python">
+          <h3>Lab 1 · Synthetic Control Simplex Weight Optimization (SIMULATED)</h3>
+          <p class="hypothesis">Across T_0 = 8 pre-intervention periods with true weights (0.65, 0.35) and policy shock +4.00, simplex MSPE minimization recovers weights (0.6400, 0.3600), reduces pre-intervention MSPE by 90.1% over equal weighting, and recovers the average post-treatment effect within 0.04.</p>
+          <pre><code class="language-python" data-run>"""Lab S6-L09-1: Synthetic control weight optimization and pre-intervention fit.
+
+SIMULATED: solves the constrained synthetic control optimization over the unit simplex
+for a treated unit using donor series, evaluating pre-intervention MSPE and estimating
+the post-intervention causal path.
+"""
+
+from __future__ import annotations
+
+import random
+
+
+def main() -&gt; None:
+    rng = random.Random(123)
+    t_pre = 8
+    t_post = 4
+    t_total = t_pre + t_post
+
+    # Donor 1: upward trend + macro cycle
+    d1 = [5.0 + 0.8 * t + 1.2 * rng.gauss(0.0, 0.5) for t in range(t_total)]
+    # Donor 2: flatter level + different volatility
+    d2 = [12.0 + 0.2 * t + 0.9 * rng.gauss(0.0, 0.5) for t in range(t_total)]
+
+    # True latent weights: 0.65 for Donor 1, 0.35 for Donor 2
+    true_w1 = 0.65
+    true_w2 = 0.35
+    true_tau_post = 4.00  # Intervention policy shock at t &gt;= t_pre
+
+    treated: list[float] = []
+    for t in range(t_total):
+        base = true_w1 * d1[t] + true_w2 * d2[t] + rng.gauss(0.0, 0.2)
+        if t &gt;= t_pre:
+            base += true_tau_post
+        treated.append(base)
+
+    # Grid search over w1 in [0.00, 1.00] with step 0.005 (simplex constraint w1 + w2 = 1, w_j &gt;= 0)
+    best_w1 = 0.0
+    best_mspe = float("inf")
+
+    steps = 201
+    for step in range(steps):
+        w1_cand = step / (steps - 1)
+        w2_cand = 1.0 - w1_cand
+
+        mspe_cand = sum((treated[t] - (w1_cand * d1[t] + w2_cand * d2[t])) ** 2 for t in range(t_pre)) / t_pre
+        if mspe_cand &lt; best_mspe:
+            best_mspe = mspe_cand
+            best_w1 = w1_cand
+
+    best_w2 = 1.0 - best_w1
+
+    # Naive equal-weighted benchmark (w1 = 0.5, w2 = 0.5)
+    naive_mspe = sum((treated[t] - (0.5 * d1[t] + 0.5 * d2[t])) ** 2 for t in range(t_pre)) / t_pre
+
+    # Post-intervention estimated treatment gaps
+    synth_post = [best_w1 * d1[t] + best_w2 * d2[t] for t in range(t_pre, t_total)]
+    gaps_post = [treated[t] - synth_post[t - t_pre] for t in range(t_pre, t_total)]
+    mean_post_tau = sum(gaps_post) / t_post
+
+    print("Synthetic Control Simplex Optimization (SIMULATED):")
+    print(f"  Pre-Intervention Periods (T_0):  {t_pre}")
+    print(f"  Post-Intervention Periods (T_1): {t_post}")
+    print(f"  True Latent Policy Effect:       +{true_tau_post:.2f}\n")
+    print("Optimal Simplex Donor Weights:")
+    print(f"  w_1* (Donor 1): {best_w1:6.4f} (latent target: {true_w1:.2f})")
+    print(f"  w_2* (Donor 2): {best_w2:6.4f} (latent target: {true_w2:.2f})")
+    print(f"  Sum of Weights: {best_w1 + best_w2:6.4f}\n")
+    print("Pre-Intervention Fit Quality:")
+    print(f"  Synthetic Control MSPE: {best_mspe:.6f}")
+    print(f"  Equal-Weighted MSPE:    {naive_mspe:.6f}")
+    print(f"  Fit Improvement:        {(1.0 - best_mspe / naive_mspe) * 100:.1f}%\n")
+    print("Post-Intervention Treatment Effect Recovery:")
+    for i, gap in enumerate(gaps_post, start=1):
+        print(f"  Period T_0 + {i}: gap = {gap:+6.4f}")
+    print(f"  Average Post-Treatment Effect: {mean_post_tau:+6.4f}")
+    print(f"  Estimation Error vs True Jump: {abs(mean_post_tau - true_tau_post):.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Synthetic Control Simplex Optimization (SIMULATED):
+  Pre-Intervention Periods (T_0):  8
+  Post-Intervention Periods (T_1): 4
+  True Latent Policy Effect:       +4.00
+
+Optimal Simplex Donor Weights:
+  w_1* (Donor 1): 0.6400 (latent target: 0.65)
+  w_2* (Donor 2): 0.3600 (latent target: 0.35)
+  Sum of Weights: 1.0000
+
+Pre-Intervention Fit Quality:
+  Synthetic Control MSPE: 0.055651
+  Equal-Weighted MSPE:    0.563135
+  Fit Improvement:        90.1%
+
+Post-Intervention Treatment Effect Recovery:
+  Period T_0 + 1: gap = +4.0518
+  Period T_0 + 2: gap = +4.2463
+  Period T_0 + 3: gap = +3.6233
+  Period T_0 + 4: gap = +3.9328
+  Average Post-Treatment Effect: +3.9636
+  Estimation Error vs True Jump: 0.0364</pre>
+          <p class="interpretation">The numerical simulation confirms the precision of the synthetic control algorithm. Optimization over the simplex yields \(w_1^* = 0.6400\) and \(w_2^* = 0.3600\), closely tracking the true latent parameters \((0.65, 0.35)\). Pre-intervention fit achieves an MSPE of \(0.055651\), a \(90.1\%\) improvement over the equal-weighted benchmark (\(0.563135\)). In the post-intervention period, the average estimated treatment gap is \(+3.9636\), recovering the true \(+4.00\) policy jump with an estimation error of only \(0.0364\).</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the Canon Breaks</h2>
+        <p>The validity of the synthetic control method depends on conditions that are frequently violated in macroeconomic finance:</p>
+        <ul>
+          <li><strong>Interpolation Bias on the Frontier:</strong> If the treated unit has an extreme outcome value (e.g., the largest economy in a region or the most volatile banking system), it lies outside the convex hull of the donor pool. Simplex weights cannot form an interior match, causing large pre-intervention MSPE and severe interpolation bias.</li>
+          <li><strong>Overfitting in Short Pre-Periods:</strong> When the donor pool \(J\) is large relative to pre-treatment periods \(T_0\) (\(J \gg T_0\)), the algorithm can overfit idiosyncratic noise in \(\varepsilon_{it}\) by combining unrelated donor fluctuations, creating a spurious pre-period match that diverges post-intervention.</li>
+          <li><strong>Donor Pool Spillovers:</strong> If the policy intervention spills over to untreated donor units (e.g., fiscal stimulus in one state causing capital flight from neighboring donor states), the donor trajectories are contaminated, violating the unconfoundedness of the counterfactual.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul class="misconceptions-list">
+          <li class="misconception">
+            <p class="wrong">Synthetic control is simply ordinary least squares regression run on a panel of states.</p>
+            <p class="right">Unlike OLS, synthetic control enforces non-negativity (\(w_j \ge 0\)) and sum-to-one constraints, preventing negative weights and ensuring that the counterfactual is a convex combination strictly bounded within the support of the donor data.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A synthetic control can always be constructed regardless of whether the treated unit is an extreme outlier.</p>
+            <p class="right">Because weights are constrained to the simplex, the synthetic unit can only match treated units that lie inside the convex hull of the donors. If a unit is larger or smaller than all available donors, no valid synthetic control exists.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Statistical significance in synthetic control studies is evaluated using standard OLS Student-t distribution formulas.</p>
+            <p class="right">Because only one aggregate unit is treated (\(N_1 = 1\)), large-sample asymptotic t-tests are invalid. Statistical significance is evaluated using in-space placebo permutation tests across all donor units.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="prob-l09-m1">
+            <p class="problem-title">Problem 9.1 · Calculating Synthetic Counterfactual and Treatment Gap</p>
+            <p>A synthetic control is constructed from three donor countries with optimal weights \(w_A = 0.50\), \(w_B = 0.30\), and \(w_C = 0.20\). In post-intervention year \(T_0 + 1\), observed GDP growth rates for the donors are \(Y_{A} = 2.4\%\), \(Y_{B} = 3.5\%\), and \(Y_{C} = 1.0\%\). The actual treated nation experiences GDP growth of \(Y_1 = 4.2\%\). Calculate the synthetic counterfactual growth rate \(\hat{Y}_1(0)\) and the estimated treatment effect \(\hat{\tau}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The synthetic counterfactual is the convex combination:</p>
+              \[
+              \hat{Y}_1(0) = 0.50(2.4) + 0.30(3.5) + 0.20(1.0) = 1.20 + 1.05 + 0.20 = 2.45\%.
+              \]
+              <p>The estimated treatment effect is the difference:</p>
+              \[
+              \hat{\tau} = Y_1 - \hat{Y}_1(0) = 4.20\% - 2.45\% = +1.75\% \quad (175 \text{ basis points}).
+              \]
+              <p>The policy increased GDP growth by 1.75 percentage points relative to counterfactual.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l09-m2">
+            <p class="problem-title">Problem 9.2 · Pre-Intervention MSPE Calculation</p>
+            <p>Over \(T_0 = 4\) pre-treatment quarters, observed treated unit values are \(\{10.0, 12.0, 11.0, 13.0\}\). A candidate synthetic control produces predictions \(\{10.2, 11.5, 11.4, 12.6\}\). Compute the quarter-by-quarter prediction errors and the resulting Mean Squared Prediction Error (MSPE).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The prediction errors \(e_t = Y_{1t} - \hat{Y}_{1t}(0)\) are:</p>
+              <ul>
+                <li>Quarter 1: \(10.0 - 10.2 = -0.2 \implies e_1^2 = 0.04\).</li>
+                <li>Quarter 2: \(12.0 - 11.5 = +0.5 \implies e_2^2 = 0.25\).</li>
+                <li>Quarter 3: \(11.0 - 11.4 = -0.4 \implies e_3^2 = 0.16\).</li>
+                <li>Quarter 4: \(13.0 - 12.6 = +0.4 \implies e_4^2 = 0.16\).</li>
+              </ul>
+              <p>The Mean Squared Prediction Error is:</p>
+              \[
+              \text{MSPE} = \frac{0.04 + 0.25 + 0.16 + 0.16}{4} = \frac{0.61}{4} = 0.1525.
+              \]
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l09-m3">
+            <p class="problem-title">Problem 9.3 · Verifying Simplex Feasibility</p>
+            <p>Determine whether each of the following candidate weight vectors for a 3-donor pool satisfies the synthetic control simplex constraints: (a) \(\boldsymbol{w} = (0.45, 0.35, 0.20)\); (b) \(\boldsymbol{w} = (1.20, -0.30, 0.10)\); (c) \(\boldsymbol{w} = (0.60, 0.25, 0.10)\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>We check non-negativity (\(w_j \ge 0\)) and sum to one (\(\sum w_j = 1.0\)):</p>
+              <ul>
+                <li>(a) All \(w_j \ge 0\) and \(0.45 + 0.35 + 0.20 = 1.00\): Feasible.</li>
+                <li>(b) Sum is \(1.20 - 0.30 + 0.10 = 1.00\), but \(w_2 = -0.30 < 0\): Infeasible (violates non-negativity constraint).</li>
+                <li>(c) All \(w_j \ge 0\), but sum is \(0.60 + 0.25 + 0.10 = 0.95 \ne 1.00\): Infeasible (violates sum-to-one constraint).</li>
+              </ul>
+              <p>Only vector (a) satisfies the unit simplex constraints.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prob-l09-p1">
+            <p class="problem-title">Problem 9.4 · Convexity of the Objective Function and Uniqueness</p>
+            <p>Prove that the synthetic control pre-intervention objective function \(f(\boldsymbol{w}) = \frac{1}{T_0} \sum_{t=1}^{T_0} (Y_{1t} - \sum_{j=2}^{J+1} w_j Y_{jt})^2\) is convex in \(\boldsymbol{w}\), and state the condition under which the optimal solution \(\boldsymbol{w}^*\) is strictly unique.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\boldsymbol{Y}_1\) be the \(T_0 \times 1\) vector of treated outcomes and \(\boldsymbol{Y}_0\) be the \(T_0 \times J\) matrix of donor outcomes. The objective function can be written in matrix quadratic form:</p>
+              \[
+              f(\boldsymbol{w}) = \frac{1}{T_0} (\boldsymbol{Y}_1 - \boldsymbol{Y}_0 \boldsymbol{w})^\top (\boldsymbol{Y}_1 - \boldsymbol{Y}_0 \boldsymbol{w}) = \frac{1}{T_0} (\boldsymbol{Y}_1^\top \boldsymbol{Y}_1 - 2 \boldsymbol{Y}_1^\top \boldsymbol{Y}_0 \boldsymbol{w} + \boldsymbol{w}^\top \boldsymbol{Y}_0^\top \boldsymbol{Y}_0 \boldsymbol{w}).
+              \]
+              <p>The Hessian matrix with respect to \(\boldsymbol{w}\) is:</p>
+              \[
+              \nabla^2 f(\boldsymbol{w}) = \frac{2}{T_0} \boldsymbol{Y}_0^\top \boldsymbol{Y}_0.
+              \]
+              <p>For any vector \(\boldsymbol{v} \in \R^J\), \(\boldsymbol{v}^\top (\boldsymbol{Y}_0^\top \boldsymbol{Y}_0) \boldsymbol{v} = (\boldsymbol{Y}_0 \boldsymbol{v})^\top (\boldsymbol{Y}_0 \boldsymbol{v}) = \|\boldsymbol{Y}_0 \boldsymbol{v}\|_2^2 \ge 0\). Thus, the Hessian is positive semi-definite everywhere, proving that \(f(\boldsymbol{w})\) is convex.</p>
+              <p>Furthermore, if \(\boldsymbol{Y}_0\) has full column rank \(J\) (requiring \(T_0 \ge J\) and no collinear donors), the Hessian is strictly positive definite, guaranteeing that the minimizer over the compact convex set \(\Delta^J\) is strictly unique.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l09-p2">
+            <p class="problem-title">Problem 9.5 · Bounded Extrapolation Theorem</p>
+            <p>Prove that for any \(\boldsymbol{w} \in \Delta^J\) and any period \(t\), the synthetic control prediction satisfies \(\min_{j} Y_{jt} \le \hat{Y}_{1t}(0) \le \max_{j} Y_{jt}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(Y_{\min} \equiv \min_{j \in \{2, \dots, J+1\}} Y_{jt}\) and \(Y_{\max} \equiv \max_{j \in \{2, \dots, J+1\}} Y_{jt}\).</p>
+              <p>Since \(w_j \ge 0\) for all \(j\), multiplying the inequality \(Y_{\min} \le Y_{jt} \le Y_{\max}\) by \(w_j\) preserves direction:</p>
+              \[
+              w_j Y_{\min} \le w_j Y_{jt} \le w_j Y_{\max}.
+              \]
+              <p>Summing across all donors \(j = 2, \dots, J+1\):</p>
+              \[
+              \sum_{j=2}^{J+1} w_j Y_{\min} \le \sum_{j=2}^{J+1} w_j Y_{jt} \le \sum_{j=2}^{J+1} w_j Y_{\max}.
+              \]
+              <p>Factoring out constants and applying the sum-to-one constraint \(\sum w_j = 1\):</p>
+              \[
+              Y_{\min} \left(\sum w_j\right) \le \hat{Y}_{1t}(0) \le Y_{\max} \left(\sum w_j\right) \implies Y_{\min} \le \hat{Y}_{1t}(0) \le Y_{\max}.
+              \]
+              <p>The synthetic control prediction is mathematically bounded within the extreme values of the donor pool.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l09-p3">
+            <p class="problem-title">Problem 9.6 · Invariance to Location Shifts in Outcomes</p>
+            <p>Prove that adding a constant shift \(c \in \R\) to all units in all periods (\(Y_{it} \to Y_{it} + c\)) leaves the optimal synthetic control weights \(\boldsymbol{w}^*\) completely unchanged.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Consider the shifted prediction error for any candidate weight vector \(\boldsymbol{w} \in \Delta^J\):</p>
+              \[
+              (Y_{1t} + c) - \sum_{j=2}^{J+1} w_j (Y_{jt} + c) = Y_{1t} + c - \sum_{j=2}^{J+1} w_j Y_{jt} - c \sum_{j=2}^{J+1} w_j.
+              \]
+              <p>Because \(\boldsymbol{w} \in \Delta^J\), \(\sum_{j=2}^{J+1} w_j = 1\). Therefore, \(c \sum w_j = c\), which cancels with \(+c\):</p>
+              \[
+              (Y_{1t} + c) - \sum_{j=2}^{J+1} w_j (Y_{jt} + c) = Y_{1t} - \sum_{j=2}^{J+1} w_j Y_{jt}.
+              \]
+              <p>The prediction residuals in every period are identical for all feasible weights \(\boldsymbol{w} \in \Delta^J\). Hence, the MSPE objective function is invariant to additive location shifts, and the optimal weight vector \(\boldsymbol{w}^*\) remains identical.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="prob-l09-e1">
+            <p class="problem-title">Problem 9.7 · Exact P-Value Calculation from In-Space Placebos</p>
+            <p>In a synthetic control study of California's Proposition 99 tobacco control program (Abadie et al. 2010), there are 38 donor states. The post-to-pre MSPE ratio for California is 130.4. Across the 38 in-space placebo states, the largest MSPE ratio is 84.2. Compute the exact non-parametric permutation p-value for the causal impact of Proposition 99.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The total number of units evaluated is \(N = 1 + 38 = 39\). The exact permutation p-value is the empirical rank of the treated unit's test statistic divided by the total number of units:</p>
+              \[
+              p = \frac{\text{Rank}(\text{Treated})}{J + 1} = \frac{\sum_{i=1}^{J+1} \indic\{R_i \ge R_{\text{treated}}\}}{J + 1}.
+              \]
+              <p>Because California's ratio of 130.4 exceeds every single one of the 38 donor state ratios, California ranks 1st out of 39:</p>
+              \[
+              p = \frac{1}{39} \approx 0.02564 \quad (2.56\%).
+              \]
+              <p>The causal impact is statistically significant at the 5% level under exact Fisherian permutation inference.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l09-e2">
+            <p class="problem-title">Problem 9.8 · Evaluating Lab 1 Weight Recovery</p>
+            <p>In Lab 1, true latent weights were \((0.65, 0.35)\), and the estimated simplex weights were \((0.6400, 0.3600)\). Explain why the recovered weights differ slightly from the true latent weights, and describe how increasing \(T_0\) from 8 to 50 affects weight precision.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The recovered weights differ from true weights due to finite-sample noise \(\varepsilon_{it}\) in the pre-intervention period (\(T_0 = 8\)). In finite samples, the optimization minimizes the sum of squared realization errors, slightly overfitting to the specific transient shocks that occurred in the 8 periods.</p>
+              <p>By Theorem 1.1, as the pre-intervention window expands from \(T_0 = 8\) to \(T_0 = 50\), transient shocks \(\varepsilon_{it}\) average to zero across time by the Law of Large Numbers. The objective function converges uniformly to the true population covariance structure, causing \(\hat{\boldsymbol{w}}\) to converge to \((0.65, 0.35)\) and shrinking weight estimation error toward zero.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l09-e3">
+            <p class="problem-title">Problem 9.9 · Donor Pool Pruning and Discarding Bad Pre-Fits</p>
+            <p>Why do Abadie, Diamond, and Hainmueller (2010) discard placebo donor states that have extremely high pre-intervention MSPE (e.g., pre-MSPE greater than 20 times California's) when plotting post-intervention placebo trajectories?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A placebo test is meaningful only if the synthetic control successfully reproduces the unit's pre-intervention trajectory. If a donor state has a terrible pre-intervention fit, the synthetic control does not represent a valid counterfactual.</p>
+              <p>Such donor units produce massive, erratic post-intervention gaps simply because the model could never fit them in the first place, not because of a policy shock. Including poorly fitting placebos artificially inflates the post-intervention dispersion of the placebo pool, distorting inference. Discarding units with unacceptable pre-intervention fit ensures that only credible falsification benchmarks are compared.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="prob-l09-r1">
+            <p class="problem-title">Problem 9.10 · The Augmented Synthetic Control Method (ASCM)</p>
+            <p>Explain how Ben-Michael, Feller, and Rothstein's (2021) Augmented Synthetic Control Method (ASCM) uses ridge regression to correct for pre-intervention imperfect fit when the treated unit lies near or beyond the convex hull boundary.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When the treated unit lies near or outside the donor convex hull, standard synthetic control weights cannot achieve zero pre-intervention MSPE, leaving residual bias \(\bar{e}_{\text{pre}} \ne 0\).</p>
+              <p>ASCM de-biases the synthetic control using a penalized ridge outcome model. It takes the standard synthetic control prediction and adds an outcome adjustment estimated by ridge regression: \(\hat{Y}_{1t}^{\text{ASCM}}(0) = \hat{Y}_{1t}^{\text{SC}}(0) + (\hat{m}(X_1) - \sum w_j^* \hat{m}(X_j))\). This augmentation relaxes the strict simplex support constraint in a disciplined, shrinkage-controlled manner, eliminating bias while preserving low variance.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l09-r2">
+            <p class="problem-title">Problem 9.11 · Synthetic Difference-in-Differences (SDID)</p>
+            <p>How does Arkhangelsky et al. (2021) Synthetic Difference-in-Differences (SDID) bridge standard synthetic control and two-way fixed effects regressions?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>SDID combines the core strengths of both methods: (1) like synthetic control, it estimates non-negative unit weights \(\omega_i\) to match pre-treatment trends between treated and control units; (2) like difference-in-differences, it includes unit fixed effects \(\alpha_i\) to absorb permanent level differences and time weights \(\lambda_t\) to balance pre-treatment periods.</p>
+              <p>The resulting estimator \(\hat{\tau}^{\text{SDID}}\) is double-robust: it identifies causal effects if either the parallel trends assumption holds after unit reweighting, or the linear factor model holds. By including unit fixed effects, SDID eliminates synthetic control's vulnerability to unmodeled static level shifts.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l09-r3">
+            <p class="problem-title">Problem 9.12 · Optimal Covariate Predictor Weights (V-Matrix Optimization)</p>
+            <p>In Abadie and Gardeazabal (2003) and Abadie et al. (2010), the synthetic control objective incorporates a diagonal weighting matrix \(\boldsymbol{V}\): \(\min_{\boldsymbol{w}} (\boldsymbol{X}_1 - \boldsymbol{X}_0 \boldsymbol{w})^\top \boldsymbol{V} (\boldsymbol{X}_1 - \boldsymbol{X}_0 \boldsymbol{w})\). Explain how \(\boldsymbol{V}\) is determined and what economic role it plays.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The diagonal elements \(v_m \ge 0\) reflect the relative economic importance of each predictor covariate \(m\) in forecasting the outcome variable \(Y\). If a covariate has little predictive power for future outcomes, its weight \(v_m\) should be low, whereas powerful predictors receive high \(v_m\).</p>
+              <p>In standard implementations, \(\boldsymbol{V}\) is solved via an outer nested optimization: for a given \(\boldsymbol{V}\), the inner loop computes optimal simplex weights \(\boldsymbol{w}^*(\boldsymbol{V})\); the outer loop then searches over \(\boldsymbol{V}\) to minimize the out-of-sample pre-intervention MSPE of the outcome trajectory over validation periods. This ensures that donor matching prioritizes the fundamental drivers of the target outcome.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr>
+                <th scope="col">Concept / Claim</th>
+                <th scope="col">Mathematical Formulation</th>
+                <th scope="col">Evidence Grade</th>
+                <th scope="col">Registry Basis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Synthetic Control Method</td>
+                <td>Convex donor counterfactual \(\hat{Y}_{1t}(0) = \sum_{j=2}^{J+1} w_j Y_{jt}\)</td>
+                <td><span class="claim" data-grade="A" data-cite="abadie2010synthetic">A</span></td>
+                <td>Abadie, Diamond &amp; Hainmueller (2010)</td>
+              </tr>
+              <tr>
+                <td>Unit Simplex Constraints</td>
+                <td>\(w_j \ge 0, \quad \sum_{j=2}^{J+1} w_j = 1\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 1.1</td>
+              </tr>
+              <tr>
+                <td>Simplex MSPE Minimization</td>
+                <td>\(\boldsymbol{w}^* = \argmin_{\boldsymbol{w} \in \Delta^J} \frac{1}{T_0} \sum_{t=1}^{T_0} (Y_{1t} - \sum w_j Y_{jt})^2\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 1.2</td>
+              </tr>
+              <tr>
+                <td>Bounded Extrapolation Property</td>
+                <td>\(\min_j Y_{jt} \le \hat{Y}_{1t}(0) \le \max_j Y_{jt}\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Problem 9.5 Derivation</td>
+              </tr>
+              <tr>
+                <td>In-Space Placebo P-Value</td>
+                <td>\(p = \frac{\text{Rank}(\text{Treated})}{J + 1}\)</td>
+                <td><span class="claim" data-grade="A" data-cite="abadie2010synthetic">A</span></td>
+                <td>Abadie et al. (2010)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="S6" data-page="L09">
+        <h2 id="h-quiz">Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="question">What primary empirical challenge motivated the development of the synthetic control method?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option data-correct" data-correct>
+                <input type="radio" name="q1" value="a">
+                <span>Evaluating the causal effect of an intervention when only a single aggregate unit (e.g., one state or firm) is treated (\(N_1 = 1\)).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q1" value="b">
+                <span>Estimating nonlinear polynomials on 1,000,000 observations.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q1" value="c">
+                <span>Computing high-frequency moving averages of bid-ask spreads.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q1" value="d">
+                <span>Inverting singular covariance matrices in GMM.</span>
+              </label>
+            </fieldset>
+            <div class="explain">Synthetic control was created for comparative case studies where an aggregate policy intervention affects only a single entity.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What two mathematical constraints define the unit simplex \(\Delta^J\) for synthetic control donor weights \(\boldsymbol{w}\)?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option">
+                <input type="radio" name="q2" value="a">
+                <span>\(\sum w_j = 0\) and \(w_j \le 1\).</span>
+              </label>
+              <label class="option data-correct" data-correct>
+                <input type="radio" name="q2" value="b">
+                <span>\(w_j \ge 0\) for all \(j\), and \(\sum w_j = 1\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q2" value="c">
+                <span>\(\sum w_j^2 = 1\) and \(w_j \in \R\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q2" value="d">
+                <span>\(w_j = 1/J\) for all \(j\).</span>
+              </label>
+            </fieldset>
+            <div class="explain">Simplex constraints require all weights to be non-negative and sum to exactly 1.0, defining a convex combination.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why does synthetic control enforce non-negative weights \(w_j \ge 0\) rather than allowing unconstrained weights as in OLS regression?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option data-correct" data-correct>
+                <input type="radio" name="q3" value="a">
+                <span>To prevent extrapolation outside the convex hull of observable donor data and ensure transparent interpretability.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q3" value="b">
+                <span>To guarantee that standard errors are identically zero.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q3" value="c">
+                <span>Because negative weights cause computer processor overflow.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q3" value="d">
+                <span>To force the post-treatment gap to be positive.</span>
+              </label>
+            </fieldset>
+            <div class="explain">Unconstrained OLS can combine large positive and negative weights, extrapolating far beyond actual data; non-negative weights prevent extrapolation.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What criterion does the synthetic control algorithm minimize to select optimal donor weights \(\boldsymbol{w}^*\)?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option">
+                <input type="radio" name="q4" value="a">
+                <span>Post-intervention abnormal returns.</span>
+              </label>
+              <label class="option data-correct" data-correct>
+                <input type="radio" name="q4" value="b">
+                <span>Pre-intervention Mean Squared Prediction Error (MSPE) between treated and synthetic outcomes.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q4" value="c">
+                <span>The sum of squared donor weights.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q4" value="d">
+                <span>The kurtosis of the donor residuals.</span>
+              </label>
+            </fieldset>
+            <div class="explain">The weights are chosen by minimizing pre-intervention MSPE over periods \(t \in \{1, \dots, T_0\}\).</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How is statistical inference conducted in the synthetic control framework (Abadie et al. 2010)?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option">
+                <input type="radio" name="q5" value="a">
+                <span>Using asymptotic Student-t statistics with \(N - 1\) degrees of freedom.</span>
+              </label>
+              <label class="option data-correct" data-correct>
+                <input type="radio" name="q5" value="b">
+                <span>Using in-space placebo permutation tests that apply the method iteratively to each untreated donor unit.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q5" value="c">
+                <span>Through Gaussian white-noise filtering.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q5" value="d">
+                <span>By calculating White heteroskedasticity-consistent standard errors.</span>
+              </label>
+            </fieldset>
+            <div class="explain">With \(N_1 = 1\), asymptotic inference fails; Abadie et al. use in-space placebo permutation tests across all donor units.</div>
+          </li>
+
+          <li class="item" data-kind="numeric" data-answer="0.04" data-tolerance="0.005">
+            <p class="question">In an in-space placebo test with 24 donor units (total units \(J + 1 = 25\)), the treated unit produces the largest post-to-pre MSPE ratio (rank 1). What is the exact permutation p-value?</p>
+            <div class="explain">The exact p-value is \(\text{Rank} / (J + 1) = 1 / 25 = 0.0400\).</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Under what condition can synthetic control fail to find a valid counterfactual match even before intervention?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option data-correct" data-correct>
+                <input type="radio" name="q7" value="a">
+                <span>When the treated unit lies outside the convex hull of the donor pool (e.g., an extreme outlier on level or volatility).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q7" value="b">
+                <span>When the donor pool contains more than 10 units.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q7" value="c">
+                <span>When pre-intervention data is sampled quarterly rather than annually.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q7" value="d">
+                <span>When all donor series have positive means.</span>
+              </label>
+            </fieldset>
+            <div class="explain">If the treated unit lies outside the donor convex hull, no convex combination can reproduce its trajectory, causing severe pre-intervention mismatch.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What risk arises when the donor pool \(J\) is very large relative to the number of pre-intervention periods \(T_0\) (\(J \gg T_0\))?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option">
+                <input type="radio" name="q8" value="a">
+                <span>The algorithm fails to execute due to memory exhaustion.</span>
+              </label>
+              <label class="option data-correct" data-correct>
+                <input type="radio" name="q8" value="b">
+                <span>Overfitting to transient idiosyncratic noise in the pre-intervention period, leading to poor post-intervention counterfactual predictions.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q8" value="c">
+                <span>Donor weights automatically sum to zero.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="q8" value="d">
+                <span>The objective function becomes non-convex.</span>
+              </label>
+            </fieldset>
+            <div class="explain">With many donors and few time periods, the simplex can overfit random noise rather than matching fundamental structural factors.</div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li data-cite="abadie2010synthetic">Abadie, A., Diamond, A., &amp; Hainmueller, J. (2010). Synthetic control methods for comparative case studies: Estimating the effect of California's tobacco control program. <em>Journal of the American Statistical Association</em>, 105(490), 493–505.</li>
+          <li data-cite="angrist2009mostly">Angrist, J. D., &amp; Pischke, J.-S. (2009). <em>Mostly Harmless Econometrics: An Empiricist's Companion</em>. Princeton University Press.</li>
+        </ol>
+      </section>
+
+      <div class="lesson-navi">
+        <button class="btn btn-primary" data-complete>Mark Lesson Complete</button>
+      </div>
+    </main>
+
+    <footer class="course-footer">
+      <nav class="course-nav">
+        <a href="L08.html" class="nav-link">Previous: Lesson 8 · Placebo Tests</a>
+        <a href="index.html" class="nav-link">Module Hub</a>
+        <a href="project.html" class="nav-link">Next: Capstone Project</a>
+      </nav>
+      <p class="course-meta">Doctoral Track in Quantitative Finance · Part S: Statistics &amp; Econometrics</p>
+    </footer>
+  </body>
+</html>
