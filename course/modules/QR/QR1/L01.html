@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR1" data-page="L01" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timestamps, Time Zones &amp; Look-Ahead Bias · QR1 L01</title>
+  <meta name="description" content="Formal timestamp semantics across event, publication, and intake instants; UTC normalization; Daylight Saving Time transitions; and mathematical elimination of look-ahead bias in quantitative research.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR1 Research Data Engineering</a><span class="sep">›</span>
+      <span>L01</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 01 · 8 study hours · Part QR</p>
+        <h1>Timestamps, Time Zones &amp; Look-Ahead Bias</h1>
+        <p class="why-it-matters">Every backtest is a simulation of decision-making under uncertainty through historical time. When an engine conditions trades on timestamps that post-date the simulated decision instant—or confuses the calendar date of an economic event with the exact instant its measurement became public—it introduces look-ahead bias, generating spurious alpha that vanishes in live execution. Precise timestamp semantics form the non-negotiable boundary of quantitative research integrity.</p>
+      </header>
+
+      <section id="three-instants">
+        <h2 id="s1">1. The Three Instants of a Datum</h2>
+        <p>In quantitative data systems, a naive timestamp column labeled <code>timestamp</code> or <code>date</code> is dangerous. A single observation carries up to three distinct chronological instants across its lifecycle.</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-timestamp-semantics" data-concept="timestamp-semantics">Timestamp Semantics</dfn></p>
+          <p>Let \(\mathcal{D}\) denote a domain of financial or macroeconomic observations. The <strong>timestamp semantics</strong> of any observation \(x \in \mathcal{D}\) is the triple of coordinates in coordinated universal time (UTC), \((t_E(x), t_P(x), t_R(x)) \in \mathbb{T}^3\), defined as:</p>
+          <ol>
+            <li><strong>Event Time (\(t_E\)):</strong> The real-world instant or interval during which the underlying phenomenon occurred (for example, the trade execution instant on an exchange matching engine, or the calendar quarter \([t_{\mathrm{start}}, t_{\mathrm{end}}]\) over which gross domestic product was generated).</li>
+            <li><strong>Publication / Knowledge Time (\(t_P\)):</strong> The earliest instant at which the value of \(x\) was publicly broadcast, disseminated by the data provider, or made accessible to market participants.</li>
+            <li><strong>Intake / Retrieval Time (\(t_R\)):</strong> The local system instant at which the data engineering ingestion pipeline received, validated, and recorded the payload containing \(x\) into persistent storage.</li>
+          </ol>
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 1.1 · The Causality Inequality</p>
+          <p>Physical causality and information dissemination impose the fundamental ordering inequality on every valid historical record:</p>
+          \[
+          t_E(x) \le t_P(x) \le t_R(x)
+          \]
+          <p>For high-frequency market microstructure trades, the latency gap \(t_P(x) - t_E(x)\) is on the order of microseconds to milliseconds (governed by exchange matching and SIP dissemination). For macroeconomic indicators (such as non-farm payrolls, CPI, or GDP) and corporate SEC quarterly 10-Q filings, the lag \(t_P(x) - t_E(x)\) ranges from days to several months. A data pipeline that sets \(t_P(x) = t_E(x)\) violates temporal causality.</p>
+        </div>
+
+        <div class="block example">
+          <p class="block-title">Example 1.1 · Macroeconomic Indicator Timestamp Decomposition</p>
+          <p>Consider the release of United States Consumer Price Index (CPI) for February 2026. The event interval is \(t_E = [t_{\mathrm{start}}, t_{\mathrm{end}}]\) spanning <code>2026-02-01T00:00:00Z</code> through <code>2026-02-28T23:59:59Z</code>. The Bureau of Labor Statistics publishes the press release at 08:30:00 Eastern Time on March 12, 2026: \(t_P = \text{2026-03-12T12:30:00Z}\). A quantitative fund's web scraping worker receives and hashes the payload at 12:30:04 UTC: \(t_R = \text{2026-03-12T12:30:04Z}\). A backtest querying inflation data on March 1, 2026, cannot observe the February CPI figure because \(\text{2026-03-01} < t_P\).</p>
+        </div>
+      </section>
+
+      <section id="utc-normalization">
+        <h2 id="s2">2. UTC Normalization &amp; Time Zone Boundaries</h2>
+        <p>Financial exchanges and statistical agencies publish records in diverse local civil wall-clock time zones. Converting local wall time to Coordinated Universal Time (UTC) requires deterministic handling of Daylight Saving Time (DST) regime shifts.</p>
+
+        <div class="block definition">
+          <p class="block-title">Definition 1.2 · Eastern Time Normalization Mapping</p>
+          <p>Under United States civil calendar rules (Energy Policy Act of 2005), Eastern Time shifts between Eastern Standard Time (EST, \(\text{UTC}-5\)) and Eastern Daylight Time (EDT, \(\text{UTC}-4\)):</p>
+          <ol>
+            <li><strong>Spring Forward:</strong> At 02:00:00 local wall time on the second Sunday of March, the clock advances directly to 03:00:00. The local interval \([\text{02:00:00}, \text{03:00:00})\) does not exist in civil wall time.</li>
+            <li><strong>Fall Back:</strong> At 02:00:00 local wall time on the first Sunday of November, the clock falls back to 01:00:00. The local wall interval \([\text{01:00:00}, \text{02:00:00})\) is repeated twice.</li>
+          </ol>
+          <p>To eliminate ambiguity, the canonical mapping \(\psi: \text{WallTime} \to \text{UTC}\) enforces:</p>
+          \[
+          \begin{aligned}
+          \psi(\text{wall}) = \begin{cases}
+          \text{Error}, &amp; \text{wall} \in [\text{02:00}, \text{03:00}) \text{ (spring gap)}, \\
+          \text{wall} + \text{04:00}, &amp; \text{wall} \in [\text{01:00}, \text{02:00}) \text{ (autumn overlap)}, \\
+          \text{wall} - \Delta_{\mathrm{DST}}, &amp; \text{otherwise}.
+          \end{cases}
+          \end{aligned}
+          \]
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 1.1 · Monotonic UTC Sorting Identity</span>
+          <p>Let \(\mathbb{T}_{\mathrm{UTC}}\) be the domain of ISO 8601 UTC timestamps formatted as fixed-width strings <code>YYYY-MM-DDTHH:MM:SSZ</code>. For any two instants \(t_1, t_2 \in \mathbb{T}_{\mathrm{UTC}}\), the chronological time ordering \(t_1 \le t_2\) is identical to their lexicographical string comparison:</p>
+          \[
+          t_1 \le t_2 \iff \mathrm{strcmp}(t_1, t_2) \le 0
+          \]
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>In ISO 8601 representation, fields are arranged in strictly decreasing significance: year (4 digits), month (2 digits), day (2 digits), hour (2 digits), minute (2 digits), second (2 digits). Because each subfield uses fixed-width zero-padded decimal integers, the standard base-10 numerical ordering of each component maps injectively to ASCII character code ordering (\('0' < '1' < \dots < '9'\)). By induction across positional character indices, lexicographical string comparison preserves numerical temporal ordering on UTC strings ending in identical timezone offset <code>Z</code>.</p>
+        </div>
+      </section>
+
+      <section id="look-ahead-bias">
+        <h2 id="s3">3. Mathematical Formalization of Look-Ahead Bias</h2>
+        <p>Look-ahead bias is not merely a software bug; it is a violation of the measure-theoretic filtration underlying stochastic processes and trading decision theory.</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-look-ahead-bias" data-concept="look-ahead-bias">Look-Ahead Bias</dfn></p>
+          <p>Let \((\Omega, \mathcal{F}, (\mathcal{F}_t)_{t \ge 0}, \mathbb{P})\) be a filtered probability space representing financial market history. Let \(\mathcal{F}_t^{\mathrm{pub}} = \sigma(\{x \in \mathcal{D} : t_P(x) \le t\})\) be the public information filtration generated by all data published at or prior to instant \(t\). A trading strategy policy or signal generator \(S_t: \Omega \to \mathbb{R}^k\) evaluated at decision time \(t\) exhibits <strong>look-ahead bias</strong> if \(S_t\) is not \(\mathcal{F}_t^{\mathrm{pub}}\)-measurable:</p>
+          \[
+          S_t \notin \mathcal{F}_t^{\mathrm{pub}} \iff \exists A \in \sigma(S_t) \text{ such that } A \notin \mathcal{F}_t^{\mathrm{pub}}
+          \]
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 1.2 · Information Set Invariance Theorem</span>
+          <p>Assume an algorithmic trading strategy maps information filtration \(\mathcal{G}_t\) to asset allocation weights \(w_t = g(\mathcal{G}_t)\) at decision time \(t\). The strategy possesses zero look-ahead bias if and only if for all \(t \ge 0\):</p>
+          \[
+          \mathcal{G}_t \subseteq \mathcal{F}_t^{\mathrm{pub}} = \sigma\left(\{x \in \mathcal{D} : t_P(x) \le t\}\right)
+          \]
+          <p>If \(\mathcal{G}_t \not\subseteq \mathcal{F}_t^{\mathrm{pub}}\), there exists an observation \(x^* \in \mathcal{G}_t\) with \(t_P(x^*) > t\), rendering realized strategy performance non-replicable in live trading.</p>
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>In live execution at physical instant \(t\), the set of data available to an algorithm is physically bounded by \(\mathcal{F}_t^{\mathrm{pub}}\) (signals transmitted and received by \(t\)). By definition of conditional expectation and measurability, any strategy conditioning on \(x^*\) with \(t_P(x^*) > t\) conditions on a random variable whose realization is not measurable with respect to \(\mathcal{F}_t^{\mathrm{pub}}\). Hence the conditional expectation \(\mathbb{E}[R_{t+\Delta} \mid \mathcal{G}_t]\) is conditioned on an event in the future filtration \(\mathcal{F}_{t_P(x^*)}^{\mathrm{pub}}\), violating temporal martingality and generating non-replicable expected returns.</p>
+        </div>
+
+        <section class="lab" id="lab-QR1-L01-1" data-runtime="python">
+          <h3>Lab 1 · Timestamp Normalization and Point-in-Time Visibility Filter</h3>
+          <p class="hypothesis">Converts raw releases across heterogeneous timezone offsets into canonical ISO 8601 UTC timestamps, applies a decision cut-off instant at 2026-03-12T12:00:00Z, and verifies that exactly 3 records are visible without look-ahead.</p>
+          <pre><code class="language-python" data-run>"""QR1 Lesson 1 Inline Lab 1: Timestamp semantics and UTC normalization.
+
+Demonstrates conversion of heterogeneous exchange and release timestamps with
+explicit timezone offsets into canonical ISO 8601 UTC representation and
+verifies point-in-time visibility filters against decision cut-offs.
+Data: SIMULATED macroeconomic and market release records.
+"""
+
+from __future__ import annotations
+
+import datetime
+from typing import NamedTuple
+
+
+class RawRelease(NamedTuple):
+    series: str
+    obs_date: str
+    local_time: str  # YYYY-MM-DD HH:MM:SS
+    tz_offset: str  # e.g., "-05:00", "+00:00", "+09:00"
+    value: float
+
+
+class NormalizedRelease(NamedTuple):
+    series: str
+    obs_date: str
+    utc_timestamp: str  # YYYY-MM-DDTHH:MM:SSZ
+    value: float
+
+
+def parse_offset_to_timedelta(offset_str: str) -&gt; datetime.timedelta:
+    """Parse timezone offset string '+HH:MM' or '-HH:MM' into datetime.timedelta."""
+    sign = -1 if offset_str.startswith("-") else 1
+    raw = offset_str.lstrip("+-")
+    parts = raw.split(":")
+    hours = int(parts[0])
+    minutes = int(parts[1]) if len(parts) &gt; 1 else 0
+    return datetime.timedelta(minutes=sign * (hours * 60 + minutes))
+
+
+def normalize_to_utc(local_time_str: str, offset_str: str) -&gt; str:
+    """Convert local timestamp and offset to canonical ISO 8601 UTC 'YYYY-MM-DDTHH:MM:SSZ'."""
+    dt = datetime.datetime.strptime(local_time_str, "%Y-%m-%d %H:%M:%S")
+    offset = parse_offset_to_timedelta(offset_str)
+    # UTC = local - offset
+    utc_dt = dt - offset
+    return utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def filter_visible_releases(
+    releases: list[NormalizedRelease],
+    cutoff_utc: str,
+) -&gt; list[NormalizedRelease]:
+    """Filter records whose publication UTC timestamp is at or before cutoff_utc."""
+    return [r for r in releases if r.utc_timestamp &lt;= cutoff_utc]
+
+
+def main() -&gt; None:
+    # SIMULATED release records across global reporting venues
+    raw_data: list[RawRelease] = [
+        RawRelease("US_CPI", "2026-02-01", "2026-03-12 08:30:00", "-04:00", 312.4),
+        RawRelease("UK_CPI", "2026-02-01", "2026-03-12 07:00:00", "+00:00", 131.8),
+        RawRelease("JP_CPI", "2026-02-01", "2026-03-13 08:30:00", "+09:00", 106.2),
+        RawRelease("US_NFP", "2026-02-01", "2026-03-06 08:30:00", "-05:00", 225.0),
+        RawRelease("US_GDP", "2025-Q4", "2026-03-26 08:30:00", "-04:00", 28100.5),
+        RawRelease("DE_PMI", "2026-02-01", "2026-03-02 09:30:00", "+01:00", 47.3),
+    ]
+
+    normalized: list[NormalizedRelease] = []
+    for r in raw_data:
+        utc_ts = normalize_to_utc(r.local_time, r.tz_offset)
+        normalized.append(NormalizedRelease(r.series, r.obs_date, utc_ts, r.value))
+
+    print(f"Total raw releases ingested: {len(normalized)}")
+    for nr in sorted(normalized, key=lambda x: x.utc_timestamp):
+        print(f"  {nr.series:8s} obs={nr.obs_date:10s} published_utc={nr.utc_timestamp} val={nr.value:.1f}")
+
+    # Decision cut-off: 2026-03-12 12:00:00 UTC
+    decision_cutoff = "2026-03-12T12:00:00Z"
+    visible = filter_visible_releases(normalized, decision_cutoff)
+
+    # Brute-force verification
+    expected_series = {"DE_PMI", "US_NFP", "UK_CPI"}
+    actual_series = {r.series for r in visible}
+
+    print(f"Decision cut-off: {decision_cutoff}")
+    print(f"Visible records count: {len(visible)}")
+    print(f"Visible series: {sorted(actual_series)}")
+    mismatches = len(actual_series ^ expected_series)
+    print(f"Look-ahead filtering mismatches: {mismatches}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Total raw releases ingested: 6
+  DE_PMI   obs=2026-02-01 published_utc=2026-03-02T08:30:00Z val=47.3
+  US_NFP   obs=2026-02-01 published_utc=2026-03-06T13:30:00Z val=225.0
+  UK_CPI   obs=2026-02-01 published_utc=2026-03-12T07:00:00Z val=131.8
+  US_CPI   obs=2026-02-01 published_utc=2026-03-12T12:30:00Z val=312.4
+  JP_CPI   obs=2026-02-01 published_utc=2026-03-12T23:30:00Z val=106.2
+  US_GDP   obs=2025-Q4    published_utc=2026-03-26T12:30:00Z val=28100.5
+Decision cut-off: 2026-03-12T12:00:00Z
+Visible records count: 3
+Visible series: ['DE_PMI', 'UK_CPI', 'US_NFP']
+Look-ahead filtering mismatches: 0</pre>
+          <p class="interpretation">The lab confirms that US CPI published at 12:30:00 UTC and JP CPI published at 23:30:00 UTC are excluded at the 12:00:00 UTC cut-off, eliminating look-ahead leakage across international reporting venues.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2>4. Where the Canon Breaks</h2>
+        <p>Standard textbook quantitative finance frequently treats market data as synchronous discrete-time vectors \(X_t \in \mathbb{R}^p\) indexed by integer \(t \in \{1, \dots, n\}\). In real-world data engineering, this abstraction breaks down in three catastrophic ways:</p>
+        <ul>
+          <li><strong>Intake Timestamp Substitution (\(t_R \approx t_P\)):</strong> Research engineers often use the local file timestamp or database ingestion time as a proxy for publication time. When historical data is re-ingested or backfilled during an infrastructure migration, \(t_R\) jumps forward to the migration date, artificially blinding the backtest to historical information that was genuinely available.</li>
+          <li><strong>Naive Date Truncation:</strong> Truncating a timestamp from <code>2026-03-12T12:30:00Z</code> to <code>2026-03-12</code> and joining against daily closing prices aligns morning economic news with market close prices on the same date, assuming the entire trading day could anticipate information released during market hours.</li>
+          <li><strong>Clock Slew and Non-Monotonic System Clocks:</strong> NTP (Network Time Protocol) step adjustments can cause system clocks to jump backward by seconds, reversing the apparent chronological sequence of order placements and trade executions.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2>5. Common Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">"Using daily observation dates (e.g. YYYY-MM-DD) avoids timezone and timestamp complexity in quantitative backtesting."</p>
+            <p class="right">A date without an explicit timestamp and timezone is an interval of 24 hours whose physical alignment shifts by up to 26 hours across global jurisdictions. Joining on plain dates causes severe look-ahead bias by allowing morning trades to condition on afternoon releases.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">"Converting local times to UTC using standard library local time objects is sufficient without validating DST transition gaps."</p>
+            <p class="right">In the spring DST transition, the local hour between 02:00:00 and 02:59:59 does not exist. Default timezone libraries may silently roll forward or map non-existent wall times to standard time offsets, introducing systematic 1-hour timestamp errors.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">"Look-ahead bias only occurs when backtest code explicitly references future index indices like price[t+1]."</p>
+            <p class="right">Subtle look-ahead bias occurs without referencing future indices whenever historical data has been revised in-place by the vendor, when corporate actions are adjusted using future split events, or when constituent universe filters condition on modern index membership.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2>6. Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p1-1">
+            <p>Convert the local announcement time "2026-03-12 08:30:00" in New York (EDT, UTC−4) and "2026-03-12 13:30:00" in London (GMT, UTC+0) to canonical ISO 8601 UTC timestamps.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For New York in EDT (UTC−4), \(\text{UTC} = \text{Local} - (-4\,\text{hours}) = \text{08:30:00} + 4\,\text{hours} = \text{12:30:00}\). The canonical string is <code>2026-03-12T12:30:00Z</code>. For London in GMT (UTC+0), \(\text{UTC} = \text{Local} - 0 = \text{13:30:00}\). The canonical string is <code>2026-03-12T13:30:00Z</code>. Notice that despite identical minute offsets, the New York announcement occurs one hour prior to the London release in physical time.</p>
+            </details>
+          </div>
+          <div class="problem" id="p1-2">
+            <p>Determine whether the wall-clock timestamp "2026-03-08 02:30:00" in New York exists in civil time, and state the required ingestion validation behavior.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The second Sunday of March in 2026 is March 8. At 02:00:00 local time, clocks advance immediately to 03:00:00 EDT. Therefore, "2026-03-08 02:30:00" represents a non-existent wall-clock instant in America/New_York. The ingestion engine must reject this timestamp with a <code>ValueError</code> naming the spring DST gap condition rather than silently imputing an offset.</p>
+            </details>
+          </div>
+          <div class="problem" id="p1-3">
+            <p>Given observations with publication timestamps \(t_P \in \{\text{09:30:00Z}, \text{09:45:00Z}, \text{10:00:00Z}\}\), evaluate which records are visible at cut-off \(T = \text{09:45:00Z}\) under non-strict inequality.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Point-in-time visibility admits all observations satisfying \(t_P \le T\). For \(T = \text{09:45:00Z}\), \(\text{09:30:00Z} \le T\) (admitted) and \(\text{09:45:00Z} \le T\) (admitted by non-strict equality). The record at \(\text{10:00:00Z} > T\) is excluded. Exactly 2 observations are visible.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p2-1">
+            <p>Prove that filtering observations by non-strict inequality \(t_P \le T\) forms a monotonic information filtration \(\mathcal{F}_{T_1}^{\mathrm{pub}} \subseteq \mathcal{F}_{T_2}^{\mathrm{pub}}\) for any \(T_1 \le T_2\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\mathcal{S}(T) = \{x \in \mathcal{D} : t_P(x) \le T\}\). For any \(T_1 \le T_2\), if \(x \in \mathcal{S}(T_1)\), then by transitivity of real ordering, \(t_P(x) \le T_1 \le T_2\), which implies \(x \in \mathcal{S}(T_2)\). Thus \(\mathcal{S}(T_1) \subseteq \mathcal{S}(T_2)\). Because the \(\sigma\)-algebra generated by a subset of random variables is contained within the \(\sigma\)-algebra generated by a superset, \(\sigma(\mathcal{S}(T_1)) \subseteq \sigma(\mathcal{S}(T_2))\), establishing monotonicity \(\mathcal{F}_{T_1}^{\mathrm{pub}} \subseteq \mathcal{F}_{T_2}^{\mathrm{pub}}\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p2-2">
+            <p>Prove that if a trading strategy uses a signal \(S_t = \mathbb{E}[P_{t+\tau} \mid \mathcal{F}_t^{\mathrm{pub}}]\) computed with perfect foresight of \(P_{t+\tau}\), the simulated strategy Sharpe ratio can diverge to infinity as sample size \(n \to \infty\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under perfect foresight, the strategy sets allocation \(w_t = \mathrm{sign}(P_{t+\tau} - P_t)\). The one-period return is \(R_t = w_t \cdot \frac{P_{t+\tau} - P_t}{P_t} = \left|\frac{P_{t+\tau} - P_t}{P_t}\right| \ge 0\). If prices follow any non-degenerate diffusion \(dP_t = \mu P_t dt + \sigma P_t dW_t\), \(\mathbb{E}[|R_t|] > 0\) while the probability of negative return is identically zero. In finite samples with non-zero variation, the sample standard deviation of downside returns is zero, causing the annualized Sharpe ratio \(\frac{\bar{R}}{\hat{\sigma}_R} \sqrt{252}\) to diverge to infinity as \(n \to \infty\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p2-3">
+            <p>Prove that ISO 8601 UTC timestamp strings formatted as <code>YYYY-MM-DDTHH:MM:SSZ</code> satisfy the axioms of a strict total order under standard byte-by-byte lexicographical comparison.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Byte-by-byte comparison on ASCII strings operates over the alphabet of digits <code>0</code> through <code>9</code> and delimiters <code>-</code>, <code>T</code>, <code>:</code>, <code>Z</code>. Because all timestamps share identical length (20 characters) and identical delimiter positions, two strings differ only at digit positions. Since ASCII codes for digits satisfy \(\mathrm{code}('0') < \mathrm{code}('1') < \dots < \mathrm{code}('9')\), lexicographical comparison at the first differing index coincides exactly with numerical comparison of the corresponding temporal subfield. Transitivity, trichotomy, and anti-symmetry follow directly from the total ordering of the integers.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p3-1">
+            <p>In a simulated backtest of a momentum strategy from 2020 to 2025, substituting intake time \(t_R\) for publication time \(t_P\) causes 42 macroeconomic releases to appear 6 hours earlier than their actual dissemination. Calculate the resulting classification error rate if 840 trading decisions were evaluated.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The total decision points evaluated is \(N = 840\). The number of corrupted decision points is \(n_{\mathrm{err}} = 42\). The empirical classification error rate is \(\frac{n_{\mathrm{err}}}{N} = \frac{42}{840} = 0.050\) or 5.0%. In quantitative trading, a 5% look-ahead contamination rate in macro factors is sufficient to turn a negative-expectancy strategy into an apparent high-Sharpe backtest.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-2">
+            <p>Explain how clock synchronization drift of 250 milliseconds between an exchange matching engine and a regional broker's intake server can generate false arbitrage signals in cross-venue pairs trading.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>If Venue A's clock lags Venue B's clock by 250 ms, a price move that occurred at Venue A at 10:00:00.000 UTC will be timestamped as 09:59:59.750. When merged with Venue B records timestamped at 10:00:00.000, Venue A appears to have moved 250 ms prior to Venue B. A pairs trading model will incorrectly infer that Venue A reliably leads Venue B, whereas in physical reality the move occurred simultaneously or Venue B led.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-3">
+            <p>A data provider retroactively updates its database, replacing preliminary economic estimates with final revised figures. Describe an automated empirical audit to detect such in-place overwrites.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The audit maintains an append-only cryptographic manifest of daily downloaded raw payloads, recording SHA-256 digests. On each daily ingestion, the audit compares new values for historical dates against the stored snapshots. If an observation for date \(t\) changes value without a corresponding new publication vintage timestamp \(t_P > t_{P,\mathrm{prior}}\), the audit flags an illegal retroactive overwrite, halting pipeline ingestion.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p4-1">
+            <p>Design a formal specification for a bitemporal ingestion pipeline that ingests continuous financial news headlines, extracting NLP sentiment scores without introducing look-ahead bias.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The specification mandates three immutable metadata fields for every news article: (1) <code>source_publish_time</code>: the ISO 8601 UTC timestamp extracted from the publisher's metadata; (2) <code>feed_receipt_time</code>: the socket intake timestamp; (3) <code>nlp_computation_time</code>: the timestamp when NLP model inference completed. The trading strategy signal filter at decision time \(t\) must strictly enforce \(\max(\text{source\_publish\_time}, \text{nlp\_computation\_time}) \le t\), preventing the model from acting on news before inference has finished.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-2">
+            <p>Analyze the trade-offs between leap-second smearing (used by major cloud providers like AWS and Google) and true UTC leap-second step insertion in quantitative algorithmic execution.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>True UTC inserts an explicit 61st second (<code>23:59:60Z</code>), which causes POSIX systems that assume 86,400 seconds per day to crash or repeat timestamps. Leap smearing spreads the 1-second adjustment over a 24-hour window by slowing the clock by \(\approx 11.6\,\mu\mathrm{s}/\mathrm{s}\). However, smearing introduces a clock skew of up to 500 ms relative to raw GPS/PTP time, which can corrupt cross-venue order sequencing between smeared cloud servers and hardware-synchronized exchange gateways.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-3">
+            <p>How does the presence of look-ahead bias in factor backtests interact with the multiple testing adjustments formalized by Harvey &amp; Liu (2015)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Harvey &amp; Liu (2015) demonstrate that multiple testing inflates apparent \(t\)-statistics due to selection over many trials. When factor candidates also suffer from look-ahead bias, the baseline distribution of test statistics under the null is fundamentally contaminated: the true null \(t\)-distribution shifts positively from mean 0 to \(\mu > 0\). As a result, standard multiple testing adjustments (such as Bonferroni or Benjamini-Hochberg) fail to control the false discovery rate, because the underlying data violates the exchangeability null hypothesis.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2>7. Key Results &amp; Verification Matrix</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Formal definition of timestamp semantics across event, publication, and intake instants</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Definition 1.1 (Timestamp Semantics)</td>
+              </tr>
+              <tr>
+                <td>Monotonic UTC sorting identity: lexicographical order equals chronological order</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 1.1 (String Sorting Identity)</td>
+              </tr>
+              <tr>
+                <td>Information Set Invariance Theorem: measurability condition for zero look-ahead bias</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 1.2 (Information Set Invariance)</td>
+              </tr>
+              <tr>
+                <td>Point-in-time visibility count on simulated international releases at cut-off instant</td>
+                <td><span class="grade" data-grade="C">C</span></td>
+                <td>Lab QR1-L01-1, SIMULATED release fixtures</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR1" data-page="L01" data-cards="cards.json">
+        <h2 id="s7">8. Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does \(t_P(x)\) designate in formal timestamp semantics?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q1"> <span>The instant an economic transaction occurred in the real world</span></label>
+              <label class="option" data-correct><input type="radio" name="L01q1"> <span>The earliest instant the datum became publicly available to market participants</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>The local server disk commit timestamp</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>The end of the reporting calendar period</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>\(t_P\) is the publication or knowledge timestamp, representing when the information became available for trading.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why must timestamps ending in 'Z' (ISO 8601 UTC) be enforced across research stores?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q2"> <span>Fixed-width UTC strings guarantee that string lexicographical sorting matches chronological time ordering</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>It compresses disk storage by 50 percent compared to UNIX integers</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>It automatically eliminates market microstructure noise</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>It prevents high-frequency trading latency arbitrage</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Theorem 1.1 proves that ISO 8601 fixed-width UTC strings preserve chronological ordering under byte-level string sorting.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens when a trading strategy conditions on an observation where \(t_P(x) > t_{\mathrm{decision}}\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q3"> <span>Execution latency increases by 100 milliseconds</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>The strategy automatically switches to market orders</span></label>
+              <label class="option" data-correct><input type="radio" name="L01q3"> <span>Look-ahead bias is introduced, invalidating backtest replicability</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>Transaction cost models become non-linear</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Conditioning on future data violates measurability with respect to contemporaneous publication filtration \(\mathcal{F}_t^{\mathrm{pub}}\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="3" data-tolerance="0">
+            <p class="prompt">In Lab 1, how many international releases were visible at the 2026-03-12T12:00:00Z decision cut-off?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Exactly 3 releases (DE_PMI, US_NFP, UK_CPI) had published timestamps at or before 12:00:00 UTC.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which offset applies to New York wall time during Daylight Saving Time (EDT)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q5"> <span>UTC−5</span></label>
+              <label class="option" data-correct><input type="radio" name="L01q5"> <span>UTC−4</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>UTC−6</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>UTC+0</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Eastern Daylight Time is 4 hours behind UTC (UTC−4).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How should a robust ingestion engine handle the autumn DST overlap interval [01:00, 02:00) in New York?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q6"> <span>Deterministically choose the earlier physical instant (daylight time UTC−4)</span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span>Raise a fatal system crash</span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span>Average the two possible UTC timestamps</span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span>Drop all records received during that hour</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The established convention resolves ambiguous wall-clock timestamps by choosing the earlier chronological instant (daylight time).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What inequality must hold across event time \(t_E\), publication time \(t_P\), and intake time \(t_R\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q7"> <span>\(t_E \le t_P \le t_R\)</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>\(t_P \le t_E \le t_R\)</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>\(t_R \le t_P \le t_E\)</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>\(t_E = t_P = t_R\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>An event must occur before or coincident with publication, and publication must precede or coincide with pipeline intake.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the primary danger of truncating ISO timestamps to plain calendar dates (YYYY-MM-DD) before joining?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q8"> <span>It introduces look-ahead bias by allowing intra-day trades to observe information published later that day</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>It increases database memory usage</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>It causes SQL queries to fail syntax checks</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>It prevents gzip compression of CSV files</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Date truncation collapses the intra-day time arrow, leaking afternoon releases into morning decision points.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>9. References</h2>
+        <ol data-references>
+        </ol>
+      </section>
+
+      <nav class="page-nav">
+        <a class="next" href="L02.html">L02 · Data Vintages &amp; Bitemporal Data Models ›</a>
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">QR1 · Research Data Engineering · Lesson 01 · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

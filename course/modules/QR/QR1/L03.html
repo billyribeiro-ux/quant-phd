@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR1" data-page="L03" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Point-in-Time Merges &amp; Temporal Joins · QR1 L03</title>
+  <meta name="description" content="Temporal ASOF joins, point-in-time event stream alignment, deterministic sequence tie-breaking, binary search complexity, and prevention of look-ahead leakage.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR1 Research Data Engineering</a><span class="sep">›</span>
+      <span>L03</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 03 · 8 study hours · Part QR</p>
+        <h1>Point-in-Time Merges &amp; Temporal Joins</h1>
+        <p class="why-it-matters">Financial market events never arrive on aligned, synchronized clock ticks. Trade executions occur at irregular microseconds, quotes update continuously, and macroeconomic releases cross wire services at scheduled morning intervals. Merging these asynchronous streams using traditional relational equi-joins either drops almost all observations or introduces fatal look-ahead bias. The temporal <a class="concept" data-concept="asof-join" href="../../../concepts.html#asof-join">ASOF join</a> provides the mathematical foundation for point-in-time data alignment without information leakage.</p>
+      </header>
+
+      <section id="asynchronous-alignment">
+        <h2 id="s1">1. The Asynchronous Alignment Problem</h2>
+        <p>In standard relational database management systems, tables are joined using equi-joins on foreign keys: \(L \bowtie_{L.k = R.k} R\). When the joining key represents continuous time, exact timestamp equality (\(t_L = t_R\)) fails catastrophically:</p>
+        <ul>
+          <li>A trade executing at 09:30:00.123456Z will almost never find an exchange quote updated at that identical microsecond. An equi-join drops over 99.9% of market trades.</li>
+          <li>Rounding timestamps to coarse intervals (e.g. 1-second or 1-minute buckets) destroys causal ordering. Multiple quotes within the same bucket cause Cartesian product row duplication, while trades in the first millisecond of the bucket observe quotes published 59 seconds later in the same bucket, introducing severe look-ahead leakage.</li>
+        </ul>
+        <p>Quantitative research requires <a class="concept" data-concept="point-in-time-data" href="../../../concepts.html#point-in-time-data">point-in-time data</a> alignment that answers: <em>"What was the most recently prevailing information published at or prior to the exact instant of this decision or trade?"</em></p>
+      </section>
+
+      <section id="asof-semantics">
+        <h2 id="s2">2. Mathematical Semantics of Temporal ASOF Joins</h2>
+        <p>The temporal ASOF join formalizes prevailing state alignment using ordered inequality search.</p>
+
+        <div class="block definition">
+          <p class="block-title">Definition 3.1 · Temporal ASOF Join Operator</p>
+          <p>Let \(L = \{(t_i^L, x_i)\}_{i=1}^N\) be a left time series (e.g. trade execution events or model rebalancing evaluation instants) with strictly increasing timestamps \(t_1^L < t_2^L < \dots < t_N^L\). Let \(R = \{(t_j^R, s_j^R, y_j)\}_{j=1}^M\) be a right time series (e.g. prevailing quotes or published data vintages), where \(t_j^R\) is the publication timestamp and \(s_j^R \in \mathbb{N}\) is a monotonic ingestion sequence counter.</p>
+          <p>The <strong>temporal ASOF join</strong> \(L \bowtie_{\mathrm{ASOF}} R\) associates each left record \((t_i^L, x_i)\) with the right record \(j^*(i)\) defined by:</p>
+          \[
+          j^*(i) = \arg\max_{j: t_j^R \le t_i^L} \left(t_j^R, s_j^R\right)
+          \]
+          <p>If the candidate set \(\{j : t_j^R \le t_i^L\} = \emptyset\), the join assigns NULL (or <code>None</code> in Python) to the right-side attributes for left row \(i\).</p>
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 3.1 · Non-Strict Inequality and Point-in-Time Causality</p>
+          <p>The inequality \(t_j^R \le t_i^L\) is non-strict. If a quote or economic figure is published at the exact instant of query \(t_j^R = t_i^L\), it is contemporaneous and therefore visible at \(t_i^L\). If the query instant precedes the earliest right record (\(t_i^L < t_1^R\)), the result is strictly NULL, preventing backward extrapolation.</p>
+        </div>
+      </section>
+
+      <section id="tie-breaking">
+        <h2 id="s3">3. Deterministic Sequence Tie-Breaking</h2>
+        <p>In high-throughput market feeds, multiple updates frequently share identical timestamps due to clock discretization (for example, millisecond-resolution exchange feeds emitting multiple quote updates within a single clock cycle).</p>
+
+        <div class="block definition">
+          <p class="block-title">Definition 3.2 · Total Ordering on Time-Sequence Pairs</p>
+          <p>Let \(\mathbb{T} \times \mathbb{N}\) be the product space of UTC timestamps and integer sequence numbers. The lexicographical order \(\le_{\mathrm{lex}}\) defines a strict total order:</p>
+          \[
+          (t_1, s_1) \le_{\mathrm{lex}} (t_2, s_2) \iff (t_1 < t_2) \lor (t_1 = t_2 \land s_1 \le s_2)
+          \]
+          <p>When two right-side records share the exact same timestamp \(t_{j_1}^R = t_{j_2}^R\), the ASOF join selects the record with the higher ingestion sequence counter: \(\max(s_{j_1}, s_{j_2})\). This guarantees bit-for-bit deterministic query execution across independent database engines.</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 3.1 · Monotonicity and No-Lookahead of ASOF Joins</span>
+          <p>Let \(L\) be sorted by \(t_i^L\) and \(R\) be sorted by \((t_j^R, s_j^R)\). For every matched pair \((i, j^*(i))\) produced by the ASOF join operator:</p>
+          <ol>
+            <li><strong>No-Lookahead Guarantee:</strong> \(t_{j^*(i)}^R \le t_i^L\). The right record's publication timestamp never exceeds the left evaluation timestamp.</li>
+            <li><strong>Monotonic Right Indices:</strong> If \(t_{i_1}^L \le t_{i_2}^L\), then \(j^*(i_1) \le j^*(i_2)\). The matched right index is a non-decreasing function of left evaluation time.</li>
+          </ol>
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>Part 1 follows directly from the definition of the candidate set \(\mathcal{C}(i) = \{j : t_j^R \le t_i^L\}\). Because \(j^*(i) \in \mathcal{C}(i)\), \(t_{j^*(i)}^R \le t_i^L\) by construction.</p>
+          <p>For Part 2, let \(t_{i_1}^L \le t_{i_2}^L\). For any \(j \in \mathcal{C}(i_1)\), \(t_j^R \le t_{i_1}^L \le t_{i_2}^L\), which implies \(j \in \mathcal{C}(i_2)\). Hence \(\mathcal{C}(i_1) \subseteq \mathcal{C}(i_2)\). Because \(j^*(i_1)\) is the maximal element of \(\mathcal{C}(i_1)\) under \(\le_{\mathrm{lex}}\) and \(\mathcal{C}(i_2)\) contains \(\mathcal{C}(i_1)\), the maximal element of \(\mathcal{C}(i_2)\) must satisfy \(j^*(i_1) \le_{\mathrm{lex}} j^*(i_2)\). Since right records are sorted, \(j^*(i_1) \le j^*(i_2)\). This establishes monotonicity.</p>
+        </div>
+      </section>
+
+      <section id="algorithms-and-sql">
+        <h2 id="s4">4. Search Algorithms &amp; SQL Query Patterns</h2>
+        <p>The algorithmic efficiency of an ASOF join depends on search strategy:</p>
+        <ul>
+          <li><strong>Brute-Force Scan:</strong> For each left row \(i\), scanning all \(M\) right records requires \(O(N \cdot M)\) time, which is computationally intractable for millions of ticks.</li>
+          <li><strong>Binary Search (Bisect):</strong> With right records pre-sorted in \(O(M \log M)\) time, each left row finds its predecessor via <code>bisect_right</code> in \(O(\log M)\) time. The total join complexity is \(O(N \log M)\).</li>
+          <li><strong>Two-Pointer Merge:</strong> Because Theorem 3.1 proves right indices are monotonic, maintaining a moving right pointer across sorted \(L\) achieves optimal \(O(N + M)\) linear time complexity.</li>
+        </ul>
+
+        <p><em>Curriculum Lab Engine Note:</em> The curriculum brief names "DuckDB ASOF JOIN point-in-time merge." Per the program architectural rulings (Phase 2 Architect Ruling 4), local and browser testing environments execute a verified pure-Python ASOF implementation. The corresponding SQL syntax is presented below for production database reference:</p>
+
+        <pre><code class="language-sql">-- SQL reference pattern (DuckDB / SQLite ASOF join pattern, not run)
+SELECT
+    t.trade_id,
+    t.timestamp AS trade_time,
+    t.price AS trade_price,
+    q.bid,
+    q.ask,
+    q.timestamp AS quote_time
+FROM trades t
+ASOF JOIN quotes q
+    ON t.symbol = q.symbol
+   AND t.timestamp &gt;= q.timestamp;</code></pre>
+
+        <section class="lab" id="lab-QR1-L03-1" data-runtime="python">
+          <h3>Lab 1 · Pure-Python ASOF Join with Sequence Tie-Breaking</h3>
+          <p class="hypothesis">Executes an O(N log M) binary search ASOF join against asynchronous simulated records containing identical timestamp ties, comparing outputs against an exhaustive brute-force oracle to verify zero mismatches.</p>
+          <pre><code class="language-python" data-run>"""QR1 Lesson 3 Inline Lab 1: Pure-Python ASOF join with deterministic tie-breaking.
+
+Demonstrates temporal ASOF matching between evaluation query timestamps and
+asynchronous right-side information records with sequence-number tie-breaking,
+and verifies binary-search implementation against an exhaustive brute-force oracle.
+Data: SIMULATED trades and quotes event streams.
+"""
+
+from __future__ import annotations
+
+import bisect
+from typing import NamedTuple
+
+
+class InfoRecord(NamedTuple):
+    timestamp: str  # YYYY-MM-DDTHH:MM:SSZ
+    seq: int  # Ingestion sequence counter (tie-breaker)
+    key: str  # (timestamp, seq) key for total ordering
+    value: float
+
+
+class QueryRecord(NamedTuple):
+    query_id: int
+    timestamp: str
+
+
+def make_info_record(timestamp: str, seq: int, value: float) -&gt; InfoRecord:
+    key = f"{timestamp}:{seq:08d}"
+    return InfoRecord(timestamp, seq, key, value)
+
+
+def asof_join_binary_search(
+    queries: list[QueryRecord],
+    records: list[InfoRecord],
+) -&gt; list[tuple[int, float | None]]:
+    """O(N log M) ASOF join using binary search on sorted (timestamp, seq) keys."""
+    sorted_records = sorted(records, key=lambda r: (r.timestamp, r.seq))
+    record_timestamps = [r.timestamp for r in sorted_records]
+
+    results: list[tuple[int, float | None]] = []
+    for q in queries:
+        # bisect_right finds insertion point after all records with timestamp &lt;= q.timestamp
+        idx = bisect.bisect_right(record_timestamps, q.timestamp)
+        if idx == 0:
+            results.append((q.query_id, None))
+        else:
+            # The record immediately preceding idx is the latest published at or before q.timestamp
+            results.append((q.query_id, sorted_records[idx - 1].value))
+    return results
+
+
+def asof_join_brute_force(
+    queries: list[QueryRecord],
+    records: list[InfoRecord],
+) -&gt; list[tuple[int, float | None]]:
+    """O(N * M) oracle scan: exhaustively evaluates all eligible records."""
+    results: list[tuple[int, float | None]] = []
+    for q in queries:
+        eligible = [r for r in records if r.timestamp &lt;= q.timestamp]
+        if not eligible:
+            results.append((q.query_id, None))
+        else:
+            best = max(eligible, key=lambda r: (r.timestamp, r.seq))
+            results.append((q.query_id, best.value))
+    return results
+
+
+def main() -&gt; None:
+    # SIMULATED right-side records, including simultaneous timestamps with distinct seq
+    records: list[InfoRecord] = [
+        make_info_record("2026-03-01T09:30:00Z", 1, 100.50),
+        make_info_record("2026-03-01T09:30:00Z", 2, 100.55),  # Tie at 09:30:00, seq 2 wins
+        make_info_record("2026-03-01T09:35:00Z", 3, 101.20),
+        make_info_record("2026-03-01T09:40:00Z", 4, 101.80),
+        make_info_record("2026-03-01T09:45:00Z", 5, 102.10),
+        make_info_record("2026-03-01T09:45:00Z", 6, 102.15),  # Tie at 09:45:00, seq 6 wins
+        make_info_record("2026-03-01T10:00:00Z", 7, 103.00),
+    ]
+
+    # SIMULATED left-side query points (some before any record, some exact matches, some interior)
+    queries: list[QueryRecord] = [
+        QueryRecord(1, "2026-03-01T09:25:00Z"),  # Prior to first record -&gt; None
+        QueryRecord(2, "2026-03-01T09:30:00Z"),  # Exact match on tie -&gt; 100.55
+        QueryRecord(3, "2026-03-01T09:32:00Z"),  # Interior -&gt; 100.55
+        QueryRecord(4, "2026-03-01T09:35:00Z"),  # Exact match -&gt; 101.20
+        QueryRecord(5, "2026-03-01T09:44:59Z"),  # Immediately before 09:45 -&gt; 101.80
+        QueryRecord(6, "2026-03-01T09:45:00Z"),  # Exact match on tie -&gt; 102.15
+        QueryRecord(7, "2026-03-01T10:15:00Z"),  # Subsequent -&gt; 103.00
+    ]
+
+    print(f"Total information records: {len(records)}")
+    print(f"Total query evaluation points: {len(queries)}")
+
+    bs_results = asof_join_binary_search(queries, records)
+    bf_results = asof_join_brute_force(queries, records)
+
+    print("\nQuery results (Binary Search vs Brute Force Oracle):")
+    mismatches = 0
+    for (qid, bs_val), (_, bf_val) in zip(bs_results, bf_results, strict=True):
+        q = next(q for q in queries if q.query_id == qid)
+        match = bs_val == bf_val
+        if not match:
+            mismatches += 1
+        val_str = f"{bs_val:.2f}" if bs_val is not None else "None"
+        print(f"  Query {qid} at {q.timestamp}: matched={val_str} (consistent: {match})")
+
+    print(f"\nTotal verification queries: {len(queries)}")
+    print(f"Algorithm comparison mismatches: {mismatches}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Total information records: 7
+Total query evaluation points: 7
+
+Query results (Binary Search vs Brute Force Oracle):
+  Query 1 at 2026-03-01T09:25:00Z: matched=None (consistent: True)
+  Query 2 at 2026-03-01T09:30:00Z: matched=100.55 (consistent: True)
+  Query 3 at 2026-03-01T09:32:00Z: matched=100.55 (consistent: True)
+  Query 4 at 2026-03-01T09:35:00Z: matched=101.20 (consistent: True)
+  Query 5 at 2026-03-01T09:44:59Z: matched=101.80 (consistent: True)
+  Query 6 at 2026-03-01T09:45:00Z: matched=102.15 (consistent: True)
+  Query 7 at 2026-03-01T10:15:00Z: matched=103.00 (consistent: True)
+
+Total verification queries: 7
+Algorithm comparison mismatches: 0</pre>
+          <p class="interpretation">The lab confirms that binary search ASOF matching achieves 100% agreement with the brute-force oracle across simultaneous timestamps, correctly resolving ties using ingestion sequence numbers.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s5">5. Where the Canon Breaks</h2>
+        <p>Temporal merges fail in subtle and damaging ways when standard assumptions are violated:</p>
+        <ul>
+          <li><strong>Unsorted Left or Right Arrays:</strong> Binary search algorithms silently return corrupted indices when inputs are not strictly sorted by timestamp. Out-of-order packets cause binary search to discard valid records.</li>
+          <li><strong>Inverted Asymmetry in Join Syntax:</strong> Writing <code>t.timestamp &lt;= q.timestamp</code> instead of <code>t.timestamp &gt;= q.timestamp</code> performs a forward-looking join, matching each trade with the <em>next future quote</em>, introducing 100% look-ahead contamination.</li>
+          <li><strong>Unbounded Backward Lookups:</strong> Standard ASOF joins search backward without limit. If a security halted trading three days ago, an unconstrained ASOF join matches today's trades against three-day-old stale quotes. Production engines must enforce a maximum lookback horizon \(\Delta t_{\max}\) (e.g. 5 minutes or 1 day).</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s6">6. Common Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">"An ASOF join finds the observation that is closest in absolute time to the query instant, whether before or after."</p>
+            <p class="right">An ASOF join searches strictly backward (\(t_R \le t_L\)). Selecting a closer observation that occurred after the query instant introduces look-ahead bias.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">"Rounding high-frequency timestamps to nearest 100-millisecond bars makes time series alignment equivalent to an ASOF join."</p>
+            <p class="right">Rounding timestamps clusters asynchronous events into artificial discrete buckets, destroying microsecond trade-quote causality and causing duplicate-key cardinality multiplication.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">"When two quotes have the same exchange timestamp, selecting either quote at random has negligible impact on strategy backtests."</p>
+            <p class="right">Non-deterministic tie-breaking produces unstable, non-reproducible research results and can cause test suites and live execution reconciliations to diverge randomly.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s7">7. Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p1-1">
+            <p>Given right records at timestamps \(R = [\text{10:00:01}, \text{10:00:04}, \text{10:00:07}, \text{10:00:10}]\) with values \([10, 20, 30, 40]\), determine the ASOF join values for left query timestamps \(L = [\text{10:00:00}, \text{10:00:04}, \text{10:00:06}, \text{10:00:12}]\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For \(t = \text{10:00:00}\), no right record satisfies \(t_R \le t\), so output is <code>None</code>. For \(t = \text{10:00:04}\), non-strict inequality matches \(\text{10:00:04}\) with value 20. For \(t = \text{10:00:06}\), the latest record is \(\text{10:00:04}\) with value 20. For \(t = \text{10:00:12}\), the latest record is \(\text{10:00:10}\) with value 40. Output vector: <code>[None, 20, 20, 40]</code>.</p>
+            </details>
+          </div>
+          <div class="problem" id="p1-2">
+            <p>Compute the theoretical number of comparisons required to execute an ASOF join of \(N = 100{,}000\) trades against \(M = 1{,}000{,}000\) quotes using binary search versus an unindexed brute-force scan.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For binary search, \(\log_2(M) = \log_2(10^6) \approx 20\) comparisons per trade. Total binary search comparisons: \(N \log_2 M \approx 100{,}000 \times 20 = 2 \times 10^6\) operations. For an unindexed brute-force scan, the expected comparisons are \(N \times M / 2 = 100{,}000 \times 500{,}000 = 5 \times 10^{10}\) operations. Binary search is approximately 25,000 times faster.</p>
+            </details>
+          </div>
+          <div class="problem" id="p1-3">
+            <p>Two quote updates share identical timestamp "2026-03-01T09:30:00Z". Record A has <code>seq=12</code>, <code>bid=100.20</code>; Record B has <code>seq=15</code>, <code>bid=100.25</code>. Which quote prevailing price is returned at cut-off "2026-03-01T09:30:00Z"?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under Definition 3.2, time-sequence pairs are ordered by \((t, seq)\). Both records satisfy \(t \le \text{09:30:00Z}\). Comparing sequence numbers, \(15 > 12\), so Record B dominates Record A. The prevailing price returned is 100.25.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p2-1">
+            <p>Prove that if \(t_N^L < t_1^R\), the ASOF join of \(L\) against \(R\) produces exactly \(N\) NULL matches.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(L\) be sorted so that \(t_1^L \le t_2^L \le \dots \le t_N^L\). The premise states that \(t_N^L < t_1^R\). By transitivity of ordering, for every \(i \in \{1, \dots, N\}\), \(t_i^L \le t_N^L < t_1^R \le t_j^R\) for all \(j \in \{1, \dots, M\}\). Thus the candidate set \(\mathcal{C}(i) = \{j : t_j^R \le t_i^L\} = \emptyset\) for every left row \(i\). By Definition 3.1, an empty candidate set assigns NULL. Therefore, all \(N\) left records produce NULL matches.</p>
+            </details>
+          </div>
+          <div class="problem" id="p2-2">
+            <p>Prove that the two-pointer merge algorithm for sorted streams \(L\) and \(R\) executes in \(O(N + M)\) time complexity.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let left pointer \(i\) start at 0 and right pointer \(j\) start at 0. At each iteration, the algorithm either advances \(j\) while \(j < M\) and \(t_{j+1}^R \le t_i^L\), or records match \(j\) for \(i\) and advances \(i \leftarrow i + 1\). Because Theorem 3.1 guarantees that right indices are monotonic (\(j^*(i_1) \le j^*(i_2)\)), \(j\) never decrements. The pointer \(i\) increments exactly \(N\) times, and the pointer \(j\) increments at most \(M\) times. The total number of pointer advances is bounded by \(N + M\), proving \(O(N + M)\) linear complexity.</p>
+            </details>
+          </div>
+          <div class="problem" id="p2-3">
+            <p>Prove that an ASOF join preserves relational cardinality: the output relation of \(L \bowtie_{\mathrm{ASOF}} R\) has cardinality exactly equal to the cardinality of \(L\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By Definition 3.1, the ASOF join defines a single-valued mapping \(j^*: \{1, \dots, N\} \to \{1, \dots, M\} \cup \{\mathrm{NULL}\}\). For each left index \(i \in \{1, \dots, N\}\), \(j^*(i)\) is either the unique maximal element of \(\mathcal{C}(i)\) (guaranteed unique by the strict total ordering of \((t, seq)\)) or NULL if \(\mathcal{C}(i)\) is empty. Because every left row maps to exactly one outcome, no left row is dropped and no left row is duplicated. Hence \(|L \bowtie_{\mathrm{ASOF}} R| = |L| = N\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p3-1">
+            <p>An algorithmic execution desk notices that joining trade fills to market quotes using an equi-join on millisecond timestamps drops 38% of fills. Explain the architectural flaw and specify the exact ASOF join fix.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The architectural flaw is assuming that quote updates and trade executions occur synchronously at the identical millisecond. Because market makers update quotes asynchronously relative to incoming taker orders, trades occur between quote updates. The fix replaces the millisecond equi-join with an ASOF join on <code>trade.timestamp &gt;= quote.timestamp</code> partitioned by symbol, retaining 100% of trades with their prevailing pre-trade quote.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-2">
+            <p>In a tick-by-tick backtest of 500,000 trades, an unconstrained ASOF join matched 1,200 trades against quotes from the previous trading day due to morning opening auction delays. Describe how adding a lookback tolerance \(\Delta t_{\max} = \text{5 minutes}\) alters the output.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Without a tolerance, trades during the morning delay match stale quotes from yesterday's close, distorting slippage calculations. Adding \(\Delta t_{\max} = 5\,\text{minutes}\) enforces the condition \(t_L - t_{j^*(L)}^R \le 300\,\text{seconds}\). For the 1,200 opening trades where the gap exceeds 300 seconds, the join assigns NULL, correctly alerting the research engine to missing contemporaneous quote coverage.</p>
+            </details>
+          </div>
+          <div class="problem" id="p3-3">
+            <p>Measure the memory overhead of maintaining a composite index on <code>(source, series, obs_date, published, seq)</code> in SQLite for 1,000,000 vintage rows assuming an average B-tree node size of 4096 bytes.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In SQLite, each B-tree leaf entry for a composite text/integer index requires approximately 40 to 60 bytes of payload (depending on string lengths) plus rowid pointers. For \(10^6\) entries at \(\approx 50\) bytes each, the raw leaf capacity is \(\approx 50\,\text{MB}\). Accounting for B-tree page fill factors (\(\approx 70\%\) fill on random insertions) and interior routing pages, the total index size on disk is approximately \(70\) to \(80\,\text{MB}\), which easily fits into modern server memory caches.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p4-1">
+            <p>Design a streaming ASOF join architecture for a live quantitative trading engine operating over Kafka event topics with out-of-order network arrival windows of up to 500 milliseconds.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The streaming engine implements an in-memory priority queue (watermarked event buffer) for both trades and quotes. An event watermark \(W_t = \max(t_{\mathrm{seen}}) - 500\,\text{ms}\) delays evaluation until all events up to \(W_t\) are guaranteed to have arrived. Events with \(t \le W_t\) are sorted by \((t, seq)\) and emitted through the two-pointer ASOF operator. Any late-arriving packet with \(t < W_t\) is diverted to a dead-letter queue and flagged as a pipeline anomaly.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-2">
+            <p>Evaluate the implications of multi-market SIP (Securities Information Processor) consolidation latency when performing ASOF joins between direct proprietary feeds and SIP feeds.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Direct exchange proprietary feeds (e.g. Nasdaq ITCH) arrive 1 to 5 milliseconds faster than consolidated SIP feeds due to geographic routing and SIP aggregation overhead. If a research engine joins direct fills to SIP quotes via ASOF, trades appear to occur at quotes that were not yet visible on the consolidated tape, creating artificial negative effective spreads. Researchers must either normalize all streams to matching engine timestamps \(t_{\mathrm{ex}}\) or use venue-consistent feed handlers.</p>
+            </details>
+          </div>
+          <div class="problem" id="p4-3">
+            <p>How does the non-strict inequality in temporal ASOF joins interact with transaction cost models that assess trade slippage against the prevailing National Best Bid and Offer (NBBO)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>If an aggressive market order executes and immediately depletes the top-of-book quote, the matching engine publishes a new quote with the same timestamp or immediate microsecond successor. If the ASOF join includes post-trade quote updates, the fill appears to execute against the post-impact widened quote rather than the pre-trade quote. A robust slippage model must join on \(t_{\mathrm{quote}} < t_{\mathrm{trade}}\) or filter out quote records generated by the trade's own execution.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s8">8. Key Results &amp; Verification Matrix</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Monotonicity and No-Lookahead Theorem for temporal ASOF joins</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 3.1 (ASOF Monotonicity)</td>
+              </tr>
+              <tr>
+                <td>Mathematical formulation of temporal ASOF join operator</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Definition 3.1 (ASOF Join Operator)</td>
+              </tr>
+              <tr>
+                <td>Total ordering and deterministic sequence tie-breaking identity</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Definition 3.2 (Time-Sequence Total Order)</td>
+              </tr>
+              <tr>
+                <td>Equivalence between binary search and brute-force ASOF matching</td>
+                <td><span class="grade" data-grade="C">C</span></td>
+                <td>Lab QR1-L03-1, SIMULATED trade and quote fixtures</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR1" data-page="L03" data-cards="cards.json">
+        <h2 id="s9">9. Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What inequality defines the candidate set of right-side records in an ASOF join with left timestamp \(t_L\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q1"> <span>\(t_R \le t_L\)</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>\(t_R \ge t_L\)</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>\(t_R = t_L\)</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>\(t_L - t_R &gt; 1\,\text{day}\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>An ASOF join admits all right records published at or before the left timestamp: \(t_R \le t_L\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the time complexity of an ASOF join of \(N\) query rows against \(M\) pre-sorted right records using binary search?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q2"> <span>\(O(N \log M)\)</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>\(O(N \cdot M)\)</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>\(O(N^2)\)</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>\(O(M)\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Each left query performs an \(O(\log M)\) binary search, totaling \(O(N \log M)\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0" data-tolerance="0">
+            <p class="prompt">In Lab 1, how many mismatches occurred between the binary search ASOF join and the brute-force oracle?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Zero mismatches: binary search and the oracle produced identical results on 100% of test queries.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does an ASOF join resolve ties when two right records have identical timestamps?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q4"> <span>It selects the record with the higher sequence number (higher seq)</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>It randomly chooses between them</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>It takes the numerical average of the values</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>It raises an unhandled database error</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Lexicographical ordering on \((t, seq)\) breaks ties deterministically using the higher sequence counter.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does cardinality preservation mean for an ASOF join \(L \bowtie_{\mathrm{ASOF}} R\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q5"> <span>The number of output rows equals exactly the number of rows in \(L\)</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>The output has size \(|L| \times |R|\)</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>All NULL rows are deleted automatically</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>Duplicate values in \(R\) are merged</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Every left row maps to exactly one outcome (a right record or NULL), preserving left row count.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens if right-side input records are not sorted by timestamp prior to binary search?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q6"> <span>Binary search logic fails silently, returning invalid or corrupted matches</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>Python automatically sorts the array in memory</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>The computer halts execution with a CPU interrupt</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>Query execution speed increases</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Binary search strictly assumes a partitioned/sorted array; unsorted inputs lead to corrupted lookups.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does joining high-frequency market data using timestamp equi-joins fail?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q7"> <span>Trades and quotes arrive asynchronously, so exact microsecond equality almost never matches</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>SQL does not support timestamp equality comparisons</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>Database locks prevent reading quotes during trades</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>Exchange regulations prohibit equi-joins</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Asynchronous streams almost never share identical sub-second timestamps, causing equi-joins to drop data.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does adding a maximum lookback tolerance \(\Delta t_{\max}\) to an ASOF join achieve?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q8"> <span>It prevents matching against stale, obsolete observations from hours or days ago</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>It accelerates binary search from \(O(\log M)\) to \(O(1)\)</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>It converts float values to integers</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>It disables sequence tie-breaking</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Lookback limits prevent an engine from pairing modern trades with obsolete stale quotes.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="s10">10. References</h2>
+        <ol data-references>
+        </ol>
+      </section>
+
+      <nav class="page-nav">
+        <a class="prev" href="L02.html">‹ L02 · Data Vintages &amp; Bitemporal Data Models</a>
+        <a class="next" href="L04.html">L04 · Corporate Actions &amp; Adjustment Factors ›</a>
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">QR1 · Research Data Engineering · Lesson 03 · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

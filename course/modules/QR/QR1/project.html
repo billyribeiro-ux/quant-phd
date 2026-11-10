@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vintage-Aware Ingestion · QR1 Project</title>
+  <meta name="description" content="Independent project specification for QR1: build a vintage-aware ingestion engine storing and serving real-time data vintages, proving that backtest queries cannot observe revisions prior to publication timestamps. 12 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR1 Research Data Engineering</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="12">
+      <header class="page-head">
+        <p class="eyebrow">Module QR1 Project · 12 hours · Part QR</p>
+        <h1>Vintage-Aware Ingestion Engine</h1>
+        <p class="lede">Quantitative research alpha decay often traces directly to historical data leakage. When a backtesting engine evaluates trading rules on modern, fully revised series or post-split prices, it assumes knowledge of macroeconomic releases and corporate restructuring that market participants did not possess. In this capstone project, you implement a production-grade, vintage-aware research data ingestion engine (<code>vintages.py</code>). Your engine parses and normalizes heterogeneous exchange timestamps, stores and indexes real-time data vintages in SQLite, resolves prevailing market microstructure ticks, and computes exact backward corporate action adjustment factors, proving mathematically and empirically that historical queries cannot observe revisions prior to their publication timestamps.</p>
+        <ul class="meta-row">
+          <li><strong>Deliverable:</strong> <code>vintages.py</code> passing test suite on seeds 0–49.</li>
+          <li><strong>Grading:</strong> Autograded by automated pytest test harness (autograder).</li>
+          <li><strong>Prerequisites:</strong> CS3 (point-in-time stores, ASOF joins), CS4 (property-based testing), S0 (corporate action breaks, data quality).</li>
+        </ul>
+      </header>
+
+      <section id="ladder">
+        <h2>The four-rung project ladder</h2>
+        <ol class="ladder">
+          <li>
+            <span class="rung-title">Rung 1 · Worked example</span>
+            <span class="rung-desc">Walk through an annotated reference implementation demonstrating vintage ingestion, point-in-time visibility querying, tick resolution, and corporate action split adjustments.</span>
+          </li>
+          <li>
+            <span class="rung-title">Rung 2 · Completion problem</span>
+            <span class="rung-desc">Fill the missing publication-time filtering, DST spring-gap validation, and split factor multiplication logic with instant in-browser feedback.</span>
+          </li>
+          <li>
+            <span class="rung-title">Rung 3 · Independent project deliverable</span>
+            <span class="rung-desc">Build the complete <code>vintages.py</code> module satisfying the frozen specification, verified by the automated autograder suite across 50 independent seeds.</span>
+          </li>
+          <li>
+            <span class="rung-title">Rung 4 · Stretch goal</span>
+            <span class="rung-desc">Design a high-throughput bitemporal revision impact analyzer measuring alpha decay between preliminary and benchmark macro vintages across a multi-factor equity model.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2>Rung 1 · Worked example</h2>
+        <p>This fully solved worked example demonstrates the initialization of an in-memory SQLite store, table creation, ingestion of multiple macroeconomic vintages across time, point-in-time cut-off queries, prevailing tick lookups, and split adjustments.</p>
+
+        <section class="lab" id="lab-QR1-project-1" data-runtime="python">
+          <h3>Lab 1 · Point-in-Time Vintage Store Worked Example</h3>
+          <p class="hypothesis">Verifies that a query prior to an advance release returns None, a query between advance and second estimates returns the advance figure, and a query after subsequent revisions returns the latest published vintage known at that cut-off instant.</p>
+          <pre><code class="language-python" data-run>"""QR1 Project Lab 1: Rung 1 worked example of vintage-aware ingestion engine.
+
+Demonstrates complete implementation and step-by-step verification of
+point-in-time vintage indexing, UTC timestamp normalization, prevailing tick
+lookups, and corporate action adjustment factor computation.
+Data: SIMULATED research data store records.
+"""
+
+from __future__ import annotations
+
+import datetime
+import re
+import sqlite3
+
+_WALL_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$")
+
+
+def et_to_utc(wall: str) -&gt; str:
+    """Convert Eastern wall-clock time 'YYYY-MM-DD HH:MM' to ISO 8601 UTC 'YYYY-MM-DDTHH:MM:SSZ'."""
+    m = _WALL_RE.match(wall)
+    if not m:
+        raise ValueError(f"Malformed Eastern wall timestamp: {wall!r}")
+    year, month, day, hour, minute = map(int, m.groups())
+    dt = datetime.datetime(year, month, day, hour, minute)
+
+    # US DST rule: Second Sunday of March to First Sunday of November
+    d_mar1 = datetime.date(year, 3, 1)
+    sun2_mar = 1 + (6 - d_mar1.weekday()) % 7 + 7
+    spring_date = datetime.date(year, 3, sun2_mar)
+
+    d_nov1 = datetime.date(year, 11, 1)
+    sun1_nov = 1 + (6 - d_nov1.weekday()) % 7
+    fall_date = datetime.date(year, 11, sun1_nov)
+
+    curr_date = dt.date()
+    if curr_date == spring_date and 2 &lt;= dt.hour &lt; 3:
+        raise ValueError(f"Wall time in spring DST gap does not exist: {wall!r}")
+
+    is_dst = (
+        (spring_date &lt; curr_date &lt; fall_date)
+        or (curr_date == spring_date and dt.hour &gt;= 3)
+        or (curr_date == fall_date and dt.hour &lt; 2)
+    )
+
+    offset_hours = -4 if is_dst else -5
+    utc_dt = dt - datetime.timedelta(hours=offset_hours)
+    return utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def adjust_closes(
+    dates: list[str],
+    closes: list[float],
+    events: list[tuple[str, float]],
+) -&gt; list[float]:
+    """Compute backward-adjusted closes: for date d, divide by product of ratios with ex_date &gt; d."""
+    if len(dates) != len(closes):
+        raise ValueError("Dates and closes length mismatch")
+    for _, ratio in events:
+        if ratio &lt;= 0:
+            raise ValueError(f"Split ratio must be positive: {ratio}")
+
+    adjusted: list[float] = []
+    for d, c in zip(dates, closes, strict=True):
+        factor = 1.0
+        for ex_date, ratio in events:
+            if ex_date &gt; d:
+                factor *= ratio
+        adjusted.append(c / factor)
+    return adjusted
+
+
+def main() -&gt; None:
+    # 1. Verify Timestamp Normalization
+    wall_release = "2026-03-12 08:30"
+    utc_release = et_to_utc(wall_release)
+    print(f"1. Timestamp Normalization: {wall_release} ET -&gt; {utc_release} UTC")
+
+    # 2. In-memory Vintage Database Setup
+    conn = sqlite3.connect(":memory:")
+    with conn:
+        conn.execute(
+            """
+            CREATE TABLE vintages (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL,
+                series TEXT NOT NULL,
+                obs_date TEXT NOT NULL,
+                value TEXT NOT NULL,
+                published TEXT NOT NULL,
+                retrieved TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX idx_vintages ON vintages(source, series, obs_date, published, seq)")
+
+    # 3. Ingest Vintages (Initial advance release, second estimate revision, third estimate revision)
+    source = "fred"
+    series = "GDP_GROWTH"
+    obs_date = "2025-Q4"
+
+    records = [
+        (source, series, obs_date, "2.1", "2026-01-29T13:30:00Z", "2026-01-29T13:35:00Z"),
+        (source, series, obs_date, "2.4", "2026-02-26T13:30:00Z", "2026-02-26T13:35:00Z"),
+        (source, series, obs_date, "2.3", "2026-03-26T13:30:00Z", "2026-03-26T13:35:00Z"),
+    ]
+
+    with conn:
+        conn.executemany(
+            "INSERT INTO vintages (source, series, obs_date, value, published, retrieved) VALUES (?, ?, ?, ?, ?, ?)",
+            records,
+        )
+
+    print("\n2. Ingested Macro Vintages:")
+    for r in records:
+        print(f"  Obs {r[2]} published={r[4]} val={r[3]}%")
+
+    # 4. Point-in-time queries
+    def query_visible(t: str) -&gt; str | None:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT value FROM vintages
+            WHERE source = ? AND series = ? AND obs_date = ? AND published &lt;= ?
+            ORDER BY published DESC, seq DESC LIMIT 1
+            """,
+            (source, series, obs_date, t),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+    cutoffs = [
+        ("2026-01-15T00:00:00Z", "Prior to any publication"),
+        ("2026-02-15T00:00:00Z", "Post-Advance release"),
+        ("2026-03-15T00:00:00Z", "Post-Second release"),
+        ("2026-04-15T00:00:00Z", "Post-Third release"),
+    ]
+
+    print("\n3. Point-in-Time Cut-off Queries:")
+    for cut_t, label in cutoffs:
+        val = query_visible(cut_t)
+        print(f"  Cut-off {cut_t} [{label}]: visible={val}")
+
+    # 5. Split Adjustment Check
+    dates = ["2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05"]
+    closes = [100.0, 100.0, 50.0, 52.0]  # 2:1 split on 2026-03-04
+    events = [("2026-03-04", 2.0)]
+    adj = adjust_closes(dates, closes, events)
+
+    print("\n4. Corporate Action Adjustment:")
+    for d, raw, a in zip(dates, closes, adj, strict=True):
+        print(f"  {d}: raw={raw:.1f} adjusted={a:.1f}")
+
+    conn.close()
+    print("\nRung 1 worked example completed successfully.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">1. Timestamp Normalization: 2026-03-12 08:30 ET -&gt; 2026-03-12T12:30:00Z UTC
+
+2. Ingested Macro Vintages:
+  Obs 2025-Q4 published=2026-01-29T13:30:00Z val=2.1%
+  Obs 2025-Q4 published=2026-02-26T13:30:00Z val=2.4%
+  Obs 2025-Q4 published=2026-03-26T13:30:00Z val=2.3%
+
+3. Point-in-Time Cut-off Queries:
+  Cut-off 2026-01-15T00:00:00Z [Prior to any publication]: visible=None
+  Cut-off 2026-02-15T00:00:00Z [Post-Advance release]: visible=2.1
+  Cut-off 2026-03-15T00:00:00Z [Post-Second release]: visible=2.4
+  Cut-off 2026-04-15T00:00:00Z [Post-Third release]: visible=2.3
+
+4. Corporate Action Adjustment:
+  2026-03-02: raw=100.0 adjusted=50.0
+  2026-03-03: raw=100.0 adjusted=50.0
+  2026-03-04: raw=50.0 adjusted=50.0
+  2026-03-05: raw=52.0 adjusted=52.0
+
+Rung 1 worked example completed successfully.</pre>
+          <p class="interpretation">The worked example confirms that historical queries at earlier cut-offs are completely insulated from later revisions, preserving point-in-time fidelity.</p>
+        </section>
+      </section>
+
+      <section id="rung-2">
+        <h2>Rung 2 · Completion problem</h2>
+        <p>Complete the core validation, publication-time filtering, and backward-adjustment multiplication logic. Replace each <code>___</code> blank with the valid expression.</p>
+
+        <section class="lab completion" id="lab-QR1-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion Problem: Core Validation, Filtering, and Split Logic</h3>
+          <p class="hypothesis">Fill in the missing DST gap check, publication timestamp comparison, and cumulative factor product to satisfy the vintage engine contract.</p>
+          <pre><code class="language-python" data-run>"""QR1 Project Lab 2: Rung 2 completion problem reference solution.
+
+Implements core timestamp normalization, point-in-time publication filtering,
+and corporate action backward-adjustment factors.
+Data: SIMULATED research data store records.
+"""
+
+from __future__ import annotations
+
+import datetime
+import re
+
+_WALL_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$")
+
+
+def et_to_utc(wall: str) -> str:
+    """Convert Eastern wall-clock time 'YYYY-MM-DD HH:MM' to ISO 8601 UTC 'YYYY-MM-DDTHH:MM:SSZ'."""
+    m = _WALL_RE.match(wall)
+    if not m:
+        raise ValueError(f"Malformed Eastern wall timestamp: {wall!r}")
+    year, month, day, hour, minute = map(int, m.groups())
+    dt = datetime.datetime(year, month, day, hour, minute)
+
+    # US DST rule: Second Sunday of March to First Sunday of November
+    d_mar1 = datetime.date(year, 3, 1)
+    sun2_mar = 1 + (6 - d_mar1.weekday()) % 7 + 7
+    spring_date = datetime.date(year, 3, sun2_mar)
+
+    d_nov1 = datetime.date(year, 11, 1)
+    sun1_nov = 1 + (6 - d_nov1.weekday()) % 7
+    fall_date = datetime.date(year, 11, sun1_nov)
+
+    curr_date = dt.date()
+    if curr_date == spring_date and ___:
+        raise ValueError(f"Wall time in spring DST gap does not exist: {wall!r}")
+
+    is_dst = (
+        (spring_date < curr_date < fall_date)
+        or (curr_date == spring_date and dt.hour >= 3)
+        or (curr_date == fall_date and dt.hour < 2)
+    )
+
+    offset_hours = -4 if is_dst else -5
+    utc_dt = dt - datetime.timedelta(hours=offset_hours)
+    return utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def filter_visible_vintages(
+    vintages: list[tuple[str, str, str]],  # (obs_date, value, published_utc)
+    cutoff_utc: str,
+) -> dict[str, str]:
+    """Return map of obs_date to latest visible value published at or before cutoff_utc."""
+    # Filter only vintages published at or before the cut-off instant
+    eligible = [v for v in vintages if ___]
+    # Sort by published timestamp ascending so latest overwrites earlier
+    sorted_eligible = sorted(eligible, key=lambda v: v[2])
+    visible_map: dict[str, str] = {}
+    for obs_date, val, _ in sorted_eligible:
+        visible_map[obs_date] = val
+    return visible_map
+
+
+def compute_adjusted_prices(
+    dates: list[str],
+    closes: list[float],
+    events: list[tuple[str, float]],  # (ex_date, ratio)
+) -> list[float]:
+    """Compute backward-adjusted closes: raw_close divided by product of subsequent split ratios."""
+    if len(dates) != len(closes):
+        raise ValueError("Dates and closes length mismatch")
+    for _, ratio in events:
+        if ratio <= 0:
+            raise ValueError(f"Split ratio must be positive: {ratio}")
+
+    adjusted: list[float] = []
+    for d, c in zip(dates, closes, strict=True):
+        factor = 1.0
+        for ex_date, ratio in events:
+            if ex_date > d:
+                factor *= ___
+        adjusted.append(c / factor)
+    return adjusted
+
+
+def main() -> None:
+    # 1. Test ET to UTC
+    test_walls = ["2026-01-15 12:00", "2026-07-01 12:00"]
+    print("1. Timestamp Normalization:")
+    for w in test_walls:
+        print(f"  {w} -> {et_to_utc(w)}")
+
+    # 2. Test Vintage Filtering
+    vintages = [
+        ("2026-01-01", "100.0", "2026-02-01T12:00:00Z"),
+        ("2026-01-01", "101.5", "2026-03-01T12:00:00Z"),
+        ("2026-02-01", "102.0", "2026-03-01T12:00:00Z"),
+    ]
+    cutoff = "2026-02-15T00:00:00Z"
+    visible = filter_visible_vintages(vintages, cutoff)
+    print(f"\n2. Visible Series at {cutoff}:")
+    for d, v in sorted(visible.items()):
+        print(f"  {d}: {v}")
+
+    # 3. Test Corporate Actions
+    dates = ["2026-02-01", "2026-02-02", "2026-02-03"]
+    closes = [200.0, 100.0, 105.0]  # 2:1 split on 2026-02-02
+    events = [("2026-02-02", 2.0)]
+    adj = compute_adjusted_prices(dates, closes, events)
+    print("\n3. Split Adjustment:")
+    for d, c, a in zip(dates, closes, adj, strict=True):
+        print(f"  {d}: raw={c:.1f} adjusted={a:.1f}")
+
+    print("\nRung 2 completion problem checks passed.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">1. Timestamp Normalization:
+  2026-01-15 12:00 -&gt; 2026-01-15T17:00:00Z
+  2026-07-01 12:00 -&gt; 2026-07-01T16:00:00Z
+
+2. Visible Series at 2026-02-15T00:00:00Z:
+  2026-01-01: 100.0
+
+3. Split Adjustment:
+  2026-02-01: raw=200.0 adjusted=100.0
+  2026-02-02: raw=100.0 adjusted=100.0
+  2026-02-03: raw=105.0 adjusted=105.0
+
+Rung 2 completion problem checks passed.</pre>
+          <p class="interpretation">Completing the blanks enforces the spring DST non-existence constraint, point-in-time publication filtering, and cumulative split factor formulation.</p>
+        </section>
+      </section>
+
+      <section id="rung-3">
+        <h2>Rung 3 · Independent project deliverable</h2>
+        <p>Implement the complete research data ingestion engine in <code>vintages.py</code>. The deliverable is evaluated strictly against the specification below.</p>
+
+        <section class="lab" id="lab-QR1-project-3" data-runtime="python">
+          <h3>Lab 3 · Rung 3 Deliverable Verification</h3>
+          <p class="hypothesis">Runs the seed-0 test fixture against the complete reference implementation, verifying Eastern wall timestamp conversion, SQLite vintage queries, prevailing last trade lookups, and split adjustments.</p>
+          <pre><code class="language-python" data-run>"""QR1 Project Lab 3: Rung 3 independent project deliverable verification.
+
+Executes comprehensive verification on seed 0 test instance against the
+vintage-aware ingestion engine reference implementation.
+Data: SIMULATED research data store records.
+"""
+
+from __future__ import annotations
+
+import datetime
+import re
+import sqlite3
+
+_WALL_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$")
+
+
+def et_to_utc(wall: str) -&gt; str:
+    m = _WALL_RE.match(wall)
+    if not m:
+        raise ValueError(f"Malformed Eastern wall timestamp: {wall!r}")
+    y, mth, d, h, mn = map(int, m.groups())
+    dt = datetime.datetime(y, mth, d, h, mn)
+
+    d_mar1 = datetime.date(y, 3, 1)
+    sun2_mar = 1 + (6 - d_mar1.weekday()) % 7 + 7
+    spring_date = datetime.date(y, 3, sun2_mar)
+
+    d_nov1 = datetime.date(y, 11, 1)
+    sun1_nov = 1 + (6 - d_nov1.weekday()) % 7
+    fall_date = datetime.date(y, 11, sun1_nov)
+
+    cdate = dt.date()
+    if cdate == spring_date and 2 &lt;= dt.hour &lt; 3:
+        raise ValueError("Spring DST gap does not exist")
+
+    is_dst = (
+        (spring_date &lt; cdate &lt; fall_date)
+        or (cdate == spring_date and dt.hour &gt;= 3)
+        or (cdate == fall_date and dt.hour &lt; 2)
+    )
+    offset = datetime.timedelta(hours=-4 if is_dst else -5)
+    return (dt - offset).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def last_trade_at(ticks: list[tuple[str, int, float]], t: str) -&gt; float | None:
+    cand = [tick for tick in ticks if tick[0] &lt;= t]
+    if not cand:
+        return None
+    return max(cand, key=lambda x: (x[0], x[1]))[2]
+
+
+def adjust_closes(dates: list[str], closes: list[float], events: list[tuple[str, float]]) -&gt; list[float]:
+    if len(dates) != len(closes):
+        raise ValueError("length mismatch")
+    for _, r in events:
+        if r &lt;= 0:
+            raise ValueError("ratio must be positive")
+    res: list[float] = []
+    for d, c in zip(dates, closes, strict=True):
+        f = 1.0
+        for ed, r in events:
+            if ed &gt; d:
+                f *= r
+        res.append(c / f)
+    return res
+
+
+def main() -&gt; None:
+    # 1. Verification of Seed-0 Anchors
+    anchors = [
+        ("2026-01-15 12:00", "2026-01-15T17:00:00Z"),
+        ("2026-07-01 12:00", "2026-07-01T16:00:00Z"),
+    ]
+    print("1. Eastern Time to UTC Anchors:")
+    for w, exp in anchors:
+        act = et_to_utc(w)
+        assert act == exp
+        print(f"  {w} -&gt; {act} [VERIFIED]")
+
+    # 2. Point-in-time Vintage Ingestion &amp; Query Verification
+    conn = sqlite3.connect(":memory:")
+    with conn:
+        conn.execute(
+            """
+            CREATE TABLE vintages (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT, series TEXT, obs_date TEXT, value TEXT, published TEXT, retrieved TEXT
+            )
+            """
+        )
+
+    # Seed-0 sample vintages
+    vintages = [
+        ("fred", "CORE_CPI", "2024-01-01", "125.50", "2024-02-15T13:30:00Z", "2024-02-15T13:35:00Z"),
+        ("fred", "CORE_CPI", "2024-02-01", "126.80", "2024-03-15T13:30:00Z", "2024-03-15T13:35:00Z"),
+        ("fred", "CORE_CPI", "2024-01-01", "125.90", "2024-04-15T13:30:00Z", "2024-04-15T13:40:00Z"),  # Revision
+    ]
+    with conn:
+        conn.executemany(
+            "INSERT INTO vintages(source, series, obs_date, value, published, retrieved) VALUES (?,?,?,?,?,?)", vintages
+        )
+
+    def query_vis(obs: str, cut: str) -&gt; str | None:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT value FROM vintages WHERE source='fred' AND series='CORE_CPI' "
+            "AND obs_date=? AND published&lt;=? ORDER BY published DESC, seq DESC LIMIT 1",
+            (obs, cut),
+        )
+        r = cur.fetchone()
+        return r[0] if r else None
+
+    # Before revision: sees 125.50
+    cut1 = "2024-03-01T00:00:00Z"
+    val1 = query_vis("2024-01-01", cut1)
+    # After revision: sees 125.90
+    cut2 = "2024-05-01T00:00:00Z"
+    val2 = query_vis("2024-01-01", cut2)
+
+    print("\n2. Point-in-time Vintage Queries:")
+    print(f"  Obs 2024-01-01 at {cut1}: visible={val1} (Advance)")
+    print(f"  Obs 2024-01-01 at {cut2}: visible={val2} (Revised)")
+    assert val1 == "125.50" and val2 == "125.90"
+    conn.close()
+
+    # 3. Prevailing Tick Lookup Verification
+    ticks = [
+        ("2024-06-01T09:30:00.000Z", 1, 150.10),
+        ("2024-06-01T09:30:01.000Z", 2, 150.25),
+        ("2024-06-01T09:30:01.000Z", 3, 150.30),  # Tie at 01.000, seq 3 wins
+    ]
+    px = last_trade_at(ticks, "2024-06-01T09:30:01.000Z")
+    print(f"\n3. Prevailing Last Trade on Timestamp Tie: px={px} [VERIFIED]")
+    assert px == 150.30
+
+    # 4. Corporate Action Split Verification
+    dates = ["2024-07-03", "2024-07-06"]
+    closes = [200.0, 100.0]  # 2:1 split on 2024-07-06
+    splits = [("2024-07-06", 2.0)]
+    adj = adjust_closes(dates, closes, splits)
+    adj_ret = (adj[1] / adj[0]) - 1.0
+    print(f"\n4. Corporate Action Split Adjustment: adj_ret={adj_ret:+.2e} [INVARIANCE VERIFIED]")
+    assert abs(adj_ret) &lt;= 1e-12
+
+    print("\nRung 3 project deliverable verification passed.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">1. Eastern Time to UTC Anchors:
+  2026-01-15 12:00 -&gt; 2026-01-15T17:00:00Z [VERIFIED]
+  2026-07-01 12:00 -&gt; 2026-07-01T16:00:00Z [VERIFIED]
+
+2. Point-in-time Vintage Queries:
+  Obs 2024-01-01 at 2024-03-01T00:00:00Z: visible=125.50 (Advance)
+  Obs 2024-01-01 at 2024-05-01T00:00:00Z: visible=125.90 (Revised)
+
+3. Prevailing Last Trade on Timestamp Tie: px=150.3 [VERIFIED]
+
+4. Corporate Action Split Adjustment: adj_ret=+0.00e+00 [INVARIANCE VERIFIED]
+
+Rung 3 project deliverable verification passed.</pre>
+          <p class="interpretation">The verification run confirms that all core functions adhere to the specified contracts and pass invariant checks.</p>
+        </section>
+
+        <h3>Specification</h3>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Quantitative asset management firms execute backtests across multi-decade spans containing hundreds of thousands of corporate action adjustments, economic revisions, and microstructure order stream ticks. A strategy backtest must never observe information prior to its real-world publication timestamp, and capital changes like stock splits must never generate artificial return breaks. You are tasked with developing <code>vintages.py</code>, extending the research data infrastructure to enforce point-in-time integrity across macro vintages, tick feeds, and corporate actions.</dd>
+
+          <dt>Inputs</dt>
+          <dd>SIMULATED fixtures generated deterministically per workspace seed: macroeconomic vintage tables from the five canonical sources (<code>fred</code>, <code>french</code>, <code>shiller</code>, <code>treasury</code>, <code>edgar</code>), tick stream tuples with timestamp jitter, daily stock closing prices, and split event tuples.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>A single Python module <code>vintages.py</code> exposing the constant <code>SOURCES: tuple[str, ...] = ("fred", "french", "shiller", "treasury", "edgar")</code> and implementing:
+            <ul>
+              <li><code>et_to_utc(wall: str) -&gt; str</code>: converts <code>YYYY-MM-DD HH:MM</code> in America/New_York to canonical ISO 8601 UTC <code>YYYY-MM-DDTHH:MM:SSZ</code>. Rejects spring DST gap (02:00–02:59) and resolves autumn overlap (01:00–01:59) to earlier instant (daylight time, UTC−4).</li>
+              <li><code>class VintageIndex(path: str)</code>: SQLite-backed store with methods:
+                <ul>
+                  <li><code>record(source: str, series: str, obs_date: str, value: str, published: str, retrieved: str) -&gt; None</code>: inserts vintage; idempotent on exact duplicate; raises on conflicting value or invalid timestamp/source.</li>
+                  <li><code>visible(source: str, series: str, obs_date: str, t: str) -&gt; str | None</code>: returns latest value published at or before cut-off <code>t</code>.</li>
+                  <li><code>visible_series(source: str, series: str, t: str) -&gt; dict[str, str]</code>: returns mapping of <code>obs_date</code> to visible value for all dates having a visible vintage at <code>t</code>.</li>
+                  <li><code>close() -&gt; None</code>: closes database connection.</li>
+                </ul>
+              </li>
+              <li><code>last_trade_at(ticks: list[tuple[str, int, float]], t: str) -&gt; float | None</code>: resolves prevailing trade price maximizing <code>(timestamp, seq)</code> among ticks with <code>timestamp &lt;= t</code>.</li>
+              <li><code>adjust_closes(dates: list[str], closes: list[float], events: list[tuple[str, float]]) -&gt; list[float]</code>: backward-adjusts daily close prices for stock splits, dividing each close by the product of split ratios for events with <code>ex_date &gt; d</code>.</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Standard library only (<code>datetime</code>, <code>sqlite3</code>, <code>re</code>, <code>bisect</code>, <code>math</code>). No network access, no DuckDB dependency, and no third-party libraries. All timestamps must strictly follow ISO 8601 UTC with trailing <code>Z</code>. Clean execution under <code>python -I -W error</code> without leaking database connections.</dd>
+
+          <dt>Grading</dt>
+          <dd>Autograder. The project is graded by an automated pytest test harness running locally and in Pyodide across 50 independent seeds (0–49), evaluating property-based invariants, mathematical split return preservation, timestamp boundary conditions, and exception contracts.</dd>
+        </dl>
+
+        <section id="time-budget">
+          <h3>Time budget</h3>
+          <div class="table-wrap">
+            <table id="hours">
+              <thead>
+                <tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Rung 1 worked example walkthrough</td><td class="num">1.5</td><td>Inspect SQLite vintage table schema, indexing, and point-in-time visibility mechanics</td></tr>
+                <tr><td>Rung 2 completion problem</td><td class="num">1.5</td><td>Implement DST gap validation, publication-time filtering, and split product computation</td></tr>
+                <tr><td>Timestamp normalization &amp; DST handling</td><td class="num">2.0</td><td>Implement America/New_York conversion, spring gap rejection, and autumn overlap resolution</td></tr>
+                <tr><td>Point-in-time SQLite VintageIndex engine</td><td class="num">3.0</td><td>Build schema, idempotent recording, conflict detection, and no-look-ahead queries</td></tr>
+                <tr><td>Microstructure tick resolution &amp; split adjustment</td><td class="num">2.0</td><td>Implement total ordering on (time, seq) and backward-adjustment factor product</td></tr>
+                <tr><td>Autograder test suite validation</td><td class="num">2.0</td><td>Execute pytest harness across seeds 0–49 to verify properties, invariants, and edge cases</td></tr>
+                <tr><td><strong>Total</strong></td><td class="num"><strong>12.0</strong></td><td>Declared project hours matching index.html hub split</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="grader-panel" id="grader" data-unit="QR1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="vintages.py" data-starter="starter.py" data-packages="">
+          <h3>Autograder test harness</h3>
+          <p>The autograder executes <code>test_project.py</code> against your <code>vintages.py</code> submission. The suite tests no-look-ahead invariance (T1), brute-force oracle consistency (T2), series mapping (T3), Eastern time anchor normalization (T4), spring DST gap rejection (T5), out-of-order tick sequencing (T6), split return invariance (T7), idempotent recording and conflict rejection (T8), naive timestamp rejection (T9–T10), and seed-specific error conditions (T11).</p>
+        </section>
+      </section>
+
+      <section id="rung-4">
+        <h2>Rung 4 · Stretch goal</h2>
+        <p>For research portfolio extension (not graded):</p>
+        <ol>
+          <li><strong>Bitemporal Revision Impact Study:</strong> Connect <code>VintageIndex</code> to a historical macroeconomic factor strategy (e.g., trend following on GDP growth or CPI surprises). Run identical backtests using (1) modern fully revised data and (2) point-in-time publication vintages. Quantify the annualized Sharpe ratio decay caused by look-ahead revision contamination.</li>
+          <li><strong>Cash Dividend and Total Return Factors:</strong> Extend <code>adjust_closes</code> to accommodate cash dividends, computing proportional dividend adjustment factors \(f_{\mathrm{div}} = 1 - D_t / P_{t-1}\) to construct continuous total return indices alongside capital-gain-only adjusted prices.</li>
+        </ol>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="croushore2001real">Croushore &amp; Stark (2001), "A real-time data set for macroeconomists", <em>Journal of Econometrics</em>, 105(1): 111–130.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">QR1 · Research Data Engineering · Capstone Project · Autograded deliverable.</footer>
+</body>
+</html>
