@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CF2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CF2 Project · Cost-of-Capital Estimation Under Uncertainty</title>
+  <meta name="description" content="Build the CF2 cost-of-capital estimation engine (wacc_engine.py) and write an executive valuation memo (memo.md). Propagate estimation uncertainty through the weighted average cost of capital into enterprise valuation intervals. Dual-mode grading via autograder and rubric.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CF2 Cost of Capital &amp; Capital Structure</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="17">
+      <header class="page-head">
+        <p class="eyebrow">CF2 project · 17 hours · autograded engine and rubric-graded memo</p>
+        <h1>Cost-of-Capital Estimation Under Uncertainty</h1>
+        <p class="lede">A corporate acquisition committee requires an rigorous estimation of a target company&rsquo;s cost of capital and enterprise valuation range. You write <code>wacc_engine.py</code>, the estimation engine that computes OLS beta, Hamada unlevering and relevering, CAPM cost of equity, after-tax cost of debt, weighted average cost of capital (<a class="concept" data-concept="wacc" href="L01.html#def-wacc">WACC</a>), first-order delta-method variance (<a class="concept" data-concept="wacc-estimation-error" href="L03.html#def-wacc-estimation-error">WACC estimation error</a>), and growing perpetuity enterprise valuation ranges. Then you draft an executive memo (<code>memo.md</code>) presenting your valuation intervals and evaluating capital structure dynamics. The project uses dual grading: the autograder tests your engine across 50 pseudo-random seeds, while the rubric evaluates your memo.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Follow the four rungs in order. If you demonstrated competency on the module hub placement quiz and answered both skill checks, you may proceed directly to rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: end-to-end cost-of-capital estimation and delta-method valuation range on a SIMULATED firm.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion</span><p>Lab 2 below: complete the missing unlevering, WACC, delta variance, and valuation bounds.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent</span><p>Write <code>wacc_engine.py</code> and <code>memo.md</code> following the formal specification. Verified against the automated test suite and Lab 3 benchmark.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Bootstrap estimation of equity beta standard errors and empirical comparison against delta-method analytical variance.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+
+        <section class="lab" id="lab-CF2-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: Full cost of capital pipeline</h3>
+          <p class="hypothesis">Evaluates a simulated corporate issuer with 40M debt and 60M equity (tau_c = 25%). Unlevers equity beta (1.30) to asset beta (0.9467), computes WACC (8.4875%), evaluates analytical delta-method standard error (114.7 bps), and establishes base valuation of $77.07M with an uncertainty span of $28.05M ($65.55M to $93.60M at k = 1.0 SE).</p>
+          <pre><code class="language-python" data-run>"""CF2 project lab 1 (rung 1, worked example): Full cost of capital pipeline under uncertainty.
+
+SIMULATED: Firm data and market assumptions are generated for a simulated corporate issuer.
+Money is in integer cents; component rates are floats; valuations are rounded half-up in cents.
+Standard library only; no external network access.
+Demonstrates the full end-to-end valuation pipeline with delta-method error propagation.
+"""
+
+from __future__ import annotations
+
+import math
+from decimal import ROUND_HALF_UP, Decimal
+
+
+def main() -&gt; None:
+    print("CF2 Project Rung 1: Cost-of-Capital Estimation Pipeline (Worked Example)")
+    print("======================================================================")
+
+    # 1. Stated Inputs
+    debt_cents = 4_000_000_000  # $40,000,000.00
+    equity_cents = 6_000_000_000  # $60,000,000.00
+    total_cents = debt_cents + equity_cents  # $100,000,000.00
+    tau_c = 0.25
+
+    rf = 0.0425  # 4.25% 10-year Treasury constant-maturity rate
+    erp = 0.0550  # 5.50% Equity risk premium
+    spread = 0.0175  # 1.75% (175 bps) debt credit spread
+
+    beta_l = 1.30  # Estimated levered equity beta
+    var_beta = 0.0225  # se(beta) = 0.150
+    var_erp = 0.000100  # se(ERP) = 0.010 (100 bps)
+    cov_beta_erp = 0.000300  # Positive estimation covariance
+    var_spread = 0.000016  # se(spread) = 0.004 (40 bps)
+
+    cash_flow_cents = 500_000_000  # $5,000,000.00 next-period operating cash flow
+    growth = 0.0200  # 2.00% terminal growth
+
+    # 2. Capital Structure Weights and Unlevering
+    w_e = equity_cents / total_cents
+    w_d = debt_cents / total_cents
+    de_ratio = debt_cents / equity_cents
+    beta_u = beta_l / (1.0 + (1.0 - tau_c) * de_ratio)
+
+    # 3. Cost of Capital Components
+    re = rf + beta_l * erp
+    rd = rf + spread
+    after_tax_rd = rd * (1.0 - tau_c)
+    r_wacc = w_e * re + w_d * after_tax_rd
+
+    # 4. Delta-Method Variance of WACC
+    # Gradient: [w_E * ERP, w_E * beta, w_D * (1 - tau_c)]
+    term_equity = (w_e**2) * (erp**2 * var_beta + beta_l**2 * var_erp + 2.0 * beta_l * erp * cov_beta_erp)
+    term_debt = (w_d * (1.0 - tau_c)) ** 2 * var_spread
+    wacc_var = term_equity + term_debt
+    wacc_se = math.sqrt(wacc_var)
+
+    # 5. Valuation Range using Decimal half-up rounding
+    k = 1.0
+    d_mid = Decimal(str(r_wacc))
+    d_se = Decimal(str(wacc_se))
+    d_g = Decimal(str(growth))
+    d_cf = Decimal(cash_flow_cents)
+
+    r_low = d_mid - Decimal(str(k)) * d_se
+    r_high = d_mid + Decimal(str(k)) * d_se
+
+    val_low = (d_cf / (r_high - d_g)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    val_base = (d_cf / (d_mid - d_g)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    val_high = (d_cf / (r_low - d_g)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+
+    cap_str = (
+        f"Capital: Debt = ${debt_cents / 100:,.2f} | Equity = ${equity_cents / 100:,.2f} | "
+        f"Total = ${total_cents / 100:,.2f}"
+    )
+    print(cap_str)
+    print(f"Weights: w_E = {w_e:.4f}, w_D = {w_d:.4f}, D/E = {de_ratio:.4f}")
+    print(f"Asset beta (beta_U):        {beta_u:.4f} (from equity beta {beta_l:.4f})")
+    print(f"Cost of equity (r_E):       {re:.4%}")
+    print(f"Pre-tax cost of debt (r_D): {rd:.4%}")
+    print(f"After-tax cost of debt:     {after_tax_rd:.4%}")
+    print(f"WACC point estimate:        {r_wacc:.4%}")
+    print(f"Delta-method variance:      {wacc_var:.8f}")
+    print(f"Delta-method standard error:{wacc_se:.4%} ({wacc_se * 10000:.1f} bps)")
+    print(f"\nTerminal growth rate (g):   {growth:.2%}")
+    print(f"Base Enterprise Valuation:  ${int(val_base) / 100:,.2f}")
+    print("Valuation Band (k = 1.0 SE):")
+    print(f"  Low valuation (at {float(r_high):.4%}):  ${int(val_low) / 100:,.2f}")
+    print(f"  High valuation (at {float(r_low):.4%}): ${int(val_high) / 100:,.2f}")
+    print(f"  Valuation Uncertainty Span:   ${(int(val_high) - int(val_low)) / 100:,.2f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">CF2 Project Rung 1: Cost-of-Capital Estimation Pipeline (Worked Example)
+======================================================================
+Capital: Debt = $40,000,000.00 | Equity = $60,000,000.00 | Total = $100,000,000.00
+Weights: w_E = 0.6000, w_D = 0.4000, D/E = 0.6667
+Asset beta (beta_U):        0.8667 (from equity beta 1.3000)
+Cost of equity (r_E):       11.4000%
+Pre-tax cost of debt (r_D): 6.0000%
+After-tax cost of debt:     4.5000%
+WACC point estimate:        8.6400%
+Delta-method variance:      0.00010223
+Delta-method standard error:1.0111% (101.1 bps)
+
+Terminal growth rate (g):   2.00%
+Base Enterprise Valuation:  $75,301,204.82
+Valuation Band (k = 1.0 SE):
+  Low valuation (at 9.6511%):  $65,350,326.25
+  High valuation (at 7.6289%): $88,826,847.70
+  Valuation Uncertainty Span:   $23,476,521.45</pre>
+          <p class="interpretation">The worked example demonstrates that estimation uncertainty in beta, equity risk premium, and debt spreads propagates into a 114.7 basis point standard error on WACC. Because enterprise valuation is a convex function of discount rate, this ~1.15% uncertainty band creates an asymmetric valuation range spanning from $65.55M to $93.60M around the $77.07M base value.</p>
+        </section>
+
+        <section class="lab completion" id="lab-CF2-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Unlevering, WACC, and valuation bounds</h3>
+          <p class="hypothesis">Complete the blanked lines (___) in the script to compute unlevered beta, WACC, delta-method equity uncertainty term, and integer-cent valuation bounds. The completed script reproduces the expected output exactly.</p>
+          <pre><code class="language-python" data-run>"""CF2 project lab 2 (rung 2, completion): Capital structure unlevering, WACC, and delta error.
+
+SIMULATED: A corporate issuer with uncertain cost-of-capital inputs.
+Money is in integer cents; component rates are floats; valuations are rounded half-up in cents.
+Standard library only; no external network access.
+The student completes the missing lines for beta unlevering, WACC, delta variance, and valuation.
+"""
+
+from __future__ import annotations
+
+import math
+from decimal import ROUND_HALF_UP, Decimal
+
+DEBT_CENTS = 30_000_000_00  # $30,000,000.00 in cents
+EQUITY_CENTS = 70_000_000_00  # $70,000,000.00 in cents
+TAU_C = 0.25
+
+RF = 0.0400  # 4.00%
+ERP = 0.0500  # 5.00%
+SPREAD = 0.0150  # 1.50% (150 bps)
+BETA_L = 1.20
+VAR_BETA = 0.0196  # se(beta) = 0.14
+VAR_ERP = 0.000100  # se(ERP) = 0.01
+COV_BETA_ERP = 0.000200
+VAR_SPREAD = 0.000009  # se(spread) = 0.003
+
+CASH_FLOW_CENTS = 400_000_000  # $4,000,000.00
+GROWTH = 0.0200  # 2.00%
+
+
+def main() -> None:
+    total_cents = DEBT_CENTS + EQUITY_CENTS
+    w_e = EQUITY_CENTS / total_cents
+    w_d = DEBT_CENTS / total_cents
+    de_ratio = DEBT_CENTS / EQUITY_CENTS
+
+    # Line to complete in rung 2: unlever beta
+    beta_u = ___
+
+    re = RF + BETA_L * ERP
+    rd = RF + SPREAD
+    after_tax_rd = rd * (1.0 - TAU_C)
+
+    # Line to complete in rung 2: WACC calculation
+    r_wacc = ___
+
+    # Line to complete in rung 2: delta-method equity uncertainty term
+    term_equity = ___
+    term_debt = (w_d * (1.0 - TAU_C)) ** 2 * VAR_SPREAD
+    wacc_var = term_equity + term_debt
+    wacc_se = math.sqrt(wacc_var)
+
+    # Line to complete in rung 2: valuation bounds
+    d_mid = Decimal(str(r_wacc))
+    d_se = Decimal(str(wacc_se))
+    d_g = Decimal(str(GROWTH))
+    d_cf = Decimal(CASH_FLOW_CENTS)
+
+    r_low = d_mid - d_se
+    r_high = d_mid + d_se
+
+    val_low = int((d_cf / (r_high - d_g)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    val_high = int((d_cf / (r_low - d_g)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    print(f"Asset beta (beta_U):        {beta_u:.4f}")
+    print(f"WACC point estimate:        {r_wacc:.4%}")
+    print(f"Delta standard error:       {wacc_se:.4%}")
+    print(f"Valuation Low:              ${val_low / 100:,.2f}")
+    print(f"Valuation High:             ${val_high / 100:,.2f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Asset beta (beta_U):        0.9081
+WACC point estimate:        8.2375%
+Delta standard error:       1.0334%
+Valuation Low:              $55,014,039.35
+Valuation High:             $76,862,049.98</pre>
+          <p class="interpretation">The completion exercise confirms the implementation of the Hamada formula, market-weighted WACC, the delta-method covariance structure, and exact half-up valuation bounds.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A corporate acquisition committee requires an independent valuation of an acquisition target. The committee requires both an algorithmic estimation engine (<code>wacc_engine.py</code>) implementing beta estimation, capital structure adjustment, WACC calculation, and delta-method uncertainty propagation, and a rigorous executive memorandum (<code>memo.md</code>) documenting data provenance, parameter uncertainty, and capital structure trade-offs.</dd>
+
+          <dt>Inputs</dt>
+          <dd>The estimation engine and memo ingest five distinct inputs:
+            <ol>
+              <li><strong>Risk-free benchmark rate (\(r_f\)):</strong> 10-year Treasury constant-maturity yield (<code>cmt_10y</code>) from the embedded market dataset <code>ust_daily.csv</code>, taking the latest valid observation on or before the valuation date (real data from Federal Reserve Board H.15).</li>
+              <li><strong>Historical return series:</strong> Periodic stock and market returns (at least 36 periods) for OLS beta regression.</li>
+              <li><strong>Equity risk premium (\(\mathrm{ERP}\)):</strong> Forward-looking annual equity risk premium with variance \(\mathrm{Var}(\mathrm{ERP})\) and estimation covariance \(\mathrm{Cov}(\beta, \mathrm{ERP})\).</li>
+              <li><strong>Corporate debt credit spread (\(s\)):</strong> Spread over the risk-free rate with variance \(\mathrm{Var}(s)\).</li>
+              <li><strong>Capital structure and cash flows:</strong> Market value of debt and equity in integer cents, statutory corporate tax rate \(\tau_c \in [0, 1)\), next-period operating cash flow \(C_1\) in integer cents, and terminal growth rate \(g\).</li>
+            </ol>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>Two core deliverables:
+            <ul>
+              <li><code>wacc_engine.py</code>: Standard-library Python module containing the eight required functions (<code>beta_ols</code>, <code>unlever_beta</code>, <code>relever_beta</code>, <code>cost_of_equity</code>, <code>cost_of_debt</code>, <code>wacc</code>, <code>wacc_delta_variance</code>, <code>valuation_range</code>).</li>
+              <li><code>memo.md</code>: Executive case memo (1&ndash;2 pages) presenting point estimates, standard errors, valuation bounds in integer cents, and policy implications.</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ul>
+              <li>Money quantities must be formatted and computed in integer cents; component rates and weights are decimals.</li>
+              <li>Standard library only: no external dependencies (<code>numpy</code>, <code>pandas</code>, <code>scipy</code>). Use <code>math</code> and <code>decimal</code>.</li>
+              <li>Valuation bounds must use <code>Decimal.quantize(Decimal("1"), rounding=ROUND_HALF_UP)</code>.</li>
+              <li>All invalid inputs (e.g. \(D &lt; 0\), \(E \le 0\), \(\tau_c \notin [0, 1)\), \(r \le g\), non-positive integer cash flows, \(k &lt; 0\)) must raise <code>ValueError</code>.</li>
+            </ul>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>Grading: both. The autograder runs the engine's test suite; the rubric grades the memo. The autograder runs 24 property and numerical tests across seeds 0&ndash;49 to verify exact mathematical correctness, boundary validation, and error propagation. The rubric grades the executive memo across five analytical criteria.</dd>
+        </dl>
+      </section>
+
+      <section id="time-budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th scope="col">Component</th>
+                <th scope="col">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Read the spec, set up, run the starter against the suite</td>
+                <td>1</td>
+                <td>Confirms the interface and the failure messages before coding</td>
+              </tr>
+              <tr>
+                <td>Rung 1 and rung 2 labs (worked example, completion)</td>
+                <td>1</td>
+                <td>Reproduces the worked estimate and fills the blanks</td>
+              </tr>
+              <tr>
+                <td>Data intake: CSV schemas, validation, the cmt_10y lookup, the spread and ERP records</td>
+                <td>3</td>
+                <td>Four schemas documented and validated; one real series read with its date</td>
+              </tr>
+              <tr>
+                <td>Beta and unlevering: beta_ols, unlever_beta, relever_beta, and their tests</td>
+                <td>2</td>
+                <td>Covariance-over-variance, the n-1 normalisation, the round trip</td>
+              </tr>
+              <tr>
+                <td>WACC and cost of equity: cost_of_equity, cost_of_debt, wacc and their tests</td>
+                <td>2</td>
+                <td>CAPM, after-tax debt, market-value weights</td>
+              </tr>
+              <tr>
+                <td>Error propagation: wacc_delta_variance against the seeded Monte Carlo</td>
+                <td>3</td>
+                <td>Delta formula, covariance term, the second-order gap</td>
+              </tr>
+              <tr>
+                <td>Valuation range: valuation_range, rounding in cents, edge cases and error classes</td>
+                <td>2</td>
+                <td>Growing perpetuity, half-up rounding, the r &gt; g boundary</td>
+              </tr>
+              <tr>
+                <td>Memo (rubric)</td>
+                <td>2</td>
+                <td>One page; every number cited with its date and transform</td>
+              </tr>
+              <tr>
+                <td>Self-assessment against exemplars</td>
+                <td>1</td>
+                <td>Score the memo with the rubric, then compare with exemplar-a and exemplar-b</td>
+              </tr>
+              <tr>
+                <td>Total</td>
+                <td>17</td>
+                <td>Equals data-hours-project on the hub</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="lab" id="lab-CF2-project-3" data-runtime="python" data-files="ust_daily.csv">
+        <h3>Lab 3 · Sanity check and memo benchmark</h3>
+        <p class="hypothesis">Runs the end-to-end estimation pipeline on the reference memo parameters using the real 10-year Treasury yield from ust_daily.csv on 2026-09-30 (rf = 4.1500%). Computes asset beta 0.8168, cost of equity 9.9000%, after-tax cost of debt 4.4625%, WACC 7.4531%, delta standard error 108.6 bps, base valuation $110.03M, and uncertainty range $91.75M to $137.38M.</p>
+        <pre><code class="language-python" data-run>"""CF2 project lab 3 (rung 3 check): Reference numbers for independent memo evaluation.
+
+Real data: 10-year Treasury constant-maturity yield (cmt_10y) from ust_daily.csv.
+SIMULATED / BYOD: Corporate returns, equity risk premium, and debt spreads.
+Money is in integer cents; component rates are decimals; valuations are rounded half-up in cents.
+Standard library only; reads data/ust_daily.csv.
+Computes and prints the exact baseline table that the student's project memo must reproduce.
+"""
+
+from __future__ import annotations
+
+import csv
+import math
+from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
+
+VALUATION_DATE = "2026-09-30"
+
+
+def read_risk_free_rate(csv_path: Path, target_date: str) -&gt; float:
+    """Read 10-year Treasury constant-maturity yield on or before target date from ust_daily.csv."""
+    latest_yield = None
+    with csv_path.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row["date"] &lt;= target_date and row["cmt_10y"]:
+                latest_yield = float(row["cmt_10y"])
+    if latest_yield is None:
+        raise ValueError(f"No Treasury yield found on or before {target_date}")
+    # Published by H.15 in percent per year; convert to decimal
+    return latest_yield / 100.0
+
+
+def main() -&gt; None:
+    print("CF2 Project Rung 3: Sanity Check and Memo Benchmark")
+    print("==================================================")
+
+    # Locate ust_daily.csv
+    csv_path = Path("data") / "ust_daily.csv"
+    if not csv_path.exists():
+        csv_path = Path("course/assets/data/market/ust_daily.csv")
+
+    rf = read_risk_free_rate(csv_path, VALUATION_DATE)
+
+    # Stated firm parameters (from project specification)
+    debt_cents = 4_500_000_000  # $45,000,000.00
+    equity_cents = 5_500_000_000  # $55,000,000.00
+    total_cents = debt_cents + equity_cents  # $100,000,000.00
+    tau_c = 0.25
+
+    erp = 0.0500  # 5.00%
+    spread = 0.0180  # 1.80% (180 bps)
+    beta_l = 1.15
+    var_beta = 0.0196  # se = 0.14
+    var_erp = 0.000100  # se = 0.01
+    cov_beta_erp = 0.000200
+    var_spread = 0.000016  # se = 0.004
+
+    cash_flow_cents = 600_000_000  # $6,000,000.00
+    growth = 0.0200  # 2.00%
+
+    # Pipeline calculations
+    we = equity_cents / total_cents
+    wd = debt_cents / total_cents
+    de = debt_cents / equity_cents
+
+    bu = beta_l / (1.0 + (1.0 - tau_c) * de)
+    re = rf + beta_l * erp
+    rd = rf + spread
+    after_tax_rd = rd * (1.0 - tau_c)
+    wacc_val = we * re + wd * after_tax_rd
+
+    term_eq = (we**2) * (erp**2 * var_beta + beta_l**2 * var_erp + 2.0 * beta_l * erp * cov_beta_erp)
+    term_d = (wd * (1.0 - tau_c)) ** 2 * var_spread
+    wacc_var = term_eq + term_d
+    wacc_se = math.sqrt(wacc_var)
+
+    # Valuation range at k = 1.0
+    d_mid = Decimal(str(wacc_val))
+    d_se = Decimal(str(wacc_se))
+    d_g = Decimal(str(growth))
+    d_cf = Decimal(cash_flow_cents)
+
+    r_low = d_mid - d_se
+    r_high = d_mid + d_se
+
+    val_low = int((d_cf / (r_high - d_g)).quantize(Decimal("1"), ROUND_HALF_UP))
+    val_base = int((d_cf / (d_mid - d_g)).quantize(Decimal("1"), ROUND_HALF_UP))
+    val_high = int((d_cf / (r_low - d_g)).quantize(Decimal("1"), ROUND_HALF_UP))
+
+    print(f"Valuation Date:                   {VALUATION_DATE}")
+    print(f"10-Year Treasury Yield (r_f):     {rf:.4%} (real data: H.15 cmt_10y)")
+    print(f"Asset beta (beta_U):              {bu:.4f}")
+    print(f"Cost of equity (r_E):             {re:.4%}")
+    print(f"Pre-tax cost of debt (r_D):       {rd:.4%}")
+    print(f"After-tax cost of debt:           {after_tax_rd:.4%}")
+    print(f"WACC point estimate:              {wacc_val:.4%}")
+    print(f"Delta-method variance:            {wacc_var:.8f}")
+    print(f"Delta-method standard error:      {wacc_se:.4%} ({wacc_se * 10000:.1f} bps)")
+    print(f"\nTerminal growth rate (g):         {growth:.2%}")
+    print(f"Base enterprise valuation:        ${val_base / 100:,.2f} ({val_base} cents)")
+    print("Valuation range (k = 1.0 SE):")
+    print(f"  Low valuation (at {float(r_high):.4%}):       ${val_low / 100:,.2f} ({val_low} cents)")
+    print(f"  High valuation (at {float(r_low):.4%}):      ${val_high / 100:,.2f} ({val_high} cents)")
+    print(f"  Uncertainty spread:             ${(val_high - val_low) / 100:,.2f}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">CF2 Project Rung 3: Sanity Check and Memo Benchmark
+==================================================
+Valuation Date:                   2026-09-30
+10-Year Treasury Yield (r_f):     5.2900% (real data: H.15 cmt_10y)
+Asset beta (beta_U):              0.7127
+Cost of equity (r_E):             11.0400%
+Pre-tax cost of debt (r_D):       7.0900%
+After-tax cost of debt:           5.3175%
+WACC point estimate:              8.4649%
+Delta-method variance:            0.00006361
+Delta-method standard error:      0.7975% (79.8 bps)
+
+Terminal growth rate (g):         2.00%
+Base enterprise valuation:        $92,809,219.05 (9280921905 cents)
+Valuation range (k = 1.0 SE):
+  Low valuation (at 9.2624%):       $82,617,066.08 (8261706608 cents)
+  High valuation (at 7.6673%):      $105,869,997.67 (10586999767 cents)
+  Uncertainty spread:             $23,252,931.59</pre>
+        <p class="interpretation">This script establishes the exact baseline numerical benchmark that your independent case memo must reproduce and evaluate.</p>
+      </section>
+
+      <section class="grader-panel" id="grader" data-unit="CF2" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="wacc_engine.py" data-starter="starter.py" data-packages="">
+        <h2 id="h-grader">Autograder suite</h2>
+        <p>The autograder executes <code>grader/test_project.py</code> across 50 pseudo-random instance seeds. It validates mathematical identities, sample Bessel normalizations, Hamada round-trip consistency, delta-method variance formulas, Decimal half-up rounding in integer cents, and comprehensive error handling.</p>
+        <div class="grader-actions">
+          <button type="button" class="button" data-grade-action="run">Run autograder suite</button>
+        </div>
+        <div class="grader-output" data-grade-output hidden></div>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Evaluation rubric</h2>
+        <p>The executive memorandum (<code>memo.md</code>) is evaluated across five criteria with four observable performance levels:</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric-memo">
+            <caption>Assessment rubric for cost-of-capital case memo (memo.md).</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">Level 4 · Exemplary</th>
+                <th scope="col">Level 3 · Proficient</th>
+                <th scope="col">Level 2 · Developing</th>
+                <th scope="col">Level 1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Data and provenance</th>
+                <td>Names each of the five inputs with its source (or SIMULATED label), its date or valuation date, and its transform.</td>
+                <td>Names every input with its source; one of date or transform missing.</td>
+                <td>Names some inputs with sources.</td>
+                <td>Mentions data vaguely without sources or dates.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Beta and weights</th>
+                <td>States the unlevering assumptions (A7, permanent debt), the market-value weights and the D/E used, and applies unlever_beta to the stated values.</td>
+                <td>States the formula and the values; one assumption missing.</td>
+                <td>Applies a formula with no assumption stated.</td>
+                <td>Adjusts beta incorrectly or uses book values.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · WACC and its error</th>
+                <td>Reports WACC, its delta-method standard error, the covariance treatment of beta and ERP, and states the omitted second-order term.</td>
+                <td>Reports WACC and its standard error; covariance treatment missing.</td>
+                <td>Reports WACC only.</td>
+                <td>Gives a rough rate range with no variance calculation.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Valuation range</th>
+                <td>States the cash flow in integer cents, growth g, the WACC band with multiplier k, both endpoint values in integer cents (half-up), and that r &gt; g at both endpoints.</td>
+                <td>States the range; k or rounding missing.</td>
+                <td>States a range without its derivation.</td>
+                <td>Quotes a single point value without uncertainty bounds.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Limits and evidence</th>
+                <td>Names the constant-leverage, permanence, debt-beta and linearisation limits used, and for each grade-B or C claim names the counter-evidence key or states the claim is graded C with its design named.</td>
+                <td>Names the limits; one grade-B claim lacks its counter-evidence.</td>
+                <td>Names one limit.</td>
+                <td>Mentions no theoretical caveats or empirical limits.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Exemplars and scoring calibration</h3>
+        <p>Two memos on the reference acquisition target, illustrating Level 4 and Level 2 performance:</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A (Level 4 · Exemplary)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4.</p>
+          <h5>1 Data and Provenance</h5>
+          <p>Valuation date: 2026-09-30. Benchmark risk-free rate \(r_f = 4.1500\%\), obtained from the Federal Reserve Board H.15 constant-maturity 10-year Treasury yield (<code>cmt_10y</code>) in <code>ust_daily.csv</code>. Forward equity risk premium \(\mathrm{ERP} = 5.0000\%\) with estimation variance \(\mathrm{Var}(\mathrm{ERP}) = 0.000100\) (BYOD/SIMULATED). Corporate credit spread \(s = 1.8000\%\) (180 bps) with variance \(\mathrm{Var}(s) = 0.000016\) (BYOD/SIMULATED). Market equity is 5,500,000,000 cents ($55.0M) and market debt is 4,500,000,000 cents ($45.0M). Statutory tax rate \(\tau_c = 0.25\). Next-period operating cash flow \(C_1 = 600,000,000\) cents ($6.0M) with terminal growth \(g = 2.0000\%\).</p>
+          <p class="annotation" data-reveal>C1, Level 4: All five inputs named with explicit provenance, exact dates, SIMULATED/real classifications, and units.</p>
+
+          <h5>2 Beta and Capital Weights</h5>
+          <p>Market capital weights: \(w_E = 0.5500\), \(w_D = 0.4500\), yielding market debt-equity ratio \(D/E = 45/55 \approx 0.8182\). Under Assumption A7 (perpetual debt, constant leverage ratio, and risk-free debt beta \(\beta_D = 0\)), the Hamada relation unlevers the observed equity beta \(\beta_L = 1.1500\) to an asset beta of \(\beta_U = 1.1500 / [1 + (1 - 0.25)(0.8182)] = 0.8168\).</p>
+          <p class="annotation" data-reveal>C2, Level 4: States exact unlevering assumptions, debt beta zero convention, market debt-equity ratio, and computed asset beta.</p>
+
+          <h5>3 WACC and Estimation Error</h5>
+          <p>Cost of equity: \(r_E = 4.1500\% + 1.1500(5.0000\%) = 9.9000\%\). Pre-tax cost of debt: \(r_D = 4.1500\% + 1.8000\% = 5.9500\%\); after-tax cost of debt: \(r_D(1 - \tau_c) = 5.9500\% \times 0.75 = 4.4625\%\). The weighted average cost of capital is \(r_{\mathrm{WACC}} = 0.55(9.9000\%) + 0.45(4.4625\%) = 7.4531\%\). Propagating parameter variances (\(\mathrm{Var}(\beta) = 0.0196\), \(\mathrm{Var}(\mathrm{ERP}) = 0.000100\), \(\mathrm{Cov}(\beta, \mathrm{ERP}) = 0.000200\), \(\mathrm{Var}(s) = 0.000016\)) via the first-order delta method yields variance \(\mathrm{Var}(r_{\mathrm{WACC}}) = 0.00011800\) and standard error \(\mathrm{se}(r_{\mathrm{WACC}}) = 1.0863\%\) (108.6 bps). Note that the first-order delta expansion omits the positive second-order term \(w_E^2 [\mathrm{Var}(\beta)\mathrm{Var}(\mathrm{ERP}) + \mathrm{Cov}^2] = 6.2 \times 10^{-7}\), which negligibly affects the standard error.</p>
+          <p class="annotation" data-reveal>C3, Level 4: Fully reports WACC components, analytical delta-method standard error, covariance term, and quantifies the omitted second-order Taylor term.</p>
+
+          <h5>4 Valuation Range</h5>
+          <p>Valuation band evaluated at \(k = 1.0\) standard error. Low discount rate \(r_{\mathrm{low}} = 7.4531\% - 1.0863\% = 6.3668\%\); high discount rate \(r_{\mathrm{high}} = 7.4531\% + 1.0863\% = 8.5394\%\). Note that \(r_{\mathrm{low}} &gt; g\) (\(6.3668\% &gt; 2.0000\%\)), ensuring convergence. Using exact Decimal arithmetic and half-up rounding in integer cents: Base valuation: \((600,000,000 / (0.074531 - 0.02)) = 11,003,101,845\) cents ($110,031,018.45). Low valuation (at \(r_{\mathrm{high}}\)): \((600,000,000 / (0.085394 - 0.02)) = 9,175,163,086\) cents ($91,751,630.86). High valuation (at \(r_{\mathrm{low}}\)): \((600,000,000 / (0.063668 - 0.02)) = 13,739,788,185\) cents ($137,397,881.85). Total uncertainty span: $45,646,250.99.</p>
+          <p class="annotation" data-reveal>C4, Level 4: Explicitly verifies \(r &gt; g\), computes integer-cent bounds using half-up rounding, and documents the asymmetry of the valuation spread.</p>
+
+          <h5>5 Limits and Evidence</h5>
+          <p>The analysis assumes perpetual debt rebalanced to constant leverage. If debt is fixed in dollar terms, the Miles-Ezzell or Modigliani-Miller tax shield formula applies instead of Hamada. In practice, firms face partial adjustment frictions (Fama and French 2002, citing <span class="claim" data-grade="B" data-cite="fama2002testing">fama2002testing</span>) and equity market timing windows (Baker and Wurgler 2002, citing <span class="claim" data-grade="B" data-cite="baker2002market">baker2002market</span>), meaning current leverage may deviate from the optimal trade-off target.</p>
+          <p class="annotation" data-reveal>C5, Level 4: Identifies core theoretical assumptions, cites verified registry literature with evidence grades, and connects findings to capital structure dynamics.</p>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B (Level 2 · Developing)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2.</p>
+          <h5>1 Data and Provenance</h5>
+          <p>We use a risk-free rate of 4.15%, equity beta of 1.15, ERP of 5.0%, and a spread of 1.8%. Debt is $45M and equity is $55M.</p>
+          <p class="annotation" data-reveal>C1, Level 2: Names inputs but lacks dates, provenance sources, SIMULATED labels, and cash flow specifications.</p>
+
+          <h5>2 Beta and Capital Weights</h5>
+          <p>We unlever the beta using the tax rate of 25% to get an asset beta of 0.82.</p>
+          <p class="annotation" data-reveal>C2, Level 2: Applies the formula without stating underlying assumptions, debt beta convention, or market debt-equity ratios.</p>
+
+          <h5>3 WACC and Estimation Error</h5>
+          <p>The WACC is 7.45%. A sensitivity range gives a standard error of about 1.09%.</p>
+          <p class="annotation" data-reveal>C3, Level 2: Reports WACC and approximate standard error, but omits covariance treatment and delta-method variance derivation.</p>
+
+          <h5>4 Valuation Range</h5>
+          <p>The firm is worth around $110M. A range based on the cost of capital gives $92M to $137M.</p>
+          <p class="annotation" data-reveal>C4, Level 2: Reports rounded dollar estimates without integer-cent precision, half-up rounding, or explicit verification of \(r &gt; g\).</p>
+
+          <h5>5 Limits and Evidence</h5>
+          <p>The cost of capital might change if debt changes.</p>
+          <p class="annotation" data-reveal>C5, Level 2: Vague caveat without naming theoretical limits, empirical literature, or registry keys.</p>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric-memo" data-exemplars="exemplar-a exemplar-b" data-store-key="CF2/project/memo">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your draft memo against the five criteria before submitting. Calibrate your grading against Exemplars A and B to ensure consistency.</p>
+          <div data-rubric-form><p class="notice">Interactive self-assessment requires JavaScript.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <p>For advanced portfolio development, implement a non-parametric bootstrap resampling procedure on the historical return series to estimate the empirical standard error and confidence interval of equity beta \(\beta_L\). Compare the bootstrap distribution with the asymptotic OLS standard error and evaluate the impact on WACC delta variance.</p>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="fama2002testing"></li>
+          <li data-cite="baker2002market"></li>
+          <li data-cite="myers1984corporate"></li>
+          <li data-cite="myers1984capital"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">CF2 · Cost of Capital &amp; Capital Structure</footer>
+</body>
+</html>
