@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="PM1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PM1 Project · PME engine</title>
+  <meta name="description" content="Build an institutional private equity performance engine implementing Kaplan–Schoar PME, Direct Alpha, and Long–Nickels PME, and benchmark simulated funds against public market indices.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">PM1 Private Equity</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="24">
+      <header class="page-head">
+        <p class="eyebrow">PM1 project · 24 hours · autograded</p>
+        <h1>PME engine</h1>
+        <p class="lede">Institutional limited partners cannot evaluate private equity performance using internal rates of return because capital call timing and reinvestment assumptions bias interim returns. In this capstone project, you implement a complete benchmarking engine computing Kaplan–Schoar Public Market Equivalent (KS-PME), Gredil, Griffiths &amp; Stucke Direct Alpha, and Long–Nickels index replication, testing the engine on simulated fund cash flows with known alpha and quantifying subscription-line distortions.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 introduce the cash flow discounting algebra and the failure mode of index replication. If you pass the placement diagnostic on the hub page, you may proceed directly to Rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below walks through an irregular private fund cash flow schedule, evaluating MOIC multiples, IRR, KS-PME, Direct Alpha, and demonstrating the synthetic short position breakdown in Long–Nickels PME.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below provides a partial implementation where you complete the Direct Alpha net present value discounting condition and the Long–Nickels synthetic net asset value recurrence.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement the complete PME benchmarking engine in <code>reference.py</code>, conforming to <a href="#spec">the specification</a>, and pass all 50 pseudo-random instance tests in <a href="#grader-section">the autograder suite</a>.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extend the engine to calculate PME+ liquidity scaling, mPME modified distribution matching, and stochastic discount factor private equity alpha.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+
+        <section class="lab" id="lab-PM1-project-1" data-runtime="python" data-packages="numpy scipy">
+          <h3>Lab 1 · Worked example: benchmarking private fund cash flows</h3>
+          <p class="hypothesis">A SIMULATED 5-year private fund calls 100.0 million dollars across years 0.0 to 2.0, distributes 170.0 million dollars across years 2.0 to 5.0, and retains 10.0 million dollars in unrealized NAV at horizon T=5.0. Public benchmark prices grow from 100.0 to 146.93. Predicted values before running: TVPI = 1.80, KS-PME &gt; 1.0 (outperformance), Direct Alpha &gt; 0, and Long–Nickels synthetic NAV goes negative due to early outperformance distributions.</p>
+          <pre><code class="language-python" data-run>"""PM1 project lab 1 (rung 1, worked example): private equity benchmarking engine.
+
+SIMULATED: a representative 10-year private equity fund with semi-annual cash flows.
+Computes MOIC (DPI, RVPI, TVPI), IRR, Kaplan-Schoar PME, Direct Alpha, and Long-Nickels PME.
+Standard library, NumPy, and SciPy only; fully deterministic.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from scipy.optimize import brentq
+
+
+def main() -&gt; None:
+    # 1. Cash flow schedule over 5 years (semi-annual dates)
+    times = np.array([0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0])
+    calls = np.array([30.0, 25.0, 20.0, 15.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    distributions = np.array([0.0, 0.0, 0.0, 0.0, 5.0, 15.0, 25.0, 35.0, 40.0, 30.0, 20.0])
+    nav = 10.0  # Remaining unrealized NAV at horizon T=5.0
+
+    # Public benchmark index prices (annualized ~8% geometric drift)
+    benchmark_prices = np.array([100.0, 103.92, 108.00, 112.24, 116.64, 121.22, 125.97, 130.91, 136.05, 141.38, 146.93])
+
+    # 2. MOIC Decomposition
+    total_calls = float(np.sum(calls))
+    total_dist = float(np.sum(distributions))
+    dpi = total_dist / total_calls
+    rvpi = nav / total_calls
+    tvpi = dpi + rvpi
+    print(f"Step 1: MOIC metrics -&gt; DPI={dpi:.4f}, RVPI={rvpi:.4f}, TVPI={tvpi:.4f}")
+
+    # 3. Net Cash Flows and IRR
+    net_cf = distributions - calls
+    net_cf[-1] += nav
+
+    def npv(r: float) -&gt; float:
+        return float(np.sum(net_cf * (1.0 + r) ** (-times)))
+
+    irr = float(brentq(npv, -0.5, 2.0, xtol=1e-8))
+    print(f"Step 2: Annualized IRR -&gt; {irr * 100:.2f}%")
+
+    # 4. Kaplan &amp; Schoar (2005) KS-PME
+    disc_calls = float(np.sum(calls / benchmark_prices))
+    disc_dist = float(np.sum(distributions / benchmark_prices) + (nav / benchmark_prices[-1]))
+    ks_pme = disc_dist / disc_calls
+    print(f"Step 3: Kaplan-Schoar PME -&gt; {ks_pme:.4f}")
+
+    # 5. Direct Alpha (Gredil, Griffiths &amp; Stucke 2014)
+    def npv_alpha(alpha: float) -&gt; float:
+        flows = (distributions - calls) / benchmark_prices
+        return float(np.sum(flows * np.exp(-alpha * times)) + (nav / benchmark_prices[-1]) * np.exp(-alpha * times[-1]))
+
+    direct_alpha = float(brentq(npv_alpha, -0.5, 0.5, xtol=1e-8))
+    print(f"Step 4: Direct Alpha (continuous annualized) -&gt; {direct_alpha * 100:.2f}%")
+
+    # 6. Long &amp; Nickels (1996) Index Replication
+    n = len(times)
+    v = np.zeros(n)
+    v[0] = calls[0] - distributions[0]
+    for i in range(1, n):
+        v[i] = v[i - 1] * (benchmark_prices[i] / benchmark_prices[i - 1]) + calls[i] - distributions[i]
+
+    went_short = bool(np.any(v &lt; -1e-6))
+    print(f"Step 5: Long-Nickels Terminal NAV -&gt; {v[-1]:.2f}, Went Short -&gt; {went_short}")
+
+    if not went_short and v[-1] &gt;= 0:
+        ln_cf = distributions - calls
+        ln_cf[-1] += v[-1]
+
+        def npv_ln(r: float) -&gt; float:
+            return float(np.sum(ln_cf * (1.0 + r) ** (-times)))
+
+        ln_irr = float(brentq(npv_ln, -0.5, 2.0, xtol=1e-8))
+        print(f"Step 6: Long-Nickels Benchmark IRR -&gt; {ln_irr * 100:.2f}%")
+        print(f"Step 7: Excess IRR Spread (PE IRR - LN IRR) -&gt; {(irr - ln_irr) * 100:.2f}%")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Step 1: MOIC metrics -&gt; DPI=1.7000, RVPI=0.1000, TVPI=1.8000
+Step 2: Annualized IRR -&gt; 21.18%
+Step 3: Kaplan-Schoar PME -&gt; 1.4208
+Step 4: Direct Alpha (continuous annualized) -&gt; 11.51%
+Step 5: Long-Nickels Terminal NAV -&gt; -48.43, Went Short -&gt; True</pre>
+          <p class="interpretation">The fund generated a 1.80x TVPI and a 21.18% IRR. Because the fund outperformed the public market (KS-PME of 1.4208 and Direct Alpha of 11.51%), distributions extracted cash faster than the public index could generate wealth from the called capital, forcing the synthetic Long–Nickels portfolio into a deep negative balance (-48.43M), proving why LN-PME breaks down on outperforming private equity funds.</p>
+        </section>
+
+        <section class="lab completion" id="lab-PM1-project-2" data-runtime="python" data-packages="numpy scipy">
+          <h3>Lab 2 · Completion problem: Direct Alpha root condition and synthetic NAV recurrence</h3>
+          <p class="hypothesis">Complete the two missing lines: (1) the benchmark-discounted net cash flow vector in Direct Alpha, and (2) the synthetic portfolio NAV recurrence in Long–Nickels PME. When completed correctly, the output matches the expected benchmark ratios below.</p>
+          <pre><code class="language-python" data-run>"""PM1 project lab 2 (rung 2, completion): benchmarking completion problem.
+
+SIMULATED: a private equity fund cash flow schedule to evaluate with KS-PME, Direct Alpha,
+and Long-Nickels index replication.
+Standard library, NumPy, and SciPy only; fully deterministic.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from scipy.optimize import brentq
+
+
+def main() -> None:
+    times = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+    calls = np.array([50.0, 30.0, 20.0, 0.0, 0.0, 0.0])
+    distributions = np.array([0.0, 0.0, 10.0, 30.0, 50.0, 60.0])
+    nav = 0.0
+    benchmark_prices = np.array([100.0, 108.0, 116.64, 125.97, 136.05, 146.93])
+
+    # 1. Kaplan & Schoar (2005) KS-PME
+    disc_calls = float(np.sum(calls / benchmark_prices))
+    disc_dist = float(np.sum(distributions / benchmark_prices) + (nav / benchmark_prices[-1]))
+    ks_pme = disc_dist / disc_calls
+    print(f"KS-PME: {ks_pme:.4f}")
+
+    # 2. Direct Alpha
+    flows = ___
+
+    def npv_alpha(alpha: float) -> float:
+        return float(np.sum(flows * np.exp(-alpha * times)) + (nav / benchmark_prices[-1]) * np.exp(-alpha * times[-1]))
+
+    direct_alpha = float(brentq(npv_alpha, -0.5, 0.5, xtol=1e-8))
+    print(f"Direct Alpha: {direct_alpha * 100:.2f}%")
+
+    # 3. Long & Nickels (1996) Index Replication
+    n = len(times)
+    v = np.zeros(n)
+    v[0] = calls[0] - distributions[0]
+    for i in range(1, n):
+        v[i] = ___
+
+    went_short = bool(np.any(v < -1e-6))
+    print(f"LN Terminal NAV: {v[-1]:.2f}")
+    print(f"LN Went Short: {went_short}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">KS-PME: 1.1586
+Direct Alpha: 4.41%
+LN Terminal NAV: -22.11
+LN Went Short: True</pre>
+          <p class="interpretation">The completed solution recovers a KS-PME of 1.1586 and a Direct Alpha of 4.41% per year over the public benchmark. Notice that even with moderate outperformance, the Long–Nickels synthetic portfolio terminates at -22.11M, triggering the short-position failure flag.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Institutional investors managing multi-billion dollar endowments and pension systems must evaluate whether private equity commitments deliver genuine alpha over liquid public equities after management fees and carried interest. You will build a production-grade private equity benchmarking engine that calculates money-weighted returns, wealth ratios, exact continuous direct alphas, and synthetic market replications across arbitrary fund cash flow schedules.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A fund instance dictionary containing:
+            <ul>
+              <li><code>seed</code> (int): Random generator seed.</li>
+              <li><code>times</code> (list[float]): Array of cash flow observation dates \(t_0 = 0.0 \le t_1 &lt; \dots &lt; t_n = T\) in years.</li>
+              <li><code>calls</code> (list[float]): Array of capital drawn from limited partners at each date \(t_i \ge 0\).</li>
+              <li><code>distributions</code> (list[float]): Array of cash returned to limited partners at each date \(t_i \ge 0\).</li>
+              <li><code>nav</code> (float): Remaining unrealized fund net asset value at final horizon \(T \ge 0\).</li>
+              <li><code>benchmark_prices</code> (list[float]): Array of public index levels \(I_{t_i} &gt; 0\) observed at each date.</li>
+              <li><code>true_alpha</code> (float): Ground-truth annualized continuous alpha used to generate the cash flow path.</li>
+              <li><code>beta</code> (float): True public market equity beta of the portfolio companies.</li>
+            </ul>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>Your module <code>reference.py</code> must expose the following fully typed functions:
+            <ul>
+              <li><code>compute_irr(times: np.ndarray, cash_flows: np.ndarray) -&gt; float</code>: Solves \(\sum_{i} \mathrm{CF}_i (1 + r)^{-t_i} = 0\) for the annualized internal rate of return using Brent's method.</li>
+              <li><code>compute_moic(calls: np.ndarray, distributions: np.ndarray, nav: float) -&gt; tuple[float, float, float]</code>: Computes <code>(dpi, rvpi, tvpi)</code> where \(\mathrm{DPI} = \frac{\sum D_i}{\sum C_i}\), \(\mathrm{RVPI} = \frac{\mathrm{NAV}}{\sum C_i}\), and \(\mathrm{TVPI} = \mathrm{DPI} + \mathrm{RVPI}\).</li>
+              <li><code>compute_ks_pme(times: np.ndarray, calls: np.ndarray, distributions: np.ndarray, nav: float, benchmark_prices: np.ndarray) -&gt; float</code>: Computes the Kaplan &amp; Schoar (2005) wealth ratio:
+                \[
+                \mathrm{KS\text{-}PME} = \frac{\sum_{i=0}^n \frac{D_i}{I_{t_i}} + \frac{\mathrm{NAV}}{I_T}}{\sum_{i=0}^n \frac{C_i}{I_{t_i}}}
+                \]
+              </li>
+              <li><code>compute_direct_alpha(times: np.ndarray, calls: np.ndarray, distributions: np.ndarray, nav: float, benchmark_prices: np.ndarray) -&gt; float</code>: Solves for the continuous rate \(\alpha\) satisfying:
+                \[
+                \sum_{i=0}^n \left(\frac{D_i - C_i}{I_{t_i}}\right) e^{-\alpha t_i} + \frac{\mathrm{NAV}}{I_T} e^{-\alpha T} = 0
+                \]
+              </li>
+              <li><code>compute_long_nickels_pme(times: np.ndarray, calls: np.ndarray, distributions: np.ndarray, benchmark_prices: np.ndarray) -&gt; tuple[float, np.ndarray, bool]</code>: Replicates cash flows in the public index:
+                \[
+                V_0 = C_0 - D_0, \quad V_i = V_{i-1} \left(\frac{I_{t_i}}{I_{t_{i-1}}}\right) + C_i - D_i
+                \]
+                Returns <code>(ln_irr, v_series, went_short)</code>, where <code>went_short</code> is <code>True</code> if any \(V_i &lt; -10^{-6}\). If short or terminal \(V_n &lt; 0\), <code>ln_irr</code> is <code>float("nan")</code>; otherwise it is the IRR of the replicating portfolio.
+              </li>
+              <li><code>evaluate_fund(instance: dict[str, Any]) -&gt; dict[str, Any]</code>: Returns a summary dictionary containing keys <code>"irr"</code>, <code>"dpi"</code>, <code>"rvpi"</code>, <code>"tvpi"</code>, <code>"ks_pme"</code>, <code>"direct_alpha"</code>, <code>"ln_irr"</code>, <code>"ln_went_short"</code>, and <code>"ln_nav_series"</code>.</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Python 3.14 standard library, NumPy 2.4, and SciPy 1.15 only. No external web access. All root-finding routines must converge within 100 ms per instance, bracket errors cleanly, and avoid unhandled divergence or division-by-zero exceptions.</dd>
+
+          <dt>Grading mode</dt>
+          <dd>Autograded by test suite across 50 pseudo-random instance seeds, validating mathematical invariants, scale invariance, zero-alpha market matching, short-position detection, and subscription-line distortion properties.</dd>
+        </dl>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Component</th>
+                <th scope="col" class="num">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Rungs 1 and 2</td>
+                <td class="num">3</td>
+                <td>Worked example analysis and completing the Direct Alpha and Long–Nickels recurrence equations.</td>
+              </tr>
+              <tr>
+                <td>Core benchmarking engine</td>
+                <td class="num">6</td>
+                <td>Implementing robust root finding for irregular cash flow IRR, MOIC decomposition, and KS-PME wealth ratio.</td>
+              </tr>
+              <tr>
+                <td>Generalized PME solvers</td>
+                <td class="num">8</td>
+                <td>Implementing continuous Direct Alpha root finding and Long–Nickels synthetic NAV tracking with short detection.</td>
+              </tr>
+              <tr>
+                <td>Synthetic fund test harness</td>
+                <td class="num">5</td>
+                <td>Validating parameter recovery on simulated funds with known true alpha and testing subscription-line leverage distortions.</td>
+              </tr>
+              <tr>
+                <td>Audit and suite profiling</td>
+                <td class="num">2</td>
+                <td>Executing the 50-seed autograder suite, verifying zero-error Pyodide execution, and confirming mutant kills.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td class="num"><strong>24</strong></td>
+                <td>40% of the 60-hour module hours.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>The autograder executes <code>grader/test_project.py</code> across 50 pseudo-random instance seeds. It validates cash flow articulation, IRR scale invariance, benchmark-matching identity properties (\(\mathrm{KS\text{-}PME}=1.0 \iff \alpha=0\)), Direct Alpha recovery, Long–Nickels short detection, and subscription facility timing distortions.</p>
+        <section class="grader-panel" id="grader" data-unit="PM1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="reference.py" data-starter="starter.py" data-packages="numpy scipy">
+          <div class="grader-actions">
+            <button type="button" class="button" data-grade-action="run">Run autograder suite</button>
+          </div>
+          <div class="grader-output" data-grade-output aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <p>For research and portfolio presentation, consider three advanced extensions to the PME engine:</p>
+        <ul>
+          <li><strong>PME+ Scaling Factor:</strong> Implement the Rouvinez (2003) PME+ adjustment, which introduces a fixed scaling parameter \(\lambda\) on public market distributions to ensure the synthetic NAV exactly matches the private fund's terminal NAV without going short.</li>
+          <li><strong>Modified PME (mPME):</strong> Implement the Cambridge Associates modified PME, which scales both capital calls and distributions by each period's private fund NAV relative to public market capital.</li>
+          <li><strong>Stochastic Discount Factor Alpha:</strong> Replace the broad public equity index with a pricing kernel estimated from a multi-factor pricing model (e.g. Fama–French 5-factor plus momentum and liquidity), isolating private equity idiosyncratic value creation from systematic factor exposures.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="kaplan2005private"></li>
+          <li data-cite="harris2014private"></li>
+          <li data-cite="metrick2010economics"></li>
+          <li data-cite="phalippou2008performance"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">PM1 project · PME engine</footer>
+</body>
+</html>
