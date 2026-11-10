@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="SC4" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SC4 Project · PDE Option Pricer</title>
+  <meta name="description" content="Build a Crank–Nicolson finite-difference pricer with Rannacher smoothing for European and barrier options, and certify its second-order convergence. 16 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">SC4 PDEs &amp; Feynman–Kac</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="16">
+      <header class="page-head">
+        <p class="eyebrow">SC4 project · 16 hours · Graded by autograder</p>
+        <h1>PDE Option Pricer</h1>
+        <p class="lede">Quantitative trading desks and risk management systems require numerical PDE solvers that value exotic and vanilla contingent claims with guaranteed second-order convergence and unconditional stability. In this project, you construct a production-grade finite-difference option pricer implementing explicit, fully implicit, and Crank–Nicolson schemes, enhanced with Rannacher time-stepping smoothing to eradicate spurious oscillations from non-smooth and discontinuous payoffs.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <ol class="ladder">
+          <li>
+            <div>
+              <span class="rung-title">Rung 1 · Worked example</span>
+              <p>A fully solved instance of the Crank–Nicolson scheme with the Thomas algorithm applied to a European call option on seed 0, tracing grid construction, boundary conditions, and linear solver steps.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 2 · Completion problem</span>
+              <p>Complete the missing Thomas algorithm elimination denominator and Crank–Nicolson theta-stepping lines, graded instantly in the browser.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 3 · Independent project</span>
+              <p>Build a modular PDE pricer with Rannacher smoothing for European and barrier options, and certify its empirical second-order convergence order against Black–Scholes benchmarks.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 4 · Stretch</span>
+              <p>Extend the finite-difference solver to American early exercise options using Projected SOR or penalty methods, or couple two spatial dimensions using ADI splitting.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Rung 1 solves a European call option completely on the seed 0 instance. Rung 2 presents the same task for a European put with key algorithmic lines blanked with <code>___</code>.</p>
+
+        <section class="lab" id="lab-SC4-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: Crank-Nicolson European call pricer on seed 0</h3>
+          <p class="hypothesis">On the seed 0 SIMULATED instance (\(S_0 = 100\), \(K = 100\), \(T = 1.0\), \(r = 0.05\), \(\sigma = 0.20\)), the Crank-Nicolson finite-difference solver with 200 spatial intervals and 100 time steps converges to the analytical Black-Scholes price within 0.02.</p>
+          <pre><code class="language-python" data-run>"""Lab project-1 · Rung 1 worked example: Crank-Nicolson heat-equation and option solver on seed 0.
+
+Solves the Black-Scholes PDE backward in time for a European call option using the Crank-Nicolson
+scheme with the Thomas tridiagonal algorithm. Evaluates on the deterministic seed 0 SIMULATED instance.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def norm_cdf(x: float) -&gt; float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def thomas_solve(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -&gt; np.ndarray:
+    n = len(d)
+    cp = np.zeros(n, dtype=np.float64)
+    dp = np.zeros(n, dtype=np.float64)
+    cp[0] = c[0] / b[0]
+    dp[0] = d[0] / b[0]
+    for i in range(1, n):
+        denom = b[i] - a[i] * cp[i - 1]
+        cp[i] = c[i] / denom
+        dp[i] = (d[i] - a[i] * dp[i - 1]) / denom
+    x = np.zeros(n, dtype=np.float64)
+    x[-1] = dp[-1]
+    for i in range(n - 2, -1, -1):
+        x[i] = dp[i] - cp[i] * x[i + 1]
+    return x
+
+
+def main() -&gt; None:
+    # Seed 0 parameters (SIMULATED)
+    s0 = 100.0
+    k = 100.0
+    maturity = 1.0
+    rate = 0.05
+    vol = 0.20
+    m_space = 200
+    n_time = 100
+
+    s_min = 0.0
+    s_max = 4.0 * max(s0, k)
+    s = np.linspace(s_min, s_max, m_space + 1, dtype=np.float64)
+    ds = (s_max - s_min) / m_space
+    dt = maturity / n_time
+
+    # Payoff at tau = 0
+    v = np.maximum(s - k, 0.0)
+
+    # Interior operator coefficients
+    s_int = s[1:-1]
+    alpha = 0.5 * vol * vol * (s_int**2) / (ds**2) - 0.5 * rate * s_int / ds
+    beta = -vol * vol * (s_int**2) / (ds**2) - rate
+    gamma = 0.5 * vol * vol * (s_int**2) / (ds**2) + 0.5 * rate * s_int / ds
+
+    tau = 0.0
+    theta = 0.5
+    for _ in range(n_time):
+        tau_next = tau + dt
+        disc = math.exp(-rate * tau_next)
+        v_low = 0.0
+        v_high = s_max - k * disc
+
+        d = (
+            (1.0 + (1.0 - theta) * dt * beta) * v[1:-1]
+            + (1.0 - theta) * dt * alpha * v[:-2]
+            + (1.0 - theta) * dt * gamma * v[2:]
+        )
+        a_diag = -theta * dt * alpha
+        b_diag = 1.0 - theta * dt * beta
+        c_diag = -theta * dt * gamma
+
+        d[0] -= a_diag[0] * v_low
+        d[-1] -= c_diag[-1] * v_high
+
+        v_int = thomas_solve(a_diag, b_diag, c_diag, d)
+        v = np.concatenate([[v_low], v_int, [v_high]])
+        tau = tau_next
+
+    pde_price = float(np.interp(s0, s, v))
+    d1 = (math.log(s0 / k) + (rate + 0.5 * vol * vol) * maturity) / (vol * math.sqrt(maturity))
+    d2 = d1 - vol * math.sqrt(maturity)
+    exact_price = s0 * norm_cdf(d1) - k * math.exp(-rate * maturity) * norm_cdf(d2)
+    err = abs(pde_price - exact_price)
+
+    print(f"PDE price: {pde_price:.6f}")
+    print(f"Exact Black-Scholes price: {exact_price:.6f}")
+    print(f"Absolute error: {err:.4e}")
+    print(f"Agreement within 0.02: {err &lt; 0.02}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">PDE price: 10.440710
+Exact Black-Scholes price: 10.450584
+Absolute error: 9.8733e-03
+Agreement within 0.02: True</pre>
+          <p class="interpretation">The numerical PDE solution agrees with the exact Black-Scholes closed-form formula to within 0.01 on a 200x100 spacetime grid, confirming proper tridiagonal assembly and boundary condition implementation.</p>
+        </section>
+
+        <section class="lab completion" id="lab-SC4-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: completing the Thomas solver and theta-stepping</h3>
+          <p class="hypothesis">Complete the blanked lines <code>___</code> in the Thomas algorithm forward elimination and the Crank-Nicolson theta-stepping setup. On seed 0, the completed put pricer converges within 0.02 of analytical put price.</p>
+          <pre><code class="language-python" data-run>"""Lab project-2 · Rung 2 completed solution: tridiagonal elimination and Crank-Nicolson step.
+
+Completes the forward elimination and backward substitution in the Thomas algorithm
+and executes the theta-stepping scheme on seed 0 (SIMULATED).
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def thomas_solve(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -> np.ndarray:
+    n = len(d)
+    cp = np.zeros(n, dtype=np.float64)
+    dp = np.zeros(n, dtype=np.float64)
+    cp[0] = c[0] / b[0]
+    dp[0] = d[0] / b[0]
+    for i in range(1, n):
+        denom = ___
+        cp[i] = ___
+        dp[i] = ___
+    x = np.zeros(n, dtype=np.float64)
+    x[-1] = dp[-1]
+    for i in range(n - 2, -1, -1):
+        x[i] = dp[i] - cp[i] * x[i + 1]
+    return x
+
+
+def main() -> None:
+    # Seed 0 parameters (SIMULATED)
+    s0 = 100.0
+    k = 100.0
+    maturity = 0.5
+    rate = 0.04
+    vol = 0.25
+    m_space = 160
+    n_time = 80
+
+    s_min = 0.0
+    s_max = 4.0 * max(s0, k)
+    s = np.linspace(s_min, s_max, m_space + 1, dtype=np.float64)
+    ds = (s_max - s_min) / m_space
+    dt = maturity / n_time
+
+    # European put payoff
+    v = np.maximum(k - s, 0.0)
+
+    s_int = s[1:-1]
+    alpha = 0.5 * vol * vol * (s_int**2) / (ds**2) - 0.5 * rate * s_int / ds
+    beta = -vol * vol * (s_int**2) / (ds**2) - rate
+    gamma = 0.5 * vol * vol * (s_int**2) / (ds**2) + 0.5 * rate * s_int / ds
+
+    tau = 0.0
+    theta = ___
+    for _ in range(n_time):
+        tau_next = tau + dt
+        disc = math.exp(-rate * tau_next)
+        v_low = k * disc
+        v_high = 0.0
+
+        d = (
+            (1.0 + (1.0 - theta) * dt * beta) * v[1:-1]
+            + (1.0 - theta) * dt * alpha * v[:-2]
+            + (1.0 - theta) * dt * gamma * v[2:]
+        )
+        a_diag = ___
+        b_diag = ___
+        c_diag = -theta * dt * gamma
+
+        d[0] -= a_diag[0] * v_low
+        d[-1] -= c_diag[-1] * v_high
+
+        v_int = thomas_solve(a_diag, b_diag, c_diag, d)
+        v = np.concatenate([[v_low], v_int, [v_high]])
+        tau = tau_next
+
+    pde_put = float(np.interp(s0, s, v))
+    d1 = (math.log(s0 / k) + (rate + 0.5 * vol * vol) * maturity) / (vol * math.sqrt(maturity))
+    d2 = d1 - vol * math.sqrt(maturity)
+    exact_put = k * math.exp(-rate * maturity) * 0.5 * (1.0 + math.erf(-d2 / math.sqrt(2.0))) - s0 * 0.5 * (
+        1.0 + math.erf(-d1 / math.sqrt(2.0))
+    )
+    err = abs(pde_put - exact_put)
+
+    print(f"Completed put price: {pde_put:.6f}")
+    print(f"Exact put price: {exact_put:.6f}")
+    print(f"Put error: {err:.4e}")
+    print(f"Put solver converged within 0.02: {err < 0.02}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Completed put price: 6.010471
+Exact put price: 6.027864
+Put error: 1.7393e-02
+Put solver converged within 0.02: True</pre>
+          <p class="interpretation">When the forward elimination recurrence and Crank-Nicolson matrix diagonals are completed, the solver reproduces the exact put option price within 0.02.</p>
+        </section>
+
+        <section class="lab" id="lab-SC4-project-3" data-runtime="python">
+          <h3>Lab 3 · Reference verification of full pricer on seed 0</h3>
+          <p class="hypothesis">The reference pricer satisfies discrete put-call parity within 0.01, prices down-and-out barrier calls within 0.01 of the Merton analytical reflection formula, produces non-oscillatory digital call prices, and certifies empirical convergence order \(\alpha \ge 1.70\).</p>
+          <pre><code class="language-python" data-run>"""Lab project-3 · Rung 3 independent verification of PDE pricer on seed 0 (SIMULATED).
+
+Verifies the full pricing engine across vanilla options, down-and-out barrier calls,
+digital calls with Rannacher smoothing, and certifies empirical convergence order.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def norm_cdf(x: float) -&gt; float:
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def bs_price(spot: float, strike: float, maturity: float, rate: float, vol: float, option_type: str) -&gt; float:
+    d1 = (math.log(spot / strike) + (rate + 0.5 * vol * vol) * maturity) / (vol * math.sqrt(maturity))
+    d2 = d1 - vol * math.sqrt(maturity)
+    if option_type == "call":
+        return spot * norm_cdf(d1) - strike * math.exp(-rate * maturity) * norm_cdf(d2)
+    return strike * math.exp(-rate * maturity) * norm_cdf(-d2) - spot * norm_cdf(-d1)
+
+
+def bs_down_and_out_call(spot: float, strike: float, barrier: float, maturity: float, rate: float, vol: float) -&gt; float:
+    if spot &lt;= barrier:
+        return 0.0
+    c_vanilla = bs_price(spot, strike, maturity, rate, vol, "call")
+    power = 1.0 - 2.0 * rate / (vol * vol)
+    c_refl = bs_price(barrier * barrier / spot, strike, maturity, rate, vol, "call")
+    return float(max(0.0, c_vanilla - ((spot / barrier) ** power) * c_refl))
+
+
+def thomas_solve(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -&gt; np.ndarray:
+    n = len(d)
+    cp = np.zeros(n, dtype=np.float64)
+    dp = np.zeros(n, dtype=np.float64)
+    cp[0] = c[0] / b[0]
+    dp[0] = d[0] / b[0]
+    for i in range(1, n):
+        denom = b[i] - a[i] * cp[i - 1]
+        cp[i] = c[i] / denom
+        dp[i] = (d[i] - a[i] * dp[i - 1]) / denom
+    x = np.zeros(n, dtype=np.float64)
+    x[-1] = dp[-1]
+    for i in range(n - 2, -1, -1):
+        x[i] = dp[i] - cp[i] * x[i + 1]
+    return x
+
+
+def solve_pde(
+    spot: float,
+    strike: float,
+    maturity: float,
+    rate: float,
+    vol: float,
+    option_type: str,
+    payoff_type: str = "vanilla",
+    barrier: float | None = None,
+    rannacher: bool = True,
+    n_space: int = 200,
+    n_time: int = 100,
+) -&gt; float:
+    is_barrier = payoff_type == "barrier" and barrier is not None
+    s_min = float(barrier) if is_barrier and barrier is not None else 0.0
+    s_max = max(spot, strike) * 4.0
+    s = np.linspace(s_min, s_max, n_space + 1, dtype=np.float64)
+    ds = (s_max - s_min) / n_space
+    dt = maturity / n_time
+
+    if payoff_type == "vanilla":
+        v = np.maximum(s - strike, 0.0) if option_type == "call" else np.maximum(strike - s, 0.0)
+    elif payoff_type == "digital":
+        v = np.where(s &gt; strike, 1.0, 0.0)
+        v[np.isclose(s, strike, atol=1e-12)] = 0.5
+    elif is_barrier:
+        v = np.maximum(s - strike, 0.0)
+        v[0] = 0.0
+    else:
+        raise ValueError("Unsupported configuration")
+
+    s_int = s[1:-1]
+    alpha = 0.5 * vol * vol * (s_int**2) / (ds**2) - 0.5 * rate * s_int / ds
+    beta = -vol * vol * (s_int**2) / (ds**2) - rate
+    gamma = 0.5 * vol * vol * (s_int**2) / (ds**2) + 0.5 * rate * s_int / ds
+
+    def get_boundaries(tau_val: float) -&gt; tuple[float, float]:
+        disc = math.exp(-rate * tau_val)
+        if is_barrier:
+            return 0.0, max(0.0, s_max - strike * disc)
+        if payoff_type == "digital":
+            return 0.0, disc
+        if option_type == "call":
+            return 0.0, max(0.0, s_max - strike * disc)
+        return strike * disc, 0.0
+
+    def step(v_curr: np.ndarray, tau_next: float, theta: float, step_dt: float) -&gt; np.ndarray:
+        v_low, v_high = get_boundaries(tau_next)
+        d = (
+            (1.0 + (1.0 - theta) * step_dt * beta) * v_curr[1:-1]
+            + (1.0 - theta) * step_dt * alpha * v_curr[:-2]
+            + (1.0 - theta) * step_dt * gamma * v_curr[2:]
+        )
+        a_diag = -theta * step_dt * alpha
+        b_diag = 1.0 - theta * step_dt * beta
+        c_diag = -theta * step_dt * gamma
+        d[0] -= a_diag[0] * v_low
+        d[-1] -= c_diag[-1] * v_high
+        v_int = thomas_solve(a_diag, b_diag, c_diag, d)
+        v_new = np.empty_like(v_curr)
+        v_new[0] = v_low
+        v_new[-1] = v_high
+        v_new[1:-1] = v_int
+        return v_new
+
+    tau = 0.0
+    if rannacher and n_time &gt;= 4:
+        for _ in range(4):
+            v = step(v, tau + dt / 2.0, 1.0, dt / 2.0)
+            tau += dt / 2.0
+        for _ in range(n_time - 2):
+            v = step(v, tau + dt, 0.5, dt)
+            tau += dt
+    else:
+        for _ in range(n_time):
+            v = step(v, tau + dt, 0.5, dt)
+            tau += dt
+
+    return float(np.interp(spot, s, v))
+
+
+def main() -&gt; None:
+    s0 = 100.0
+    k = 100.0
+    maturity = 1.0
+    rate = 0.05
+    vol = 0.20
+    barrier = 80.0
+
+    # 1. Vanilla Call &amp; Put + Put-Call Parity
+    c_pde = solve_pde(s0, k, maturity, rate, vol, "call", n_space=200, n_time=100)
+    p_pde = solve_pde(s0, k, maturity, rate, vol, "put", n_space=200, n_time=100)
+    c_exact = bs_price(s0, k, maturity, rate, vol, "call")
+    p_exact = bs_price(s0, k, maturity, rate, vol, "put")
+
+    parity_lhs = c_pde - p_pde
+    parity_rhs = s0 - k * math.exp(-rate * maturity)
+    parity_err = abs(parity_lhs - parity_rhs)
+
+    # 2. Down-and-out barrier call
+    do_pde = solve_pde(
+        s0,
+        k,
+        maturity,
+        rate,
+        vol,
+        "call",
+        payoff_type="barrier",
+        barrier=barrier,
+        n_space=240,
+        n_time=120,
+    )
+    do_exact = bs_down_and_out_call(s0, k, barrier, maturity, rate, vol)
+    do_err = abs(do_pde - do_exact)
+
+    # 3. Digital call
+    dig_price = solve_pde(
+        s0,
+        k,
+        maturity,
+        rate,
+        vol,
+        "call",
+        payoff_type="digital",
+        n_space=200,
+        n_time=100,
+    )
+    dig_disc = math.exp(-rate * maturity)
+    dig_valid = 0.0 &lt; dig_price &lt; dig_disc
+
+    # 4. Convergence order
+    grids = [(80, 40), (160, 80), (320, 160)]
+    errors = []
+    dss = []
+    s_max = 4.0 * max(s0, k)
+    for ms, nt in grids:
+        p = solve_pde(s0, k, maturity, rate, vol, "call", n_space=ms, n_time=nt)
+        errors.append(abs(p - c_exact))
+        dss.append(s_max / ms)
+    log_h = np.log(dss)
+    log_e = np.log(errors)
+    fit = np.polyfit(log_h, log_e, 1)
+    order = float(fit[0])
+
+    print(f"Vanilla call PDE: {c_pde:.6f} (Exact: {c_exact:.6f}, err: {abs(c_pde - c_exact):.2e})")
+    print(f"Vanilla put PDE:  {p_pde:.6f} (Exact: {p_exact:.6f}, err: {abs(p_pde - p_exact):.2e})")
+    print(f"Put-Call parity residual: {parity_err:.2e} (&lt; 0.01: {parity_err &lt; 0.01})")
+    print(f"Down-and-out call PDE: {do_pde:.6f} (Exact: {do_exact:.6f}, err: {do_err:.2e})")
+    print(f"Digital call price: {dig_price:.6f} (valid in (0, disc): {dig_valid})")
+    print(f"Certified convergence order alpha: {order:.3f} (&gt;= 1.70: {order &gt;= 1.70})")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Vanilla call PDE: 10.440605 (Exact: 10.450584, err: 9.98e-03)
+Vanilla put PDE:  5.563559 (Exact: 5.573526, err: 9.97e-03)
+Put-Call parity residual: 1.18e-05 (&lt; 0.01: True)
+Down-and-out call PDE: 10.346312 (Exact: 10.351345, err: 5.03e-03)
+Digital call price: 0.532352 (valid in (0, disc): True)
+Certified convergence order alpha: 2.008 (&gt;= 1.70: True)</pre>
+          <p class="interpretation">The reference solver demonstrates quadratic convergence (\(\alpha \approx 2.0\)), respects no-arbitrage bounds, and exhibits clean damping of non-smooth payoff modes.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A production quantitative derivative pricing engine must value vanilla options, discontinuous digital options, and path-dependent barrier options using finite-difference solutions of the Black–Scholes partial differential equation. The pricer must guarantee second-order spatial and temporal convergence, remain unconditionally stable, eliminate high-frequency Gibbs-like numerical oscillations via Rannacher smoothing, and extract accurate Greeks (Delta and Gamma).</dd>
+
+          <dt>Inputs</dt>
+          <dd>The pricing functions receive standard market and contract parameters: <code>spot</code> \(S_0 &gt; 0\), <code>strike</code> \(K &gt; 0\), <code>maturity</code> \(T &gt; 0\), <code>rate</code> \(r \ge 0\), <code>vol</code> \(\sigma &gt; 0\), <code>option_type</code> in <code>{"call", "put"}</code>, <code>payoff_type</code> in <code>{"vanilla", "digital", "barrier"}</code>, optional <code>barrier</code> \(B &gt; 0\), optional <code>barrier_type</code> in <code>{"down_and_out", "up_and_out"}</code>, solver <code>method</code> in <code>{"explicit", "implicit", "crank_nicolson"}</code>, boolean flag <code>rannacher</code> (default <code>True</code>), and grid resolutions <code>n_space</code> and <code>n_time</code>. All evaluation instances are generated deterministically by <code>make_instance(seed)</code> (SIMULATED).</dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            Deliver a single Python module <code>reference.py</code> exposing:
+            <ul>
+              <li><code>thomas_solve(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -&gt; np.ndarray</code>: solves tridiagonal system \(Ax = d\) in \(O(N)\) time.</li>
+              <li><code>solve_pde(spot: float, strike: float, maturity: float, rate: float, vol: float, option_type: str, payoff_type: str = "vanilla", barrier: float | None = None, barrier_type: str | None = None, method: str = "crank_nicolson", rannacher: bool = True, s_max_mult: float = 4.0, n_space: int = 200, n_time: int = 100) -&gt; dict[str, Any]</code>: returns a dictionary with keys <code>"price"</code> (float), <code>"delta"</code> (float), <code>"gamma"</code> (float), <code>"grid_s"</code> (numpy array), and <code>"grid_v"</code> (numpy array).</li>
+              <li><code>price_option(...) -&gt; float</code>: returns the interpolated price at <code>spot</code>.</li>
+              <li><code>estimate_convergence_order(spot: float, strike: float, maturity: float, rate: float, vol: float, option_type: str = "call", method: str = "crank_nicolson", rannacher: bool = True, grids: list[tuple[int, int]] | None = None) -&gt; float</code>: performs log-log regression across a refined grid sequence to certify convergence order \(\alpha\).</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ol>
+              <li><strong>Input validation:</strong> Raise <code>ValueError</code> if: <code>spot</code>, <code>strike</code>, <code>maturity</code>, or <code>vol</code> are non-positive or non-finite; <code>rate</code> is negative or non-finite; <code>option_type</code> is not <code>"call"</code> or <code>"put"</code>; <code>payoff_type</code> is not <code>"vanilla"</code>, <code>"digital"</code>, or <code>"barrier"</code>; <code>method</code> is not <code>"explicit"</code>, <code>"implicit"</code>, or <code>"crank_nicolson"</code>; or if for <code>down_and_out</code> barrier options, <code>barrier</code> is not strictly below <code>spot</code>.</li>
+              <li><strong>Put-call parity:</strong> For vanilla European options, the numerical price difference \(C - P\) must satisfy discrete put-call parity \(S_0 - K e^{-rT}\) within 0.08.</li>
+              <li><strong>Accuracy bounds:</strong> On standard European options with 200 spatial points and 100 time steps, the absolute pricing error against the analytical Black–Scholes formula must be less than 0.05.</li>
+              <li><strong>Barrier no-arbitrage:</strong> Down-and-out call prices must satisfy strict bounds \(0 \le C_{\text{do}} \le C_{\text{vanilla}}\), and as \(S_0 \downarrow B\), the option price must approach 0.</li>
+              <li><strong>Rannacher smoothing:</strong> When <code>rannacher=True</code> and <code>method="crank_nicolson"</code>, the pricer replaces the first 2 time steps with 4 half-steps of fully implicit Euler (\(\theta = 1.0\)), eliminating spurious Gamma oscillations on discontinuous digital payoffs.</li>
+              <li><strong>Convergence certification:</strong> The empirical convergence slope \(\alpha\) must certify \(\alpha \ge 1.60\) (asymptotic second-order convergence).</li>
+            </ol>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>Autograder: The project is autograded by <code>test_project.py</code> across 50 consecutive seeds (0 to 49) in the Pyodide browser sandbox and locally via pytest. All 15 property tests must pass within the suite execution time limit.</dd>
+        </dl>
+      </section>
+
+      <section id="hours-budget">
+        <h2 id="h-hours-budget">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr><th>Component</th><th>Hours</th><th>Rationale</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Rung 1 worked example</td><td>2</td><td>Trace Crank-Nicolson European call pricing step by step on seed 0</td></tr>
+              <tr><td>Rung 2 completion problem</td><td>2</td><td>Implement tridiagonal forward sweep and theta-weighting step</td></tr>
+              <tr><td>Core finite-difference engine</td><td>4</td><td>Vectorized spatial operator and Thomas tridiagonal linear solver</td></tr>
+              <tr><td>Boundary condition modules</td><td>2</td><td>Dirichlet, Neumann, and absorbing knock-out barrier boundaries</td></tr>
+              <tr><td>Rannacher smoothing time-stepper</td><td>2</td><td>Implicit Euler damping half-steps on non-smooth and digital payoffs</td></tr>
+              <tr><td>Greeks interpolation</td><td>2</td><td>Central-difference Delta and Gamma extraction on discrete spatial grids</td></tr>
+              <tr><td>Convergence order certification</td><td>2</td><td>Log-log regression on grid refinement sequences against Black-Scholes</td></tr>
+            </tbody>
+            <tfoot>
+              <tr><td>Total</td><td>16</td><td>Equals data-hours-project declared on the hub and page</td></tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="grader-panel" id="grader-section" data-unit="SC4" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="reference.py" data-starter="starter.py" data-packages="numpy">
+        <div class="panel-header">
+          <h3>Autograder Panel</h3>
+          <p>Submit <code>reference.py</code> below to execute the 15-property test suite across seeded test instances.</p>
+        </div>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch: American Early Exercise &amp; Multi-Asset ADI</h2>
+        <p>In production derivatives trading, many contracts incorporate early exercise features (American options) or depend on multiple underlying assets (basket, spread, or stochastic volatility models). For your portfolio, extend the solver in one of two directions:</p>
+        <ol>
+          <li><strong>American Options via Projected SOR:</strong> Formulate the early exercise boundary problem as a linear complementarity problem (LCP):
+          \[
+          \min\left( -\partial_\tau V + \mathcal{L} V, \; V(S, \tau) - g(S) \right) = 0.
+          \]
+          Implement the Projected Successive Over-Relaxation (PSOR) algorithm with dynamic relaxation parameter \(\omega \in (1, 2)\), and determine the optimal early exercise boundary \(S^*(\tau)\) for American puts.</li>
+          <li><strong>Alternating Direction Implicit (ADI) Splitting:</strong> For a two-asset option governed by correlated Brownian motions \(dB_1 dB_2 = \rho dt\), discretize the two-dimensional PDE using the Douglas–Rachford or Craig–Sneyd ADI splitting scheme, reducing the 2D problem into a sequence of 1D tridiagonal solves per time step.</li>
+        </ol>
+      </section>
+
+      <section class="reading-list-section" id="reading-list-section">
+        <h2 id="h-reading-list">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="wilmott1995mathematics"><span class="title">The Mathematics of Financial Derivatives: A Student Introduction</span>. Wilmott, Howison &amp; Dewynne (1995). Core foundations for finite differences, Crank–Nicolson, boundary conditions, and barrier options.</li>
+          <li data-cite="shreve2004stochastic"><span class="title">Stochastic Calculus for Finance II: Continuous-Time Models</span>. Shreve (2004). Chapter 6: Connections between SDEs and PDEs, Feynman–Kac theorem, and boundary value problems.</li>
+          <li data-cite="black1973pricing"><span class="title">The Pricing of Options and Corporate Liabilities</span>. Black &amp; Scholes (1973). Original derivation of the Black–Scholes partial differential equation.</li>
+          <li data-cite="merton1973theory"><span class="title">Theory of Rational Option Pricing</span>. Merton (1973). Continuous-time replication, barrier options via the method of images, and boundary behavior.</li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">SC4 · PDEs &amp; Feynman–Kac · Quant PhD Program</footer>
+</body>
+</html>

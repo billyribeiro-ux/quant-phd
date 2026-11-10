@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="SC4" data-page="L06" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L06 · Implicit Finite-Difference Schemes &amp; Tridiagonal Solvers · SC4 PDEs &amp; Feynman–Kac</title>
+  <meta name="description" content="Backward-Time Central-Space discretization, unconditional stability, the Thomas algorithm in O(N) operations, and tridiagonal boundary integration.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">SC4 PDEs &amp; Feynman–Kac</a><span class="sep">›</span>
+      <span>L06</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">SC4 · Lesson 6 of 8 · 8 study hours</p>
+        <h1>Implicit Finite-Difference Schemes &amp; Tridiagonal Solvers</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="explicit-finite-difference-scheme" href="L05.html#def-explicit-finite-difference-scheme">explicit finite-difference scheme</a>, <a class="concept" data-concept="pde-boundary-conditions" href="L04.html#def-pde-boundary-conditions">boundary conditions for pricing PDEs</a>, <a class="concept" data-concept="taylor-theorem" href="../../../concepts.html#taylor-theorem">Taylor's theorem</a>, <a class="concept" data-concept="partial-derivative" href="../../../concepts.html#partial-derivative">partial derivative</a></li>
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="implicit-finite-difference-scheme" href="#def-implicit-finite-difference-scheme">implicit finite-difference scheme</a></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">The severe stability bottleneck of explicit finite-difference schemes—which forces time steps to scale quadratically with spatial mesh size—is completely eliminated by implicit time integration. By evaluating spatial derivative operators at the advanced time level, implicit methods achieve unconditional stability, allowing time steps to be chosen purely on grounds of accuracy rather than numerical survival. Although each time step requires solving a coupled linear system, the tridiagonal structure of 1D spatial operators allows the system to be solved in strictly \(O(N)\) operations via the Thomas algorithm, preserving computational speed while removing the CFL barrier.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>The Backward-Time Central-Space (BTCS) Discretization</h2>
+
+      <p>Consider the forward parabolic diffusion equation in time-to-maturity \(\tau \in [0, T]\):</p>
+      \[
+      \frac{\partial u}{\partial \tau} = D \frac{\partial^2 u}{\partial x^2}.
+      \]
+
+      <div class="block definition">
+        <span class="block-title">Definition 6.1 <span class="name">(<dfn id="def-implicit-finite-difference-scheme" data-concept="implicit-finite-difference-scheme">Implicit finite-difference scheme</dfn>)</span></span>
+        <p>An <em>implicit finite-difference scheme</em> is a numerical scheme in which the spatial differential operators are evaluated at the advanced time level \(\tau_{n+1}\). The unknown values \(\{u_j^{n+1}\}\) across all spatial grid nodes are coupled through a simultaneous system of algebraic equations:</p>
+        \[
+        \mathcal{G}\left( u_{j-1}^{n+1}, u_j^{n+1}, u_{j+1}^{n+1} \right) = u_j^n.
+        \]
+        <p>For the diffusion equation, the Backward-Time Central-Space (BTCS) scheme discretizes the temporal derivative with a backward difference and the spatial derivative with a central difference at time level \(n+1\):</p>
+        \[
+        \frac{u_j^{n+1} - u_j^n}{\Delta t} = D \frac{u_{j+1}^{n+1} - 2u_j^{n+1} + u_{j-1}^{n+1}}{\Delta x^2}.
+        \]
+      </div>
+
+      <p>Let \(\lambda \coloneqq \frac{D \Delta t}{\Delta x^2}\) be the mesh ratio. Multiplying by \(\Delta t\) and rearranging all unknown terms at time level \(n+1\) to the left-hand side yields:</p>
+      \[
+      -\lambda u_{j-1}^{n+1} + (1 + 2\lambda) u_j^{n+1} - \lambda u_{j+1}^{n+1} = u_j^n \quad \text{for } j = 1, 2, \dots, N-1.
+      \]
+      <p>In matrix notation, this forms a linear system:</p>
+      \[
+      \mathbf{A} \mathbf{u}^{n+1} = \mathbf{d}^n,
+      \]
+      <p>where \(\mathbf{A}\) is an \((N-1) \times (N-1)\) tridiagonal matrix, \(\mathbf{u}^{n+1} = [u_1^{n+1}, \dots, u_{N-1}^{n+1}]^\top\), and \(\mathbf{d}^n\) contains the interior solution at level \(n\) plus boundary corrections.</p>
+
+      <h2 id="s2"><span class="section-number">2</span>Unconditional Stability of the BTCS Scheme</h2>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 6.2 <span class="name">(Unconditional Stability of BTCS)</span></span>
+        <p><strong>Statement:</strong> The implicit BTCS scheme is unconditionally stable in the \(L^2\) and \(L^\infty\) norms for all mesh ratios \(\lambda > 0\). The amplification factor satisfies:</p>
+        \[
+        |G(\xi)| \le 1 \quad \text{for all } \xi = k \Delta x \in [0, \pi] \text{ and all } \lambda > 0.
+        \]
+        <p>Furthermore, \(0 < G(\xi) \le 1\) for all \(\lambda > 0\), meaning BTCS damps high-frequency spatial modes monotonically without spurious sign oscillations.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Substitute a Fourier mode \(u_j^n = G^n e^{i k x_j}\) into the discrete BTCS equation:</p>
+        \[
+        -\lambda G^{n+1} e^{i k (x_j - \Delta x)} + (1 + 2\lambda) G^{n+1} e^{i k x_j} - \lambda G^{n+1} e^{i k (x_j + \Delta x)} = G^n e^{i k x_j}.
+        \]
+        <p>Dividing by \(G^n e^{i k x_j}\):</p>
+        \[
+        G \left[ 1 + 2\lambda - \lambda (e^{i k \Delta x} + e^{-i k \Delta x}) \right] = 1 \implies G \left[ 1 + 2\lambda (1 - \cos(k \Delta x)) \right] = 1.
+        \]
+        <p>Using the half-angle trigonometric identity \(1 - \cos(\xi) = 2\sin^2(\xi / 2)\):</p>
+        \[
+        G(\xi) = \frac{1}{1 + 4\lambda \sin^2\left(\frac{\xi}{2}\right)}.
+        \]
+        <p>Since \(\lambda > 0\) and \(\sin^2(\xi / 2) \in [0, 1]\), the denominator satisfies \(1 + 4\lambda \sin^2(\xi/2) \ge 1\) for all \(\xi\). Therefore:</p>
+        \[
+        0 < G(\xi) \le 1 \quad \text{for all } \xi \in [0, \pi] \text{ and all } \lambda > 0.
+        \]
+        <p>Because \(|G(\xi)| \le 1\) unconditionally, the scheme never blows up. In particular, for the Nyquist mode \(\xi = \pi\):</p>
+        \[
+        G(\pi) = \frac{1}{1 + 4\lambda} \in (0, 1).
+        \]
+        <p>Unlike explicit FTCS (which inverts signs when \(\lambda > 1/4\) and diverges when \(\lambda > 1/2\)), the BTCS amplification factor remains strictly positive and decays to zero as \(\lambda \to \infty\), ensuring strong numerical dissipation of high-frequency roundoff noise.</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>The Tridiagonal Matrix Algorithm (TDMA / Thomas Algorithm)</h2>
+
+      <p>Solving an arbitrary \(N \times N\) linear system via standard Gaussian elimination requires \(O(N^3)\) operations, which would make implicit stepping prohibitively expensive. However, the BTCS system is <em>tridiagonal</em>: non-zero entries occur only on the subdiagonal \(\mathbf{a}\), main diagonal \(\mathbf{b}\), and superdiagonal \(\mathbf{c}\):</p>
+      \[
+      a_i u_{i-1} + b_i u_i + c_i u_{i+1} = d_i, \quad i = 1, 2, \dots, m,
+      \]
+      <p>with \(a_1 = 0\) and \(c_m = 0\).</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 6.3 <span class="name">(Thomas Algorithm / TDMA)</span></span>
+        <p>The <em>Thomas algorithm</em> is a specialized LU factorization that solves a tridiagonal linear system in two sequential sweeps:</p>
+        <ol>
+          <li><strong>Forward Elimination:</strong> Compute modified coefficients \(c'_i\) and \(d'_i\) for \(i = 1, \dots, m\):
+            \[
+            \begin{aligned}
+            c'_1 &= \frac{c_1}{b_1}, \qquad d'_1 = \frac{d_1}{b_1}, \\
+            c'_i &= \frac{c_i}{b_i - a_i c'_{i-1}}, \qquad d'_i = \frac{d_i - a_i d'_{i-1}}{b_i - a_i c'_{i-1}} \quad \text{for } i = 2, \dots, m.
+            \end{aligned}
+            \]
+          </li>
+          <li><strong>Back Substitution:</strong> Recover the solution vector \(\mathbf{u}\) from bottom to top:
+            \[
+            \begin{aligned}
+            u_m &= d'_m, \\
+            u_i &= d'_i - c'_i u_{i+1} \quad \text{for } i = m - 1, m - 2, \dots, 1.
+            \end{aligned}
+            \]
+          </li>
+        </ol>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 6.4 <span class="name">(Computational Complexity and Stability Without Pivoting)</span></span>
+        <p><strong>Statement:</strong> The Thomas algorithm requires exactly \(5m - 4\) multiplications/divisions and \(3m - 3\) additions/subtractions, executing in strictly \(O(m)\) arithmetic operations and \(O(m)\) memory. Furthermore, if the matrix \(\mathbf{A}\) is strictly diagonally dominant:</p>
+        \[
+        |b_i| > |a_i| + |c_i| \quad \text{for all } i = 1, \dots, m,
+        \]
+        <p>then the algorithm is unconditionally stable without numerical pivoting: the denominators \(b_i - a_i c'_{i-1}\) never vanish, and \(|c'_i| < 1\) for all \(i\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>In the BTCS scheme, \(a_i = -\lambda\), \(b_i = 1 + 2\lambda\), and \(c_i = -\lambda\). The diagonal dominance margin is:</p>
+        \[
+        |b_i| - (|a_i| + |c_i|) = (1 + 2\lambda) - (\lambda + \lambda) = 1 > 0.
+        \]
+        <p>Since \(|b_1| = 1 + 2\lambda > \lambda = |c_1|\), we have \(|c'_1| = \frac{|c_1|}{|b_1|} = \frac{\lambda}{1 + 2\lambda} < 1\). By induction, assume \(|c'_{i-1}| < 1\). Then:</p>
+        \[
+        |b_i - a_i c'_{i-1}| \ge |b_i| - |a_i| |c'_{i-1}| > |b_i| - |a_i| > |c_i|.
+        \]
+        <p>Hence the denominator is strictly positive and bounded away from zero, and \(|c'_i| = \frac{|c_i|}{|b_i - a_i c'_{i-1}|} < 1\). This completes the proof that no zero divisions or error amplifications occur during elimination.</p>
+      </div>
+
+      <h2 id="s4"><span class="section-number">4</span>Boundary Condition Integration</h2>
+
+      <p>At the boundary nodes \(j = 0\) and \(j = N\), Dirichlet boundary values \(u_0^{n+1} = g_{\text{low}}(\tau_{n+1})\) and \(u_N^{n+1} = g_{\text{high}}(\tau_{n+1})\) are incorporated into the interior system at \(j = 1\) and \(j = N-1\):</p>
+      \[
+      \begin{aligned}
+      j = 1: &\quad b_1 u_1^{n+1} + c_1 u_2^{n+1} = u_1^n - a_1 u_0^{n+1}, \\
+      j = N-1: &\quad a_{N-1} u_{N-2}^{n+1} + b_{N-1} u_{N-1}^{n+1} = u_{N-1}^n - c_{N-1} u_N^{n+1}.
+      \end{aligned}
+      \]
+      <p>This retains an exact \((N-1) \times (N-1)\) tridiagonal system while cleanly enforcing Dirichlet constraints.</p>
+
+      <section class="lab" id="lab-SC4-L06-1" data-runtime="python">
+        <h3>Lab 1 · Implicit BTCS Scheme and Tridiagonal Thomas Algorithm Validation</h3>
+        <p class="hypothesis">Under a large mesh ratio lambda = 5.0 (where explicit methods immediately explode), the implicit BTCS scheme remains strictly stable and bounded, and the O(N) Thomas algorithm reproduces scipy.linalg.solve_banded to within 1e-13 (SIMULATED).</p>
+        <pre><code class="language-python" data-run>"""Lab SC4-L06-1 · Implicit BTCS Scheme and Tridiagonal Thomas Algorithm Validation.
+
+Validates the backward-time central-space (BTCS) implicit finite difference scheme under a large
+mesh ratio lambda = dt / dx^2 = 5.0 (where explicit methods immediately explode).
+Demonstrates O(N) Thomas algorithm equivalence to scipy.linalg.solve_banded to machine precision (SIMULATED).
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+from scipy import linalg  # type: ignore[import-untyped]
+
+
+def thomas_solve(a: np.ndarray, b: np.ndarray, c: np.ndarray, d: np.ndarray) -&gt; np.ndarray:
+    """Thomas algorithm (TDMA) for tridiagonal system Ax = d."""
+    n = len(d)
+    cp = np.zeros(n, dtype=np.float64)
+    dp = np.zeros(n, dtype=np.float64)
+    cp[0] = c[0] / b[0]
+    dp[0] = d[0] / b[0]
+    for i in range(1, n):
+        denom = b[i] - a[i] * cp[i - 1]
+        cp[i] = c[i] / denom
+        dp[i] = (d[i] - a[i] * dp[i - 1]) / denom
+    x = np.zeros(n, dtype=np.float64)
+    x[-1] = dp[-1]
+    for i in range(n - 2, -1, -1):
+        x[i] = dp[i] - cp[i] * x[i + 1]
+    return x
+
+
+def main() -&gt; None:
+    n_space = 100
+    n_steps = 50
+    lambda_mesh = 5.0  # Far above explicit CFL threshold 0.50
+
+    dx = 1.0 / n_space
+    dt = lambda_mesh * (dx**2)
+    x = np.linspace(0.0, 1.0, n_space + 1)
+
+    # Initial condition: fundamental mode sin(pi * x)
+    u_thomas = np.sin(math.pi * x)
+    u_scipy = np.sin(math.pi * x)
+
+    # System matrix: (I - dt * L) u^{n+1} = u^n
+    # -lambda * u_{j-1}^{n+1} + (1 + 2*lambda) * u_j^{n+1} - lambda * u_{j+1}^{n+1} = u_j^n
+    m_int = n_space - 1
+    a_diag = np.full(m_int, -lambda_mesh)
+    b_diag = np.full(m_int, 1.0 + 2.0 * lambda_mesh)
+    c_diag = np.full(m_int, -lambda_mesh)
+
+    # SciPy banded matrix format: shape (3, m_int)
+    # row 0: superdiagonal (shifted left, first element ignored)
+    # row 1: main diagonal
+    # row 2: subdiagonal (shifted right, last element ignored)
+    ab = np.zeros((3, m_int), dtype=np.float64)
+    ab[0, 1:] = -lambda_mesh
+    ab[1, :] = 1.0 + 2.0 * lambda_mesh
+    ab[2, :-1] = -lambda_mesh
+
+    for _ in range(n_steps):
+        # Thomas solve
+        d_thomas = u_thomas[1:-1].copy()
+        v_thomas = thomas_solve(a_diag, b_diag, c_diag, d_thomas)
+        u_thomas = np.concatenate([[0.0], v_thomas, [0.0]])
+
+        # SciPy solve_banded
+        d_scipy = u_scipy[1:-1].copy()
+        v_scipy = linalg.solve_banded((1, 1), ab, d_scipy)
+        u_scipy = np.concatenate([[0.0], v_scipy, [0.0]])
+
+    max_diff = float(np.max(np.abs(u_thomas - u_scipy)))
+    max_amp = float(np.max(u_thomas))
+
+    # Analytical solution for comparison
+    t_final = n_steps * dt
+    exact = math.exp(-(math.pi**2) * t_final) * np.sin(math.pi * x)
+    max_err_exact = float(np.max(np.abs(u_thomas - exact)))
+
+    print(f"Implicit BTCS scheme with mesh ratio lambda = {lambda_mesh:.1f} (CFL = 0.50):")
+    print(f"  Maximum amplitude at t = {t_final:.4f}: {max_amp:.6f}")
+    print(f"  Maximum difference vs scipy.linalg.solve_banded: {max_diff:.4e}")
+    print(f"  Maximum error vs exact analytical solution:     {max_err_exact:.4e}")
+    print(f"  Unconditional stability confirmed (max_amp &lt; 1): {max_amp &lt; 1.0}")
+    print(f"  Agreement with SciPy within 1e-13:               {max_diff &lt; 1e-13}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Implicit BTCS scheme with mesh ratio lambda = 5.0 (CFL = 0.50):
+  Maximum amplitude at t = 0.0250: 0.781834
+  Maximum difference vs scipy.linalg.solve_banded: 2.9976e-15
+  Maximum error vs exact analytical solution:     4.9006e-04
+  Unconditional stability confirmed (max_amp &lt; 1): True
+  Agreement with SciPy within 1e-13:               True</pre>
+        <p class="interpretation">The implicit BTCS scheme remains completely stable at lambda = 5.0 (ten times the explicit CFL threshold), and our Thomas tridiagonal solver agrees with LAPACK banded solver to machine precision.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s5"><span class="section-number">5</span>Where the canon breaks</h2>
+        <p>While the Thomas algorithm delivers optimal \(O(N)\) efficiency in one spatial dimension, the implicit framework encounters severe scaling barriers in higher dimensions:</p>
+        <ul>
+          <li><strong>Multi-Dimensional Loss of Tridiagonality:</strong> In two spatial dimensions \((S_1, S_2)\) on an \(N \times N\) mesh, the discrete Laplacian couples each node to four neighbors. Ordering nodes row-by-row yields a <em>block tridiagonal</em> matrix with bandwidth \(N\). Direct Gaussian elimination on a banded matrix of bandwidth \(N\) requires \(O(N \cdot N^2) = O(N^3)\) operations, completely destroying the \(O(N^2)\) optimal scaling.</li>
+          <li><strong>Alternating Direction Implicit (ADI) Methods:</strong> To preserve 1D tridiagonal efficiency in multi-asset pricing, quants decompose multi-dimensional operators into sequential 1D sweeps (e.g., Peaceman–Rachford, Douglas–Rachford, or Craig–Sneyd ADI). However, cross-correlation terms \(\rho \frac{\partial^2 V}{\partial S_1 \partial S_2}\) cannot be treated purely implicitly and must be handled via predictor-corrector splitting.</li>
+          <li><strong>First-Order Temporal Accuracy:</strong> BTCS is only first-order accurate in time: \(O(\Delta t)\). While stable for large \(\Delta t\), taking large time steps causes excessive numerical diffusion, smoothing out option prices and understating Greek curvatures unless time steps remain moderate.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s6"><span class="section-number">6</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“Unconditional stability implies that an implicit scheme yields accurate prices for arbitrarily large time steps.”</p>
+            <p>Stability means errors do not amplify without bound; it does not mean truncation errors are zero. The temporal truncation error of BTCS is \(O(\Delta t)\). If an analyst takes \(\Delta t = 0.5\) years, the scheme will not blow up, but the numerical solution will suffer massive temporal discretization errors, underpricing options and flattening Greeks.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Solving an implicit system requires computing the matrix inverse \(\mathbf{A}^{-1}\).”</p>
+            <p>Computing \(\mathbf{A}^{-1}\) requires \(O(N^3)\) operations and produces a fully dense matrix, completely wasting the tridiagonal structure. The Thomas algorithm factors \(\mathbf{A} = \mathbf{L}\mathbf{U}\) in \(O(N)\) steps without ever inverting the matrix.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“The Thomas algorithm requires row partial pivoting to prevent numerical instability.”</p>
+            <p>For arbitrary matrices, Gaussian elimination requires row pivoting to avoid dividing by tiny numbers. However, for strictly diagonally dominant or symmetric positive definite tridiagonal matrices (as guaranteed by BTCS), pivots are mathematically proven to be strictly bounded away from zero, making pivoting completely unnecessary.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s7"><span class="section-number">7</span>Problem set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Thomas algorithm hand execution</span>
+            <p>Solve the tridiagonal system \(\mathbf{A} \mathbf{u} = \mathbf{d}\) using the Thomas algorithm:
+            \[
+            \begin{bmatrix} 3 & -1 & 0 \\ -1 & 3 & -1 \\ 0 & -1 & 3 \end{bmatrix} \begin{bmatrix} u_1 \\ u_2 \\ u_3 \end{bmatrix} = \begin{bmatrix} 2 \\ 1 \\ 5 \end{bmatrix}.
+            \]</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Here \(\mathbf{a} = [0, -1, -1]\), \(\mathbf{b} = [3, 3, 3]\), \(\mathbf{c} = [-1, -1, 0]\), \(\mathbf{d} = [2, 1, 5]\).</p>
+              <p><strong>Forward Elimination:</strong></p>
+              <ul>
+                <li>\(i = 1\): \(c'_1 = -1/3\), \(d'_1 = 2/3\).</li>
+                <li>\(i = 2\): \(\text{denom} = 3 - (-1)(-1/3) = 3 - 1/3 = 8/3\). \(c'_2 = -1 / (8/3) = -3/8\). \(d'_2 = (1 - (-1)(2/3)) / (8/3) = (5/3) / (8/3) = 5/8\).</li>
+                <li>\(i = 3\): \(\text{denom} = 3 - (-1)(-3/8) = 3 - 3/8 = 21/8\). \(d'_3 = (5 - (-1)(5/8)) / (21/8) = (45/8) / (21/8) = 45/21 = 15/7\).</li>
+              </ul>
+              <p><strong>Back Substitution:</strong></p>
+              <ul>
+                <li>\(u_3 = d'_3 = 15/7\).</li>
+                <li>\(u_2 = d'_2 - c'_2 u_3 = 5/8 - (-3/8)(15/7) = 5/8 + 45/56 = (35 + 45)/56 = 80/56 = 10/7\).</li>
+                <li>\(u_1 = d'_1 - c'_1 u_2 = 2/3 - (-1/3)(10/7) = 2/3 + 10/21 = (14 + 10)/21 = 24/21 = 8/7\).</li>
+              </ul>
+              <p>Solution: \(\mathbf{u} = [8/7, 10/7, 15/7]^\top\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · BTCS matrix setup for Black–Scholes</span>
+            <p>Write out the explicit algebraic formulas for the subdiagonal \(a_j\), main diagonal \(b_j\), and superdiagonal \(c_j\) coefficients of the BTCS linear system for the Black–Scholes PDE in asset coordinates \(S\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The BTCS scheme for \(V_\tau = \frac{1}{2}\sigma^2 S^2 V_{SS} + r S V_S - r V\) at time level \(n+1\) is:</p>
+              \[
+              \frac{V_j^{n+1} - V_j^n}{\Delta t} = \frac{1}{2}\sigma^2 S_j^2 \frac{V_{j+1}^{n+1} - 2V_j^{n+1} + V_{j-1}^{n+1}}{\Delta S^2} + r S_j \frac{V_{j+1}^{n+1} - V_{j-1}^{n+1}}{2\Delta S} - r V_j^{n+1}.
+              \]
+              <p>Multiplying by \(\Delta t\) and moving terms at level \(n+1\) to the left:</p>
+              \[
+              \begin{aligned}
+              a_j &= -\frac{1}{2}\Delta t \left( \frac{\sigma^2 S_j^2}{\Delta S^2} - \frac{r S_j}{\Delta S} \right), \\
+              b_j &= 1 + \Delta t \left( \frac{\sigma^2 S_j^2}{\Delta S^2} + r \right), \\
+              c_j &= -\frac{1}{2}\Delta t \left( \frac{\sigma^2 S_j^2}{\Delta S^2} + \frac{r S_j}{\Delta S} \right).
+              \end{aligned}
+              \]
+            </details>
+          </div>
+
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · Amplification factor at large lambda</span>
+            <p>Compute the BTCS amplification factor \(G(\xi)\) for \(\lambda = 10.0\) at frequencies \(\xi = 0\), \(\xi = \pi/2\), and \(\xi = \pi\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The BTCS amplification factor is \(G(\xi) = \frac{1}{1 + 4\lambda \sin^2(\xi/2)}\). For \(\lambda = 10.0\):</p>
+              <ul>
+                <li>At \(\xi = 0\): \(\sin^2(0) = 0 \implies G(0) = \frac{1}{1 + 0} = 1.0\). Constant modes are perfectly preserved.</li>
+                <li>At \(\xi = \pi/2\): \(\sin^2(\pi/4) = 1/2 \implies G(\pi/2) = \frac{1}{1 + 4(10)(0.5)} = \frac{1}{21} \approx 0.0476\).</li>
+                <li>At \(\xi = \pi\): \(\sin^2(\pi/2) = 1 \implies G(\pi) = \frac{1}{1 + 4(10)(1)} = \frac{1}{41} \approx 0.0244\).</li>
+              </ul>
+              <p>High-frequency modes are damped by over \(97\%\) in a single time step without sign oscillation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Monotonicity of the BTCS M-matrix</span>
+            <p>Prove that the tridiagonal matrix \(\mathbf{A}\) in BTCS is a strictly diagonally dominant \(M\)-matrix (non-positive off-diagonals, positive diagonals, and strictly positive inverse \(\mathbf{A}^{-1} > 0\)), guaranteeing that BTCS preserves non-negativity.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Assuming \(Pe < 2\), the off-diagonal entries \(a_j \le 0\) and \(c_j \le 0\), while the diagonal entries \(b_j > 0\). The matrix is strictly diagonally dominant because \(b_j - (|a_j| + |c_j|) = 1 + r \Delta t \ge 1 > 0\). A strictly diagonally dominant matrix with non-positive off-diagonals and positive diagonals is an \(M\)-matrix. By the property of \(M\)-matrices, its inverse is entrywise non-negative: \(\mathbf{A}^{-1} \ge 0\). Since \(\mathbf{u}^{n+1} = \mathbf{A}^{-1} \mathbf{d}^n\), whenever \(\mathbf{d}^n \ge 0\), we have \(\mathbf{u}^{n+1} \ge 0\), proving the discrete maximum principle.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Comparison of BTCS and FTCS Taylor truncation error</span>
+            <p>Derive the leading-order temporal truncation error term for BTCS and compare its sign to that of FTCS.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For BTCS, the backward difference in time expands about \(\tau_{n+1}\) as \(\frac{u^{n+1} - u^n}{\Delta t} = u_\tau - \frac{\Delta t}{2}u_{\tau\tau} + O(\Delta t^2)\). The spatial operator is evaluated at \(\tau_{n+1}\): \(D u_{xx} + O(\Delta x^2)\). Subtracting the PDE gives the BTCS truncation error:</p>
+              \[
+              T_{\text{BTCS}} = -\frac{\Delta t}{2} \frac{\partial^2 u}{\partial \tau^2} + O(\Delta t^2 + \Delta x^2).
+              \]
+              <p>For FTCS, the truncation error was \(T_{\text{FTCS}} = +\frac{\Delta t}{2}\frac{\partial^2 u}{\partial \tau^2} + O(\Delta t^2 + \Delta x^2)\). The temporal error terms have identical magnitudes but opposite signs, which will be exploited in Lesson 7 by averaging them to cancel the \(O(\Delta t)\) term.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · Exact operation count of the Thomas algorithm</span>
+            <p>Count every individual addition, subtraction, multiplication, and division in the Thomas algorithm for an \(m \times m\) tridiagonal system, proving the exact total operation count is \(8m - 7\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p><strong>Forward sweep:</strong></p>
+              <ul>
+                <li>At \(i = 1\): 2 divisions (\(c_1/b_1\) and \(d_1/b_1\)). Operations: 2.</li>
+                <li>For \(i = 2, \dots, m\) (\(m - 1\) steps): each step computes \(\text{denom} = b_i - a_i c'_{i-1}\) (1 mult, 1 sub = 2 ops), \(c'_i = c_i / \text{denom}\) (1 div), and \(d'_i = (d_i - a_i d'_{i-1})/\text{denom}\) (1 mult, 1 sub, 1 div = 3 ops). Total per step: 6 ops. For \(m - 1\) steps: \(6(m - 1)\) ops. Note that for \(i = m\), \(c'_m\) is not computed, saving 1 op. So forward sweep total: \(2 + 6(m - 1) - 1 = 6m - 5\) ops.</li>
+              </ul>
+              <p><strong>Back substitution:</strong></p>
+              <ul>
+                <li>\(u_m = d'_m\): 0 ops.</li>
+                <li>For \(i = m-1, \dots, 1\) (\(m - 1\) steps): \(u_i = d'_i - c'_i u_{i+1}\) (1 mult, 1 sub = 2 ops). Total: \(2(m - 1) = 2m - 2\) ops.</li>
+              </ul>
+              <p><strong>Grand total:</strong> \((6m - 5) + (2m - 2) = 8m - 7\) operations. This scales strictly linearly as \(O(m)\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Memory storage comparison</span>
+            <p>Compare the memory requirements (in bytes, assuming 64-bit float8) of storing a dense matrix \(\mathbf{A}\) versus the three diagonals in banded format for \(N = 10,000\) spatial grid points.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For \(N = 10,000\):</p>
+              <ul>
+                <li>Dense matrix: \(N \times N = 10^8\) elements. In 64-bit float (8 bytes): \(8 \times 10^8 \text{ bytes} = 800\text{ MB}\).</li>
+                <li>Banded format: 3 vectors of length \(N\), total \(3 \times 10,000 = 30,000\) elements. In 64-bit float: \(8 \times 30,000 = 240\text{ KB}\).</li>
+              </ul>
+              <p>The banded storage uses over \(3300\times\) less RAM, easily fitting entirely into L2 CPU cache.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Banded solver benchmarks</span>
+            <p>In Python, explain why a pure NumPy vectorization of the Thomas algorithm may run slightly slower than `scipy.linalg.solve_banded` for small \(N\), but exhibits identical \(O(N)\) scaling for large \(N\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The Thomas forward and backward loops have inherently sequential data dependencies (\(c'_i\) depends on \(c'_{i-1}\)), preventing SIMD vectorization. A Python loop incurs Python bytecode interpreter overhead per element. `scipy.linalg.solve_banded` wraps LAPACK's `dgbsv`/`dgtsv`, which is compiled C/Fortran that executes loop iterations at CPU clock speeds. For large \(N\) or when compiled via Cython/Numba, both execute in strictly \(O(N)\) time.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · Neumann boundary modification</span>
+            <p>Show how a zero-flux Neumann boundary condition \(\frac{\partial u}{\partial x}(x_0) = 0\) is incorporated into the first row of the BTCS tridiagonal matrix using a ghost node \(x_{-1}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>At \(j = 0\), the central difference is \(\frac{u_1 - u_{-1}}{2\Delta x} = 0 \implies u_{-1} = u_1\). Substituting \(u_{-1}^{n+1} = u_1^{n+1}\) into the BTCS equation at \(j = 0\):</p>
+              \[
+              -\lambda u_{-1}^{n+1} + (1 + 2\lambda) u_0^{n+1} - \lambda u_1^{n+1} = u_0^n \implies (1 + 2\lambda) u_0^{n+1} - 2\lambda u_1^{n+1} = u_0^n.
+              \]
+              <p>The modified first row coefficients are \(b_0 = 1 + 2\lambda\) and \(c_0 = -2\lambda\), eliminating the ghost node while maintaining second-order boundary accuracy.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Alternating Direction Implicit (ADI) operator splitting</span>
+            <p>Formulate the Douglas–Rachford ADI splitting scheme for a 2D parabolic pricing equation \(u_\tau = (\mathcal{L}_1 + \mathcal{L}_2) u\), and explain how it solves two 1D tridiagonal systems per time step.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Douglas–Rachford splitting decomposes the update into two sub-steps:</p>
+              \[
+              \begin{aligned}
+              (I - \theta \Delta t \mathcal{L}_1) u^* &= \left[ I + (1 - \theta) \Delta t \mathcal{L}_1 + \Delta t \mathcal{L}_2 \right] u^n, \\
+              (I - \theta \Delta t \mathcal{L}_2) u^{n+1} &= u^* - \theta \Delta t \mathcal{L}_2 u^n.
+              \end{aligned}
+              \]
+              <p>In step 1, \(\mathcal{L}_1\) acts implicitly along rows (independent 1D tridiagonal solves for each row). In step 2, \(\mathcal{L}_2\) acts implicitly along columns (independent 1D tridiagonal solves for each column). Total computational cost per time step is strictly \(O(N_x N_y)\), matching the efficiency of 1D solvers.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Krylov subspace iterative solvers for non-tridiagonal systems</span>
+            <p>When cross-asset correlations make PDE matrices non-tridiagonal, why are Krylov subspace iterative solvers (such as GMRES or BiCGSTAB) with Incomplete LU (ILU) preconditioning preferred over direct solvers?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Direct Gaussian elimination on high-dimensional sparse matrices causes catastrophic "fill-in", where zero entries become non-zero during elimination, requiring prohibitive memory and \(O(N^{2d-1})\) operations. Krylov solvers only require matrix-vector products \(\mathbf{A} \mathbf{v}\), which take \(O(N_{\text{nonzeros}}) = O(N)\) time and zero fill-in. With an effective preconditioner (such as ILU(0) or multigrid), GMRES converges in a small number of iterations independent of grid size.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Projected SOR for American obstacle problems</span>
+            <p>Describe the Projected Successive Over-Relaxation (PSOR) algorithm for solving the implicit LCP \((\mathbf{A} \mathbf{u}^{n+1} - \mathbf{d}^n) \ge 0, \; \mathbf{u}^{n+1} \ge \boldsymbol{\psi}\) for American option pricing.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Standard Gauss–Seidel computes \(u_i^{(k+1/2)} = \frac{1}{b_i}\left( d_i - a_i u_{i-1}^{(k+1)} - c_i u_{i+1}^{(k)} \right)\). Successive over-relaxation accelerates convergence via relaxation parameter \(\omega \in (1, 2)\): \(u_i^{(k+1)} = (1 - \omega) u_i^{(k)} + \omega u_i^{(k+1/2)}\). To enforce the early exercise constraint, PSOR projects the iterate onto the obstacle after each node update:</p>
+              \[
+              u_i^{(k+1)} = \max\left\{ \psi_i, \; (1 - \omega) u_i^{(k)} + \frac{\omega}{b_i}\left( d_i - a_i u_{i-1}^{(k+1)} - c_i u_{i+1}^{(k)} \right) \right\}.
+              \]
+              <p>This projected iteration converges to the unique solution of the linear complementarity problem without needing to explicitly locate the free boundary.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s8"><span class="section-number">8</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>BTCS Implicit Scheme: \(-\lambda u_{j-1}^{n+1} + (1 + 2\lambda) u_j^{n+1} - \lambda u_{j+1}^{n+1} = u_j^n\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Definition 6.1</td>
+              </tr>
+              <tr>
+                <td>Unconditional Stability: \(G(\xi) = \frac{1}{1 + 4\lambda \sin^2(\xi/2)} \in (0, 1]\) for all \(\lambda > 0\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 6.2</td>
+              </tr>
+              <tr>
+                <td>Thomas Algorithm (TDMA): \(O(N)\) operations and \(O(N)\) memory</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Definition 6.3</td>
+              </tr>
+              <tr>
+                <td>Diagonal Dominance Stability: No pivoting required for \(|b_i| > |a_i| + |c_i|\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 6.4</td>
+              </tr>
+              <tr>
+                <td>Thomas solver agrees with `scipy.linalg.solve_banded` within 1e-13</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Lab 1</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="SC4" data-page="L06" data-cards="cards.json">
+        <h2 id="s9"><span class="section-number">9</span>Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the stability condition for the backward-time central-space (BTCS) implicit scheme on the diffusion equation?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q1"> <span>It is unconditionally stable for all \(\lambda = D \Delta t / \Delta x^2 > 0\)</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>\(\lambda \le 1/2\)</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>\(\lambda \le 1\)</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>\(\Delta t \le \Delta x\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 6.2, \(|G(\xi)| = \frac{1}{1 + 4\lambda \sin^2(\xi/2)} \le 1\) for all \(\xi\) and all \(\lambda > 0\), establishing unconditional stability.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the computational complexity of solving a tridiagonal linear system of size \(N\) using the Thomas algorithm?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q2"> <span>\(O(N)\)</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>\(O(N^2)\)</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>\(O(N^3)\)</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>\(O(N \log N)\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The Thomas algorithm consists of a single forward sweep and a single backward sweep, requiring strictly \(8N - 7\) operations (\(O(N)\)).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is numerical row pivoting not required in the Thomas algorithm for the BTCS scheme?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q3"> <span>The system matrix is strictly diagonally dominant, guaranteeing that denominators never vanish and \(|c'_i| < 1\)</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>Because Python automatically handles floating-point overflow</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>Because the subdiagonal entries are all zero</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>Because the strike price is positive</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Strict diagonal dominance ensures that Gaussian elimination without pivoting is backward stable and pivots never vanish.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the sign behavior of the BTCS amplification factor \(G(\pi)\) for high-frequency modes as \(\lambda \to \infty\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q4"> <span>It remains strictly positive and decays to zero: \(G(\pi) \to 0^+\)</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>It alternates signs between positive and negative values</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>It approaches \(-1\)</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>It explodes to \(+\infty\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>\(G(\pi) = \frac{1}{1 + 4\lambda}\). For all \(\lambda > 0\), it is strictly positive and tends to 0 as \(\lambda\) grows, strongly damping noise without oscillations.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the temporal order of accuracy of the standard BTCS scheme?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q5"> <span>First-order: \(O(\Delta t)\)</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Second-order: \(O(\Delta t^2)\)</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Fourth-order: \(O(\Delta t^4)\)</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Zeroth-order</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The backward difference quotient \(\frac{u^{n+1} - u^n}{\Delta t}\) has a leading-order temporal error of \(-\frac{\Delta t}{2}u_{\tau\tau} = O(\Delta t)\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does direct Gaussian elimination scale when applied to a 2D PDE on an \(N \times N\) mesh?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q6"> <span>\(O(N^3)\) or worse, due to fill-in within the matrix band of width \(N\)</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>\(O(N)\)</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>\(O(N^2)\)</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>\(O(1)\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The system matrix has dimension \(M = N^2\) and bandwidth \(N\). Banded elimination scales as \(M \cdot \text{bandwidth}^2 = N^2 \cdot N^2 = N^4\) or \(N^3\), losing linear scaling.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1" data-tolerance="0">
+            <p class="prompt">What is the amplification factor \(G(0)\) for the constant zero-frequency spatial mode in BTCS?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>At \(\xi = 0\), \(\sin^2(0) = 0\), so \(G(0) = \frac{1}{1 + 0} = 1\), preserving constant modes exactly.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which operator-splitting technique preserves 1D tridiagonal solver speed for multi-dimensional pricing PDEs?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q8"> <span>Alternating Direction Implicit (ADI) methods</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>Explicit Euler time marching</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>Monte Carlo antithetic variates</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>Cholesky decomposition of the covariance matrix</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>ADI methods decompose multi-dimensional operators into sequential 1D sweeps, solving tridiagonal systems along each dimension.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s10"><span class="section-number">10</span>References</h2>
+        <ol data-references>
+          <li data-cite="wilmott1995mathematics"></li>
+          <li data-cite="virtanen2020scipy"></li>
+          <li data-cite="harris2020array"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L05.html"><span class="dir">Previous</span>L05 · Explicit Finite-Difference Schemes &amp; CFL Stability</a>
+        <a class="next" href="L07.html"><span class="dir">Next</span>L07 · Crank–Nicolson Scheme &amp; Von Neumann Stability Analysis</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">SC4 · PDEs &amp; Feynman–Kac · Quant PhD Program</footer>
+</body>
+</html>
