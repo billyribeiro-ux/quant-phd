@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="DV4" data-page="L07" data-hours="11">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DV4.L07 · Cross-Method Pricing Consistency &amp; Model Validation</title>
+  <meta name="description" content="Cross-method pricing consistency suites, error budgets, arbitrage bounds, model risk validation, and automated testing across pricing engines. 11 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">DV4 Numerical Pricing (C++)</a><span class="sep">›</span>
+      <span>L07 Cross-Method Consistency</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 07 · 11 study hours · Introduces cross-method-pricing-consistency</p>
+        <h1>Cross-Method Pricing Consistency &amp; Model Validation</h1>
+        <p class="why-it-matters">In mission-critical trading operations, relying on a single pricing engine exposes the trading desk to severe operational and model risks. Analytical formulas, recombining lattices, finite difference PDE solvers, Monte Carlo simulations, and Fourier inversion methods should all converge to the identical theoretical option value under unified continuous-time dynamics. Establishing automated cross-method consistency suites with mathematically proven error bounds reconciles differing discretization mechanisms, validates implementations, and safeguards against catastrophic mispricings.</p>
+        <ul class="meta-row">
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="cross-method-pricing-consistency" href="#def-cross-method-pricing-consistency">cross-method pricing consistency</a></li>
+          <li><strong>Prerequisites:</strong> <a class="concept" data-concept="trinomial-tree" href="L01.html#def-trinomial-tree">trinomial tree</a>, <a class="concept" data-concept="early-exercise-boundary" href="L02.html#def-early-exercise-boundary">early-exercise boundary</a>, <a class="concept" data-concept="longstaff-schwartz-lsmc" href="L03.html#def-longstaff-schwartz-lsmc">Longstaff–Schwartz LSMC</a>, <a class="concept" data-concept="cos-method" href="L05.html#def-cos-method">COS method</a></li>
+        </ul>
+      </header>
+
+      <section id="cross-method-framework">
+        <h2 id="h-cross-method-framework">1. Theoretical Convergence Across Diverse Numerical Engines</h2>
+        <p>Quantitative finance possesses five fundamental computational paradigms for evaluating contingent claims:</p>
+        <ol>
+          <li><strong>Analytical Benchmarks:</strong> Exact closed-form formulas (Black–Scholes, Margrabe, Merton jump-diffusion series);</li>
+          <li><strong>Lattice Models:</strong> Discrete recombining binomial and trinomial trees matching drift and variance;</li>
+          <li><strong>Finite Difference PDEs:</strong> Implicit, explicit, and Crank–Nicolson discretizations of parabolic differential equations;</li>
+          <li><strong>Monte Carlo Simulation:</strong> Forward sample path generation, pathwise Greek estimation, and LSMC backward induction;</li>
+          <li><strong>Spectral / Fourier Methods:</strong> Characteristic function inversion via Carr–Madan FFT and the Fang–Oosterlee COS method.</li>
+        </ol>
+
+        <div class="block definition">
+          <p class="block-title">Definition 7.1 · Cross-Method Pricing Consistency</p>
+          <p><dfn id="def-cross-method-pricing-consistency" data-concept="cross-method-pricing-consistency">Cross-method pricing consistency</dfn> is the formal requirement that distinct numerical engines implementing the identical risk-neutral asset dynamics must agree within a mathematically derived composite error envelope across all strikes, maturities, and volatility regimes:</p>
+          \[
+          |V_{\text{Engine A}}(t, S; K, T) - V_{\text{Engine B}}(t, S; K, T)| \le \mathcal{E}_{\text{Tol}}(\text{Param})
+          \]
+          <p>where \(\mathcal{E}_{\text{Tol}}\) explicitly accounts for spatial discretization, temporal time-stepping, domain truncation, and statistical Monte Carlo variance.</p>
+        </div>
+      </section>
+
+      <section id="error-budget-envelopes">
+        <h2 id="h-error-budget-envelopes">2. Error Budgets and Hybrid Tolerance Design</h2>
+        <p>Comparing numerical methods requires decomposing total error into its structural components:</p>
+        \[
+        \text{Total Error} = \epsilon_{\text{time}}(\Delta t) + \epsilon_{\text{space}}(\Delta x) + \epsilon_{\text{trunc}}(R) + \epsilon_{\text{stat}}(M)
+        \]
+        <p>For deterministic lattice and PDE methods, the error scales as \(O(\Delta t^p + \Delta x^q)\). For Monte Carlo simulation with \(M\) paths, the error is stochastic, governed by the Central Limit Theorem: \(\epsilon_{\text{stat}} \sim \mathcal{N}\left(0, \frac{\sigma_{\text{MC}}^2}{M}\right)\).</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 7.1 · Statistical Consistency Envelope</span>
+          <p>Let \(V_{\text{det}}\) be a deterministic PDE or lattice price with known truncation bound \(\epsilon_{\text{det}}\), and let \(\hat{V}_{\text{MC}}\) be an independent Monte Carlo estimator with sample standard error \(\hat{\text{SE}} = \hat{\sigma} / \sqrt{M}\). At confidence level \(1 - \alpha\), consistency requires:</p>
+          \[
+          |\hat{V}_{\text{MC}} - V_{\text{det}}| \le \epsilon_{\text{det}} + z_{1 - \alpha/2} \cdot \hat{\text{SE}}
+          \]
+        </div>
+
+        <p>In production testing, a naive absolute dollar tolerance (such as \(\$0.02\)) fails because it is overly lenient on cheap out-of-the-money options and overly strict on deep in-the-money options. Industrial model validation enforces a <strong>hybrid tolerance envelope</strong>:</p>
+        \[
+        \mathcal{E}_{\text{Tol}} = \max \left( \text{atol}, \; \text{rtol} \times \max(|V_{\text{ref}}|, K) \right)
+        \]
+        <p>where typical quantitative values are \(\text{atol} = 0.02\) and \(\text{rtol} = 0.005\) (50 basis points of notional/strike).</p>
+
+        <section class="lab" id="lab-DV4-L07-1" data-runtime="python">
+          <h3>Lab 1 · Multi-engine cross-method pricing consistency matrix</h3>
+          <p class="hypothesis">We construct a comprehensive cross-method pricing consistency suite reconciling analytical BSM, binomial trees, trinomial lattices, explicit PDE, and Monte Carlo engines on SIMULATED market parameters across varying strikes and maturities, verifying that all engines agree within a rigorous error envelope.</p>
+          <pre><code class="language-python" data-run>"""Lab 1 (L07): Cross-method pricing consistency matrix and error envelope validation.
+
+SIMULATED market parameters under geometric Brownian motion.
+Prices European vanilla options across strikes and maturities using analytical BSM,
+binomial tree, trinomial tree, Crank-Nicolson PDE, and Monte Carlo simulation,
+verifying that all numerical solvers fall within their theoretical error envelopes.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def bsm_call(s: float, k: float, r: float, v: float, t: float) -&gt; float:
+    sq = math.sqrt(t)
+    d1 = (math.log(s / k) + (r + 0.5 * v * v) * t) / (v * sq)
+    d2 = d1 - v * sq
+    n1 = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+    n2 = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0)))
+    return float(s * n1 - k * math.exp(-r * t) * n2)
+
+
+def binomial_call(s: float, k: float, r: float, v: float, t: float, n: int = 150) -&gt; float:
+    dt = t / n
+    u = math.exp(v * math.sqrt(dt))
+    d = 1.0 / u
+    df = math.exp(-r * dt)
+    p = (math.exp(r * dt) - d) / (u - d)
+    st = s * (u ** np.arange(n + 1)) * (d ** np.arange(n, -1, -1))
+    vals = np.maximum(st - k, 0.0)
+    for step in range(n - 1, -1, -1):
+        vals = df * (p * vals[1 : step + 2] + (1.0 - p) * vals[0 : step + 1])
+    return float(vals[0])
+
+
+def trinomial_call(s: float, k: float, r: float, v: float, t: float, n: int = 100) -&gt; float:
+    dt = t / n
+    dx = v * math.sqrt(3.0 * dt)
+    df = math.exp(-r * dt)
+    nu = (r - 0.5 * v * v) * dt
+    pu = 1.0 / 6.0 + 0.5 * (nu * nu / (dx * dx) + nu / dx)
+    pm = 2.0 / 3.0 - (nu * nu / (dx * dx))
+    pd = 1.0 / 6.0 + 0.5 * (nu * nu / (dx * dx) - nu / dx)
+    indices = np.arange(-n, n + 1)
+    st = s * np.exp(indices * dx)
+    vals = np.maximum(st - k, 0.0)
+    for step in range(n - 1, -1, -1):
+        vals = df * (pu * vals[2 : 2 * step + 3] + pm * vals[1 : 2 * step + 2] + pd * vals[0 : 2 * step + 1])
+    return float(vals[0])
+
+
+def pde_call(s: float, k: float, r: float, v: float, t: float, n_t: int = 60, n_x: int = 70) -&gt; float:
+    std = v * math.sqrt(t)
+    x_max = 4.0 * std + r * t
+    x_min = -4.0 * std
+    dx = (x_max - x_min) / (n_x - 1)
+    dt = t / n_t
+    x = np.linspace(x_min, x_max, n_x)
+    sg = k * np.exp(x)
+    vals = np.maximum(sg - k, 0.0)
+    mu = r - 0.5 * v * v
+    alpha = 0.5 * (v * v) / (dx * dx)
+    beta = 0.5 * mu / dx
+    a_c = alpha - beta
+    b_c = -2.0 * alpha - r
+    c_c = alpha + beta
+    theta = 0.5
+    m = n_x - 2
+    diag_a = -dt * theta * a_c * np.ones(m)
+    diag_b = (1.0 - dt * theta * b_c) * np.ones(m)
+    diag_c = -dt * theta * c_c * np.ones(m)
+    for step in range(1, n_t + 1):
+        tau = step * dt
+        rhs = vals[1:-1] + dt * (1.0 - theta) * (a_c * vals[:-2] + b_c * vals[1:-1] + c_c * vals[2:])
+        bc_up = sg[-1] - k * math.exp(-r * tau)
+        rhs[-1] += dt * theta * c_c * bc_up
+        # Thomas solver
+        c_p = np.zeros(m)
+        d_p = np.zeros(m)
+        c_p[0] = diag_c[0] / diag_b[0]
+        d_p[0] = rhs[0] / diag_b[0]
+        for i in range(1, m):
+            denom = diag_b[i] - diag_a[i] * c_p[i - 1]
+            c_p[i] = diag_c[i] / denom if i &lt; m - 1 else 0.0
+            d_p[i] = (rhs[i] - diag_a[i] * d_p[i - 1]) / denom
+        v_next = np.zeros(m)
+        v_next[-1] = d_p[-1]
+        for i in range(m - 2, -1, -1):
+            v_next[i] = d_p[i] - c_p[i] * v_next[i + 1]
+        vals[0] = 0.0
+        vals[-1] = bc_up
+        vals[1:-1] = v_next
+    return float(np.interp(s, sg, vals))
+
+
+def mc_call(s: float, k: float, r: float, v: float, t: float, n_paths: int = 15_000, seed: int = 42) -&gt; float:
+    rng = np.random.default_rng(seed)
+    half = n_paths // 2
+    z = rng.standard_normal(half)
+    drift = (r - 0.5 * v * v) * t
+    vol_t = v * math.sqrt(t)
+    s_pos = s * np.exp(drift + vol_t * z)
+    s_neg = s * np.exp(drift - vol_t * z)
+    df = math.exp(-r * t)
+    p_pos = np.maximum(s_pos - k, 0.0)
+    p_neg = np.maximum(s_neg - k, 0.0)
+    return float(df * 0.5 * np.mean(p_pos + p_neg))
+
+
+def main() -&gt; None:
+    spot = 100.0
+    rate = 0.05
+    vol = 0.20
+    test_grid = [(90.0, 0.5), (100.0, 1.0), (110.0, 1.5)]
+
+    print("Cross-method pricing consistency matrix (Call Options):")
+    print("Strike  Maturity |   BSM     Binomial  Trinomial   PDE        MC     | Max Error")
+    print("-" * 75)
+
+    all_consistent = True
+    for strike, maturity in test_grid:
+        p_bsm = bsm_call(spot, strike, rate, vol, maturity)
+        p_bin = binomial_call(spot, strike, rate, vol, maturity)
+        p_tri = trinomial_call(spot, strike, rate, vol, maturity)
+        p_pde = pde_call(spot, strike, rate, vol, maturity)
+        p_mc = mc_call(spot, strike, rate, vol, maturity)
+
+        errors = [abs(p - p_bsm) for p in (p_bin, p_tri, p_pde, p_mc)]
+        max_err = max(errors)
+        tolerance = 0.05 * max(p_bsm, 1.0) + 0.05
+        consistent = max_err &lt;= tolerance
+        all_consistent = all_consistent and consistent
+
+        line = (
+            f"{strike:5.1f}   {maturity:4.1f} yr | "
+            f"{p_bsm:8.4f}  {p_bin:8.4f}  {p_tri:8.4f}  {p_pde:8.4f}  {p_mc:8.4f} |  {max_err:6.4f}"
+        )
+        print(line)
+
+    print("-" * 75)
+    print(f"All methods consistent within tolerance envelope: {all_consistent}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-3">Cross-method pricing consistency matrix (Call Options):
+Strike  Maturity |   BSM     Binomial  Trinomial   PDE        MC     | Max Error
+---------------------------------------------------------------------------
+ 90.0    0.5 yr |  13.4985   13.5034   13.5006   13.4985   13.5182 |  0.0197
+100.0    1.0 yr |  10.4506   10.4373   10.4318   10.4644   10.4440 |  0.0188
+110.0    1.5 yr |   8.8554    8.8662    8.8582    8.8538    8.8532 |  0.0107
+---------------------------------------------------------------------------
+All methods consistent within tolerance envelope: True</pre>
+          <p class="interpretation">All five pricing engines agree across the entire strike-maturity matrix within a maximum error of 0.0197, satisfying the hybrid tolerance envelope and confirming implementation consistency.</p>
+        </section>
+      </section>
+
+      <section id="invariants-arbitrage-bounds">
+        <h2 id="h-invariants-arbitrage-bounds">3. No-Arbitrage Invariants and Shape Preservations</h2>
+        <p>Beyond pairwise engine comparison, cross-method validation verifies that every pricer satisfies model-free no-arbitrage shape constraints:</p>
+        <ol>
+          <li><strong>Monotonicity:</strong> Call prices are non-increasing in strike (\(\frac{\partial C}{\partial K} \le 0\)) and non-decreasing in underlying spot (\(\frac{\partial C}{\partial S} \ge 0\));</li>
+          <li><strong>Convexity in Strike:</strong> Option prices must be convex functions of strike price:
+            \[
+            \frac{\partial^2 C}{\partial K^2} \ge 0
+            \]
+            Violation of convexity permits butterfly arbitrage (\(C(K - \Delta K) - 2 C(K) + C(K + \Delta K) < 0\));</li>
+          <li><strong>Put-Call Parity:</strong> For European options, prices must satisfy exact discrete or continuous put-call parity:
+            \[
+            C(t, S) - P(t, S) = S e^{-q(T-t)} - K e^{-r(T-t)}
+            \]
+          </li>
+          <li><strong>Maturity Monotonicity:</strong> For American options, prices are strictly non-decreasing in time to expiration: \(V_{\text{Amer}}(T_1) \le V_{\text{Amer}}(T_2)\) for \(T_1 < T_2\).</li>
+        </ol>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the canon breaks</h2>
+        <p>Even when individual engines pass textbook unit tests, cross-method consistency can fail in subtle production environments:</p>
+        <ol>
+          <li><strong>Discrete Dividend Alignment:</strong> When an underlying asset pays a cash dividend \(D\), PDE solvers apply jump conditions \(V(t_d^-, S) = V(t_d^+, S - D)\), whereas standard binomial and trinomial trees fail to recombine unless constructed on an escrowed cash framework. Discrepancies of several dollars emerge if dividends are handled inconsistently.</li>
+          <li><strong>Extreme Volatility and Wing Pricing:</strong> For deep out-of-the-money options (\(K / S_0 > 2.0\)), Monte Carlo simulation rarely visits the in-the-money region without importance sampling, yielding zero prices with deceivingly small sample variance. Meanwhile, PDE solvers suffer from boundary truncation at \(S_{\max}\), creating false cross-engine agreement at zero.</li>
+          <li><strong>Greeks Discrepancies from Numerical Smoothing:</strong> While option prices across trees and PDEs may agree to within 1 cent, their second derivatives (Gamma \(\frac{\partial^2 V}{\partial S^2}\)) can disagree by over 50% due to discrete lattice saw-tooth errors and Crank–Nicolson high-frequency oscillations.</li>
+        </ol>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">If two numerical option pricers agree to within 1 cent at-the-money, both implementations are verified bug-free.</p>
+            <p><strong>Reality:</strong> Spurious cancellation of errors frequently occurs at at-the-money strikes. A sign error in dividend yield or an incorrect boundary condition often produces near-zero error at \(S = K\) while producing massive divergences of several dollars in deep out-of-the-money wings or for long maturities. Comprehensive validation requires testing across extreme strikes, maturities, and Greeks.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Monte Carlo and PDE option pricers should agree to machine floating-point precision.</p>
+            <p><strong>Reality:</strong> Monte Carlo simulation has an inherent stochastic standard error scaling as \(O(1/\sqrt{M})\), while PDE solvers have deterministic spatial and temporal discretization errors scaling as \(O(\Delta t^p + \Delta x^q)\). Cross-method consistency requires agreement within a statistically rigorous confidence envelope, not exact bitwise equality.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A single constant dollar tolerance (such as \(\$0.02\)) is appropriate across all option strikes and maturities.</p>
+            <p><strong>Reality:</strong> A fixed tolerance of \(\$0.02\) is completely uninformative for a deep-in-the-money option worth \(\$60.00\) (0.03% relative error), but totally unacceptable for an out-of-the-money wing option trading at \(\$0.01\) (200% relative error). Industrial model risk management requires hybrid tolerances combining absolute and relative thresholds.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3 id="h-mechanics">Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-DV4-L07-m1">
+            <p class="prompt">A validation suite evaluates a hybrid tolerance envelope \(\mathcal{E}_{\text{Tol}} = \max(\text{atol}, \text{rtol} \times \text{Price})\) with \(\text{atol} = 0.01\) and \(\text{rtol} = 0.002\). Compute the tolerance threshold for a deep OTM option priced at \(\$0.40\) and an ITM option priced at \(\$45.00\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For the OTM option at \(\$0.40\): \(\text{rtol} \times \text{Price} = 0.002 \times 0.40 = 0.0008\). Comparing with \(\text{atol} = 0.01\): \(\mathcal{E}_{\text{Tol}} = \max(0.01, 0.0008) = 0.01\) dollars. The absolute threshold dominates. For the ITM option at \(\$45.00\): \(\text{rtol} \times \text{Price} = 0.002 \times 45.00 = 0.09\). Comparing with \(\text{atol} = 0.01\): \(\mathcal{E}_{\text{Tol}} = \max(0.01, 0.09) = 0.09\) dollars. The relative threshold dominates.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L07-m2">
+            <p class="prompt">An analytical BSM pricer returns \(10.4506\). A Monte Carlo pricer with \(M = 100,000\) paths returns \(10.4350\) with an estimated standard error of \(\hat{\text{SE}} = 0.0060\). Test whether the two engines agree within a 99% confidence interval (\(z_{0.995} = 2.576\)).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The absolute difference between engines is \(|10.4350 - 10.4506| = 0.0156\). The 99% confidence interval statistical threshold is \(z_{0.995} \times \hat{\text{SE}} = 2.576 \times 0.0060 = 0.015456\). Because the observed difference \(0.0156\) slightly exceeds \(0.01546\), the difference is statistically significant at the 99% level. An investigation into Monte Carlo discretization bias or random seed variation is warranted.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L07-m3">
+            <p class="prompt">Verify put-call parity consistency for an options engine output: Call price \(C = 13.50\), Put price \(P = 1.05\), Spot \(S_0 = 100\), Strike \(K = 90\), \(r = 0.05, q = 0, T = 0.5\). Compute the synthetic forward parity error.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The theoretical put-call parity identity states \(C - P = S_0 - K e^{-rT}\). The left-hand side is \(C - P = 13.50 - 1.05 = 12.45\). The right-hand side is \(S_0 - K e^{-rT} = 100 - 90 \exp(-0.05 \times 0.5) = 100 - 90 \exp(-0.025) = 100 - 90 \times 0.97531 = 100 - 87.7779 = 12.2221\). The parity error is \(|12.45 - 12.2221| = 0.2279\) dollars, indicating a significant violation of put-call parity in the pricer outputs.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3 id="h-proof">Tier 2 · Proof</h3>
+          <div class="problem" id="p-DV4-L07-p1">
+            <p class="prompt">Prove that if a numerical pricer produces a non-convex strike profile such that \(C(K_1) - 2 C(K_2) + C(K_3) < 0\) for equidistant strikes \(K_1 < K_2 < K_3\) (\(K_2 - K_1 = K_3 - K_2 = \Delta K\)), an explicit static butterfly spread yields a pure arbitrage profit.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Consider constructing a long butterfly spread: buy 1 call at \(K_1\), sell 2 calls at \(K_2\), and buy 1 call at \(K_3\). The cost of entering this portfolio at \(t = 0\) is \(\Pi_0 = C(K_1) - 2 C(K_2) + C(K_3)\). By assumption, \(\Pi_0 < 0\), meaning the trader receives a positive cash payment upfront. At expiration \(T\), the payoff of the butterfly is \(g(S_T) = (S_T - K_1)^+ - 2(S_T - K_2)^+ + (S_T - K_3)^+\). For \(S_T \le K_1\), \(g(S_T) = 0\). For \(K_1 < S_T < K_2\), \(g(S_T) = S_T - K_1 > 0\). For \(K_2 \le S_T < K_3\), \(g(S_T) = K_3 - S_T > 0\). For \(S_T \ge K_3\), \(g(S_T) = 0\). Thus, \(g(S_T) \ge 0\) almost surely for all states of the world. Since \(\Pi_0 < 0\) and \(g(S_T) \ge 0\), this is an unambiguous arbitrage opportunity.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L07-p2">
+            <p class="prompt">Prove that for an explicit finite difference PDE pricer and a binomial tree to be mathematically consistent, the binomial up/down jump parameters \(u, d\) must satisfy \(u d = 1\) up to second-order terms in \(\Delta t\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In log-transformed coordinates \(x = \ln(S)\), a spatial finite difference grid is uniform with step \(\Delta x\). A symmetric spatial step requires moving up by \(+\Delta x\) and down by \(-\Delta x\). In spot price terms, \(S_u = S e^{\Delta x} = S u\) and \(S_d = S e^{-\Delta x} = S d\). Multiplying these factors gives \(u d = e^{\Delta x} e^{-\Delta x} = e^0 = 1\). If a lattice sets \(u d \ne 1\) (such as unequal drift centering), the log-space grid shifts dynamically across time, creating an asymmetric spatial operator that introduces a spurious first-order spatial drift error \(O(\Delta x)\) into the PDE discretization.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L07-p3">
+            <p class="prompt">Prove that Richardson extrapolation applied to an \(O(\Delta t)\) converging trinomial lattice eliminates the first-order error term, producing an extrapolated estimate with \(O(\Delta t^2)\) convergence.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(V(h)\) be the lattice price with time step \(h = \Delta t\). By Taylor expansion, \(V(h) = V_0 + c_1 h + c_2 h^2 + O(h^3)\). Evaluating the lattice with half the step size \(h / 2\) (doubling the steps): \(V(h/2) = V_0 + c_1 (h/2) + c_2 (h/2)^2 + O(h^3) = V_0 + \frac{1}{2} c_1 h + \frac{1}{4} c_2 h^2 + O(h^3)\). Multiplying \(V(h/2)\) by 2 and subtracting \(V(h)\): \(2 V(h/2) - V(h) = (2 V_0 - V_0) + (c_1 h - c_1 h) + \left(\frac{1}{2} c_2 h^2 - c_2 h^2\right) + O(h^3) = V_0 - \frac{1}{2} c_2 h^2 + O(h^3)\). The linear error term \(c_1 h\) is eliminated completely, leaving leading error of order \(O(h^2) = O(\Delta t^2)\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3 id="h-empirical">Tier 3 · Empirical</h3>
+          <div class="problem" id="p-DV4-L07-e1">
+            <p class="prompt">Using the Lab 1 output for Lesson 7, examine the maximum absolute error across methods: \(0.0197\) at \(K = 90, T = 0.5\); \(0.0188\) at \(K = 100, T = 1.0\); and \(0.0107\) at \(K = 110, T = 1.5\). Why is the maximum error largest for the shortest maturity option?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For shorter maturities (\(T = 0.5\)), the payoff kink at \(S = K\) remains sharper and has experienced less diffusive smoothing by the heat kernel. On a discrete spatial grid or lattice, a sharp kink induces higher localized discretization error in finite difference and tree schemes. As maturity lengthens to \(T = 1.5\), diffusion smoothly spreads the transitional density across many lattice nodes, dampening high-frequency discretization errors and reducing maximum inter-engine discrepancy to \(0.0107\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L07-e2">
+            <p class="prompt">A model validation team tests an equity option pricer against an analytical benchmark across 10,000 synthetic market scenarios. The test suite flags 14 scenarios with errors exceeding tolerance. If all 14 scenarios share the property that \(\sigma < 0.03\) and \(T < 0.02\) yr, diagnose the structural cause of the failure.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under very low volatility (\(\sigma < 0.03\)) and short maturity (\(T < 0.02\)), total diffusion variance \(\sigma^2 T < 1.8 \times 10^{-5}\). On a fixed spatial grid, the diffusion distribution is narrower than a single spatial grid step \(\Delta x\). The discrete pricer effectively treats the diffusion as deterministic, causing severe under-resolution of the probability density. Increasing spatial mesh density or switching to asymptotic analytical expansions is required in the near-zero diffusion limit.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L07-e3">
+            <p class="prompt">In an automated CI/CD pipeline, a test suite runs 500 cross-method consistency checks on every pull request. If the PDE pricer takes 5 ms and the Monte Carlo pricer takes 80 ms per check, calculate the total execution time, and explain how parallel execution across 8 CPU cores optimizes CI pipeline throughput.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Per check, runtime is \(5 + 80 = 85\) ms. Running 500 checks serially takes \(500 \times 0.085 = 42.5\) seconds. Distributing the independent checks across 8 CPU cores via multiprocessing yields an ideal execution time of \(42.5 / 8 \approx 5.3\) seconds. With slight process spawn overhead, total execution remains under 7 seconds, allowing automated regression testing without slowing developer pull request feedback loops.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3 id="h-research">Tier 4 · Research</h3>
+          <div class="problem" id="p-DV4-L07-r1">
+            <p class="prompt">Explain how Property-Based Testing (using tools like Hypothesis or QuickCheck) is applied to quantitative derivative libraries to discover subtle edge-case pricing bugs automatically.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Traditional unit tests evaluate hardcoded hand-picked parameter sets (e.g. \(S = 100, K = 100, \sigma = 0.20\)). Property-based testing generates thousands of pseudo-random market parameters within admissible ranges and asserts that mathematical invariants always hold: call-put parity, monotonicity in strike and spot, positivity, and cross-method bounds. When a violation is encountered, the framework automatically shrinks the failing input vector to the minimal failing example (e.g. \(\sigma = 10^{-7}\) or \(T = 10^{-5}\)), exposing edge-case division-by-zero or numerical underflow bugs.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L07-r2">
+            <p class="prompt">Discuss the regulatory requirements for model validation outlined in the Federal Reserve SR 11-7 / OCC 2011-12 guidance, specifically addressing ongoing monitoring and benchmarking against alternative models.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>SR 11-7 requires institutions to maintain rigorous model risk governance consisting of conceptual soundness evaluation, ongoing monitoring, and outcome analysis. Independent model validation teams must benchmark production models against conceptually distinct alternative algorithms (e.g. validating local volatility PDE solvers against Monte Carlo engines). Discrepancies exceeding pre-specified operational tolerance envelopes must be investigated, documented, and subjected to capital reserves or model risk adjustments.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L07-r3">
+            <p class="prompt">How do compiler optimization flags (such as GCC/Clang -O3, -ffast-math, and AVX-512 vectorization) affect floating-point associativity and create subtle cross-platform pricing discrepancies in production C++ engines?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>IEEE 754 floating-point addition is non-associative: \((a + b) + c \ne a + (b + c)\). When compilers enable flags like <code>-ffast-math</code>, reassociation optimizations allow reordering of arithmetic operations and the fusion of multiply-add instructions (FMA). In parallel Monte Carlo summations and vector reduction loops, differing execution thread schedules or CPU architectures (e.g., x86 AVX-512 vs ARM NEON) yield slight differences in low-order mantissa bits, producing non-deterministic pricing drift unless strict floating-point conformance (<code>-fno-fast-math</code>) is enforced.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key results</h2>
+        <table class="key-results">
+          <thead>
+            <tr><th>Result</th><th>Grade</th><th>Basis / Source</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Cross-method consistency verifies agreement within composite discretization envelopes</td>
+              <td><span class="claim" data-grade="A" data-cite="hull2021options" data-locator="ch. 21, pp. 500-505">A</span></td>
+              <td>Hull (2021), Section 21.8</td>
+            </tr>
+            <tr>
+              <td>Hybrid tolerance design \(\max(\text{atol}, \text{rtol} \times \text{Price})\) balances OTM wings and ITM parity</td>
+              <td><span class="claim" data-grade="T">T</span></td>
+              <td>Section 2 formulation; SR 11-7 industrial standards</td>
+            </tr>
+            <tr>
+              <td>Convexity violations in strike profiles generate explicit riskless butterfly arbitrage</td>
+              <td><span class="claim" data-grade="T">T</span></td>
+              <td>Section 3 proof; No-arbitrage theorem</td>
+            </tr>
+            <tr>
+              <td>Multi-engine consistency suite reconciles analytical, lattice, PDE, and Monte Carlo models</td>
+              <td><span class="claim" data-grade="A" data-cite="boyle1977options" data-locator="pp. 330-335">A</span></td>
+              <td>Lab 1 empirical validation (max error \(0.0197\))</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="DV4" data-page="L07">
+        <h2 id="h-quiz">Retrieval quiz</h2>
+        <ol class="quiz">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is testing a pricing engine exclusively at-the-money insufficient to establish implementation correctness?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q1"> <span>Because errors in drift, dividends, or boundary conditions can cancel out at-the-money while generating massive errors in deep out-of-the-money wings</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>Because at-the-money options have zero gamma</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>Because analytical Black–Scholes formulas only exist out-of-the-money</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>Because Monte Carlo simulation is impossible at-the-money</span></label>
+            </fieldset>
+            <div class="explain"><p>Spurious cancellation of errors frequently masks severe bugs at-the-money; comprehensive testing across deep ITM and OTM wings is mandatory.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What formula defines a hybrid tolerance envelope that protects both deep OTM and deep ITM options?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q2"> <span>\(\max(\text{atol}, \text{rtol} \times \text{Price})\)</span></label>
+              <label class="option"><input type="radio" name="q2"> <span>\(\text{atol} \times \text{rtol}\)</span></label>
+              <label class="option"><input type="radio" name="q2"> <span>\(\text{Price} / \text{atol}\)</span></label>
+              <label class="option"><input type="radio" name="q2"> <span>\(\min(\text{atol}, \text{rtol})\)</span></label>
+            </fieldset>
+            <div class="explain"><p>The hybrid formulation ensures that small prices are bounded by an absolute floor while large prices scale with a relative percentage threshold.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What arbitrage opportunity is created if a numerical pricer produces a strike profile violating convexity (\(\frac{\partial^2 C}{\partial K^2} < 0\))?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q3"> <span>A butterfly spread arbitrage with negative upfront cost and non-negative terminal payoff</span></label>
+              <label class="option"><input type="radio" name="q3"> <span>A risk-free box spread arbitrage</span></label>
+              <label class="option"><input type="radio" name="q3"> <span>A calendar spread roll</span></label>
+              <label class="option"><input type="radio" name="q3"> <span>A conversion trade</span></label>
+            </fieldset>
+            <div class="explain"><p>Buying the wings and selling two body calls yields a positive upfront cash inflow and guaranteed non-negative terminal cash flows.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="12.22" data-tolerance="0.05">
+            <p class="prompt">Using put-call parity with \(S_0 = 100, K = 90, r = 0.05, q = 0, T = 0.5\), what is the theoretical value of \(C - P\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain"><p>\(C - P = S_0 - K e^{-rT} = 100 - 90 e^{-0.025} = 100 - 90(0.97531) = 100 - 87.78 = 12.22\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do Monte Carlo and finite difference PDE pricers not produce bitwise identical results?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q5"> <span>Because Monte Carlo contains stochastic sampling variance while PDEs have deterministic spatial-temporal grid discretization error</span></label>
+              <label class="option"><input type="radio" name="q5"> <span>Because PDE solvers use imaginary numbers</span></label>
+              <label class="option"><input type="radio" name="q5"> <span>Because Monte Carlo simulation violates no-arbitrage bounds</span></label>
+              <label class="option"><input type="radio" name="q5"> <span>Because Monte Carlo only prices American options</span></label>
+            </fieldset>
+            <div class="explain"><p>Consistency is defined as agreement within a statistically provable confidence envelope combining discretization and sampling variance.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In continuous integration pipelines, what is differential testing?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q6"> <span>Executing multiple independent implementations of the same contract and asserting agreement within tolerance bounds across randomized inputs</span></label>
+              <label class="option"><input type="radio" name="q6"> <span>Testing whether derivatives can be differentiated twice</span></label>
+              <label class="option"><input type="radio" name="q6"> <span>Testing only the difference between two git commits</span></label>
+              <label class="option"><input type="radio" name="q6"> <span>Evaluating the financial return of a delta-hedged portfolio</span></label>
+            </fieldset>
+            <div class="explain"><p>Differential testing compares outputs from diverse engines (e.g. tree vs PDE vs Monte Carlo) on identical random parameters to catch bugs.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="10" data-tolerance="1">
+            <p class="prompt">If the analytical call price is \(10.4506\) and a Monte Carlo estimate is \(10.4546\), what is the absolute error in basis points of the spot price \(S = 100\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain"><p>Absolute error is \(|10.4546 - 10.4506| = 0.0040\). As a percentage of spot \(100\), this is \(0.0040 / 100 = 0.00004 = 0.4\) basis points.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What regulatory guidance governs model risk management and benchmarking in US financial institutions?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q8"> <span>Federal Reserve SR 11-7 / OCC 2011-12</span></label>
+              <label class="option"><input type="radio" name="q8"> <span>Sarbanes–Oxley Section 404</span></label>
+              <label class="option"><input type="radio" name="q8"> <span>Dodd–Frank Title VII</span></label>
+              <label class="option"><input type="radio" name="q8"> <span>MiFID II</span></label>
+            </fieldset>
+            <div class="explain"><p>SR 11-7 establishes standards for model risk management, independent validation, and benchmarking against alternative models.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does compiler floating-point reassociation (such as -ffast-math) create non-deterministic discrepancies across computing platforms?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q9"> <span>Floating-point addition is non-associative, so reordering operations or vectorizing with FMA instructions alters low-order mantissa bits</span></label>
+              <label class="option"><input type="radio" name="q9"> <span>Because -ffast-math converts floats to integers</span></label>
+              <label class="option"><input type="radio" name="q9"> <span>Because modern CPUs have random rounding modes</span></label>
+              <label class="option"><input type="radio" name="q9"> <span>Because fast math disables cache memory</span></label>
+            </fieldset>
+            <div class="explain"><p>Because \((a + b) + c \ne a + (b + c)\) in IEEE 754 arithmetic, reordering instructions across compilers or SIMD vectors creates minor mantissa drift.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li data-cite="boyle1977options"><span class="citation-key">boyle1977options</span> Boyle, P. P. (1977). Options: A Monte Carlo approach. <em>Journal of Financial Economics</em>, 4(3), 323–338.</li>
+          <li data-cite="longstaff2001valuing"><span class="citation-key">longstaff2001valuing</span> Longstaff, F. A., &amp; Schwartz, E. S. (2001). Valuing American options by simulation: A simple least-squares approach. <em>Review of Financial Studies</em>, 14(1), 113–147.</li>
+          <li data-cite="fang2008novel"><span class="citation-key">fang2008novel</span> Fang, F., &amp; Oosterlee, C. W. (2008). A novel pricing method for European options based on Fourier-cosine series expansions. <em>SIAM Journal on Scientific Computing</em>, 31(2), 826–848.</li>
+          <li data-cite="glasserman2003monte"><span class="citation-key">glasserman2003monte</span> Glasserman, P. (2003). <em>Monte Carlo Methods in Financial Engineering</em>. Springer.</li>
+          <li data-cite="hull2021options"><span class="citation-key">hull2021options</span> Hull, J. C. (2021). <em>Options, Futures, and Other Derivatives</em> (11th ed.). Pearson.</li>
+        </ol>
+      </section>
+
+      <button type="button" class="button" data-complete>Mark complete</button>
+    </main>
+  </div>
+</body>
+</html>

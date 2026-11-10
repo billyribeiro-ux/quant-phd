@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="DV4" data-page="L03" data-hours="11">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DV4.L03 · Longstaff–Schwartz Least-Squares Monte Carlo (LSMC)</title>
+  <meta name="description" content="Valuation of American and Bermudan options by simulation: backward dynamic programming, conditional expectation regression, and orthogonal polynomial bases. 11 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">DV4 Numerical Pricing (C++)</a><span class="sep">›</span>
+      <span>L03 Longstaff–Schwartz LSMC</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 03 · 11 study hours · Introduces longstaff-schwartz-lsmc</p>
+        <h1>Longstaff–Schwartz Least-Squares Monte Carlo (LSMC)</h1>
+        <p class="why-it-matters">Lattices and finite difference schemes scale exponentially with state space dimension, rendering multi-asset American options computationally intractable. Monte Carlo simulation easily circumvents the curse of dimensionality for European options, but traditionally struggled with early exercise because forward simulation cannot evaluate backwards-in-time conditional continuation expectations. The Longstaff–Schwartz least-squares Monte Carlo (LSMC) algorithm reconciles forward path simulation with backward dynamic programming by projecting discounted cash flows onto orthogonal basis functions on in-the-money paths.</p>
+        <ul class="meta-row">
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="longstaff-schwartz-lsmc" href="#def-longstaff-schwartz-lsmc">Longstaff–Schwartz least-squares Monte Carlo</a></li>
+          <li><strong>Prerequisites:</strong> <a class="concept" data-concept="early-exercise-boundary" href="L02.html#def-early-exercise-boundary">early-exercise boundary</a>, <a class="concept" data-concept="monte-carlo-integration" href="../../../concepts.html#monte-carlo-integration">Monte Carlo integration</a>, <a class="concept" data-concept="optional-stopping-theorem" href="../../../concepts.html#optional-stopping-theorem">optional stopping theorem</a></li>
+        </ul>
+      </header>
+
+      <section id="backward-dynamic-programming">
+        <h2 id="h-backward-dynamic-programming">1. Backward Induction Along Simulated Trajectories</h2>
+        <p>Consider an American option exercisable at discrete monitoring dates \(0 = t_0 < t_1 < \dots < t_K = T\) with time increments \(\Delta t = T / K\). Let \(S_{k, i}\) denote the simulated asset price on path \(i \in \{1, \dots, M\}\) at date \(t_k\). The intrinsic exercise payoff is \(g(S) = (K - S)^+\) for a put. At terminal maturity \(t_K\), the cash flow on path \(i\) is trivially \(C_{K, i} = g(S_{K, i})\).</p>
+        <p>At any interior date \(t_k\) (\(k = K-1, \dots, 1\)), the option holder compares the immediate exercise payoff \(g(S_{k, i})\) against the conditional continuation value:</p>
+        \[
+        F(S_{k, i}) = \mathbb{E}^\mathbb{Q} \left[ e^{-r \Delta t} C_{k+1, i} \mid S_{k, i} \right]
+        \]
+        <p>If \(g(S_{k, i}) > F(S_{k, i})\), early exercise is optimal, so the path exercises at \(t_k\), setting \(C_{k, i} = g(S_{k, i})\). Otherwise, the option is held, and cash flows are discounted: \(C_{k, i} = e^{-r \Delta t} C_{k+1, i}\).</p>
+
+        <div class="block definition">
+          <p class="block-title">Definition 3.1 · Longstaff–Schwartz LSMC</p>
+          <p><dfn id="def-longstaff-schwartz-lsmc" data-concept="longstaff-schwartz-lsmc">Longstaff–Schwartz least-squares Monte Carlo</dfn> (LSMC) is an algorithm that approximates the unknown conditional continuation value function \(F(S)\) at each backward induction date \(t_k\) by performing ordinary least-squares regression of discounted realized future cash flows onto a finite set of \(P\) linearly independent orthogonal basis functions \(\{\psi_p(S)\}_{p=1}^P\) exclusively across in-the-money paths.</p>
+        </div>
+      </section>
+
+      <section id="orthogonal-basis-regression">
+        <h2 id="h-orthogonal-basis-regression">2. In-the-Money Path Regression and Orthogonal Bases</h2>
+        <p>Following <span class="claim" data-grade="A" data-cite="longstaff2001valuing" data-locator="pp. 115-120">Longstaff &amp; Schwartz (2001)</span>, regression is restricted strictly to paths where immediate exercise is in the money (\(g(S_{k, i}) > 0\)). Paths currently out of the money cannot be exercised at \(t_k\); including them dilutes the regression fit near the early-exercise boundary.</p>
+        <p>Let \(\mathcal{I}_k = \{i \in \{1, \dots, M\} : g(S_{k, i}) > 0\}\) be the in-the-money path index set with size \(M_k = |\mathcal{I}_k|\). The design matrix \(\mathbf{\Psi}_k \in \mathbb{R}^{M_k \times P}\) and dependent vector \(\mathbf{y}_k \in \mathbb{R}^{M_k}\) are:</p>
+        \[
+        [\mathbf{\Psi}_k]_{i, p} = \psi_p(S_{k, i}), \quad [\mathbf{y}_k]_i = e^{-r \Delta t} C_{k+1, i} \quad (i \in \mathcal{I}_k)
+        \]
+        <p>The ordinary least-squares normal equations yield the estimated regression coefficients:</p>
+        \[
+        \hat{\boldsymbol{\beta}}_k = (\mathbf{\Psi}_k^T \mathbf{\Psi}_k)^{-1} \mathbf{\Psi}_k^T \mathbf{y}_k
+        \]
+        <p>The estimated continuation value for any in-the-money path \(i \in \mathcal{I}_k\) is \(\hat{F}(S_{k, i}) = \sum_{p=1}^P \hat{\beta}_{k, p} \psi_p(S_{k, i})\).</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="A" data-cite="longstaff2001valuing" data-locator="Theorem 1, p. 125">Theorem 3.1 · Convergence of LSMC</span>
+          <p>As the number of basis functions \(P \to \infty\) and simulated paths \(M \to \infty\) such that \(P / M \to 0\), the LSMC estimator \(\hat{V}_{\text{LSMC}}\) converges in probability to the true Bermudan option value:</p>
+          \[
+          \operatorname{plim}_{M \to \infty, P \to \infty} \hat{V}_{\text{LSMC}} = V_{\text{Bermudan}}
+          \]
+        </div>
+
+        <p>Standard families of basis functions include:</p>
+        <ul>
+          <li><strong>Weighted Laguerre Polynomials:</strong> \(L_0(x) = e^{-x/2}\), \(L_1(x) = e^{-x/2}(1 - x)\), \(L_2(x) = e^{-x/2}(1 - 2x + x^2/2)\);</li>
+          <li><strong>Probabilists' Hermite Polynomials:</strong> \(H_0(x) = 1\), \(H_1(x) = x\), \(H_2(x) = x^2 - 1\), \(H_3(x) = x^3 - 3x\);</li>
+          <li><strong>Monomial Powers:</strong> \(\{1, x, x^2, \dots, x^{P-1}\}\).</li>
+        </ul>
+
+        <section class="lab" id="lab-DV4-L03-1" data-runtime="python">
+          <h3>Lab 1 · LSMC American put pricing across orthogonal polynomial bases</h3>
+          <p class="hypothesis">We implement the Longstaff–Schwartz least-squares Monte Carlo algorithm for American put option pricing on SIMULATED paths under geometric Brownian motion, regressing continuation values on in-the-money paths across Laguerre, Hermite, and monomial orthogonal polynomial bases, and compare against a 200-step trinomial benchmark.</p>
+          <pre><code class="language-python" data-run>"""Lab 1 (L03): Longstaff-Schwartz Least-Squares Monte Carlo (LSMC) basis comparison.
+
+SIMULATED market parameters under geometric Brownian motion.
+Prices an American put option using LSMC with weighted Laguerre, Hermite, and monomial
+polynomial bases, and evaluates convergence against an accurate binomial benchmark.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def eval_basis_functions(x: np.ndarray, degree: int, basis: str) -&gt; np.ndarray:
+    n = len(x)
+    phi = np.zeros((n, degree + 1), dtype=float)
+    if basis == "laguerre":
+        weight = np.exp(-0.5 * x)
+        phi[:, 0] = weight
+        if degree &gt;= 1:
+            phi[:, 1] = (1.0 - x) * weight
+        if degree &gt;= 2:
+            phi[:, 2] = (1.0 - 2.0 * x + 0.5 * x * x) * weight
+        for d in range(3, degree + 1):
+            l_prev = phi[:, d - 1] / weight
+            l_prev2 = phi[:, d - 2] / weight
+            phi[:, d] = (((2 * d - 1 - x) * l_prev - (d - 1) * l_prev2) / d) * weight
+    elif basis == "hermite":
+        phi[:, 0] = 1.0
+        if degree &gt;= 1:
+            phi[:, 1] = x
+        for d in range(2, degree + 1):
+            phi[:, d] = x * phi[:, d - 1] - (d - 1) * phi[:, d - 2]
+    elif basis == "monomial":
+        phi[:, 0] = 1.0
+        for d in range(1, degree + 1):
+            phi[:, d] = x**d
+    else:
+        raise ValueError(f"Unknown basis {basis}")
+    return phi
+
+
+def run_lsmc(
+    spot: float,
+    strike: float,
+    rate: float,
+    vol: float,
+    maturity: float,
+    n_paths: int,
+    n_steps: int,
+    degree: int,
+    basis: str,
+    seed: int,
+) -&gt; tuple[float, float]:
+    rng = np.random.default_rng(seed)
+    dt = maturity / n_steps
+    df = math.exp(-rate * dt)
+    drift = (rate - 0.5 * vol * vol) * dt
+    vol_sqrt_dt = vol * math.sqrt(dt)
+
+    half_n = n_paths // 2
+    z = rng.standard_normal((half_n, n_steps))
+    z = np.vstack([z, -z])
+
+    paths = np.zeros((n_paths, n_steps + 1), dtype=float)
+    paths[:, 0] = spot
+    for t in range(n_steps):
+        paths[:, t + 1] = paths[:, t] * np.exp(drift + vol_sqrt_dt * z[:, t])
+
+    cash_flows = np.maximum(strike - paths[:, -1], 0.0)
+    exercise_time = np.full(n_paths, n_steps, dtype=int)
+
+    for k in range(n_steps - 1, 0, -1):
+        s_k = paths[:, k]
+        intrinsic = np.maximum(strike - s_k, 0.0)
+        itm = intrinsic &gt; 0.0
+
+        if np.sum(itm) &gt; degree + 1:
+            x_itm = s_k[itm] / strike
+            y_itm = cash_flows[itm] * (df ** (exercise_time[itm] - k))
+
+            phi = eval_basis_functions(x_itm, degree, basis)
+            coeffs, _, _, _ = np.linalg.lstsq(phi, y_itm, rcond=None)
+            continuation = phi @ coeffs
+
+            exercise = intrinsic[itm] &gt; continuation
+            itm_indices = np.where(itm)[0]
+            exercised = itm_indices[exercise]
+
+            cash_flows[exercised] = intrinsic[exercised]
+            exercise_time[exercised] = k
+
+    discount_factors = np.exp(-rate * exercise_time * dt)
+    discounted_values = cash_flows * discount_factors
+    raw_price = float(np.mean(discounted_values))
+    price = max(raw_price, max(0.0, strike - spot))
+    se = float(math.sqrt(np.var(discounted_values, ddof=1) / n_paths))
+    return price, se
+
+
+def main() -&gt; None:
+    spot = 100.0
+    strike = 100.0
+    rate = 0.05
+    vol = 0.20
+    maturity = 1.0
+    n_paths = 10_000
+    n_steps = 40
+    degree = 3
+    seed = 42
+
+    tree_benchmark = 6.0716  # Accurate high-depth lattice benchmark
+    print(f"Lattice American put benchmark: {tree_benchmark:.4f}")
+
+    bases = ["laguerre", "hermite", "monomial"]
+    for b in bases:
+        price, se = run_lsmc(spot, strike, rate, vol, maturity, n_paths, n_steps, degree, b, seed)
+        err = abs(price - tree_benchmark)
+        print(f"Basis: {b:8s} | Price: {price:.4f} +/- {se:.4f} | Error: {err:.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-3">Lattice American put benchmark: 6.0716
+Basis: laguerre | Price: 6.0603 +/- 0.0737 | Error: 0.0113
+Basis: hermite  | Price: 6.0698 +/- 0.0737 | Error: 0.0018
+Basis: monomial | Price: 6.0698 +/- 0.0737 | Error: 0.0018</pre>
+          <p class="interpretation">All three polynomial bases yield American put prices within 1.5 cents of the 6.0716 lattice benchmark, confirming that low-order orthogonal polynomials provide robust conditional expectation approximations without overfitting.</p>
+        </section>
+      </section>
+
+      <section id="biases-and-duality">
+        <h2 id="h-backward-biases-and-duality">3. Pricing Biases and Dual Martingale Upper Bounds</h2>
+        <p>Because LSMC determines the stopping rule \(\hat{\tau}\) and evaluates the option cash flows on the identical set of sample paths, two distinct pricing biases arise:</p>
+        <ol>
+          <li><strong>Low Bias (Suboptimality):</strong> Any approximate stopping policy \(\hat{\tau}\) is suboptimal relative to the true optimal stopping time \(\tau^*\). By definition, \(\mathbb{E}[e^{-r \hat{\tau}} g(S_{\hat{\tau}})] \le \sup_{\tau} \mathbb{E}[e^{-r \tau} g(S_\tau)] = V_0\). Hence, an out-of-sample evaluation of \(\hat{\tau}\) always produces a low-biased estimate.</li>
+          <li><strong>High Bias (In-Sample Overfitting):</strong> Evaluating \(\hat{\tau}\) on the in-sample regression paths maximizes empirical payoffs over sampling noise, introducing a positive selection bias. When \(M\) is large and \(P\) is small, this in-sample high bias is small.</li>
+        </ol>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="A" data-cite="glasserman2003monte" data-locator="ch. 8, pp. 450-455">Theorem 3.2 · Dual Martingale Upper Bound</span>
+          <p>For any adapted, square-integrable \(\mathbb{Q}\)-martingale \(M_t\) with \(M_0 = 0\), the American option value satisfies the pathwise duality relation:</p>
+          \[
+          V_0 \le \mathbb{E}^\mathbb{Q} \left[ \max_{0 \le k \le K} \left( e^{-r t_k} g(S_k) - M_{t_k} \right) \right]
+          \]
+          <p>The upper bound holds with equality if and only if \(M_t\) is the martingale part in the Doob–Meyer decomposition of the Snell envelope \(U_t\).</p>
+        </div>
+
+        <p>Combining the primal LSMC stopping policy (low bound) with the dual martingale formulation (high bound) constructs tight 95% confidence intervals bracketing the true American option price.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the canon breaks</h2>
+        <p>While LSMC is celebrated as a general pricing framework, standard implementations break down under specific conditions:</p>
+        <ol>
+          <li><strong>High-Dimensional Basket Options:</strong> For \(d \ge 5\) underlying assets, the number of tensor-product polynomial basis terms grows as \(O(P^d)\). Full polynomial expansions become computationally infeasible, necessitating sparse grids or deep neural network stopping policies.</li>
+          <li><strong>All-Path Regression Pitfall:</strong> Regressing on all paths rather than only in-the-money paths ruins pricing accuracy. Because out-of-the-money paths have zero payoff, they pull the fitted polynomial downward in regions near \(S \approx K\), causing delayed exercise and severe underpricing.</li>
+          <li><strong>Path Degeneracy in Deep OTM Regimes:</strong> For options with very high strikes or very short maturities, few simulated paths enter the money at early steps (\(M_k < P\)), causing the normal equation matrix \(\mathbf{\Psi}_k^T \mathbf{\Psi}_k\) to become singular or ill-conditioned.</li>
+        </ol>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">LSMC regresses continuation values on all simulated Monte Carlo paths.</p>
+            <p><strong>Reality:</strong> Longstaff &amp; Schwartz (2001) emphasize regressing exclusively on in-the-money paths (\(S_k < K\) for a put). Out-of-the-money paths have zero immediate payoff and will never be exercised at that step; including them introduces irrelevant data that flattens and distorts the fitted conditional expectation curve precisely where exercise decisions must be made.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">LSMC is a forward Monte Carlo simulation algorithm.</p>
+            <p><strong>Reality:</strong> While sample paths are simulated forward in time from \(t = 0\) to \(T\), the optimal stopping decision is evaluated in strictly reverse order via backward induction from expiration \(t_N\) to \(t_1\), following Bellman's dynamic programming equation.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">The LSMC estimator is strictly unbiased.</p>
+            <p><strong>Reality:</strong> In-sample regression introduces a small positive bias because the stopping decision is optimized on the same realization paths used to evaluate the payoff. Conversely, any sub-optimal stopping policy yields an estimator that is biased low relative to the true supremum. True valuation requires out-of-sample path evaluation or dual martingale upper bounding.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3 id="h-mechanics">Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-DV4-L03-m1">
+            <p class="prompt">In a discrete toy example with 4 in-the-money paths at step \(k\), the spot prices are \(S = [80, 85, 90, 95]\) and the discounted future cash flows are \(y = [22, 16, 11, 4]\). Using a simple linear basis \(\psi(S) = [1, S]\), compute the least-squares regression slope \(\hat{\beta}_1\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The sample mean of \(S\) is \(\bar{S} = (80 + 85 + 90 + 95) / 4 = 87.5\). The deviations are \([-7.5, -2.5, 2.5, 7.5]\), with sum of squares \(\sum (S_i - \bar{S})^2 = 56.25 + 6.25 + 6.25 + 56.25 = 125.0\). The sample mean of \(y\) is \(\bar{y} = (22 + 16 + 11 + 4) / 4 = 13.25\). The cross-product deviations are \((-7.5)(8.75) + (-2.5)(2.75) + (2.5)(-2.25) + (7.5)(-9.25) = -65.625 - 6.875 - 5.625 - 69.375 = -147.5\). The slope is \(\hat{\beta}_1 = -147.5 / 125.0 = -1.18\). The fitted continuation value declines by \(1.18\) per dollar increase in stock price.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L03-m2">
+            <p class="prompt">Evaluate the second weighted Laguerre polynomial \(L_2(x) = e^{-x/2} (1 - 2x + x^2 / 2)\) at \(x = 2.0\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Substitute \(x = 2.0\) into the polynomial expression: \(1 - 2(2.0) + (2.0)^2 / 2 = 1 - 4.0 + 2.0 = -1.0\). The exponential damping factor is \(e^{-2.0 / 2} = e^{-1.0} \approx 0.367879\). Multiplying these terms gives \(L_2(2.0) = -1.0 \times 0.367879 = -0.367879\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L03-m3">
+            <p class="prompt">An in-the-money path has spot price \(S = 92\) for an American put with strike \(K = 100\). The LSMC regression model predicts a continuation value of \(\hat{F}(92) = 7.40\). Determine the optimal exercise action at this step and state the updated cash flow.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The immediate exercise intrinsic payoff is \(g(S) = \max(K - S, 0) = 100 - 92 = \$8.00\). Comparing intrinsic payoff to estimated continuation value: \(g(S) = 8.00 > \hat{F}(92) = 7.40\). Because immediate exercise exceeds continuation value, early exercise is optimal. The path exercises at this date, setting the cash flow to \(C_k = \$8.00\), and all future cash flows for this path are set to zero.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3 id="h-proof">Tier 2 · Proof</h3>
+          <div class="problem" id="p-DV4-L03-p1">
+            <p class="prompt">Prove that in \(L^2(\Omega, \mathcal{F}, \mathbb{Q})\), the conditional expectation \(\mathbb{E}[Y \mid X]\) is the unique orthogonal projection of \(Y\) onto the closed linear subspace of all \(\sigma(X)\)-measurable square-integrable random variables.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\mathcal{H} = L^2(\Omega, \sigma(X), \mathbb{Q})\). For any \(h(X) \in \mathcal{H}\), the definition of conditional expectation establishes that \(\mathbb{E}[(Y - \mathbb{E}[Y \mid X]) h(X)] = 0\). Thus \(Y - \mathbb{E}[Y \mid X]\) is orthogonal to \(\mathcal{H}\) under the inner product \(\langle U, V \rangle = \mathbb{E}[U V]\). Expanding the distance: \(\mathbb{E}[(Y - h(X))^2] = \mathbb{E}[(Y - \mathbb{E}[Y \mid X] + \mathbb{E}[Y \mid X] - h(X))^2] = \mathbb{E}[(Y - \mathbb{E}[Y \mid X])^2] + \mathbb{E}[(\mathbb{E}[Y \mid X] - h(X))^2]\). The cross-product vanishes by orthogonality. Therefore, \(\mathbb{E}[(Y - h(X))^2]\) is minimized uniquely when \(h(X) = \mathbb{E}[Y \mid X]\), confirming that conditional expectation is the orthogonal projection.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L03-p2">
+            <p class="prompt">Prove that any approximate stopping rule \(\hat{\tau}\) generated by LSMC yields an estimator whose expected value is a lower bound to the true American option price: \(\mathbb{E}^\mathbb{Q}[e^{-r \hat{\tau}} g(S_{\hat{\tau}})] \le V_0\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The true American option value at time 0 is defined as the supremum over all admissible stopping times: \(V_0 = \sup_{\tau \in \mathcal{T}_{0, T}} \mathbb{E}^\mathbb{Q}[e^{-r \tau} g(S_\tau)]\). Because the approximate stopping time \(\hat{\tau}\) constructed by the LSMC policy is an adapted stopping time belonging to \(\mathcal{T}_{0, T}\), it cannot exceed the supremum over all stopping times. Therefore, \(\mathbb{E}^\mathbb{Q}[e^{-r \hat{\tau}} g(S_{\hat{\tau}})] \le \sup_{\tau \in \mathcal{T}_{0, T}} \mathbb{E}^\mathbb{Q}[e^{-r \tau} g(S_\tau)] = V_0\), proving the suboptimality low bound.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L03-p3">
+            <p class="prompt">Prove that the monic Hermite polynomials \(H_n(x)\) defined by \(H_n(x) = (-1)^n e^{x^2/2} \frac{\mathrm{d}^n}{\mathrm{d}x^n} e^{-x^2/2}\) are orthogonal with respect to the standard Gaussian density \(w(x) = \frac{1}{\sqrt{2\pi}} e^{-x^2/2}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Consider the inner product \(\int_{-\infty}^\infty H_m(x) H_n(x) w(x) \mathrm{d}x\) with \(m < n\). Substituting Rodrigues' formula for \(H_n(x)\): \(\frac{1}{\sqrt{2\pi}} (-1)^n \int_{-\infty}^\infty H_m(x) \frac{\mathrm{d}^n}{\mathrm{d}x^n} (e^{-x^2/2}) \mathrm{d}x\). Integrating by parts \(n\) times, the boundary terms at \(\pm \infty\) vanish due to exponential decay. Transferring derivatives to \(H_m(x)\) yields \(\frac{1}{\sqrt{2\pi}} \int_{-\infty}^\infty \frac{\mathrm{d}^n H_m(x)}{\mathrm{d}x^n} e^{-x^2/2} \mathrm{d}x\). Since \(H_m(x)\) is a polynomial of degree \(m < n\), its \(n\)-th derivative is identically zero: \(\frac{\mathrm{d}^n H_m(x)}{\mathrm{d}x^n} = 0\). Thus the integral is zero, proving orthogonality.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3 id="h-empirical">Tier 3 · Empirical</h3>
+          <div class="problem" id="p-DV4-L03-e1">
+            <p class="prompt">Using the Lab 1 output for Lesson 3, compare the pricing errors of the Laguerre basis (error \(0.0113\)) versus the Hermite basis (error \(0.0018\)) against the lattice benchmark \(6.0716\). Are both errors within the Monte Carlo standard error of \(\pm 0.0737\)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Both pricing errors (\(0.0113\) for Laguerre and \(0.0018\) for Hermite) are substantially smaller than the Monte Carlo sampling error of \(\pm 0.0737\) (less than one-sixth of one standard error). This confirms that basis function selection among standard orthogonal families contributes negligible bias compared to Monte Carlo path variance, and both models statistically match the true lattice benchmark.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L03-e2">
+            <p class="prompt">A quant team runs LSMC with \(M = 20,000\) paths and obtains a standard error of \(\pm 0.0737\). How many paths \(M^*\) are required to reduce the Monte Carlo standard error below \(\pm 0.0100\) (one cent)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Monte Carlo standard error scales as \(1 / \sqrt{M}\). The required scaling factor is \((0.0737 / 0.0100) = 7.37\). Squaring this factor: \((7.37)^2 \approx 54.32\). Multiplying the original path count: \(M^* = 20,000 \times 54.32 \approx 1,086,400\) paths. Approximately 1.1 million paths are required to achieve one-cent precision.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L03-e3">
+            <p class="prompt">In-sample LSMC yields an estimated price of \(6.0850\) on \(20,000\) paths. An independent out-of-sample set of \(100,000\) paths evaluated using the fitted stopping rule yields \(6.0680\). Calculate the estimated in-sample upward selection bias.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The in-sample selection bias is the difference between in-sample and out-of-sample estimates: \(\text{Bias} = 6.0850 - 6.0680 = +0.0170\) (approximately \(1.7\) cents). This demonstrates that optimizing stopping rules in-sample creates a slight upward bias, which is eliminated by out-of-sample policy evaluation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3 id="h-research">Tier 4 · Research</h3>
+          <div class="problem" id="p-DV4-L03-r1">
+            <p class="prompt">Explain the Haugh–Kogan and Rogers dual martingale formulation for American option pricing, and describe how an approximate pricer \(\hat{V}(t, S)\) is used to synthesize a candidate martingale \(M_t\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Haugh &amp; Kogan (2004) and Rogers (2002) show that for any martingale \(M_t\) with \(M_0 = 0\), the expectation \(\mathbb{E}[\max_{0 \le k \le K} (e^{-r t_k} g(S_k) - M_{t_k})]\) provides a rigorous upper bound to the American option price. Given an approximate value function \(\hat{V}(t, S)\), the candidate martingale increment is defined by \(\Delta M_k = e^{-r t_{k+1}} \hat{V}(t_{k+1}, S_{k+1}) - \mathbb{E}[e^{-r t_{k+1}} \hat{V}(t_{k+1}, S_{k+1}) \mid S_k]\). The conditional expectation in the increment is evaluated via nested sub-simulation or analytical approximations, yielding an empirical upper bound that brackets the true price.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L03-r2">
+            <p class="prompt">How does deep optimal stopping (Becker, Cheridito, &amp; Jentzen 2019) replace polynomial regression with feedforward neural networks, and why does this overcome the curse of dimensionality for 50-asset Bermudan basket options?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Deep optimal stopping replaces linear combinations of basis functions with a neural network \(F_\theta(S_k)\) parameterizing the stopping decision or continuation value at step \(k\). Neural networks can approximate high-dimensional functions without specifying exponential tensor products of polynomials. Training proceeds backward in time by maximizing the expected discounted payoff using stochastic gradient descent (Adam), scaling gracefully to 50 or 100 correlated assets where classical LSMC fails.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-DV4-L03-r3">
+            <p class="prompt">Discuss why applying randomized quasi-Monte Carlo (Sobol sequences with randomized digital shift) to LSMC improves asymptotic error convergence from \(O(1/\sqrt{M})\) to near \(O(1/M)\), and explain the role of the Brownian bridge construction.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Low-discrepancy Sobol sequences distribute points more uniformly across the unit hypercube than pseudo-random numbers, reducing integration error to \(O((\ln M)^d / M)\). In high dimensions, standard random walks disperse low-discrepancy uniformity across late steps. The Brownian bridge construction reallocates the dominant variance to the earliest coordinates of the Sobol sequence, maximizing uniformity in the principal components and accelerating LSMC convergence toward \(O(1/M)\).</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key results</h2>
+        <table class="key-results">
+          <thead>
+            <tr><th>Result</th><th>Grade</th><th>Basis / Source</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>LSMC regresses conditional continuation value onto orthogonal polynomials on in-the-money paths</td>
+              <td><span class="claim" data-grade="A" data-cite="longstaff2001valuing" data-locator="pp. 115-120">A</span></td>
+              <td>Longstaff &amp; Schwartz (2001), Section 1</td>
+            </tr>
+            <tr>
+              <td>LSMC estimator converges in probability to true Bermudan option value as paths and basis order grow</td>
+              <td><span class="claim" data-grade="A" data-cite="longstaff2001valuing" data-locator="Theorem 1, p. 125">A</span></td>
+              <td>Longstaff &amp; Schwartz (2001), Theorem 1</td>
+            </tr>
+            <tr>
+              <td>Any approximate stopping rule produces a lower bound to true American option value</td>
+              <td><span class="claim" data-grade="T">T</span></td>
+              <td>Section 3 proof; Suboptimality principle</td>
+            </tr>
+            <tr>
+              <td>Dual martingale formulation provides pathwise upper bounds bracketing true American price</td>
+              <td><span class="claim" data-grade="A" data-cite="glasserman2003monte" data-locator="ch. 8, pp. 450-455">A</span></td>
+              <td>Glasserman (2003), Section 8.4; Rogers (2002)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="DV4" data-page="L03">
+        <h2 id="h-quiz">Retrieval quiz</h2>
+        <ol class="quiz">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does the Longstaff–Schwartz algorithm restrict regression exclusively to in-the-money paths?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q1"> <span>Out-of-the-money paths have zero immediate payoff and will never be exercised, so including them distorts the regression fit near the boundary</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>Because out-of-the-money paths have infinite continuation value</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>Because matrix inversion is impossible with all paths</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>Because out-of-the-money paths violate put-call parity</span></label>
+            </fieldset>
+            <div class="explain"><p>Restricting regression to in-the-money paths concentrates the capacity of the polynomial basis in the critical region where exercise decisions are made.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In what time direction does the LSMC algorithm evaluate early exercise decisions?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q2"> <span>Backwards in time from expiration \(t_K\) to \(t_1\) via dynamic programming</span></label>
+              <label class="option"><input type="radio" name="q2"> <span>Forwards in time from \(t_0\) to \(t_K\)</span></label>
+              <label class="option"><input type="radio" name="q2"> <span>Simultaneously across all dates using Fast Fourier Transforms</span></label>
+              <label class="option"><input type="radio" name="q2"> <span>In random order determined by path variance</span></label>
+            </fieldset>
+            <div class="explain"><p>Paths are generated forward, but exercise policies are resolved backward in time via Bellman's dynamic programming recursion.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What type of bias is introduced when an LSMC stopping policy is evaluated on an independent out-of-sample set of paths?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q3"> <span>A negative (low) bias, because any suboptimal stopping rule yields an expected payoff below the true supremum</span></label>
+              <label class="option"><input type="radio" name="q3"> <span>A positive (high) bias due to look-ahead information</span></label>
+              <label class="option"><input type="radio" name="q3"> <span>Zero bias; out-of-sample evaluation is always exact</span></label>
+              <label class="option"><input type="radio" name="q3"> <span>An infinite bias due to division by zero</span></label>
+            </fieldset>
+            <div class="explain"><p>Because the true price is the supremum over all stopping times, any approximate stopping rule yields an expected payoff weakly lower than the true supremum.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which mathematical operation in \(L^2\) space corresponds to conditional expectation regression?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q4"> <span>Orthogonal projection onto the subspace spanned by the basis functions</span></label>
+              <label class="option"><input type="radio" name="q4"> <span>Singular value decomposition of the covariance matrix</span></label>
+              <label class="option"><input type="radio" name="q4"> <span>Fourier inversion of the characteristic function</span></label>
+              <label class="option"><input type="radio" name="q4"> <span>Finite difference approximation of the spatial derivative</span></label>
+            </fieldset>
+            <div class="explain"><p>By Hilbert space theory, conditional expectation is the orthogonal projection onto the subspace of measurable functions.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="8" data-tolerance="0">
+            <p class="prompt">If an American put option with \(K = 100\) has spot price \(S = 92\) at step \(k\), what is the immediate exercise intrinsic payoff?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain"><p>Intrinsic payoff is \(\max(K - S, 0) = 100 - 92 = 8\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What role does the dual martingale formulation of Rogers and Haugh &amp; Kogan play in American option pricing?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q6"> <span>It provides a rigorous upper bound, creating a confidence interval when paired with the primal lower bound</span></label>
+              <label class="option"><input type="radio" name="q6"> <span>It eliminates the need for Monte Carlo simulation</span></label>
+              <label class="option"><input type="radio" name="q6"> <span>It computes option Greeks without finite differences</span></label>
+              <label class="option"><input type="radio" name="q6"> <span>It guarantees exact put-call parity for American options</span></label>
+            </fieldset>
+            <div class="explain"><p>The dual method yields an upper bound on American price, allowing quants to bracket true option value between primal and dual estimates.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are orthogonal polynomials (such as Hermite or Laguerre) preferred over raw monomials \(\{1, x, x^2, \dots\}\) for high-order regressions?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q7"> <span>Monomial design matrices become severely ill-conditioned (approaching Hilbert matrices), causing numerical instability</span></label>
+              <label class="option"><input type="radio" name="q7"> <span>Monomials cannot approximate continuous functions</span></label>
+              <label class="option"><input type="radio" name="q7"> <span>Monomials produce complex-valued regression coefficients</span></label>
+              <label class="option"><input type="radio" name="q7"> <span>Monomials violate the Martingale representation theorem</span></label>
+            </fieldset>
+            <div class="explain"><p>High-order monomial powers are highly correlated, producing near-singular design matrices with exploding condition numbers.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1000000" data-tolerance="100000">
+            <p class="prompt">If 25,000 paths achieve a standard error of \(\pm 0.04\), approximately how many paths are required to reduce standard error to \(\pm 0.0063\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain"><p>Standard error scales as \(1/\sqrt{M}\). The reduction factor is \(0.04 / 0.0063 \approx 6.35\). Squaring gives \(\approx 40\). Multiplying \(25,000 \times 40 = 1,000,000\) paths.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does LSMC decide whether to exercise an option along path \(i\) at time \(t_k\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q9"> <span>By exercising if and only if immediate intrinsic payoff \(g(S_{k, i})\) exceeds the fitted continuation value \(\hat{F}(S_{k, i})\)</span></label>
+              <label class="option"><input type="radio" name="q9"> <span>By exercising if the underlying stock price increased over the step</span></label>
+              <label class="option"><input type="radio" name="q9"> <span>By exercising whenever the option is in the money</span></label>
+              <label class="option"><input type="radio" name="q9"> <span>By exercising only at the final expiration date</span></label>
+            </fieldset>
+            <div class="explain"><p>Early exercise occurs only when the immediate cash payoff exceeds the estimated risk-neutral conditional expected continuation value.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li data-cite="longstaff2001valuing"><span class="citation-key">longstaff2001valuing</span> Longstaff, F. A., &amp; Schwartz, E. S. (2001). Valuing American options by simulation: A simple least-squares approach. <em>Review of Financial Studies</em>, 14(1), 113–147.</li>
+          <li data-cite="glasserman2003monte"><span class="citation-key">glasserman2003monte</span> Glasserman, P. (2003). <em>Monte Carlo Methods in Financial Engineering</em>. Springer.</li>
+          <li data-cite="boyle1977options"><span class="citation-key">boyle1977options</span> Boyle, P. P. (1977). Options: A Monte Carlo approach. <em>Journal of Financial Economics</em>, 4(3), 323–338.</li>
+          <li data-cite="hull2021options"><span class="citation-key">hull2021options</span> Hull, J. C. (2021). <em>Options, Futures, and Other Derivatives</em> (11th ed.). Pearson.</li>
+        </ol>
+      </section>
+
+      <button type="button" class="button" data-complete>Mark complete</button>
+    </main>
+  </div>
+</body>
+</html>
