@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="AP2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · CAPM on Trial · AP2 Mean-Variance, CAPM, ICAPM &amp; APT</title>
+  <meta name="description" content="AP2 course project: Test the Capital Asset Pricing Model using time-series and cross-sectional methods on simulated and open data, and write the verdict addressing the Roll critique.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">AP2 Mean-Variance, CAPM, ICAPM &amp; APT</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="20">
+      <header class="page-head">
+        <p class="eyebrow">AP2 · Project · 20 study hours · Dual evaluation</p>
+        <h1>CAPM on Trial</h1>
+        <p class="lede">Test the Capital Asset Pricing Model with time-series and cross-sectional methods on simulated and open data, implement an exact portfolio and econometric testing engine, and write the final verdict confronting the Roll critique.</p>
+        <ul class="meta-row">
+          <li><strong>Deliverables:</strong> Python testing suite (<code>capm_tests.py</code>) and evaluation memo (<code>report.md</code>)</li>
+          <li><strong>Evaluation:</strong> Dual mode (autograder for code; rubric for evaluation memo)</li>
+          <li><strong>Time budget:</strong> 20 hours (22% of module hours)</li>
+        </ul>
+      </header>
+
+      <section id="ladder-section">
+        <h2>The project ladder</h2>
+        <p>The project follows a four-rung ladder from concrete worked examples to independent implementation and open-ended research extension.</p>
+        <ol class="ladder">
+          <li>
+            <div>
+              <span class="rung-title">Worked example</span>
+              <p>A complete, annotated derivation and test of the CAPM on a three-asset simulated panel, stepping through GMV weights, Jensen time-series regression, and security market line pricing errors.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Completion</span>
+              <p>A completion lab where you supply the core mathematical formulas for the Jensen regression slope and t-statistic under the standard OLS model. Graded instantly in browser.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Independent</span>
+              <p>Implement the full specification in <code>capm_tests.py</code>, passing the autograder on 50 seeds, and compose a two-page executive memo <code>report.md</code> evaluating CAPM testability in light of the Roll critique.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Stretch</span>
+              <p>Bring-your-own-data (BYOD): Download historical factor and test portfolio series in CSV format, validate them locally in your browser without network upload, and analyze conditional beta dynamics.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2>Rung 1 · Worked example</h2>
+        <p>Below is a fully solved and annotated run of the core CAPM analysis on a three-asset panel. It calculates exact GMV weights, estimates time-series parameters, and computes the security market line residual.</p>
+
+        <section class="lab" id="lab-AP2-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: CAPM estimation and testing</h3>
+          <p class="hypothesis">Runs an end-to-end CAPM estimation on a 3-asset SIMULATED panel (T = 60), verifying GMV weights, Jensen regression estimates, and SML residual.</p>
+          <pre><code class="language-python" data-run>"""Lab AP2-project-1: Project Rung 1 worked example.
+
+Annotated run of the core CAPM testing tasks on a SIMULATED 3-asset panel (T = 60).
+Demonstrates:
+(1) Computing GMV portfolio weights;
+(2) Estimating time-series Jensen regression for one asset (alpha, beta, t-statistic);
+(3) Evaluating the cross-sectional SML pricing residual.
+"""
+
+from __future__ import annotations
+
+import math
+from fractions import Fraction
+
+
+def invert_3x3(mat: list[list[Fraction]]) -&gt; list[list[Fraction]]:
+    """Invert 3x3 matrix using exact row elimination."""
+    n = 3
+    aug = [[mat[i][j] for j in range(n)] + [Fraction(1 if i == k else 0) for k in range(n)] for i in range(n)]
+    for i in range(n):
+        p = aug[i][i]
+        for j in range(2 * n):
+            aug[i][j] /= p
+        for r in range(n):
+            if r != i:
+                f = aug[r][i]
+                for j in range(2 * n):
+                    aug[r][j] -= f * aug[i][j]
+    return [[aug[i][n + j] for j in range(n)] for i in range(n)]
+
+
+def main() -&gt; None:
+    # SIMULATED parameters for 3 assets
+    cov = [
+        [Fraction(5, 1000), Fraction(2, 1000), Fraction(1, 1000)],
+        [Fraction(2, 1000), Fraction(6, 1000), Fraction(2, 1000)],
+        [Fraction(1, 1000), Fraction(2, 1000), Fraction(7, 1000)],
+    ]
+    iota = [Fraction(1, 1), Fraction(1, 1), Fraction(1, 1)]
+
+    # Step 1: GMV weights: minimize variance subject to weights summing to 1
+    # Why: The GMV is the unique portfolio on the efficient frontier with zero sensitivity to expected returns.
+    inv_cov = invert_3x3(cov)
+    inv_iota = [sum((inv_cov[i][j] * iota[j] for j in range(3)), Fraction(0, 1)) for i in range(3)]
+    a_scalar = sum(inv_iota, Fraction(0, 1))
+    w_gmv = [inv_iota[i] / a_scalar for i in range(3)]
+
+    print(f"Step 1 (GMV weights): [{w_gmv[0]}, {w_gmv[1]}, {w_gmv[2]}]")
+    print(f"GMV weights sum: {sum(w_gmv, Fraction(0, 1))}")
+
+    # Step 2: Time-series Jensen regression on a seeded panel (T = 60)
+    # Why: Jensen's alpha tests whether individual assets earn abnormal returns beyond their systematic market risk.
+    # Deterministic sample (T = 60)
+    t_obs = 60
+    mkt = [0.01 + 0.035 * math.sin(t * 0.4) for t in range(t_obs)]
+    # Asset 1 excess returns: true alpha = 0.0015, true beta = 1.2
+    asset_1 = [0.0015 + 1.2 * mkt[t] + 0.015 * math.cos(t * 0.7) for t in range(t_obs)]
+
+    mean_m = sum(mkt) / float(t_obs)
+    mean_a = sum(asset_1) / float(t_obs)
+    s_mm = sum((m - mean_m) ** 2 for m in mkt)
+    s_am = sum((mkt[t] - mean_m) * (asset_1[t] - mean_a) for t in range(t_obs))
+
+    beta_hat = s_am / s_mm
+    alpha_hat = mean_a - beta_hat * mean_m
+    residuals = [asset_1[t] - (alpha_hat + beta_hat * mkt[t]) for t in range(t_obs)]
+    sse = sum(e * e for e in residuals)
+    s2 = sse / float(t_obs - 2)
+    var_alpha = s2 * (1.0 / float(t_obs) + (mean_m * mean_m) / s_mm)
+    se_alpha = math.sqrt(var_alpha)
+    t_alpha = alpha_hat / se_alpha
+
+    print(f"Step 2 (Jensen OLS): alpha={alpha_hat:.6f}, beta={beta_hat:.6f}, se={se_alpha:.6f}, t={t_alpha:.4f}")
+
+    # Step 3: Security Market Line residual
+    # Why: The SML residual measures cross-sectional deviation from the theoretical equilibrium pricing line.
+    sml_slope = mean_m
+    sml_residual = mean_a - beta_hat * sml_slope
+    print(f"Step 3 (SML residual): {sml_residual:.6f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Step 1 (GMV weights): [4/9, 7/27, 8/27]
+GMV weights sum: 1
+Step 2 (Jensen OLS): alpha=0.001347, beta=1.201282, se=0.001542, t=0.8733
+Step 3 (SML residual): 0.001347</pre>
+          <p class="interpretation">The worked example verifies the theoretical chain: the GMV weights sum to 1, the time-series regression decomposes total asset return into systematic market risk and alpha, and the cross-sectional residual measures deviation from the SML.</p>
+        </section>
+      </section>
+
+      <section id="rung-2">
+        <h2>Rung 2 · Completion problem</h2>
+        <p>Fill in the missing lines in the Jensen regression routine below. Replace the <code>___</code> placeholders with the exact formulas for the slope coefficient \(\hat{\beta}\) and the t-statistic \(t_\alpha\).</p>
+
+        <section class="lab completion" id="lab-AP2-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Jensen regression estimates</h3>
+          <p class="hypothesis">Fill in the blanks for the OLS beta estimator and the t-statistic of alpha. Output matches the benchmark test values on the SIMULATED panel.</p>
+          <pre><code class="language-python" data-run>"""Lab AP2-project-2: Project Rung 2 completion problem solution.
+
+On the project page, the lines computing beta_hat and t_alpha are replaced with blanks (___).
+This twin contains the complete solution.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def main() -> None:
+    t_obs = 60
+    mkt = [0.008 + 0.04 * math.sin(t * 0.3) for t in range(t_obs)]
+    asset = [0.001 + 1.1 * mkt[t] + 0.02 * math.cos(t * 0.5) for t in range(t_obs)]
+
+    mean_m = sum(mkt) / float(t_obs)
+    mean_a = sum(asset) / float(t_obs)
+    s_mm = sum((m - mean_m) ** 2 for m in mkt)
+    s_am = sum((mkt[t] - mean_m) * (asset[t] - mean_a) for t in range(t_obs))
+
+    beta_hat = ___
+    alpha_hat = mean_a - beta_hat * mean_m
+    residuals = [asset[t] - (alpha_hat + beta_hat * mkt[t]) for t in range(t_obs)]
+    sse = sum(e * e for e in residuals)
+    s2 = sse / float(t_obs - 2)
+    var_alpha = s2 * (1.0 / float(t_obs) + (mean_m * mean_m) / s_mm)
+    se_alpha = math.sqrt(var_alpha)
+    t_alpha = ___
+
+    print(f"Sample length T:   {t_obs}")
+    print(f"Estimated beta:    {beta_hat:.6f}")
+    print(f"Estimated alpha:   {alpha_hat:.6f}")
+    print(f"Standard error se: {se_alpha:.6f}")
+    print(f"t-statistic:       {t_alpha:.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Sample length T:   60
+Estimated beta:    1.111096
+Estimated alpha:   0.000396
+Standard error se: 0.001957
+t-statistic:       0.2025</pre>
+          <p class="interpretation">Once the formulas for the covariance-to-variance ratio and the standardized alpha estimate are filled correctly, the calculated values match the sample statistics exactly.</p>
+        </section>
+      </section>
+
+      <section id="rung-3">
+        <h2>Rung 3 · Independent project</h2>
+        <p>Implement the seven functions in <code>capm_tests.py</code> to satisfy the project specification. Run the check lab below to see the expected values on seed 0.</p>
+
+        <section class="lab" id="lab-AP2-project-3" data-runtime="python">
+          <h3>Lab 3 · Independent check: public seed 0 benchmark</h3>
+          <p class="hypothesis">Runs benchmark calculations on public instance seed 0 (SIMULATED), printing exact target outputs for capm_tests.py.</p>
+          <pre><code class="language-python" data-run>"""Lab AP2-project-3: Project Rung 3 reference case (seed 0).
+
+Self-contained reference run on public SIMULATED instance seed 0.
+Prints the benchmark outputs for minimum-variance weights, tangency weights,
+frontier weights, beta, Jensen regression, and cross-sectional SML to which
+the learner's capm_tests.py must agree.
+"""
+
+from __future__ import annotations
+
+from fractions import Fraction
+
+
+def invert_3x3(mat: list[list[Fraction]]) -&gt; list[list[Fraction]]:
+    n = 3
+    aug = [[mat[i][j] for j in range(n)] + [Fraction(1 if i == k else 0) for k in range(n)] for i in range(n)]
+    for i in range(n):
+        p = aug[i][i]
+        for j in range(2 * n):
+            aug[i][j] /= p
+        for r in range(n):
+            if r != i:
+                f = aug[r][i]
+                for j in range(2 * n):
+                    aug[r][j] -= f * aug[i][j]
+    return [[aug[i][n + j] for j in range(n)] for i in range(n)]
+
+
+def main() -&gt; None:
+    # Public instance seed 0 inputs (SIMULATED)
+    cov = [
+        [Fraction(7, 1000), Fraction(1, 200), Fraction(7, 1000)],
+        [Fraction(1, 200), Fraction(19, 2000), Fraction(1, 125)],
+        [Fraction(7, 1000), Fraction(1, 125), Fraction(27, 2000)],
+    ]
+    mu = [Fraction(23, 2000), Fraction(7, 500), Fraction(31, 2000)]
+    r_f = Fraction(3, 2000)
+    target = Fraction(27, 2000)
+    iota = [Fraction(1, 1), Fraction(1, 1), Fraction(1, 1)]
+
+    # 1. GMV weights
+    inv = invert_3x3(cov)
+    inv_iota = [sum((inv[i][j] * iota[j] for j in range(3)), Fraction(0, 1)) for i in range(3)]
+    denom_gmv = sum(inv_iota, Fraction(0, 1))
+    w_gmv = [inv_iota[i] / denom_gmv for i in range(3)]
+
+    # 2. Tangency weights
+    excess = [mu[i] - r_f for i in range(3)]
+    inv_excess = [sum((inv[i][j] * excess[j] for j in range(3)), Fraction(0, 1)) for i in range(3)]
+    denom_t = sum(inv_excess, Fraction(0, 1))
+    w_t = [inv_excess[i] / denom_t for i in range(3)]
+
+    # 3. Frontier weights at target = 27/2000
+    inv_mu = [sum((inv[i][j] * mu[j] for j in range(3)), Fraction(0, 1)) for i in range(3)]
+    s_a = denom_gmv
+    s_b = sum((iota[i] * inv_mu[i] for i in range(3)), Fraction(0, 1))
+    s_c = sum((mu[i] * inv_mu[i] for i in range(3)), Fraction(0, 1))
+    s_d = s_a * s_c - s_b * s_b
+    l1 = (s_c - s_b * target) / s_d
+    l2 = (s_a * target - s_b) / s_d
+    w_f = [l1 * inv_iota[i] + l2 * inv_mu[i] for i in range(3)]
+
+    # 4. is_tangency check
+    sig_wt = [sum((cov[i][j] * w_t[j] for j in range(3)), Fraction(0, 1)) for i in range(3)]
+    k = sig_wt[0] / excess[0]
+    is_t = all(sig_wt[i] == k * excess[i] for i in range(3)) and sum(w_t, Fraction(0, 1)) == Fraction(1, 1)
+
+    print("--- Public Instance (Seed 0) Benchmark Outputs ---")
+    print(f"GMV weights:      [{w_gmv[0]}, {w_gmv[1]}, {w_gmv[2]}]")
+    print(f"Tangency weights: [{w_t[0]}, {w_t[1]}, {w_t[2]}]")
+    print(f"Frontier weights: [{w_f[0]}, {w_f[1]}, {w_f[2]}]")
+    print(f"is_tangency(w_T): {is_t}")
+    print(f"Target mean:      {target}")
+    achieved = sum((w_f[i] * mu[i] for i in range(3)), Fraction(0, 1))
+    print(f"Achieved mean:    {achieved}")
+    print(f"Frontier match:   {achieved == target}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">--- Public Instance (Seed 0) Benchmark Outputs ---
+GMV weights:      [15/19, 52/133, -24/133]
+Tangency weights: [511/1364, 639/1364, 107/682]
+Frontier weights: [217/677, 324/677, 136/677]
+is_tangency(w_T): True
+Target mean:      27/2000
+Achieved mean:    27/2000
+Frontier match:   True</pre>
+          <p class="interpretation">Your module must reproduce these exact fraction and floating point values when evaluated on instance seed 0.</p>
+        </section>
+
+        <h3>Specification</h3>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A quantitative research team is evaluating whether the Capital Asset Pricing Model holds on a panel of assets. As the research associate, you must implement an exact portfolio optimization and CAPM testing library, test the model on simulated asset panels, and write an authoritative evaluation memo explaining whether empirical rejections reflect model failure or the unobservability of the true market portfolio (the Roll critique).</dd>
+
+          <dt>Inputs</dt>
+          <dd>A panel generated by <code>make_instance(seed)</code> containing: exact rational expected returns \(\mu\) and covariance matrix \(\Sigma\) as <code>Fraction</code>s; exact riskless rate \(r_f\); and \(T = 60\) monthly simple excess returns for each asset and the market portfolio as floats.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>Two deliverable files:
+            <ol>
+              <li><code>capm_tests.py</code> exporting:
+                <ul>
+                  <li><code>minimum_variance_weights(cov)</code></li>
+                  <li><code>tangency_weights(mu, cov, r_f)</code></li>
+                  <li><code>frontier_weights(mu, cov, target)</code></li>
+                  <li><code>is_tangency(mu, cov, r_f, weights)</code></li>
+                  <li><code>capm_beta(asset, market)</code></li>
+                  <li><code>jensen_regression(asset, market)</code></li>
+                  <li><code>security_market_line(betas, mean_excess)</code></li>
+                </ul>
+              </li>
+              <li><code>report.md</code>, a two-page executive memo covering: Data provenance; Mean-variance portfolios; Time-series test; Cross-sectional test; Roll critique; Verdict and limitations.</li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Standard library only (<code>fractions</code>, <code>math</code>, <code>random</code>). Exact arithmetic for portfolio weights, beta, and SML fit. Float for Jensen regression with relative tolerance \(10^{-9}\). Raise exact <code>ValueError</code> with specified messages for invalid matrices, collinear returns, or insufficient sample sizes.</dd>
+
+          <dt>Grading</dt>
+          <dd>The curriculum grades this project by both autograder and rubric: <code>capm_tests.py</code> is tested against 50 seeds with the automated test suite, while <code>report.md</code> is evaluated by rubric across five distinct analytical criteria.</dd>
+        </dl>
+
+        <h3>Time budget</h3>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th scope="col">Activity</th>
+                <th scope="col">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Rung 1, worked example</td>
+                <td>2</td>
+                <td>Read, run, and annotate the 3-asset worked example line by line.</td>
+              </tr>
+              <tr>
+                <td>Rung 2, completion problem</td>
+                <td>2</td>
+                <td>Derive and fill OLS beta and t-statistic lines, verifying instant browser test.</td>
+              </tr>
+              <tr>
+                <td>Data and panel intake</td>
+                <td>2</td>
+                <td>Understand instance structure, Fraction precision, and return conventions.</td>
+              </tr>
+              <tr>
+                <td>Library implementation</td>
+                <td>7</td>
+                <td>Implement the seven core functions in capm_tests.py and pass local test suite across seeds 0–49.</td>
+              </tr>
+              <tr>
+                <td>Evaluation memo (report.md)</td>
+                <td>4</td>
+                <td>Compose the two-page memo analyzing empirical results and the Roll critique.</td>
+              </tr>
+              <tr>
+                <td>Self-assessment</td>
+                <td>3</td>
+                <td>Score draft against the rubric and compare with exemplars A and B.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>20</strong></td>
+                <td>Sum of project components matching declared project hours.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="grader-panel" id="grader" data-unit="AP2" data-grader="grader/" data-suite="test_project.py"
+                 data-support="instance.py" data-solution="capm_tests.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="rubric-section">
+        <h2>Evaluation rubric</h2>
+        <p>The evaluation memo <code>report.md</code> is graded according to five criteria across four achievement levels.</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>Assessment rubric for CAPM evaluation memo (report.md).</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">4 · Exemplary</th>
+                <th scope="col">3 · Proficient</th>
+                <th scope="col">2 · Developing</th>
+                <th scope="col">1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Data and provenance</th>
+                <td>Explicitly identifies the SIMULATED data instance, seed, sample size T = 60, return period convention, and documents BYOD schema if used with client-side execution verified.</td>
+                <td>Names the simulated panel, sample size T, and return convention with accurate parameters.</td>
+                <td>Mentions data source and sample size without stating return conventions or seeds.</td>
+                <td>Omits data provenance, sample size, or return conventions entirely.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Mean-variance computation</th>
+                <td>States exact analytical formulas for GMV and tangency portfolios, specifies exact Fraction versus float rounding rules, and proves boundary behavior.</td>
+                <td>States GMV and tangency portfolio formulas and presents weights with clear numerical precision.</td>
+                <td>Reports portfolio weights without specifying mathematical formulas or precision rules.</td>
+                <td>Reports incorrect portfolio weights or confuses GMV with tangency portfolio.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Empirical tests</th>
+                <td>Reports time-series alpha, beta, standard errors, and t-statistics with degrees of freedom (T-2), plus cross-sectional SML slope and intercept, interpreting both correctly.</td>
+                <td>Reports time-series Jensen regression and cross-sectional SML results with valid test statistics.</td>
+                <td>Reports regression estimates but omits standard errors or misinterprets t-statistics.</td>
+                <td>Runs incomplete tests or fails to report basic regression parameters.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Roll critique</th>
+                <td>Proves that the SML holds if and only if the proxy is mean-variance efficient, and evaluates the empirical implications of testing an unobservable market portfolio.</td>
+                <td>Explains that testing the CAPM is equivalent to testing the mean-variance efficiency of the market proxy.</td>
+                <td>Mentions the Roll critique in passing without connecting it to proxy efficiency.</td>
+                <td>Omits the Roll critique or treats the market proxy as identical to the true market portfolio.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Verdict and limits</th>
+                <td>Provides a rigorous synthesis on CAPM validity, names at least two economic limitations with bias direction, and cites verified counter-evidence registry keys.</td>
+                <td>Gives a clear verdict on the CAPM for the sample, noting at least two model limitations.</td>
+                <td>Gives a vague verdict with superficial caveats and no directional analysis.</td>
+                <td>Draws unsubstantiated conclusions without discussing model limitations or assumptions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Exemplars</h3>
+        <p>Compare your draft memo against the following two annotated exemplars.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A (Level 4 · Exemplary)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. Thoroughly details simulated data provenance (seed 0, T = 60 monthly simple excess returns). Derives exact GMV and tangency weights in rational arithmetic. Reports Jensen regression parameters with standard errors and t-statistics at 58 degrees of freedom. Demonstrates mathematically why the SML holds if and only if the proxy is efficient (Roll 1977). Evaluates economic limitations including homogeneous expectations and borrowing constraints.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Data Provenance and Market Structure</h5>
+              <p>The empirical panel is generated from public instance seed 0 under SIMULATED market parameters with \(n = 3\) risky assets over \(T = 60\) monthly periods. All asset returns are simple excess returns over the constant net riskless rate \(r_f = 3/2000\) (15 bps/month). Under the true DGP, the covariance matrix \(\Sigma\) is symmetric positive definite with condition ratio 1.93.</p>
+              <h5>Portfolio Optimization and Asset Pricing Tests</h5>
+              <p>The exact global minimum-variance weights solve \(\min w^\top \Sigma w\) subject to \(\iota^\top w = 1\), yielding \(w_{\text{GMV}} = [15/19, 52/133, -24/133]\). The tangency portfolio weights solve \(\Sigma^{-1}(\mu - r_f \iota)\), yielding \(w_T = [511/1364, 639/1364, 107/682]\). Time-series regression of Asset 1 on the market proxy yields \(\hat{\alpha}_1 = 0.007181\) with \(\se(\hat{\alpha}_1) = 0.002627\), producing a significant t-statistic of \(2.7337\) (\(p < 0.01\) under \(t_{58}\)).</p>
+              <h5>The Roll Critique and Final Verdict</h5>
+              <p>Following Roll (1977), the security market line is a mathematical tautology if and only if the chosen market index lies on the mean-variance efficient frontier. Because the true wealth portfolio includes human capital and non-traded physical assets, the empirical rejection of \(\alpha = 0\) rejects the efficiency of the proxy, not necessarily the two-parameter equilibrium model itself. We conclude that CAPM cannot be conclusively rejected without observing the true aggregate market portfolio.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: names SIMULATED seed, T = 60, exact riskless rate, and period convention.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: exact rational weights for GMV and tangency with formula derivation.</li>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: reports alpha, beta, standard error, t-stat, and exact degrees of freedom.</li>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: explicitly states the mathematical equivalence between SML linearity and proxy efficiency.</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: nuanced verdict separating proxy error from model failure with directional insights.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B (Level 2 · Developing)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2. Mentions that data are from a 60-month sample but does not state the seed or return convention. Reports portfolio weights to two decimal places without giving formulas. Reports regression beta and alpha without standard errors or hypothesis test details. Mentions that the Roll critique exists but does not explain how proxy inefficiency generates false rejections.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Data Summary</h5>
+              <p>We ran tests on a 60-month dataset of 3 stocks and a market index.</p>
+              <h5>Results</h5>
+              <p>The minimum variance portfolio has weights roughly 0.79, 0.39, -0.18. The tangency portfolio has weights 0.37, 0.47, 0.16. For the first stock, beta is 0.87 and alpha is 0.007. The CAPM seems to fail because alpha is positive.</p>
+              <h5>Discussion</h5>
+              <p>Roll showed that the market is difficult to measure. If the index is wrong, the test might not work well.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: sample size mentioned, but no seed, period basis, or data details.</li>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: rounded decimal numbers with no formulas or precision rules.</li>
+                <li class="meets" data-criterion="C3" data-level="2">Meets C3 level 2: estimates quoted without standard errors, t-statistics, or degrees of freedom.</li>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: mentions Roll but omits the mathematical connection to proxy efficiency.</li>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: superficial verdict without discussing economic limits or bias direction.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+      </section>
+
+      <section id="rung-4">
+        <h2>Rung 4 · Stretch (optional)</h2>
+        <p>In this open-ended extension, download Kenneth French's industry or size/value portfolio data directly to your local computer. Load the CSV file through the browser file picker (the data never leaves your browser), and execute <code>capm_tests.py</code> on your downloaded series to evaluate empirical SML curvature and test for time-varying conditional betas.</p>
+      </section>
+
+      <section id="reading">
+        <h2>Core reading</h2>
+        <ol class="reading-list">
+          <li data-cite="markowitz1952portfolio"></li>
+          <li data-cite="tobin1958liquidity"></li>
+          <li data-cite="sharpe1964capital"></li>
+          <li data-cite="lintner1965valuation"></li>
+          <li data-cite="roll1977critique"></li>
+          <li data-cite="merton1973intertemporal"></li>
+          <li data-cite="ross1976arbitrage"></li>
+          <li data-cite="fama1992crosssection"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">AP2 · Mean-Variance, CAPM, ICAPM &amp; APT · Doctoral Program in Quantitative Finance</footer>
+</body>
+</html>
