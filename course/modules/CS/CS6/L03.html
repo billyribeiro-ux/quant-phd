@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS6" data-page="L03" data-hours="9">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L03 · SIMD Vectorization &amp; Architecture · CS6</title>
+  <meta name="description" content="Data-level parallelism, AVX2 and AVX-512 vector registers, Struct-of-Arrays alignment, auto-vectorization, intrinsics, and predicated branch masking in pricing kernels.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS6 Parallel &amp; High-Performance Computing</a><span class="sep">›</span>
+      <span>L03</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS6 · Lesson 3 of 6 · 9 study hours</p>
+        <h1>SIMD Vectorization &amp; Microarchitecture</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="ieee-754-floating-point" href="../../../concepts.html#ieee-754-floating-point">IEEE 754 floating point</a> (M8), <a class="concept" data-concept="struct-of-arrays" href="../../../concepts.html#struct-of-arrays">struct-of-arrays</a> (CS5), <a class="concept" data-concept="compilation-model" href="../../../concepts.html#compilation-model">compilation model</a> (CS5)</li>
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="simd-vectorization" href="#def-simd-vectorization">simd-vectorization</a></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Quantitative options market making and Monte Carlo risk analytics demand calculating millions of floating-point payoffs every second. Relying solely on scalar CPU execution wastes up to 87.5% of modern microprocessor compute capacity. By structuring financial data into contiguous memory vectors and exploiting SIMD execution units, quantitative developers achieve 4x to 8x throughput gains on individual CPU cores without adding socket hardware.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Data-Level Parallelism and Vector Registers</h2>
+
+      <p><span class="claim" data-grade="A" data-cite="hennessy2017computer" data-locator="p. 312">Data-level parallelism arises when identical operations are applied simultaneously across disjoint elements of a data vector, distinguishing SIMD architectures from multi-instruction thread parallelism.</span> Modern x86-64 and ARM architectures embed specialized wide vector register files directly into each CPU core execution pipeline.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.1 <span class="name">(SIMD Vectorization)</span></span>
+        <p><dfn id="def-simd-vectorization" data-concept="simd-vectorization">SIMD vectorization</dfn> (Single Instruction, Multiple Data) is a hardware architectural execution model wherein a single microprocessor instruction initiates the parallel execution of an identical mathematical or logical operation across multiple independent data elements packed into wide vector registers. Modern CPU instruction set architectures provide progressive register widths:</p>
+        <ul>
+          <li><strong>SSE / NEON (128-bit):</strong> Packed vector registers (<code>XMM</code>) holding 4 single-precision (32-bit) or 2 double-precision (64-bit) IEEE 754 floats.</li>
+          <li><strong>AVX / AVX2 (256-bit):</strong> Packed vector registers (<code>YMM</code>) holding 8 single-precision or 4 double-precision floats.</li>
+          <li><strong>AVX-512 (512-bit):</strong> Packed vector registers (<code>ZMM</code>) holding 16 single-precision or 8 double-precision floats, accompanied by 8 dedicated opmask registers (<code>k0–k7</code>).</li>
+        </ul>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 3.2 <span class="name">(Instruction Reduction Under Full Vectorization)</span></span>
+        <p><strong>Assumption:</strong> A workload executes \(M\) uniform arithmetic operations over an array of 64-bit floats using a SIMD vector register of width \(W\) bits (\(W \in \{128, 256, 512\}\)) with contiguous memory alignment and zero scalar remainder loop iterations.<br>
+        <strong>Statement:</strong> The total instruction count issued to the CPU execution pipeline is reduced by a factor of exactly \(W / 64\):</p>
+        \[
+        I_{\text{SIMD}} = \frac{M}{W / 64} = \frac{64 M}{W}
+        \]
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Each 64-bit double-precision IEEE 754 floating-point number occupies 8 bytes (64 bits). A vector register of width \(W\) bits contains exactly \(L = W / 64\) discrete independent arithmetic lanes. Because the array is contiguously aligned and \(M\) is divisible by \(L\), a single packed vector instruction (e.g., <code>vaddpd</code> or <code>vmulpd</code>) operates concurrently over \(L\) elements. Thus, processing \(M\) total elements requires issuing exactly \(M / L = 64 M / W\) instructions to the execution queue, reducing dynamic instruction count by factor \(L = W / 64\). \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Memory Alignment and Struct-of-Arrays Layout</h2>
+
+      <p>Vector units cannot achieve peak throughput if the memory subsystem cannot deliver packed operands at line rate. As established in <a class="concept" data-concept="struct-of-arrays" href="../../../concepts.html#struct-of-arrays">struct-of-arrays</a> (CS5), data layout determines whether vector loads execute via single aligned memory reads or multi-cycle gather instructions.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.3 <span class="name">(Aligned vs. Unaligned Vector Loads)</span></span>
+        <p>A memory buffer is <strong>\(K\)-byte aligned</strong> if its base memory address is an integer multiple of \(K\): \(\text{addr} \pmod K = 0\). For AVX2 (256-bit), peak efficiency requires 32-byte alignment; for AVX-512 (512-bit), 64-byte alignment is required. An aligned vector load (<code>_mm256_load_pd</code>) reads all 4 packed doubles in a single clock cycle. An unaligned load (<code>_mm256_loadu_pd</code>) that crosses a 64-byte hardware cacheline split forces the memory management unit to issue two distinct cache accesses and merge the bytes in the load buffer, adding a 2–3 cycle penalty.</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 3.4 <span class="name">(Array-of-Structs vs. Struct-of-Arrays for Option Pricing)</span></span>
+        <p>Consider an array of option contracts declared as <code>struct Option { double spot; double strike; double vol; double t; }; Option book[1024];</code> (Array-of-Structs, AoS). To vectorize the Black-Scholes formula across strikes, the processor must load strike values at byte offsets 8, 40, 72, 104, continuing across the entire array. A contiguous vector load cannot read these dispersed strikes without executing strided gather instructions (<code>_mm256_i32gather_pd</code>), which incur up to 10 cycles of microarchitectural overhead. Restructuring the data into Struct-of-Arrays (SoA):</p>
+        <pre><code>struct OptionBook {
+    alignas(64) double spots[1024];
+    alignas(64) double strikes[1024];
+    alignas(64) double vols[1024];
+    alignas(64) double expiries[1024];
+};</code></pre>
+        <p>allows the CPU to stream 8 strikes per clock cycle using aligned <code>_mm512_load_pd</code> instructions at full L1 cache bandwidth.</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Branch Elimination via Predicated Masking</h2>
+
+      <p>A key limitation of SIMD architectures is the inability to branch conditionally within individual vector lanes. Financial payoffs inherently contain branches (e.g., European call payoff \(\max(S_T - K, 0)\)). Attempting to use scalar <code>if (st &gt; k)</code> inside a vectorized loop breaks the vector pipeline.</p>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 3.5 <span class="name">(Branch Elimination via Predicated Blend)</span></span>
+        <p><strong>Assumption:</strong> A payoff function evaluates \(f(x) = \max(x, 0)\) across vector lanes.<br>
+        <strong>Statement:</strong> Evaluating \(f(x)\) via SIMD comparison and predicated blend instructions eliminates all branch misprediction stalls with deterministic execution latency.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>In scalar execution, evaluating <code>if (x &gt; 0) return x; else return 0;</code> requires a conditional branch instruction (e.g., <code>jle</code>). For option contracts trading near the money, underlying outcomes are roughly equiprobable (\(P(S_T &gt; K) \approx 0.5\)), maximizing branch entropy and causing modern branch predictors to mispredict ~8–12% of branches (each misprediction flushes the out-of-order execution pipeline, incurring a 15–20 cycle stall). Under SIMD execution, the vector unit evaluates:</p>
+        <ol>
+          <li>A packed comparison instruction: <code>mask = _mm256_cmp_pd(x, zero, _CMP_GT_OQ)</code> generating all-1s (<code>0xFFFFFFFFFFFFFFFF</code>) for true lanes and all-0s for false lanes.</li>
+          <li>A bitwise blend instruction: <code>result = _mm256_blendv_pd(zero, x, mask)</code>.</li>
+        </ol>
+        <p>Both instructions execute unconditionally in fixed ALU cycle latency (typically 1–2 cycles each) with zero control-flow branching, completely eliminating pipeline flush stalls. \(\blacksquare\)</p>
+      </div>
+
+      <section class="lab" id="lab-CS6-L03-1" data-runtime="python">
+        <h3>Lab 1 · SIMD execution units and branch-elimination simulation</h3>
+        <p class="hypothesis">Simulating Black-Scholes pricing across 1,024 options demonstrates that AVX2 reduces execution cycles from 50,380 to 12,288 (4.100x speedup) by packing 4 lanes and eliminating branch mispredictions, while AVX-512 achieves 8.200x speedup via 8-lane registers.</p>
+        <pre><code class="language-python" data-run>"""CS6 Lab L03-1: SIMD Vectorization, Register Lane Packing, and Memory Alignment Model.
+
+Standard library only. Simulates x86-64 SIMD execution units (Scalar vs AVX2 vs AVX-512)
+evaluating Black-Scholes pricing kernels, analyzing memory alignment penalties and
+mask-based branch elimination.
+"""
+
+from __future__ import annotations
+
+
+def run_simd_model() -&gt; None:
+    n_options = 1024  # 1024 European options
+
+    # Microarchitectural parameters
+    # Scalar: 1 double / 64-bit register
+    # AVX2: 4 doubles / 256-bit YMM register (32-byte alignment)
+    # AVX-512: 8 doubles / 512-bit ZMM register (64-byte alignment)
+    scalar_ops_per_option = 48  # FLOPs per Black-Scholes evaluation
+    scalar_total_ops = n_options * scalar_ops_per_option
+
+    print("=== CS6 Lab 3: SIMD Vectorization &amp; Execution Unit Simulation ===")
+    print(f"Workload: {n_options} European option pricing evaluations ({scalar_total_ops:,} FLOPs)\n")
+
+    # 1. Scalar Execution (x87 / Scalar SSE)
+    # Array-of-Structs (AoS) with branch mispredictions on payoff max()
+    branch_mispredict_rate = 0.08  # 8% branch misprediction on near-ATM strikes
+    branch_penalty_cycles = 15  # Modern out-of-order CPU branch penalty
+    scalar_instructions = scalar_total_ops
+    scalar_branch_stalls = int(n_options * branch_mispredict_rate * branch_penalty_cycles)
+    scalar_total_cycles = scalar_instructions + scalar_branch_stalls
+
+    print("1. Scalar Baseline (AoS Layout, Branchy Payoff):")
+    print("   SIMD Vector Width:           1 double (64 bits)")
+    print(f"   Instruction Count:           {scalar_instructions:,} instructions")
+    print(f"   Branch Mispredict Stalls:    {scalar_branch_stalls:,} cycles")
+    print(f"   Total Execution Cycles:      {scalar_total_cycles:,} cycles")
+    print(f"   Throughput:                  {scalar_total_ops / scalar_total_cycles:.3f} FLOPs/cycle\n")
+
+    # 2. AVX2 Vectorization (256-bit, Struct-of-Arrays, 32B aligned)
+    # 4 doubles per vector instruction; branch eliminated via blendv_pd (predicated masking)
+    avx2_lanes = 4
+    avx2_instructions = scalar_total_ops // avx2_lanes
+    avx2_branch_stalls = 0  # Zero branch mispredictions via SIMD bitwise blend
+    avx2_total_cycles = avx2_instructions + avx2_branch_stalls
+    avx2_speedup = scalar_total_cycles / avx2_total_cycles
+
+    print("2. AVX2 Vector Execution (256-bit YMM, SoA Layout, Masked Blend):")
+    print(f"   SIMD Vector Width:           {avx2_lanes} doubles (256 bits)")
+    print("   Memory Alignment:            32 bytes (Aligned _mm256_load_pd)")
+    print(f"   Instruction Count:           {avx2_instructions:,} instructions")
+    print("   Branch Mispredict Stalls:    0 cycles (Eliminated via _mm256_blendv_pd)")
+    print(f"   Total Execution Cycles:      {avx2_total_cycles:,} cycles")
+    print(f"   Speedup vs Scalar:           {avx2_speedup:.3f}x\n")
+
+    # 3. AVX-512 Vectorization (512-bit, Struct-of-Arrays, 64B aligned)
+    # 8 doubles per vector instruction; mask registers (k1-k7)
+    avx512_lanes = 8
+    avx512_instructions = scalar_total_ops // avx512_lanes
+    avx512_branch_stalls = 0
+    avx512_total_cycles = avx512_instructions + avx512_branch_stalls
+    avx512_speedup = scalar_total_cycles / avx512_total_cycles
+
+    print("3. AVX-512 Vector Execution (512-bit ZMM, SoA Layout, Mask Registers):")
+    print(f"   SIMD Vector Width:           {avx512_lanes} doubles (512 bits)")
+    print("   Memory Alignment:            64 bytes (Aligned _mm512_load_pd)")
+    print(f"   Instruction Count:           {avx512_instructions:,} instructions")
+    print("   Branch Mispredict Stalls:    0 cycles (AVX-512 opmask k-register)")
+    print(f"   Total Execution Cycles:      {avx512_total_cycles:,} cycles")
+    print(f"   Speedup vs Scalar:           {avx512_speedup:.3f}x")
+
+
+run_simd_model()</code></pre>
+        <pre class="expected" data-tolerance="1e-3">=== CS6 Lab 3: SIMD Vectorization &amp; Execution Unit Simulation ===
+Workload: 1024 European option pricing evaluations (49,152 FLOPs)
+
+1. Scalar Baseline (AoS Layout, Branchy Payoff):
+   SIMD Vector Width:           1 double (64 bits)
+   Instruction Count:           49,152 instructions
+   Branch Mispredict Stalls:    1,228 cycles
+   Total Execution Cycles:      50,380 cycles
+   Throughput:                  0.976 FLOPs/cycle
+
+2. AVX2 Vector Execution (256-bit YMM, SoA Layout, Masked Blend):
+   SIMD Vector Width:           4 doubles (256 bits)
+   Memory Alignment:            32 bytes (Aligned _mm256_load_pd)
+   Instruction Count:           12,288 instructions
+   Branch Mispredict Stalls:    0 cycles (Eliminated via _mm256_blendv_pd)
+   Total Execution Cycles:      12,288 cycles
+   Speedup vs Scalar:           4.100x
+
+3. AVX-512 Vector Execution (512-bit ZMM, SoA Layout, Mask Registers):
+   SIMD Vector Width:           8 doubles (512 bits)
+   Memory Alignment:            64 bytes (Aligned _mm512_load_pd)
+   Instruction Count:           6,144 instructions
+   Branch Mispredict Stalls:    0 cycles (AVX-512 opmask k-register)
+   Total Execution Cycles:      6,144 cycles
+   Speedup vs Scalar:           8.200x</pre>
+        <p class="interpretation">The model validates that AVX2 and AVX-512 yield super-proportional speedup (4.100x and 8.200x) relative to pure lane count (4x and 8x) because predicated vector blending completely eliminates the 1,228 branch misprediction stall cycles incurred by scalar execution.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>Standard compiler textbooks advocate enabling <code>-O3 -march=native</code> to automatically vectorize every mathematical loop with AVX-512. In production financial systems, this advice fails in two critical ways:</p>
+        <ul>
+          <li><strong>AVX-512 Frequency Downclocking (License Levels):</strong> Early Intel Skylake-X and Cascade Lake server CPUs throttle base clock frequencies (by up to 20–30%) when executing wide 512-bit vector instructions due to high thermal power density. If an application mixes sparse AVX-512 calls into a predominantly scalar codebase (e.g., checking a market feed, pricing one option, and updating an order book), the CPU transitions into a lower frequency license state, slowing down all surrounding scalar code and causing net system latency degradation.</li>
+          <li><strong>Divergent Control Flow Waste:</strong> If a loop contains complex nested conditional paths (e.g., multi-barrier or American option early exercise), the SIMD unit must execute all divergent branch paths across all lanes, discarding unselected results via masking. When branch divergence exceeds 75%, the overhead of computing unneeded execution branches outweighs vector packing gains.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Modern optimizing compilers automatically vectorize any clean C++ pricing loop.</p>
+            <p class="correction">Compilers cannot auto-vectorize loops if pointers might alias (two pointers referring to overlapping memory regions), if data structures use Array-of-Structs layouts requiring strided memory access, or if loop iterations contain mathematical dependencies between steps. Auto-vectorization requires explicit <code>#pragma omp simd</code> or <code>__restrict__</code> annotations and Struct-of-Arrays layout.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">AVX2 always provides exactly 4x speedup over scalar execution for double-precision math.</p>
+            <p class="correction">While AVX2 processes 4 doubles per register, real-world speedup depends on memory bandwidth and instruction mix. If the pricing kernel is memory-bound (waiting on DRAM rather than ALU operations), or if memory is unaligned, speedup may drop below 2x. Conversely, if vectorization eliminates branch mispredictions, speedup can exceed 4x.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Fast-math compiler flags (<code>-ffast-math</code>) are harmless optimizations that enable faster SIMD vectorization.</p>
+            <p class="correction"><code>-ffast-math</code> assumes floating-point arithmetic is associative and disables IEEE 754 compliance for NaNs and infinities. In derivatives risk pricing, this can reorder summations, cause catastrophic cancellation in tail probabilities, and silently convert NaN division-by-zero errors into valid numerical prices.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · Vector Lane Capacity Calculation</span>
+            <p>How many 32-bit single-precision IEEE 754 floats fit into a single 512-bit AVX-512 ZMM register?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Each single-precision float occupies 32 bits (4 bytes). The number of packed lanes in a 512-bit register is:</p>
+              \[
+              N_{\text{lanes}} = \frac{512\text{ bits}}{32\text{ bits/float}} = 16\text{ floats}
+              \]
+              <p>A single AVX-512 instruction can process 16 single-precision floats simultaneously.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · Memory Alignment Verification</span>
+            <p>A double-precision array starts at hexadecimal virtual memory address <code>0x7fff_5fc0_1028</code>. Is this buffer aligned for 32-byte AVX2 vector loads?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Evaluate the memory address modulo 32 (or <code>address &amp; 0x1F</code> in hexadecimal):</p>
+              \[
+              \text{Address} = \text{...1028}_{16} = 4136_{10}
+              \]
+              \[
+              4136 \pmod{32} = 8 \neq 0
+              \]
+              <p>Because the address is offset by 8 bytes from a 32-byte boundary, it is unaligned for <code>_mm256_load_pd</code> and requires unaligned <code>_mm256_loadu_pd</code>.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · Branch Misprediction Penalty Elimination</span>
+            <p>An options pricer evaluates 100,000 contracts near the money. Scalar execution suffers an 8% branch misprediction rate on payoff evaluations, with each misprediction stalling the pipeline for 18 clock cycles. How many CPU stall cycles are eliminated by converting to SIMD predicated blend instructions?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The number of mispredicted branches is \(100,000 \times 0.08 = 8,000\). Total stall cycles wasted in scalar execution are:</p>
+              \[
+              8,000\text{ mispredictions} \times 18\text{ cycles/stall} = 144,000\text{ stall cycles}
+              \]
+              <p>SIMD predicated masking eliminates all 144,000 stall cycles.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · Arithmetic Intensity Upper Bound on SIMD Speedup</span>
+            <p>Prove that for a pricing algorithm with arithmetic intensity \(I\) (FLOPs per byte of memory read) running on a processor with peak memory bandwidth \(B\) bytes/sec and peak scalar compute throughput \(C_{\text{scalar}}\) FLOPs/sec, SIMD vectorization with vector width \(L\) achieves the theoretical \(L\times\) speedup if and only if \(I \ge C_{\text{scalar}} \cdot L / B\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By the Roofline model, execution time per element is determined by the maximum of computation time and memory transfer time:</p>
+              \[
+              T(L) = \max\left(\frac{1}{C_{\text{vector}}}, \frac{1}{I \cdot B}\right) = \max\left(\frac{1}{L \cdot C_{\text{scalar}}}, \frac{1}{I \cdot B}\right)
+              \]
+              <p>Scalar execution time is \(T(1) = \max\left(\frac{1}{C_{\text{scalar}}}, \frac{1}{I \cdot B}\right)\). Assuming scalar execution is compute-bound (\(I \ge C_{\text{scalar}}/B\)), \(T(1) = 1/C_{\text{scalar}}\). The vectorized speedup is:</p>
+              \[
+              S(L) = \frac{T(1)}{T(L)} = \frac{1/C_{\text{scalar}}}{\max\left(\frac{1}{L \cdot C_{\text{scalar}}}, \frac{1}{I \cdot B}\right)}
+              \]
+              <p>For \(S(L) = L\), the execution must remain compute-bound at vector throughput: \(\frac{1}{L \cdot C_{\text{scalar}}} \ge \frac{1}{I \cdot B}\), which implies \(I \cdot B \ge L \cdot C_{\text{scalar}}\), or \(I \ge \frac{C_{\text{scalar}} \cdot L}{B}\). If \(I\) is less than this threshold, the algorithm becomes memory bandwidth saturated and speedup is truncated to \(I \cdot B / C_{\text{scalar}} &lt; L\). \(\blacksquare\)</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Non-Associativity of Floating-Point SIMD Reductions</span>
+            <p>Prove that a SIMD horizontal vector sum across \(N\) floating-point numbers produces a result that can differ from a sequential scalar accumulation.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>IEEE 754 floating-point addition is commutative (\(a \oplus b = b \oplus a\)) but not associative: \((a \oplus b) \oplus c \neq a \oplus (b \oplus c)\) due to rounding errors. A sequential scalar sum evaluates \((((x_0 \oplus x_1) \oplus x_2) \oplus x_3)\). A 4-lane SIMD sum first accumulates columns in parallel into a vector accumulator \([a_0, a_1, a_2, a_3]\) where \(a_k = \sum_{j} x_{4j+k}\), and then executes a horizontal reduction tree \((a_0 \oplus a_1) \oplus (a_2 \oplus a_3)\). Because the evaluation tree changes the order of binary rounding steps, the final floating-point value is not guaranteed to be bit-for-bit identical.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Minimum Cacheline Transferred in Strided Gather Loads</span>
+            <p>Prove that accessing an Array-of-Structs with stride \(S \ge 64\) bytes forces the CPU memory controller to transfer at least \(N \times 64\) bytes from L2/L3 cache for \(N\) elements, achieving a maximum cacheline byte efficiency of at most \(8 / S\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>CPython and x86-64 hardware load memory from cache into registers exclusively in atomic 64-byte cache line chunks. If stride \(S \ge 64\), each successive 8-byte double element \(x_i\) and \(x_{i+1}\) lies at byte distance \(\Delta \ge 64\), residing in strictly distinct physical cache lines. Fetching \(N\) doubles therefore requires reading \(N\) separate 64-byte cache lines, generating \(64 N\) bytes of cache transfer traffic. The useful payload is \(8 N\) bytes. The cacheline byte efficiency is:</p>
+              \[
+              \eta = \frac{8 N}{64 N} = \frac{8}{64} = 12.5\%
+              \]
+              <p>For stride \(S &gt; 64\), efficiency is bounded above by \(8 / S \le 12.5\%\), wasting at least 87.5% of memory bus bandwidth.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Superlinear Speedup Mechanism</span>
+            <p>In Lab 1, AVX2 achieved 4.100x speedup and AVX-512 achieved 8.200x speedup, strictly exceeding the lane counts of 4 and 8. What microarchitectural factor explains this result?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In scalar execution, near-ATM options triggered branch mispredictions on payoff evaluations, causing 1,228 pipeline stall cycles. In AVX2 and AVX-512, predicated bitwise blending completely eliminated branch instructions, removing all branch misprediction stalls and elevating speedup above pure register width ratios.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · Cacheline Split Overhead</span>
+            <p>Why does compiling a pricing loop with <code>alignas(32)</code> double arrays improve AVX2 performance by 15–20% compared to default heap allocations?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Default heap allocations via standard <code>malloc()</code> guarantee only 8-byte or 16-byte alignment. An unaligned 32-byte vector load frequently spans across two distinct 64-byte hardware cachelines. A cacheline split forces the CPU load-store unit to issue two cache lookups and stitch the bytes together in microarchitectural buffers, creating execution stalls that aligned memory eliminates.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Loop Remainder Handling</span>
+            <p>A quant vectorizes a loop over 1,027 strike values using 4-lane AVX2. How does an optimizing compiler execute the final 3 elements?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The compiler unrolls the loop into a main vectorized loop executing \(\lfloor 1027 / 4 \rfloor = 256\) vector iterations (processing 1,024 elements). The remaining \(1027 - 1024 = 3\) elements are dispatched to a scalar remainder loop (or masked vector load) that processes the tail elements individually without reading out-of-bounds memory.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · Intel AVX-512 Frequency Throttling Dynamics</span>
+            <p>How do modern processors (e.g., Intel Sapphire Rapids or AMD Zen 4) eliminate the historical frequency downclocking penalties of early AVX-512 implementations?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Modern microarchitectures decouple vector execution pipelines from core clock generators or implement dual 256-bit fused execution units that execute AVX-512 instructions across two clock cycles without voltage spikes, eliminating the steep thermal frequency drops that plagued first-generation Skylake-SP server processors.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Arm SVE Vector-Length Agnostic Programming</span>
+            <p>How does Arm's Scalable Vector Extension (SVE) differ from fixed-width x86 AVX architectures?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>x86 AVX hardcodes register widths into the instruction set (128-bit SSE, 256-bit AVX2, 512-bit AVX-512), requiring code recompilation for each hardware generation. Arm SVE uses vector-length agnostic (VLA) instructions that execute on hardware vector widths from 128 to 2048 bits without recompilation, adapting automatically at runtime.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · SIMD In-Memory Database Acceleration for Limit Order Books</span>
+            <p>How do modern columnar analytics engines (e.g., DuckDB or custom trading order matchers) use AVX-512 opmask registers to scan bid/ask quotes?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Engines load 16 quote prices into a 512-bit vector and execute a SIMD comparison against a limit threshold, storing the boolean results directly into an 8-bit opmask register (e.g., <code>k1</code>). The CPU then applies bit-manipulation instructions (<code>popcnt</code>, <code>ctz</code>) directly to the mask register to extract matching order indices in 1 clock cycle without touching DRAM.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>SIMD instruction reduction factor \(W / 64\) (Theorem 3.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §1 via register lane capacity</td></tr>
+              <tr><td>Data-level parallelism and vector execution pipeline architecture</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="hennessy2017computer" data-locator="p. 312">Hennessy &amp; Patterson (2017), p. 312</span></td></tr>
+              <tr><td>Branch elimination via predicated SIMD blending (Proposition 3.5)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3 via control-flow linearization</td></tr>
+              <tr><td>Aligned memory access and cacheline split prevention</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="stroustrup2022tour" data-locator="p. 165">Stroustrup (2022), p. 165</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS6" data-page="L03">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="numeric" data-answer="4" data-tolerance="0">
+            <p class="prompt">How many 64-bit double-precision IEEE 754 floats can be processed simultaneously in a single 256-bit AVX2 YMM vector register?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>A 256-bit register holds exactly \(256 / 64 = 4\) double-precision floating-point numbers.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a Struct-of-Arrays (SoA) memory layout outperform an Array-of-Structs (AoS) layout for SIMD vectorization?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q2"> <span>Homogeneous data fields are stored contiguously, allowing contiguous aligned vector loads without gather overhead</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>SoA automatically bypasses the CPU L1 cache</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>AoS uses 32-bit floats while SoA uses 64-bit floats</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>SoA stores identical fields contiguously in memory, enabling full cacheline utilization and fast aligned SIMD loads.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="64" data-tolerance="0">
+            <p class="prompt">What memory byte alignment boundary is required to execute aligned 512-bit vector loads (_mm512_load_pd) without alignment penalties?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>512 bits equals exactly 64 bytes; hence 64-byte alignment is required.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How do SIMD pricing kernels evaluate conditional option exercise payoffs without branching?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q4"> <span>By generating a vector bitmask and executing a predicated blend instruction (_mm256_blendv_pd)</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>By halting unexercised lanes until the next clock cycle</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>By branching to separate subroutines per lane</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>SIMD lanes cannot branch independently; they execute a comparison to generate a bitmask and blend operands conditionally.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="8" data-tolerance="0">
+            <p class="prompt">How many double-precision (64-bit) floats are packed into a single 512-bit AVX-512 ZMM register?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(512 / 64 = 8\) double-precision values per register.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What hardware penalty occurred in early Intel server processors when executing wide 512-bit AVX-512 instructions?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q6"> <span>Core clock frequency was throttled down due to thermal and power density constraints</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>DRAM memory channels were permanently disabled</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>The kernel killed the calling process</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Early AVX-512 processors downclocked CPU base frequencies to stay within thermal limits, which could slow surrounding scalar code.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does a 'cacheline split' mean during an unaligned vector memory access?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q7"> <span>The requested vector operand spans across two separate 64-byte cache lines, requiring two memory accesses</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>The cache line is split into two halves and permanently deleted</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>The processor divides floating point numbers by two</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>When a vector operand crosses a 64-byte boundary, two distinct cache lines must be accessed and assembled, degrading performance.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why can compiling with <code>-ffast-math</code> be hazardous in financial derivatives pricing engines?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q8"> <span>It violates IEEE 754 precision guarantees, reorders floating-point sums, and disables NaN error handling</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>It prevents the compiler from using SIMD registers</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>It forces all code to run on a single thread</span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>-ffast-math</code> ignores IEEE 754 standards, risking catastrophic cancellation and masking NaN errors in tail calculations.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson incorporates vector microarchitecture principles from Hennessy &amp; Patterson and systems performance techniques from Stroustrup.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L02.html"><span class="dir">Previous</span>L02 · Concurrency Models &amp; Python GIL</a>
+        <a class="next" href="L04.html"><span class="dir">Next</span>L04 · GPU Architecture &amp; Accelerated Computing</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS6 · Parallel &amp; High-Performance Computing · Doctoral Track in Quantitative Finance</footer>
+</body>
+</html>

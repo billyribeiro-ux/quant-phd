@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS6" data-page="L02" data-hours="9">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L02 · Concurrency Models &amp; Python GIL · CS6</title>
+  <meta name="description" content="Shared-memory multithreading vs isolated multiprocessing, POSIX threads, context switches, cache coherence, CPython Global Interpreter Lock, and native extensions.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS6 Parallel &amp; High-Performance Computing</a><span class="sep">›</span>
+      <span>L02</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS6 · Lesson 2 of 6 · 9 study hours</p>
+        <h1>Concurrency Models &amp; Python GIL</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="python-class" href="../../../concepts.html#python-class">Python classes</a> (CS1), <a class="concept" data-concept="memory-hierarchy" href="../../../concepts.html#memory-hierarchy">memory hierarchy</a> (CS5), <a class="concept" data-concept="value-semantics" href="../../../concepts.html#value-semantics">value semantics</a> (CS5)</li>
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="threads-vs-processes" href="#def-threads-vs-processes">threads-vs-processes</a>, <a class="concept" data-concept="python-gil" href="#def-python-gil">python-gil</a></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Quantitative software relies heavily on Python for research scripting and data ingestion, while offloading computation to multicore processors. Naive parallelization using Python's standard threading library fails to accelerate CPU-bound mathematical operations due to the Global Interpreter Lock. Architects must navigate the trade-offs between shared-memory threads, process isolation overheads, and native C++ extensions releasing the GIL to achieve true multi-core throughput in production risk engines.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Execution Models: Shared Address Spaces vs. Process Isolation</h2>
+
+      <p>Operating systems execute concurrent computation through two fundamental abstractions: threads and processes. <span class="claim" data-grade="A" data-cite="hennessy2017computer" data-locator="p. 268">Shared-memory multiprocessors provide hardware support for multiple instruction streams operating over a unified physical address space, while operating system processes enforce strict memory isolation via independent virtual page tables.</span></p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(Threads vs. Processes)</span></span>
+        <p>A <strong>process</strong> is an independent execution context managed by the operating system kernel, encapsulating a dedicated virtual address space, file descriptor table, security credentials, and environment. A <strong>thread</strong> is a unit of execution within a parent process that shares the process's heap memory, global variables, and code segments, possessing only its own program counter, register file, and call stack. The architectural trade-off of <dfn id="def-threads-vs-processes" data-concept="threads-vs-processes">threads vs. processes</dfn> balances low-latency shared-memory data exchange against the robust fault isolation and absence of memory-race hazards guaranteed by isolated process memory spaces.</p>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 2.2 <span class="name">(Context Switching and Translation Lookaside Buffer Invalidation)</span></span>
+        <p><strong>Assumption:</strong> An operating system kernel preempts execution unit \(A\) to schedule execution unit \(B\).<br>
+        <strong>Statement:</strong> An inter-process context switch incurs higher latency than an intra-process thread switch due to virtual memory page table register (CR3) reloading and Translation Lookaside Buffer (TLB) address space invalidations.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>An intra-process thread switch saves the architectural registers and stack pointer of thread \(A\), updates thread-local storage descriptors, and restores the register state of thread \(B\). Both threads execute within the identical virtual address space mapping; hence the page directory base register (e.g., CR3 on x86-64) remains unaltered and valid virtual-to-physical address translations in the processor's Translation Lookaside Buffer (TLB) are preserved. In contrast, an inter-process switch requires replacing the memory management unit page directory with process \(B\)'s page table. In the absence of tagged TLB entries (PCID), switching page directories flushes user-space TLB mappings, forcing subsequent memory operations in process \(B\) to trigger costly multi-level hardware page table walks in DRAM (~50–100 ns per cold access) until the TLB warms up. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Hardware Synchronization and Cache Coherence</h2>
+
+      <p><span class="claim" data-grade="A" data-cite="stroustrup2022tour" data-locator="p. 165">In shared-memory C++ systems, threads communicate by reading and writing shared memory locations, requiring explicit synchronization (mutexes, condition variables, or atomic operations) to avoid data races.</span> At the hardware level, multi-socket and multi-core processors maintain a consistent view of shared memory using hardware cache coherence protocols such as MESI (Modified, Exclusive, Shared, Invalid).</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.3 <span class="name">(MESI Cache Protocol and False Sharing)</span></span>
+        <p>The <strong>MESI protocol</strong> tracks the state of each 64-byte cache line across private L1/L2 caches:</p>
+        <ul>
+          <li><strong>Modified (M):</strong> The cache line is present exclusively in the local cache and is dirty (modified relative to DRAM).</li>
+          <li><strong>Exclusive (E):</strong> The cache line is present exclusively in the local cache and is clean (matches DRAM).</li>
+          <li><strong>Shared (S):</strong> The cache line may be present in multiple private caches and is clean.</li>
+          <li><strong>Invalid (I):</strong> The cache line contains stale data and cannot be read.</li>
+        </ul>
+        <p><strong>False sharing</strong> occurs when two threads running on distinct CPU cores modify independent variables that reside within the same 64-byte cache line. Even though the application logic contains zero data races, the hardware coherence protocol repeatedly invalidates the cache line across cores, converting fast L1 cache writes into bus-saturating inter-core invalidation storms.</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>The CPython Global Interpreter Lock (GIL)</h2>
+
+      <p><span class="claim" data-grade="A" data-cite="ramalho2021fluent" data-locator="p. 692">CPython, the reference implementation of Python, relies on an internal synchronization mutex known as the Global Interpreter Lock (GIL) to prevent concurrent access to Python object memory.</span></p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.4 <span class="name">(CPython Global Interpreter Lock)</span></span>
+        <p>The <dfn id="def-python-gil" data-concept="python-gil">python-gil</dfn> (Global Interpreter Lock) is a mutual exclusion lock implemented in the CPython runtime that prevents multiple native operating system threads from executing Python bytecode concurrently. Under the GIL, memory management (specifically reference counting for automatic garbage collection) is thread-safe without requiring fine-grained atomic operations on every Python object. However, this design strictly serializes CPU-bound bytecode execution onto a single physical core, causing pure Python multithreading to yield zero speedup—and often net slowdown due to lock contention—on CPU-bound workloads.</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 2.5 <span class="name">(CPython Threading Serialization on CPU-Bound Tasks)</span></span>
+        <p><strong>Assumption:</strong> \(K\) native operating system threads execute pure Python bytecode on a multi-core processor without performing I/O or invoking C extensions.<br>
+        <strong>Statement:</strong> The total execution time on \(K\) threads is strictly greater than the single-threaded execution time: \(T(K) &gt; T(1)\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By Definition 2.4, a thread must hold the GIL mutex to execute Python bytecode. The CPython runtime enforces a switch interval (default 5 ms, configured via <code>sys.setswitchinterval()</code>). When thread \(A\) executes for the switch interval while threads \(B_1, \dots, B_{K-1}\) wait, the runtime signals a release request. Thread \(A\) releases the GIL and yields, incurring an operating system mutex release and context switch latency \(\delta_{\text{switch}} &gt; 0\). The waiting threads contend for the lock; exactly one thread acquires the GIL while the remaining \(K-2\) threads return to a suspended state, incurring lock contention overhead \(\delta_{\text{contend}} &gt; 0\). Because bytecode operations cannot execute in parallel, total CPU computation time equals \(T_{\text{comp}} = T(1)\). Aggregate execution time is therefore:</p>
+        \[
+        T(K) = T(1) + \sum_{i=1}^{M_{\text{switches}}} (\delta_{\text{switch}} + \delta_{\text{contend}}) &gt; T(1) \quad \blacksquare
+        \]
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 2.6 <span class="name">(Releasing the GIL in Native Extensions)</span></span>
+        <p>In quantitative trading libraries, C++ extensions (compiled via Pybind11 or Cython) release the GIL using the Python C-API macro <code>Py_BEGIN_ALLOW_THREADS</code> before launching compute-intensive loops (such as Monte Carlo path simulation or matrix Cholesky factorization). While the C++ threads execute across cores, the main Python thread may concurrently handle I/O or asynchronous market data. Once calculation concludes, <code>Py_END_ALLOW_THREADS</code> reacquires the GIL before constructing Python return objects.</p>
+      </div>
+
+      <section class="lab" id="lab-CS6-L02-1" data-runtime="python">
+        <h3>Lab 1 · GIL contention, process isolation, and native threading simulation</h3>
+        <p class="hypothesis">Simulating covariance estimation across four cores demonstrates that multithreading under CPython is slower than serial execution (0.971x), multiprocessing achieves parallel speedup (2.896x) burdened by IPC overhead, and native nogil execution approaches linear speedup (3.922x).</p>
+        <pre><code class="language-python" data-run>"""CS6 Lab L02-1: Execution Models, CPython GIL Contention, and Process Isolation.
+
+Standard library only. Deterministic microarchitectural and runtime model simulating
+CPython GIL serialization on CPU-bound workloads, multi-process IPC memory overhead,
+and native C++ nogil shared-memory multithreading.
+"""
+
+from __future__ import annotations
+
+
+def run_concurrency_model() -&gt; None:
+    n_assets = 10
+    n_obs = 10000
+    n_cores = 4
+
+    # Covariance computation: dot products across asset pairs: (M * (M + 1) / 2) * N operations
+    pairs = (n_assets * (n_assets + 1)) // 2  # 55 pairs
+    total_flops = pairs * n_obs * 2  # 1,100,000 floating point operations
+    base_cpu_time_ms = 100.0  # Normalized single-core execution time in ms
+
+    print("=== CS6 Lab 2: Concurrency Models &amp; Python GIL Simulation ===")
+    print(f"Task: Asset covariance ({n_assets} assets, {n_obs} obs, {pairs} unique pairs)")
+    print(f"Compute workload: {total_flops:,} FLOPs, Baseline serial runtime: {base_cpu_time_ms:.1f} ms\n")
+
+    # Model 1: Multithreaded Python under CPython GIL
+    # All threads serialize on bytecode execution + context switch penalty
+    gil_switch_interval_ms = 5.0  # sys.getswitchinterval() default 5ms
+    thread_switch_overhead_ms = 0.05  # Context switch and lock contention penalty
+    n_switches = int(base_cpu_time_ms / gil_switch_interval_ms) * (n_cores - 1)
+    gil_total_switch_overhead = n_switches * thread_switch_overhead_ms
+    t_threads = base_cpu_time_ms + gil_total_switch_overhead
+    speedup_threads = base_cpu_time_ms / t_threads
+
+    print("1. Multi-threaded CPython (GIL Contention):")
+    print(f"   Worker threads:              {n_cores}")
+    print("   GIL status:                  HELD (bytecode execution serialized)")
+    print(f"   Forced thread switches:      {n_switches}")
+    print(f"   Switch &amp; contention delay:   {gil_total_switch_overhead:.2f} ms")
+    print(f"   Simulated execution time:    {t_threads:.2f} ms")
+    print(f"   Effective parallel speedup:  {speedup_threads:.3f}x (SLOWER than serial)\n")
+
+    # Model 2: Multi-processing with IPC
+    # True parallelism, but must serialize inputs and outputs across IPC pipes
+    ipc_bytes_per_asset = n_obs * 8  # 80 KB per asset series
+    total_ipc_input = n_assets * ipc_bytes_per_asset  # 800 KB
+    total_ipc_output = pairs * 8  # 440 bytes
+    ipc_transfer_rate_mb_s = 500.0  # Pipe/shm transfer bandwidth (500 MB/s)
+    ipc_overhead_ms = ((total_ipc_input + total_ipc_output) / (ipc_transfer_rate_mb_s * 1024 * 1024)) * 1000.0
+    process_spawn_overhead_ms = 8.0  # Fork/exec runtime initialization cost
+    t_process = (base_cpu_time_ms / n_cores) + ipc_overhead_ms + process_spawn_overhead_ms
+    speedup_process = base_cpu_time_ms / t_process
+
+    print("2. Multi-process Isolation (IPC &amp; Memory Overhead):")
+    print(f"   Worker processes:            {n_cores}")
+    print("   Process memory spaces:       ISOLATED (independent GIL per process)")
+    print(f"   IPC serialization traffic:   {total_ipc_input + total_ipc_output:,} bytes")
+    print(f"   Process spawn &amp; IPC latency: {ipc_overhead_ms + process_spawn_overhead_ms:.2f} ms")
+    print(f"   Simulated execution time:    {t_process:.2f} ms")
+    print(f"   Effective parallel speedup:  {speedup_process:.3f}x\n")
+
+    # Model 3: Native Shared-Memory C++ Extension (Pybind11 / nogil)
+    # Threads share memory space directly with zero IPC and GIL released
+    thread_sync_overhead_ms = 0.5  # Minimal barrier synchronization
+    t_native = (base_cpu_time_ms / n_cores) + thread_sync_overhead_ms
+    speedup_native = base_cpu_time_ms / t_native
+
+    print("3. Native C++ Shared-Memory Extension (GIL Released):")
+    print(f"   Native worker threads:       {n_cores}")
+    print("   GIL status:                  RELEASED (Py_BEGIN_ALLOW_THREADS)")
+    print("   Memory space:                SHARED (zero IPC copies)")
+    print(f"   Barrier sync latency:        {thread_sync_overhead_ms:.2f} ms")
+    print(f"   Simulated execution time:    {t_native:.2f} ms")
+    print(f"   Effective parallel speedup:  {speedup_native:.3f}x")
+
+
+run_concurrency_model()</code></pre>
+        <pre class="expected" data-tolerance="1e-3">=== CS6 Lab 2: Concurrency Models &amp; Python GIL Simulation ===
+Task: Asset covariance (10 assets, 10000 obs, 55 unique pairs)
+Compute workload: 1,100,000 FLOPs, Baseline serial runtime: 100.0 ms
+
+1. Multi-threaded CPython (GIL Contention):
+   Worker threads:              4
+   GIL status:                  HELD (bytecode execution serialized)
+   Forced thread switches:      60
+   Switch &amp; contention delay:   3.00 ms
+   Simulated execution time:    103.00 ms
+   Effective parallel speedup:  0.971x (SLOWER than serial)
+
+2. Multi-process Isolation (IPC &amp; Memory Overhead):
+   Worker processes:            4
+   Process memory spaces:       ISOLATED (independent GIL per process)
+   IPC serialization traffic:   800,440 bytes
+   Process spawn &amp; IPC latency: 9.53 ms
+   Simulated execution time:    34.53 ms
+   Effective parallel speedup:  2.896x
+
+3. Native C++ Shared-Memory Extension (GIL Released):
+   Native worker threads:       4
+   GIL status:                  RELEASED (Py_BEGIN_ALLOW_THREADS)
+   Memory space:                SHARED (zero IPC copies)
+   Barrier sync latency:        0.50 ms
+   Simulated execution time:    25.50 ms
+   Effective parallel speedup:  3.922x</pre>
+        <p class="interpretation">The simulation confirms that CPU-bound Python threads suffer forced switch contention that degrades throughput below serial execution. Multiprocessing achieves multi-core scaling but expends 800 KB of IPC serialization, whereas native C++ threads bypass both bottlenecks via shared memory with the GIL released.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>The standard doctrine teaches that Python is fundamentally single-threaded for CPU tasks and developers must always use <code>multiprocessing</code>. In institutional quantitative systems, this canon breaks in two scenarios:</p>
+        <ul>
+          <li><strong>Copy-on-Write (COW) Memory Bloat in Forked Multiprocessing:</strong> On Linux, <code>multiprocessing.Process</code> uses <code>fork()</code>, initially sharing physical memory pages with the parent process. However, CPython's reference-counting garbage collector increments and decrements reference counts on every object read (e.g., iterating through a large market price DataFrame). These writes dirty the virtual memory pages, forcing the OS kernel to duplicate physical pages via Copy-on-Write. A 10 GB historical market data array replicated across 32 worker processes can rapidly trigger out-of-memory (OOM) kernel panics.</li>
+          <li><strong>Free-Threaded CPython (PEP 703):</strong> Python 3.13+ introduces experimental build configurations that eliminate the Global Interpreter Lock entirely. By replacing reference count increments with biased reference counting and mimalloc thread-local memory arenas, free-threaded Python allows pure Python bytecode to execute concurrently on multiple physical cores. However, existing C-extensions that rely on implicit GIL thread-safety require extensive refactoring to prevent race conditions.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Python's <code>threading</code> module is useless and should never be used.</p>
+            <p class="correction">Python threads are highly effective for I/O-bound operations (such as HTTP order gateway requests, database queries, and WebSocket market data streams). When a thread waits for network socket I/O, the CPython runtime automatically releases the GIL, allowing other threads to run concurrently.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Multiprocessing in Python has zero memory overhead because modern OS kernels support shared memory.</p>
+            <p class="correction">Each Python process hosts an independent CPython interpreter binary, runtime state, and garbage collection arena. Standard inter-process communication requires serializing objects via <code>pickle</code> into OS pipes, incurring substantial CPU and memory serialization overhead unless explicitly configured with POSIX shared memory (<code>multiprocessing.shared_memory</code>).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Using thread locks (<code>threading.Lock</code>) in Python eliminates the GIL.</p>
+            <p class="correction">Application-level locks provide mutual exclusion for application state but operate entirely on top of the GIL. Acquiring an application lock does not bypass or disable the runtime's internal GIL bytecode serialization.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · GIL Switch Count Calculation</span>
+            <p>A pure Python mathematical loop runs for 4.0 seconds on 8 threads. If <code>sys.getswitchinterval()</code> is configured to the default 5 milliseconds, what is the minimum number of thread switch evaluations forced by the interpreter?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The switch interval is \(\Delta t = 5\text{ ms} = 0.005\text{ s}\). Over a 4.0-second execution window, the number of forced switch checks is:</p>
+              \[
+              N_{\text{checks}} = \frac{4.0\text{ s}}{0.005\text{ s}} = 800\text{ intervals}
+              \]
+              <p>With 8 threads actively contending for the lock, the interpreter initiates at least 800 thread preemption and re-acquisition cycles.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · IPC Data Volume in Multiprocessing</span>
+            <p>A risk engine dispatches 10,000 portfolio scenarios to 8 worker processes. Each scenario requires an input matrix of 500 assets \(\times\) 250 daily returns (64-bit IEEE floats) and returns a scalar loss. What is the total IPC input data payload transferred across process boundaries?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Each scenario requires \(500 \times 250 = 125,000\) doubles. At 8 bytes per double, one scenario requires:</p>
+              \[
+              125,000 \times 8\text{ bytes} = 1,000,000\text{ bytes} = 1.0\text{ MB}
+              \]
+              <p>Across all 10,000 scenarios, the total serialized IPC input data transferred is \(10,000 \times 1.0\text{ MB} = 10,000\text{ MB} \approx 9.77\text{ GB}\).</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · False Sharing Cacheline Identification</span>
+            <p>Two double-precision variables (8 bytes each) are allocated in a struct at byte offsets 56 and 64 respectively. Assuming 64-byte cachelines aligned at multiples of 64, do concurrent writes to these two variables induce false sharing?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The cacheline boundary occurs at multiples of 64 bytes. Variable 1 spans byte offsets 56 to 63, which resides entirely in Cacheline 0 (\([0, 63]\)). Variable 2 spans byte offsets 64 to 71, which resides in Cacheline 1 (\([64, 127]\)). Because the variables occupy distinct 64-byte cachelines, concurrent writes do not trigger false sharing.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · Upper Bound on Multiprocess Speedup Under IPC Bandwidth</span>
+            <p>Prove that for a parallel workload with compute time \(T_{\text{comp}}(P) = T_{\text{comp}}(1)/P\) and IPC data volume \(D\) transferred over a bus with bandwidth \(B\), the maximum achievable speedup is bounded above by \(T_{\text{comp}}(1) \cdot B / D\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The total parallel execution time is the sum of computation and communication transfer latency:</p>
+              \[
+              T(P) = \frac{T_{\text{comp}}(1)}{P} + \frac{D}{B}
+              \]
+              <p>The speedup is:</p>
+              \[
+              S(P) = \frac{T_{\text{comp}}(1)}{\frac{T_{\text{comp}}(1)}{P} + \frac{D}{B}}
+              \]
+              <p>Taking the limit as processor count \(P \to \infty\):</p>
+              \[
+              \lim_{P \to \infty} S(P) = \frac{T_{\text{comp}}(1)}{0 + \frac{D}{B}} = \frac{T_{\text{comp}}(1) \cdot B}{D} \quad \blacksquare
+              \]
+              <p>This establishes that IPC transfer bandwidth imposes an asymptotic ceiling on multiprocessing speedup identical in structure to Amdahl's Law.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Mutual Exclusion Deadlock Necessity Condition</span>
+            <p>Prove that Coffman's circular wait condition is necessary for deadlock in multi-threaded lock acquisition.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Construct the directed resource allocation graph \(G = (V, E)\) where vertices \(V = T \cup L\) represent threads and locks. Directed edge \(T_i \to L_j\) indicates thread \(T_i\) is waiting for lock \(L_j\), and \(L_j \to T_k\) indicates lock \(L_j\) is held by thread \(T_k\). A deadlock occurs when a set of threads is permanently blocked waiting for events only members of the set can trigger. If \(G\) contains no directed cycle, it is a directed acyclic graph (DAG). Every finite DAG possesses at least one sink vertex \(T_{\text{sink}}\) with out-degree zero (a thread holding locks but waiting on no others). \(T_{\text{sink}}\) completes execution and releases its locks in finite time, enabling its predecessors to progress. By contraposition, a permanent stall requires a directed cycle, proving circular wait is necessary.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Invariance of Atomic Operations Under Sequential Consistency</span>
+            <p>Prove that under Lamport's sequential consistency memory model, a lock-free atomic fetch-and-add counter produces identical terminal values regardless of thread execution interleaving.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Sequential consistency requires that all memory operations appear to execute in some global sequential order, and operations of each individual processor appear in program order. Let \(P\) threads each perform \(N_i\) atomic increments. In the global sequential linearization \(S\), each increment maps to a transition \(C_{k+1} = C_k + 1\). Starting from \(C_0 = 0\), the composition of \(M = \sum_{i=1}^P N_i\) increments is an Abelian group addition over integers. Because integer addition is commutative and associative, any valid permutation of the \(M\) operations yields the identical final state \(C_{\text{final}} = \sum_{i=1}^P N_i\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Measuring GIL Release in NumPy Operations</span>
+            <p>Why does calling <code>np.dot(A, B)</code> on two large matrices in two Python threads achieve ~2x speedup on 2 cores, whereas pure Python matrix multiplication achieves ~0.95x?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>NumPy implements <code>np.dot</code> by delegating to an underlying BLAS library (such as OpenBLAS, MKL, or Apple Accelerate). Inside the C/Fortran wrapper, NumPy explicitly calls <code>Py_BEGIN_ALLOW_THREADS</code>, releasing the GIL during the dense matrix multiplication loop. In contrast, pure Python loops execute bytecode instructions that require holding the GIL continuously.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · Copy-on-Write Memory Thrashing</span>
+            <p>A production Python service loads 16 GB of order book snapshots into memory and spawns 8 worker processes via <code>fork()</code>. Within 30 seconds of read-only analytics, system RAM usage jumps from 16 GB to over 60 GB. Explain this phenomenon.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Although the application code performs only read operations, CPython increments object reference counts whenever variables are inspected. These reference count updates write to the memory pages hosting the Python objects, triggering the Linux kernel's Copy-on-Write mechanism. Each of the 8 child processes progressively clones the 16 GB memory space, causing aggregate physical RAM consumption to explode.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Lock Contention Profile</span>
+            <p>In Lab 1, what parameter of the operating system model explains why multi-threading achieved 0.971x speedup rather than exactly 1.0x?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Lab 1 modeled the 5 ms thread switch interval and the 0.05 ms mutex release and context switch latency. Over the 100 ms computation window, 60 forced thread switches introduced 3.0 ms of non-productive lock contention and preemption delay, stretching execution from 100.0 ms to 103.0 ms.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · Subinterpreters and PEP 684</span>
+            <p>How does the 'per-interpreter GIL' introduced in Python 3.12 alter the concurrency trade-off between multiprocessing and multithreading?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>PEP 684 allows multiple Python subinterpreters to run within a single operating system process, each possessing its own independent GIL. This permits true multi-core parallel bytecode execution without the heavy memory footprint and process-spawning overhead of separate OS processes, while sharing read-only memory buffers safely.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Thread Affinity and NUMA Sockets in Trading Gateways</span>
+            <p>Why do ultra-low-latency market gateways bind worker threads to specific physical CPU cores using CPU pinning (<code>pthread_setaffinity_np</code>)?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Operating system schedulers frequently migrate active threads between cores to balance thermal load. Migrating a thread invalidates its hot L1/L2 caches and forces cross-socket NUMA bus memory accesses, adding microsecond latency spikes. Core pinning ensures thread cache locality and eliminates inter-socket interconnect penalties.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Garbage Collection Pauses in Real-Time Pricing Engines</span>
+            <p>Why do quantitative trading platforms disable CPython's generational cyclic garbage collector (<code>gc.disable()</code>) during active market trading hours?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>CPython's cyclic garbage collector periodically traverses all tracked container objects to identify reference cycles, freezing bytecode execution across all threads in a 'stop-the-world' pause. Disabling automatic GC eliminates non-deterministic latency spikes during market hours, deferring cycle collection to end-of-day maintenance windows.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>CPython GIL bytecode execution serialization (Theorem 2.5)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §3 via mutex preemption model</td></tr>
+              <tr><td>TLB invalidation overhead on inter-process context switches (Proposition 2.2)</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="hennessy2017computer" data-locator="p. 268">Hennessy &amp; Patterson (2017), p. 268</span></td></tr>
+              <tr><td>CPython Global Interpreter Lock mechanism and CPU-bound limitations</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="ramalho2021fluent" data-locator="p. 692">Ramalho (2021), p. 692</span></td></tr>
+              <tr><td>Shared-memory synchronization and mutual exclusion in systems programming</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="stroustrup2022tour" data-locator="p. 165">Stroustrup (2022), p. 165</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS6" data-page="L02">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What primary architectural resource is shared between threads of the same process but isolated between distinct processes?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L02q1"> <span>Virtual address space and heap memory</span></label>
+              <label class="option"><input type="radio" name="L02q1"> <span>CPU instruction pointer register</span></label>
+              <label class="option"><input type="radio" name="L02q1"> <span>Execution call stack</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Threads share the process virtual address space and heap; each thread maintains its own private call stack and register state.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does pure Python multithreading fail to speed up CPU-bound mathematical loops on multi-core processors?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q2"> <span>POSIX threads are limited to a single physical core by Linux</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q2"> <span>The CPython Global Interpreter Lock (GIL) serializes bytecode execution to one thread at a time</span></label>
+              <label class="option"><input type="radio" name="L02q2"> <span>Python objects cannot be allocated on the heap</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The CPython GIL permits only one thread to execute Python bytecode at any moment, serializing execution.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="64" data-tolerance="0">
+            <p class="prompt">What is the standard hardware cacheline size (in bytes) on modern x86-64 and ARM processors across which false sharing occurs?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Modern x86-64 and ARM architectures utilize 64-byte cache lines.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How do native C++ extensions (such as NumPy or custom pricing kernels) achieve true multi-core parallelism when called from Python?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L02q4"> <span>They release the GIL via Py_BEGIN_ALLOW_THREADS during intensive computations</span></label>
+              <label class="option"><input type="radio" name="L02q4"> <span>They bypass the CPU memory bus</span></label>
+              <label class="option"><input type="radio" name="L02q4"> <span>They convert Python bytecode into kernel system calls</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Native extensions invoke <code>Py_BEGIN_ALLOW_THREADS</code> to release the GIL, allowing native threads to run concurrently across cores.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What microarchitectural structure is invalidated when the operating system switches between two distinct processes with different page tables?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L02q5"> <span>Translation Lookaside Buffer (TLB)</span></label>
+              <label class="option"><input type="radio" name="L02q5"> <span>Floating Point ALU</span></label>
+              <label class="option"><input type="radio" name="L02q5"> <span>Branch Target Buffer (BTB)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Switching page directories invalidates virtual-to-physical address mappings in the Translation Lookaside Buffer (TLB).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="5" data-tolerance="0.1">
+            <p class="prompt">What is the default thread switch check interval (in milliseconds) in standard CPython?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>The default CPython switch interval configured via <code>sys.getswitchinterval()</code> is 0.005 seconds (5 milliseconds).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What hidden memory cost occurs on Linux when using forked multiprocessing with Python objects that are frequently read?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L02q7"> <span>Reference count modifications dirty memory pages, triggering Copy-on-Write page duplication</span></label>
+              <label class="option"><input type="radio" name="L02q7"> <span>The kernel encrypts memory pages between processes</span></label>
+              <label class="option"><input type="radio" name="L02q7"> <span>DRAM memory refreshes are halted</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Even read operations modify reference counts in CPython, causing the OS to duplicate memory pages via Copy-on-Write.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under what conditions is Python's standard multithreading genuinely effective?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L02q8"> <span>I/O-bound tasks where threads wait for network or disk operations that release the GIL</span></label>
+              <label class="option"><input type="radio" name="L02q8"> <span>Pure Python numerical quadrature and Monte Carlo path generation</span></label>
+              <label class="option"><input type="radio" name="L02q8"> <span>Inverting dense matrices in pure Python loops</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Python threads excel at I/O-bound tasks because the runtime releases the GIL while waiting on network or file system sockets.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson incorporates foundational systems principles from Hennessy &amp; Patterson, CPython concurrency architecture from Ramalho, and modern C++ multithreading from Stroustrup.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L01.html"><span class="dir">Previous</span>L01 · Amdahl's Law and Scaling Limits</a>
+        <a class="next" href="L03.html"><span class="dir">Next</span>L03 · SIMD &amp; Vectorization</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS6 · Parallel &amp; High-Performance Computing · Doctoral Track in Quantitative Finance</footer>
+</body>
+</html>

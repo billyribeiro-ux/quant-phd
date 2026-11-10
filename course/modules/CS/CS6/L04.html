@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS6" data-page="L04" data-hours="9">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L04 · GPU Architecture &amp; Accelerated Computing · CS6</title>
+  <meta name="description" content="Streaming multiprocessors, CUDA thread hierarchy, SIMT execution, warp divergence penalties, shared memory, and host-device PCIe bandwidth bottlenecks in quantitative finance.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS6 Parallel &amp; High-Performance Computing</a><span class="sep">›</span>
+      <span>L04</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS6 · Lesson 4 of 6 · 9 study hours</p>
+        <h1>GPU Architecture &amp; Accelerated Computing</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="memory-hierarchy" href="../../../concepts.html#memory-hierarchy">memory hierarchy</a> (CS5), <a class="concept" data-concept="struct-of-arrays" href="../../../concepts.html#struct-of-arrays">struct-of-arrays</a> (CS5), <a class="concept" data-concept="ieee-754-floating-point" href="../../../concepts.html#ieee-754-floating-point">IEEE 754 floating point</a> (M8)</li>
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="gpu-programming-model" href="#def-gpu-programming-model">gpu-programming-model</a></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Quantitative finance pricing and risk systems increasingly rely on Graphics Processing Units (GPUs) to evaluate massive Monte Carlo simulations and high-dimensional PDEs. However, writing high-performance accelerator code requires an entirely different programming paradigm than multicore CPU architectures. Uncoalesced global memory loads or thread branch divergence can instantly destroy 90% of a GPU's theoretical throughput. Mastering the GPU execution model allows quantitative engineers to extract peak performance while avoiding costly host-device transfer bottlenecks.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>The Many-Core GPU Architecture and SIMT Execution</h2>
+
+      <p><span class="claim" data-grade="A" data-cite="hennessy2017computer" data-locator="p. 378">Unlike latency-optimized multicore CPUs that devote silicon area to large caches and complex out-of-order branch predictors, GPUs are throughput-oriented architectures dedicating the vast majority of transistors to floating-point arithmetic logic units (ALUs).</span> GPUs hide memory latency through massive thread-level parallelism rather than hardware caching.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 4.1 <span class="name">(GPU Programming Model)</span></span>
+        <p>The <dfn id="def-gpu-programming-model" data-concept="gpu-programming-model">gpu-programming-model</dfn> (exemplified by CUDA and OpenCL) organizes massively parallel computation into a three-tier hierarchical abstraction:</p>
+        <ul>
+          <li><strong>Threads and Warps:</strong> Individual scalar threads are grouped into hardware execution units of exactly 32 threads known as <strong>warps</strong>. A warp executes instructions under Single Instruction, Multiple Threads (SIMT), where all 32 threads share a single instruction decoder.</li>
+          <li><strong>Thread Blocks:</strong> A cooperative group of up to 1,024 threads scheduled onto a single Streaming Multiprocessor (SM). Threads within a block share low-latency on-chip scratchpad memory (Shared Memory) and synchronize via barriers (<code>__syncthreads()</code>).</li>
+          <li><strong>Grids:</strong> An array of independent thread blocks dispatched across all available SMs on the physical GPU device, executing a compiled computational subroutine known as a <strong>kernel</strong>.</li>
+        </ul>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 4.2 <span class="name">(Warp Occupancy and Latency Hiding)</span></span>
+        <p><strong>Assumption:</strong> A Streaming Multiprocessor possesses \(M_{\text{ALU}}\) compute pipelines and experiences a memory read latency of \(L_{\text{mem}}\) clock cycles. Each active warp issues one instruction every cycle.<br>
+        <strong>Statement:</strong> Complete hiding of memory latency requires a minimum active warp concurrency of \(W_{\text{active}} \ge L_{\text{mem}} / M_{\text{ALU}}\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>When an active warp issues an asynchronous global memory read, it enters a stalled state for \(L_{\text{mem}}\) clock cycles while data travels from high-bandwidth device memory (HBM/GDDR). To prevent the SM's execution pipelines from idling, the hardware warp scheduler must switch execution to an alternate, unblocked warp on every subsequent clock cycle. If the SM has \(M_{\text{ALU}}\) independent pipelines, maintaining 100% pipeline utilization over the entire duration of the memory stall requires sufficient ready warps to supply instructions for all \(L_{\text{mem}}\) cycles. Therefore, the number of active resident warps must satisfy \(W_{\text{active}} \ge L_{\text{mem}} / M_{\text{ALU}}\). \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>SIMT Warp Divergence and Branch Penalties</h2>
+
+      <p>Because all 32 threads in a CUDA warp share a single instruction issue unit, SIMT execution requires that all active threads execute the identical instruction address. When threads take different execution paths at a conditional branch, the hardware must serialize the divergent paths.</p>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 4.3 <span class="name">(Warp Divergence Latency Lower Bound)</span></span>
+        <p><strong>Assumption:</strong> Threads within a warp evaluate a conditional branch with \(K\) mutually exclusive execution branches requiring \(c_1, c_2, \dots, c_K\) execution cycles respectively, where at least one thread in the warp takes each branch.<br>
+        <strong>Statement:</strong> The warp execution latency is the sum of all individual branch latencies: \(T_{\text{warp}} = \sum_{k=1}^K c_k\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>The warp scheduler cannot split the physical warp across divergent instruction streams. Instead, the hardware evaluates branch path 1 by enabling an active thread execution mask for threads selecting path 1 and disabling all other threads. The SM executes path 1 for \(c_1\) cycles while disabled threads sit idle. Next, the mask is updated to enable threads selecting path 2 while all others are disabled, executing for \(c_2\) cycles. This process repeats sequentially for all \(K\) active branches. Total elapsed clock cycles for the warp is the linear sum of all individual branch path execution cycles: \(T_{\text{warp}} = \sum_{k=1}^K c_k\). The warp execution efficiency is strictly degraded to \(\frac{\sum_k N_k c_k}{32 \sum_k c_k} &lt; 1.0\), where \(N_k\) is the count of active threads on branch \(k\). \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>GPU Memory Hierarchy and PCIe Bandwidth Bottlenecks</h2>
+
+      <p><span class="claim" data-grade="A" data-cite="hennessy2017computer" data-locator="p. 420">The Roofline Model establishes that computational throughput is bounded by either the GPU's peak arithmetic processing rate or its memory bandwidth.</span> Accessing GPU device memory (DRAM) requires understanding memory coalescing.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 4.4 <span class="name">(Memory Coalescing and Global Memory Transactions)</span></span>
+        <p>The GPU memory controller services global memory requests in aligned 32-byte or 128-byte segments. A <strong>coalesced memory access</strong> occurs when the 32 threads of a warp access contiguous 4-byte or 8-byte elements that fall within a minimal number of 128-byte hardware segments. If 32 threads request 32 contiguous 64-bit doubles (\(32 \times 8 = 256\) bytes), the controller issues exactly two 128-byte transactions (100% bus utilization). If threads access scattered memory addresses with stride \(S \ge 16\), each thread lands in a separate 128-byte segment, forcing 32 distinct transactions (transferring 4,096 bytes to deliver 256 bytes of payload, a 93.8% bandwidth waste).</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 4.5 <span class="name">(Host-to-Device PCIe Bus Bottleneck)</span></span>
+        <p>A quantitative firm executes a 10-millisecond Monte Carlo VaR kernel on an NVIDIA H100 GPU (delivering 3,350 GB/s internal HBM3 bandwidth). However, the host CPU must transfer the 4 GB portfolio position array over a PCIe 5.0 x16 interconnect operating at 64 GB/s. The PCIe data transfer takes:</p>
+        \[
+        T_{\text{transfer}} = \frac{4\text{ GB}}{64\text{ GB/s}} = 0.0625\text{ seconds} = 62.5\text{ ms}
+        \]
+        <p>The data transfer consumes 86.2% of total runtime, completely overshadowing the 10 ms kernel computation. Overcoming this bottleneck requires pinned host memory (<code>cudaHostAlloc</code>) and overlapping asynchronous transfer streams (<code>cudaMemcpyAsync</code>).</p>
+      </div>
+
+      <section class="lab" id="lab-CS6-L04-1" data-runtime="python">
+        <h3>Lab 1 · GPU warp divergence and memory coalescing simulator</h3>
+        <p class="hypothesis">Simulating 32 threads in a CUDA warp demonstrates that uncoalesced strided access wastes 93.8% of memory bandwidth, while branch divergence on option exercise payoffs inflates warp execution latency from 20 to 25 cycles and halves warp efficiency to 50%.</p>
+        <pre><code class="language-python" data-run>"""CS6 Lab L04-1: GPU Warp Divergence, Memory Coalescing, and SIMT Execution Model.
+
+Standard library only. Simulates a CUDA Streaming Multiprocessor (SM) warp of 32 threads
+evaluating branchy option payoffs, computing warp execution efficiency and memory coalescing transactions.
+"""
+
+from __future__ import annotations
+
+
+def run_gpu_warp_model() -&gt; None:
+    warp_size = 32
+    dram_transaction_size = 128  # bytes per GPU memory transaction
+    bytes_per_double = 8
+
+    print("=== CS6 Lab 4: GPU Programming Model &amp; Warp Execution Simulation ===")
+    print(f"Hardware Warp Size: {warp_size} threads, DRAM Transaction Unit: {dram_transaction_size} bytes\n")
+
+    # 1. Global Memory Coalescing Simulation
+    # Scenario A: Coalesced memory access (Thread k reads offset k * 8)
+    coalesced_bytes = warp_size * bytes_per_double  # 256 bytes
+    coalesced_transactions = (coalesced_bytes + dram_transaction_size - 1) // dram_transaction_size
+    coalesced_bus_efficiency = coalesced_bytes / (coalesced_transactions * dram_transaction_size)
+
+    # Scenario B: Strided non-coalesced access (Thread k reads offset k * 128, spanning separate segments)
+    uncoalesced_transactions = warp_size  # 32 distinct 128-byte transactions
+    uncoalesced_transferred = uncoalesced_transactions * dram_transaction_size
+    uncoalesced_bus_efficiency = coalesced_bytes / uncoalesced_transferred
+
+    coalesced_transferred = coalesced_transactions * dram_transaction_size
+    print("1. Memory Access Coalescing (32 double-precision reads = 256 bytes payload):")
+    print(f"   Coalesced Transactions:      {coalesced_transactions} (transferred {coalesced_transferred}B)")
+    print(f"   Coalesced Bus Efficiency:    {coalesced_bus_efficiency:.1%}")
+    print(f"   Uncoalesced Transactions:    {uncoalesced_transactions} (transferred {uncoalesced_transferred}B)")
+    print(f"   Uncoalesced Bus Efficiency:  {uncoalesced_bus_efficiency:.1%}")
+    print(f"   Memory Bandwidth Waste:      {(1.0 - uncoalesced_bus_efficiency) * 100:.1f}%\n")
+
+    # 2. SIMT Warp Divergence Simulation
+    # 32 threads evaluate an option payoff: branch A (exercise, 20 cycles), branch B (expire worthless, 5 cycles)
+    # Test cases: Divergent (16 exercise, 16 expire) vs Convergent (all 32 exercise)
+    divergent_active_a = 16
+    divergent_active_b = 16
+    cycles_path_a = 20
+    cycles_path_b = 5
+
+    # In SIMT, divergent paths are executed serially across the warp:
+    divergent_total_cycles = cycles_path_a + cycles_path_b  # 25 cycles
+    divergent_useful_thread_cycles = (divergent_active_a * cycles_path_a) + (divergent_active_b * cycles_path_b)
+    divergent_total_thread_capacity = warp_size * divergent_total_cycles
+    divergent_warp_efficiency = divergent_useful_thread_cycles / divergent_total_thread_capacity
+
+    # Convergent warp: all 32 threads take Path A
+    convergent_active_a = 32
+    convergent_total_cycles = cycles_path_a  # 20 cycles
+    convergent_useful_thread_cycles = convergent_active_a * cycles_path_a
+    convergent_total_thread_capacity = warp_size * convergent_total_cycles
+    convergent_warp_efficiency = convergent_useful_thread_cycles / convergent_total_thread_capacity
+
+    print("2. SIMT Warp Divergence (Path A = 20 cycles, Path B = 5 cycles):")
+    print("   Scenario A: Divergent Warp (50% Exercise / 50% Expire):")
+    print(f"     Execution Serialized:      Path A ({cycles_path_a} cyc) + Path B ({cycles_path_b} cyc)")
+    print(f"     Warp Execution Latency:    {divergent_total_cycles} cycles")
+    print(f"     Useful Thread Work:        {divergent_useful_thread_cycles} thread-cycles")
+    print(f"     Warp Execution Efficiency: {divergent_warp_efficiency:.1%}")
+    print("   Scenario B: Convergent Warp (100% Exercise):")
+    print(f"     Execution Single Pass:     Path A only ({convergent_total_cycles} cyc)")
+    print(f"     Warp Execution Latency:    {convergent_total_cycles} cycles")
+    print(f"     Useful Thread Work:        {convergent_useful_thread_cycles} thread-cycles")
+    print(f"     Warp Execution Efficiency: {convergent_warp_efficiency:.1%}")
+
+
+run_gpu_warp_model()</code></pre>
+        <pre class="expected" data-tolerance="1e-3">=== CS6 Lab 4: GPU Programming Model &amp; Warp Execution Simulation ===
+Hardware Warp Size: 32 threads, DRAM Transaction Unit: 128 bytes
+
+1. Memory Access Coalescing (32 double-precision reads = 256 bytes payload):
+   Coalesced Transactions:      2 (transferred 256B)
+   Coalesced Bus Efficiency:    100.0%
+   Uncoalesced Transactions:    32 (transferred 4096B)
+   Uncoalesced Bus Efficiency:  6.2%
+   Memory Bandwidth Waste:      93.8%
+
+2. SIMT Warp Divergence (Path A = 20 cycles, Path B = 5 cycles):
+   Scenario A: Divergent Warp (50% Exercise / 50% Expire):
+     Execution Serialized:      Path A (20 cyc) + Path B (5 cyc)
+     Warp Execution Latency:    25 cycles
+     Useful Thread Work:        400 thread-cycles
+     Warp Execution Efficiency: 50.0%
+   Scenario B: Convergent Warp (100% Exercise):
+     Execution Single Pass:     Path A only (20 cyc)
+     Warp Execution Latency:    20 cycles
+     Useful Thread Work:        640 thread-cycles
+     Warp Execution Efficiency: 100.0%</pre>
+        <p class="interpretation">The numerical simulation proves that SIMT execution serializes divergent branch paths across all 32 threads, inflating execution time to the sum of both branches (25 cycles). Strided global memory accesses force 32 distinct 128B DRAM transactions, creating severe memory controller stalls.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>The standard belief is that GPUs are universally faster than CPUs for any large mathematical computation. In production quantitative trading, this rule breaks in two major regimes:</p>
+        <ul>
+          <li><strong>Kernel Launch Latency on Small Batches:</strong> Launching a CUDA kernel from host CPU code incurs an operating system driver and hardware queue submission overhead of 5 to 15 microseconds. For an ultra-low-latency market gateway evaluating a single options trade or pricing 100 contracts, a modern multicore CPU using AVX2 evaluates the closed-form Black-Scholes formula in 200 nanoseconds—over 25x faster than the GPU kernel launch latency alone.</li>
+          <li><strong>Unified Memory (UVM) Page Fault Thrashing:</strong> CUDA Unified Memory (<code>cudaMallocManaged</code>) allows CPU and GPU to share a single pointer, with the OS migration driver page-faulting memory over PCIe on demand. In iterative risk engines where the CPU reads intermediate results while the GPU continues pricing, memory pages bounce repeatedly across the PCIe bus (ping-pong thrashing), collapsing throughput by up to 98% relative to explicitly managed asynchronous buffers.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Each thread in a CUDA block can branch freely like an independent CPU core.</p>
+            <p class="correction">CUDA threads execute in hardware warps of 32 threads. When threads within a warp branch in different directions, the hardware serializes the branches, executing both paths sequentially while masking out unselected threads. Branch independence exists only across distinct warps.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Allocating maximum threads per block (1,024) always maximizes GPU performance.</p>
+            <p class="correction">Each Streaming Multiprocessor possesses finite hardware registers (typically 65,536 32-bit registers) and Shared Memory (typically 64–100 KB). If a kernel uses many registers per thread, launching 1,024 threads per block reduces the number of concurrent blocks that can reside on the SM, lowering warp occupancy and impairing latency hiding.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">GPU Shared Memory is a hardware cache that operates automatically without developer intervention.</p>
+            <p class="correction">Unlike CPU L1/L2 caches that operate transparently via hardware controllers, CUDA Shared Memory is an on-chip, software-managed scratchpad memory. Developers must explicitly copy data from global memory into <code>__shared__</code> arrays and synchronize threads using <code>__syncthreads()</code>.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · Warp Count and Grid Dimension</span>
+            <p>A quantitative Monte Carlo kernel launches a 1D grid with 256 thread blocks, each containing 256 threads. How many total warps are scheduled across the GPU?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Each warp contains exactly 32 threads. The number of warps per block is:</p>
+              \[
+              W_{\text{block}} = \frac{256\text{ threads}}{32\text{ threads/warp}} = 8\text{ warps}
+              \]
+              <p>Across the entire grid of 256 blocks, the total number of scheduled warps is:</p>
+              \[
+              W_{\text{total}} = 256\text{ blocks} \times 8\text{ warps/block} = 2,048\text{ warps}
+              \]
+              <p>Total threads scheduled = \(2,048 \times 32 = 65,536\) threads.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · Global Memory Coalescing Efficiency</span>
+            <p>A warp of 32 threads reads 64-bit doubles from global memory. Due to an unaligned offset, the 256-byte payload spans across 3 distinct 128-byte DRAM segments. What is the effective bus efficiency of this memory read?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The memory controller must transfer 3 complete 128-byte segments, resulting in:</p>
+              \[
+              \text{Bytes transferred} = 3 \times 128\text{ bytes} = 384\text{ bytes}
+              \]
+              <p>The useful payload is \(32 \times 8 = 256\) bytes. The bus efficiency is:</p>
+              \[
+              \eta = \frac{256}{384} = \frac{2}{3} \approx 66.67\%
+              \]
+              <p>Exactly 33.33% of transferred memory bandwidth is wasted due to misalignment.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · Warp Divergence Execution Penalty</span>
+            <p>Within a warp of 32 threads, 8 threads evaluate an American option early-exercise path taking 60 clock cycles, while 24 threads continue continuation valuation taking 40 clock cycles. What is the total warp execution latency and execution efficiency?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Because the warp diverges, the two branch paths execute serially:</p>
+              \[
+              T_{\text{warp}} = 60\text{ cycles} + 40\text{ cycles} = 100\text{ cycles}
+              \]
+              <p>Total useful work completed is \((8 \times 60) + (24 \times 40) = 480 + 960 = 1,440\) thread-cycles. Total capacity is \(32 \times 100 = 3,200\) thread-cycles. The warp execution efficiency is:</p>
+              \[
+              \text{Efficiency} = \frac{1,440}{3,200} = 45.0\%
+              \]
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · Shared Memory Bank Conflict Invariance</span>
+            <p>CUDA shared memory is organized into 32 independent memory banks of 4-byte width, where bank index is \(B = (\text{address} / 4) \pmod{32}\). Prove that if 32 threads in a warp access 64-bit double-precision floats with stride \(S = 1\) (contiguous array), exactly a 2-way bank conflict occurs across all banks.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>A 64-bit double occupies 8 bytes (two 4-byte words). Thread \(k \in \{0, \dots, 31\}\) accesses double \(k\) at byte address \(8 k\). The two 4-byte words comprising double \(k\) map to bank indices:</p>
+              \[
+              B_{k, 0} = \left(\frac{8k}{4}\right) \pmod{32} = 2k \pmod{32}
+              \]
+              \[
+              B_{k, 1} = \left(\frac{8k + 4}{4}\right) \pmod{32} = (2k + 1) \pmod{32}
+              \]
+              <p>For threads \(k \in \{0, \dots, 15\}\), the word bank addresses \(2k\) cover all even banks \(\{0, 2, 4, \dots, 30\}\) and \(2k+1\) cover all odd banks \(\{1, 3, \dots, 31\}\). For threads \(k \in \{16, \dots, 31\}\), let \(k = 16 + j\). Then \(2k \pmod{32} = (32 + 2j) \pmod{32} = 2j\), which maps to the identical even bank requested by thread \(j\). Similarly, \(2k + 1 \pmod{32} = 2j + 1\). Thus, every bank is accessed by exactly two distinct threads in the warp, proving a uniform 2-way bank conflict that serializes the read into two memory clock cycles.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Maximum Speedup Under PCIe Amdahl Constraint</span>
+            <p>Prove that for a GPU kernel achieving a theoretical speedup factor \(S_{\text{GPU}}\) over a CPU implementation, the end-to-end system speedup including bidirectional PCIe data transfer fraction \(f_{\text{transfer}} = T_{\text{transfer}} / T_{\text{CPU}}\) is strictly bounded by \(1 / f_{\text{transfer}}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>End-to-end execution time on the GPU system is the sum of PCIe transfer time and accelerated kernel time:</p>
+              \[
+              T_{\text{total}} = T_{\text{transfer}} + T_{\text{kernel}} = f_{\text{transfer}} T_{\text{CPU}} + \frac{T_{\text{CPU}}}{S_{\text{GPU}}}
+              \]
+              <p>The realized system speedup is:</p>
+              \[
+              S_{\text{system}} = \frac{T_{\text{CPU}}}{T_{\text{total}}} = \frac{T_{\text{CPU}}}{f_{\text{transfer}} T_{\text{CPU}} + \frac{T_{\text{CPU}}}{S_{\text{GPU}}}} = \frac{1}{f_{\text{transfer}} + \frac{1}{S_{\text{GPU}}}}
+              \]
+              <p>Taking the limit as GPU compute power becomes infinite (\(S_{\text{GPU}} \to \infty\)):</p>
+              \[
+              \lim_{S_{\text{GPU}} \to \infty} S_{\text{system}} = \frac{1}{f_{\text{transfer}} + 0} = \frac{1}{f_{\text{transfer}}} \quad \blacksquare
+              \]
+              <p>This proves that data transfer over the PCIe bus imposes an absolute ceiling on accelerator speedup.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Block Quantization and Under-Utilization</span>
+            <p>Prove that if a GPU Streaming Multiprocessor can host a maximum of \(R_{\text{max}}\) registers and each thread requires \(r\) registers, the maximum number of blocks of size \(B\) threads that can reside simultaneously is \(\lfloor R_{\text{max}} / (r \cdot B) \rfloor\), creating discrete step-function utilization.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In CUDA hardware, registers are allocated at block granularity. A thread block with \(B\) threads where each thread demands \(r\) registers requires \(R_{\text{block}} = r \cdot B\) registers. Because the SM cannot allocate fractional blocks, the number of resident blocks \(K\) must satisfy \(K \cdot R_{\text{block}} \le R_{\text{max}}\), yielding \(K = \lfloor R_{\text{max}} / (r \cdot B) \rfloor\). As \(r\) increases continuously, \(K\) decreases in discrete integer steps, causing sudden non-linear drops in SM warp occupancy.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Memory Coalescing Impact in Lab 1</span>
+            <p>In Lab 1, uncoalesced memory access resulted in a 93.8% bandwidth waste compared to 100% efficiency for coalesced reads. How must arrays be ordered in CUDA kernels to achieve full coalescing?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Arrays must be organized in Struct-of-Arrays (SoA) layout where adjacent threads in a warp access adjacent memory addresses: <code>threadIdx.x</code> must index the innermost array dimension (e.g., <code>prices[threadIdx.x]</code>). In contrast, indexing across rows or struct fields forces strided access that triggers 32 separate 128-byte transactions.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · Divergence Re-ordering Optimization</span>
+            <p>How can a quant risk developer restructure a divergent option portfolio pricing kernel to minimize warp divergence penalties?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Sort or bin the option contracts prior to kernel launch by moneyness (deep ITM, near-the-money, deep OTM). When threads within a warp evaluate options with identical exercise states, all 32 threads take the identical branch path, eliminating serialization and restoring 100% warp execution efficiency.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Pinned Host Memory Streaming</span>
+            <p>Why does allocating CPU memory with <code>cudaHostAlloc()</code> (page-locked/pinned memory) double transfer rates over standard <code>malloc()</code> memory?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Standard OS heap memory is pageable: the OS may migrate pages to disk. To transfer pageable memory over PCIe, the CUDA driver must first copy the data into an internal pinned staging buffer before initiating Direct Memory Access (DMA). Pinned memory guarantees physical address stability, enabling the GPU DMA engine to stream data directly from host RAM at full PCIe line rate.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · Tensor Core Matrix-Multiply-Accumulate in Financial Volatility Surfaces</span>
+            <p>How do NVIDIA Tensor Cores (mixed-precision FP16/BF16/FP8 matrix engines) accelerate local volatility surface calibration?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Tensor Cores execute hardware-accelerated matrix-multiply-accumulate operations (\(D = A \times B + C\)) in a single clock cycle for small \(16 \times 16\) sub-matrices. Surface calibration routines that formulate PDE finite-difference operators or neural network volatility approximations as dense matrix multiplications achieve 5x–10x throughput gains over standard FP64 CUDA cores.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Asynchronous Multi-Stream Pipelines in Real-Time Risk</span>
+            <p>How do multi-stream CUDA pipelines (<code>cudaStream_t</code>) achieve zero-latency risk reporting during active trading?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Modern GPUs possess independent copy engines and compute engines. By interleaving operations across multiple CUDA streams, Stream 1 executes kernel compute on Batch \(k\), while Stream 2 transfers Batch \(k+1\) from CPU to GPU, and Stream 3 transfers results for Batch \(k-1\) back to host memory, completely hiding PCIe transfer latency behind computation.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Shared Memory Bank Conflict Padding in Trinomial Trees</span>
+            <p>How does memory padding eliminate bank conflicts when storing 2D lattice grid values in shared memory?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In a 2D trinomial grid stored in shared memory with dimension 32, column accesses stride by 32 elements, mapping all 32 threads in a warp to the identical memory bank (a 32-way bank conflict). Adding a 1-element pad per row (allocating <code>__shared__ float grid[32][33]</code>) offsets each row by 1 bank, ensuring column reads distribute evenly across all 32 banks without conflicts.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>SIMT warp occupancy and memory latency hiding (Theorem 4.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §1 via pipeline scheduling balance</td></tr>
+              <tr><td>SIMT branch serialization latency lower bound (Proposition 4.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2 via mask execution decomposition</td></tr>
+              <tr><td>Many-core GPU architecture and thread-level parallelism</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="hennessy2017computer" data-locator="p. 378">Hennessy &amp; Patterson (2017), p. 378</span></td></tr>
+              <tr><td>Roofline model and PCIe host-device transfer constraints</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="hennessy2017computer" data-locator="p. 420">Hennessy &amp; Patterson (2017), p. 420</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS6" data-page="L04">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="numeric" data-answer="32" data-tolerance="0">
+            <p class="prompt">How many contiguous parallel threads constitute a single hardware execution warp in NVIDIA CUDA architectures?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>CUDA architectures execute threads in lockstep warps of exactly 32 threads.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What occurs microarchitecturally when threads within the same CUDA warp take different branches at an if/else condition?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q2"> <span>The warp serializes both branch paths sequentially, executing each path while masking inactive threads</span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span>The GPU splits the warp across two physical cores</span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span>The kernel terminates with a memory segmentation fault</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>In SIMT architectures, warp divergence forces serial execution of each branch path, masking unselected threads.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="128" data-tolerance="0">
+            <p class="prompt">What is the standard hardware memory transaction segment size (in bytes) serviced by the GPU memory controller for global memory reads?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>GPU memory controllers service memory requests in 128-byte (or 32-byte) aligned segments.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a coalesced global memory access drastically outperform an uncoalesced strided access?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q4"> <span>All 32 threads in the warp have their data serviced by a minimal number of 128-byte DRAM transactions rather than 32 separate transactions</span></label>
+              <label class="option"><input type="radio" name="L04q4"> <span>Coalescing compresses floating point numbers into 8-bit integers</span></label>
+              <label class="option"><input type="radio" name="L04q4"> <span>Coalescing allows threads to bypass the ALU pipeline</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Coalescing groups adjacent thread reads into a single aligned 128-byte memory transaction, achieving near 100% bus utilization.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What hardware resource on the GPU is fast, on-chip, and explicitly managed by the developer to share data across threads within a block?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q5"> <span>Shared Memory</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>PCIe Host Memory</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>Global DRAM</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Shared Memory is an on-chip scratchpad memory shared across threads of a block and managed directly by the developer.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1024" data-tolerance="0">
+            <p class="prompt">What is the maximum number of threads permitted in a single CUDA thread block on modern compute architectures?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>CUDA architectures limit thread block dimensions to a maximum of 1,024 threads per block.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What bottleneck often prevents a GPU from achieving its theoretical speedup on small quantitative batch calculations?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q7"> <span>Host-to-device PCIe data transfer latency and kernel launch overhead (5–15 microseconds)</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span>Lack of floating point rounding support</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span>Excessive L3 cache size</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>For small batch sizes, the 5–15 µs kernel launch latency and PCIe bus transfer time dominate total runtime.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does the GPU architecture hide high DRAM memory latency?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q8"> <span>By scheduling instructions from other ready warps while stalled warps wait for memory</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>By predicting future branch outcomes 1,000 cycles in advance</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>By increasing clock speed during memory stalls</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>GPUs hide memory latency through zero-overhead hardware warp switching among resident warps on each SM.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson incorporates GPU microarchitecture and Roofline modeling principles from Hennessy &amp; Patterson.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L03.html"><span class="dir">Previous</span>L03 · SIMD &amp; Vectorization</a>
+        <a class="next" href="L05.html"><span class="dir">Next</span>L05 · Reproducible Parallel RNG Streams</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS6 · Parallel &amp; High-Performance Computing · Doctoral Track in Quantitative Finance</footer>
+</body>
+</html>

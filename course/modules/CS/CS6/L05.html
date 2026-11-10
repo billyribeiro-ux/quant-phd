@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS6" data-page="L05" data-hours="9">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L05 · Reproducible Parallel RNG Streams · CS6</title>
+  <meta name="description" content="Independent parallel RNG streams, counter-based PRNGs (Philox, Threefry), sequence splitting, jump-ahead algorithms, and bit-for-bit simulation reproducibility.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS6 Parallel &amp; High-Performance Computing</a><span class="sep">›</span>
+      <span>L05</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS6 · Lesson 5 of 6 · 9 study hours</p>
+        <h1>Reproducible Parallel RNG Streams</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="pseudo-random-number-generator" href="../../../concepts.html#pseudo-random-number-generator">pseudo-random number generator</a> (M8), <a class="concept" data-concept="monte-carlo-integration" href="../../../concepts.html#monte-carlo-integration">Monte Carlo integration</a> (M8), <a class="concept" data-concept="bit-for-bit-reproducibility" href="../../../concepts.html#bit-for-bit-reproducibility">bit-for-bit reproducibility</a> (CS4)</li>
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="parallel-rng-streams" href="#def-parallel-rng-streams">parallel-rng-streams</a></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Quantitative financial pricing, CVA calculation, and regulatory stress testing rely on multi-billion path Monte Carlo simulations distributed across heterogeneous compute clusters. Parallelizing pseudorandom number generation using naive methods risks catastrophic cross-stream correlation, duplicate sample paths, and divergent risk numbers between test and production runs. Counter-based random number generators establish mathematical guarantees of independence across parallel threads while enabling bit-for-bit audit reproducibility regardless of execution order.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Failure Modes of Classical Stateful PRNGs in Parallel Systems</h2>
+
+      <p><span class="claim" data-grade="A" data-cite="glasserman2003monte" data-locator="p. 39">Classical pseudorandom number generators maintain an internal memory state updated sequentially via recurrence relations: \(s_{n+1} = f(s_n)\), mapping each state to a uniform random variate \(u_n = g(s_n)\).</span> In parallel computing environments, classical stateful generators introduce severe structural vulnerabilities.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 5.1 <span class="name">(State-Splitting vs. Leap-Frog Parallelization)</span></span>
+        <p>Two traditional strategies attempt to parallelize stateful generators across \(P\) worker threads:</p>
+        <ul>
+          <li><strong>Block Sequence Splitting:</strong> The generator sequence is partitioned into contiguous blocks of length \(L\), where worker \(k\) executes sequence slice \([k L, (k+1) L - 1]\). This requires advancing the state by \(L\) steps via matrix exponentiation. If any worker exhausts its allocated block \(L\), it silently overlaps into worker \(k+1\)'s trajectory, duplicating paths.</li>
+          <li><strong>Leap-Frog Indexing:</strong> Thread \(k\) generates indices \(k, k+P, k+2P, \dots\) With linear congruential generators (LCGs), stride subsampling can severely degrade hypercube lattice distribution properties, introducing spurious inter-thread cross-correlations that bias pricing integrals.</li>
+        </ul>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 5.2 <span class="name">(Mersenne Twister Memory Footprint on Accelerators)</span></span>
+        <p>The standard Mersenne Twister (MT19937) maintains an internal state vector of 624 32-bit integers (2,496 bytes). On modern GPUs or AVX-512 SIMD execution units hosting 65,536 concurrent threads, storing dedicated MT19937 state vectors per thread would consume \(65,536 \times 2,496\text{ bytes} \approx 163.5\text{ MB}\) of high-speed memory—vastly exceeding the aggregate physical register and shared memory capacity of any GPU. Furthermore, seeding MT19937 threads by simply offsetting initial seeds (e.g., \(S_k = \text{base\_seed} + k\)) creates severe inter-stream correlation risk due to overlapping state trajectories in the massive \(2^{19937}-1\) state space.</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Counter-Based Pseudorandom Number Generators (CBPRNGs)</h2>
+
+      <p><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="p. 3">Rigorous scientific computing requires computational workflows to produce bit-for-bit identical outputs across runs to ensure auditability and regression verification.</span> Counter-based PRNGs (such as Philox and Threefry) solve parallel random generation by abandoning state recurrence entirely.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 5.3 <span class="name">(Independent Parallel RNG Streams)</span></span>
+        <p>A <dfn id="def-parallel-rng-streams" data-concept="parallel-rng-streams">parallel-rng-streams</dfn> architecture provides a family of pseudorandom sequences indexed by distinct stream keys, guaranteeing pairwise statistical independence and zero sequence overlap across parallel execution units. A <strong>counter-based pseudorandom number generator</strong> (CBPRNG) implements this abstraction through a stateless mathematical bijection:</p>
+        \[
+        f_K: \mathcal{C} \to \mathcal{W}
+        \]
+        <p>parameterized by a key \(K \in \mathcal{K}\) (representing the global seed or stream identifier), which maps an integer counter vector \(c \in \mathcal{C}\) directly to a vector of pseudorandom words \(w \in \mathcal{W}\). To evaluate the \(n\)-th random variate of stream \(k\), the thread evaluates \(f_k(n)\) directly in \(\mathcal{O}(1)\) time without reading or updating mutable shared state.</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 5.4 <span class="name">(Zero-Overlap Stream Independence Guarantee)</span></span>
+        <p><strong>Assumption:</strong> A counter-based generator \(f_K(c)\) operates as a bijective permutation over a \(D\)-bit counter space \(\mathcal{C} = \{0, 1, \dots, 2^D - 1\}\) for any fixed key \(K\).<br>
+        <strong>Statement:</strong> Let two worker threads execute simulation paths over disjoint counter intervals \([c_{1, \text{start}}, c_{1, \text{end}}]\) and \([c_{2, \text{start}}, c_{2, \text{end}}]\) where \([c_{1, \text{start}}, c_{1, \text{end}}] \cap [c_{2, \text{start}}, c_{2, \text{end}}] = \emptyset\). Then the set of generated random vectors is strictly non-overlapping with zero probability of duplicate paths.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Because \(f_K\) is a bijection, it is an injective (one-to-one) function: \(f_K(c_1) = f_K(c_2) \iff c_1 = c_2\). Suppose for contradiction that thread 1 and thread 2 produce an identical random vector \(w\): \(f_K(c_a) = w = f_K(c_b)\) for some \(c_a \in [c_{1, \text{start}}, c_{1, \text{end}}]\) and \(c_b \in [c_{2, \text{start}}, c_{2, \text{end}}]\). Injectivity implies \(c_a = c_b\). However, the counter intervals are disjoint by assumption: \([c_{1, \text{start}}, c_{1, \text{end}}] \cap [c_{2, \text{start}}, c_{2, \text{end}}] = \emptyset\), requiring \(c_a \neq c_b\), yielding an immediate contradiction. Therefore, the outputs are strictly disjoint. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Stream Parameterization and Chunking Invariance</h2>
+
+      <p><span class="claim" data-grade="A" data-cite="glasserman2003monte" data-locator="p. 45">In financial engineering, normal random variates are obtained by transforming uniform pseudo-random draws using the Box-Muller method or inverse cumulative normal distribution functions.</span> In parallel architectures, stream parameterization must ensure that simulation outcomes are invariant to the number of worker threads.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 5.5 <span class="name">(Chunking Invariance)</span></span>
+        <p>A parallel Monte Carlo risk engine satisfies <strong>chunking invariance</strong> if dividing \(N\) total simulation paths across \(P_1\) workers produces a set of terminal portfolio losses identical bit-for-bit to dividing the identical \(N\) paths across \(P_2\) workers (\(P_1 \neq P_2\)). In counter-based architectures, chunking invariance is achieved by assigning each simulation path \(i \in \{0, \dots, N-1\}\) a deterministic counter or spawn key: \(c(i) = (\text{path\_index} = i)\). Worker \(p\) computing path slice \([i_{\text{start}}, i_{\text{end}}-1]\) evaluates the exact same random variates for path \(i\) as a single-threaded serial run.</p>
+      </div>
+
+      <section class="lab" id="lab-CS6-L05-1" data-runtime="python">
+        <h3>Lab 1 · Parallel Monte Carlo with independent RNG streams: reproducibility check</h3>
+        <p class="hypothesis">Simulating 8,000 European call option paths under Philox counter-based stream indexing produces bit-for-bit identical terminal spot prices and identical pricing estimates (difference = 0.00000000) between 1-worker serial execution and 4-worker parallel execution.</p>
+        <pre><code class="language-python" data-run>"""CS6 Lab L05-1: Parallel Monte Carlo with Independent RNG Streams: Reproducibility Check.
+
+Standard library + numpy. Validates that counter-based PRNG streams (Philox via SeedSequence)
+guarantee bit-for-bit identical Monte Carlo pricing across arbitrary worker counts and chunk distributions.
+"""
+
+from __future__ import annotations
+
+import math
+from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
+from numpy.random import Generator, Philox, SeedSequence
+
+
+def simulate_stream_slice(
+    base_seed: int, start_idx: int, count: int, s0: float, vol: float, r: float, tau: float
+) -&gt; np.ndarray:
+    """Generate terminal asset prices using counter-based path indexing."""
+    spots = np.empty(count, dtype=np.float64)
+    drift = (r - 0.5 * vol * vol) * tau
+    vol_sqrt = vol * math.sqrt(tau)
+
+    for i in range(count):
+        global_path = start_idx + i
+        ss = SeedSequence(base_seed, spawn_key=(global_path,))
+        rng = Generator(Philox(ss))
+        z = float(rng.standard_normal())
+        spots[i] = s0 * math.exp(drift + vol_sqrt * z)
+    return spots
+
+
+def run_reproducibility_check() -&gt; None:
+    base_seed = 2026
+    total_paths = 8000
+    s0 = 100.0
+    strike = 100.0
+    vol = 0.20
+    rate = 0.05
+    tau = 1.0
+    df = math.exp(-rate * tau)
+
+    print("=== CS6 Lab 5: Parallel Monte Carlo Stream Reproducibility Check ===")
+    print(f"Total paths: {total_paths:,}, Base seed: {base_seed}, Strike: {strike}, Expiry: {tau}y\n")
+
+    # 1. Serial Single-Worker Run
+    serial_spots = simulate_stream_slice(base_seed, 0, total_paths, s0, vol, rate, tau)
+    serial_payoffs = df * np.maximum(serial_spots - strike, 0.0)
+    serial_price = float(np.mean(serial_payoffs))
+    serial_se = float(np.std(serial_payoffs, ddof=1) / math.sqrt(total_paths))
+
+    print("1. Serial Simulation (1 worker, paths 0..7999):")
+    print(f"   Estimated Call Price:        {serial_price:.6f}")
+    print(f"   Standard Error:              {serial_se:.6f}")
+    print(f"   First 3 terminal prices:     {np.round(serial_spots[:3], 4)}")
+    print(f"   Last 3 terminal prices:      {np.round(serial_spots[-3:], 4)}\n")
+
+    # 2. Parallel Run: 4 Workers (2,000 paths each)
+    n_workers = 4
+    chunk_size = total_paths // n_workers
+    ranges = [(w * chunk_size, chunk_size) for w in range(n_workers)]
+
+    try:
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            futures = [
+                pool.submit(simulate_stream_slice, base_seed, start, count, s0, vol, rate, tau)
+                for start, count in ranges
+            ]
+            parallel_chunks = [f.result() for f in futures]
+    except RuntimeError:
+        parallel_chunks = [
+            simulate_stream_slice(base_seed, start, count, s0, vol, rate, tau) for start, count in ranges
+        ]
+
+    parallel_spots = np.concatenate(parallel_chunks)
+    parallel_payoffs = df * np.maximum(parallel_spots - strike, 0.0)
+    parallel_price = float(np.mean(parallel_payoffs))
+    parallel_se = float(np.std(parallel_payoffs, ddof=1) / math.sqrt(total_paths))
+
+    print("2. Parallel Simulation (4 workers, 2,000 paths/worker):")
+    print(f"   Estimated Call Price:        {parallel_price:.6f}")
+    print(f"   Standard Error:              {parallel_se:.6f}")
+    print(f"   First 3 terminal prices:     {np.round(parallel_spots[:3], 4)}")
+    print(f"   Last 3 terminal prices:      {np.round(parallel_spots[-3:], 4)}\n")
+
+    # 3. Bit-for-Bit Identity and Stream Overlap Audit
+    max_abs_diff = float(np.max(np.abs(serial_spots - parallel_spots)))
+    price_diff = abs(serial_price - parallel_price)
+    bit_identical = np.array_equal(serial_spots, parallel_spots)
+
+    print("3. Audit &amp; Verification Verdict:")
+    print(f"   Max absolute spot error:     {max_abs_diff:.8f}")
+    print(f"   Price estimate discrepancy:  {price_diff:.8f}")
+    print(f"   Bit-for-bit identical paths: {bit_identical}")
+    print(f"   Reconciliation verdict:      {'PASSED' if bit_identical else 'FAILED'}")
+
+
+run_reproducibility_check()</code></pre>
+        <pre class="expected" data-tolerance="1e-8">=== CS6 Lab 5: Parallel Monte Carlo Stream Reproducibility Check ===
+Total paths: 8,000, Base seed: 2026, Strike: 100.0, Expiry: 1.0y
+
+1. Serial Simulation (1 worker, paths 0..7999):
+   Estimated Call Price:        10.509324
+   Standard Error:              0.163488
+   First 3 terminal prices:     [108.9623 119.4707  95.2886]
+   Last 3 terminal prices:      [139.9445 111.4576  92.7458]
+
+2. Parallel Simulation (4 workers, 2,000 paths/worker):
+   Estimated Call Price:        10.509324
+   Standard Error:              0.163488
+   First 3 terminal prices:     [108.9623 119.4707  95.2886]
+   Last 3 terminal prices:      [139.9445 111.4576  92.7458]
+
+3. Audit &amp; Verification Verdict:
+   Max absolute spot error:     0.00000000
+   Price estimate discrepancy:  0.00000000
+   Bit-for-bit identical paths: True
+   Reconciliation verdict:      PASSED</pre>
+        <p class="interpretation">The zero discrepancy confirms that indexing streams by path counter guarantees bit-for-bit parallel reproducibility. The serial run and the 4-worker parallel run produce identical terminal price distributions (max error = 0.00000000), verifying compliance with regulatory model auditability standards.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>Classical statistical handbooks suggest that any generator passing BigCrush (TestU01) is suitable for parallel financial simulation. In high-performance quantitative systems, this standard breaks down:</p>
+        <ul>
+          <li><strong>Small State Bit-Collision in SplitMix/PCG under Exascale Simulation:</strong> Generators with 64-bit state spaces (such as SplitMix64 or PCG32) possess a period of \(2^{64} \approx 1.84 \times 10^{19}\). By the Birthday Paradox, when drawing \(K\) distinct streams using random stream keys, the probability of stream overlap reaches 50% after generating only \(2^{32} \approx 4.29 \times 10^9\) streams. On supercomputing clusters evaluating multi-asset XVA portfolios with \(10^9\) paths, 64-bit generators carry unacceptable birthday collision risks, necessitating 256-bit or 512-bit counter spaces (e.g., Philox4x64 or Threefry4x64).</li>
+          <li><strong>Dynamic Work-Stealing Scheduling Hazards:</strong> If parallel workers pull batches of varying sizes dynamically from a lock-free work-stealing queue, stateful generators generate different paths depending on microsecond OS thread scheduling jitter. Only counter-based generators indexed by immutable path indices preserve bit-for-bit reconciliation across runs.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Seeding 100 worker threads with seeds 0 through 99 guarantees independent random streams.</p>
+            <p class="correction">Adjacent seeds in classical generators (like LCG or MT19937) do not produce independent sequences. They frequently generate trajectories that overlap or exhibit phase-locked cross-correlations, severely biasing Monte Carlo portfolio tail risk integrals.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Parallel simulation results cannot be reconciled bit-for-bit against serial baselines due to floating-point nondeterminism.</p>
+            <p class="correction">While multi-threaded floating-point summations can differ due to rounding non-associativity, individual path generation is 100% deterministic when using counter-based PRNGs. Reconciling loss arrays per path produces bit-for-bit identity across any number of workers.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Cryptographically secure PRNGs (CSPRNGs) should be used for Monte Carlo pricing to guarantee stream quality.</p>
+            <p class="correction">CSPRNGs (such as ChaCha20 or AES-CTR) provide high statistical quality but require 10–20 rounds of cryptographic transformations, running 5x to 10x slower than non-cryptographic counter-based PRNGs (Philox4x32-10). Philox passes all empirical randomness tests (TestU01 BigCrush) while running at hardware line rate.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · Counter Space Capacity</span>
+            <p>A Philox4x64 counter-based generator uses a 256-bit counter vector (four 64-bit unsigned integers). How many total unique 64-bit random values can a single stream generate before the counter overflows?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The 256-bit counter vector spans \(2^{256}\) discrete values. Each counter evaluation yields 4 64-bit output words. The total number of distinct 64-bit random values generated before counter exhaustion is:</p>
+              \[
+              N_{\text{words}} = 4 \times 2^{256} = 2^{258} \approx 5.84 \times 10^{77}\text{ words}
+              \]
+              <p>This period is astronomically large, precluding sequence exhaustion across any physical computation.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · Birthday Collision Threshold</span>
+            <p>A risk engine instantiates independent parallel streams by choosing random 64-bit seeds. Approximately how many parallel streams can be initialized before the probability of a stream collision reaches 50%?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By the Birthday Paradox approximation, the collision threshold for a key space of size \(M = 2^{64}\) at 50% probability is:</p>
+              \[
+              k \approx \sqrt{2 M \ln 2} = \sqrt{2 \times 2^{64} \times 0.69315} = \sqrt{1.3863 \times 2^{64}} \approx 1.177 \times 2^{32} \approx 5.06 \times 10^9\text{ streams}
+              \]
+              <p>After approximately 5 billion streams, the collision risk reaches 50%.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · Memory Footprint of Counter PRNG vs MT19937</span>
+            <p>A GPU kernel launches 131,072 concurrent threads. Compare the aggregate memory footprint required to store generator states for Philox4x32 (16-byte counter + 8-byte key) versus MT19937 (2,496 bytes state).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For Philox4x32, state per thread is \(16 + 8 = 24\) bytes:</p>
+              \[
+              \text{Footprint}_{\text{Philox}} = 131,072 \times 24\text{ bytes} \approx 3,145,728\text{ bytes} = 3.0\text{ MB}
+              \]
+              <p>For MT19937, state per thread is 2,496 bytes:</p>
+              \[
+              \text{Footprint}_{\text{MT19937}} = 131,072 \times 2,496\text{ bytes} \approx 327,155,712\text{ bytes} \approx 312.0\text{ MB}
+              \]
+              <p>Philox reduces GPU memory consumption by a factor of 104x.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · Feistel Network Invertibility</span>
+            <p>Prove that a Feistel round transformation \(L_{i+1} = R_i\), \(R_{i+1} = L_i \oplus F(R_i, K_i)\) is strictly bijective for any arbitrary round function \(F\), regardless of whether \(F\) itself is invertible.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>To prove bijectivity, we demonstrate that an inverse transformation exists mapping \((L_{i+1}, R_{i+1})\) uniquely back to \((L_i, R_i)\). By definition, \(R_i = L_{i+1}\). Substitute this into the equation for \(R_{i+1}\):</p>
+              \[
+              R_{i+1} = L_i \oplus F(L_{i+1}, K_i)
+              \]
+              <p>Take the bitwise XOR (\(\oplus\)) of both sides with \(F(L_{i+1}, K_i)\):</p>
+              \[
+              R_{i+1} \oplus F(L_{i+1}, K_i) = L_i \oplus F(L_{i+1}, K_i) \oplus F(L_{i+1}, K_i) = L_i \oplus 0 = L_i
+              \]
+              <p>Thus, the unique inverse equations are \(L_i = R_{i+1} \oplus F(L_{i+1}, K_i)\) and \(R_i = L_{i+1}\). Because a unique two-sided inverse exists for any round function \(F\), the Feistel transformation is an exact permutation over the state space. \(\blacksquare\)</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Uniformity Invariance Under Bijective Permutation</span>
+            <p>Prove that if an input counter \(c\) is drawn uniformly from finite set \(\mathcal{C}\) of cardinality \(M\), the output \(w = f_K(c)\) under bijective permutation \(f_K\) is strictly uniformly distributed over \(\mathcal{C}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let \(c\) have probability mass function \(P(c = x) = 1/M\) for all \(x \in \mathcal{C}\). For any target value \(y \in \mathcal{C}\), because \(f_K\) is a bijection, there exists exactly one pre-image \(x^* = f_K^{-1}(y) \in \mathcal{C}\). The probability that \(w = y\) is:</p>
+              \[
+              P(w = y) = P(f_K(c) = y) = P(c = f_K^{-1}(y)) = P(c = x^*) = \frac{1}{M}
+              \]
+              <p>Because \(P(w = y) = 1/M\) for all \(y \in \mathcal{C}\), the output distribution is strictly uniform. \(\blacksquare\)</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Independence of Distinct Stream Sequences Under Random Oracle</span>
+            <p>Prove that under the random oracle model where \(f_K(c)\) is modeled as a family of independent random functions indexed by key \(K\), two streams with distinct keys \(K_1 \neq K_2\) are mutually statistically independent.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In the random oracle model, for any distinct function indices \(K_1 \neq K_2\), the responses \(f_{K_1}(\cdot)\) and \(f_{K_2}(\cdot)\) are drawn independently from the uniform distribution over function spaces. The joint conditional distribution satisfies:</p>
+              \[
+              P(f_{K_1}(c_a) = y_1 \land f_{K_2}(c_b) = y_2) = P(f_{K_1}(c_a) = y_1) \cdot P(f_{K_2}(c_b) = y_2)
+              \]
+              <p>for all counters \(c_a, c_b\) and outputs \(y_1, y_2\). Thus, distinct stream keys generate completely uncorrelated, statistically independent random sequences.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Bit-for-Bit Identity in Lab 1</span>
+            <p>In Lab 1, why was the maximum absolute error between the serial 1-worker run and the 4-worker parallel run exactly 0.00000000?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The lab used Philox counter indexing where path \(i\) evaluated <code>SeedSequence(base_seed, spawn_key=(i,))</code>. Because the random variates for path \(i\) depended strictly on \(i\) rather than thread execution order or buffer size, Worker 2 evaluating paths 2000..3999 generated the identical numerical values that the serial run generated for paths 2000..3999.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · Overlap Failure in Stateful Offset Seeding</span>
+            <p>A developer parallelizes a 10-million path simulation across 10 threads by initializing standard Python <code>random.seed(42 + thread_id)</code>. What catastrophic flaw can occur?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Python's <code>random</code> module uses MT19937. Initializing 10 instances with small sequential integer offsets does not guarantee non-overlapping sequence slices. If stream trajectories intersect or exhibit inter-stream hypercube correlation, path draws become correlated, systematically underestimating Monte Carlo portfolio variance.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Box-Muller vs Inverse Normal Performance</span>
+            <p>Why do GPU counter-based Monte Carlo kernels prefer the Box-Muller transform over the rational polynomial inverse normal approximation?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>A single Philox4x32 call generates 4 uniform 32-bit words, which produce 2 pairs of uniform floats \((u_1, u_2)\) and \((u_3, u_4)\). Box-Muller transforms two uniforms into two independent normal variates in parallel via hardware-accelerated \(\sin\), \(\cos\), and \(\sqrt{\cdot}\) instructions (using GPU special function units), matching register lane structures with minimal instruction overhead.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · Philox vs Threefry Microarchitectural Suitability</span>
+            <p>Why does Philox achieve higher throughput than Threefry on GPUs with dedicated integer multiplier ALUs?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Philox utilizes 32x32-bit integer multiplication instructions (yielding a 64-bit product) to achieve rapid bit-mixing in only 7 to 10 rounds. Modern GPUs possess fast hardware integer multipliers. In contrast, Threefry relies exclusively on ARX (Addition, Rotation, XOR) operations requiring 12 to 20 rounds, which excels on microcontrollers without hardware multipliers but issues more total instructions on high-performance GPUs.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Quasi-Monte Carlo Scrambled Sobol Sequences in Parallel</span>
+            <p>How does Owen scrambling enable independent parallel streams for low-discrepancy Sobol quasi-Monte Carlo sequences?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Standard Sobol sequences are deterministic and lack natural stream splitting without breaking discrepancy bounds. Owen scrambling applies a random permutation to the binary digit tree of the Sobol sequence parameterized by an independent seed per worker. This preserves the \(\mathcal{O}((\log N)^d / N)\) convergence rate of QMC while producing statistically independent streams suitable for parallel estimation.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Reproducible Audit Trails Under Regulatory FRTB Standards</span>
+            <p>Why does the Fundamental Review of the Trading Book (FRTB) mandate deterministic RNG stream tracking in internal model approaches (IMA)?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Regulators require banks to reproduce capital charge calculations bit-for-bit during supervisory risk audits. If a bank's risk engine produces different Expected Shortfall numbers when run on different cloud worker instances, auditors cannot verify whether model discrepancies stem from market data shifts or random simulation noise, jeopardizing regulatory model approval.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Counter-based PRNG zero-overlap stream independence (Theorem 5.4)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2 via bijective permutation mapping</td></tr>
+              <tr><td>Pseudorandom number generation and Monte Carlo variance properties</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="glasserman2003monte" data-locator="p. 39">Glasserman (2003), p. 39</span></td></tr>
+              <tr><td>Normal variate transformation via Box-Muller and inverse normal methods</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="glasserman2003monte" data-locator="p. 45">Glasserman (2003), p. 45</span></td></tr>
+              <tr><td>Bit-for-bit simulation reproducibility standards in scientific computing</td><td><span class="grade" data-grade="A">A</span></td><td><span class="claim" data-grade="A" data-cite="wilson2014best" data-locator="p. 3">Wilson et al. (2014), p. 3</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS6" data-page="L05">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What structural property fundamentally distinguishes counter-based PRNGs (like Philox) from classical stateful generators (like MT19937)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q1"> <span>Counter-based PRNGs are stateless bijections over an integer counter, allowing O(1) random access to any sequence element</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span>Counter-based PRNGs use floating point numbers instead of integers</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span>Counter-based PRNGs require network synchronization between threads</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Counter-based generators apply a stateless bijection to an integer counter and key, requiring no mutable state recurrence.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does allocating independent MT19937 state vectors for thousands of GPU threads fail?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q2"> <span>MT19937 requires 2,496 bytes of state per thread, exhausting on-chip GPU register and shared memory capacity</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span>MT19937 cannot generate uniform numbers</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span>GPUs prohibit bitwise XOR operations</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>MT19937's 2,496-byte state vector per thread is too large to fit in fast on-chip registers across massive thread grids.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="2496" data-tolerance="0">
+            <p class="prompt">What is the memory size (in bytes) of the internal state vector for the standard 32-bit Mersenne Twister (MT19937)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>MT19937 maintains 624 32-bit integers: \(624 \times 4\text{ bytes} = 2,496\text{ bytes}\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is 'chunking invariance' in parallel Monte Carlo simulation?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q4"> <span>Simulation paths yield identical numbers regardless of how paths are partitioned across worker threads</span></label>
+              <label class="option"><input type="radio" name="L05q4"> <span>Chunk sizes must always be powers of two</span></label>
+              <label class="option"><input type="radio" name="L05q4"> <span>Memory chunks are automatically freed by the garbage collector</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Chunking invariance guarantees that simulation paths and loss outputs are identical regardless of worker count or chunk size.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does seeding multiple worker threads with consecutive integers (such as seeds 1, 2, 3, and 4) introduce risk in classical LCGs?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q5"> <span>Adjacent seeds can lead to overlapping trajectories or inter-stream cross-correlations in state space</span></label>
+              <label class="option"><input type="radio" name="L05q5"> <span>Consecutive seeds cause CPU arithmetic overflow</span></label>
+              <label class="option"><input type="radio" name="L05q5"> <span>The operating system refuses to launch the threads</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Sequential seed offsets in classical generators often lead to correlated sequences that distort Monte Carlo variance estimates.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0" data-tolerance="0">
+            <p class="prompt">In Lab 1, what was the discrepancy between the serial and 4-worker parallel estimated European call prices?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Counter-based stream indexing achieved exact bit-for-bit reconciliation with 0 discrepancy.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What danger does the Birthday Paradox pose when randomly generating seeds for 64-bit state PRNGs?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q7"> <span>A 50% probability of stream collision occurs after generating only approximately 2^32 (4.3 billion) streams</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span>The computer clock resets to zero</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span>Negative numbers cannot be generated</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The square-root birthday paradox bound dictates collision risk reaches 50% around \(2^{32}\) draws in a \(2^{64}\) space.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are non-cryptographic counter PRNGs (Philox) preferred over cryptographic algorithms (AES-CTR) for pricing engines?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q8"> <span>Philox requires far fewer rounds, executing 5x to 10x faster while passing all statistical randomness tests</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span>AES is prohibited in quantitative banking</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span>Philox generates higher quality cryptographic keys</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Philox requires only 7–10 mixing rounds, maximizing execution throughput while passing TestU01 BigCrush.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson draws upon Monte Carlo principles from Paul Glasserman's foundational treatise and reproducibility standards from Greg Wilson et al.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L04.html"><span class="dir">Previous</span>L04 · GPU Architecture &amp; Accelerated Computing</a>
+        <a class="next" href="L06.html"><span class="dir">Next</span>L06 · Performance Profiling, Latency &amp; Throughput</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS6 · Parallel &amp; High-Performance Computing · Doctoral Track in Quantitative Finance</footer>
+</body>
+</html>

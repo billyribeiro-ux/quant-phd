@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS6" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · Parallel Risk Run · CS6</title>
+  <meta name="description" content="Parallelize a full-portfolio Monte Carlo Value-at-Risk (VaR) and Expected Shortfall engine with reproducible counter-based RNG streams, achieving measured speedup and reconciling exactly to serial runs.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS6 Parallel &amp; High-Performance Computing</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="36">
+      <header class="page-head">
+        <p class="eyebrow">CS6 · Capstone Project · 36 project hours</p>
+        <h1>Parallel Risk Run: Monte Carlo VaR Engine</h1>
+        <p class="lede">Construct an industrial-grade parallel Monte Carlo risk engine for multi-asset equity and options portfolios. Enforce bit-for-bit reproducibility across thread counts using counter-based pseudorandom streams, benchmark parallel speedup and efficiency, and prove exact reconciliation against serial execution baselines.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The Four-Rung Ladder</h2>
+        <ol class="ladder">
+          <li>
+            <strong class="rung-title">Rung 1 · Worked example</strong>
+            <p>Trace deterministic counter-based random number generation using SeedSequence and Philox bitgenerators, demonstrating that partitioned parallel execution slices produce bit-for-bit identical variates to contiguous serial execution.</p>
+          </li>
+          <li>
+            <strong class="rung-title">Rung 2 · Completion problem</strong>
+            <p>Implement worker chunk boundary indexing and empirical tail quantile calculation for Value-at-Risk and Expected Shortfall estimation under parallel execution.</p>
+          </li>
+          <li>
+            <strong class="rung-title">Rung 3 · Independent project</strong>
+            <p>Engineer the complete full-portfolio Monte Carlo risk engine, incorporating correlated multi-asset geometric Brownian motion, Black-Scholes option pricing, multi-threaded parallel execution, exact numerical reconciliation, and strong scaling analysis.</p>
+          </li>
+          <li>
+            <strong class="rung-title">Rung 4 · Stretch</strong>
+            <p>Extend the risk engine with SIMD-vectorized Black-Scholes pricing kernels, dynamic work-stealing job queues to mitigate thread imbalance, and importance sampling variance reduction.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="worked-example">
+        <h2 id="h-worked-example">Rung 1 · Worked Example: Counter-Based Stream Indexing</h2>
+        <p>In classical Monte Carlo engines, multi-threaded implementations frequently generate divergent results because worker threads advance a shared stateful generator without synchronization, or partition random numbers across thread-dependent buffer sizes. Counter-based pseudorandom number generators eliminate this defect by treating random variates as a stateless bijection over an integer counter and key.</p>
+
+        <section class="lab" id="lab-CS6-project-1" data-runtime="python">
+          <h3>Lab 1 · Counter-based stream indexing and chunking invariance</h3>
+          <p class="hypothesis">Generating random normal variates for six paths in a single serial pass produces bit-for-bit identical results to generating the paths across two distinct three-path chunks when indexed by path counter.</p>
+          <pre><code class="language-python" data-run>"""CS6 Project Rung 1: Worked example tracing counter-based RNG stream indexing.
+
+Standard library + numpy. SIMULATED data. Demonstrates that SeedSequence with
+spawn_key=(path_idx,) produces deterministic normal draws independent of chunk boundaries.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from numpy.random import Generator, Philox, SeedSequence
+
+
+def demonstrate_counter_streams() -&gt; None:
+    base_seed = 42
+    n_assets = 3
+    n_paths = 6
+
+    print("=== CS6 Project Rung 1: Counter-Based Stream Indexing ===")
+    print(f"Base seed: {base_seed}, Assets: {n_assets}, Total paths: {n_paths}")
+
+    # Generate sequentially
+    seq_draws = np.empty((n_paths, n_assets), dtype=np.float64)
+    for i in range(n_paths):
+        ss = SeedSequence(base_seed, spawn_key=(i,))
+        rng = Generator(Philox(ss))
+        seq_draws[i] = rng.standard_normal(n_assets)
+
+    # Generate in 2 chunks of 3 paths
+    chunk1_draws = np.empty((3, n_assets), dtype=np.float64)
+    for k in range(3):
+        idx = 0 + k
+        ss = SeedSequence(base_seed, spawn_key=(idx,))
+        rng = Generator(Philox(ss))
+        chunk1_draws[k] = rng.standard_normal(n_assets)
+
+    chunk2_draws = np.empty((3, n_assets), dtype=np.float64)
+    for k in range(3):
+        idx = 3 + k
+        ss = SeedSequence(base_seed, spawn_key=(idx,))
+        rng = Generator(Philox(ss))
+        chunk2_draws[k] = rng.standard_normal(n_assets)
+
+    parallel_draws = np.vstack([chunk1_draws, chunk2_draws])
+
+    max_diff = float(np.max(np.abs(seq_draws - parallel_draws)))
+    print(f"Serial paths 0..2:\n{np.round(seq_draws[:3], 4)}")
+    print(f"Chunk 1 paths 0..2:\n{np.round(chunk1_draws, 4)}")
+    print(f"Serial paths 3..5:\n{np.round(seq_draws[3:], 4)}")
+    print(f"Chunk 2 paths 3..5:\n{np.round(chunk2_draws, 4)}")
+    print(f"Max absolute discrepancy: {max_diff:.8f}")
+    print(f"Bit-for-bit reconciliation: {np.array_equal(seq_draws, parallel_draws)}")
+
+
+demonstrate_counter_streams()</code></pre>
+          <pre class="expected" data-tolerance="1e-7">=== CS6 Project Rung 1: Counter-Based Stream Indexing ===
+Base seed: 42, Assets: 3, Total paths: 6
+Serial paths 0..2:
+[[-1.3351  1.1154 -1.317 ]
+ [ 0.4331  1.0159 -0.0944]
+ [-0.9279  1.9196  0.047 ]]
+Chunk 1 paths 0..2:
+[[-1.3351  1.1154 -1.317 ]
+ [ 0.4331  1.0159 -0.0944]
+ [-0.9279  1.9196  0.047 ]]
+Serial paths 3..5:
+[[-5.2450e-01  6.0000e-04  2.3059e+00]
+ [-9.5300e-02 -2.9560e-01 -6.7430e-01]
+ [ 1.9850e-01  1.1350e-01 -8.8860e-01]]
+Chunk 2 paths 3..5:
+[[-5.2450e-01  6.0000e-04  2.3059e+00]
+ [-9.5300e-02 -2.9560e-01 -6.7430e-01]
+ [ 1.9850e-01  1.1350e-01 -8.8860e-01]]
+Max absolute discrepancy: 0.00000000
+Bit-for-bit reconciliation: True</pre>
+          <p class="interpretation">The zero discrepancy confirms chunking invariance: any simulation path \(i\) depends solely on the fixed global seed and path index \(i\), ensuring parallel execution yields identical numerical values regardless of worker count.</p>
+        </section>
+      </section>
+
+      <section id="completion">
+        <h2 id="h-completion">Rung 2 · Completion Problem: Worker Chunking and VaR Tail Quantiles</h2>
+        <p>Complete the parallel execution chunk partitioner and empirical tail quantile calculation. Fill in the two blanks (<code>___</code>) to compute worker slice boundaries and extract empirical Value-at-Risk and Expected Shortfall.</p>
+
+        <section class="lab completion" id="lab-CS6-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Worker chunking and VaR calculation</h3>
+          <p class="hypothesis">Filling in the chunk partitioning bounds and quantile indexing computes 95% VaR and Expected Shortfall across two parallel worker chunks for 1,000 SIMULATED paths.</p>
+          <pre><code class="language-python" data-run>"""CS6 Project Rung 2: Completion problem for parallel chunk partition and VaR estimation.
+
+Standard library + numpy. SIMULATED data. Fills in worker path chunk partitioning
+and empirical VaR quantile computation.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+from numpy.random import Generator, Philox, SeedSequence
+
+
+def simulate_chunk(base_seed: int, start: int, count: int, s0: float, sigma: float, dt: float) -> np.ndarray:
+    spots = np.empty(count, dtype=np.float64)
+    drift = -0.5 * sigma * sigma * dt
+    vol_sqrt = sigma * math.sqrt(dt)
+    for i in range(count):
+        idx = start + i
+        ss = SeedSequence(base_seed, spawn_key=(idx,))
+        rng = Generator(Philox(ss))
+        z = float(rng.standard_normal())
+        spots[i] = s0 * math.exp(drift + vol_sqrt * z)
+    return spots
+
+
+def complete_parallel_risk(n_paths: int = 1000, n_workers: int = 2) -> tuple[float, float, float]:
+    base_seed = 101
+    s0 = 100.0
+    sigma = 0.20
+    dt = 1.0 / 252.0
+    alpha = 0.95
+
+    chunk_size = n_paths // n_workers
+    chunks: list[np.ndarray] = []
+
+    for w in range(n_workers):
+        # Completed line 1: chunk start and end bounds
+        start = w * chunk_size
+        end = ___
+        count = end - start
+        chunks.append(simulate_chunk(base_seed, start, count, s0, sigma, dt))
+
+    terminal_spots = np.concatenate(chunks)
+    losses = s0 - terminal_spots
+
+    # Completed line 2: empirical VaR quantile index calculation
+    sorted_losses = np.sort(losses)
+    idx = ___
+    var_95 = float(sorted_losses[idx])
+    es_95 = float(np.mean(sorted_losses[idx:]))
+    max_loss = float(sorted_losses[-1])
+
+    return var_95, es_95, max_loss
+
+
+v95, es95, m_loss = complete_parallel_risk(1000, 2)
+print("=== CS6 Project Rung 2: Completion Problem Output ===")
+print("Paths: 1000, Workers: 2, Alpha: 0.95")
+print(f"Estimated 95% VaR: {v95:.4f}")
+print(f"Estimated 95% ES:  {es95:.4f}")
+print(f"Maximum loss:      {m_loss:.4f}")
+</code></pre>
+          <pre class="expected" data-tolerance="1e-4">=== CS6 Project Rung 2: Completion Problem Output ===
+Paths: 1000, Workers: 2, Alpha: 0.95
+Estimated 95% VaR: 2.1237
+Estimated 95% ES:  2.6494
+Maximum loss:      3.8949</pre>
+          <p class="interpretation">The completed routine successfully aggregates terminal spot slices across workers, sorting the simulated portfolio losses to calculate 95% VaR and tail-mean Expected Shortfall.</p>
+        </section>
+      </section>
+
+      <section id="independent">
+        <h2 id="h-independent">Rung 3 · Independent Project: Full Portfolio Risk Run</h2>
+        <p>You are a quantitative risk engineer on a trading desk managing a cross-asset equity portfolio containing cash equities and European options. Regulatory mandates (Basel III / FRTB) require overnight Value-at-Risk and Expected Shortfall calculations across correlated multi-asset underlyings within a strict 15-minute batch window. You must construct a high-performance parallel simulation engine that meets this latency budget while guaranteeing bit-for-bit audit reproducibility.</p>
+
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Risk desks must compute 95% and 99% overnight Monte Carlo Value-at-Risk and Expected Shortfall across multi-asset portfolios containing physical equity shares and European options. Single-threaded simulations breach batch reporting windows, necessitating parallel execution that scales across CPU cores while guaranteeing bit-for-bit audit reconciliation against serial baselines.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A deterministic risk configuration dictionary generated by <code>instance.py</code> specifying asset count \(M\), initial spot prices \(S_0\), equity position weights \(w\), annual asset volatilities \(\sigma\), risk-free drift \(r\), positive-definite correlation matrix \(\Sigma\), risk horizon \(\tau\), option specifications (underlying index, strike, expiry, call/put flag, quantity), Monte Carlo path count \(N\), confidence level \(\alpha\), and base random seed.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>A fully typed Python module implementing <code>cholesky_factor</code>, <code>black_scholes_price</code>, <code>simulate_paths_chunk</code>, <code>value_portfolio</code>, <code>compute_var_es</code>, <code>run_serial_simulation</code>, <code>run_parallel_simulation</code>, <code>reconcile_runs</code>, and <code>benchmark_scaling</code>.</dd>
+
+          <dt>Constraints</dt>
+          <dd>All random variates must be generated via counter-based streams using NumPy's Philox bitgenerator with <code>SeedSequence(base_seed, spawn_key=(global_path_idx,))</code>. Parallel execution must achieve bit-for-bit identical loss arrays and risk metrics to serial execution within \(10^{-7}\) tolerance. The full test suite must pass across 50 independent seeds under 60 seconds.</dd>
+
+          <dt>Grading</dt>
+          <dd>Graded by autograder against deterministic property-based and numerical reconciliation test suites across 50 consecutive pseudorandom seeds.</dd>
+        </dl>
+
+        <section class="grader-panel" id="grader" data-unit="CS6" data-grader="grader/" data-suite="test_project.py" data-solution="reference.py" data-starter="starter.py" data-support="instance.py" data-packages="numpy"></section>
+
+        <section class="lab" id="lab-CS6-project-3" data-runtime="python">
+          <h3>Lab 3 · Independent project reference execution</h3>
+          <p class="hypothesis">Executing the full reference risk engine on 2,000 paths of a multi-asset portfolio with options validates bit-for-bit reconciliation between serial and parallel runs with zero error.</p>
+          <pre><code class="language-python" data-run>"""CS6 Project Rung 3: Independent verification driver and performance baseline.
+
+Standard library + numpy. SIMULATED data. Runs reference portfolio VaR engine,
+validating bit-for-bit reconciliation between serial and parallel runs.
+"""
+
+from __future__ import annotations
+
+import math
+from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
+from numpy.random import Generator, Philox, SeedSequence
+
+
+def simulate_chunk(base_seed: int, start: int, count: int, s0: np.ndarray, vols: np.ndarray, dt: float) -&gt; np.ndarray:
+    n_assets = len(s0)
+    spots = np.empty((count, n_assets), dtype=np.float64)
+    drift = -0.5 * vols * vols * dt
+    vol_sqrt = vols * math.sqrt(dt)
+
+    for i in range(count):
+        idx = start + i
+        ss = SeedSequence(base_seed, spawn_key=(idx,))
+        rng = Generator(Philox(ss))
+        z = rng.standard_normal(n_assets)
+        spots[i] = s0 * np.exp(drift + vol_sqrt * z)
+    return spots
+
+
+def run_verification() -&gt; None:
+    base_seed = 42
+    n_paths = 2000
+    n_workers = 4
+    alpha = 0.99
+
+    s0 = np.array([100.0, 120.0, 80.0])
+    weights = np.array([10.0, 15.0, 25.0])
+    vols = np.array([0.20, 0.25, 0.18])
+    dt = 10.0 / 252.0
+
+    print("=== CS6 Project Rung 3: Independent Verification Baseline ===")
+    print(f"Assets: {len(s0)}, Paths: {n_paths}, Workers: {n_workers}")
+
+    # Serial simulation
+    v0 = float(np.sum(s0 * weights))
+    serial_spots = simulate_chunk(base_seed, 0, n_paths, s0, vols, dt)
+    serial_losses = v0 - (serial_spots @ weights)
+
+    sorted_s = np.sort(serial_losses)
+    s_idx = math.ceil(alpha * len(sorted_s)) - 1
+    serial_var = float(sorted_s[s_idx])
+    serial_es = float(np.mean(sorted_s[s_idx:]))
+
+    # Parallel simulation across 4 chunks
+    chunk_size = n_paths // n_workers
+    ranges = []
+    for w in range(n_workers):
+        start = w * chunk_size
+        end = (w + 1) * chunk_size if w &lt; n_workers - 1 else n_paths
+        ranges.append((start, end - start))
+
+    try:
+        with ThreadPoolExecutor(max_workers=n_workers) as pool:
+            futures = [pool.submit(simulate_chunk, base_seed, start, count, s0, vols, dt) for start, count in ranges]
+            chunks = [f.result() for f in futures]
+    except RuntimeError:
+        chunks = [simulate_chunk(base_seed, start, count, s0, vols, dt) for start, count in ranges]
+
+    parallel_spots = np.vstack(chunks)
+    parallel_losses = v0 - (parallel_spots @ weights)
+
+    sorted_p = np.sort(parallel_losses)
+    p_idx = math.ceil(alpha * len(sorted_p)) - 1
+    parallel_var = float(sorted_p[p_idx])
+    parallel_es = float(np.mean(sorted_p[p_idx:]))
+
+    max_loss_diff = float(np.max(np.abs(serial_losses - parallel_losses)))
+    reconciled = max_loss_diff &lt;= 1e-7 and abs(serial_var - parallel_var) &lt;= 1e-7
+
+    print(f"Initial portfolio value V0:  {v0:.2f}")
+    print(f"Serial VaR ({alpha * 100:.0f}%):          {serial_var:.4f}")
+    print(f"Parallel VaR ({alpha * 100:.0f}%):        {parallel_var:.4f}")
+    print(f"Serial Expected Shortfall:   {serial_es:.4f}")
+    print(f"Parallel Expected Shortfall: {parallel_es:.4f}")
+    print(f"Max absolute loss error:     {max_loss_diff:.8f}")
+    print(f"Reconciliation status:       {'RECONCILED' if reconciled else 'FAILED'}")
+
+
+run_verification()</code></pre>
+          <pre class="expected" data-tolerance="1e-7">=== CS6 Project Rung 3: Independent Verification Baseline ===
+Assets: 3, Paths: 2000, Workers: 4
+Initial portfolio value V0:  4800.00
+Serial VaR (99%):          270.4372
+Parallel VaR (99%):        270.4372
+Serial Expected Shortfall:   314.0890
+Parallel Expected Shortfall: 314.0890
+Max absolute loss error:     0.00000000
+Reconciliation status:       RECONCILED</pre>
+          <p class="interpretation">The zero maximum loss error validates that parallel execution produces identical numerical distributions, satisfying regulatory audit requirements.</p>
+        </section>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time Budget</h2>
+        <table class="hours-breakdown">
+          <thead>
+            <tr><th>Component</th><th>Hours</th><th>Rationale</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Architecture design and Cholesky matrix factorizer</td><td>6.0</td><td>Derive and validate numerical positive-definiteness and Cholesky decomposition.</td></tr>
+            <tr><td>Counter-based RNG stream generator and path simulator</td><td>8.0</td><td>Implement stateless SeedSequence Philox stream indexing for chunking invariance.</td></tr>
+            <tr><td>Multi-asset portfolio valuation and Black-Scholes pricing</td><td>6.0</td><td>Implement analytical option pricing and portfolio mark-to-market aggregation.</td></tr>
+            <tr><td>Multi-worker parallel executor and loss chunk aggregator</td><td>8.0</td><td>Design thread pool worker chunking, synchronization, and loss collation.</td></tr>
+            <tr><td>VaR/ES estimator, reconciliation test suite, and scaling benchmark</td><td>8.0</td><td>Implement empirical tail quantile estimator, verify reconciliation, and measure speedup.</td></tr>
+            <tr><td><strong>Total</strong></td><td><strong>36.0</strong></td><td>Meets 36 declared capstone project study hours.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch Extensions</h2>
+        <ul>
+          <li><strong>SIMD Vectorized Payoff Kernels:</strong> Replace scalar option pricing loops with AVX2/AVX-512 vectorized Black-Scholes evaluations using Struct-of-Arrays (SoA) layout.</li>
+          <li><strong>Dynamic Work-Stealing:</strong> Replace static chunk partitioning with a lock-free work-stealing deque to eliminate worker thread starvation caused by operating system jitter.</li>
+          <li><strong>Importance Sampling Variance Reduction:</strong> Implement optimal drift shifts to concentrate simulated paths in the extreme tail, reducing the standard error of Expected Shortfall by an order of magnitude.</li>
+        </ul>
+      </section>
+
+      <section id="reading-list">
+        <h2 id="h-reading-list">Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="amdahl1967validity">Amdahl (1967), <em>Validity of the Single Processor Approach to Achieving Large Scale Computing Capabilities</em>. Fundamental derivation of parallel speedup limits.</li>
+          <li data-cite="hennessy2017computer">Hennessy &amp; Patterson (2017), <em>Computer Architecture: A Quantitative Approach</em>, 6th ed. Multiprocessor memory hierarchies, cache coherence, and parallel scaling models.</li>
+          <li data-cite="glasserman2003monte">Glasserman (2003), <em>Monte Carlo Methods in Financial Engineering</em>. Correlated multi-asset simulation, Cholesky factorization, and Value-at-Risk estimation.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">CS6 · Parallel &amp; High-Performance Computing · Doctoral Track in Quantitative Finance</footer>
+</body>
+</html>
