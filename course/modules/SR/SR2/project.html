@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="SR2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · Leverage-Cycle Model · SR2 Leverage Cycles</title>
+  <meta name="description" content="Capstone project for SR2: solve a two-period Geanakoplos collateral-equilibrium model, quantify how margin shocks drive price crashes, and analyze macroprudential policies. Graded by autograder and rubric. 12 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">SR2 Leverage Cycles</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="12">
+      <header class="page-head">
+        <p class="eyebrow">Module SR2 · Project · 12 study hours</p>
+        <h1>Leverage-Cycle Model: Collateral Equilibrium &amp; Margin Shocks</h1>
+        <p class="lede">Solve a two-period Geanakoplos collateral-equilibrium model with heterogeneous investor beliefs, endogenous borrowing limits, and asset market clearing. You will build a numerical solver that computes the equilibrium price, marginal buyer cutoff, and leverage ratio, simulate the non-linear price crashes triggered by exogenous margin tightening, analyze multi-period leverage cycles with optimist equity wipeout, and author an executive quantitative research memo evaluating macroprudential margin interventions.</p>
+        <ul class="meta-row">
+          <li><strong>Deliverables:</strong> Python solver (<code class="file">solver.py</code>) and executive research memo (<code class="file">writeup.md</code>)</li>
+          <li><strong>Grading:</strong> Graded by both autograder (test suite on solver) and rubric (5-criterion qualitative assessment of research memo)</li>
+          <li><strong>Data:</strong> Model parameters and simulations are SIMULATED.</li>
+        </ul>
+      </header>
+
+      <section id="ladder">
+        <h2>Project Ladder</h2>
+        <p>This project follows the four-rung instructional ladder to develop complete modeling and empirical analysis competence:</p>
+
+        <ol class="ladder">
+          <li id="rung-1">
+            <span class="rung-title">1 · Worked example</span>
+            <p>Review the analytical solution and numerical execution of a two-state Geanakoplos collateral equilibrium model on a representative SIMULATED instance. Observe how the marginal buyer indifference condition and market-clearing conditions are verified against theoretical tolerances.</p>
+
+            <section class="lab" id="lab-SR2-project-1" data-runtime="python">
+              <h3>Lab 1 · Worked Example Solver and Residual Check</h3>
+              <p class="hypothesis">Verifying analytical solution, marginal buyer return-on-equity condition, and market clearing on a representative SIMULATED instance with V_U = 1.40, V_D = 0.40, and R_f = 1.00.</p>
+              <pre><code class="language-python" data-run>"""Lab SR2-project-1: Project Rung 1 Worked Example.
+
+Representative SIMULATED instance of the Geanakoplos Collateral Equilibrium Solver.
+Solves two-state equilibrium, verifies indifference and market-clearing invariants,
+and simulates exogenous margin shocks and three-period leverage cycle dynamics.
+"""
+
+
+def solve_geanakoplos_equilibrium(
+    v_u: float,
+    v_d: float,
+    risk_free_rate: float = 1.0,
+    max_loan_ratio: float = 1.0,
+) -&gt; dict[str, float]:
+    """Calculate the collateral equilibrium for a two-state asset."""
+    if v_d &lt;= 0.0:
+        raise ValueError(f"v_d must be strictly positive, got {v_d}")
+    if v_u &lt;= v_d:
+        raise ValueError(f"v_u must be strictly greater than v_d, got v_u={v_u}, v_d={v_d}")
+    if risk_free_rate &lt; 1.0:
+        raise ValueError(f"risk_free_rate must be &gt;= 1.0, got {risk_free_rate}")
+    if not (0.0 &lt; max_loan_ratio &lt;= 1.0):
+        raise ValueError(f"max_loan_ratio must lie in (0.0, 1.0], got {max_loan_ratio}")
+
+    loan = (max_loan_ratio * v_d) / risk_free_rate
+    num = risk_free_rate - (1.0 - max_loan_ratio) * v_d
+    den = risk_free_rate + (v_u - v_d)
+    h_star = min(1.0, max(0.0, num / den))
+
+    price = loan + (1.0 - h_star)
+    margin = price - loan
+    leverage = price / margin if margin &gt; 0.0 else 1.0
+    haircut = margin / price if price &gt; 0.0 else 0.0
+
+    return {
+        "price": price,
+        "marginal_buyer": h_star,
+        "loan": loan,
+        "margin": margin,
+        "leverage": leverage,
+        "haircut": haircut,
+    }
+
+
+def simulate_margin_shock(
+    v_u: float,
+    v_d: float,
+    initial_loan_ratio: float,
+    shocked_loan_ratio: float,
+    risk_free_rate: float = 1.0,
+) -&gt; dict[str, float]:
+    """Simulate asset price and leverage response to an exogenous margin shock."""
+    if shocked_loan_ratio &gt; initial_loan_ratio:
+        raise ValueError("shocked_loan_ratio must be &lt;= initial_loan_ratio")
+
+    eq0 = solve_geanakoplos_equilibrium(v_u, v_d, risk_free_rate, initial_loan_ratio)
+    eq1 = solve_geanakoplos_equilibrium(v_u, v_d, risk_free_rate, shocked_loan_ratio)
+
+    p0 = eq0["price"]
+    p1 = eq1["price"]
+    price_drop = p0 - p1
+    price_drop_pct = (price_drop / p0) * 100.0 if p0 &gt; 0.0 else 0.0
+    buyer_shift = eq1["marginal_buyer"] - eq0["marginal_buyer"]
+
+    return {
+        "initial_price": p0,
+        "shocked_price": p1,
+        "price_drop": price_drop,
+        "price_drop_pct": price_drop_pct,
+        "initial_leverage": eq0["leverage"],
+        "shocked_leverage": eq1["leverage"],
+        "initial_haircut": eq0["haircut"],
+        "shocked_haircut": eq1["haircut"],
+        "marginal_buyer_shift": buyer_shift,
+    }
+
+
+def main() -&gt; None:
+    # Representative parameters (SIMULATED)
+    v_u = 1.40
+    v_d = 0.40
+    rf = 1.00
+    theta_0 = 1.00
+    theta_1 = 0.50
+
+    print("=== PROJECT RUNG 1: WORKED EXAMPLE (SIMULATED) ===")
+    print(f"Inputs: V_U = ${v_u:.2f}, V_D = ${v_d:.2f}, R_f = {rf:.2f}")
+
+    # Step 1: Baseline collateral equilibrium
+    eq = solve_geanakoplos_equilibrium(v_u, v_d, rf, theta_0)
+    p = eq["price"]
+    h_star = eq["marginal_buyer"]
+    loan = eq["loan"]
+    margin = eq["margin"]
+    lev = eq["leverage"]
+
+    print(f"Step 1: Baseline Price P = ${p:.6f} | Marginal Buyer h* = {h_star:.6f}")
+    print(f"        Safe Loan L = ${loan:.6f} | Margin m = ${margin:.6f} | Leverage = {lev:.4f}x")
+
+    # Step 2: Invariant verification
+    roe_marginal = ((1.0 - theta_0) * v_d + h_star * (v_u - v_d)) / margin
+    residual_roe = abs(roe_marginal - rf)
+    asset_demand = (1.0 - h_star) / margin
+    residual_clearing = abs(asset_demand - 1.0)
+    print(f"Step 2: Marginal Buyer ROE Residual: {residual_roe:.2e} &lt;= 1e-7")
+    print(f"        Market Clearing Residual:    {residual_clearing:.2e} &lt;= 1e-7")
+
+    # Step 3: Margin shock simulation
+    shock = simulate_margin_shock(v_u, v_d, theta_0, theta_1, rf)
+    print("\nStep 3: Margin Shock Simulation (Loan ratio 1.00 ==&gt; 0.50)")
+    print(f"        Initial Price: ${shock['initial_price']:.4f} | Shocked Price: ${shock['shocked_price']:.4f}")
+    print(f"        Price Crash: -${shock['price_drop']:.4f} (-{shock['price_drop_pct']:.2f}%)")
+    print(f"        Haircut Widening: {shock['initial_haircut'] * 100:.2f}% ==&gt; {shock['shocked_haircut'] * 100:.2f}%")
+    print(f"        Leverage Collapse: {shock['initial_leverage']:.2f}x ==&gt; {shock['shocked_leverage']:.2f}x")
+
+
+main()</code></pre>
+              <pre class="expected" data-tolerance="1e-4">=== PROJECT RUNG 1: WORKED EXAMPLE (SIMULATED) ===
+Inputs: V_U = $1.40, V_D = $0.40, R_f = 1.00
+Step 1: Baseline Price P = $0.900000 | Marginal Buyer h* = 0.500000
+        Safe Loan L = $0.400000 | Margin m = $0.500000 | Leverage = 1.8000x
+Step 2: Marginal Buyer ROE Residual: 1.11e-16 &lt;= 1e-7
+        Market Clearing Residual:    0.00e+00 &lt;= 1e-7
+
+Step 3: Margin Shock Simulation (Loan ratio 1.00 ==&gt; 0.50)
+        Initial Price: $0.9000 | Shocked Price: $0.8000
+        Price Crash: -$0.1000 (-11.11%)
+        Haircut Widening: 55.56% ==&gt; 75.00%
+        Leverage Collapse: 1.80x ==&gt; 1.33x</pre>
+              <p class="interpretation">The worked example confirms that the baseline model yields price P = $0.900000, marginal buyer h* = 0.500000, and leverage 1.8000x. When loan ratio drops to 0.50, price crashes by 11.11% to $0.800000 and leverage collapses to 1.33x.</p>
+            </section>
+          </li>
+
+          <li id="rung-2">
+            <span class="rung-title">2 · Completion problem</span>
+            <p>Complete the core equilibrium pricing and margin-shock routines by filling in the missing analytical expressions for the marginal buyer cutoff and post-shock price drop.</p>
+
+            <section class="lab completion" id="lab-SR2-project-2" data-runtime="python">
+              <h3>Lab 2 · Completion Problem: Core Equilibrium Solver</h3>
+              <p class="hypothesis">Completing the analytical equilibrium formulas to solve for price P, marginal buyer h*, and price drop under margin tightening for V_U = 1.50, V_D = 0.50, R_f = 1.02, theta_0 = 1.00, and theta_1 = 0.40.</p>
+              <pre><code class="language-python" data-run>"""Lab SR2-project-2: Project Rung 2 Completion Problem Solution.
+
+SIMULATED instance of the Geanakoplos Collateral Equilibrium Solver.
+Implements the core analytical equilibrium solver and margin-shock simulation.
+"""
+
+
+def solve_geanakoplos_equilibrium(
+    v_u: float,
+    v_d: float,
+    risk_free_rate: float = 1.0,
+    max_loan_ratio: float = 1.0,
+) -> dict[str, float]:
+    """Calculate the collateral equilibrium for a two-state asset."""
+    if v_d &lt;= 0.0:
+        raise ValueError(f"v_d must be strictly positive, got {v_d}")
+    if v_u &lt;= v_d:
+        raise ValueError(f"v_u must be strictly greater than v_d, got v_u={v_u}, v_d={v_d}")
+    if risk_free_rate &lt; 1.0:
+        raise ValueError(f"risk_free_rate must be &gt;= 1.0, got {risk_free_rate}")
+    if not (0.0 &lt; max_loan_ratio &lt;= 1.0):
+        raise ValueError(f"max_loan_ratio must lie in (0.0, 1.0], got {max_loan_ratio}")
+
+    loan = ___
+    num = ___
+    den = ___
+    h_star = min(1.0, max(0.0, num / den))
+
+    price = ___
+    margin = price - loan
+    leverage = price / margin if margin &gt; 0.0 else 1.0
+    haircut = margin / price if price &gt; 0.0 else 0.0
+
+    return {
+        "price": price,
+        "marginal_buyer": h_star,
+        "loan": loan,
+        "margin": margin,
+        "leverage": leverage,
+        "haircut": haircut,
+    }
+
+
+def simulate_margin_shock(
+    v_u: float,
+    v_d: float,
+    initial_loan_ratio: float,
+    shocked_loan_ratio: float,
+    risk_free_rate: float = 1.0,
+) -> dict[str, float]:
+    """Simulate asset price and leverage response to an exogenous margin shock."""
+    if shocked_loan_ratio &gt; initial_loan_ratio:
+        raise ValueError("shocked_loan_ratio must be &lt;= initial_loan_ratio")
+
+    eq0 = solve_geanakoplos_equilibrium(v_u, v_d, risk_free_rate, initial_loan_ratio)
+    eq1 = solve_geanakoplos_equilibrium(v_u, v_d, risk_free_rate, shocked_loan_ratio)
+
+    p0 = eq0["price"]
+    p1 = eq1["price"]
+    price_drop = ___
+    price_drop_pct = (price_drop / p0) * 100.0 if p0 &gt; 0.0 else 0.0
+    buyer_shift = eq1["marginal_buyer"] - eq0["marginal_buyer"]
+
+    return {
+        "initial_price": p0,
+        "shocked_price": p1,
+        "price_drop": price_drop,
+        "price_drop_pct": price_drop_pct,
+        "initial_leverage": eq0["leverage"],
+        "shocked_leverage": eq1["leverage"],
+        "initial_haircut": eq0["haircut"],
+        "shocked_haircut": eq1["haircut"],
+        "marginal_buyer_shift": buyer_shift,
+    }
+
+
+def main() -&gt; None:
+    # Test instance (SIMULATED)
+    v_u = 1.50
+    v_d = 0.50
+    rf = 1.02
+    theta_0 = 1.00
+    theta_1 = 0.40
+
+    print("=== PROJECT RUNG 2: COMPLETION PROBLEM (SIMULATED) ===")
+    eq = solve_geanakoplos_equilibrium(v_u, v_d, rf, theta_0)
+    print(f"Computed Equilibrium Price: ${eq['price']:.6f}")
+    print(f"Marginal Buyer h*: {eq['marginal_buyer']:.6f}")
+    print(f"Leverage: {eq['leverage']:.4f}x")
+
+    shock = simulate_margin_shock(v_u, v_d, theta_0, theta_1, rf)
+    print(f"Price Drop under Margin Shock: ${shock['price_drop']:.6f} (-{shock['price_drop_pct']:.2f}%)")
+    print(f"Deleveraging: {shock['initial_leverage']:.2f}x ==&gt; {shock['shocked_leverage']:.2f}x")
+
+
+main()</code></pre>
+              <pre class="expected" data-tolerance="1e-4">=== PROJECT RUNG 2: COMPLETION PROBLEM (SIMULATED) ===
+Computed Equilibrium Price: $0.985246
+Marginal Buyer h*: 0.504950
+Leverage: 1.9902x
+Price Drop under Margin Shock: $0.145603 (-14.78%)
+Deleveraging: 1.99x ==&gt; 1.30x</pre>
+              <p class="interpretation">The completion routine verifies that filling in the equilibrium pricing identities computes price P = $0.985246, marginal buyer cutoff h* = 0.504950, and a 14.78% price drop under a 60% margin tightening.</p>
+            </section>
+          </li>
+
+          <li id="rung-3">
+            <span class="rung-title">3 · Independent project</span>
+            <p>Author the complete Python module <code class="file">solver.py</code> implementing <code>solve_geanakoplos_equilibrium</code>, <code>simulate_margin_shock</code>, and <code>solve_three_period_cycle</code>. The solver must handle arbitrary valid parameters, enforce strict input validation contracts, and pass the autograder test suite across 50 seeded instances. Concurrently, author an executive research memo (<code class="file">writeup.md</code>) evaluating collateral equilibrium mechanics, fire-sale price cascades, and macroprudential margin regulation.</p>
+
+            <section class="lab" id="lab-SR2-project-3" data-runtime="python">
+              <h3>Lab 3 · Comparative Statics and Parameter Sweep</h3>
+              <p class="hypothesis">Sweeping collateral loan ratios from 1.0 down to 0.0 and downside payoffs from 0.70 to 0.10 demonstrates the non-linear relationship between haircuts and equilibrium asset prices.</p>
+              <pre><code class="language-python" data-run>"""Lab SR2-project-3: Project Rung 3 Comparative Statics and Parameter Sweep.
+
+Performs parameter sweeps over collateral loan ratios, down-state payoffs, and
+interest rates to quantify non-linear price and leverage elasticities in collateral equilibrium.
+"""
+
+
+def solve_geanakoplos_equilibrium(
+    v_u: float,
+    v_d: float,
+    risk_free_rate: float = 1.0,
+    max_loan_ratio: float = 1.0,
+) -&gt; dict[str, float]:
+    """Calculate the collateral equilibrium for a two-state asset."""
+    loan = (max_loan_ratio * v_d) / risk_free_rate
+    num = risk_free_rate - (1.0 - max_loan_ratio) * v_d
+    den = risk_free_rate + (v_u - v_d)
+    h_star = min(1.0, max(0.0, num / den))
+    price = loan + (1.0 - h_star)
+    margin = price - loan
+    leverage = price / margin if margin &gt; 0.0 else 1.0
+    haircut = margin / price if price &gt; 0.0 else 0.0
+
+    return {
+        "price": price,
+        "marginal_buyer": h_star,
+        "loan": loan,
+        "margin": margin,
+        "leverage": leverage,
+        "haircut": haircut,
+    }
+
+
+def main() -&gt; None:
+    # Baseline parameters (SIMULATED)
+    v_u = 1.50
+    v_d = 0.50
+    rf = 1.00
+
+    print("=== PROJECT RUNG 3: COMPARATIVE STATICS SWEEP (SIMULATED) ===")
+    print(f"Asset Payoffs: V_U = ${v_u:.2f}, V_D = ${v_d:.2f} | R_f = {rf:.2f}")
+
+    # Sweep loan ratio theta from 1.0 down to 0.0 (progressive margin tightening)
+    loan_ratios = [1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
+
+    print("\nLoan Ratio theta | Price P  | Loan L   | Margin m | Leverage | Marginal Buyer h*")
+    print("--------------------------------------------------------------------------------")
+    for theta in loan_ratios:
+        res = solve_geanakoplos_equilibrium(v_u, v_d, rf, theta)
+        print(
+            f"      {theta:0.2f}      | ${res['price']:0.4f} | ${res['loan']:0.4f} | "
+            f"${res['margin']:0.4f} |  {res['leverage']:0.2f}x   |      {res['marginal_buyer']:0.4f}"
+        )
+
+    # Down-state payoff sensitivity sweep (V_D from 0.70 down to 0.10)
+    print("\n--- Down-State Payoff Sensitivity (V_D from 0.70 down to 0.10, theta=1.0) ---")
+    vd_grid = [0.70, 0.50, 0.30, 0.10]
+    for vd_val in vd_grid:
+        res_vd = solve_geanakoplos_equilibrium(v_u, vd_val, rf, 1.0)
+        print(
+            f"  V_D = ${vd_val:0.2f} | Price = ${res_vd['price']:0.4f} | "
+            f"Loan = ${res_vd['loan']:0.4f} | Leverage = {res_vd['leverage']:0.2f}x | "
+            f"h* = {res_vd['marginal_buyer']:0.4f}"
+        )
+
+
+main()</code></pre>
+              <pre class="expected" data-tolerance="1e-4">=== PROJECT RUNG 3: COMPARATIVE STATICS SWEEP (SIMULATED) ===
+Asset Payoffs: V_U = $1.50, V_D = $0.50 | R_f = 1.00
+
+Loan Ratio theta | Price P  | Loan L   | Margin m | Leverage | Marginal Buyer h*
+--------------------------------------------------------------------------------
+      1.00      | $1.0000 | $0.5000 | $0.5000 |  2.00x   |      0.5000
+      0.80      | $0.9500 | $0.4000 | $0.5500 |  1.73x   |      0.4500
+      0.60      | $0.9000 | $0.3000 | $0.6000 |  1.50x   |      0.4000
+      0.40      | $0.8500 | $0.2000 | $0.6500 |  1.31x   |      0.3500
+      0.20      | $0.8000 | $0.1000 | $0.7000 |  1.14x   |      0.3000
+      0.00      | $0.7500 | $0.0000 | $0.7500 |  1.00x   |      0.2500
+
+--- Down-State Payoff Sensitivity (V_D from 0.70 down to 0.10, theta=1.0) ---
+  V_D = $0.70 | Price = $1.1444 | Loan = $0.7000 | Leverage = 2.58x | h* = 0.5556
+  V_D = $0.50 | Price = $1.0000 | Loan = $0.5000 | Leverage = 2.00x | h* = 0.5000
+  V_D = $0.30 | Price = $0.8455 | Loan = $0.3000 | Leverage = 1.55x | h* = 0.4545
+  V_D = $0.10 | Price = $0.6833 | Loan = $0.1000 | Leverage = 1.17x | h* = 0.4167</pre>
+              <p class="interpretation">The parameter sweep confirms that tightening loan ratio from 1.0 to 0.0 compresses leverage from 2.00x down to 1.00x, lowering asset price from $1.0000 to $0.7500. Furthermore, decreasing downside payoff V_D from $0.70 to $0.10 collapses safe debt capacity from $0.70 to $0.10, causing asset prices to fall from $1.1444 to $0.6833.</p>
+            </section>
+          </li>
+
+          <li id="rung-4">
+            <span class="rung-title">4 · Stretch</span>
+            <p>Extend the solver to continuous non-uniform optimism distributions (e.g., Beta distribution \(B(\alpha, \beta)\) over \(h \in [0, 1]\)) or solve for multi-state endogenous default where borrowers optimize over defaulting in intermediate states.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="specification">
+        <h2>Project Specification</h2>
+
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>During financial expansions, low perceived volatility leads wholesale lenders to demand minimal collateral haircuts in repurchase and securities financing markets. When fundamental uncertainty increases, lenders protect themselves by widening haircuts, forcing leveraged intermediaries to liquidate assets and triggering catastrophic asset price collapses. In this project, you will build the core quantitative engine that models this leverage cycle and evaluate macroprudential margin interventions.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Asset payoffs in up and down states (\(V_U, V_D\)), gross risk-free rate (\(R_f \ge 1.0\)), initial and shocked collateral loan ratios (\(\theta_0, \theta_1\)), and multi-period terminal payoff matrices (\(V_{UU}, V_{UD}, V_{DU}, V_{DD}\)). All parameters are SIMULATED.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            <ol>
+              <li><code class="file">solver.py</code>: Python module implementing <code>solve_geanakoplos_equilibrium</code>, <code>simulate_margin_shock</code>, and <code>solve_three_period_cycle</code> with full type hints, docstrings, and input validation.</li>
+              <li><code class="file">writeup.md</code>: Quantitative research memo containing mathematical derivations, numerical sensitivity tables, policy evaluations, and evidence-graded citations.</li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>The solver must use standard Python 3.14 (or NumPy). All numerical residuals on equilibrium conditions must satisfy a tolerance of \(10^{-7}\). Grader tests across 50 seeds must finish in under 10 seconds.</dd>
+
+          <dt>Grading</dt>
+          <dd>Graded by both autograder (evaluating <code class="file">solver.py</code> against properties, identities, and tolerances across 50 seeds) and rubric (evaluating <code class="file">writeup.md</code> across five qualitative criteria).</dd>
+        </dl>
+
+        <h3>Time Budget</h3>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr><th>Component</th><th>Hours</th><th>Rationale</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Model derivation &amp; equilibrium proofs</td><td>2</td><td>Derive marginal buyer cutoff and market-clearing price formulas</td></tr>
+              <tr><td>Implementation of solver.py</td><td>4</td><td>Implement equilibrium solver, margin shock simulator, and 3-period cycle with validation</td></tr>
+              <tr><td>Comparative statics &amp; parameter sweeps</td><td>2</td><td>Execute numerical sensitivity sweeps across collateral haircuts and downside payoffs</td></tr>
+              <tr><td>Research memo authoring (writeup.md)</td><td>3</td><td>Draft executive policy memo evaluating leverage cycle mechanics and TALF interventions</td></tr>
+              <tr><td>Rubric self-assessment</td><td>1</td><td>Score research memo against level 4 and level 2 benchmark exemplars</td></tr>
+              <tr><td>Total</td><td>12</td><td>Total project hours declared on the hub index</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grader-panel" id="grader" data-unit="SR2" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="solver.py" data-starter="starter.py">
+        <h2>Autograder Test Panel</h2>
+        <p>The test suite in <code class="file">grader/test_project.py</code> runs in dual-mode (both locally via pytest and in-browser via Pyodide). It evaluates your <code class="file">solver.py</code> across 50 seeded instances, testing balance sheet identities, marginal buyer return-on-equity conditions, market clearing, margin shock directionality, and exception handling.</p>
+      </section>
+
+      <section id="rubric-section">
+        <h2>Assessment Rubric</h2>
+        <p>The executive research memo is evaluated across five criteria with four observable performance levels:</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <thead>
+              <tr><th>Criterion</th><th>Level 4 (Advanced)</th><th>Level 3 (Proficient)</th><th>Level 2 (Developing)</th><th>Level 1 (Novice)</th></tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">1. Model Specification</th>
+                <td>States complete collateral contract space, payoff states, and limited enforcement with formal assumptions; proves marginal buyer and pricing formulas analytically.</td>
+                <td>States model equations and equilibrium conditions correctly but omits intermediate steps in the indifference proof.</td>
+                <td>Describes the model qualitatively with informal equations; lacks formal derivation of the marginal buyer formula.</td>
+                <td>Incomplete model description; confuses collateral loans with uncollateralized credit or misstates payoff states.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">2. Solver &amp; Invariant Verification</th>
+                <td>Implements full solver with exception handling; reports verification residuals &lt; 1e-7 on both marginal buyer ROE and market clearing; states SIMULATED data basis.</td>
+                <td>Implements solver accurately; reports numerical residuals but omits verification across boundary parameter values.</td>
+                <td>Reports equilibrium prices without verifying marginal buyer indifference or market-clearing identities.</td>
+                <td>Solver exhibits numerical errors, fails on valid inputs, or violates balance sheet identities.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">3. Margin Shock Comparative Statics</th>
+                <td>Derives and interprets partial derivatives with respect to haircuts and downside payoffs; presents comprehensive parameter grids and deleveraging statistics.</td>
+                <td>Reports correct numerical signs for price drops and haircut widening across parameter grids but lacks analytical derivative proofs.</td>
+                <td>Discusses margin shocks qualitatively without providing numerical sensitivity tables or elasticity calculations.</td>
+                <td>Misstates the direction of margin shocks or claims that higher haircuts increase asset prices.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">4. Multi-Period Cycle &amp; Double Crash</th>
+                <td>Solves multi-period tree via backward induction; proves 100% optimist equity wipeout in down state; decomposes double price crash into fundamental and marginal buyer components.</td>
+                <td>Calculates multi-period equilibrium prices and notes optimist equity wipeout but omits formal decomposition of the double crash.</td>
+                <td>Solves subgame prices but fails to trace date 0 equilibrium or explain why optimists become insolvent.</td>
+                <td>Fails to solve the multi-period tree or assumes constant leverage across periods.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">5. Policy Context &amp; Evidence</th>
+                <td>Evaluates macroprudential margin regulation and central bank facilities (e.g., TALF) using verified registry keys with locators; compares interest rate cuts against haircut mandates.</td>
+                <td>Discusses macroprudential policy with valid citations but lacks exact page locators or detailed mechanism comparison.</td>
+                <td>Discusses central bank policy in general terms without linking to collateral haircuts or verified registry keys.</td>
+                <td>Omits policy analysis or claims that conventional interest rate cuts fully resolve collateral freezes.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="exemplars">
+        <h2>Benchmark Exemplars</h2>
+
+        <section class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar A">
+          <h3>Exemplar A · High Pass (Level 4)</h3>
+          <p class="meta">Score: 20/20 · Exemplary demonstration of formal mathematical derivations, verified numerical residuals, and evidence-graded macroprudential analysis.</p>
+          <div class="excerpt prose">
+            <h4>1. Mathematical Specification and Collateral Equilibrium Derivation</h4>
+            <p>Consider a two-date economy \(t \in \{0, 1\}\) with a single risky asset in supply \(Q = 1\) yielding terminal payoffs \(V_U &gt; V_D &gt; 0\) at date 1. Agents are risk-neutral and indexed by optimism \(h \in [0, 1]\) with subjective probability \(p^h = h\) of state \(U\), with uniform wealth density \(\int_0^1 1 \, dh = 1\). Borrowing is non-recourse and secured by the physical asset.</p>
+            <p>Under non-default collateralized debt, the maximum safe loan per unit of collateral is \(L = \theta V_D / R_f\), where \(\theta \in (0, 1]\) is the loan ratio. The required equity down payment per unit is \(m = P - L\). For marginal buyer \(h^*\), expected return on equity equals the gross risk-free rate \(R_f\):</p>
+            \[
+            \frac{(1 - \theta) V_D + h^*(V_U - V_D)}{P - L} = R_f \implies P - L = \frac{(1 - \theta) V_D + h^*(V_U - V_D)}{R_f}
+            \]
+            <p>Equating this to asset market clearing \(\frac{1 - h^*}{P - L} = 1 \implies P - L = 1 - h^*\) yields the unique closed-form marginal buyer cutoff:</p>
+            \[
+            h^* = \frac{R_f - (1 - \theta) V_D}{R_f + V_U - V_D}
+            \]
+            <p>And equilibrium asset price: \(P = \frac{\theta V_D}{R_f} + (1 - h^*)\).</p>
+            <h4>2. Numerical Execution and Invariant Verification (SIMULATED)</h4>
+            <p>On a representative SIMULATED instance with \(V_U = 1.40\), \(V_D = 0.40\), \(R_f = 1.00\), and \(\theta = 1.00\), evaluating <code>solve_geanakoplos_equilibrium(1.40, 0.40, 1.00, 1.00)</code> yields price \(P = 0.900000\), marginal buyer \(h^* = 0.500000\), loan \(L = 0.400000\), margin \(m = 0.500000\), and leverage \(\lambda = 1.8000\text{x}\). Verification confirms:</p>
+            <ul>
+              <li>Marginal buyer ROE residual: \(|\text{ROE} - R_f| = 1.11 \times 10^{-16} \le 10^{-7}\).</li>
+              <li>Market clearing residual: \(|\text{Demand} - 1.0| = 0.00 \times 10^0 \le 10^{-7}\).</li>
+            </ul>
+            <h4>3. Exogenous Margin Shocks and Deleveraging</h4>
+            <p>When lenders execute an exogenous margin shock by compressing \(\theta\) from 1.00 to 0.50, safe loan capacity collapses from $0.4000 to $0.2000. Price drops to \(P_1 = \$0.800000\) (-11.11%), haircuts widen from 55.56% to 75.00%, and leverage drops from 1.80x to 1.33x. This non-linear deleveraging illustrates the liquidity spiral of Brunnermeier and Pedersen (2008) <span class="claim" data-grade="B" data-cite="brunnermeier2008market"></span>.</p>
+            <h4>4. Multi-Period Leverage Cycle and the Double Crash</h4>
+            <p>In a three-period tree with terminal payoffs \(V_{UU} = 2.40, V_{UD} = 1.60, V_{DU} = 1.20, V_{DD} = 0.30\), date 0 price reaches \(P_0 = \$1.3333\) with leverage 2.38x. When bad news hits at date 1 (state \(D\)), price collapses to \(P_D = \$0.7737\) (-41.97%). Debt owed is \(L_0 = P_D = \$0.7737\), leaving optimists with exactly \(\$0.00\) equity. The price drop is a double crash: fundamental revisions lower the asset value, but the collapse of optimist purchasing power forces the marginal buyer down to \(h^*_D = 0.5263\), exacerbating fire-sale discounts <span class="claim" data-grade="B" data-cite="geanakoplos2010leverage" data-locator="pp. 16–18"></span>.</p>
+            <h4>5. Macroprudential Policy and Central Bank Facilities</h4>
+            <p>During the 2008 financial crisis, private repo haircuts on securitized debt surged from ~0% to over 45% <span class="claim" data-grade="B" data-cite="gorton2012securitized" data-locator="p. 433"></span>. Because borrowing constraints were bound by collateral haircuts rather than interest rates, lowering the federal funds rate to 0% failed to revive credit markets. The Federal Reserve's Term Asset-Backed Securities Loan Facility (TALF) restored market liquidity by providing non-recourse loans at fixed low haircuts (10%–15%), directly bypassing impaired private intermediary haircuts <span class="claim" data-grade="B" data-cite="geanakoplos2010leverage" data-locator="pp. 20–24"></span>.</p>
+          </div>
+        </section>
+
+        <section class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar B">
+          <h3>Exemplar B · Low Pass (Level 2)</h3>
+          <p class="meta">Score: 10/20 · Meets Level 2 descriptors across criteria; exhibits informal equations, unverified residuals, and lack of page locators.</p>
+          <div class="excerpt prose">
+            <h4>Model Overview</h4>
+            <p>In the Geanakoplos model, people have different beliefs \(h\) from 0 to 1. The optimists borrow money backed by the asset to buy it. The safe loan is \(L = V_D\). The price formula is \(P = L + (1 - h^*)\). When margin shocks happen, lenders ask for more cash down payment, and prices drop.</p>
+            <h4>Numerical Results (SIMULATED)</h4>
+            <p>For \(V_U = 1.4\) and \(V_D = 0.4\), our Python code calculates price \(P = 0.90\) and marginal buyer \(h^* = 0.50\). When loan ratio drops to 0.5, price falls to 0.80. In the multi-period model, optimists lose their money when the bad state happens and the price drops from 1.33 to 0.77.</p>
+            <h4>Policy Discussion</h4>
+            <p>During the 2008 crisis, repo haircuts went up a lot, which caused a run on repo as explained by Gorton and Metrick. The Fed cut interest rates, but banks still had high haircuts. The Fed had to create facilities like TALF to give loans to investors so they could buy bonds.</p>
+          </div>
+        </section>
+      </section>
+
+      <section class="rubric-self" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b">
+        <h2>Self-Assessment</h2>
+        <p>Score your draft research memo against the rubric criteria above. After completing your self-assessment, compare your scoring against the benchmark exemplars to identify gaps in mathematical derivation, residual verification, and empirical attribution.</p>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="geanakoplos2010leverage">Geanakoplos, J. (2010). The Leverage Cycle. <em>NBER Macroeconomics Annual</em>, 24(1), 1–66.</li>
+          <li data-cite="adrian2010liquidity">Adrian, T., &amp; Shin, H. S. (2010). Liquidity and leverage. <em>Journal of Financial Intermediation</em>, 19(3), 418–437.</li>
+          <li data-cite="brunnermeier2014macroeconomic">Brunnermeier, M. K., &amp; Sannikov, Y. (2014). A Macroeconomic Model with a Financial Sector. <em>American Economic Review</em>, 104(2), 379–421.</li>
+          <li data-cite="brunnermeier2008market">Brunnermeier, M. K., &amp; Pedersen, L. H. (2008). Market Liquidity and Funding Liquidity. <em>Review of Financial Studies</em>, 22(6), 2201–2238.</li>
+          <li data-cite="gorton2012securitized">Gorton, G., &amp; Metrick, A. (2012). Securitized banking and the run on repo. <em>Journal of Financial Economics</em>, 104(3), 425–451.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">SR2 · Leverage Cycles · Part of the doctoral-track program in finance, economics and quantitative markets.</footer>
+</body>
+</html>
