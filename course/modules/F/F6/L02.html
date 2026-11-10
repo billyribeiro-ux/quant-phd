@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="F6" data-page="L02" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lesson 2: Tree-Based Ensembles &amp; Non-Linear Interactions · F6</title>
+  <meta name="description" content="Recursive binary partitioning, Random Forests, Gradient Boosted Decision Trees (GBDT), and game-theoretic TreeSHAP feature attributions in financial cross-sections.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">F6 Machine Learning in Asset Pricing</a><span class="sep">›</span><span>Lesson 2</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 02 · 10 study hours</p>
+        <h1>Tree-Based Ensembles &amp; Non-Linear Interactions</h1>
+        <p class="lede">Linear factor models assume additive, constant marginal effects of firm characteristics on expected returns. In asset pricing, however, the economic mechanisms generating expected returns are fundamentally non-linear and context-dependent: momentum signals operate predominantly within high-volatility, illiquid small-cap equities, while value multiples lose predictive power during distress regimes. In this lesson, we study tree-based ensemble architectures—Random Forests and Gradient Boosted Decision Trees (GBDT)—that organically harvest high-order characteristic interactions without combinatorial curse-of-dimensionality expansions. We analyze their variance-reduction mechanics, stopping criteria tailored to low signal-to-noise panels, and modern cooperative game-theoretic feature attributions via TreeSHAP.</p>
+        <ul class="meta-row">
+          <li><strong>Prerequisites:</strong> <a href="L01.html">L01 Cross-Sectional Return Prediction &amp; Penalized Linear Models</a> (concept <a href="L01.html#def-ml-return-prediction">ml-return-prediction</a>).</li>
+          <li><strong>Core Concepts:</strong> Regression trees, orthogonal recursive partitioning, Random Forests, feature subsampling, Gradient Boosted Decision Trees (GBDT), TreeSHAP, Shapley values.</li>
+          <li><strong>Empirical Benchmark:</strong> Gu, Kelly &amp; Xiu (2020), Friedman (2001), Breiman (2001), Lundberg &amp; Lee (2017).</li>
+        </ul>
+      </header>
+
+      <section id="why-it-matters">
+        <h2>Why It Matters</h2>
+        <p class="why-it-matters">Financial theory posits that risk premia vary across macroeconomic regimes and firm states. Linear models fail when returns depend on characteristic interactions. Tree ensembles automatically discover localized interactions without combinatorial feature expansion.</p>
+      </section>
+
+      <section id="recursive-partitioning">
+        <h2 id="h-recursive-partitioning">1. Recursive Binary Partitioning and Step Functions</h2>
+        <p>A decision tree partitions the continuous \(P\)-dimensional characteristic space \(\mathcal{Z} = [-1, 1]^P\) into a set of \(M\) disjoint, axis-aligned hyper-rectangles \(\{R_1, R_2, \dots, R_M\}\). The predicted return on each terminal leaf is modeled as a local constant:</p>
+        \[
+        f(z) = \sum_{m=1}^M c_m \mathbf{1}\{z \in R_m\}
+        \]
+        <p>where \(\mathbf{1}\{\cdot\}\) is the indicator function and \(c_m = \frac{1}{|R_m|} \sum_{i, t: z_{i,t} \in R_m} r_{i,t+1}\) is the sample mean return of assets falling into partition \(R_m\).</p>
+
+        <div class="block definition" id="def-tree-split">
+          <p><strong>Definition 2.1 (Greedy Binary Splitting Criterion):</strong> Given a parent node region \(\mathcal{R}\) containing training indices \(\mathcal{I}_{\mathcal{R}}\), the greedy tree algorithm searches over all available features \(j \in \{1, \dots, P\}\) and split thresholds \(s \in \R\) to solve:</p>
+          \[
+          \min_{j, s} \left[ \sum_{i \in \mathcal{I}_1(j, s)} (y_i - \hat{c}_1)^2 + \sum_{i \in \mathcal{I}_2(j, s)} (y_i - \hat{c}_2)^2 \right]
+          \]
+          <p>where \(\mathcal{I}_1(j, s) = \{i \in \mathcal{I}_{\mathcal{R}} : z_{i,j} \le s\}\), \(\mathcal{I}_2(j, s) = \{i \in \mathcal{I}_{\mathcal{R}} : z_{i,j} > s\}\), and \(\hat{c}_k = \frac{1}{|\mathcal{I}_k|} \sum_{i \in \mathcal{I}_k} y_i\).</p>
+        </div>
+
+        <p>The total reduction in node variance (sum-of-squares impurity gain) achieved by the split is:</p>
+        \[
+        \Delta \mathcal{L}(j, s) = \sum_{i \in \mathcal{I}_{\mathcal{R}}} (y_i - \bar{y}_{\mathcal{R}})^2 - \left[ \sum_{i \in \mathcal{I}_1} (y_i - \hat{c}_1)^2 + \sum_{i \in \mathcal{I}_2} (y_i - \hat{c}_2)^2 \right] = N_1 N_2 \frac{(\hat{c}_1 - \hat{c}_2)^2}{N_1 + N_2}
+        \]
+        <p>where \(N_1 = |\mathcal{I}_1|\), \(N_2 = |\mathcal{I}_2|\), and \(\bar{y}_{\mathcal{R}}\) is the un-split mean return.</p>
+
+        <div class="block theorem" id="thm-tree-interaction">
+          <p><strong>Theorem 2.1 (Automatic Interaction Harvesting):</strong> Let \(z = (z_1, z_2)^\top\). Suppose the true data generating process is a pure multiplicative interaction \(y = \alpha \cdot z_1 z_2 + \epsilon\). A single-layer linear model with additive terms \(\beta_1 z_1 + \beta_2 z_2\) achieves zero predictive \(R^2\) when \(z_1, z_2\) are independent mean-zero symmetric random variables. In contrast, a binary decision tree of depth \(D \ge 2\) achieves strictly positive variance explained \(\Delta \mathcal{L} > 0\).</p>
+        </div>
+
+        <div class="block proof">
+          <p><strong>Proof:</strong> Since \(\E[z_1] = \E[z_2] = \E[z_1 z_2] = 0\) and \(z_1 \perp z_2\), the linear regression coefficients are \(\beta_1 = \Cov(z_1, y)/\Var(z_1) = \alpha \E[z_1^2]\E[z_2]/\Var(z_1) = 0\). Similarly \(\beta_2 = 0\). Thus the linear projection collapses to \(\hat{y}_{\text{OLS}} = 0\), yielding \(R^2 = 0\).</p>
+          <p>Now consider a decision tree. At the root node, split on \(z_1 \le 0\) versus \(z_1 > 0\). At depth 2, split both left and right children on \(z_2 \le 0\) versus \(z_2 > 0\). This creates four quadrants \(Q_{++}, Q_{+-}, Q_{-+}, Q_{--}\). In quadrant \(Q_{++}\), \(\E[y \mid z_1 > 0, z_2 > 0] = \alpha \E[z_1 \mid z_1 > 0]\E[z_2 \mid z_2 > 0] = \alpha \mu_{+}^2 \neq 0\). By symmetry, the four leaf estimates are \(\{+\alpha \mu_+^2, -\alpha \mu_+^2, -\alpha \mu_+^2, +\alpha \mu_+^2\}\). The variance of these predictions is strictly positive, \(\Var(\hat{f}_{\text{tree}}(z)) = \alpha^2 \mu_+^4 > 0\), proving the tree extracts the interaction without manual feature specification. \(\blacksquare\)</p>
+        </div>
+
+        <div class="block remark" id="rem-noise-danger">
+          <p><strong>Remark 2.1 (The Financial Noise Trap):</strong> In computer vision or natural language processing, deep decision trees (depth \(\ge 20\)) are common. In empirical finance, monthly returns have signal-to-noise ratios below \(0.05\). An unconstrained decision tree splits on idiosyncratic noise spikes \(\epsilon_{i,t}\), rapidly memorizing the training panel into leaves with \(N_m \le 5\). <span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Section 2.2">Gu, Kelly &amp; Xiu (2020) demonstrate that trees for cross-sectional return prediction must be restricted to shallow depths (\(D \in \{1, 2, 3\}\)) and substantial minimum leaf sizes (\(N_{\text{leaf}} \ge 50\)) to avoid catastrophic out-of-sample breakdown</span>.</p>
+        </div>
+      </section>
+
+      <section id="tree-ensembles">
+        <h2 id="h-tree-ensembles">2. Ensemble Architectures: Random Forests vs. GBDT</h2>
+        <p>Individual decision trees are high-variance, low-bias estimators. To tame the estimation variance of individual trees, two distinct ensemble paradigms dominate modern financial machine learning: Bagging (Random Forests) and Boosting (Gradient Boosted Trees).</p>
+
+        <div class="block definition" id="def-random-forest">
+          <p><strong>Definition 2.2 (Random Forest Aggregation):</strong> A Random Forest builds \(B\) independent decision trees \(\{T_b(z)\}_{b=1}^B\), each trained on a bootstrap sample of the panel. At each candidate split, only a random subset of \(m_{\text{try}} \le P\) features is considered (typically \(m_{\text{try}} = \lfloor P/3 \rfloor\) or \(\lfloor \sqrt{P} \rfloor\)). The ensemble prediction is the arithmetic average:</p>
+          \[
+          \hat{f}_{\text{RF}}(z) = \frac{1}{B} \sum_{b=1}^B T_b(z)
+          \]
+        </div>
+
+        <div class="block theorem" id="thm-forest-variance">
+          <p><strong>Theorem 2.2 (Breiman Variance Reduction Formula):</strong> Let each tree \(T_b(z)\) have marginal prediction variance \(\Var(T_b(z)) = \sigma^2\) and pairwise correlation \(\Corr(T_b(z), T_{b'}(z)) = \rho(z)\) for \(b \neq b'\). The variance of the ensemble predictor is:</p>
+          \[
+          \Var(\hat{f}_{\text{RF}}(z)) = \rho(z) \sigma^2 + \frac{1 - \rho(z)}{B} \sigma^2
+          \]
+        </div>
+
+        <div class="block proof">
+          <p><strong>Proof:</strong> By direct expansion of the variance of a sample sum:</p>
+          \[
+          \Var\left(\frac{1}{B}\sum_{b=1}^B T_b(z)\right) = \frac{1}{B^2} \left[ \sum_{b=1}^B \Var(T_b(z)) + \sum_{b \neq b'} \Cov(T_b(z), T_{b'}(z)) \right]
+          \]
+          <p>Substituting \(\Var(T_b(z)) = \sigma^2\) and \(\Cov(T_b(z), T_{b'}(z)) = \rho(z)\sigma^2\):</p>
+          \[
+          = \frac{1}{B^2} [B \sigma^2 + B(B - 1) \rho(z) \sigma^2] = \frac{\sigma^2}{B} + \frac{B - 1}{B} \rho(z) \sigma^2 = \rho(z) \sigma^2 + \frac{1 - \rho(z)}{B} \sigma^2
+          \]
+          <p>As \(B \to \infty\), the second term vanishes, leaving \(\rho(z) \sigma^2\). Feature subsampling at each split reduces the inter-tree correlation \(\rho(z)\), lowering the asymptotic variance floor. \(\blacksquare\)</p>
+        </div>
+
+        <p>In contrast to the parallel bagging of Random Forests, <strong>Gradient Boosted Decision Trees (GBDT)</strong> construct an additive sequence of trees in a greedy stagewise fashion.</p>
+
+        <div class="block definition" id="def-gbdt">
+          <p><strong>Definition 2.3 (Gradient Boosting Machine):</strong> Given a differentiable loss function \(\mathcal{L}(y, f(z))\), GBDT initializes \(f_0(z) = \argmin_c \sum_{i} \mathcal{L}(y_i, c)\). At iteration \(m \in \{1, \dots, M\}\):</p>
+          <ol>
+            <li>Compute negative gradient pseudo-residuals for each asset \(i\):
+              \[
+              \tilde{r}_{i,m} = -\left[ \frac{\partial \mathcal{L}(y_i, f(z_i))}{\partial f(z_i)} \right]_{f(z_i) = f_{m-1}(z_i)}
+              \]
+            </li>
+            <li>Fit a shallow regression tree \(h_m(z)\) to predict the pseudo-residuals \(\tilde{r}_{i,m}\) from characteristics \(z_i\).</li>
+            <li>Update the ensemble with shrinkage learning rate \(\eta \in (0, 1]\):
+              \[
+              f_m(z) = f_{m-1}(z) + \eta h_m(z)
+              \]
+            </li>
+          </ol>
+        </div>
+
+        <div class="block remark" id="rem-gbdt-vs-rf">
+          <p><strong>Remark 2.2 (Empirical Ranking in Asset Pricing):</strong> Under squared error loss \(\mathcal{L}(y, \hat{y}) = \frac{1}{2}(y - \hat{y})^2\), the pseudo-residuals are exactly the ordinary forecast residuals \(\tilde{r}_{i,m} = y_i - f_{m-1}(z_i)\). <span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Table 1 and Table 3">Gu, Kelly &amp; Xiu (2020) document that GBDT and Random Forests deliver monthly out-of-sample \(R^2\) of 0.35% to 0.40% and top-minus-bottom decile spread Sharpe ratios exceeding 1.40, consistently outperforming unconstrained OLS and single trees</span>.</p>
+        </div>
+      </section>
+
+      <section id="treeshap-interpretability">
+        <h2 id="h-treeshap-interpretability">3. Model Interpretability and Feature Attribution: TreeSHAP</h2>
+        <p>While tree ensembles deliver superior non-linear predictive power, they discard the intuitive interpretability of linear regression slope coefficients \(\beta_j\). Classical Gini feature importance (mean decrease in impurity) suffers from severe upward bias toward continuous, high-cardinality features. To rigorously attribute return forecasts to individual anomalies, modern financial econometrics applies Shapley values from cooperative game theory.</p>
+
+        <div class="block definition" id="def-shapley-value">
+          <p><strong>Definition 2.4 (Shapley Value Feature Attribution):</strong> Let \(F = \{1, \dots, P\}\) be the set of all input characteristics. The local contribution \(\phi_j(x)\) of characteristic \(j\) to the prediction \(f(x)\) is defined as:</p>
+          \[
+          \phi_j(x) = \sum_{S \subseteq F \setminus \{j\}} \frac{|S|!(|F| - |S| - 1)!}{|F|!} \Big( f_x(S \cup \{j\}) - f_x(S) \Big)
+          \]
+          <p>where \(f_x(S) = \E[f(x) \mid x_S]\) is the conditional expectation of the model prediction given subset \(S\).</p>
+        </div>
+
+        <div class="block theorem" id="thm-shapley-uniqueness">
+          <p><strong>Theorem 2.3 (Axiomatic Uniqueness of Shapley Values):</strong> The Shapley attribution \(\phi_j(x)\) is the unique feature attribution method that simultaneously satisfies:</p>
+          <ul>
+            <li><strong>Efficiency (Local Accuracy):</strong> \(\sum_{j=1}^P \phi_j(x) = f(x) - \E[f(x)]\).</li>
+            <li><strong>Missingness:</strong> If \(x_j\) is not in the model, then \(\phi_j(x) = 0\).</li>
+            <li><strong>Monotonicity / Consistency:</strong> If a model changes such that the marginal contribution of feature \(j\) increases for all coalitions, its attribution cannot decrease.</li>
+          </ul>
+        </div>
+
+        <div class="block remark" id="rem-treeshap">
+          <p><strong>Remark 2.3 (Computational Tractability via TreeSHAP):</strong> Direct evaluation of Definition 2.4 requires computing \(2^P\) subsets, which is computationally impossible for \(P = 94\) financial anomalies (\(2^{94} \approx 2 \times 10^{28}\)). <span class="claim" data-grade="A" data-cite="lundberg2017unified" data-locator="Section 3">Lundberg &amp; Lee (2017) develop TreeSHAP, an exact algorithm that exploits the recursive tree structure to compute all Shapley values in polynomial time \(O(T \cdot L \cdot D^2)\)</span>, where \(T\) is the number of trees, \(L\) is maximum leaves, and \(D\) is tree depth.</p>
+        </div>
+      </section>
+
+      <!-- INLINE LAB: lab-F6-L02-1 -->
+      <section class="lab" id="lab-F6-L02-1" data-runtime="python">
+        <h3 id="h-lab-F6-L02-1">Lab F6-L02-1: Non-Linear Interaction Harvesting via Tree Ensembles</h3>
+        <p class="hypothesis"><strong>Hypothesis:</strong> In a noisy cross-sectional panel containing non-linear characteristic interaction terms, a shallow regression tree achieves strictly higher out-of-sample \(R^2\) than a regularized linear model (Ridge), which fails to capture non-linear conditioning.</p>
+        <pre><code class="language-python" data-run>"""Lab F6-L02-1: Non-Linear Interaction Harvesting via Tree Ensembles.
+
+Demonstrates that tree-based architectures capture non-linear characteristic interactions
+(e.g., momentum conditional on size or volatility) that linear models miss.
+Evaluates out-of-sample R2 and calculates feature attribution.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+class RegressionTreeNode:
+    """Node in a greedy binary regression tree."""
+
+    def __init__(
+        self,
+        value: float = 0.0,
+        feature: int = -1,
+        threshold: float = 0.0,
+        left: RegressionTreeNode | None = None,
+        right: RegressionTreeNode | None = None,
+        is_leaf: bool = True,
+    ) -&gt; None:
+        self.value = value
+        self.feature = feature
+        self.threshold = threshold
+        self.left = left
+        self.right = right
+        self.is_leaf = is_leaf
+
+
+class ShallowRegressionTree:
+    """Shallow regression tree for low S/N financial panels."""
+
+    def __init__(self, max_depth: int = 3, min_samples_leaf: int = 10) -&gt; None:
+        self.max_depth = max_depth
+        self.min_samples_leaf = min_samples_leaf
+        self.root: RegressionTreeNode | None = None
+
+    def fit(self, x_mat: np.ndarray, y_vec: np.ndarray) -&gt; ShallowRegressionTree:
+        """Fit decision tree via greedy MSE reduction."""
+        self.root = self._build(x_mat, y_vec, depth=0)
+        return self
+
+    def _build(self, x_sub: np.ndarray, y_sub: np.ndarray, depth: int) -&gt; RegressionTreeNode:
+        n_samples = len(y_sub)
+        val = float(np.mean(y_sub)) if n_samples &gt; 0 else 0.0
+        if depth &gt;= self.max_depth or n_samples &lt; 2 * self.min_samples_leaf:
+            return RegressionTreeNode(value=val, is_leaf=True)
+
+        best_feat = -1
+        best_th = 0.0
+        best_gain = -1.0
+        curr_var = float(np.var(y_sub)) * n_samples
+
+        for f in range(x_sub.shape[1]):
+            thresholds = np.quantile(x_sub[:, f], np.linspace(0.1, 0.9, 9))
+            for th in thresholds:
+                left_mask = x_sub[:, f] &lt;= th
+                n_l = int(np.sum(left_mask))
+                n_r = n_samples - n_l
+                if n_l &lt; self.min_samples_leaf or n_r &lt; self.min_samples_leaf:
+                    continue
+
+                gain = curr_var - (float(np.var(y_sub[left_mask])) * n_l + float(np.var(y_sub[~left_mask])) * n_r)
+                if gain &gt; best_gain:
+                    best_gain = gain
+                    best_feat = f
+                    best_th = float(th)
+
+        if best_gain &lt;= 1e-8:
+            return RegressionTreeNode(value=val, is_leaf=True)
+
+        left_mask = x_sub[:, best_feat] &lt;= best_th
+        left_node = self._build(x_sub[left_mask], y_sub[left_mask], depth + 1)
+        right_node = self._build(x_sub[~left_mask], y_sub[~left_mask], depth + 1)
+        return RegressionTreeNode(
+            value=val,
+            feature=best_feat,
+            threshold=best_th,
+            left=left_node,
+            right=right_node,
+            is_leaf=False,
+        )
+
+    def predict(self, x_mat: np.ndarray) -&gt; np.ndarray:
+        """Predict returns."""
+        if self.root is None:
+            raise ValueError("Tree not fitted")
+        return np.array([self._predict_row(self.root, row) for row in x_mat], dtype=np.float64)
+
+    def _predict_row(self, node: RegressionTreeNode, row: np.ndarray) -&gt; float:
+        if node.is_leaf or node.left is None or node.right is None:
+            return node.value
+        if row[node.feature] &lt;= node.threshold:
+            return self._predict_row(node.left, row)
+        return self._predict_row(node.right, row)
+
+
+def run_lab(seed: int = 42) -&gt; dict[str, float]:
+    """Execute non-linear interaction comparison."""
+    rng = np.random.default_rng(seed)
+
+    n_samples = 1200
+    n_features = 6
+
+    # Normalized characteristic panel in [-0.5, 0.5]
+    x_data = rng.uniform(-0.5, 0.5, size=(n_samples, n_features))
+
+    # True return contains a sharp non-linear interaction:
+    # Feature 0 (e.g. Momentum) is profitable ONLY when Feature 1 (e.g. Size/Vol) is in the upper regime
+    signal_interaction = 0.040 * (x_data[:, 0] &gt; 0.0) * (x_data[:, 1] &gt; 0.0)
+    signal_linear = -0.015 * x_data[:, 2]
+    noise = rng.normal(0.0, 0.035, size=n_samples)
+
+    y_data = signal_interaction + signal_linear + noise
+
+    n_train = 800
+    x_train, y_train = x_data[:n_train], y_data[:n_train]
+    x_test, y_test = x_data[n_train:], y_data[n_train:]
+
+    # 1. Linear Model (Ridge)
+    ridge_beta = np.linalg.solve(x_train.T @ x_train + 10.0 * np.eye(n_features), x_train.T @ y_train)
+    pred_linear = x_test @ ridge_beta
+
+    # 2. Shallow Decision Tree
+    tree = ShallowRegressionTree(max_depth=3, min_samples_leaf=15)
+    tree.fit(x_train, y_train)
+    pred_tree = tree.predict(x_test)
+
+    # Out-of-sample R2 (zero benchmark)
+    denom = float(np.sum(y_test**2))
+    r2_linear = float(1.0 - np.sum((y_test - pred_linear) ** 2) / denom)
+    r2_tree = float(1.0 - np.sum((y_test - pred_tree) ** 2) / denom)
+
+    # Compute root split feature and threshold
+    root_feat = tree.root.feature if tree.root else -1
+    root_th = tree.root.threshold if tree.root else 0.0
+
+    return {
+        "r2_linear_pct": r2_linear * 100.0,
+        "r2_tree_pct": r2_tree * 100.0,
+        "root_split_feature": float(root_feat),
+        "root_split_threshold": float(root_th),
+    }
+
+
+def main() -&gt; None:
+    res = run_lab(seed=42)
+    print("=== Lab F6-L02-1: Tree Ensembles &amp; Non-Linear Interactions ===")
+    print(f"Linear Out-of-Sample R2 (%): {res['r2_linear_pct']:.4f}")
+    print(f"Tree Out-of-Sample R2 (%):   {res['r2_tree_pct']:.4f}")
+    print(f"Root Split Feature Index:    {int(res['root_split_feature'])}")
+    print(f"Root Split Threshold:        {res['root_split_threshold']:.4f}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">=== Lab F6-L02-1: Tree Ensembles &amp; Non-Linear Interactions ===
+Linear Out-of-Sample R2 (%): 9.0911
+Tree Out-of-Sample R2 (%):   16.6099
+Root Split Feature Index:    0
+Root Split Threshold:        -0.0040</pre>
+        <p class="interpretation"><strong>Interpretation:</strong> The experiment confirms the theoretical superiority of tree architectures in the presence of interaction terms. While the regularized linear model extracts only the linear component (\(R^2 = 9.09\%\)), the shallow decision tree isolates the conditional interaction between Features 0 and 1, nearly doubling the predictive performance to \(R^2 = 16.61\%\).</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2>Where the Canon Breaks</h2>
+        <p>In standard textbook machine learning, trees and random forests are presented as versatile, off-the-shelf algorithms. In institutional financial asset pricing, however, tree-based models encounter three severe vulnerabilities:</p>
+        <ul>
+          <li><strong>Discontinuous Step Functions and Portfolio Turnover:</strong> Decision trees generate piecewise constant predictions with abrupt boundary jumps. When an asset's characteristic marginally crosses a split threshold (e.g., from \(0.001\) to \(-0.001\)), its predicted return jumps discontinuously between terminal leaves. In long-short portfolio construction, this generates excessive rank churn and devastating transaction costs.</li>
+          <li><strong>Bounding Box Extrapolation Failure:</strong> Decision trees cannot extrapolate beyond the extreme split values observed in the training sample. If a macroeconomic shock pushes an asset's earnings yield or credit spread to an unprecedented historical level, the tree simply assigns the flat value of the outermost leaf, ignoring monotonic scaling.</li>
+          <li><strong>Greedy Cardinality Bias in Feature Splitting:</strong> The standard greedy impurity reduction favors continuous, noisy features over discrete or categorical indicators simply because continuous features provide \(N-1\) candidate split thresholds versus \(2^{K-1}-1\) partitions, inducing spurious splits on financial noise.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2>Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> Random forests cannot overfit because adding more trees always drives estimation variance to zero.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> The variance of a Random Forest converges to \(\rho \sigma^2\), where \(\rho\) is pairwise tree correlation. If individual trees overfit idiosyncratic noise, the correlated error \(\rho \sigma^2\) remains, resulting in negative out-of-sample \(R^2\).</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="breiman2001random" data-locator="Theorem 1.2">Breiman (2001)</span> proves that ensemble variance converges to \(\rho \sigma^2 + \frac{1-\rho}{B}\sigma^2\), establishing that correlation between base learners sets a non-zero asymptotic variance floor.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> Standard Gini or impurity feature importance accurately identifies the most profitable trading anomalies.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> Impurity-based feature importance has an extreme upward bias toward continuous characteristics with many distinct values, even when they carry zero actual predictability.</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="hastie2009elements" data-locator="Section 15.3.2">Hastie, Tibshirani &amp; Friedman (2009)</span> show that continuous noise variables are selected for splits far more frequently than categorical signals under greedy impurity reduction.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> Gradient boosted trees with deep trees (\(D \ge 8\)) dominate shallow trees because they capture higher-order cross-sectional interactions.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> In financial cross-sections, third- and fourth-order interaction terms consist almost entirely of non-replicable sampling noise. Deep trees produce small leaves with low sample sizes that overfit in-sample shocks.</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Table 1">Gu, Kelly &amp; Xiu (2020)</span> demonstrate that GBDT with depth 1 or 2 outperforms deep trees in out-of-sample \(R^2\) and decile spread Sharpe ratios.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="prob-F6-L02-m1">
+            <h4>Problem 2.1: Breiman Variance Reduction Mechanics</h4>
+            <p>Suppose individual regression trees trained on a panel of monthly equity returns have prediction variance \(\sigma^2 = 0.040\) and average pairwise correlation \(\rho = 0.25\). Calculate the theoretical prediction variance of a Random Forest with \(B = 10\) trees, \(B = 100\) trees, and the asymptotic variance floor as \(B \to \infty\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Using Theorem 2.2: \(\Var(\hat{f}_{\text{RF}}) = \rho \sigma^2 + \frac{1-\rho}{B}\sigma^2\).</p>
+              <ul>
+                <li>For \(B = 10\): \(\Var(\hat{f}) = 0.25(0.040) + \frac{0.75}{10}(0.040) = 0.010 + 0.003 = 0.013\).</li>
+                <li>For \(B = 100\): \(\Var(\hat{f}) = 0.25(0.040) + \frac{0.75}{100}(0.040) = 0.010 + 0.0003 = 0.0103\).</li>
+                <li>As \(B \to \infty\): \(\lim_{B \to \infty} \Var(\hat{f}) = \rho \sigma^2 = 0.25(0.040) = 0.010\).</li>
+              </ul>
+              <p>Increasing from 10 to 100 trees reduces variance by 20.8%, but no further increase in \(B\) can reduce variance below 0.010 without subsampling features to lower \(\rho\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L02-m2">
+            <h4>Problem 2.2: Greedy Impurity Gain Computation</h4>
+            <p>A parent node contains 100 stock observations with sample mean excess return \(\bar{y} = 1.0\%\) and total variance \(\Var(y) = 16.0 (\%^2)\). A candidate split partitions the observations into a left child of \(N_1 = 60\) stocks with mean \(\hat{c}_1 = 2.5\%\) and a right child of \(N_2 = 40\) stocks with mean \(\hat{c}_2 = -1.25\%\). Calculate the impurity reduction (sum-of-squares gain) \(\Delta \mathcal{L}\) achieved by this split.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>From Definition 2.1, the sum-of-squares reduction is given by:</p>
+              \[
+              \Delta \mathcal{L} = \frac{N_1 N_2}{N_1 + N_2} (\hat{c}_1 - \hat{c}_2)^2
+              \]
+              <p>Plugging in \(N_1 = 60\), \(N_2 = 40\), and \(\hat{c}_1 - \hat{c}_2 = 2.5 - (-1.25) = 3.75\%\):</p>
+              \[
+              \Delta \mathcal{L} = \frac{60 \times 40}{100} (3.75)^2 = 24 \times 14.0625 = 337.5
+              \]
+              <p>The total parent sum of squares was \(100 \times 16.0 = 1600\), so this single split explains \(\frac{337.5}{1600} = 21.09\%\) of the node's total variance.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L02-m3">
+            <h4>Problem 2.3: GBDT Stage-Wise Update</h4>
+            <p>Under squared error loss \(\mathcal{L}(y, f) = \frac{1}{2}(y - f)^2\), let the current ensemble prediction for stock \(i\) be \(f_2(z_i) = 0.8\%\) and its realized return be \(y_i = 2.0\%\). The third tree fits the residual and predicts \(h_3(z_i) = 1.1\%\). With a shrinkage rate \(\eta = 0.10\), compute the pseudo-residual \(\tilde{r}_{i,3}\) and the updated forecast \(f_3(z_i)\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The pseudo-residual is the negative gradient:</p>
+              \[
+              \tilde{r}_{i,3} = -\left[\frac{\partial \mathcal{L}(y_i, f)}{\partial f}\right]_{f=f_2} = y_i - f_2(z_i) = 2.0\% - 0.8\% = 1.2\%
+              \]
+              <p>The updated model is:</p>
+              \[
+              f_3(z_i) = f_2(z_i) + \eta h_3(z_i) = 0.8\% + 0.10 \times 1.1\% = 0.8\% + 0.11\% = 0.91\%
+              \]
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prob-F6-L02-p1">
+            <h4>Problem 2.4: Local Accuracy in Shapley Decomposition</h4>
+            <p>Prove that the Shapley value decomposition satisfies the Efficiency property: \(\sum_{j=1}^P \phi_j(x) = f(x) - \E[f(x)]\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Consider the grand coalition ordering \(\pi \in \Pi(P)\), where \(\Pi(P)\) is the set of all \(P!\) permutations of features \(\{1, \dots, P\}\). Let \(P_j^\pi\) denote the set of features appearing before feature \(j\) in permutation \(\pi\). The marginal contribution of feature \(j\) in permutation \(\pi\) is:</p>
+              \[
+              \Delta_j^\pi(f) = f_x(P_j^\pi \cup \{j\}) - f_x(P_j^\pi)
+              \]
+              <p>Summing across all features \(j\) in a fixed permutation \(\pi\) forms a telescoping sum:</p>
+              \[
+              \sum_{j=1}^P \Delta_j^\pi(f) = f_x(\{1, \dots, P\}) - f_x(\emptyset) = f(x) - \E[f(x)]
+              \]
+              <p>Because the Shapley value \(\phi_j(x)\) is the uniform average over all \(P!\) permutations, \(\phi_j(x) = \frac{1}{P!} \sum_{\pi \in \Pi(P)} \Delta_j^\pi(f)\), taking the sum over \(j\) yields:</p>
+              \[
+              \sum_{j=1}^P \phi_j(x) = \frac{1}{P!} \sum_{\pi \in \Pi(P)} \sum_{j=1}^P \Delta_j^\pi(f) = \frac{1}{P!} \sum_{\pi \in \Pi(P)} [f(x) - \E[f(x)]] = f(x) - \E[f(x)]
+              \]
+              <p>which establishes the efficiency property exactly. \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L02-p2">
+            <h4>Problem 2.5: Correlation Lower Bound on Bagging Gain</h4>
+            <p>Prove that when base learners are perfectly correlated (\(\rho = 1\)), bagging provides zero variance reduction, regardless of the ensemble size \(B\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Using Theorem 2.2 for ensemble variance:</p>
+              \[
+              \Var(\hat{f}_{\text{RF}}) = \rho \sigma^2 + \frac{1-\rho}{B} \sigma^2
+              \]
+              <p>Substitute \(\rho = 1\):</p>
+              \[
+              \Var(\hat{f}_{\text{RF}}) = 1 \cdot \sigma^2 + \frac{1-1}{B} \sigma^2 = \sigma^2 + 0 = \sigma^2
+              \]
+              <p>The variance of the ensemble is identical to the variance of a single base learner \(\sigma^2\). Hence, bagging yields zero variance reduction unless feature subsampling or bootstrap resampling induces decorrelation (\(\rho < 1\)). \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L02-p3">
+            <h4>Problem 2.6: Monotonic Impurity Non-Negativity</h4>
+            <p>Prove that for any node \(\mathcal{R}\) split into child partitions \(\mathcal{I}_1\) and \(\mathcal{I}_2\) using sample means \(\hat{c}_1, \hat{c}_2\), the variance reduction \(\Delta \mathcal{L} \ge 0\), with equality if and only if \(\hat{c}_1 = \hat{c}_2\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The impurity gain is:</p>
+              \[
+              \Delta \mathcal{L} = \sum_{i \in \mathcal{I}_{\mathcal{R}}} (y_i - \bar{y})^2 - \left[\sum_{i \in \mathcal{I}_1} (y_i - \hat{c}_1)^2 + \sum_{i \in \mathcal{I}_2} (y_i - \hat{c}_2)^2\right]
+              \]
+              <p>Using the identity \(\sum_{i \in \mathcal{I}_k} (y_i - \bar{y})^2 = \sum_{i \in \mathcal{I}_k} (y_i - \hat{c}_k)^2 + N_k (\hat{c}_k - \bar{y})^2\), summing over \(k \in \{1, 2\}\) gives:</p>
+              \[
+              \Delta \mathcal{L} = N_1 (\hat{c}_1 - \bar{y})^2 + N_2 (\hat{c}_2 - \bar{y})^2
+              \]
+              <p>Since \(\bar{y} = \frac{N_1 \hat{c}_1 + N_2 \hat{c}_2}{N_1 + N_2}\), substituting gives \(\hat{c}_1 - \bar{y} = \frac{N_2}{N_1 + N_2} (\hat{c}_1 - \hat{c}_2)\) and \(\hat{c}_2 - \bar{y} = -\frac{N_1}{N_1 + N_2} (\hat{c}_1 - \hat{c}_2)\). Therefore:</p>
+              \[
+              \Delta \mathcal{L} = \frac{N_1 N_2}{N_1 + N_2} (\hat{c}_1 - \hat{c}_2)^2
+              \]
+              <p>Since \(N_1, N_2 > 0\), \(\Delta \mathcal{L} \ge 0\) with equality if and only if \(\hat{c}_1 = \hat{c}_2\). \(\blacksquare\)</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="prob-F6-L02-e1">
+            <h4>Problem 2.7: Tree Depth vs. Out-of-Sample \(R^2\)</h4>
+            <p>In the empirical evaluation of Gu, Kelly &amp; Xiu (2020), describe the relationship between GBDT maximum tree depth (\(D \in \{1, 2, 3, 4, 5, 6\}\)) and out-of-sample \(R^2_{\text{OOS}}\). Why does performance degrade monotonically beyond depth 3?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p><span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Section 3.2">Gu, Kelly &amp; Xiu (2020) find that GBDT performance peaks at shallow depths of 2 to 3, achieving monthly OOS \(R^2 \approx 0.35\% - 0.40\%\), before dropping steadily at higher depths (falling toward negative values at depth 6)</span>. In monthly equity cross-sections, genuine multi-way non-linear interactions are sparse. Deep trees create \(2^D\) small leaves where node sample sizes collapse, allowing idiosyncratic stock return variance to dominate split decisions and leading to fatal overfitting.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L02-e2">
+            <h4>Problem 2.8: Empirical Feature Importance Ranking</h4>
+            <p>When TreeSHAP is applied to tree ensembles trained on 94 characteristic anomalies from the open anomaly zoo, which clusters of characteristics consistently account for the largest proportion of total model attribution?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p><span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Figure 4">Gu, Kelly &amp; Xiu (2020) and subsequent literature show that price trend characteristics (short-term reversal <code>r12_2</code>, momentum <code>r12_7</code>, and idiosyncratic volatility) account for over 50% of the total predictive attribution in tree ensembles</span>, followed by liquidity/volume indicators (turnover, dollar volume) and firm size. Valuation metrics (book-to-market, earnings-to-price) provide lower high-frequency marginal attribution due to their slow quarter-over-quarter updating.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L02-e3">
+            <h4>Problem 2.9: Empirical Transaction Costs of Tree Forecasts</h4>
+            <p>Why do long-short portfolios sorted on raw tree ensemble return predictions suffer higher portfolio turnover than portfolios sorted on penalized linear model predictions?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Decision trees produce piecewise constant step functions with zero slope within regions and discontinuous jumps at boundaries. Assets hovering near split thresholds repeatedly transition between adjacent leaves from month to month, causing sharp rank migrations in decile sorts. In contrast, linear model predictions \(z^\top \beta\) vary smoothly with continuous characteristic changes. Consequently, raw tree-based portfolios generate monthly one-way turnover of 60%–90%, compared to 30%–45% for Ridge or Elastic Net, eroding gross Sharpe ratios unless explicit turnover regularization or smoothing is applied.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="prob-F6-L02-r1">
+            <h4>Problem 2.10: Time-Varying Tree Partitions</h4>
+            <p>Propose an econometric modification to standard GBDT that prevents historical splits from overfitting structural regimes that have decayed due to academic publication.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Two viable architectural modifications address publication decay:</p>
+              <ul>
+                <li><strong>Exponential Time-Decay Sample Weighting:</strong> Assign training sample weights \(w_{i,t} = \delta^{T-t}\) where \(\delta \in (0.95, 0.99)\) per month, forcing the split impurity function \(\Delta \mathcal{L}\) to discount obsolete pre-publication anomaly gains.</li>
+                <li><strong>Macro-Conditioned Splitting:</strong> Include macroeconomic state variables (e.g., term spread, credit spread, VIX) as top-level splits or split conditioning variables, allowing the ensemble to learn that post-2005 regulatory regimes exhibit lower marginal premia across classic value and momentum factors.</li>
+              </ul>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L02-r2">
+            <h4>Problem 2.11: Monotonicity-Constrained Trees</h4>
+            <p>Certain economic characteristics have well-established theoretical monotonic relationships with expected returns (e.g., higher distress risk or higher illiquidity commands higher expected return). How can shape constraints be enforced within tree splitting, and what is the trade-off?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Monotonicity constraints can be enforced during tree construction by rejecting any split that would produce child leaf values violating the directional ordering \(\hat{c}_1 \le \hat{c}_2\) (for positive monotonicity) or by post-hoc isotonic projection of terminal leaf values. The advantage is eliminating counter-intuitive predictions caused by localized noise spikes. The trade-off is potential misspecification when true relationships are non-monotonic (e.g., the U-shaped relation between size/idiosyncratic volatility and returns).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L02-r3">
+            <h4>Problem 2.12: GBDT vs. Neural Networks in Cross-Sections</h4>
+            <p>Contrast the inductive biases of tree ensembles (GBDT) and multi-layer perceptrons (MLP) for cross-sectional return prediction. Under what data characteristics does GBDT outperform neural networks?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>GBDT has an axis-aligned inductive bias: it splits on individual features and piecewise step functions, making it invariant to monotonic feature scalings and exceptionally robust to extreme outliers and heavy-tailed financial distributions. Multi-layer perceptrons have a rotation-invariant, smooth inductive bias: they construct hyperplanes and smooth manifold representations, making them superior at learning shared continuous latent representations (as in Deep SDFs). In tabular cross-sections with hundreds of heterogeneous, noisy anomaly scores, GBDT typically matches or outperforms MLPs without requiring extensive hyperparameter tuning or architecture search.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2>Key Results</h2>
+        <div class="table-wrap">
+<table class="key-results">
+          <thead>
+            <tr><th>Claim / Result</th><th>Grade</th><th>Basis / Keys</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>GBDT and Random Forests deliver monthly out-of-sample \(R^2 \approx 0.35\% - 0.40\%\) and decile spread Sharpe &gt; 1.40</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Table 1 &amp; Table 3">gu2020empirical</span></td>
+            </tr>
+            <tr>
+              <td>Shallow trees (depth 1–3) outperform deep trees in cross-sectional return prediction due to low signal-to-noise</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Section 3.2">gu2020empirical</span></td>
+            </tr>
+            <tr>
+              <td>Breiman Random Forest variance converges to correlation floor \(\rho \sigma^2\) as \(B \to \infty\)</td>
+              <td>T</td>
+              <td>Theorem 2.2 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>Shallow decision trees capture multi-variable interactions with zero linear projection correlation</td>
+              <td>T</td>
+              <td>Theorem 2.1 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>TreeSHAP computes exact Shapley attributions in polynomial time \(O(T L D^2)\)</td>
+              <td>T</td>
+              <td><span class="claim" data-grade="T" data-cite="lundberg2017unified" data-locator="Section 3">lundberg2017unified</span></td>
+            </tr>
+            <tr>
+              <td>Short-term price trends and liquidity account for over 50% of feature attribution in tree models</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Figure 4">gu2020empirical</span></td>
+            </tr>
+          </tbody>
+        </table>
+</div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="F6" data-page="L02">
+        <h2>Retrieval Quiz</h2>
+        <ol class="quiz-items">
+          <li class="item" data-kind="mc">
+            <p class="question">How does a single decision tree model the conditional expectation function \(f(z)\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_1"> <span>As a sum of piecewise constant indicators over orthogonal hyper-rectangles: \(f(z) = \sum_{m=1}^M c_m \mathbf{1}\{z \in R_m\}\)</span></label>
+              <label class="option"><input type="radio" name="q2_1"> <span>As a smooth polynomial spline across all continuous dimensions</span></label>
+              <label class="option"><input type="radio" name="q2_1"> <span>As a linear combination of orthonormal eigenvectors</span></label>
+              <label class="option"><input type="radio" name="q2_1"> <span>As a radial basis function centered at each data point</span></label>
+            </div>
+            <div class="explain"><p>A decision tree partitions feature space into orthogonal hyper-rectangles and predicts the local sample mean within each region.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why does unconstrained OLS fail to capture a pure multiplicative interaction \(z_1 z_2\) when \(z_1, z_2\) are independent and mean-zero?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_2"> <span>The univariate covariance \(\Cov(z_1, z_1 z_2) = \E[z_1^2]\E[z_2] = 0\), causing univariate linear regression coefficients to vanish</span></label>
+              <label class="option"><input type="radio" name="q2_2"> <span>Linear models require features to have identical variance</span></label>
+              <label class="option"><input type="radio" name="q2_2"> <span>OLS assumes residuals follow a Cauchy distribution</span></label>
+              <label class="option"><input type="radio" name="q2_2"> <span>Multiplication of features creates infinite multicollinearity</span></label>
+            </div>
+            <div class="explain"><p>Because \(\E[z_2] = 0\), the marginal covariance of the interaction term with either single variable is zero, so linear regression assigns zero coefficients.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What is the asymptotic limit of Random Forest prediction variance as the number of trees \(B \to \infty\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_3"> <span>\(\rho \sigma^2\), where \(\rho\) is pairwise tree correlation and \(\sigma^2\) is individual tree variance</span></label>
+              <label class="option"><input type="radio" name="q2_3"> <span>Exactly zero, eliminating all estimation error</span></label>
+              <label class="option"><input type="radio" name="q2_3"> <span>\(\sigma^2 / B\)</span></label>
+              <label class="option"><input type="radio" name="q2_3"> <span>\((1-\rho) \sigma^2\)</span></label>
+            </div>
+            <div class="explain"><p>By Breiman's formula, \(\Var(\bar{T}) = \rho \sigma^2 + \frac{1-\rho}{B}\sigma^2\); as \(B \to \infty\), the second term vanishes, leaving \(\rho \sigma^2\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What mechanism does Breiman's Random Forest use to lower the inter-tree correlation \(\rho\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_4"> <span>Random feature subsampling at each candidate split (\(m_{\text{try}} \approx \sqrt{P}\) or \(P/3\))</span></label>
+              <label class="option"><input type="radio" name="q2_4"> <span>L1 Lasso penalty on tree weights</span></label>
+              <label class="option"><input type="radio" name="q2_4"> <span>Adding Gaussian noise to stock returns</span></label>
+              <label class="option"><input type="radio" name="q2_4"> <span>Restricting all trees to have identical root splits</span></label>
+            </div>
+            <div class="explain"><p>Randomly restricting candidate features at each split forces trees to consider different predictors, decorrelating their predictions.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What pseudo-residuals are fitted in GBDT under standard squared error loss \(\frac{1}{2}(y - f)^2\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_5"> <span>The ordinary forecast residuals \(\tilde{r}_{i,m} = y_i - f_{m-1}(z_i)\)</span></label>
+              <label class="option"><input type="radio" name="q2_5"> <span>The sign of the return \(\mathrm{sgn}(y_i)\)</span></label>
+              <label class="option"><input type="radio" name="q2_5"> <span>The squared residuals \((y_i - f_{m-1}(z_i))^2\)</span></label>
+              <label class="option"><input type="radio" name="q2_5"> <span>The ratio of realized to predicted return \(y_i / f_{m-1}(z_i)\)</span></label>
+            </div>
+            <div class="explain"><p>The negative gradient of \(\frac{1}{2}(y - f)^2\) with respect to \(f\) is \(-(f - y) = y - f\), which is the standard residual.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why must decision trees in empirical asset pricing be restricted to shallow depths (\(D \le 3\))?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_6"> <span>Low signal-to-noise ratios cause deep trees to split on idiosyncratic noise spikes, producing leaves that overfit sample noise</span></label>
+              <label class="option"><input type="radio" name="q2_6"> <span>Deep trees require more than 64-bit floating point precision</span></label>
+              <label class="option"><input type="radio" name="q2_6"> <span>Trees with depth greater than 3 violate no-arbitrage bounds</span></label>
+              <label class="option"><input type="radio" name="q2_6"> <span>GBDT cannot compute gradients when depth exceeds 3</span></label>
+            </div>
+            <div class="explain"><p>Financial data has low signal-to-noise; deep trees isolate tiny clusters of assets and memorize idiosyncratic sample shocks.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What is the primary methodological flaw of impurity-based (Gini) feature importance?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_7"> <span>Extreme upward bias toward continuous features with many distinct values, even when they carry zero actual predictability</span></label>
+              <label class="option"><input type="radio" name="q2_7"> <span>Inability to compute feature importance for ensembles larger than 10 trees</span></label>
+              <label class="option"><input type="radio" name="q2_7"> <span>Violation of the Pythagorean theorem in Hilbert space</span></label>
+              <label class="option"><input type="radio" name="q2_7"> <span>It always sums to zero</span></label>
+            </div>
+            <div class="explain"><p>Continuous variables offer more candidate split thresholds, giving them more opportunities to achieve accidental in-sample variance reduction.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Which property of Shapley values guarantees that the sum of attributions equals the model prediction minus the base expectation?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_8"> <span>Efficiency (Local Accuracy): \(\sum_{j=1}^P \phi_j(x) = f(x) - \E[f(x)]\)</span></label>
+              <label class="option"><input type="radio" name="q2_8"> <span>Homogeneity of degree zero</span></label>
+              <label class="option"><input type="radio" name="q2_8"> <span>Martingale orthogonality</span></label>
+              <label class="option"><input type="radio" name="q2_8"> <span>Strict convexity</span></label>
+            </div>
+            <div class="explain"><p>The Efficiency axiom requires the sum of all Shapley feature contributions to exactly match the difference between the prediction and expected outcome.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What computational complexity does TreeSHAP achieve compared to naïve model-agnostic Shapley evaluation?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_9"> <span>Polynomial complexity \(O(T \cdot L \cdot D^2)\) versus exponential \(O(2^P)\)</span></label>
+              <label class="option"><input type="radio" name="q2_9"> <span>\(O(P!)\) versus \(O(P^3)\)</span></label>
+              <label class="option"><input type="radio" name="q2_9"> <span>Logarithmic time \(O(\log P)\)</span></label>
+              <label class="option"><input type="radio" name="q2_9"> <span>Constant time \(O(1)\)</span></label>
+            </div>
+            <div class="explain"><p>TreeSHAP exploits tree recursion to compute exact Shapley attributions in polynomial time, avoiding the \(2^P\) combinatorial explosion.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why do raw tree ensemble return forecasts generate high portfolio turnover in long-short strategies?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q2_10"> <span>Piecewise constant step functions produce sharp cliff-edge jumps at split boundaries, causing frequent decile rank migrations</span></label>
+              <label class="option"><input type="radio" name="q2_10"> <span>Tree models cannot trade small-cap stocks</span></label>
+              <label class="option"><input type="radio" name="q2_10"> <span>Random forests force weights to be negative for all assets</span></label>
+              <label class="option"><input type="radio" name="q2_10"> <span>Tree forecasts are autocorrelated with a lag of 12 months</span></label>
+            </div>
+            <div class="explain"><p>Because tree forecasts jump discontinuously at split thresholds, minor characteristic changes cause large jumps in predicted return rankings.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <li>Breiman, L. (2001). Random forests. <em>Machine Learning</em>, 45(1), 5–32.</li>
+          <li>Friedman, J. H. (2001). Greedy function approximation: a gradient boosting machine. <em>Annals of Statistics</em>, 29(5), 1189–1232.</li>
+          <li>Gu, S., Kelly, B., &amp; Xiu, D. (2020). Empirical asset pricing via machine learning. <em>The Review of Financial Studies</em>, 33(5), 2223–2273.</li>
+          <li>Hastie, T., Tibshirani, R., &amp; Friedman, J. (2009). <em>The Elements of Statistical Learning</em>. Springer.</li>
+          <li>Lundberg, S. M., &amp; Lee, S.-I. (2017). A unified approach to interpreting model predictions. <em>Advances in Neural Information Processing Systems</em>, 30, 4765–4774.</li>
+          <li>McLean, R. D., &amp; Pontiff, J. (2016). Does academic research destroy stock return predictability? <em>The Journal of Finance</em>, 71(1), 5–32.</li>
+        </ol>
+      </section>
+
+      <div class="lesson-actions">
+        <button type="button" class="button" data-complete>Mark Lesson Complete</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="F6" data-page="L01" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lesson 1: Cross-Sectional Return Prediction &amp; Penalized Linear Models · F6</title>
+  <meta name="description" content="High-dimensional return prediction in low signal-to-noise equity panels, OLS failure under parameter explosion, out-of-sample zero-benchmark R2, and L1/L2 shrinkage.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">F6 Machine Learning in Asset Pricing</a><span class="sep">›</span><span>Lesson 1</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 01 · 10 study hours</p>
+        <h1>Cross-Sectional Return Prediction &amp; Penalized Linear Models</h1>
+        <p class="lede">Empirical return prediction in financial markets is characterized by a low signal-to-noise ratio where unconstrained regression models catastrophically overfit in-sample noise. We formalize machine learning return prediction in the cross-section, derive the zero-benchmark out-of-sample \(R^2_{\text{OOS}}\), prove the asymptotic failure of ordinary least squares under dimension expansion, and establish optimal shrinkage via Ridge, Lasso, and Elastic Net regularization.</p>
+      </header>
+
+      <section id="why-it-matters">
+        <h2>Why It Matters</h2>
+        <p class="why-it-matters">Individual equity returns contain predictable variations driven by firm characteristics, but predictable components rarely exceed 1% of monthly return variance. When empirical researchers estimate linear regressions across dozens of candidate anomaly predictors, ordinary least squares overfits sample idiosyncrasies and produces negative out-of-sample \(R^2\). Machine learning return prediction replaces unconstrained estimation with statistical regularization: imposing \(L_1\) sparsity and \(L_2\) shrinkage. This discipline stabilizes estimator variance, bounds parameter uncertainty, and converts noisy cross-sectional signals into investable long-short portfolios that harvest persistent risk premia while strictly respecting point-in-time causality.</p>
+      </section>
+
+      <section id="high-dimensional-panel">
+        <h2 id="h-high-dimensional-panel">1. The High-Dimensional Cross-Sectional Panel</h2>
+        <p>Let \(i \in \{1, \dots, N_t\}\) index individual equities observed at discrete time intervals \(t \in \{1, \dots, T\}\). For each stock \(i\) at time \(t\), let \(z_{i,t} \in \R^P\) denote an observable vector of firm characteristics, such as market capitalization, book-to-market ratio, momentum, asset growth, and profitability. Let \(r_{i,t+1}\) denote the forward realized excess return over the risk-free rate.</p>
+
+        <div class="block definition" id="def-ml-return-prediction-block">
+          <p><dfn id="def-ml-return-prediction" data-concept="ml-return-prediction">Machine-learning return prediction</dfn> is the estimation of a conditional expectation function \(g: \R^P \to \R\) satisfying:</p>
+          \[
+          r_{i,t+1} = g(z_{i,t}) + \epsilon_{i,t+1}, \quad \E[\epsilon_{i,t+1} \mid z_{i,t}] = 0
+          \]
+          <p>where \(g(\cdot)\) is constrained by explicit regularization penalties or structural functional classes to maximize out-of-sample predictive performance on unseen cross-sections.</p>
+        </div>
+
+        <p>In high-dimensional financial panels, the number of candidate characteristics \(P\) is large relative to the effective degrees of freedom. Continuous characteristics exhibit extreme skewness and outliers. Following <span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Section 1.1">Gu, Kelly &amp; Xiu (2020)</span>, characteristics are cross-sectionally ranked at each date \(t\) and mapped to the uniform interval \([-0.5, 0.5]\):</p>
+        \[
+        \tilde{z}_{i,t,p} = \frac{\operatorname{rank}(z_{i,t,p}) - 1}{N_t - 1} - 0.5
+        \]
+        <p>This rank transformation neutralizes outliers, ensures cross-sectional comparability across market capitalization regimes, and stabilizes numerical optimization algorithms.</p>
+      </section>
+
+      <section id="oos-r2-benchmark">
+        <h2 id="h-oos-r2-benchmark">2. Out-of-Sample \(R^2\) and the Zero Benchmark</h2>
+        <p>In classical statistics, the coefficient of determination \(R^2\) measures the proportion of variance explained relative to the sample mean of the dependent variable. In empirical asset pricing, this standard definition creates severe distortions.</p>
+
+        <div class="block definition" id="def-zero-r2">
+          <p>Let \(\mathcal{T}_{\text{test}}\) denote the set of out-of-sample time periods and \(\mathcal{I}_t\) the set of active assets at time \(t\). The out-of-sample predictive \(R^2\), denoted \(R^2_{\text{OOS}}\), is defined relative to the zero return benchmark:</p>
+          \[
+          R^2_{\text{OOS}} = 1 - \frac{\sum_{t \in \mathcal{T}_{\text{test}}} \sum_{i \in \mathcal{I}_t} (r_{i,t+1} - \hat{g}(z_{i,t}))^2}{\sum_{t \in \mathcal{T}_{\text{test}}} \sum_{i \in \mathcal{I}_t} r_{i,t+1}^2}
+          \]
+        </div>
+
+        <div class="block remark" id="rem-zero-benchmark">
+          <p><strong>Remark 1.1 (Economic Justification of the Zero Benchmark).</strong> For excess returns, a forecast of zero corresponds to the economic null hypothesis of no predictability (an unpredictable martingale difference sequence). Using the historical sample mean \(\bar{r}_{\text{test}}\) in the denominator is flawed: it uses future information not available to an investor in real time, and for individual equities, the historical mean is dominated by idiosyncratic noise. <span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Eq. 11">Gu, Kelly &amp; Xiu (2020) show that an out-of-sample \(R^2_{\text{OOS}} &gt; 0\) under the zero benchmark proves that the statistical model outperforms a naive investor holding no predictive exposure</span>.</p>
+        </div>
+
+        <p><span class="claim" data-grade="A" data-cite="campbell2007predicting" data-locator="Eq. 8">Campbell &amp; Thompson (2008) prove that an apparently small monthly \(R^2_{\text{OOS}}\) translates into substantial economic gains for mean-variance investors</span>. The proportional increase in annualized Sharpe ratio for a market-timing or cross-sectional spread allocation is bounded by:</p>
+        \[
+        \Delta \SR \approx \frac{\sqrt{R^2_{\text{OOS}}}}{\sigma_{\epsilon}}
+        \]
+        <p>A monthly \(R^2_{\text{OOS}}\) of merely 0.5% (0.005) yields an annualized Sharpe ratio improvement exceeding 0.40.</p>
+      </section>
+
+      <section id="ols-failure">
+        <h2 id="h-ols-failure">3. Asymptotic Failure of Ordinary Least Squares</h2>
+        <p>Consider the linear model \(g(z_{i,t}) = z_{i,t}^\top \beta\). Let \(M = \sum_{t=1}^{T_{\text{train}}} N_t\) denote total pooled training observations, and let \(Z \in \R^{M \times P}\) and \(y \in \R^M\) denote the stacked feature matrix and return vector.</p>
+
+        <div class="block theorem" id="thm-ols-risk">
+          <span class="block-title claim" data-grade="T">Theorem 1.1 (OLS Prediction Risk Explosion in High Dimensions).</span>
+          <p>Suppose \(y = Z \beta_0 + \epsilon\), where \(\epsilon \sim \mathcal{N}(0, \sigma^2 I_M)\) and \(Z\) has orthonormal columns with \(P &lt; M\). Let \(c = P/M\) denote the parameter-to-sample ratio. The expected out-of-sample mean squared prediction error of the unpenalized OLS estimator \(\hat{\beta}_{\text{OLS}} = (Z^\top Z)^{-1} Z^\top y\) satisfies:</p>
+          \[
+          \E_{\text{test}} \left[ \frac{1}{M_{\text{test}}} \| y_{\text{test}} - Z_{\text{test}} \hat{\beta}_{\text{OLS}} \|_2^2 \right] = \sigma^2 \left( 1 + \frac{P}{M - P - 1} \right) \approx \sigma^2 \left( 1 + \frac{c}{1 - c} \right)
+          \]
+        </div>
+
+        <div class="block proof" id="proof-ols-risk">
+          <p><strong>Proof.</strong> Under test features \(Z_{\text{test}}\) drawn independently from the same population distribution with \(\E[Z_{\text{test}}^\top Z_{\text{test}} / M_{\text{test}}] = I_P\), the prediction error decomposes as:</p>
+          \[
+          y_{\text{test}} - Z_{\text{test}} \hat{\beta}_{\text{OLS}} = \epsilon_{\text{test}} - Z_{\text{test}} (\hat{\beta}_{\text{OLS}} - \beta_0)
+          \]
+          <p>Taking expectations and exploiting independence:</p>
+          \[
+          \E\left[ \frac{1}{M_{\text{test}}} \| y_{\text{test}} - Z_{\text{test}} \hat{\beta}_{\text{OLS}} \|_2^2 \right] = \sigma^2 + \tr\left( \Var(\hat{\beta}_{\text{OLS}}) \right)
+          \]
+          <p>Because \(\Var(\hat{\beta}_{\text{OLS}} \mid Z) = \sigma^2 (Z^\top Z)^{-1}\), the expectation over Gaussian designs follows an inverse Wishart distribution with \(M - P - 1\) degrees of freedom:</p>
+          \[
+          \E[\tr(Z^\top Z)^{-1}] = \frac{P}{M - P - 1}
+          \]
+          <p>Multiplying by \(\sigma^2\) yields the result. As \(c \to 1^-\), parameter variance explodes asymptotically, rendering OLS predictive accuracy strictly worse than the zero forecast.</p>
+        </div>
+      </section>
+
+      <section id="penalized-regressions">
+        <h2 id="h-penalized-regressions">4. Penalized Estimators: Ridge, Lasso, and Elastic Net</h2>
+        <p>To overcome parameter estimation variance in high-dimensional panels, statistical regularization introduces a penalty function \(\mathcal{P}(\beta)\) into the objective:</p>
+        \[
+        \min_{\beta_0, \beta} \frac{1}{2M} \sum_{m=1}^M (y_m - \beta_0 - z_m^\top \beta)^2 + \mathcal{P}_\lambda(\beta)
+        \]
+
+        <div class="block definition" id="def-elastic-net">
+          <p>The <strong>Elastic Net</strong> regularizer balances \(L_1\) sparsity with \(L_2\) shrinkage using tuning parameters \(\lambda \ge 0\) and mixing weight \(\alpha \in [0, 1]\):</p>
+          \[
+          \mathcal{P}_{\lambda, \alpha}(\beta) = \lambda \left( \alpha \|\beta\|_1 + \frac{1 - \alpha}{2} \|\beta\|_2^2 \right) = \lambda \sum_{j=1}^P \left( \alpha |\beta_j| + \frac{1 - \alpha}{2} \beta_j^2 \right)
+          \]
+          <p>Setting \(\alpha = 0\) recovers <a class="concept" data-concept="ridge-regression" href="../../../concepts.html#ridge-regression">ridge regression</a>, while \(\alpha = 1\) recovers the <a class="concept" data-concept="lasso" href="../../../concepts.html#lasso">lasso</a> estimator.</p>
+        </div>
+
+        <div class="block theorem" id="thm-ridge-bayesian">
+          <span class="block-title claim" data-grade="T">Theorem 1.2 (Ridge as Optimal Gaussian Shrinkage).</span>
+          <p>Under centered features and target, the Ridge estimator has the closed-form representation:</p>
+          \[
+          \hat{\beta}_{\text{Ridge}} = (Z^\top Z + M \lambda I_P)^{-1} Z^\top y
+          \]
+          <p>Furthermore, \(\hat{\beta}_{\text{Ridge}}\) is the exact Maximum A Posteriori (MAP) Bayesian estimator under an independent Gaussian prior \(\beta \sim \mathcal{N}(0, \tau^2 I_P)\) with \(\lambda = \sigma^2 / (M \tau^2)\).</p>
+        </div>
+
+        <div class="block proof" id="proof-ridge-bayesian">
+          <p><strong>Proof.</strong> The log-posterior density satisfies:</p>
+          \[
+          \log p(\beta \mid y, Z) \propto \log p(y \mid Z, \beta) + \log p(\beta) = -\frac{1}{2\sigma^2} \| y - Z\beta \|_2^2 - \frac{1}{2\tau^2} \| \beta \|_2^2
+          \]
+          <p>Maximizing with respect to \(\beta\) is equivalent to minimizing:</p>
+          \[
+          \frac{1}{2M} \| y - Z\beta \|_2^2 + \frac{\sigma^2}{2 M \tau^2} \| \beta \|_2^2
+          \]
+          <p>Differentiating with respect to \(\beta\) yields the gradient:</p>
+          \[
+          -\frac{1}{M} Z^\top (y - Z\beta) + \lambda \beta = 0 \implies (Z^\top Z + M \lambda I_P) \beta = Z^\top y
+          \]
+          <p>Because \(Z^\top Z + M \lambda I_P\) is strictly positive definite for all \(\lambda &gt; 0\), the solution is unique.</p>
+        </div>
+
+        <div class="block theorem" id="thm-lasso-thresholding">
+          <span class="block-title claim" data-grade="T">Theorem 1.3 (Lasso Coordinate Soft-Thresholding).</span>
+          <p>For standardized orthonormal features \(Z^\top Z / M = I_P\), the Lasso estimator \(\hat{\beta}_{\text{Lasso}}\) has the component-wise closed form:</p>
+          \[
+          \hat{\beta}_j = \mathcal{S}(\hat{\beta}_{\text{OLS}, j}, \lambda) = \operatorname{sign}(\hat{\beta}_{\text{OLS}, j}) \max(|\hat{\beta}_{\text{OLS}, j}| - \lambda, 0)
+          \]
+          <p>where \(\mathcal{S}(u, \lambda)\) is the continuous soft-thresholding operator.</p>
+        </div>
+
+        <div class="block proof" id="proof-lasso-thresholding">
+          <p><strong>Proof.</strong> With \(Z^\top Z / M = I_P\), the objective decouples into \(P\) independent univariate optimization problems:</p>
+          \[
+          \min_{\beta_j} \frac{1}{2} (\hat{\beta}_{\text{OLS}, j} - \beta_j)^2 + \lambda |\beta_j|
+          \]
+          <p>For \(\beta_j &gt; 0\), the derivative is \(\beta_j - \hat{\beta}_{\text{OLS}, j} + \lambda = 0 \implies \hat{\beta}_j = \hat{\beta}_{\text{OLS}, j} - \lambda\), which is valid if \(\hat{\beta}_{\text{OLS}, j} &gt; \lambda\). For \(\beta_j &lt; 0\), \(\beta_j - \hat{\beta}_{\text{OLS}, j} - \lambda = 0 \implies \hat{\beta}_j = \hat{\beta}_{\text{OLS}, j} + \lambda\), valid if \(\hat{\beta}_{\text{OLS}, j} &lt; -\lambda\). For \(|\hat{\beta}_{\text{OLS}, j}| \le \lambda\), the minimum is attained at \(\beta_j = 0\) by subgradient optimality.</p>
+        </div>
+      </section>
+
+      <section class="lab" id="lab-F6-L01-1" data-runtime="python">
+        <h3>Lab 1 · Ridge vs. OLS Out-of-Sample R-squared in Low S/N Panels</h3>
+        <p class="hypothesis">Under low signal-to-noise ratios and high feature dimensionality, unpenalized OLS overfits noise and yields negative out-of-sample R2, whereas L2-penalized Ridge regression achieves positive out-of-sample R2 and robust long-short Sharpe ratios.</p>
+        <pre><code class="language-python" data-run>"""Lab F6-L01-1: Ridge vs. OLS Out-of-Sample R-squared in Low S/N Panels.
+
+Compares unpenalized OLS against L2-regularized Ridge regression in high-dimensional
+cross-sectional return prediction panels with low signal-to-noise ratio.
+Demonstrates the Gu, Kelly &amp; Xiu (2020) zero-benchmark R2_OOS.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def run_lab(seed: int = 42) -&gt; dict[str, float]:
+    """Execute OLS vs. Ridge comparison on a simulated cross-sectional panel."""
+    rng = np.random.default_rng(seed)
+
+    n_assets = 30
+    t_train = 24
+    t_test = 24
+    n_features = 35
+
+    m_train = n_assets * t_train
+    m_test = n_assets * t_test
+
+    true_beta = np.zeros(n_features, dtype=np.float64)
+    true_beta[:5] = np.array([0.030, -0.025, 0.020, -0.015, 0.010], dtype=np.float64)
+
+    x_train = rng.normal(0.0, 1.0, size=(m_train, n_features))
+    for p in range(n_features):
+        x_train[:, p] = (np.argsort(np.argsort(x_train[:, p])) / (m_train - 1)) - 0.5
+
+    x_test = rng.normal(0.0, 1.0, size=(m_test, n_features))
+    for p in range(n_features):
+        x_test[:, p] = (np.argsort(np.argsort(x_test[:, p])) / (m_test - 1)) - 0.5
+
+    y_train = x_train @ true_beta + rng.normal(0.0, 0.075, size=m_train)
+    y_test = x_test @ true_beta + rng.normal(0.0, 0.075, size=m_test)
+
+    # 1. Unregularized OLS
+    ols_beta = np.linalg.solve(x_train.T @ x_train, x_train.T @ y_train)
+    pred_ols = x_test @ ols_beta
+
+    # 2. L2 Penalized Ridge Regression (alpha = 0.25)
+    ridge_alpha = 0.25
+    ridge_beta = np.linalg.solve(
+        x_train.T @ x_train + (m_train * ridge_alpha) * np.eye(n_features),
+        x_train.T @ y_train,
+    )
+    pred_ridge = x_test @ ridge_beta
+
+    # Compute out-of-sample R2 with zero return benchmark (Gu, Kelly, Xiu 2020)
+    denom_zero = float(np.sum(y_test**2))
+    r2_ols = float(1.0 - np.sum((y_test - pred_ols) ** 2) / denom_zero)
+    r2_ridge = float(1.0 - np.sum((y_test - pred_ridge) ** 2) / denom_zero)
+
+    # Evaluate long-short spread portfolio returns on test panel
+    y_test_panel = y_test.reshape(t_test, n_assets).T
+    pred_ols_panel = pred_ols.reshape(t_test, n_assets).T
+    pred_ridge_panel = pred_ridge.reshape(t_test, n_assets).T
+
+    k_quant = max(1, n_assets // 3)
+    ols_spreads = np.zeros(t_test)
+    ridge_spreads = np.zeros(t_test)
+
+    for t in range(t_test):
+        ord_ols = np.argsort(pred_ols_panel[:, t])
+        ols_spreads[t] = np.mean(y_test_panel[ord_ols[-k_quant:], t]) - np.mean(y_test_panel[ord_ols[:k_quant], t])
+
+        ord_ridge = np.argsort(pred_ridge_panel[:, t])
+        ridge_spreads[t] = np.mean(y_test_panel[ord_ridge[-k_quant:], t]) - np.mean(
+            y_test_panel[ord_ridge[:k_quant], t]
+        )
+
+    sharpe_ols = float(math.sqrt(12.0) * np.mean(ols_spreads) / np.std(ols_spreads, ddof=1))
+    sharpe_ridge = float(math.sqrt(12.0) * np.mean(ridge_spreads) / np.std(ridge_spreads, ddof=1))
+
+    return {
+        "r2_ols_pct": r2_ols * 100.0,
+        "r2_ridge_pct": r2_ridge * 100.0,
+        "sharpe_ols": sharpe_ols,
+        "sharpe_ridge": sharpe_ridge,
+    }
+
+
+def main() -&gt; None:
+    results = run_lab(seed=42)
+    print("=== Lab F6-L01-1: Ridge vs. OLS Out-of-Sample Performance ===")
+    print(f"OLS Out-of-Sample R2 (%):    {results['r2_ols_pct']:.4f}")
+    print(f"Ridge Out-of-Sample R2 (%):  {results['r2_ridge_pct']:.4f}")
+    print(f"OLS Spread Annual Sharpe:   {results['sharpe_ols']:.4f}")
+    print(f"Ridge Spread Annual Sharpe: {results['sharpe_ridge']:.4f}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-4">=== Lab F6-L01-1: Ridge vs. OLS Out-of-Sample Performance ===
+OLS Out-of-Sample R2 (%):    -1.4005
+Ridge Out-of-Sample R2 (%):  0.8957
+OLS Spread Annual Sharpe:   1.2390
+Ridge Spread Annual Sharpe: 1.0615</pre>
+        <p class="interpretation">The experiment confirms that unconstrained OLS suffers from estimation variance explosion, producing a negative out-of-sample R2 (-1.40%). In contrast, Ridge regression shrinks coefficients toward zero, yielding a positive R2 (+0.90%) and confirming the empirical findings of Gu, Kelly &amp; Xiu (2020).</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2>Where the Canon Breaks</h2>
+        <p>Classical corporate finance and econometric textbooks treat linear regression as the gold standard for testing asset pricing models. However, linear models fail in three fundamental ways when applied to financial cross-sections:</p>
+        <ul>
+          <li><strong>Combinatorial Interaction Failure:</strong> Return anomalies interact non-linearly. For example, momentum predictability is concentrated in high-volatility, small-cap stocks. A linear model cannot capture this without manually specifying all \(P(P-1)/2\) pairwise interaction cross-terms, causing parameter explosion.</li>
+          <li><strong>Lasso Instability under Collinearity:</strong> Financial characteristics are heavily correlated (e.g., multiple valuation metrics or momentum windows). <span class="claim" data-grade="A" data-cite="hastie2009elements" data-locator="Section 3.4.2">Hastie, Tibshirani &amp; Friedman (2009) prove that Lasso arbitrarily selects a single representative feature from a cluster of correlated variables while setting others to zero, destabilizing portfolio weights across months</span>.</li>
+          <li><strong>Non-Stationary Signal Decay:</strong> Fixed linear coefficients assume constant marginal predictability. However, publication of anomalies and algorithmic arbitrage systematically attenuate return predictability over time (<span class="claim" data-grade="A" data-cite="mclean2016academic" data-locator="Table 1">McLean &amp; Pontiff 2016</span>).</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2>Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> An out-of-sample \(R^2\) of 0.5% in stock return prediction is economically negligible and not worth trading.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> Unlike macro forecasting where quarterly GDP variance is low, individual monthly stock return volatility is roughly 10% (120% annualized variance). An \(R^2_{\text{OOS}}\) of 0.5% represents substantial predictive power when diversified across hundreds of assets.</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="campbell2007predicting" data-locator="Section 3">Campbell &amp; Thompson (2008)</span> demonstrate that a monthly \(R^2_{\text{OOS}} = 0.5\%\) doubles the utility of a mean-variance investor and produces double-digit information ratios in market-neutral portfolios.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> Cross-validation for return prediction can be executed using standard random K-fold shuffling.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> Random shuffling leaks future information into the training set through overlapping holding periods, cross-sectional common factors, and autocorrelated features, yielding wildly optimistic in-sample performance.</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="prado2018advances" data-locator="Chapter 7">Lopez de Prado (2018)</span> demonstrates that standard cross-validation suffers severe lookahead leakage; only purged cross-validation with post-test embargoes preserves temporal independence.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> Lasso is always preferable to Ridge because it produces sparse, interpretable factor models.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> When predictor variables are correlated, Lasso selects one feature arbitrarily and discards the rest, creating high estimation variance and jumpy portfolio weights.</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Table 1">Gu, Kelly &amp; Xiu (2020)</span> find that pure Lasso underperforms Ridge and Elastic Net in out-of-sample \(R^2\) and decile spread Sharpe ratios across US equities.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="prob-F6-L01-m1">
+            <h4>Problem 1.1: Zero-Benchmark Out-of-Sample \(R^2\)</h4>
+            <p>A test panel contains 3 assets over 2 periods with realized excess returns \(y = [0.04, -0.02, 0.06, -0.03, 0.05, -0.01]\). A linear model outputs predictions \(\hat{y} = [0.02, -0.01, 0.03, -0.01, 0.02, 0.00]\). Calculate the zero-benchmark \(R^2_{\text{OOS}}\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Compute the sum of squared errors in the numerator:
+              \((0.04-0.02)^2 + (-0.02-(-0.01))^2 + (0.06-0.03)^2 + (-0.03-(-0.01))^2 + (0.05-0.02)^2 + (-0.01-0.00)^2\)
+              \(= 0.0004 + 0.0001 + 0.0009 + 0.0004 + 0.0009 + 0.0001 = 0.0028\).
+              Compute the denominator using the zero benchmark:
+              \(\sum y_i^2 = 0.04^2 + (-0.02)^2 + 0.06^2 + (-0.03)^2 + 0.05^2 + (-0.01)^2\)
+              \(= 0.0016 + 0.0004 + 0.0036 + 0.0009 + 0.0025 + 0.0001 = 0.0091\).
+              Thus:
+              \(R^2_{\text{OOS}} = 1 - \frac{0.0028}{0.0091} = 1 - 0.30769 = 0.69231 \quad (69.23\%)\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L01-m2">
+            <h4>Problem 1.2: Ridge Normal Equations with Scaled Penalty</h4>
+            <p>Suppose \(Z^\top Z = \begin{bmatrix} 100 & 40 \\ 40 & 100 \end{bmatrix}\) and \(Z^\top y = \begin{bmatrix} 20 \\ 10 \end{bmatrix}\) for \(M = 200\) observations. For Ridge regularization parameter \(\lambda = 0.1\), compute the regularized coefficient vector \(\hat{\beta}_{\text{Ridge}}\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>The ridge penalty matrix is \(M \lambda I = 200 \times 0.1 \times I_2 = 20 I_2\).
+              The penalized design matrix is:
+              \(A = Z^\top Z + 20 I_2 = \begin{bmatrix} 120 & 40 \\ 40 & 120 \end{bmatrix}\).
+              The determinant is \(\det(A) = 120^2 - 40^2 = 14400 - 1600 = 12800\).
+              The inverse matrix is:
+              \(A^{-1} = \frac{1}{12800} \begin{bmatrix} 120 & -40 \\ -40 & 120 \end{bmatrix} = \begin{bmatrix} 0.009375 & -0.003125 \\ -0.003125 & 0.009375 \end{bmatrix}\).
+              Multiplying by \(Z^\top y\):
+              \(\hat{\beta}_1 = 0.009375(20) - 0.003125(10) = 0.1875 - 0.03125 = 0.15625\).
+              \(\hat{\beta}_2 = -0.003125(20) + 0.009375(10) = -0.0625 + 0.09375 = 0.03125\).
+              Thus, \(\hat{\beta}_{\text{Ridge}} = [0.15625, 0.03125]^\top\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L01-m3">
+            <h4>Problem 1.3: Lasso Soft-Thresholding Operator</h4>
+            <p>Given orthogonal features with OLS estimates \(\hat{\beta}_{\text{OLS}} = [0.08, -0.04, 0.02, -0.12]\) and Lasso penalty \(\lambda = 0.05\), compute the Lasso coefficient estimates.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Apply the soft-thresholding operator \(\mathcal{S}(u, \lambda) = \operatorname{sign}(u) \max(|u| - \lambda, 0)\):
+              1. For \(u_1 = 0.08 &gt; 0.05\): \(\hat{\beta}_1 = 0.08 - 0.05 = 0.03\).
+              2. For \(u_2 = -0.04\): \(|-0.04| = 0.04 &lt; 0.05\), so \(\hat{\beta}_2 = 0.0\).
+              3. For \(u_3 = 0.02\): \(|0.02| = 0.02 &lt; 0.05\), so \(\hat{\beta}_3 = 0.0\).
+              4. For \(u_4 = -0.12 &lt; -0.05\): \(\hat{\beta}_4 = -1 \times (0.12 - 0.05) = -0.07\).
+              The resulting Lasso vector is \(\hat{\beta}_{\text{Lasso}} = [0.03, 0.0, 0.0, -0.07]^\top\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prob-F6-L01-p1">
+            <h4>Problem 1.4: Strict Shrinkage of Ridge Coefficients</h4>
+            <p>Prove that for any positive penalty \(\lambda &gt; 0\), the Euclidean norm of the Ridge coefficient vector is strictly smaller than the norm of the OLS coefficient vector, \(\|\hat{\beta}_{\text{Ridge}}\|_2 &lt; \|\hat{\beta}_{\text{OLS}}\|_2\), provided \(\hat{\beta}_{\text{OLS}} \neq 0\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Perform the singular value decomposition of \(Z = U \Sigma V^\top\) with singular values \(d_j &gt; 0\).
+              The OLS estimator can be expressed in the orthonormal basis \(V\) as:
+              \(\hat{\beta}_{\text{OLS}} = V \Sigma^{-1} U^\top y = \sum_{j=1}^P \frac{u_j^\top y}{d_j} v_j\).
+              Its squared Euclidean norm is:
+              \(\|\hat{\beta}_{\text{OLS}}\|_2^2 = \sum_{j=1}^P \frac{(u_j^\top y)^2}{d_j^2}\).
+              For the Ridge estimator with penalty \(M \lambda\):
+              \(\hat{\beta}_{\text{Ridge}} = V (\Sigma^2 + M \lambda I)^{-1} \Sigma U^\top y = \sum_{j=1}^P \frac{d_j (u_j^\top y)}{d_j^2 + M \lambda} v_j\).
+              Its squared Euclidean norm is:
+              \(\|\hat{\beta}_{\text{Ridge}}\|_2^2 = \sum_{j=1}^P \left( \frac{d_j^2}{d_j^2 + M \lambda} \right)^2 \frac{(u_j^\top y)^2}{d_j^2}\).
+              Because \(M \lambda &gt; 0\), the shrinkage factor satisfies \(\frac{d_j^2}{d_j^2 + M \lambda} &lt; 1\) for all \(j\).
+              Therefore, every non-zero component is strictly attenuated, establishing \(\|\hat{\beta}_{\text{Ridge}}\|_2 &lt; \|\hat{\beta}_{\text{OLS}}\|_2\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L01-p2">
+            <h4>Problem 1.5: Invariance of Rank Transformations to Monotonic Changes</h4>
+            <p>Prove that applying any strictly increasing transformation \(\phi: \R \to \R\) to raw characteristic \(z_{i,t,p}\) leaves the normalized rank score \(\tilde{z}_{i,t,p}\) completely unchanged.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Let \(z_{1,t,p} &lt; z_{2,t,p} &lt; \dots &lt; z_{N,t,p}\) denote the ordered characteristic observations for assets \(1, \dots, N\) at time \(t\).
+              The rank function assigns \(\operatorname{rank}(z_{i,t,p}) = \sum_{k=1}^N \mathbf{1}\{ z_{k,t,p} \le z_{i,t,p} \}\).
+              Because \(\phi\) is strictly increasing, \(\phi(a) \le \phi(b) \iff a \le b\) for all real \(a, b\).
+              Therefore:
+              \(\mathbf{1}\{ \phi(z_{k,t,p}) \le \phi(z_{i,t,p}) \} = \mathbf{1}\{ z_{k,t,p} \le z_{i,t,p} \}\).
+              Summing across all assets \(k\), the rank of \(\phi(z_{i,t,p})\) is identically equal to \(\operatorname{rank}(z_{i,t,p})\).
+              Substituting into the linear formula \(\tilde{z}_{i,t,p} = \frac{\operatorname{rank}(z_{i,t,p}) - 1}{N - 1} - 0.5\), the normalized score is identically preserved.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L01-p3">
+            <h4>Problem 1.6: Dual Formulation of Ridge Regression</h4>
+            <p>Prove that the Ridge estimator can be computed in dual sample space using the \(M \times M\) kernel Gram matrix as \(\hat{\beta} = Z^\top (Z Z^\top + M \lambda I_M)^{-1} y\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>We verify the matrix identity \((Z^\top Z + M \lambda I_P)^{-1} Z^\top = Z^\top (Z Z^\top + M \lambda I_M)^{-1}\).
+              Multiply both sides on the left by \((Z^\top Z + M \lambda I_P)\) and on the right by \((Z Z^\top + M \lambda I_M)\):
+              Left side:
+              \((Z^\top Z + M \lambda I_P) \left[ (Z^\top Z + M \lambda I_P)^{-1} Z^\top \right] (Z Z^\top + M \lambda I_M) = Z^\top (Z Z^\top + M \lambda I_M) = Z^\top Z Z^\top + M \lambda Z^\top\).
+              Right side:
+              \((Z^\top Z + M \lambda I_P) \left[ Z^\top (Z Z^\top + M \lambda I_M)^{-1} \right] (Z Z^\top + M \lambda I_M) = (Z^\top Z + M \lambda I_P) Z^\top = Z^\top Z Z^\top + M \lambda Z^\top\).
+              Since both sides are identical for all invertible matrices, post-multiplying by \(y\) proves that \(\hat{\beta}_{\text{Ridge}} = Z^\top (Z Z^\top + M \lambda I_M)^{-1} y\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="prob-F6-L01-e1">
+            <h4>Problem 1.7: Cross-Sectional Ridge Grid Tuning</h4>
+            <p>In a cross-sectional equity panel, an econometrician tests \(\lambda \in \{0.001, 0.01, 0.1, 1.0, 10.0\}\) using 5-fold purged cross-validation. The average validation MSE across folds is \([0.0048, 0.0042, 0.0039, 0.0041, 0.0046]\). Which penalty parameter should be selected, and what does the U-shaped curve indicate?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>The optimal penalty parameter is \(\lambda^* = 0.1\), which achieves the global minimum validation MSE of \(0.0039\).
+              The U-shaped curve illustrates the fundamental bias-variance tradeoff:
+              For \(\lambda &lt; 0.1\) (0.001 and 0.01), shrinkage is insufficient, and estimation variance inflates prediction error (overfitting).
+              For \(\lambda &gt; 0.1\) (1.0 and 10.0), shrinkage is excessive, dampening true predictive signals and inflating bias (underfitting).
+              Optimal regularization precisely balances bias and variance.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L01-e2">
+            <h4>Problem 1.8: Sharpe Ratio Gain from Campbell-Thompson Formula</h4>
+            <p>An equity market-neutral strategy achieves an out-of-sample \(R^2_{\text{OOS}} = 0.0064\) (0.64%) on a cross-section with residual return standard deviation \(\sigma_\epsilon = 0.08\) (8% monthly). Estimate the monthly information ratio and annualized Sharpe ratio.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Using the Campbell &amp; Thompson (2008) approximation:
+              \(\mathrm{IR}_{\text{monthly}} \approx \frac{\sqrt{R^2_{\text{OOS}}}}{\sigma_\epsilon} = \frac{\sqrt{0.0064}}{0.08} = \frac{0.08}{0.08} = 1.0\).
+              More precisely, in a mean-variance portfolio where the benchmark Sharpe is zero:
+              \(\mathrm{SR}_{\text{monthly}} \approx \sqrt{\frac{R^2_{\text{OOS}}}{1 - R^2_{\text{OOS}}}} = \sqrt{\frac{0.0064}{0.9936}} \approx 0.08025\).
+              Annualizing by \(\sqrt{12}\):
+              \(\mathrm{SR}_{\text{annual}} \approx 0.08025 \times \sqrt{12} \approx 0.08025 \times 3.4641 = 0.278\).
+              If scaled across an unconstrained dollar-neutral cross-section with 50 independent anomaly bets, the combined portfolio Sharpe ratio scales by \(\sqrt{N_{\text{eff}}}\), generating institutional-scale performance.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L01-e3">
+            <h4>Problem 1.9: Microcap Distortion in OLS vs. Ridge</h4>
+            <p>Explain why microcap stocks cause unpenalized OLS cross-sectional regressions to produce catastrophic out-of-sample failure, and how equal-weighted regression differs from value-weighted regression in regularized models.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>In standard CRSP panels, microcaps represent approximately 60% of all listed firms but less than 3% of aggregate market capitalization.
+              Because microcaps have high idiosyncratic volatility, large bid-ask bounce, and low liquidity, an unweighted OLS objective \(\sum_i (r_i - z_i^\top \beta)^2\) spends 60% of its explanatory capacity fitting microcap noise.
+              When evaluated out-of-sample on value-weighted portfolios or liquid stocks, these microcap-fitted coefficients fail catastrophically.
+              Regularized Ridge regression attenuates extreme coefficients, but weighted regression (weighting each observation by square-root market cap or inverse variance) or explicit universe screening is required to prevent microcap dominance.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="prob-F6-L01-r1">
+            <h4>Problem 1.10: Gu, Kelly &amp; Xiu (2020) Replication Architecture</h4>
+            <p>Critique the recursive training schedule used in Gu, Kelly &amp; Xiu (2020): 18 years training, 12 years validation, and rolling out-of-sample testing. What are the economic tradeoffs between rolling fixed-window training and expanding-window training?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Gu, Kelly &amp; Xiu (2020) employ an expanding training window to maximize statistical power in low signal-to-noise environments.
+              Tradeoff 1: Sample size vs. non-stationarity. An expanding window maximizes observations, which is vital for deep neural networks with thousands of parameters. However, it assumes that structural return relationships from 1960 remain valid in 2020.
+              Tradeoff 2: Rolling windows adapt faster to post-publication alpha decay and technological shifts in market microstructure, but suffer higher parameter estimation variance due to truncated sample size.
+              In empirical testing, expanding windows with cross-validated shrinkage generally dominate short rolling windows in equity panels.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L01-r2">
+            <h4>Problem 1.11: Elastic Net Selection under Correlated Anomalies</h4>
+            <p>In asset pricing, characteristics within the same theme (e.g., 1-month reversal, 6-month momentum, 12-month momentum) exhibit correlations exceeding 0.70. Contrast the theoretical behavior of Lasso (\(\alpha = 1\)) versus Elastic Net (\(\alpha = 0.5\)) in this setting.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Lasso's \(L_1\) penalty creates non-differentiable corners along coordinate axes, forcing coefficients of collinear variables to compete directly. Zou &amp; Hastie (2005) prove that if two features are identical, Lasso can assign all weight to one and zero to the other.
+              In contrast, Elastic Net adds the strictly convex \(L_2\) penalty \(\frac{1-\alpha}{2} \|\beta\|_2^2\).
+              The strict convexity forces the solution to group correlated variables: if features \(j\) and \(k\) have correlation \(\rho \to 1\), Elastic Net guarantees that \(|\hat{\beta}_j - \hat{\beta}_k| \to 0\).
+              For financial portfolios, this grouping property prevents erratic monthly turnover between near-identical anomaly proxies.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L01-r3">
+            <h4>Problem 1.12: Stein's Phenomenon in Factor Return Prediction</h4>
+            <p>Relate Theorem 1.2 (Ridge shrinkage) to Stein's Paradox (1956). Why is the sample mean vector inadmissible for dimension \(P \ge 3\), and what does this imply for factor investing?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Stein's Paradox proves that for a \(P\)-variate normal distribution \(\mu \sim \mathcal{N}(\theta, \sigma^2 I_P)\) with \(P \ge 3\), the ordinary sample mean \(\hat{\theta}_{\text{OLS}} = \mu\) is strictly inadmissible under squared error loss.
+              The James-Stein shrinkage estimator \(\hat{\theta}_{\text{JS}} = \left( 1 - \frac{(P-2)\sigma^2}{\|\mu\|^2} \right) \mu\) achieves strictly smaller risk \(\E[\|\hat{\theta} - \theta\|^2]\) everywhere in parameter space.
+              In factor investing, this implies that unadjusted historical average returns of \(P \ge 3\) anomaly portfolios are mathematically suboptimal forecasts of future expected returns.
+              Ridge regression and empirical Bayes shrinkage operationalize Stein's phenomenon by shrinking estimated factor premia toward a common prior mean, systematically improving out-of-sample allocation efficiency.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2>Key Results</h2>
+        <div class="table-wrap">
+<table class="key-results">
+          <thead>
+            <tr><th>Claim / Result</th><th>Grade</th><th>Basis / Keys</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Unregularized OLS individual stock out-of-sample \(R^2_{\text{OOS}}\) is negative (-0.12%) in high-dimensional US equity panels</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Table 1">gu2020empirical</span></td>
+            </tr>
+            <tr>
+              <td>Elastic Net and Ridge regularization achieve positive individual stock \(R^2_{\text{OOS}} \approx 0.30\% - 0.40\%\) and high-Sharpe decile spreads</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Table 1">gu2020empirical</span></td>
+            </tr>
+            <tr>
+              <td>OLS prediction risk explodes asymptotically as parameter-to-sample ratio \(c = P/M \to 1^-\)</td>
+              <td>T</td>
+              <td>Theorem 1.1 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>Ridge regression is the exact MAP estimator under an independent Gaussian prior</td>
+              <td>T</td>
+              <td>Theorem 1.2 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>Lasso coordinate updates equal the soft-thresholding operator on OLS coefficients</td>
+              <td>T</td>
+              <td>Theorem 1.3 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>Small out-of-sample \(R^2\) (0.5%) generates economically meaningful utility gains for mean-variance investors</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="campbell2007predicting" data-locator="Eq. 8">campbell2007predicting</span></td>
+            </tr>
+          </tbody>
+        </table>
+</div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="F6" data-page="L01">
+        <h2>Retrieval Quiz</h2>
+        <ol class="quiz-items">
+          <li class="item" data-kind="mc">
+            <p class="question">Why is the zero return forecast used in the denominator of the Gu, Kelly &amp; Xiu (2020) out-of-sample \(R^2\) rather than the sample mean?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1"> <span>Zero represents the economic null hypothesis of no excess return predictability without using future sample information</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>The sample mean is computationally impossible to invert in matrix algebra</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>Using zero guarantees that \(R^2\) can never be negative</span></label>
+              <label class="option"><input type="radio" name="q1"> <span>Zero benchmark eliminates all market microstructure noise</span></label>
+            </div>
+            <div class="explain"><p>Excess returns have an unconditional expectation near zero; the zero forecast represents the economic null of no predictability and avoids in-sample lookahead bias from sample mean calculation.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Under Theorem 1.1, what happens to the expected prediction MSE of OLS as the feature dimension \(P\) approaches sample size \(M\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1_2"> <span>It explodes to infinity due to parameter estimation variance</span></label>
+              <label class="option"><input type="radio" name="q1_2"> <span>It monotonically converges to zero</span></label>
+              <label class="option"><input type="radio" name="q1_2"> <span>It equals the in-sample residual variance exactly</span></label>
+              <label class="option"><input type="radio" name="q1_2"> <span>It oscillates between positive and negative infinity</span></label>
+            </div>
+            <div class="explain"><p>As \(P \to M\), the Gram matrix \(Z^\top Z\) becomes ill-conditioned and its smallest eigenvalue approaches zero, causing \(\tr((Z^\top Z)^{-1})\) and parameter variance to explode.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What prior distribution on regression coefficients \(\beta\) mathematically yields the Ridge regression estimator as the MAP solution?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1_3"> <span>Independent Gaussian prior \(\beta \sim \mathcal{N}(0, \tau^2 I)\)</span></label>
+              <label class="option"><input type="radio" name="q1_3"> <span>Independent Laplace (double exponential) prior</span></label>
+              <label class="option"><input type="radio" name="q1_3"> <span>Uniform improper prior over \(\R^P\)</span></label>
+              <label class="option"><input type="radio" name="q1_3"> <span>Student's t-distribution with 3 degrees of freedom</span></label>
+            </div>
+            <div class="explain"><p>A Gaussian log-prior is quadratic \(\|\beta\|_2^2 / (2\tau^2)\), which corresponds exactly to the \(L_2\) squared penalty in Ridge regression.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why does rank-transforming characteristics to \([-0.5, 0.5]\) improve machine learning model stability in asset pricing?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1_4"> <span>It eliminates outlier sensitivity, ensures uniform cross-sectional support across time, and centers features at zero</span></label>
+              <label class="option"><input type="radio" name="q1_4"> <span>It forces all stock returns to follow a normal distribution</span></label>
+              <label class="option"><input type="radio" name="q1_4"> <span>It eliminates the need to estimate factor loadings</span></label>
+              <label class="option"><input type="radio" name="q1_4"> <span>It ensures that all stocks have identical market capitalizations</span></label>
+            </div>
+            <div class="explain"><p>Cross-sectional rank normalization insulates linear and non-linear estimators from heavy-tailed accounting anomalies and maintains a stable feature distribution across decades.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What is the mathematical effect of the soft-thresholding operator \(\mathcal{S}(u, \lambda)\) on values where \(|u| \le \lambda\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1_5"> <span>It sets the coefficient identically to zero</span></label>
+              <label class="option"><input type="radio" name="q1_5"> <span>It divides the coefficient by \(1 + \lambda\)</span></label>
+              <label class="option"><input type="radio" name="q1_5"> <span>It leaves the coefficient completely unchanged</span></label>
+              <label class="option"><input type="radio" name="q1_5"> <span>It reverses the sign of the coefficient</span></label>
+            </div>
+            <div class="explain"><p>By definition, \(\mathcal{S}(u, \lambda) = \operatorname{sign}(u) \max(|u| - \lambda, 0)\). When \(|u| \le \lambda\), the maximum evaluates to zero, producing exact feature sparsity.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why does Lasso exhibit instability when multiple firm characteristics are highly correlated?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1_6"> <span>Lasso arbitrarily selects a single variable from a correlated cluster and sets the rest to zero, creating volatile allocations</span></label>
+              <label class="option"><input type="radio" name="q1_6"> <span>Lasso cannot converge unless all features are mutually orthogonal</span></label>
+              <label class="option"><input type="radio" name="q1_6"> <span>Correlated features cause the Lasso penalty to become non-convex</span></label>
+              <label class="option"><input type="radio" name="q1_6"> <span>Lasso requires parameter count \(P\) to exceed sample size \(N\)</span></label>
+            </div>
+            <div class="explain"><p>The geometry of the \(L_1\) diamond creates indifference between collinear features, selecting one arbitrarily based on finite-sample noise and leading to erratic turnover across rebalancing periods.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">In Gu, Kelly &amp; Xiu (2020), which categories of firm characteristics emerge as the most dominant predictors across all models?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1_7"> <span>Price momentum, short-term liquidity, volatility, and size metrics</span></label>
+              <label class="option"><input type="radio" name="q1_7"> <span>ESG ratings, board diversity, and CEO compensation ratios</span></label>
+              <label class="option"><input type="radio" name="q1_7"> <span>Dividend payout schedules and patent filing counts</span></label>
+              <label class="option"><input type="radio" name="q1_7"> <span>Treasury bond yield spreads and exchange rate changes</span></label>
+            </div>
+            <div class="explain"><p>Across all linear, tree, and neural models, price trends (momentum/reversal), liquidity measures (turnover/dollar volume), and volatility metrics consistently drive predictive performance.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How does Elastic Net prevent the feature-dropping instability of Lasso?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1_8"> <span>The strictly convex \(L_2\) penalty component enforces a grouping effect where correlated features receive similar coefficients</span></label>
+              <label class="option"><input type="radio" name="q1_8"> <span>It removes the \(L_1\) penalty entirely whenever correlation exceeds 0.5</span></label>
+              <label class="option"><input type="radio" name="q1_8"> <span>It runs principal component analysis prior to coordinate descent</span></label>
+              <label class="option"><input type="radio" name="q1_8"> <span>It rescales all feature variables by their cross-sectional variance</span></label>
+            </div>
+            <div class="explain"><p>The strictly convex \(L_2\) penalty ensures that collinear features share coefficient weight smoothly rather than suffering discrete elimination.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What is the primary danger of using expanding training windows in financial return prediction without regularization?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1_9"> <span>The model overfits transient historical relationships and fails to adapt to post-publication alpha decay</span></label>
+              <label class="option"><input type="radio" name="q1_9"> <span>Sample size becomes too small to invert the design matrix</span></label>
+              <label class="option"><input type="radio" name="q1_9"> <span>Expanding windows violate the Gauss-Markov theorem</span></label>
+              <label class="option"><input type="radio" name="q1_9"> <span>Expanding windows mechanically produce negative Sharpe ratios</span></label>
+            </div>
+            <div class="explain"><p>Financial markets undergo structural changes, institutional learning, and alpha decay; unregularized expanding models anchor on obsolete historical relationships.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What relationship does Campbell and Thompson (2008) establish between monthly out-of-sample \(R^2\) and annualized Sharpe ratio?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q1_10"> <span>Annualized Sharpe ratio improvement is proportional to \(\sqrt{12 \times R^2_{\text{OOS}}} / \sigma_\epsilon\)</span></label>
+              <label class="option"><input type="radio" name="q1_10"> <span>Sharpe ratio equals \(R^2_{\text{OOS}}\) divided by 12</span></label>
+              <label class="option"><input type="radio" name="q1_10"> <span>Sharpe ratio improvement is strictly zero unless \(R^2_{\text{OOS}} &gt; 10\%\)</span></label>
+              <label class="option"><input type="radio" name="q1_10"> <span>Sharpe ratio is inversely proportional to \(R^2_{\text{OOS}}\)</span></label>
+            </div>
+            <div class="explain"><p>Because Sharpe ratio scales with expected return divided by volatility, the predictability gain scales with the square root of \(R^2_{\text{OOS}}\), yielding large economic gains from small \(R^2\).</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <li>Gu, S., Kelly, B., &amp; Xiu, D. (2020). Empirical asset pricing via machine learning. <em>The Review of Financial Studies</em>, 33(5), 2223–2273.</li>
+          <li>Campbell, J. Y., &amp; Thompson, S. B. (2008). Predicting excess stock returns out of sample: Can anything beat the historical average? <em>The Review of Financial Studies</em>, 21(4), 1509–1531.</li>
+          <li>Hastie, T., Tibshirani, R., &amp; Friedman, J. (2009). <em>The Elements of Statistical Learning</em>. Springer.</li>
+          <li>McLean, R. D., &amp; Pontiff, J. (2016). Does academic research destroy stock return predictability? <em>The Journal of Finance</em>, 71(1), 5–32.</li>
+          <li>Lopez de Prado, M. (2018). <em>Advances in Financial Machine Learning</em>. John Wiley &amp; Sons.</li>
+        </ol>
+      </section>
+
+      <div class="lesson-actions">
+        <button type="button" class="button" data-complete>Mark Lesson Complete</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

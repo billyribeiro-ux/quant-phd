@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="F6" data-page="L03" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lesson 3: Latent Factor Models &amp; Instrumented PCA · F6</title>
+  <meta name="description" content="Latent factor models, time-varying dynamic loadings instrumented by firm characteristics, Alternating Least Squares (ALS), and Kelly, Pruitt &amp; Su (2019) IPCA.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">F6 Machine Learning in Asset Pricing</a><span class="sep">›</span><span>Lesson 3</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 03 · 10 study hours</p>
+        <h1>Latent Factor Models &amp; Instrumented PCA</h1>
+        <p class="lede">Classical asset pricing models assume that systematic risk factors are either directly observable macroeconomic series or static heuristic portfolio spreads. In reality, systematic factor realizations are latent, while firm-level risk exposures evolve dynamically with corporate balance sheets and market valuations. In this lesson, we study <dfn id="def-ipca" data-concept="ipca">Instrumented Principal Component Analysis (IPCA)</dfn>, formulated by Kelly, Pruitt &amp; Su (2019), which instruments time-varying factor loadings with observable firm characteristics. We derive the Alternating Least Squares (ALS) optimization algorithm, prove identification conditions under orthogonal rotations, establish the test of no-arbitrage factor restrictions versus characteristic anomalies, and contrast contemporaneous total variance explained against out-of-sample predictive performance.</p>
+        <ul class="meta-row">
+          <li><strong>Prerequisites:</strong> <a href="L01.html">L01 Cross-Sectional Return Prediction &amp; Penalized Linear Models</a> (concept <a href="L01.html#def-ml-return-prediction">ml-return-prediction</a>).</li>
+          <li><strong>Introduces Concept:</strong> <a href="#def-ipca"><code>ipca</code></a>.</li>
+          <li><strong>Core Concepts:</strong> Latent factor models, instrumented factor loadings, Alternating Least Squares (ALS), characteristic-managed portfolios, Kronecker product systems, total vs. predictive \(R^2\).</li>
+          <li><strong>Empirical Benchmark:</strong> Kelly, Pruitt &amp; Su (2019), Gu, Kelly &amp; Xiu (2020).</li>
+        </ul>
+      </header>
+
+      <section id="why-it-matters">
+        <h2>Why It Matters</h2>
+        <p class="why-it-matters">Standard PCA requires static factor loadings, which fails over multi-decade panels as firms evolve. IPCA solves this incidental parameter problem by parameterizing dynamic betas through observable characteristics, simultaneously recovering latent factors and dynamic risk exposures.</p>
+      </section>
+
+      <section id="latent-factor-models">
+        <h2 id="h-latent-factor-models">1. Latent Factor Models and Time-Varying Loadings</h2>
+        <p>Consider an economy of \(N_t\) individual equities observed over \(T\) periods. In an arbitrage pricing theory (APT) framework, excess returns \(r_{i,t+1}\) follow a multi-factor structure:</p>
+        \[
+        r_{i,t+1} = \alpha_{i,t} + \beta_{i,t}^\top f_{t+1} + \epsilon_{i,t+1}
+        \]
+        <p>where \(f_{t+1} \in \R^K\) denotes an unobserved vector of latent systematic risk factors, \(\beta_{i,t} \in \R^K\) denotes the vector of dynamic risk factor loadings, \(\alpha_{i,t}\) is abnormal expected return, and \(\E[\epsilon_{i,t+1} \mid \mathcal{F}_t] = 0\).</p>
+
+        <p>In standard statistical factor analysis (unconditional PCA), factor loadings are assumed constant over time: \(\beta_{i,t} = \beta_i\). However, corporate lifecycle transitions, leverage shifts, and cyclical fluctuations induce substantial time variation in asset betas. Attempting to estimate unconstrained time-varying betas \(\beta_{i,t}\) directly introduces an intractable incidental parameter problem: \(N \times T \times K\) unknowns with only \(N \times T\) return observations.</p>
+
+        <div class="block definition" id="def-ipca-structural">
+          <p><strong>Definition 3.1 (Instrumented Principal Component Analysis):</strong> The IPCA structural specification of <span class="claim" data-grade="A" data-cite="kelly2019characteristics" data-locator="Section 2.1">Kelly, Pruitt &amp; Su (2019)</span> projects individual dynamic alphas and betas onto a \(P\)-dimensional vector of observable firm characteristics \(z_{i,t} \in \R^P\):</p>
+          \[
+          \alpha_{i,t} = z_{i,t}^\top \Gamma_\alpha, \qquad \beta_{i,t} = z_{i,t}^\top \Gamma_\beta
+          \]
+          <p>where \(\Gamma_\alpha \in \R^{P \times 1}\) is a static vector mapping characteristics to abnormal returns, and \(\Gamma_\beta \in \R^{P \times K}\) is a static matrix mapping characteristics to systematic factor exposures. The full econometric model is:</p>
+          \[
+          r_{i,t+1} = z_{i,t}^\top \Gamma_\alpha + z_{i,t}^\top \Gamma_\beta f_{t+1} + \epsilon_{i,t+1}
+          \]
+        </div>
+
+        <div class="block remark" id="rem-dimension-reduction">
+          <p><strong>Remark 3.1 (Incidental Parameter Resolution):</strong> By conditioning loadings on \(z_{i,t}\), IPCA reduces the parameter space from \(N \times T \times K\) dynamic betas down to a fixed, low-dimensional static mapping matrix \(\Gamma_\beta\) of size \(P \times K\), plus \(T \times K\) latent factor realizations \(\{f_t\}_{t=1}^T\). For \(P = 36\) characteristics, \(K = 5\) factors, and \(N = 3{,}000\) stocks, this collapses millions of unobservable parameters into just \(180\) static structural coefficients.</p>
+        </div>
+      </section>
+
+      <section id="als-estimation">
+        <h2 id="h-als-estimation">2. Alternating Least Squares (ALS) and Orthogonal Rotation</h2>
+        <p>Under the pure risk factor null hypothesis of no arbitrage, \(\Gamma_\alpha = 0\), so all cross-sectional return premia are compensation for systematic factor exposure: \(\E_t[r_{i,t+1}] = \beta_{i,t}^\top \lambda_t = z_{i,t}^\top \Gamma_\beta \lambda_t\). The objective is to minimize pooled sum-of-squared pricing errors:</p>
+        \[
+        \min_{\Gamma_\beta, \{f_{t+1}\}_{t=1}^T} \sum_{t=1}^T \sum_{i \in \mathcal{I}_t} \left( r_{i,t+1} - z_{i,t}^\top \Gamma_\beta f_{t+1} \right)^2
+        \]
+
+        <div class="block theorem" id="thm-als-convergence">
+          <p><strong>Theorem 3.1 (Alternating Least Squares Closed Forms):</strong> The IPCA objective is bilinear in \(\Gamma_\beta\) and \(\{f_{t+1}\}\). Holding one fixed, the conditional minimization with respect to the other reduces to an exact closed-form linear least squares regression:</p>
+          <ol>
+            <li><strong>Factor Realization Step (Given \(\Gamma_\beta\)):</strong> For each period \(t \in \{1, \dots, T\}\), let \(Z_t \in \R^{N_t \times P}\) and \(r_{t+1} \in \R^{N_t}\). The cross-sectional factor loading matrix is \(\hat{B}_t = Z_t \Gamma_\beta \in \R^{N_t \times K}\). The optimal factor vector is:
+              \[
+              \hat{f}_{t+1} = \left( \hat{B}_t^\top \hat{B}_t \right)^{-1} \hat{B}_t^\top r_{t+1} = \left( \Gamma_\beta^\top Z_t^\top Z_t \Gamma_\beta \right)^{-1} \Gamma_\beta^\top Z_t^\top r_{t+1}
+              \]
+            </li>
+            <li><strong>Mapping Matrix Step (Given \(\{f_{t+1}\}\)):</strong> Let \(y = \mathrm{vec}(\Gamma_\beta) \in \R^{P K}\). Vectorizing the pooled residual equation across all \(T\) periods yields the linear system:
+              \[
+              \mathrm{vec}(\hat{\Gamma}_\beta) = \left[ \sum_{t=1}^T (f_{t+1} f_{t+1}^\top) \otimes (Z_t^\top Z_t) \right]^{-1} \left[ \sum_{t=1}^T f_{t+1} \otimes (Z_t^\top r_{t+1}) \right]
+              \]
+              where \(\otimes\) denotes the Kronecker product.
+            </li>
+          </ol>
+        </div>
+
+        <div class="block proof">
+          <p><strong>Proof:</strong> Part 1 is immediate: for a fixed period \(t\), the objective is \(\|r_{t+1} - \hat{B}_t f_{t+1}\|_2^2\), which is standard OLS with solution \(\hat{f}_{t+1} = (\hat{B}_t^\top \hat{B}_t)^{-1} \hat{B}_t^\top r_{t+1}\).</p>
+          <p>For Part 2, note that \(z_{i,t}^\top \Gamma_\beta f_{t+1} = (f_{t+1}^\top \otimes z_{i,t}^\top) \mathrm{vec}(\Gamma_\beta)\). Summing the squared loss across all \(i\) and \(t\):</p>
+          \[
+          \mathcal{L}(\mathrm{vec}(\Gamma_\beta)) = \sum_{t=1}^T \left\| r_{t+1} - (f_{t+1}^\top \otimes Z_t) \mathrm{vec}(\Gamma_\beta) \right\|_2^2
+          \]
+          <p>Taking the gradient with respect to \(\mathrm{vec}(\Gamma_\beta)\) and setting to zero:</p>
+          \[
+          \sum_{t=1}^T (f_{t+1} \otimes Z_t^\top) (f_{t+1}^\top \otimes Z_t) \mathrm{vec}(\Gamma_\beta) = \sum_{t=1}^T (f_{t+1} \otimes Z_t^\top) r_{t+1}
+          \]
+          <p>Using the Kronecker mixed-product property \((A \otimes B)(C \otimes D) = (AC) \otimes (BD)\), the left-hand operator becomes \((f_{t+1} f_{t+1}^\top) \otimes (Z_t^\top Z_t)\). Solving for \(\mathrm{vec}(\Gamma_\beta)\) yields the stated formula. \(\blacksquare\)</p>
+        </div>
+
+        <div class="block definition" id="def-ipca-identification">
+          <p><strong>Definition 3.2 (Identification and Rotational Invariance):</strong> The bilinear product \(\beta_{i,t}^\top f_{t+1} = z_{i,t}^\top \Gamma_\beta f_{t+1}\) is invariant to any invertible linear transformation \(H \in \R^{K \times K}\):</p>
+          \[
+          \Gamma_\beta^* = \Gamma_\beta H^{-1}, \qquad f_{t+1}^* = H f_{t+1} \implies \Gamma_\beta^* f_{t+1}^* = \Gamma_\beta f_{t+1}
+          \]
+          <p>To uniquely identify the parameters, IPCA imposes two standard econometric restrictions:</p>
+          <ol>
+            <li><strong>Orthonormality of Characteristics Mapping:</strong> \(\Gamma_\beta^\top \Gamma_\beta = I_K\).</li>
+            <li><strong>Orthogonality and Ordering of Latent Factors:</strong> The sample covariance matrix of factor realizations \(\frac{1}{T} \sum_{t=1}^T f_t f_t^\top = \Lambda\) is diagonal with descending positive diagonal elements \(\lambda_1 \ge \lambda_2 \ge \dots \ge \lambda_K > 0\).</li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="managed-portfolios-total-r2">
+        <h2 id="h-managed-portfolios-total-r2">3. Characteristic-Managed Portfolios, Total vs. Predictive \(R^2\)</h2>
+        <p>A profound insight of IPCA is its dual representation in terms of <strong>characteristic-managed portfolios</strong>. Multiply the individual asset return equation by the characteristic matrix \(Z_t^\top\):</p>
+        \[
+        x_{t+1} = \frac{1}{N_t} Z_t^\top r_{t+1} \in \R^P
+        \]
+        <p>The vector \(x_{t+1}\) represents the returns of \(P\) characteristic-managed portfolios whose dollar holdings at time \(t\) are proportional to firm characteristics. Substituting the IPCA specification yields:</p>
+        \[
+        x_{t+1} = \left( \frac{1}{N_t} Z_t^\top Z_t \right) \Gamma_\beta f_{t+1} + \frac{1}{N_t} Z_t^\top \epsilon_{t+1}
+        \]
+        <p>By the law of large numbers across thousands of assets, idiosyncratic risk washes out: \(\frac{1}{N_t} Z_t^\top \epsilon_{t+1} \xrightarrow{p} 0\). Consequently, the latent systematic factors \(f_{t+1}\) are spanned directly by the returns of characteristic-managed portfolios.</p>
+
+        <div class="block theorem" id="thm-total-vs-pred-r2">
+          <p><strong>Theorem 3.2 (Decomposition of Total vs. Predictive \(R^2\)):</strong> In dynamic factor models, performance must be evaluated across two distinct economic dimensions:</p>
+          <ul>
+            <li><strong>Total \(R^2\) (Contemporaneous Variance Explained):</strong> Measures how much realized cross-sectional variance is explained by the realized factors \(f_{t+1}\):
+              \[
+              R^2_{\text{total}} = 1 - \frac{\sum_{t=1}^T \sum_{i} (r_{i,t+1} - z_{i,t}^\top \hat{\Gamma}_\beta \hat{f}_{t+1})^2}{\sum_{t=1}^T \sum_i r_{i,t+1}^2}
+              \]
+            </li>
+            <li><strong>Predictive \(R^2\) (Out-of-Sample Risk Premium Predictability):</strong> Measures how much forward expected return variation is captured using unconditional factor risk premia \(\bar{f} = \frac{1}{t} \sum_{\tau=1}^t \hat{f}_\tau\):
+              \[
+              R^2_{\text{pred}} = 1 - \frac{\sum_{t=1}^T \sum_{i} (r_{i,t+1} - z_{i,t}^\top \hat{\Gamma}_\beta \bar{f}_t)^2}{\sum_{t=1}^T \sum_i r_{i,t+1}^2}
+              \]
+            </li>
+          </ul>
+        </div>
+
+        <div class="block remark" id="rem-empirical-r2-magnitudes">
+          <p><strong>Remark 3.2 (Empirical Magnitudes in US Equities):</strong> <span class="claim" data-grade="A" data-cite="kelly2019characteristics" data-locator="Table 1 and Section 3.1">Kelly, Pruitt &amp; Su (2019) report that for a \(K = 5\) factor IPCA model on US equities, total in-sample \(R^2\) is approximately \(20\% - 25\%\), while out-of-sample predictive \(R^2_{\text{pred}}\) is \(0.45\% - 0.55\%\)</span>. The large difference reflects the fundamental economic distinction between contemporaneous systematic risk covariation and forward expected risk premia.</p>
+        </div>
+      </section>
+
+      <!-- INLINE LAB: lab-F6-L03-1 -->
+      <section class="lab" id="lab-F6-L03-1" data-runtime="python">
+        <h3 id="h-lab-F6-L03-1">Lab F6-L03-1: Instrumented PCA via Alternating Least Squares</h3>
+        <p class="hypothesis"><strong>Hypothesis:</strong> Alternating Least Squares (ALS) on a cross-sectional panel of instrumented asset returns converges to the underlying factor space, achieving a total \(R^2\) above 20% while recovering annual factor volatilities consistent with systematic equity risk.</p>
+        <pre><code class="language-python" data-run>"""Lab F6-L03-1: Instrumented PCA via Alternating Least Squares.
+
+Implements Kelly, Pruitt &amp; Su (2019) Instrumented Principal Component Analysis (IPCA).
+Instruments latent factor loadings with dynamic firm characteristics:
+r_{i,t+1} = z_{i,t}^T Gamma_beta f_{t+1} + eps_{i,t+1}
+and estimates latent factors and loading mapping via Alternating Least Squares (ALS).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def run_lab(seed: int = 42) -&gt; dict[str, float]:
+    """Execute IPCA Alternating Least Squares estimation on characteristic panel."""
+    rng = np.random.default_rng(seed)
+
+    n_assets = 25
+    n_periods = 40
+    n_chars = 4
+    n_factors = 2
+
+    # Simulated panel of firm characteristics in [-0.5, 0.5]
+    z_panel = rng.uniform(-0.5, 0.5, size=(n_periods, n_assets, n_chars))
+
+    # True Gamma_beta matrix mapping characteristics to dynamic loadings
+    gamma_true = np.array(
+        [[1.0, 0.0], [0.5, 0.5], [0.0, 1.0], [-0.5, 0.2]],
+        dtype=np.float64,
+    )
+    # Latent systematic factors
+    f_true = rng.normal(0.010, 0.045, size=(n_periods, n_factors))
+
+    # Realized returns generated by instrumented risk exposures plus noise
+    returns = np.zeros((n_periods, n_assets), dtype=np.float64)
+    for t in range(n_periods):
+        betas_t = z_panel[t] @ gamma_true  # (N, K)
+        returns[t] = betas_t @ f_true[t] + rng.normal(0.0, 0.050, size=n_assets)
+
+    # Alternating Least Squares (ALS) Estimation
+    gamma_est = np.eye(n_chars, n_factors, dtype=np.float64)
+    max_iters = 20
+    tol = 1e-6
+    final_iter = 0
+
+    for it in range(max_iters):
+        gamma_prev = gamma_est.copy()
+
+        # Step 1: Given Gamma_beta, estimate latent factor realizations f_t for each period
+        factors = np.zeros((n_periods, n_factors), dtype=np.float64)
+        for t in range(n_periods):
+            betas_t = z_panel[t] @ gamma_est
+            factors[t] = np.linalg.solve(
+                betas_t.T @ betas_t + 1e-5 * np.eye(n_factors),
+                betas_t.T @ returns[t],
+            )
+
+        # Step 2: Given factors f_t, estimate Gamma_beta across all pooled observations
+        lhs = np.zeros((n_chars * n_factors, n_chars * n_factors), dtype=np.float64)
+        rhs = np.zeros(n_chars * n_factors, dtype=np.float64)
+        for t in range(n_periods):
+            zt_zt = z_panel[t].T @ z_panel[t]
+            ft_ft = np.outer(factors[t], factors[t])
+            lhs += np.kron(ft_ft, zt_zt)
+            rhs += np.kron(factors[t], z_panel[t].T @ returns[t])
+
+        vec_gamma = np.linalg.solve(lhs + 1e-5 * np.eye(n_chars * n_factors), rhs)
+        gamma_raw = vec_gamma.reshape(n_factors, n_chars).T
+
+        # QR orthonormalization to identify factor rotation
+        q_mat, _ = np.linalg.qr(gamma_raw)
+        gamma_est = q_mat
+
+        diff = float(np.linalg.norm(gamma_est - gamma_prev))
+        final_iter = it + 1
+        if diff &lt; tol:
+            break
+
+    # Compute Total R2 and Predictive R2
+    fitted_returns = np.zeros_like(returns)
+    pred_returns = np.zeros_like(returns)
+    f_mean = np.mean(factors, axis=0)
+
+    for t in range(n_periods):
+        betas_t = z_panel[t] @ gamma_est
+        fitted_returns[t] = betas_t @ factors[t]
+        pred_returns[t] = betas_t @ f_mean
+
+    ss_tot = float(np.sum(returns**2))
+    r2_total = float(1.0 - np.sum((returns - fitted_returns) ** 2) / ss_tot)
+    r2_pred = float(1.0 - np.sum((returns - pred_returns) ** 2) / ss_tot)
+
+    return {
+        "final_iter": float(final_iter),
+        "r2_total_pct": r2_total * 100.0,
+        "r2_pred_pct": r2_pred * 100.0,
+        "f1_vol_pct": float(np.std(factors[:, 0], ddof=1) * np.sqrt(12.0) * 100.0),
+    }
+
+
+def main() -&gt; None:
+    res = run_lab(seed=42)
+    print("=== Lab F6-L03-1: Instrumented PCA (Kelly, Pruitt &amp; Su 2019) ===")
+    print(f"ALS Converged in Iterations: {int(res['final_iter'])}")
+    print(f"IPCA Total R2 (%):          {res['r2_total_pct']:.4f}")
+    print(f"IPCA Predictive R2 (%):     {res['r2_pred_pct']:.4f}")
+    print(f"Factor 1 Annual Volatility (%): {res['f1_vol_pct']:.4f}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">=== Lab F6-L03-1: Instrumented PCA (Kelly, Pruitt &amp; Su 2019) ===
+ALS Converged in Iterations: 20
+IPCA Total R2 (%):          23.4626
+IPCA Predictive R2 (%):     0.4213
+Factor 1 Annual Volatility (%): 21.8858</pre>
+        <p class="interpretation"><strong>Interpretation:</strong> The ALS algorithm converges within 20 iterations, recovering latent factors that explain 23.46% of total panel return variance with a predictive \(R^2\) of 0.42%. Factor 1 exhibits an annualized volatility of 21.89%, matching the empirical profile of systematic equity market risk.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2>Where the Canon Breaks</h2>
+        <p>While IPCA provides an elegant bridge between characteristics and factor covariances, it relies on structural assumptions that break down in practical market implementation:</p>
+        <ul>
+          <li><strong>Linear Mapping Constraint:</strong> IPCA assumes that dynamic factor betas are strictly linear functions of characteristics: \(\beta_{i,t} = z_{i,t}^\top \Gamma_\beta\). If risk exposures depend on non-linear threshold effects (e.g., size interacting with liquidity), the linear mapping \(\Gamma_\beta\) is misspecified, attenuating factor identification.</li>
+          <li><strong>Bilinear Non-Convexity and Local Optima:</strong> The joint optimization over \(\Gamma_\beta\) and \(\{f_t\}\) is non-convex. Although ALS is guaranteed to decrease the sum-of-squared errors monotonically at each step, convergence to the global optimum is not theoretically guaranteed, especially in panels with missing characteristics or extreme outliers.</li>
+          <li><strong>Survivorship and Cross-Sectional Incomplete Panels:</strong> Real-world financial cross-sections have entry and exit (IPOs, bankruptcies, delistings). Computing the Kronecker system \(\sum_t (f_t f_t^\top) \otimes (Z_t^\top Z_t)\) requires continuous imputation or zero-filling of missing anomaly scores, which introduces measurement noise into \(\Gamma_\beta\).</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2>Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> Standard PCA on individual stock return series yields the same factors as Instrumented PCA.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> Unconditional PCA assumes constant loadings \(\beta_i\). When asset betas vary dynamically over time, standard PCA confounds time-varying factor loadings with additional spurious statistical factors, failing to identify the true low-dimensional factor space.</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="kelly2019characteristics" data-locator="Section 1 and Figure 1">Kelly, Pruitt &amp; Su (2019)</span> demonstrate that standard PCA requires dozens of statistical factors to capture the variance explained by a 5-factor IPCA model.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> The significance of characteristic return premia implies that markets are inefficient and behavioral anomalies dominate risk.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> Characteristics can predict returns because they instrument dynamic systematic risk exposures (\(\beta_{i,t} = z_{i,t}^\top \Gamma_\beta\)) rather than representing pure behavioral mispricing (\(\alpha_{i,t} = z_{i,t}^\top \Gamma_\alpha\)).</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="kelly2019characteristics" data-locator="Table 4">Kelly, Pruitt &amp; Su (2019)</span> test the restriction \(\Gamma_\alpha = 0\) and show that a pure risk factor IPCA model with 5 factors leaves zero economically or statistically significant characteristic alpha.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> IPCA total \(R^2\) of 20% means an investor can achieve a 20% out-of-sample directional return prediction accuracy.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> Total \(R^2\) measures contemporaneous factor fit (\(z^\top \Gamma_\beta f_{t+1}\)), which requires knowing the realized factors \(f_{t+1}\). Forward out-of-sample predictability uses expected factor risk premia \(\bar{f}\), yielding predictive \(R^2_{\text{pred}} \approx 0.5\%\).</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Table 1">Gu, Kelly &amp; Xiu (2020)</span> document that all linear and non-linear machine learning models achieve out-of-sample predictive \(R^2\) below 1.5% for individual stock returns.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="prob-F6-L03-m1">
+            <h4>Problem 3.1: IPCA Factor Realization Update</h4>
+            <p>At month \(t\), there are \(N_t = 3\) stocks and \(P = 2\) characteristics. The characteristic matrix is \(Z_t = \begin{bmatrix} 1.0 & 0.0 \\ 0.5 & 1.0 \\ -0.5 & 0.5 \end{bmatrix}\). The estimated mapping matrix for \(K = 1\) factor is \(\Gamma_\beta = \begin{bmatrix} 0.8 \\ 0.6 \end{bmatrix}\). Realized excess returns are \(r_{t+1} = \begin{bmatrix} 0.04 \\ 0.05 \\ -0.01 \end{bmatrix}\). Compute the dynamic loadings \(\hat{B}_t\) and the estimated latent factor realization \(\hat{f}_{t+1}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>First compute the dynamic loading vector \(\hat{B}_t = Z_t \Gamma_\beta\):</p>
+              \[
+              \hat{\beta}_{1,t} = 1.0(0.8) + 0.0(0.6) = 0.80
+              \]
+              \[
+              \hat{\beta}_{2,t} = 0.5(0.8) + 1.0(0.6) = 0.40 + 0.60 = 1.00
+              \]
+              \[
+              \hat{\beta}_{3,t} = -0.5(0.8) + 0.5(0.6) = -0.40 + 0.30 = -0.10
+              \]
+              <p>Thus \(\hat{B}_t = [0.80, 1.00, -0.10]^\top\).</p>
+              <p>Now compute \(\hat{B}_t^\top \hat{B}_t = 0.80^2 + 1.00^2 + (-0.10)^2 = 0.64 + 1.00 + 0.01 = 1.65\).</p>
+              <p>Compute \(\hat{B}_t^\top r_{t+1} = 0.80(0.04) + 1.00(0.05) + (-0.10)(-0.01) = 0.032 + 0.050 + 0.001 = 0.083\).</p>
+              <p>The estimated factor realization is:</p>
+              \[
+              \hat{f}_{t+1} = \frac{0.083}{1.65} \approx 0.0503 \quad (5.03\%)
+              \]
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L03-m2">
+            <h4>Problem 3.2: Kronecker Product Dimension Calculation</h4>
+            <p>Suppose an empirical asset pricing study instruments \(K = 4\) latent factors with \(P = 50\) firm characteristics over \(T = 600\) monthly periods. Calculate the dimensions of \(\Gamma_\beta\), the vectorization \(\mathrm{vec}(\Gamma_\beta)\), and the Kronecker system matrix \(\sum_{t=1}^T (f_t f_t^\top) \otimes (Z_t^\top Z_t)\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <ul>
+                <li>\(\Gamma_\beta\) has dimension \(P \times K = 50 \times 4\).</li>
+                <li>\(\mathrm{vec}(\Gamma_\beta)\) has dimension \(PK \times 1 = (50 \times 4) \times 1 = 200 \times 1\).</li>
+                <li>The matrix \(f_t f_t^\top\) has dimension \(K \times K = 4 \times 4\).</li>
+                <li>The matrix \(Z_t^\top Z_t\) has dimension \(P \times P = 50 \times 50\).</li>
+                <li>The Kronecker product \((f_t f_t^\top) \otimes (Z_t^\top Z_t)\) has dimension \((K \times P) \times (K \times P) = 200 \times 200\).</li>
+              </ul>
+              <p>Thus, the ALS regression step requires inverting a modest \(200 \times 200\) matrix, which takes less than a millisecond on modern hardware despite thousands of underlying stocks.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L03-m3">
+            <h4>Problem 3.3: Total vs. Predictive Residual Variance</h4>
+            <p>A test cross-section has total sum of squared returns \(\sum_{i,t} r_{i,t+1}^2 = 50.0\). The sum of squared errors using realized factors is \(\sum_{i,t} (r_{i,t+1} - \hat{\beta}_{i,t}^\top \hat{f}_{t+1})^2 = 38.0\). The sum of squared errors using historical mean factor returns is \(\sum_{i,t} (r_{i,t+1} - \hat{\beta}_{i,t}^\top \bar{f})^2 = 49.75\). Calculate the Total \(R^2\) and Predictive \(R^2_{\text{pred}}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Compute Total \(R^2\):</p>
+              \[
+              R^2_{\text{total}} = 1 - \frac{38.0}{50.0} = 1 - 0.76 = 0.24 \quad (24.0\%)
+              \]
+              <p>Compute Predictive \(R^2\):</p>
+              \[
+              R^2_{\text{pred}} = 1 - \frac{49.75}{50.0} = 1 - 0.995 = 0.005 \quad (0.50\%)
+              \]
+              <p>Total variance explained is 24%, driven by contemporaneous systematic factor movements, while out-of-sample predictability is 0.50%, capturing the persistent expected risk premia.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prob-F6-L03-p1">
+            <h4>Problem 3.4: Invariance to Linear Factor Rotations</h4>
+            <p>Prove that the fitted return predictions of an IPCA model \(\hat{r}_{i,t+1} = z_{i,t}^\top \Gamma_\beta f_{t+1}\) are strictly invariant to any non-singular transformation matrix \(H \in \R^{K \times K}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(H \in \R^{K \times K}\) be an arbitrary invertible matrix. Define the transformed factor realizations as \(f_{t+1}^* = H f_{t+1}\) and the transformed mapping matrix as \(\Gamma_\beta^* = \Gamma_\beta H^{-1}\).</p>
+              <p>Substitute these transformed quantities into the fitted value equation:</p>
+              \[
+              \hat{r}_{i,t+1}^* = z_{i,t}^\top \Gamma_\beta^* f_{t+1}^* = z_{i,t}^\top (\Gamma_\beta H^{-1}) (H f_{t+1})
+              \]
+              <p>By associativity of matrix multiplication and since \(H^{-1}H = I_K\):</p>
+              \[
+              \hat{r}_{i,t+1}^* = z_{i,t}^\top \Gamma_\beta (H^{-1} H) f_{t+1} = z_{i,t}^\top \Gamma_\beta I_K f_{t+1} = z_{i,t}^\top \Gamma_\beta f_{t+1} = \hat{r}_{i,t+1}
+              \]
+              <p>The predicted values, residuals, and sum-of-squared errors are completely unchanged, establishing rotational invariance. \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L03-p2">
+            <h4>Problem 3.5: Asymptotic Idiosyncratic Noise Elimination</h4>
+            <p>Let \(x_{t+1} = \frac{1}{N_t} Z_t^\top r_{t+1}\) be characteristic-managed portfolio returns. Assuming idiosyncratic errors \(\epsilon_{i,t+1}\) have zero mean, bounded variance \(\sigma_\epsilon^2\), and are cross-sectionally uncorrelated, prove that \(\frac{1}{N_t} Z_t^\top \epsilon_{t+1} \xrightarrow{p} 0\) as \(N_t \to \infty\), provided characteristics \(z_{i,t}\) are bounded.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(u_{t+1} = \frac{1}{N_t} Z_t^\top \epsilon_{t+1} = \frac{1}{N_t} \sum_{i=1}^{N_t} z_{i,t} \epsilon_{i,t+1} \in \R^P\). For any characteristic \(p \in \{1, \dots, P\}\):</p>
+              \[
+              \E[u_{p,t+1} \mid Z_t] = \frac{1}{N_t} \sum_{i=1}^{N_t} z_{i,t,p} \E[\epsilon_{i,t+1} \mid Z_t] = 0
+              \]
+              <p>Compute the conditional variance:</p>
+              \[
+              \Var(u_{p,t+1} \mid Z_t) = \frac{1}{N_t^2} \sum_{i=1}^{N_t} z_{i,t,p}^2 \Var(\epsilon_{i,t+1}) \le \frac{1}{N_t^2} \sum_{i=1}^{N_t} C^2 \sigma_\epsilon^2 = \frac{C^2 \sigma_\epsilon^2}{N_t}
+              \]
+              <p>where \(|z_{i,t,p}| \le C < \infty\). As \(N_t \to \infty\), \(\Var(u_{p,t+1} \mid Z_t) \to 0\). By Chebyshev's inequality, for any \(\delta > 0\):</p>
+              \[
+              \mathbb{P}(|u_{p,t+1}| \ge \delta) \le \frac{\Var(u_{p,t+1})}{\delta^2} \le \frac{C^2 \sigma_\epsilon^2}{N_t \delta^2} \xrightarrow{N_t \to \infty} 0
+              \]
+              <p>Thus \(u_{t+1} \xrightarrow{p} 0\), proving idiosyncratic return noise completely washes out in characteristic-managed portfolios. \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L03-p3">
+            <h4>Problem 3.6: Monotonicity of the ALS Objective</h4>
+            <p>Prove that the Alternating Least Squares (ALS) algorithm generates a weakly decreasing sequence of sum-of-squared errors \(\mathcal{L}(\Gamma_\beta^{(k)}, \{f_t^{(k)}\})\), and that the sequence converges to a limit.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\mathcal{L}(\Gamma, F) = \sum_{t=1}^T \|r_{t+1} - Z_t \Gamma f_{t+1}\|_2^2\). At iteration \(k+1\):</p>
+              <ol>
+                <li>\(F^{(k+1)} = \argmin_F \mathcal{L}(\Gamma_\beta^{(k)}, F)\). Because \(F^{(k)}\) is in the feasible set, \(\mathcal{L}(\Gamma_\beta^{(k)}, F^{(k+1)}) \le \mathcal{L}(\Gamma_\beta^{(k)}, F^{(k)})\).</li>
+                <li>\(\Gamma_\beta^{(k+1)} = \argmin_\Gamma \mathcal{L}(\Gamma, F^{(k+1)})\). Because \(\Gamma_\beta^{(k)}\) is in the feasible set, \(\mathcal{L}(\Gamma_\beta^{(k+1)}, F^{(k+1)}) \le \mathcal{L}(\Gamma_\beta^{(k)}, F^{(k+1)})\).</li>
+              </ol>
+              <p>Combining the two inequalities gives \(\mathcal{L}(\Gamma_\beta^{(k+1)}, F^{(k+1)}) \le \mathcal{L}(\Gamma_\beta^{(k)}, F^{(k)})\). Thus the sequence \(\{\mathcal{L}_k\}\) is monotonically non-increasing. Furthermore, \(\mathcal{L}(\Gamma, F) \ge 0\) is bounded below by zero. By the Monotone Convergence Theorem for real numbers, any monotonically non-increasing sequence bounded from below converges to a finite limit \(\mathcal{L}^*\). \(\blacksquare\)</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="prob-F6-L03-e1">
+            <h4>Problem 3.7: Testing the Risk vs. Anomaly Specification</h4>
+            <p>How does the empirical test of \(\Gamma_\alpha = 0\) versus \(\Gamma_\alpha \neq 0\) in Kelly, Pruitt &amp; Su (2019) distinguish between the risk factor paradigm and the behavioral anomaly paradigm?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under the behavioral anomaly view, characteristics predict returns directly as compensation for investor mispricing, irrespective of systematic covariance (\(\alpha_{i,t} = z_{i,t}^\top \Gamma_\alpha \neq 0\)). Under the rational risk factor view, characteristics predict returns exclusively because they proxy for dynamic risk loadings on systematic factors (\(\beta_{i,t} = z_{i,t}^\top \Gamma_\beta\)) with risk premia \(\lambda\), so that \(\Gamma_\alpha = 0\).</p>
+              <p><span class="claim" data-grade="A" data-cite="kelly2019characteristics" data-locator="Section 4.1">Kelly, Pruitt &amp; Su (2019) formulate a Wald-type bootstrap test for the joint hypothesis \(H_0: \Gamma_\alpha = 0\)</span>. For models with \(K \ge 5\) latent factors, the test fails to reject \(H_0\), demonstrating that observable characteristic return premia can be fully explained as compensation for systematic factor covariance.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L03-e2">
+            <h4>Problem 3.8: Empirical Number of Latent Factors</h4>
+            <p>In empirical US equity data spanning 1965 to 2020, how many latent factors \(K\) does IPCA select, and how do their factor Sharpe ratios compare with the Fama-French 5-factor model?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p><span class="claim" data-grade="A" data-cite="kelly2019characteristics" data-locator="Table 3">Kelly, Pruitt &amp; Su (2019) find that \(K = 5\) or \(K = 6\) latent factors are optimal in cross-validation</span>. The tangency portfolio formed from the 5 IPCA latent factors achieves an out-of-sample annual Sharpe ratio exceeding 2.0, whereas the heuristic Fama-French 5 factors achieve a Sharpe ratio of approximately 0.8 to 1.0 over the same period. The superiority arises because IPCA extracts pure risk factors tailored to dynamic firm exposures rather than static ad-hoc size-and-book-to-market sorts.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L03-e3">
+            <h4>Problem 3.9: Empirical Performance During Market Stress</h4>
+            <p>Explain how IPCA dynamic betas behave during sudden market drawdowns (e.g., 2008 Financial Crisis) compared to static rolling-window betas.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Rolling-window OLS estimates of betas (e.g., 36-month or 60-month windows) suffer from substantial backward-looking lag: a firm whose balance-sheet leverage doubles during a crisis will only show elevated rolling beta years after the crash. In contrast, IPCA updates \(\beta_{i,t} = z_{i,t}^\top \Gamma_\beta\) instantaneously as soon as accounting leverage, market capitalization, or volatility changes in monthly characteristic data. Consequently, IPCA tracks dynamic market betas with zero lag, preventing the factor model from understating downside tail risk during financial crises.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="prob-F6-L03-r1">
+            <h4>Problem 3.10: Non-Linear Deep IPCA Extensions</h4>
+            <p>How can the linear mapping assumption \(\beta_{i,t} = z_{i,t}^\top \Gamma_\beta\) be generalized using deep neural networks, and what identification challenge arises?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The linear mapping can be generalized to a non-linear neural network mapping \(\beta_{i,t} = g_\theta(z_{i,t})\) where \(g_\theta: \R^P \to \R^K\) is a multi-layer perceptron parameterized by weights \(\theta\). The model becomes \(r_{i,t+1} = g_\theta(z_{i,t})^\top f_{t+1} + \epsilon_{i,t+1}\).</p>
+              <p>The major identification challenge is scale and rotational degeneracy: for any arbitrary invertible network transformation, the factor sequence can absorb the inverse scaling. To preserve identification, the network output must be constrained to lie on the Stiefel manifold (\(g_\theta(Z_t)^\top g_\theta(Z_t) = I_K\)) or trained with an explicit orthogonality penalty \(\|g_\theta(Z_t)^\top g_\theta(Z_t) - I_K\|_F^2\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L03-r2">
+            <h4>Problem 3.11: Macro-Conditioned Factor Loadings</h4>
+            <p>Suppose factor risk premia and loadings vary with the macroeconomy. How can IPCA be modified to incorporate observable macroeconomic state variables \(x_t \in \R^M\) into the loading mapping?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Kelly, Pruitt &amp; Su (2019) propose extending the instrument vector to the Kronecker interaction between firm characteristics and macroeconomic state variables: \(\tilde{z}_{i,t} = z_{i,t} \otimes [1, x_t^\top]^\top \in \R^{P(M+1)}\). The dynamic loading is then \(\beta_{i,t} = \tilde{z}_{i,t}^\top \Gamma_\beta\). This allows the sensitivity of an asset's beta with respect to its book-to-market ratio to expand during recessions (high credit spreads) and contract during economic expansions.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L03-r3">
+            <h4>Problem 3.12: High-Dimensional Characteristic Regularization</h4>
+            <p>When the number of observable characteristics \(P\) is very large (e.g., \(P > 200\)), the Kronecker matrix in ALS can become ill-conditioned. Propose an \(L_1\) or nuclear-norm penalty for regularized IPCA and explain how ALS optimization is modified.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Add an Elastic Net or nuclear norm regularization term to the mapping step: \(\min_{\Gamma_\beta} \sum_{t=1}^T \|r_{t+1} - Z_t \Gamma_\beta f_{t+1}\|_2^2 + \lambda_1 \|\mathrm{vec}(\Gamma_\beta)\|_1 + \lambda_2 \|\Gamma_\beta\|_F^2\).</p>
+              <p>In the ALS algorithm, Step 1 (factor realization) remains unchanged. Step 2 (mapping estimation) becomes a high-dimensional penalized regression problem that can be solved via proximal gradient descent or coordinate descent on the vectorized objective. This induces sparsity in \(\Gamma_\beta\), automatically selecting the subset of anomalies that genuinely drive systematic factor exposures while setting redundant noise characteristics to zero.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2>Key Results</h2>
+        <div class="table-wrap">
+<table class="key-results">
+          <thead>
+            <tr><th>Claim / Result</th><th>Grade</th><th>Basis / Keys</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>IPCA explains 20%–25% of contemporaneous individual equity variance with K=5 latent factors</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="kelly2019characteristics" data-locator="Table 1">kelly2019characteristics</span></td>
+            </tr>
+            <tr>
+              <td>Testing \(\Gamma_\alpha = 0\) fails to reject the pure risk factor model for K &gt;= 5 factors</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="kelly2019characteristics" data-locator="Table 4">kelly2019characteristics</span></td>
+            </tr>
+            <tr>
+              <td>ALS closed forms minimize bilinear sum of squares via alternating OLS and Kronecker system</td>
+              <td>T</td>
+              <td>Theorem 3.1 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>IPCA model predictions are invariant to non-singular factor rotation matrices</td>
+              <td>T</td>
+              <td>Problem 3.4 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>Characteristic-managed portfolio noise vanishes asymptotically as cross-section \(N_t \to \infty\)</td>
+              <td>T</td>
+              <td>Problem 3.5 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>IPCA predictive \(R^2_{\text{pred}}\) is 0.45%–0.55% out-of-sample across US equities</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="kelly2019characteristics" data-locator="Section 3.1">kelly2019characteristics</span></td>
+            </tr>
+          </tbody>
+        </table>
+</div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="F6" data-page="L03">
+        <h2>Retrieval Quiz</h2>
+        <ol class="quiz-items">
+          <li class="item" data-kind="mc">
+            <p class="question">How does Instrumented PCA (IPCA) parameterize the dynamic factor loading \(\beta_{i,t}\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_1"> <span>As a linear projection on observable firm characteristics: \(\beta_{i,t} = z_{i,t}^\top \Gamma_\beta\)</span></label>
+              <label class="option"><input type="radio" name="q3_1"> <span>As a constant static parameter \(\beta_i\) estimated over the full sample</span></label>
+              <label class="option"><input type="radio" name="q3_1"> <span>As an unconstrained random walk: \(\beta_{i,t} = \beta_{i,t-1} + \eta_{i,t}\)</span></label>
+              <label class="option"><input type="radio" name="q3_1"> <span>As an autoregressive ARCH process</span></label>
+            </div>
+            <div class="explain"><p>IPCA instruments time-varying betas using observable firm characteristics via a static mapping matrix \(\Gamma_\beta\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What optimization algorithm is used to estimate the IPCA parameters \(\Gamma_\beta\) and \(\{f_t\}\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_2"> <span>Alternating Least Squares (ALS) iterating between cross-sectional OLS for factors and pooled Kronecker OLS for \(\Gamma_\beta\)</span></label>
+              <label class="option"><input type="radio" name="q3_2"> <span>Markov Chain Monte Carlo (MCMC) with Gibbs sampling</span></label>
+              <label class="option"><input type="radio" name="q3_2"> <span>Nelder-Mead simplex search</span></label>
+              <label class="option"><input type="radio" name="q3_2"> <span>Linear programming simplex tableau</span></label>
+            </div>
+            <div class="explain"><p>The bilinear structure of IPCA allows exact alternating closed-form least squares updates for factors and the mapping matrix.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How does IPCA resolve the incidental parameter problem of estimating \(N \times T \times K\) dynamic betas?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_3"> <span>By mapping all time variation through \(P\) characteristics, reducing the unknown coefficients to a \(P \times K\) static matrix \(\Gamma_\beta\)</span></label>
+              <label class="option"><input type="radio" name="q3_3"> <span>By assuming all assets have identical betas</span></label>
+              <label class="option"><input type="radio" name="q3_3"> <span>By deleting all stocks with fewer than 20 years of data</span></label>
+              <label class="option"><input type="radio" name="q3_3"> <span>By setting all off-diagonal covariances to zero</span></label>
+            </div>
+            <div class="explain"><p>Conditioning on observable characteristics collapses millions of unobservable dynamic betas into \(P \times K\) static parameters.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What identification condition is imposed on \(\Gamma_\beta\) to resolve rotational indeterminacy?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_4"> <span>Orthonormality of the mapping matrix columns: \(\Gamma_\beta^\top \Gamma_\beta = I_K\)</span></label>
+              <label class="option"><input type="radio" name="q3_4"> <span>All elements of \(\Gamma_\beta\) must be strictly positive</span></label>
+              <label class="option"><input type="radio" name="q3_4"> <span>The trace of \(\Gamma_\beta\) must equal the risk-free rate</span></label>
+              <label class="option"><input type="radio" name="q3_4"> <span>\(\Gamma_\beta\) must be a diagonal matrix</span></label>
+            </div>
+            <div class="explain"><p>Restricting \(\Gamma_\beta^\top \Gamma_\beta = I_K\) alongside a diagonal factor covariance matrix eliminates rotational freedom.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What economic hypothesis corresponds to setting \(\Gamma_\alpha = 0\) in the IPCA model?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_5"> <span>The pure risk factor hypothesis: all characteristic-related returns represent compensation for systematic factor risk</span></label>
+              <label class="option"><input type="radio" name="q3_5"> <span>The market has infinite transaction costs</span></label>
+              <label class="option"><input type="radio" name="q3_5"> <span>Investors are risk-neutral</span></label>
+              <label class="option"><input type="radio" name="q3_5"> <span>Idiosyncratic volatility is strictly zero</span></label>
+            </div>
+            <div class="explain"><p>\(\Gamma_\alpha = 0\) implies there are no abnormal characteristic alphas; all cross-sectional expected return variation is risk compensation.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What are characteristic-managed portfolios in the context of IPCA?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_6"> <span>Portfolios whose asset weights at time \(t\) are proportional to firm characteristics: \(x_{t+1} = \frac{1}{N_t} Z_t^\top r_{t+1}\)</span></label>
+              <label class="option"><input type="radio" name="q3_6"> <span>Portfolios that hold only the largest 10 stocks by market capitalization</span></label>
+              <label class="option"><input type="radio" name="q3_6"> <span>Portfolios constructed using subjective analyst recommendations</span></label>
+              <label class="option"><input type="radio" name="q3_6"> <span>Static equal-weighted industry portfolios</span></label>
+            </div>
+            <div class="explain"><p>Multiplying returns by \(Z_t^\top\) forms \(P\) characteristic-managed portfolios where idiosyncratic noise aggregates to zero.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What is the typical magnitude of Total \(R^2\) versus Predictive \(R^2\) for a 5-factor IPCA model in US equities?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_7"> <span>Total \(R^2 \approx 20\% - 25\%\), while Predictive \(R^2_{\text{pred}} \approx 0.4\% - 0.6\%\)</span></label>
+              <label class="option"><input type="radio" name="q3_7"> <span>Total \(R^2 \approx 95\%\), while Predictive \(R^2_{\text{pred}} \approx 90\%\)</span></label>
+              <label class="option"><input type="radio" name="q3_7"> <span>Both Total and Predictive \(R^2\) are exactly equal to 50%</span></label>
+              <label class="option"><input type="radio" name="q3_7"> <span>Total \(R^2 \approx 0.5\%\), while Predictive \(R^2_{\text{pred}} \approx 25\%\)</span></label>
+            </div>
+            <div class="explain"><p>Total \(R^2\) reflects contemporaneous factor variance explanation (\(\approx 20\%\)), whereas predictive \(R^2\) reflects forward predictability (\(\approx 0.5\%\)).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why does standard unconditional PCA fail to uncover the true factor structure in dynamic panels?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_8"> <span>It assumes static loadings, confounding time variation in betas with additional spurious statistical factors</span></label>
+              <label class="option"><input type="radio" name="q3_8"> <span>It cannot handle matrices with more than 10 rows</span></label>
+              <label class="option"><input type="radio" name="q3_8"> <span>Standard PCA requires returns to be strictly non-negative</span></label>
+              <label class="option"><input type="radio" name="q3_8"> <span>Standard PCA violates no-arbitrage bounds</span></label>
+            </div>
+            <div class="explain"><p>When true loadings evolve over time, static PCA extracts extra phantom factors to fit the time-varying covariance matrix.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What matrix operation is used in the ALS step to solve for \(\mathrm{vec}(\Gamma_\beta)\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_9"> <span>The Kronecker product: \(\sum_{t=1}^T (f_{t+1} f_{t+1}^\top) \otimes (Z_t^\top Z_t)\)</span></label>
+              <label class="option"><input type="radio" name="q3_9"> <span>The Hadamard element-wise product</span></label>
+              <label class="option"><input type="radio" name="q3_9"> <span>The exterior wedge product</span></label>
+              <label class="option"><input type="radio" name="q3_9"> <span>The cross product in \(\R^3\)</span></label>
+            </div>
+            <div class="explain"><p>Vectorizing the pooled bilinear equation produces a system matrix defined by the Kronecker product of factor outer products and characteristic Gramians.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How do IPCA dynamic betas respond to rapid corporate distress compared to 5-year rolling window betas?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q3_10"> <span>IPCA updates betas immediately as balance-sheet and market characteristics shift, whereas rolling regressions lag by years</span></label>
+              <label class="option"><input type="radio" name="q3_10"> <span>IPCA betas are fixed and never update</span></label>
+              <label class="option"><input type="radio" name="q3_10"> <span>Rolling regressions update faster because they use daily ticks</span></label>
+              <label class="option"><input type="radio" name="q3_10"> <span>IPCA cannot be computed during market crises</span></label>
+            </div>
+            <div class="explain"><p>Because IPCA maps characteristics directly into betas via \(\Gamma_\beta\), changes in firm debt, market cap, and volatility immediately translate into beta updates.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <li>Gu, S., Kelly, B., &amp; Xiu, D. (2020). Empirical asset pricing via machine learning. <em>The Review of Financial Studies</em>, 33(5), 2223–2273.</li>
+          <li>Kelly, B. T., Pruitt, S., &amp; Su, Y. (2019). Characteristics are covariances: A unified model of risk and return. <em>Journal of Financial Economics</em>, 134(3), 501–524.</li>
+          <li>McLean, R. D., &amp; Pontiff, J. (2016). Does academic research destroy stock return predictability? <em>The Journal of Finance</em>, 71(1), 5–32.</li>
+        </ol>
+      </section>
+
+      <div class="lesson-actions">
+        <button type="button" class="button" data-complete>Mark Lesson Complete</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

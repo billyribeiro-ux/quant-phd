@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="F6" data-page="L06" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lesson 6: Execution, Transaction Costs &amp; Economic Evaluation · F6</title>
+  <meta name="description" content="Transaction costs, market impact, turnover regularization, Gârleanu &amp; Pedersen (2013) dynamic execution, and net Sharpe ratio evaluation for financial machine learning.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">F6 Machine Learning in Asset Pricing</a><span class="sep">›</span><span>Lesson 6</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 06 · 10 study hours</p>
+        <h1>Execution, Transaction Costs &amp; Economic Evaluation</h1>
+        <p class="lede">A statistical machine learning model that produces stellar out-of-sample \(R^2\) and gross Sharpe ratios in simulation can be completely uninvestable in institutional reality. High-capacity financial machine learning algorithms frequently generate volatile, jumpy portfolio weights that trigger devastating turnover, high bid-ask spread costs, and permanent price impact. In this capstone lesson, we study the economic translation of statistical forecasts into institutional trading strategies. We model linear and non-linear market impact, solve the dynamic multi-period portfolio execution problem of Gârleanu &amp; Pedersen (2013) under quadratic transaction costs, derive partial adjustment policies, and establish rigorous economic evaluation metrics net of fees, leverage constraints, and capacity limits.</p>
+        <ul class="meta-row">
+          <li><strong>Prerequisites:</strong> <a href="L01.html">L01 Cross-Sectional Return Prediction &amp; Penalized Linear Models</a> (concept <a href="L01.html#def-ml-return-prediction">ml-return-prediction</a>), <a href="L02.html">L02 Tree-Based Ensembles &amp; Non-Linear Interactions</a>, and <a href="L05.html">L05 Overparameterization, Double Descent &amp; the Complexity Debate</a> (concept <a href="L05.html#def-virtue-of-complexity">virtue-of-complexity</a>).</li>
+          <li><strong>Core Concepts:</strong> Bid-ask spread, quadratic market impact, Gârleanu-Pedersen dynamic smoothing, partial adjustment speed, net Sharpe ratio, maximum drawdown, investor certainty equivalent return.</li>
+          <li><strong>Empirical Benchmark:</strong> Novy-Marx &amp; Velikov (2016), Frazzini, Israel &amp; Moskowitz (2018), DeMiguel, Garlappi &amp; Uppal (2007).</li>
+        </ul>
+      </header>
+
+      <section id="why-it-matters">
+        <h2>Why It Matters</h2>
+        <p class="why-it-matters">Machine learning algorithms are agnostic to execution frictions, generating rapid portfolio turnover that can consume 100% of paper profits. Turnover-regularized dynamic execution bridges the gap between theoretical predictive accuracy and institutional wealth creation.</p>
+      </section>
+
+      <section id="market-frictions">
+        <h2 id="h-market-frictions">1. Market Frictions and the Real-World Limits to Arbitrage</h2>
+        <p>In classical frictionless finance, portfolio rebalancing incurs zero cost. In actual institutional markets, executing a vector of target trades \(\Delta w_t = w_t - w_{t-1}^+\) (where \(w_{t-1}^+\) reflects drift due to realized asset returns) incurs three distinct layers of trading costs:</p>
+        <ol>
+          <li><strong>Direct Execution and Exchange Fees:</strong> Explicit brokerage commissions, exchange clearing fees, and stamp duties.</li>
+          <li><strong>Half-Spread Crossing Cost (Linear Drag):</strong> For asset \(i\), crossing the quoted bid-ask spread incurs linear cost \(c_i = \frac{1}{2} (P_{\text{ask}} - P_{\text{bid}}) / P_{\text{mid}}\).</li>
+          <li><strong>Market Impact (Non-Linear Quadratic Drag):</strong> Large orders consume limit order book liquidity and signal informed trading to market makers, moving the execution price against the trader proportionally to order size (Kyle 1985; Almgren &amp; Chriss 2000).</li>
+        </ol>
+
+        <div class="block definition" id="def-total-cost-model">
+          <p><strong>Definition 6.1 (Composite Transaction Cost Function):</strong> Let \(\Delta w_t \in \R^N\) denote the vector of fractional portfolio trades at rebalancing date \(t\). Total percentage transaction costs \(\text{TC}(\Delta w_t)\) are modeled as a convex combination of linear spread crossing and quadratic market impact:</p>
+          \[
+          \text{TC}(\Delta w_t) = c^\top |\Delta w_t| + \frac{1}{2} \Delta w_t^\top \Lambda \Delta w_t
+          \]
+          <p>where \(c \in \R^N_{++}\) is the vector of effective half-spreads, and \(\Lambda = \text{diag}(\lambda_1, \dots, \lambda_N)\) is a diagonal matrix of Kyle's lambda price impact coefficients, typically scaling inversely with daily dollar volume: \(\lambda_i \propto \frac{\sigma_i}{\text{ADV}_i}\).</p>
+        </div>
+
+        <div class="block remark" id="rem-novy-marx-taxonomy">
+          <p><strong>Remark 6.1 (The Novy-Marx &amp; Velikov Anomaly Taxonomy):</strong> <span class="claim" data-grade="A" data-cite="novymarx2015taxonomy" data-locator="Table 1 and Section 3">Novy-Marx &amp; Velikov (2016) classify empirical cross-sectional anomalies into three turnover tiers</span>:</p>
+          <ul>
+            <li><strong>Low-Turnover Anomalies:</strong> Fundamental balance-sheet factors (value, profitability, investment) with monthly turnover \(\le 10\%\). Transaction costs consume only \(5\% - 15\%\) of gross returns, preserving substantial net Sharpe ratios.</li>
+            <li><strong>Medium-Turnover Anomalies:</strong> Intermediate momentum and post-earnings announcement drift (PEAD) with monthly turnover of \(20\% - 40\%\). Trading costs reduce gross returns by \(30\% - 50\%\).</li>
+            <li><strong>High-Turnover Anomalies:</strong> Short-term reversal, idiosyncratic volatility, and liquidity shocks with monthly turnover exceeding \(70\%\). Transaction costs consume over \(100\%\) of gross returns, leaving negative net alpha.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="dynamic-portfolio-execution">
+        <h2 id="h-dynamic-portfolio-execution">2. Dynamic Execution and Turnover Regularization: Gârleanu &amp; Pedersen (2013)</h2>
+        <p>A naïve quant fund rebalances fully to the unconstrained target portfolio \(\bar{w}_t = \frac{1}{\gamma} \Sigma^{-1} \mu_t\) at every rebalancing date. When expected returns \(\mu_t\) are predicted by flexible machine learning models, small changes in feature values cause substantial shifts in \(\bar{w}_t\), generating catastrophic turnover.</p>
+
+        <p>To maximize terminal utility net of market impact, an institutional investor must solve a dynamic multi-period optimization problem balancing expected alpha, risk, and transaction costs across time.</p>
+
+        <div class="block theorem" id="thm-garleanu-pedersen">
+          <p><strong>Theorem 6.1 (Gârleanu &amp; Pedersen Dynamic Trading Policy):</strong> Consider an infinite-horizon mean-variance investor with discount factor \(\rho \in (0, 1)\), risk aversion \(\gamma > 0\), asset covariance \(\Sigma\), and quadratic trading cost matrix \(\Lambda\). The investor solves:</p>
+          \[
+          \max_{\{w_t\}_{t=0}^\infty} \sum_{t=0}^\infty \rho^t \left[ w_t^\top \mu_t - \frac{\gamma}{2} w_t^\top \Sigma w_t - \frac{1}{2} (w_t - w_{t-1})^\top \Lambda (w_t - w_{t-1}) \right]
+          \]
+          <p>The optimal dynamic portfolio policy is a partial adjustment rule toward the aim portfolio \(w_t^*\):</p>
+          \[
+          w_t = (I - M) w_{t-1} + M w_t^*
+          \]
+          <p>where the matrix adjustment speed \(M \in \R^{N \times N}\) is the unique symmetric positive definite solution to the matrix Riccati equation:</p>
+          \[
+          \Lambda M^2 + \gamma \Sigma M - \gamma \Sigma = 0 \quad (\text{for } \rho = 1)
+          \]
+        </div>
+
+        <div class="block proof">
+          <p><strong>Proof:</strong> Taking the first-order condition with respect to \(w_t\) in the dynamic Lagrangian yields the Euler equation:</p>
+          \[
+          \mu_t - \gamma \Sigma w_t - \Lambda (w_t - w_{t-1}) + \rho \Lambda \E_t[w_{t+1} - w_t] = 0
+          \]
+          <p>For a stationary target with \(\rho = 1\), write the characteristic matrix equation as \(\Lambda w_{t+1} - (\gamma \Sigma + 2\Lambda) w_t + \Lambda w_{t-1} = -\mu_t\). Factoring the matrix polynomial \(\Lambda L^2 - (\gamma \Sigma + 2\Lambda) L + \Lambda = \Lambda (I - M L)(I - \tilde{M} L^{-1})\) where \(M\) is the stable root with eigenvalues in \((0, 1)\) yields the partial adjustment policy \(w_t = (I - M) w_{t-1} + M w_t^*\), where \(w_t^* = (\gamma \Sigma + \Lambda M)^{-1} \sum_{\tau=0}^\infty (I - M)^\tau \E_t[\mu_{t+\tau}]\). \(\blacksquare\)</p>
+        </div>
+
+        <div class="block remark" id="rem-scalar-speed">
+          <p><strong>Remark 6.2 (Scalar Trading Speed Intuition):</strong> In the scalar case (single asset or diagonalized system), the optimal adjustment speed simplifies to:</p>
+          \[
+          m = \frac{-\gamma \sigma^2 + \sqrt{(\gamma \sigma^2)^2 + 4 \lambda_{\text{cost}} \gamma \sigma^2}}{2 \lambda_{\text{cost}}} \approx \sqrt{\frac{\gamma \sigma^2}{\lambda_{\text{cost}}}} \quad (\text{for small } \gamma \sigma^2 / \lambda_{\text{cost}})
+          \]
+          <p>Trading speed increases with asset risk \(\gamma \sigma^2\) (higher urgency to control risk) and decreases with market impact \(\lambda_{\text{cost}}\) (higher friction demanding smoother trading).</p>
+        </div>
+      </section>
+
+      <section id="economic-evaluation">
+        <h2 id="h-economic-evaluation">3. Rigorous Economic Evaluation of Machine Learning Models</h2>
+        <p>Statistical metrics such as MSE or \(R^2_{\text{OOS}}\) treat all forecasting errors symmetrically and ignore the covariance structure of financial payoffs. Rigorous econometric evaluation requires translating return forecasts into economic utility.</p>
+
+        <div class="block definition" id="def-net-evaluation-metrics">
+          <p><strong>Definition 6.2 (Institutional Performance Metrics):</strong> Let \(r_{p,t}^{\text{net}} = w_t^\top r_{t+1} - \text{TC}(\Delta w_t)\) denote the net excess return of the strategy at month \(t\). The strategy is evaluated across four core performance dimensions:</p>
+          <ul>
+            <li><strong>Annualized Net Sharpe Ratio:</strong>
+              \[
+              \text{SR}_{\text{net}} = \sqrt{12} \cdot \frac{\hat{\mu}_{\text{net}}}{\hat{\sigma}_{\text{net}}} = \sqrt{12} \cdot \frac{\frac{1}{T}\sum_{t=1}^T r_{p,t}^{\text{net}}}{\sqrt{\frac{1}{T-1}\sum_{t=1}^T (r_{p,t}^{\text{net}} - \hat{\mu}_{\text{net}})^2}}
+              \]
+            </li>
+            <li><strong>Maximum Drawdown (MDD):</strong>
+              \[
+              \text{MDD} = \max_{0 \le s \le t \le T} \frac{W_s - W_t}{W_s}, \qquad W_t = \prod_{\tau=1}^t (1 + R_{p,\tau}^{\text{net}})
+              \]
+            </li>
+            <li><strong>Certainty Equivalent Return (CER) Gain:</strong> The annualized percentage utility gain delivered to an investor with risk aversion \(\gamma\):
+              \[
+              \Delta \text{CER} = 12 \left( \hat{\mu}_{\text{net}} - \frac{\gamma}{2} \hat{\sigma}_{\text{net}}^2 \right) - 12 \left( \hat{\mu}_{\text{bm}} - \frac{\gamma}{2} \hat{\sigma}_{\text{bm}}^2 \right)
+              \]
+            </li>
+            <li><strong>Breakeven Transaction Cost Capacity:</strong> The cost level \(c^*\) (in bps) at which the net Sharpe ratio collapses to zero:
+              \[
+              c^* = \frac{\hat{\mu}_{\text{gross}}}{\text{Mean Annual Two-Way Turnover}}
+              \]
+            </li>
+          </ul>
+        </div>
+
+        <div class="block remark" id="rem-frazzini-capacity">
+          <p><strong>Remark 6.3 (Empirical Anomaly Capacities):</strong> <span class="claim" data-grade="A" data-cite="frazzini2018trading" data-locator="Table 4">Frazzini, Israel &amp; Moskowitz (2018) evaluate real-world trade execution data from a multi-billion dollar quantitative asset manager</span>, documenting that institutional transaction costs are substantially lower than naive academic quoted spreads (effective costs \(\approx 10 - 20\) bps for large caps). Value, momentum, and size anomalies can support over \$50 billion in institutional AUM before net alpha is exhausted.</p>
+        </div>
+      </section>
+
+      <!-- INLINE LAB: lab-F6-L06-1 -->
+      <section class="lab" id="lab-F6-L06-1" data-runtime="python">
+        <h3 id="h-lab-F6-L06-1">Lab F6-L06-1: Net Sharpe Ratio and Turnover Optimization</h3>
+        <p class="hypothesis"><strong>Hypothesis:</strong> In the presence of 25 bps round-trip transaction costs, a turnover-penalized dynamic smoothing strategy preserves net Sharpe ratio, outperforming unconstrained monthly rebalancing whose net returns collapse under excessive turnover drag.</p>
+        <pre><code class="language-python" data-run>"""Lab F6-L06-1: Net Sharpe Ratio and Turnover Optimization under Transaction Costs.
+
+Evaluates the real-world economic impact of market frictions on machine learning return signals.
+Compares unconstrained rebalancing against Garleanu &amp; Pedersen (2013) turnover-penalized
+dynamic execution under 25 bps round-trip transaction costs.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def run_lab(seed: int = 42) -&gt; dict[str, float]:
+    """Execute transaction cost and turnover optimization simulation."""
+    rng = np.random.default_rng(seed)
+
+    n_assets = 30
+    n_periods = 36
+    cost_rate = 0.0025  # 25 bps round-trip transaction cost
+    k_quant = n_assets // 3
+
+    # Generate cross-sectional predictions and realized returns with realistic S/N
+    raw_predictions = rng.normal(0.0, 0.020, size=(n_assets, n_periods))
+    realized_returns = rng.normal(0.005, 0.050, size=(n_assets, n_periods)) + 0.15 * raw_predictions
+
+    # Strategy 1: Raw Unconstrained Quantile Rebalancing
+    w_raw_prev = np.zeros(n_assets, dtype=np.float64)
+    gross_raw = np.zeros(n_periods, dtype=np.float64)
+    net_raw = np.zeros(n_periods, dtype=np.float64)
+    turnover_raw = np.zeros(n_periods, dtype=np.float64)
+
+    for t in range(n_periods):
+        ord_idx = np.argsort(raw_predictions[:, t])
+        w = np.zeros(n_assets, dtype=np.float64)
+        w[ord_idx[-k_quant:]] = 1.0 / k_quant
+        w[ord_idx[:k_quant]] = -1.0 / k_quant
+
+        to = float(np.sum(np.abs(w - w_raw_prev)))
+        g = float(np.dot(w, realized_returns[:, t]))
+
+        gross_raw[t] = g
+        net_raw[t] = g - to * cost_rate
+        turnover_raw[t] = to
+        w_raw_prev = w
+
+    # Strategy 2: Turnover-Penalized Partial Adjustment (Lambda = 0.35)
+    lambda_param = 0.35
+    w_smooth_prev = np.zeros(n_assets, dtype=np.float64)
+    gross_smooth = np.zeros(n_periods, dtype=np.float64)
+    net_smooth = np.zeros(n_periods, dtype=np.float64)
+    turnover_smooth = np.zeros(n_periods, dtype=np.float64)
+
+    for t in range(n_periods):
+        ord_idx = np.argsort(raw_predictions[:, t])
+        w_target = np.zeros(n_assets, dtype=np.float64)
+        w_target[ord_idx[-k_quant:]] = 1.0 / k_quant
+        w_target[ord_idx[:k_quant]] = -1.0 / k_quant
+
+        w = (1.0 - lambda_param) * w_smooth_prev + lambda_param * w_target
+        to = float(np.sum(np.abs(w - w_smooth_prev)))
+        g = float(np.dot(w, realized_returns[:, t]))
+
+        gross_smooth[t] = g
+        net_smooth[t] = g - to * cost_rate
+        turnover_smooth[t] = to
+        w_smooth_prev = w
+
+    sharpe_gross_raw = float(math.sqrt(12.0) * np.mean(gross_raw) / np.std(gross_raw, ddof=1))
+    sharpe_net_raw = float(math.sqrt(12.0) * np.mean(net_raw) / np.std(net_raw, ddof=1))
+    mean_to_raw = float(np.mean(turnover_raw))
+
+    sharpe_gross_smooth = float(math.sqrt(12.0) * np.mean(gross_smooth) / np.std(gross_smooth, ddof=1))
+    sharpe_net_smooth = float(math.sqrt(12.0) * np.mean(net_smooth) / np.std(net_smooth, ddof=1))
+    mean_to_smooth = float(np.mean(turnover_smooth))
+
+    return {
+        "sharpe_gross_raw": sharpe_gross_raw,
+        "sharpe_net_raw": sharpe_net_raw,
+        "mean_turnover_raw": mean_to_raw,
+        "sharpe_gross_smooth": sharpe_gross_smooth,
+        "sharpe_net_smooth": sharpe_net_smooth,
+        "mean_turnover_smooth": mean_to_smooth,
+    }
+
+
+def main() -&gt; None:
+    res = run_lab(seed=42)
+    print("=== Lab F6-L06-1: Transaction Cost &amp; Turnover Optimization ===")
+    raw_msg = (
+        f"Raw Strategy:    Gross Sharpe={res['sharpe_gross_raw']:.4f}, "
+        f"Net Sharpe={res['sharpe_net_raw']:.4f}, Turnover={res['mean_turnover_raw']:.4f}"
+    )
+    smooth_msg = (
+        f"Smooth Strategy: Gross Sharpe={res['sharpe_gross_smooth']:.4f}, "
+        f"Net Sharpe={res['sharpe_net_smooth']:.4f}, Turnover={res['mean_turnover_smooth']:.4f}"
+    )
+    print(raw_msg)
+    print(smooth_msg)
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">=== Lab F6-L06-1: Transaction Cost &amp; Turnover Optimization ===
+Raw Strategy:    Gross Sharpe=1.3041, Net Sharpe=0.1332, Turnover=2.6056
+Smooth Strategy: Gross Sharpe=1.4270, Net Sharpe=0.6002, Turnover=0.8067</pre>
+        <p class="interpretation"><strong>Interpretation:</strong> The experiment illustrates the devastating impact of market frictions on raw trading signals. While the raw unconstrained strategy achieves a gross Sharpe ratio of 1.3041, its extreme monthly turnover (2.6056) reduces net Sharpe to 0.1332. In contrast, partial adjustment smoothing cuts turnover to 0.8067, preserving a healthy net Sharpe ratio of 0.6002.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2>Where the Canon Breaks</h2>
+        <p>In quantitative academic papers, transaction costs are frequently modeled as fixed flat fees or omitted altogether. In production institutional management, execution models break down across three crucial friction dimensions:</p>
+        <ul>
+          <li><strong>Regime-Dependent Liquidity Evaporation:</strong> Fixed cost models assume constant bid-ask spreads and Kyle's lambda. During market crises (such as the 2008 Lehman collapse or March 2020 COVID shock), market-maker inventory risk surges, bid-ask spreads widen by a factor of 5x to 10x, and market depth collapses, causing actual transaction costs to vastly exceed modeled penalties.</li>
+          <li><strong>Endogenous Crowding and Flow Toxicity:</strong> When dozens of quantitative funds utilize identical open anomaly signals (e.g., standard momentum or book-to-market), simultaneous rebalancing creates correlated order flow. The collective market impact scales quadratically with industry AUM, eroding strategy capacity and triggering flash liquidation cascades.</li>
+          <li><strong>Short-Sale Hard-to-Borrow Surcharges:</strong> Many machine learning anomalies derive their profitability primarily from the short leg of small, distressed equities. In institutional practice, borrowing these equities requires paying specialness fees of 500 to 2,000 bps annualized, and recalls can force involuntary buy-ins at the worst possible market prices.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2>Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> Quoted bid-ask spreads accurately measure the trading costs incurred by institutional quantitative managers.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> Institutional managers utilize algorithmic execution (TWAP, VWAP, dark pools, and limit order posting), executing inside the quoted spread and capturing liquidity rebates. For large institutional trades, market impact dominates quoted spreads.</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="frazzini2018trading" data-locator="Section 2">Frazzini, Israel &amp; Moskowitz (2018)</span> analyze \$1.7 trillion in institutional orders and show that effective trading costs are less than one-third of the quoted bid-ask spread across large- and mid-cap equities.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> A strategy with higher gross Sharpe ratio always produces higher investor utility than a strategy with lower gross Sharpe ratio.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> A high-gross-Sharpe strategy with high turnover can lose all of its alpha to transaction costs, delivering near-zero net Sharpe ratio and negative certainty equivalent returns compared to a low-turnover factor portfolio.</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="novymarx2015taxonomy" data-locator="Table 2">Novy-Marx &amp; Velikov (2016)</span> document that short-term reversal strategies with gross Sharpe ratios above 2.0 deliver negative net Sharpe ratios once realistic trading costs are deducted.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong:</strong> Rebalancing fully to the target portfolio at every month-end is optimal because it keeps risk exposures aligned with current factor estimates.</p>
+            <p class="correction"><strong>Why it is wrong:</strong> Full rebalancing ignores the quadratic trading cost penalty. Dynamic programming proves that partial adjustment (smoothly tracking the target over multiple periods) minimizes total tracking error plus execution costs.</p>
+            <p class="evidence"><strong>Evidence:</strong> <span class="claim" data-grade="A" data-cite="demiguel2007optimal" data-locator="Section 3">DeMiguel, Garlappi &amp; Uppal (2007)</span> show that unconstrained monthly rebalancing severely destroys out-of-sample wealth relative to turnover-constrained or partial-adjustment portfolios.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="prob-F6-L06-m1">
+            <h4>Problem 6.1: Almgren-Chriss Market Impact Calculation</h4>
+            <p>A quantitative hedge fund manages \(A = \$500\text{ million}\) in equity assets. In month \(t\), the model signals an increase in the target weight of stock \(i\) from \(w_{t-1} = 1.0\%\) to \(w_t = 3.0\%\). The stock has price \(P = \$50\), daily dollar volume \(\text{ADV} = \$20\text{ million}\), and daily volatility \(\sigma = 2.0\%\). The effective half-spread is \(c = 5\text{ bps}\) (\(0.0005\)), and Kyle's lambda market impact parameter is \(\lambda_{\text{cost}} = 0.10 \times \frac{\sigma}{\text{ADV}}\). Calculate the trade dollar size, the linear spread cost, the quadratic market impact cost, and total execution drag in basis points.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Compute the trade size:</p>
+              \[
+              \Delta \$ = A \times (w_t - w_{t-1}) = \$500\text{M} \times (0.03 - 0.01) = \$500\text{M} \times 0.02 = \$10\text{ million}
+              \]
+              <p>Compute Kyle's lambda parameter:</p>
+              \[
+              \lambda_{\text{cost}} = 0.10 \times \frac{0.02}{20\text{M}} = \frac{0.002}{20{,}000{,}000} = 1.0 \times 10^{-10} \quad (\$/\$^2)
+              \]
+              <p>Compute linear half-spread cost:</p>
+              \[
+              \text{Cost}_{\text{linear}} = c \times \Delta \$ = 0.0005 \times \$10{,}000{,}000 = \$5{,}000
+              \]
+              <p>Compute quadratic market impact cost:</p>
+              \[
+              \text{Cost}_{\text{impact}} = \frac{1}{2} \lambda_{\text{cost}} (\Delta \$)^2 = 0.5 \times (1.0 \times 10^{-10}) \times (10^7)^2 = 0.5 \times 10^{-10} \times 10^{14} = \$5{,}000
+              \]
+              <p>Total execution cost is \(\$5{,}000 + \$5{,}000 = \$10{,}000\).</p>
+              <p>Expressed as a fraction of the trade size: \(\frac{\$10{,}000}{\$10{,}000{,}000} = 0.0010 = 10\text{ basis points}\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L06-m2">
+            <h4>Problem 6.2: Gârleanu-Pedersen Partial Adjustment Step</h4>
+            <p>At month \(t\), the current portfolio weight in an equity sector is \(w_{t-1} = 5.0\%\). The machine learning model forecasts an elevated expected return, generating a new static Markowitz aim weight of \(w_t^* = 15.0\%\). The optimal adjustment speed is determined to be \(m = 0.30\). Calculate the updated portfolio weight \(w_t\), the implemented trade size \(\Delta w_t\), and the remaining distance to the aim target.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Using the partial adjustment policy (Theorem 6.1):</p>
+              \[
+              w_t = (1 - m) w_{t-1} + m w_t^* = (1 - 0.30)(0.05) + 0.30(0.15) = 0.70(0.05) + 0.045 = 0.035 + 0.045 = 0.080 \quad (8.0\%)
+              \]
+              <p>The implemented trade is:</p>
+              \[
+              \Delta w_t = w_t - w_{t-1} = 0.080 - 0.050 = 0.030 \quad (3.0\%)
+              \]
+              <p>The remaining distance to the target is:</p>
+              \[
+              w_t^* - w_t = 0.150 - 0.080 = 0.070 \quad (7.0\%)
+              \]
+              <p>By moving only 30% of the distance toward the target, the fund avoids large market impact while capturing the majority of the expected return over subsequent months.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L06-m3">
+            <h4>Problem 6.3: Breakeven Transaction Cost and Capacity Calculation</h4>
+            <p>A high-frequency cross-sectional machine learning signal generates an annualized gross expected excess return \(\E[r_{\text{gross}}] = 18.0\%\). The strategy turns over its entire portfolio twice per month (monthly two-way turnover = \(4.0\times\), annualized two-way turnover = \(48.0\times\)). Calculate the breakeven transaction cost \(c^*\) (in basis points) at which the net expected excess return is zero.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>From Definition 6.2, net excess return is \(\E[r_{\text{net}}] = \E[r_{\text{gross}}] - \text{Annual Turnover} \times c\). Setting \(\E[r_{\text{net}}] = 0\):</p>
+              \[
+              c^* = \frac{\E[r_{\text{gross}}]}{\text{Annual Turnover}} = \frac{0.18}{48.0} = 0.00375 \quad (37.5\text{ basis points})
+              \]
+              <p>If execution costs exceed 37.5 bps round-trip, the strategy loses money. For small-cap equities where round-trip costs typically exceed 50 bps, this strategy generates guaranteed net losses despite an 18% paper alpha.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prob-F6-L06-p1">
+            <h4>Problem 6.4: Derivation of the Gârleanu-Pedersen Matrix Riccati Equation</h4>
+            <p>Prove that for an infinite-horizon mean-variance investor facing quadratic transaction costs with discount factor \(\rho = 1\), the first-order condition for optimal execution reduces to the matrix Riccati equation \(\Lambda M^2 + \gamma \Sigma M - \gamma \Sigma = 0\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The objective is \(\max \sum_{t=0}^\infty [w_t^\top \mu - \frac{\gamma}{2} w_t^\top \Sigma w_t - \frac{1}{2} (w_t - w_{t-1})^\top \Lambda (w_t - w_{t-1})]\). Taking the derivative with respect to \(w_t\) and setting to zero:</p>
+              \[
+              \mu - \gamma \Sigma w_t - \Lambda (w_t - w_{t-1}) + \Lambda (w_{t+1} - w_t) = 0
+              \]
+              <p>Rearranging in terms of the lag operator \(L\):</p>
+              \[
+              \Lambda w_{t+1} - (\gamma \Sigma + 2\Lambda) w_t + \Lambda w_{t-1} = -\mu
+              \]
+              <p>Postulate a stationary partial adjustment policy \(w_t = (I - M) w_{t-1} + M \bar{w}\) where \(\bar{w} = \frac{1}{\gamma} \Sigma^{-1} \mu\). Then \(w_{t+1} - w_t = -M (w_t - \bar{w})\). Substitute into the Euler equation:</p>
+              \[
+              -\gamma \Sigma w_t - \Lambda M (w_t - w_{t-1}) - \Lambda M (w_{t+1} - w_t) + \mu = 0
+              \]
+              <p>Matching matrix coefficients on \(w_t - w_{t-1}\) yields the operator identity:</p>
+              \[
+              \Lambda M^2 + \gamma \Sigma M - \gamma \Sigma = 0
+              \]
+              <p>Since \(\Lambda\) and \(\Sigma\) are symmetric positive definite, this matrix Riccati equation has a unique symmetric positive definite solution \(M\) with eigenvalues strictly between 0 and 1. \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L06-p2">
+            <h4>Problem 6.5: Certainty Equivalent Preservation Under Smoothing</h4>
+            <p>Prove that when asset returns have persistent predictive signals, a partial adjustment policy \(w_t = (1-m)w_{t-1} + m w_t^*\) with \(m \in (0, 1)\) strictly increases the investor's certainty equivalent return (CER) compared to full rebalancing (\(m = 1\)), provided trading cost \(\lambda_{\text{cost}} > 0\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(U(m) = \E[w(m)^\top r - \frac{\gamma}{2} w(m)^\top \Sigma w(m) - \frac{\lambda_{\text{cost}}}{2} (w(m) - w_{t-1})^2]\). As \(m \to 1\), the trade size \(\Delta w = w_t^* - w_{t-1}\) incurs maximum quadratic cost \(\frac{\lambda_{\text{cost}}}{2} (\Delta w)^2\).</p>
+              <p>Take the derivative of expected utility with respect to \(m\) evaluated at \(m = 1\):</p>
+              \[
+              \left. \frac{dU}{dm} \right|_{m=1} = \E\left[ \frac{\partial U}{\partial w} \frac{\partial w}{\partial m} \right] - \lambda_{\text{cost}} \E[(\Delta w) (\Delta w)]
+              \]
+              <p>At \(m = 1\), \(w = w_t^*\), which is the unconstrained optimum where the derivative of gross utility \(\frac{\partial}{\partial w}[\mu^\top w - \frac{\gamma}{2} w^\top \Sigma w] = 0\) by the envelope theorem. Thus:</p>
+              \[
+              \left. \frac{dU}{dm} \right|_{m=1} = 0 - \lambda_{\text{cost}} \Var(\Delta w) < 0
+              \]
+              <p>Since the derivative is strictly negative at \(m = 1\), decreasing \(m\) below 1 strictly increases net certainty equivalent utility. \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L06-p3">
+            <h4>Problem 6.6: Superadditivity of Market Impact Across Clustered Trades</h4>
+            <p>Prove that under quadratic market impact \(\text{TC}(x) = \frac{1}{2} x^\top \Lambda x\) with positive definite \(\Lambda\), executing a total trade vector \(x\) split across two independent trades \(x_1 + x_2 = x\) achieves minimum total market impact if and only if \(x_1 = x_2 = \frac{1}{2} x\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Consider the total impact of executing \(x_1\) and \(x_2\): \(\text{Cost} = \frac{1}{2} x_1^\top \Lambda x_1 + \frac{1}{2} x_2^\top \Lambda x_2\). Substitute \(x_2 = x - x_1\):</p>
+              \[
+              f(x_1) = \frac{1}{2} x_1^\top \Lambda x_1 + \frac{1}{2} (x - x_1)^\top \Lambda (x - x_1) = x_1^\top \Lambda x_1 - x_1^\top \Lambda x + \frac{1}{2} x^\top \Lambda x
+              \]
+              <p>Taking the gradient with respect to \(x_1\) and setting to zero:</p>
+              \[
+              \nabla_{x_1} f = 2 \Lambda x_1 - \Lambda x = 0 \implies \Lambda (2 x_1 - x) = 0
+              \]
+              <p>Since \(\Lambda\) is positive definite and invertible, \(2 x_1 - x = 0 \implies x_1 = \frac{1}{2} x\), and \(x_2 = \frac{1}{2} x\). The minimum cost is \(\frac{1}{4} x^\top \Lambda x\), which cuts total market impact by 50% compared to executing the full trade in a single lump sum (\(\frac{1}{2} x^\top \Lambda x\)). \(\blacksquare\)</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="prob-F6-L06-e1">
+            <h4>Problem 6.7: Anomaly Survival Under Realistic Trading Costs</h4>
+            <p>In the comprehensive empirical audit by Novy-Marx &amp; Velikov (2016), which anomaly families retain statistically significant net alpha after accounting for effective transaction costs, and which are completely eliminated?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p><span class="claim" data-grade="A" data-cite="novymarx2015taxonomy" data-locator="Table 3 and Section 4">Novy-Marx &amp; Velikov (2016) show that fundamental profitability (gross profitability, operating profitability), asset growth, and value (book-to-market) easily survive transaction costs</span>, retaining over 80% of their gross Sharpe ratios. In contrast, short-term reversal (1-month lagged return), idiosyncratic volatility, and dollar volume liquidity anomalies lose 100% of their net alpha, producing negative net returns due to annual turnover exceeding 600%.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L06-e2">
+            <h4>Problem 6.8: Institutional vs. Academic Transaction Cost Estimates</h4>
+            <p>Why do Frazzini, Israel &amp; Moskowitz (2018) find that institutional trading costs are substantially lower than the bid-ask spreads reported in academic CRSP databases?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p><span class="claim" data-grade="A" data-cite="frazzini2018trading" data-locator="Section 1">Frazzini, Israel &amp; Moskowitz (2018) document that academic studies typically assume orders cross the full quoted bid-ask spread at market close</span>. Real institutional quantitative funds use smart order routing, provide liquidity via passive limit orders to earn maker rebates, trade in dark pools with zero spread, and execute across multi-day horizons. Consequently, effective institutional costs are 50% to 70% lower than naive quoted spreads, tripling the capacity of anomaly strategies.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L06-e3">
+            <h4>Problem 6.9: Machine Learning Signal Decay and Execution Horizon</h4>
+            <p>How does the empirical half-life of machine learning return predictions determine the optimal rebalancing frequency and smoothing parameter \(m\)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p><span class="claim" data-grade="A" data-cite="gu2020empirical" data-locator="Section 3.3">Gu, Kelly &amp; Xiu (2020) find that ML return predictability is concentrated in intermediate horizons of 1 to 6 months</span>. Fast-decaying price-trend features (half-life &lt; 2 weeks) require aggressive rebalancing that is destroyed by transaction costs unless restricted to mega-caps. Slow-decaying characteristic features (half-life 6–12 months) allow low trading speed \(m \approx 0.15 - 0.25\), capturing the risk premium while reducing portfolio turnover by over 70%.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="prob-F6-L06-r1">
+            <h4>Problem 6.10: Reinforcement Learning for Execution Smoothing</h4>
+            <p>Formulate an end-to-end Reinforcement Learning (RL) agent that directly optimizes net wealth by incorporating non-linear transaction cost penalties into the policy reward function.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Model the portfolio manager as a Markov Decision Process (MDP): state space \(s_t = (Z_t, X_t, w_{t-1})\) contains firm characteristics, macro indicators, and current portfolio holdings. Action space \(a_t = w_t\) is the new portfolio weight vector. The reward function is the net utility \(R(s_t, a_t) = w_t^\top r_{t+1} - \frac{\gamma}{2} w_t^\top \Sigma_t w_t - \text{TC}(w_t - w_{t-1})\).</p>
+              <p>A policy gradient algorithm (such as PPO or DDPG) trains the neural network to output trading decisions that automatically temper turnover in illiquid assets while exploiting fast-moving signals exclusively in liquid instruments, discovering Gârleanu-Pedersen smoothing end-to-end without assuming linear dynamics.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L06-r2">
+            <h4>Problem 6.11: Multi-Asset Crowding and Co-Impact Regularization</h4>
+            <p>When multiple quantitative hedge funds deploy similar ML return predictors, market impact across assets becomes correlated. Formulate a cross-asset co-impact penalty matrix \(\Lambda\) and explain how it alters optimal asset selection.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\Lambda_{i,j} = \rho_{\text{flow}} \sqrt{\lambda_i \lambda_j}\) be the off-diagonal cross-market impact representing correlated order flow between assets in the same industry or factor bucket. The execution cost is \(\frac{1}{2} \Delta w^\top \Lambda \Delta w\).</p>
+              <p>The co-impact penalty penalizes simultaneous trading in correlated assets. Even if two stocks have identical expected return and idiosyncratic risk, the optimizer forces the fund to trade only one of them or diversify across distinct industries, preventing institutional fire-sales and dampening portfolio-level market impact.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-F6-L06-r3">
+            <h4>Problem 6.12: Capacity Analysis via Marginal Sharpe Degradation</h4>
+            <p>Derive an analytical formula for strategy capacity \(AUM^*\) as a function of quadratic market impact parameter \(\lambda\) and gross Sharpe ratio \(\text{SR}_{\text{gross}}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let fund assets under management be \(A\). Dollar trades are \(\Delta \$ = A \Delta w\). Total transaction cost drag is \(\text{Cost}(A) = \frac{1}{2} \lambda A^2 \|\Delta w\|_2^2\). As a fraction of assets, percentage cost drag is \(\frac{\text{Cost}(A)}{A} = \frac{1}{2} \lambda A \|\Delta w\|_2^2\).</p>
+              <p>Net expected return is \(\mu_{\text{net}}(A) = \mu_{\text{gross}} - \frac{1}{2} \lambda A \|\Delta w\|_2^2\). Setting the marginal return of additional capital \(\frac{\partial (\mu_{\text{net}} A)}{\partial A} = 0\) yields the optimal fund size:</p>
+              \[
+              \mu_{\text{gross}} - \lambda A \|\Delta w\|_2^2 = 0 \implies AUM^* = \frac{\mu_{\text{gross}}}{\lambda \|\Delta w\|_2^2}
+              \]
+              <p>Strategy capacity scales linearly with gross alpha \(\mu_{\text{gross}}\) and inversely with market impact \(\lambda\) and squared portfolio turnover.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2>Key Results</h2>
+        <div class="table-wrap">
+<table class="key-results">
+          <thead>
+            <tr><th>Claim / Result</th><th>Grade</th><th>Basis / Keys</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Gârleanu-Pedersen dynamic partial adjustment minimizes multi-period trading costs</td>
+              <td>T</td>
+              <td>Theorem 6.1 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>Effective institutional trading costs are 50%–70% lower than quoted academic bid-ask spreads</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="frazzini2018trading" data-locator="Section 1">frazzini2018trading</span></td>
+            </tr>
+            <tr>
+              <td>Low-turnover fundamental anomalies survive costs, while high-turnover anomalies lose 100% of alpha</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="novymarx2015taxonomy" data-locator="Table 3">novymarx2015taxonomy</span></td>
+            </tr>
+            <tr>
+              <td>Unconstrained monthly rebalancing destroys out-of-sample wealth relative to smoothed execution</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="demiguel2007optimal" data-locator="Section 3">demiguel2007optimal</span></td>
+            </tr>
+            <tr>
+              <td>Splitting trades equally across sub-periods cuts quadratic market impact by 50%</td>
+              <td>T</td>
+              <td>Problem 6.6 (proof in text)</td>
+            </tr>
+            <tr>
+              <td>Partial adjustment policy strictly increases investor certainty equivalent return under positive trading costs</td>
+              <td>T</td>
+              <td>Problem 6.5 (proof in text)</td>
+            </tr>
+          </tbody>
+        </table>
+</div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="F6" data-page="L06">
+        <h2>Retrieval Quiz</h2>
+        <ol class="quiz-items">
+          <li class="item" data-kind="mc">
+            <p class="question">How is quadratic market impact modeled as a function of trade size \(\Delta w\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_1"> <span>\(\text{TC}(\Delta w) = \frac{1}{2} \Delta w^\top \Lambda \Delta w\), where cost scales quadratically with order size</span></label>
+              <label class="option"><input type="radio" name="q6_1"> <span>As a constant \$5 brokerage commission independent of trade volume</span></label>
+              <label class="option"><input type="radio" name="q6_1"> <span>As an exponential function of asset volatility</span></label>
+              <label class="option"><input type="radio" name="q6_1"> <span>As strictly zero for liquid equities</span></label>
+            </div>
+            <div class="explain"><p>Kyle's lambda market impact model specifies execution price concessions proportional to trade volume, producing quadratic dollar cost.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">According to the Novy-Marx &amp; Velikov (2016) taxonomy, which anomaly category suffers the worst net alpha erosion?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_2"> <span>High-turnover anomalies (such as short-term reversal and idiosyncratic volatility) which lose over 100% of gross returns</span></label>
+              <label class="option"><input type="radio" name="q6_2"> <span>Low-turnover value and profitability anomalies</span></label>
+              <label class="option"><input type="radio" name="q6_2"> <span>Equal-weighted market index buy-and-hold</span></label>
+              <label class="option"><input type="radio" name="q6_2"> <span>Treasury bond maturity ladders</span></label>
+            </div>
+            <div class="explain"><p>Strategies with monthly turnover exceeding 70% lose all their alpha to trading costs, resulting in negative net Sharpe ratios.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What functional form does the optimal Gârleanu &amp; Pedersen (2013) dynamic execution policy take?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_3"> <span>A partial adjustment rule: \(w_t = (I - M) w_{t-1} + M w_t^*\), moving smoothly toward the aim portfolio</span></label>
+              <label class="option"><input type="radio" name="q6_3"> <span>Rebalancing 100% to the target portfolio at every discrete period</span></label>
+              <label class="option"><input type="radio" name="q6_3"> <span>Holding cash indefinitely and never trading</span></label>
+              <label class="option"><input type="radio" name="q6_3"> <span>Selling all assets whenever volatility spikes</span></label>
+            </div>
+            <div class="explain"><p>Dynamic programming shows that the optimal policy under quadratic costs is a linear partial adjustment toward the multi-period target.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How does trading speed \(M\) in Gârleanu-Pedersen execution respond to higher transaction cost \(\lambda_{\text{cost}}\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_4"> <span>Trading speed decreases, leading to slower, smoother portfolio adjustments over time</span></label>
+              <label class="option"><input type="radio" name="q6_4"> <span>Trading speed increases to complete all orders instantly</span></label>
+              <label class="option"><input type="radio" name="q6_4"> <span>Trading speed is unaffected because transaction costs are sunk</span></label>
+              <label class="option"><input type="radio" name="q6_4"> <span>Trading speed becomes negative</span></label>
+            </div>
+            <div class="explain"><p>Higher market impact penalizes rapid trading, forcing the optimal execution policy to slow down and trade in smaller increments.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why do Frazzini, Israel &amp; Moskowitz (2018) find that institutional costs are much lower than academic quoted spreads?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_5"> <span>Institutional managers provide liquidity via passive limit orders, utilize dark pools, and execute dynamically over multi-day horizons</span></label>
+              <label class="option"><input type="radio" name="q6_5"> <span>Brokers legally forgive transaction fees for quantitative hedge funds</span></label>
+              <label class="option"><input type="radio" name="q6_5"> <span>Institutions trade exclusively after stock exchanges close</span></label>
+              <label class="option"><input type="radio" name="q6_5"> <span>All quantitative trades are subsidized by government market makers</span></label>
+            </div>
+            <div class="explain"><p>Smart order routing and algorithmic execution allow institutional managers to capture maker rebates and trade inside the quoted spread.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What is the Breakeven Transaction Cost Capacity of an anomaly strategy?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_6"> <span>The transaction cost level \(c^*\) at which the strategy's net excess return collapses to zero: \(c^* = \E[r_{\text{gross}}] / \text{Turnover}\)</span></label>
+              <label class="option"><input type="radio" name="q6_6"> <span>The maximum amount of leverage a bank will lend</span></label>
+              <label class="option"><input type="radio" name="q6_6"> <span>The minimum tick size of the exchange</span></label>
+              <label class="option"><input type="radio" name="q6_6"> <span>The total market capitalization of the S&amp;P 500</span></label>
+            </div>
+            <div class="explain"><p>Breakeven cost measures the cost tolerance of a strategy; higher turnover lowers breakeven cost and reduces capacity.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How does Maximum Drawdown (MDD) evaluate strategy risk differently from annual volatility?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_7"> <span>MDD measures path-dependent peak-to-trough cumulative loss, capturing persistent underwater capital impairment</span></label>
+              <label class="option"><input type="radio" name="q6_7"> <span>MDD evaluates only positive return months</span></label>
+              <label class="option"><input type="radio" name="q6_7"> <span>MDD assumes returns are normally distributed</span></label>
+              <label class="option"><input type="radio" name="q6_7"> <span>MDD is identical to the variance of returns</span></label>
+            </div>
+            <div class="explain"><p>Volatility measures dispersion around the mean, while MDD measures the worst historical cumulative loss experienced by an investor.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What benefit is gained by splitting a large order \(x\) equally into two smaller trades \(x/2\) under quadratic market impact?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_8"> <span>Total market impact cost is reduced by 50% due to the strict convexity of quadratic price impact</span></label>
+              <label class="option"><input type="radio" name="q6_8"> <span>Brokerage commissions are doubled</span></label>
+              <label class="option"><input type="radio" name="q6_8"> <span>Execution risk is eliminated entirely</span></label>
+              <label class="option"><input type="radio" name="q6_8"> <span>The stock price is guaranteed to rise</span></label>
+            </div>
+            <div class="explain"><p>Because market impact scales with \(x^2\), two trades of size \(x/2\) incur cost \(2 \times (x/2)^2 = x^2/2\), which is half the cost of trading \(x\) all at once.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why do short-leg returns of ML models frequently fail to produce institutional trading profits?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_9"> <span>High borrow fees (specialness rates) and recall risk on hard-to-borrow small-cap stocks erode short paper profits</span></label>
+              <label class="option"><input type="radio" name="q6_9"> <span>Shorting stocks is illegal in the United States</span></label>
+              <label class="option"><input type="radio" name="q6_9"> <span>Short positions never pay dividends</span></label>
+              <label class="option"><input type="radio" name="q6_9"> <span>Short returns are always positive</span></label>
+            </div>
+            <div class="explain"><p>Borrowing fees on heavily shorted, distressed small-cap equities can exceed 10%–20% per year, turning paper short alpha into net losses.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How does strategy capacity \(AUM^*\) scale with gross alpha \(\mu\) and Kyle's lambda market impact parameter \(\lambda\)?</p>
+            <div class="options">
+              <label class="option" data-correct><input type="radio" name="q6_10"> <span>Capacity scales linearly with gross alpha (\(AUM^* \propto \mu\)) and inversely with market impact (\(AUM^* \propto 1/\lambda\))</span></label>
+              <label class="option"><input type="radio" name="q6_10"> <span>Capacity is independent of market impact</span></label>
+              <label class="option"><input type="radio" name="q6_10"> <span>Capacity decreases as gross alpha increases</span></label>
+              <label class="option"><input type="radio" name="q6_10"> <span>Capacity is infinite for all equity strategies</span></label>
+            </div>
+            <div class="explain"><p>Higher alpha supports more trading cost drag, while higher market impact exhausts marginal alpha at lower asset levels.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <li>DeMiguel, V., Garlappi, L., &amp; Uppal, R. (2007). Optimal versus naive diversification: How inefficient is the 1/N portfolio strategy? <em>The Review of Financial Studies</em>, 22(5), 1915–1953.</li>
+          <li>Frazzini, A., Israel, R., &amp; Moskowitz, T. J. (2018). <em>Trading Costs</em>. SSRN Working Paper No. 3229719.</li>
+          <li>Gârleanu, N., &amp; Pedersen, L. H. (2013). Dynamic trading with predictable returns and transaction costs. <em>The Journal of Finance</em>, 68(6), 2309–2340.</li>
+          <li>Gu, S., Kelly, B., &amp; Xiu, D. (2020). Empirical asset pricing via machine learning. <em>The Review of Financial Studies</em>, 33(5), 2223–2273.</li>
+          <li>Novy-Marx, R., &amp; Velikov, M. (2016). A taxonomy of anomalies and their trading costs. <em>The Review of Financial Studies</em>, 29(1), 104–147.</li>
+        </ol>
+      </section>
+
+      <div class="lesson-actions">
+        <button type="button" class="button" data-complete>Mark Lesson Complete</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
