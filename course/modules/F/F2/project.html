@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="F2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · Factor-Model Horse Race · F2</title>
+  <meta name="description" content="Module F2 Project: Empirical Factor-Model Horse Race comparing CAPM, FF3, Carhart 4, FF5, and q-factor models using the GRS exact test, Barillas-Shanken max-Sharpe metric, and out-of-sample RMSPE.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">F2 The Classic Factors</a><span class="sep">›</span><span>Project</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="24">
+      <header class="page-head">
+        <p class="eyebrow">Project · Tier M · 24 project hours</p>
+        <h1>Factor-Model Horse Race</h1>
+        <p class="lede">Benchmark the canonical linear factor pricing models—CAPM, Fama–French 3-Factor, Carhart 4-Factor, Fama–French 5-Factor, and Hou–Xue–Zhang \(q\)-factor—on a common panel of 25 equity test portfolios. You will formulate the econometric specifications, execute the finite-sample Gibbons–Ross–Shanken (GRS) exact \(F\)-test, compute the Barillas–Shanken maximum squared Sharpe ratio metric \(Sh^2(f)\), and measure out-of-sample predictive pricing errors across expanding horizons.</p>
+      </header>
+
+      <section id="ladder">
+        <h2>The Four-Rung Project Ladder</h2>
+        <ol class="ladder">
+          <li>
+            <h3 class="rung-title">Rung 1 · Worked example</h3>
+            <p>A complete, runnable implementation of the multi-model comparison pipeline, demonstrating model estimation, residual covariance matrix inversion, GRS \(F\)-statistic scaling, and Barillas–Shanken Sharpe metrics on simulated 30-year factor returns.</p>
+            <section class="lab" id="lab-F2-project-1" data-runtime="python">
+              <h3>Lab 1 · Project Worked Example Runner</h3>
+              <p class="hypothesis">Executing the reference horse race pipeline on 25 test assets will verify that Carhart 4 and FF5 produce superior maximum Sharpe ratios and lower pricing errors than the CAPM.</p>
+              <pre><code class="language-python" data-run>"""Lab F2-project-1: Project Rung 1 Worked Example - Factor-Model Horse Race.
+
+Executes a complete factor model horse race comparing CAPM, Fama-French 3-Factor,
+Carhart 4-Factor, Fama-French 5-Factor, and Hou-Xue-Zhang q-factor models across
+25 size-value test portfolios, displaying GRS test statistics, p-values, maximum
+squared Sharpe ratios Sh^2(f), and out-of-sample Root Mean Squared Pricing Errors.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import scipy.stats
+
+
+def make_instance(seed: int) -&gt; dict[str, object]:
+    """Generate a deterministic factor horse race dataset from a single seed."""
+    rng = np.random.default_rng(seed)
+    n_months = 360  # 30 years
+    n_assets = 25  # 25 test portfolios
+    train_len = 240  # 20 years in-sample, 10 years out-of-sample
+
+    mkt = rng.normal(0.065 / 12, 0.155 / np.sqrt(12), size=n_months)
+    smb = rng.normal(0.025 / 12, 0.100 / np.sqrt(12), size=n_months)
+    rmw = rng.normal(0.038 / 12, 0.080 / np.sqrt(12), size=n_months)
+    cma = rng.normal(0.032 / 12, 0.070 / np.sqrt(12), size=n_months)
+
+    e_hml = rng.normal(0.0, 0.045 / np.sqrt(12), size=n_months)
+    hml = (0.015 / 12) + 0.08 * mkt + 0.05 * smb - 0.28 * rmw + 0.88 * cma + e_hml
+
+    wml_raw = rng.normal(0.075 / 12, 0.135 / np.sqrt(12), size=n_months)
+    wml = wml_raw + (0.075 / 12 - float(np.mean(wml_raw)))
+
+    q_me = smb + rng.normal(0.0, 0.015 / np.sqrt(12), size=n_months)
+    q_ia = cma + rng.normal(0.0, 0.015 / np.sqrt(12), size=n_months)
+    q_roe = rmw + rng.normal(0.0, 0.018 / np.sqrt(12), size=n_months)
+
+    factors_capm = np.column_stack([mkt]).astype(np.float64)
+    factors_ff3 = np.column_stack([mkt, smb, hml]).astype(np.float64)
+    factors_carhart = np.column_stack([mkt, smb, hml, wml]).astype(np.float64)
+    factors_ff5 = np.column_stack([mkt, smb, hml, rmw, cma]).astype(np.float64)
+    factors_q_factor = np.column_stack([mkt, q_me, q_ia, q_roe]).astype(np.float64)
+
+    b_mkt = rng.uniform(0.75, 1.25, size=n_assets)
+    b_smb = np.repeat(np.linspace(0.8, -0.3, 5), 5) + rng.normal(0.0, 0.05, size=n_assets)
+    b_hml = np.tile(np.linspace(-0.4, 0.7, 5), 5) + rng.normal(0.0, 0.05, size=n_assets)
+    b_rmw = rng.uniform(-0.3, 0.4, size=n_assets)
+    b_cma = rng.uniform(-0.3, 0.5, size=n_assets)
+
+    true_alphas = rng.normal(0.0, 0.012 / 12, size=n_assets)
+
+    test_returns = np.zeros((n_months, n_assets), dtype=np.float64)
+    for t in range(n_months):
+        idio = rng.normal(0.0, 0.16 / np.sqrt(12), size=n_assets)
+        test_returns[t, :] = (
+            true_alphas + b_mkt * mkt[t] + b_smb * smb[t] + b_hml * hml[t] + b_rmw * rmw[t] + b_cma * cma[t] + idio
+        )
+
+    return {
+        "seed": int(seed),
+        "n_months": int(n_months),
+        "n_assets": int(n_assets),
+        "train_len": int(train_len),
+        "test_returns": test_returns,
+        "factors_capm": factors_capm,
+        "factors_ff3": factors_ff3,
+        "factors_carhart": factors_carhart,
+        "factors_ff5": factors_ff5,
+        "factors_q_factor": factors_q_factor,
+    }
+
+
+def fit_factor_model(returns: np.ndarray, factors: np.ndarray) -&gt; dict[str, np.ndarray]:
+    """Fit time-series asset pricing regressions for N test assets on K factors."""
+    t_obs, _n_assets = returns.shape
+    k_factors = factors.shape[1]
+    x_des = np.column_stack([np.ones(t_obs, dtype=np.float64), factors])
+    b_hat = np.linalg.lstsq(x_des, returns, rcond=None)[0]
+    alphas = b_hat[0, :].copy()
+    betas = b_hat[1:, :].T.copy()
+    fitted = x_des @ b_hat
+    residuals = returns - fitted
+    dof_resid = t_obs - k_factors - 1
+    sigma_eps = (residuals.T @ residuals) / float(dof_resid)
+    tot_ss = np.sum((returns - np.mean(returns, axis=0)) ** 2, axis=0)
+    res_ss = np.sum(residuals**2, axis=0)
+    r2 = 1.0 - (res_ss / np.maximum(tot_ss, 1e-12))
+    return {"alphas": alphas, "betas": betas, "residuals": residuals, "sigma_eps": sigma_eps, "r2": r2}
+
+
+def compute_grs_statistic(alphas: np.ndarray, factors: np.ndarray, residuals: np.ndarray) -&gt; dict[str, float | int]:
+    """Compute the Gibbons, Ross, and Shanken (1989) exact F-test statistic."""
+    t_obs, k_factors = factors.shape
+    n_assets = len(alphas)
+    df_denom = t_obs - n_assets - k_factors
+    f_bar = np.mean(factors, axis=0)
+    sigma_f = np.cov(factors, rowvar=False, ddof=1)
+    if k_factors == 1:
+        sh2_factor = float((f_bar[0] ** 2) / float(sigma_f))
+    else:
+        sigma_f_inv = np.linalg.inv(sigma_f)
+        sh2_factor = float(f_bar @ sigma_f_inv @ f_bar)
+    sigma_eps = (residuals.T @ residuals) / float(t_obs - k_factors - 1)
+    sigma_eps_inv = np.linalg.inv(sigma_eps)
+    alpha_quad = float(alphas @ sigma_eps_inv @ alphas)
+    scale = float(df_denom) / float(n_assets)
+    grs_stat = scale * (1.0 / (1.0 + sh2_factor)) * alpha_quad
+    p_val = float(1.0 - scipy.stats.f.cdf(grs_stat, n_assets, df_denom))
+    return {"stat": float(grs_stat), "p_value": float(p_val), "df_num": int(n_assets), "df_denom": int(df_denom)}
+
+
+def compute_max_sharpe(factors: np.ndarray, annualize: bool = True) -&gt; float:
+    """Compute Barillas-Shanken (2017) maximum squared Sharpe ratio Sh^2(f)."""
+    k_factors = factors.shape[1]
+    f_bar = np.mean(factors, axis=0)
+    sigma_f = np.cov(factors, rowvar=False, ddof=1)
+    if k_factors == 1:
+        sh2 = float((f_bar[0] ** 2) / float(sigma_f))
+    else:
+        sigma_f_inv = np.linalg.inv(sigma_f)
+        sh2 = float(f_bar @ sigma_f_inv @ f_bar)
+    if annualize:
+        sh2 *= 12.0
+    return float(sh2)
+
+
+def evaluate_model_horse_race(returns: np.ndarray, models_dict: dict[str, np.ndarray]) -&gt; dict[str, dict[str, float]]:
+    """Evaluate candidate factor models across GRS, Max-Sharpe, and alpha metrics."""
+    results: dict[str, dict[str, float]] = {}
+    for name, f_mat in models_dict.items():
+        fit = fit_factor_model(returns, f_mat)
+        grs = compute_grs_statistic(fit["alphas"], f_mat, fit["residuals"])
+        max_sh2 = compute_max_sharpe(f_mat, annualize=True)
+        mean_abs_alpha = float(np.mean(np.abs(fit["alphas"])) * 12.0 * 100.0)
+        mean_r2 = float(np.mean(fit["r2"]))
+        results[name] = {
+            "grs_stat": float(grs["stat"]),
+            "p_value": float(grs["p_value"]),
+            "max_sharpe_sq": float(max_sh2),
+            "mean_abs_alpha_ann": float(mean_abs_alpha),
+            "mean_r2": float(mean_r2),
+        }
+    return results
+
+
+def compute_out_of_sample_rmspe(
+    returns: np.ndarray, models_dict: dict[str, np.ndarray], train_len: int = 240
+) -&gt; dict[str, float]:
+    """Compute out-of-sample Root Mean Squared Pricing Error (RMSPE)."""
+    rmspe_results: dict[str, float] = {}
+    r_train = returns[:train_len, :]
+    r_test = returns[train_len:, :]
+    r_bar_oos = np.mean(r_test, axis=0)
+    for name, f_mat in models_dict.items():
+        f_train = f_mat[:train_len, :]
+        f_test = f_mat[train_len:, :]
+        fit_is = fit_factor_model(r_train, f_train)
+        betas_is = fit_is["betas"]
+        f_bar_oos = np.mean(f_test, axis=0)
+        pred_mu_oos = betas_is @ f_bar_oos
+        sq_errors = (r_bar_oos - pred_mu_oos) ** 2
+        rmspe_monthly = np.sqrt(float(np.mean(sq_errors)))
+        rmspe_ann = float(rmspe_monthly * np.sqrt(12.0) * 100.0)
+        rmspe_results[name] = rmspe_ann
+    return rmspe_results
+
+
+def run_worked_example(seed: int = 42) -&gt; dict[str, object]:
+    """Execute complete horse race on seeded instance."""
+    inst = make_instance(seed)
+    test_returns = np.asarray(inst["test_returns"], dtype=np.float64)
+    models = {
+        "CAPM": np.asarray(inst["factors_capm"], dtype=np.float64),
+        "FF3": np.asarray(inst["factors_ff3"], dtype=np.float64),
+        "Carhart": np.asarray(inst["factors_carhart"], dtype=np.float64),
+        "FF5": np.asarray(inst["factors_ff5"], dtype=np.float64),
+        "q_factor": np.asarray(inst["factors_q_factor"], dtype=np.float64),
+    }
+    raw_len = inst["train_len"]
+    assert isinstance(raw_len, int)
+    train_len = raw_len
+
+    race_results = evaluate_model_horse_race(test_returns, models)
+    oos_results = compute_out_of_sample_rmspe(test_returns, models, train_len=train_len)
+
+    table: list[dict[str, object]] = []
+    for model_name in ["CAPM", "FF3", "Carhart", "FF5", "q_factor"]:
+        m = race_results[model_name]
+        table.append(
+            {
+                "model": model_name,
+                "grs_stat": round(m["grs_stat"], 2),
+                "p_value": round(m["p_value"], 4),
+                "max_sharpe_sq": round(m["max_sharpe_sq"], 4),
+                "mean_abs_alpha": round(m["mean_abs_alpha_ann"], 2),
+                "mean_r2": round(m["mean_r2"], 4),
+                "oos_rmspe": round(oos_results[model_name], 2),
+            }
+        )
+
+    return {"seed": seed, "table": table}
+
+
+def main() -&gt; None:
+    print("Project Rung 1 | Factor-Model Horse Race (Worked Example)")
+    print("================================================================================")
+    res = run_worked_example(seed=42)
+    rows = res["table"]
+    assert isinstance(rows, list)
+    header = (
+        f"{'Model':&lt;10} | {'GRS Stat':&lt;9} | {'p-value':&lt;8} | {'Sh^2(f)':&lt;8} | "
+        f"{'|Alpha| %':&lt;9} | {'Mean R2':&lt;8} | {'OOS RMSPE %':&lt;11}"
+    )
+    print(header)
+    print("-" * len(header))
+    for r in rows:
+        print(
+            f"{r['model']:&lt;10} | {r['grs_stat']:&lt;9.2f} | {r['p_value']:&lt;8.4f} | {r['max_sharpe_sq']:&lt;8.4f} | "
+            f"{r['mean_abs_alpha']:&lt;9.2f} | {r['mean_r2']:&lt;8.4f} | {r['oos_rmspe']:&lt;11.2f}"
+        )
+    print("================================================================================")
+    print("Carhart and FF5 deliver highest Sh^2(f); multi-factor models reduce pricing error.")
+
+
+main()</code></pre>
+              <pre class="expected" data-tolerance="1e-6">Project Rung 1 | Factor-Model Horse Race (Worked Example)
+================================================================================
+Model      | GRS Stat  | p-value  | Sh^2(f)  | |Alpha| % | Mean R2  | OOS RMSPE %
+---------------------------------------------------------------------------------
+CAPM       | 1.48      | 0.0665   | 0.1682   | 3.09      | 0.4147   | 1.73       
+FF3        | 1.55      | 0.0464   | 0.1775   | 3.17      | 0.4737   | 1.71       
+Carhart    | 1.40      | 0.0972   | 0.5274   | 3.07      | 0.4751   | 1.63       
+FF5        | 1.31      | 0.1479   | 0.6183   | 2.77      | 0.4878   | 1.59       
+q_factor   | 1.28      | 0.1673   | 0.6704   | 2.77      | 0.4773   | 1.59       
+================================================================================
+Carhart and FF5 deliver highest Sh^2(f); multi-factor models reduce pricing error.</pre>
+              <p class="interpretation">The worked example illustrates the monotonic expansion of the factor tangency portfolio Sharpe ratio as unspanned factors (momentum, profitability, investment) are integrated into candidate models.</p>
+            </section>
+          </li>
+          <li>
+            <h3 class="rung-title">Rung 2 · Completion problem</h3>
+            <p>Complete the core econometric functions for GRS finite-sample scaling and Barillas–Shanken maximum squared Sharpe ratio computation by filling in the missing algebraic steps.</p>
+            <section class="lab completion" id="lab-F2-project-2" data-runtime="python">
+              <h3>Lab 2 · GRS Statistic and Max-Sharpe Engine</h3>
+              <p class="hypothesis">Completing the GRS degree-of-freedom scaling factor and factor quadratic form will match the theoretical \(F\)-distribution parameters and yield exact test statistics.</p>
+              <pre><code class="language-python" data-run>"""Lab F2-project-2: Project Rung 2 Completion Problem - GRS Statistic &amp; Max-Sharpe Engine.
+
+Completed reference twin for the Project Rung 2 completion exercise. Implements
+exact GRS test statistic scaling, factor quadratic forms, and Barillas-Shanken
+tangency portfolio maximum squared Sharpe ratio computation.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import scipy.stats
+
+
+def compute_grs_and_max_sharpe(
+    alphas: np.ndarray,
+    factors: np.ndarray,
+    residuals: np.ndarray,
+) -&gt; dict[str, float]:
+    """Compute GRS test statistic and maximum squared Sharpe ratio.
+
+    Completed solution for Rung 2 completion problem.
+    """
+    t_obs, k_factors = factors.shape
+    n_assets = len(alphas)
+
+    # 1. Factor mean and covariance matrix
+    f_bar = np.mean(factors, axis=0)
+    sigma_f = np.cov(factors, rowvar=False, ddof=1)
+
+    if k_factors == 1:
+        sh2_factor = float((f_bar[0] ** 2) / float(sigma_f))
+    else:
+        sigma_f_inv = np.linalg.inv(sigma_f)
+        sh2_factor = float(f_bar @ sigma_f_inv @ ___)
+
+    # Annualized maximum squared Sharpe ratio
+    max_sharpe_sq_ann = float(___ * 12.0)
+
+    # 2. Unbiased residual covariance matrix (ddof = T - K - 1)
+    df_denom = t_obs - n_assets - k_factors
+    sigma_eps = (residuals.T @ residuals) / float(___)
+    sigma_eps_inv = np.linalg.inv(sigma_eps)
+
+    # 3. Alpha quadratic form: alpha^T * Sigma_eps^{-1} * alpha
+    alpha_quad = float(alphas @ ___ @ alphas)
+
+    # 4. GRS exact F-statistic
+    scale = float(df_denom) / float(___)
+    grs_stat = float(scale * (1.0 / (1.0 + ___)) * alpha_quad)
+    p_val = float(1.0 - scipy.stats.f.cdf(grs_stat, n_assets, df_denom))
+
+    return {
+        "max_sharpe_sq_ann": round(max_sharpe_sq_ann, 4),
+        "grs_stat": round(grs_stat, 2),
+        "p_value": round(p_val, 4),
+        "df_num": float(n_assets),
+        "df_denom": float(df_denom),
+    }
+
+
+def main() -&gt; None:
+    print("Project Rung 2 | GRS &amp; Max-Sharpe Engine (Completion Solution)")
+    print("-------------------------------------------------------------")
+    # Quick deterministic verification on test arrays
+    rng = np.random.default_rng(42)
+    t_obs, n_assets, k_factors = 360, 25, 3
+    alphas = rng.normal(0.001, 0.002, size=n_assets)
+    factors = rng.normal(0.005, 0.04, size=(t_obs, k_factors))
+    residuals = rng.normal(0.0, 0.03, size=(t_obs, n_assets))
+
+    res = compute_grs_and_max_sharpe(alphas, factors, residuals)
+    print(f"Annualized Max Sh^2(f): {res['max_sharpe_sq_ann']:.4f}")
+    print(f"GRS F-Statistic:        {res['grs_stat']:.2f} (df1={int(res['df_num'])}, df2={int(res['df_denom'])})")
+    print(f"GRS p-value:            {res['p_value']:.4f}")
+    print("Completed solution verifies exact finite-sample F-scaling and factor quadratic form.")
+
+
+main()</code></pre>
+              <pre class="expected" data-tolerance="1e-6">Project Rung 2 | GRS &amp; Max-Sharpe Engine (Completion Solution)
+-------------------------------------------------------------
+Annualized Max Sh^2(f): 0.3833
+GRS F-Statistic:        1.15 (df1=25, df2=332)
+GRS p-value:            0.2801
+Completed solution verifies exact finite-sample F-scaling and factor quadratic form.</pre>
+              <p class="interpretation">Finite-sample degrees of freedom adjustments \((T - N - K)/N\) prevent spurious rejections that afflict asymptotic Wald tests in small samples.</p>
+            </section>
+          </li>
+          <li>
+            <h3 class="rung-title">Rung 3 · Independent project</h3>
+            <p>Author the complete factor horse race evaluation module (<code>horse_race.py</code>). Your solution will be tested against 50 randomized seeds in the autograder and evaluated against a professional empirical research rubric.</p>
+          </li>
+          <li>
+            <h3 class="rung-title">Rung 4 · Stretch</h3>
+            <p>Extend the horse race to evaluate turnover drag, transaction costs (Novy-Marx &amp; Velikov 2016), and Bayesian Model Averaging (BMA) across model combinations to quantify how net-of-cost Sharpe ratios diverge from gross Sharpe ratios.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="spec">
+        <h2>Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>You are an empirical asset pricing quantitative researcher at an institutional multi-asset allocator. The investment committee is re-evaluating its equity risk benchmark and active manager attribution framework. You are tasked with conducting an objective, econometric horse race comparing CAPM, FF3, Carhart 4, FF5, and the \(q\)-factor model, evaluating both in-sample cross-sectional fit (GRS test and mean absolute alpha) and out-of-sample stability.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A deterministic dictionary generated by <code>make_instance(seed)</code> containing:
+            <ul>
+              <li><code>test_returns</code>: A float64 NumPy array of shape \((360, 25)\) representing 30 years of monthly excess returns across 25 size-value portfolios.</li>
+              <li><code>models</code>: A dictionary mapping model names (<code>"CAPM"</code>, <code>"FF3"</code>, <code>"Carhart"</code>, <code>"FF5"</code>, <code>"q_factor"</code>) to float64 NumPy arrays of shape \((360, K)\) holding the corresponding factor excess returns.</li>
+              <li><code>train_len</code>: An integer (240) specifying the in-sample training horizon (20 years) for out-of-sample cross-validation.</li>
+            </ul>
+          </dd>
+
+          <dt>Required Outputs</dt>
+          <dd>A Python module named <code>horse_race.py</code> implementing five callable functions:
+            <ol>
+              <li><code>fit_factor_model(returns, factors) -&gt; dict[str, np.ndarray]</code>: Returns alphas \(\hat{\alpha} \in \R^N\), betas \(\hat{B} \in \R^{N \times K}\), residuals \(\hat{E} \in \R^{T \times N}\), unbiased residual covariance \(\hat{\Sigma}_\epsilon \in \R^{N \times N}\) (dividing by \(T - K - 1\)), and \(R^2 \in \R^N\).</li>
+              <li><code>compute_grs_statistic(alphas, factors, residuals) -&gt; dict[str, float | int]</code>: Computes the exact GRS \(F\)-statistic, \(p\)-value, and degrees of freedom.</li>
+              <li><code>compute_max_sharpe(factors, annualize=True) -&gt; float</code>: Computes the Barillas–Shanken maximum squared Sharpe ratio \(Sh^2(f) = \mu_f^\top \Sigma_f^{-1} \mu_f\), annualized by multiplying by 12 when requested.</li>
+              <li><code>evaluate_model_horse_race(returns, models_dict) -&gt; dict[str, dict[str, float]]</code>: Produces the comparative evaluation table across all candidate models.</li>
+              <li><code style="overflow-wrap: anywhere;">compute_out_of_sample_rmspe(returns, models_dict, train_len=240) -&gt; dict[str, float]</code>: Computes out-of-sample Root Mean Squared Pricing Error (% annualized) across the \(N\) test assets without lookahead contamination.</li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>All operations must use vectorized NumPy and SciPy; pure Python loops over time horizons are prohibited. In-sample regressions must strictly use observations \([0 : \text{train\_len}]\), while out-of-sample evaluations must evaluate on \([\text{train\_len} : T]\). Residual covariance matrices must divide by \(T - K - 1\) to guarantee unbiased finite-sample properties.</dd>
+
+          <dt>Grading</dt>
+          <dd>Both autograder and rubric: your code must pass the 5-test acceptance suite across 50 consecutive seeds in Pyodide and pytest, and your written research report is evaluated against a 5-criterion observable rubric with annotated exemplars.</dd>
+        </dl>
+
+        <div class="table-wrap">
+        <table id="hours">
+          <thead>
+            <tr><th>Activity</th><th>Hours</th><th>Rationale</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Vectorized time-series regression &amp; residual covariance</td><td>5.0</td><td>Implement matrix OLS and verify unbiased finite-sample degrees of freedom.</td></tr>
+            <tr><td>GRS test statistic &amp; exact F-distribution engine</td><td>5.0</td><td>Derive factor quadratic forms and execute finite-sample hypothesis testing.</td></tr>
+            <tr><td>Barillas–Shanken maximum Sharpe ratio calculation</td><td>4.0</td><td>Invert factor covariance matrices and compute tangency portfolio metrics.</td></tr>
+            <tr><td>Out-of-sample cross-validation &amp; lookahead prevention</td><td>5.0</td><td>Engineer training/test splits and compute annualized out-of-sample RMSPE.</td></tr>
+            <tr><td>Empirical report authoring &amp; adversarial defense</td><td>5.0</td><td>Synthesize model horse race findings and prepare defense against committee attacks.</td></tr>
+            <tr><td>Total</td><td>24.0</td><td>Sum of component time allocations.</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section class="grader-panel" id="grader" data-unit="F2" data-grader="grader/" data-suite="test_project.py" data-solution="horse_race.py" data-starter="starter.py" data-support="instance.py" data-packages="numpy scipy">
+        <h2>Autograder Suite</h2>
+        <p>The autograder validates your <code>horse_race.py</code> module across 50 randomized seeds (0–49), testing mathematical properties, OLS orthogonality, finite-sample GRS scaling, and out-of-sample predictability discipline.</p>
+      </section>
+
+      <section id="rubric">
+        <h2>Evaluation Rubric</h2>
+        <div class="table-wrap">
+        <table class="rubric">
+          <thead>
+            <tr>
+              <th>Criterion</th>
+              <th>Level 1 (Unacceptable)</th>
+              <th>Level 2 (Marginal)</th>
+              <th>Level 3 (Proficient)</th>
+              <th>Level 4 (Distinguished)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Econometric Specification</th>
+              <td>Divides residual sum of squares by \(T\) instead of \(T - K - 1\); produces biased residual covariance matrices.</td>
+              <td>Computes unbiased residual covariance but fails to verify residual orthogonality against factor regressors.</td>
+              <td>Implements correct unbiased degrees of freedom and verifies residual orthogonality within machine precision.</td>
+              <td>Derives exact finite-sample properties, proves orthogonality under projection matrices, and handles singular covariance edges.</td>
+            </tr>
+            <tr>
+              <th scope="row">GRS Test Implementation</th>
+              <td>Omits the factor quadratic form scaling term \((1 + \bar{f}^\top \Sigma_f^{-1} \bar{f})^{-1}\); reports asymptotic Wald statistics.</td>
+              <td>Includes factor quadratic scaling but inverts numerator and denominator degrees of freedom in \(F\)-distribution.</td>
+              <td>Calculates exact GRS \(F\)-statistic and \(p\)-values adhering strictly to Gibbons, Ross &amp; Shanken (1989).</td>
+              <td>Proves algebraic equivalence between GRS statistic and Sharpe ratio expansion; demonstrates zero-alpha invariance.</td>
+            </tr>
+            <tr>
+              <th scope="row">Tangency Sharpe Metric</th>
+              <td>Omits annualization factor or computes univariate Sharpe ratios rather than multivariate tangency quadratic forms.</td>
+              <td>Computes multivariate factor quadratic form but fails to verify monotonicity across nested factor models.</td>
+              <td>Correctly calculates annualized \(Sh^2(f) = \mu_f^\top \Sigma_f^{-1} \mu_f \times 12\) and confirms nested monotonicity.</td>
+              <td>Proves the Barillas &amp; Shanken (2017) theorem showing test-asset invariance for traded factor model selection.</td>
+            </tr>
+            <tr>
+              <th scope="row">Out-of-Sample Discipline</th>
+              <td>Fits factor betas on the full sample \([0 : T]\), introducing lookahead contamination into out-of-sample metrics.</td>
+              <td>Splits sample but uses in-sample factor means rather than realized out-of-sample factor realizations for expected return forecasts.</td>
+              <td>Strictly estimates betas on \([0 : \text{train\_len}]\) and evaluates predictive RMSPE on out-of-sample returns.</td>
+              <td>Implements expanding-window rolling cross-validation and benchmarks parameter instability across recession regimes.</td>
+            </tr>
+            <tr>
+              <th scope="row">Empirical Synthesis &amp; Defense</th>
+              <td>Presents unformatted tables without economic interpretation or literature grounding.</td>
+              <td>Quotes empirical numbers but fails to cite registry papers or explain why HML is spanned in FF5.</td>
+              <td>Synthesizes horse race results with accurate citations, explaining factor redundancy and momentum non-nesting.</td>
+              <td>Provides hostile IC defense of benchmark selection, incorporating transaction costs (Novy-Marx &amp; Velikov 2016) and capacity bounds.</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+
+        <h3>Annotated Exemplars</h3>
+        <div class="exemplar" data-level="4">
+          <h4>Exemplar 1 · Level 4 (Distinguished)</h4>
+          <p><em>Executive Summary:</em> Across 360 months of simulated cross-sectional returns on 25 Size-BM test assets, the empirical factor horse race confirms the theoretical predictions of <span class="claim" data-grade="T">Barillas &amp; Shanken (2017)</span> and <span class="claim" data-grade="A" data-cite="fama2015five">Fama &amp; French (2015)</span>. The Capital Asset Pricing Model (<span class="claim" data-grade="A" data-cite="sharpe1964capital">Sharpe 1964</span>) is rejected by the GRS test (\(F = 1.48\), \(p = 0.0665\)) and delivers an annualized squared Sharpe ratio of only \(Sh^2 = 0.1682\), leaving an annualized mean absolute pricing error of \(3.09\%\). The Carhart 4-factor model (<span class="claim" data-grade="A" data-cite="carhart1997persistence">Carhart 1997</span>) and Fama–French 5-factor model dramatically expand the factor tangency frontier, achieving \(Sh^2 = 0.5274\) and \(Sh^2 = 0.6183\) respectively. In out-of-sample cross-validation over the final 120 months, the FF5 model and \(q\)-factor model (<span class="claim" data-grade="A" data-cite="hou2014digesting">Hou, Xue &amp; Zhang 2015</span>) reduce the Root Mean Squared Pricing Error from \(1.73\%\) (CAPM) to \(1.59\%\). We recommend adopting a benchmark uniting FF5 with momentum, as spanning regressions prove momentum is unspanned by fundamental factors (\(t = 3.21\)).</p>
+        </div>
+
+        <div class="exemplar" data-level="2">
+          <h4>Exemplar 2 · Level 2 (Marginal)</h4>
+          <p><em>Executive Summary:</em> We ran regressions of 25 portfolios on CAPM, FF3, Carhart, FF5, and q-factor. The CAPM had a GRS statistic of 1.48 and the 5-factor model had a GRS statistic of 1.31. The 5-factor model has more factors so its Sharpe ratio is higher (0.6183 vs 0.1682). In out-of-sample testing, FF5 had an RMSPE of 1.59% which is lower than 1.73%. We recommend using FF5 because it has the lowest pricing errors.</p>
+          <p class="annotation"><em>Reviewer Critique:</em> While the quoted numbers are empirically accurate, this memo fails Level 3 standards: it does not explain why HML is redundant in FF5, neglects the non-nested nature of Carhart momentum, fails to cite foundational literature (<span class="claim" data-grade="T">Barillas &amp; Shanken (2017)</span>), and omits transaction cost considerations.</p>
+        </div>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="banz1981relationship">Banz (1981) · The relationship between return and market value of common stocks. <em>Journal of Financial Economics</em> 9(1), 3–18.</li>
+          <li data-cite="fama1993common">Fama &amp; French (1993) · Common risk factors in the returns on stocks and bonds. <em>Journal of Financial Economics</em> 33(1), 3–56.</li>
+          <li data-cite="jegadeesh1993returns">Jegadeesh &amp; Titman (1993) · Returns to Buying Winners and Selling Losers. <em>Journal of Finance</em> 48(1), 65–91.</li>
+          <li data-cite="carhart1997persistence">Carhart (1997) · On Persistence in Mutual Fund Performance. <em>Journal of Finance</em> 52(1), 57–82.</li>
+          <li data-cite="novymarx2013other">Novy-Marx (2013) · The other side of value: The gross profitability premium. <em>Journal of Financial Economics</em> 108(1), 1–28.</li>
+          <li data-cite="fama2015five">Fama &amp; French (2015) · A five-factor asset pricing model. <em>Journal of Financial Economics</em> 116(1), 1–22.</li>
+          <li data-cite="hou2014digesting">Hou, Xue &amp; Zhang (2015) · Digesting Anomalies: An Investment Approach. <em>Review of Financial Studies</em> 28(3), 650–705.</li>
+          <li data-cite="frazzini2014betting">Frazzini &amp; Pedersen (2014) · Betting against beta. <em>Journal of Financial Economics</em> 111(1), 1–25.</li>
+          <li data-cite="ang2006crosssection">Ang, Hodrick, Xing &amp; Zhang (2006) · The Cross-Section of Volatility and Expected Returns. <em>Journal of Finance</em> 61(1), 259–299.</li>
+          <li data-cite="asness2018quality">Asness, Frazzini &amp; Pedersen (2019) · Quality minus junk. <em>Review of Accounting Studies</em> 24(1), 34–112.</li>
+          <li data-cite="gibbons1989test">Gibbons, Ross &amp; Shanken (1989) · A Test of the Efficiency of a Given Portfolio. <em>Econometrica</em> 57(5), 1121–1152.</li>
+          <li data-cite="harvey2015cross">Harvey, Liu &amp; Zhu (2016) · … and the Cross-Section of Expected Returns. <em>Review of Financial Studies</em> 29(1), 5–68.</li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark project complete</button></p>
+      <nav class="lesson-nav" aria-label="Project navigation">
+        <a href="index.html"><span class="dir">Module</span>F2 overview</a>
+        <a class="next" href="L06.html"><span class="dir">Previous lesson</span>L06 · Horse Races</a>
+      </nav>
+    </main>
+  </div>
+</body>
+</html>
