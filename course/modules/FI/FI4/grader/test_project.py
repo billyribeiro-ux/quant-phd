@@ -10,13 +10,13 @@ import os
 from typing import Any, cast
 
 import pytest
-from instance import make_instance
+from instance import make_instance  # type: ignore[import-not-found]
 
 # The browser autograder loads the solution module as configured in project.html.
 try:
-    import monitor as sol
+    import monitor as sol  # type: ignore[import-not-found]
 except ImportError:
-    import reference as sol
+    import reference as sol  # type: ignore[import-not-found]
 
 
 @pytest.fixture

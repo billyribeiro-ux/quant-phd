@@ -100,9 +100,7 @@ def shift_at_month(m: int, shift: ParallelShift | TwistShift | None) -> Fraction
             return Fraction(shift.short_bp, 1)
         if m >= 120:
             return Fraction(shift.long_bp, 1)
-        return Fraction(shift.short_bp, 1) + Fraction(
-            (shift.long_bp - shift.short_bp) * (m - 3), 117
-        )
+        return Fraction(shift.short_bp, 1) + Fraction((shift.long_bp - shift.short_bp) * (m - 3), 117)
     raise TypeError(f"Unknown shift: {shift}")
 
 

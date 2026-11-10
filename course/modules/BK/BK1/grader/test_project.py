@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 
 import pytest
-from alm import (
+from alm import (  # type: ignore[import-not-found]
     DepositBook,
     ParallelShift,
     Position,
@@ -27,7 +27,7 @@ from alm import (
     nii_change_cents,
     repricing_gap,
 )
-from instance import make_instance
+from instance import make_instance  # type: ignore[import-not-found]
 
 
 def get_seed() -> int:
