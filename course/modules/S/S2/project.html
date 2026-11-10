@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="S2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S2 Project · Inference Engine</title>
+  <meta name="description" content="Implement an econometrics inference engine with OLS, classical, White, Newey-West, and two-way clustered standard errors, validated by simulation and empirical coverage.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">S2 Linear Regression</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="36">
+      <header class="page-head">
+        <p class="eyebrow">S2 Project · 36 hours · Autograder</p>
+        <h1>Inference Engine</h1>
+        <p class="lede">Quantitative research requires rigorous standard error calculation under unknown error correlation and heteroskedasticity structures. A mistaken covariance matrix estimator produces spurious statistical significance, invalidating portfolio risk models and asset pricing tests. In this project, you construct an end-to-end econometrics inference engine in <code>inference_engine.py</code>. You implement ordinary least squares coefficients, classical standard errors, White (HC0) heteroskedasticity-robust errors, Newey–West (HAC) autocorrelation-consistent errors, one-way cluster-robust errors, two-way clustered errors, Student-t critical values, and an empirical coverage evaluation framework across simulated draws.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The project ladder</h2>
+        <p>This project follows a structured four-rung learning ladder. If you achieved the mastery threshold on the hub diagnostic, you may advance directly to Rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Worked example</span><p>Lab 1: End-to-end derivation and execution of OLS coefficients, classical, White HC0, Newey–West, and cluster-robust standard errors on a seeded design.</p></div></li>
+          <li><div><span class="rung-title">Completion problem</span><p>Lab 2: Implement the critical sandwich meat summation, Bartlett kernel weighting, and two-way variance combination.</p></div></li>
+          <li><div><span class="rung-title">Independent project</span><p>The core deliverable: implement <code>inference_engine.py</code> verified against the 12-test autograder suite across 50 pseudo-random seeds.</p></div></li>
+          <li><div><span class="rung-title">Stretch</span><p>Extend the engine to finite-sample bias corrections HC2 and HC3, and compare cluster-robust confidence intervals with the block bootstrap.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>All inputs and data across these rungs are <strong>SIMULATED</strong>. Samples are generated with deterministic pseudo-random seeds without external market data.</p>
+
+        <section class="lab" id="lab-S2-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: Multi-method inference on a seeded design</h3>
+          <p class="hypothesis">Hypothesis: For a bivariate linear regression with sample size \(n = 6\), OLS coefficients solve the normal equations exactly. Classical standard errors underestimate sampling variability when error variance varies across observations, while White HC0 and Newey–West estimators adjust for empirical residual cross-products.</p>
+          <pre><code class="language-python" data-run>"""Lab S2-project-1: Project Rung 1 worked example.
+
+Evaluates OLS beta, classical, White HC0, Newey-West HAC, and cluster-robust standard errors
+on a fixed seeded integer/rational design using standard library only.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def solve_2x2(a: float, b: float, c: float, d: float, y1: float, y2: float) -&gt; tuple[float, float]:
+    """Solve 2x2 linear system [[a, b], [c, d]] [x1, x2]' = [y1, y2]'."""
+    det = a * d - b * c
+    if abs(det) &lt; 1e-12:
+        raise ValueError("Singular matrix")
+    x1 = (d * y1 - b * y2) / det
+    x2 = (-c * y1 + a * y2) / det
+    return x1, x2
+
+
+def main() -&gt; None:
+    # Fixed seeded dataset: n = 6 observations, k = 2 (intercept and slope x)
+    x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    y = [2.2, 2.8, 3.7, 4.3, 5.1, 5.9]
+    cluster_a = [0, 0, 1, 1, 2, 2]
+    cluster_b = [10, 20, 10, 20, 10, 20]
+    n = len(x)
+    k = 2
+
+    # Normal equations: sum(y) = n*b0 + b1*sum(x); sum(x*y) = b0*sum(x) + b1*sum(x^2)
+    s_x = sum(x)
+    s_y = sum(y)
+    s_xx = sum(xi * xi for xi in x)
+    s_xy = sum(xi * yi for xi, yi in zip(x, y, strict=True))
+
+    det = n * s_xx - s_x * s_x
+    inv_00 = s_xx / det
+    inv_01 = -s_x / det
+    inv_11 = n / det
+
+    b0, b1 = solve_2x2(float(n), s_x, s_x, s_xx, s_y, s_xy)
+    e = [yi - (b0 + b1 * xi) for xi, yi in zip(x, y, strict=True)]
+    rss = sum(ei * ei for ei in e)
+
+    # 1. Classical standard errors
+    sigma2_c = rss / (n - k)
+    se_c_b0 = math.sqrt(sigma2_c * inv_00)
+    se_c_b1 = math.sqrt(sigma2_c * inv_11)
+
+    # 2. White HC0 standard errors
+    m00 = sum(ei * ei for ei in e)
+    m01 = sum(ei * ei * xi for xi, ei in zip(x, e, strict=True))
+    m11 = sum(ei * ei * xi * xi for xi, ei in zip(x, e, strict=True))
+
+    v_w_00 = (inv_00**2) * m00 + 2.0 * inv_00 * inv_01 * m01 + (inv_01**2) * m11
+    v_w_11 = (inv_01**2) * m00 + 2.0 * inv_01 * inv_11 * m01 + (inv_11**2) * m11
+    se_w_b0 = math.sqrt(v_w_00)
+    se_w_b1 = math.sqrt(v_w_11)
+
+    # 3. Newey-West HAC (L = 1)
+    # lag 1 autocovariance sum with Bartlett weight w_1 = 1 - 1/2 = 0.5
+    w1 = 0.5
+    gam1_00 = sum(e[t] * e[t - 1] for t in range(1, n))
+    gam1_01 = sum(e[t] * e[t - 1] * x[t - 1] for t in range(1, n))
+    gam1_10 = sum(e[t] * e[t - 1] * x[t] for t in range(1, n))
+    gam1_11 = sum(e[t] * e[t - 1] * x[t] * x[t - 1] for t in range(1, n))
+
+    omega_00 = m00 + w1 * 2.0 * gam1_00
+    omega_01 = m01 + w1 * (gam1_01 + gam1_10)
+    omega_11 = m11 + w1 * 2.0 * gam1_11
+
+    v_nw_00 = (inv_00**2) * omega_00 + 2.0 * inv_00 * inv_01 * omega_01 + (inv_01**2) * omega_11
+    v_nw_11 = (inv_01**2) * omega_00 + 2.0 * inv_01 * inv_11 * omega_01 + (inv_11**2) * omega_11
+    se_nw_b0 = math.sqrt(max(0.0, v_nw_00))
+    se_nw_b1 = math.sqrt(max(0.0, v_nw_11))
+
+    # 4. Cluster-robust (cluster_a)
+    scores_0: dict[int, float] = {}
+    scores_1: dict[int, float] = {}
+    for xi, ei, g in zip(x, e, cluster_a, strict=True):
+        scores_0[g] = scores_0.get(g, 0.0) + ei
+        scores_1[g] = scores_1.get(g, 0.0) + ei * xi
+
+    meat_cl_00 = sum(s0 * s0 for s0 in scores_0.values())
+    meat_cl_01 = sum(s0 * s1 for s0, s1 in zip(scores_0.values(), scores_1.values(), strict=True))
+    meat_cl_11 = sum(s1 * s1 for s1 in scores_1.values())
+
+    v_cl_00 = (inv_00**2) * meat_cl_00 + 2.0 * inv_00 * inv_01 * meat_cl_01 + (inv_01**2) * meat_cl_11
+    v_cl_11 = (inv_01**2) * meat_cl_00 + 2.0 * inv_01 * inv_11 * meat_cl_01 + (inv_11**2) * meat_cl_11
+    se_cl_b0 = math.sqrt(max(0.0, v_cl_00))
+    se_cl_b1 = math.sqrt(max(0.0, v_cl_11))
+
+    print(f"OLS beta: [{b0:.4f}, {b1:.4f}]")
+    print(f"Classical SE: [{se_c_b0:.4f}, {se_c_b1:.4f}]")
+    print(f"White HC0 SE: [{se_w_b0:.4f}, {se_w_b1:.4f}]")
+    print(f"Newey-West (L=1) SE: [{se_nw_b0:.4f}, {se_nw_b1:.4f}]")
+    print(f"Cluster SE (group A): [{se_cl_b0:.4f}, {se_cl_b1:.4f}]")
+    print(f"Cluster B labels count: {len(set(cluster_b))}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">OLS beta: [1.4000, 0.7429]
+Classical SE: [0.0704, 0.0181]
+White HC0 SE: [0.0604, 0.0130]
+Newey-West (L=1) SE: [0.0351, 0.0096]
+Cluster SE (group A): [0.0190, 0.0064]
+Cluster B labels count: 2</pre>
+          <p class="interpretation">Interpretation: The worked example establishes the baseline numerical outputs for OLS coefficients, classical standard errors, White HC0 standard errors, Newey–West standard errors with lag bound \(L = 1\), and cluster-robust standard errors. Each estimator constructs a variance sandwich \((X'X)^{-1} \hat\Omega (X'X)^{-1}\) with a specialized meat matrix \(\hat\Omega\).</p>
+        </section>
+
+        <section class="lab completion" id="lab-S2-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: HC0 meat, Bartlett weights, and two-way variance</h3>
+          <p class="hypothesis">Hypothesis: Complete the three missing expressions marked with <code>___</code>: the HC0 residual-weighted regressor outer product sum, the Bartlett kernel triangular weight \(1 - j/(L+1)\), and the inclusion-exclusion formula for two-way clustering \(V_A + V_B - V_{A \cap B}\).</p>
+          <pre><code class="language-python" data-run>"""Lab S2-project-2: Project Rung 2 completion problem completed solution.
+
+Computes HC0 meat diagonal, Bartlett weights for lag j, and the two-way variance combination.
+Standard library only.
+"""
+
+from __future__ import annotations
+
+
+def compute_hc0_meat_entry(residuals: list[float], x_col: list[float]) -> float:
+    """Compute the meat entry sum_{i=1}^n e_i^2 x_i^2 for HC0 covariance."""
+    return ___
+
+
+def compute_bartlett_weight(lag: int, max_lags: int) -> float:
+    """Compute the Bartlett kernel triangular weight 1 - j / (L + 1)."""
+    return ___
+
+
+def compute_two_way_variance(v_a: float, v_b: float, v_ab: float) -> float:
+    """Combine one-way and intersection cluster variances: V_A + V_B - V_{A cap B}."""
+    return ___
+
+
+def main() -> None:
+    resids = [0.15, -0.25, 0.10, -0.05, 0.20, -0.15]
+    x_vals = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+    meat_val = compute_hc0_meat_entry(resids, x_vals)
+    w1 = compute_bartlett_weight(1, 3)
+    w2 = compute_bartlett_weight(2, 3)
+    w3 = compute_bartlett_weight(3, 3)
+
+    v_firm = 0.0450
+    v_time = 0.0380
+    v_joint = 0.0210
+    v_2way = compute_two_way_variance(v_firm, v_time, v_joint)
+
+    print(f"HC0 meat entry: {meat_val:.6f}")
+    print(f"Bartlett weight lag 1 (L=3): {w1:.4f}")
+    print(f"Bartlett weight lag 2 (L=3): {w2:.4f}")
+    print(f"Bartlett weight lag 3 (L=3): {w3:.4f}")
+    print(f"Two-way variance V_firm + V_time - V_joint: {v_2way:.6f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">HC0 meat entry: 2.212500
+Bartlett weight lag 1 (L=3): 0.7500
+Bartlett weight lag 2 (L=3): 0.5000
+Bartlett weight lag 3 (L=3): 0.2500
+Two-way variance V_firm + V_time - V_joint: 0.062000</pre>
+          <p class="interpretation">Interpretation: Completing the three expressions verifies the fundamental building blocks of robust econometric inference: the diagonal entry of the White meat matrix scales with squared residuals, Bartlett weights decline linearly to zero, and two-way clustering subtracts the doubly-counted intersection covariance.</p>
+        </section>
+      </section>
+
+      <section id="specification">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Empirical asset pricing and corporate finance regressions frequently violate the classical Gauss–Markov assumptions of homoskedasticity and independent errors. Researchers must compute White heteroskedasticity-consistent standard errors, Newey–West HAC standard errors in time-series predictive regressions, and Petersen one-way or two-way clustered standard errors in firm-year panels. Your module <code>inference_engine.py</code> provides a unified, production-grade interface for these calculations.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Seeded instances generated deterministically by <code>grader/instance.py</code> (all <strong>SIMULATED</strong>):
+            <ul>
+              <li><code>X</code>: Design matrix of shape \(n \times k\) with \(n \in [45, 90]\) and \(k \in \{2, 3, 4\}\). Column 0 contains the constant 1.0 when an intercept is included.</li>
+              <li><code>y</code>: Response vector of length \(n\).</li>
+              <li><code>beta_true</code>: True parameter vector of length \(k\).</li>
+              <li><code>lags</code>: Non-negative integer lag truncation parameter \(L \in [0, n - 1]\).</li>
+              <li><code>cluster_a</code>, <code>cluster_b</code>: Cluster membership label lists of length \(n\).</li>
+              <li><code>draws</code>: A list of independent simulation draws for empirical coverage evaluation.</li>
+            </ul>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>Implement the module <code>inference_engine.py</code> exposing exactly the following eight public functions:
+            <ul>
+              <li><code>ols_beta(X: list[list[float]], y: list[float]) -&gt; list[float]</code>: Returns \(\hat\beta = (X'X)^{-1} X'y\).</li>
+              <li><code>se_classical(X: list[list[float]], y: list[float]) -&gt; list[float]</code>: Returns classical standard errors \(\sqrt{\diag(\hat\sigma^2 (X'X)^{-1})}\) where \(\hat\sigma^2 = \text{RSS}/(n - k)\).</li>
+              <li><code>se_white(X: list[list[float]], y: list[float]) -&gt; list[float]</code>: Returns White HC0 standard errors \(\sqrt{\diag((X'X)^{-1} \hat\Omega_{\mathrm{HC0}} (X'X)^{-1})}\) where \(\hat\Omega_{\mathrm{HC0}} = \sum_{i=1}^n e_i^2 x_i x_i'\).</li>
+              <li><code>se_newey_west(X: list[list[float]], y: list[float], lags: int) -&gt; list[float]</code>: Returns Newey–West HAC standard errors with Bartlett weights \(w_j = 1 - j/(L+1)\).</li>
+              <li><code>se_cluster(X: list[list[float]], y: list[float], cluster: list[Any]) -&gt; list[float]</code>: Returns cluster-robust standard errors \(\sqrt{\diag((X'X)^{-1} \sum_g s_g s_g' (X'X)^{-1})}\) where \(s_g = \sum_{i \in g} e_i x_i\).</li>
+              <li><code>se_two_way(X: list[list[float]], y: list[float], cluster_a: list[Any], cluster_b: list[Any]) -&gt; list[float]</code>: Returns two-way clustered standard errors based on \(V = V_A + V_B - V_{A \cap B}\).</li>
+              <li><code>t_critical(df: int) -&gt; float</code>: Returns the two-sided 95% critical value (\(t_{0.975}(df)\)) from the Student-t distribution with \(df\) degrees of freedom.</li>
+              <li><code>coverage(draws: list[dict[str, Any]], method: str, column: int) -&gt; float</code>: Computes the proportion of simulation draws where the nominal 95% confidence interval \(\hat\beta_j \pm t_{0.975}(n - k) \cdot \se_j\) covers the true parameter \(\beta_{\mathrm{true}, j}\).</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ul>
+              <li>Standard errors must equal the square root of the diagonal of the respective covariance matrix.</li>
+              <li>Functions must never mutate input arguments (matrices, vectors, or label lists).</li>
+              <li>Raise <code>ValueError</code> strictly under the four specified failure conditions: (E1) \(X\) does not have full column rank; (E2) \(n \le k\); (E3) length mismatch between \(y\), \(X\) rows, or cluster labels; (E4) <code>lags</code> is not an integer in \([0, n - 1]\).</li>
+              <li>Numerical precision: coefficients and normal equations must satisfy a tolerance of \(10^{-7}\); standard error estimates must match closed-form sandwich formulas within \(10^{-7}\) relative tolerance.</li>
+              <li>Allowed libraries: <code>numpy</code>, <code>scipy</code>, and Python standard library.</li>
+            </ul>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>Autograder evaluation against <code>grader/test_project.py</code> collecting exactly 12 pytest assertions across 50 pseudo-random seeds (seeds 0 to 49). Full credit requires passing all tests on every seed within the 60-second execution limit.</dd>
+        </dl>
+      </section>
+
+      <section id="time-budget">
+        <h2 id="h-time">Time budget</h2>
+        <p>The 36 project study hours are distributed across development and verification phases as follows:</p>
+        <div class="table-wrap">
+        <table id="hours">
+          <thead>
+            <tr><th>Component</th><th>Hours</th><th>Rationale</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Rung 1, worked example (read and annotate one run)</td><td>2</td><td>One seeded instance, each step annotated</td></tr>
+            <tr><td>Rung 2, completion problem (three blanks, instant check)</td><td>3</td><td>The meat sum, the Bartlett weight and the two-way combination</td></tr>
+            <tr><td>OLS, classical and HC0 errors (rung 3, part 1)</td><td>6</td><td>Normal equations, degrees-of-freedom factor, the sandwich</td></tr>
+            <tr><td>Newey–West with Bartlett weights (rung 3, part 2)</td><td>6</td><td>Lag-zero identity to HC0, lag-L direct sum, the lag bound</td></tr>
+            <tr><td>Cluster and two-way errors (rung 3, part 3)</td><td>6</td><td>Cluster sums, the identical-clustering identity, V_A + V_B - V_{A cap B}</td></tr>
+            <tr><td>Coverage and the critical value (rung 3, part 4)</td><td>7</td><td>t_critical from first principles, coverage on given draws</td></tr>
+            <tr><td>Self-check against the suite and the conventions page</td><td>6</td><td>Run the suite; confirm each convention against its test</td></tr>
+            <tr><td>Total</td><td>36</td><td>Equals data-hours-project on the hub</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section id="rung-3-check">
+        <h2 id="h-rung3">Rung 3 independent self-check</h2>
+        <p>Before submitting to the autograder, run this self-check script to verify residual orthogonality and basic standard error estimates on a small sample design:</p>
+
+        <section class="lab" id="lab-S2-project-3" data-runtime="python">
+          <h3>Lab 3 · Rung 3 independent check: Residual orthogonality and variance verification</h3>
+          <p class="hypothesis">Hypothesis: For a bivariate regression design, OLS residuals sum to zero and have zero inner product with the regressor column up to machine precision, and classical standard errors differ from White HC0 errors.</p>
+          <pre><code class="language-python" data-run>"""Lab S2-project-3: Project Rung 3 independent project self-check.
+
+Executes reference inference calculations on a generated regression instance,
+verifying residual orthogonality and displaying standard errors across all five methods.
+Standard library only.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def main() -&gt; None:
+    # 5 observations, k = 2 (intercept and regressor)
+    x = [1.0, 2.0, 3.0, 4.0, 5.0]
+    y = [1.5, 2.7, 3.2, 4.8, 5.6]
+    n = len(x)
+    k = 2
+
+    s_x = sum(x)
+    s_y = sum(y)
+    s_xx = sum(xi * xi for xi in x)
+    s_xy = sum(xi * yi for xi, yi in zip(x, y, strict=True))
+
+    det = n * s_xx - s_x * s_x
+    b1 = (n * s_xy - s_x * s_y) / det
+    b0 = (s_y - b1 * s_x) / n
+
+    e = [yi - (b0 + b1 * xi) for xi, yi in zip(x, y, strict=True)]
+    rss = sum(ei * ei for ei in e)
+
+    # Orthogonality checks
+    sum_e = sum(e)
+    sum_xe = sum(xi * ei for xi, ei in zip(x, e, strict=True))
+
+    inv_00 = s_xx / det
+    inv_01 = -s_x / det
+    inv_11 = n / det
+
+    # Classical SE
+    sigma2_c = rss / (n - k)
+    se_c_intercept = math.sqrt(sigma2_c * inv_00)
+    se_c_slope = math.sqrt(sigma2_c * inv_11)
+
+    # HC0 SE
+    m00 = sum(ei * ei for ei in e)
+    m01 = sum(ei * ei * xi for xi, ei in zip(x, e, strict=True))
+    m11 = sum(ei * ei * xi * xi for xi, ei in zip(x, e, strict=True))
+    v_w_00 = (inv_00**2) * m00 + 2.0 * inv_00 * inv_01 * m01 + (inv_01**2) * m11
+    v_w_11 = (inv_01**2) * m00 + 2.0 * inv_01 * inv_11 * m01 + (inv_11**2) * m11
+    se_w_intercept = math.sqrt(v_w_00)
+    se_w_slope = math.sqrt(v_w_11)
+
+    print(f"Sample size n: {n}, Regressors k: {k}")
+    print(f"OLS intercept b0: {b0:.4f}, slope b1: {b1:.4f}")
+    print(f"Residual sum (orthogonality to 1): {sum_e:.8f}")
+    print(f"Residual x-dot (orthogonality to x): {sum_xe:.8f}")
+    print(f"Classical intercept SE: {se_c_intercept:.4f}, slope SE: {se_c_slope:.4f}")
+    print(f"White HC0 intercept SE: {se_w_intercept:.4f}, slope SE: {se_w_slope:.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Sample size n: 5, Regressors k: 2
+OLS intercept b0: 0.4700, slope b1: 1.0300
+Residual sum (orthogonality to 1): 0.00000000
+Residual x-dot (orthogonality to x): 0.00000000
+Classical intercept SE: 0.2728, slope SE: 0.0823
+White HC0 intercept SE: 0.1136, slope SE: 0.0273</pre>
+          <p class="interpretation">Interpretation: The zero residual sum confirms exact mathematical orthogonality with the constant regressor. The difference between classical and White HC0 standard errors illustrates the sandwich correction under sample heteroskedasticity.</p>
+        </section>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder suite</h2>
+        <p>The automated test suite evaluates your <code>inference_engine.py</code> implementation against the instance generated for your workspace seed. The suite tests normal equations, sandwich identities, degrees of freedom, lag limits, cluster aggregation, Student-t quantiles, coverage rates, and input validation.</p>
+        <section class="grader-panel" id="grader" data-unit="S2" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="inference_engine.py" data-starter="starter.py" data-packages="numpy scipy"></section>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <p>Foundational literature for the variance estimators implemented in this project:</p>
+        <ol class="reading-list">
+          <li data-cite="white1980heteroskedastici">White, H. (1980). A heteroskedasticity-consistent covariance matrix estimator and a direct test for heteroskedasticity. <em>Econometrica</em>, 48(4), 817–838.</li>
+          <li data-cite="newey1987simple">Newey, W. K., &amp; West, K. D. (1987). A simple, positive semi-definite, heteroskedasticity and autocorrelation consistent covariance matrix. <em>Econometrica</em>, 55(3), 703–708.</li>
+          <li data-cite="petersen2008estimating">Petersen, M. A. (2009). Estimating standard errors in finance panel data sets: Comparing approaches. <em>Review of Financial Studies</em>, 22(1), 435–480.</li>
+          <li data-cite="stambaugh1999predictive">Stambaugh, R. F. (1999). Predictive regressions. <em>Journal of Financial Economics</em>, 54(3), 375–421.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

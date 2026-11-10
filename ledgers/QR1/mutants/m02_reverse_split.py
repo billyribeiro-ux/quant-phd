@@ -54,15 +54,17 @@ def et_to_utc(wall: str) -> str:
         raise ValueError(f"Spring forward clock jump: {wall!r} does not exist in Eastern time")
 
     is_dst = False
-    if spring_date < curr_date < fall_date or (curr_date == spring_date and dt.hour >= 3):
-        is_dst = True
-    elif curr_date == fall_date and dt.hour < 2:
+    if (
+        (spring_date < curr_date < fall_date)
+        or (curr_date == spring_date and dt.hour >= 3)
+        or (curr_date == fall_date and dt.hour < 2)
+    ):
         is_dst = True
 
     offset_hours = -4 if is_dst else -5
     tz = datetime.timezone(datetime.timedelta(hours=offset_hours))
     dt_local = dt.replace(tzinfo=tz)
-    dt_utc = dt_local.astimezone(datetime.timezone.utc)
+    dt_utc = dt_local.astimezone(datetime.UTC)
     return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -105,7 +107,10 @@ class VintageIndex:
                     return
                 raise ValueError("Conflicting value")
             self._conn.execute(
-                "INSERT INTO vintages (source, series, obs_date, value, published, retrieved) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    "INSERT INTO vintages (source, series, obs_date, value, published, retrieved) "
+                    "VALUES (?, ?, ?, ?, ?, ?)"
+                ),
                 (source, series, obs_date, value, published, retrieved),
             )
 
@@ -127,7 +132,10 @@ class VintageIndex:
         _validate_iso_timestamp(t, "t")
         cur = self._conn.cursor()
         cur.execute(
-            "SELECT obs_date, value FROM vintages WHERE source = ? AND series = ? AND published <= ? ORDER BY published ASC, seq ASC",
+            (
+                "SELECT obs_date, value FROM vintages WHERE source = ? AND series = ? AND published <= ? "
+                "ORDER BY published ASC, seq ASC"
+            ),
             (source, series, t),
         )
         return {d: v for d, v in cur.fetchall()}

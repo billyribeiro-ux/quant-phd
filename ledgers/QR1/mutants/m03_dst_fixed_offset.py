@@ -45,7 +45,7 @@ def et_to_utc(wall: str) -> str:
     offset_hours = -5
     tz = datetime.timezone(datetime.timedelta(hours=offset_hours))
     dt_local = dt.replace(tzinfo=tz)
-    dt_utc = dt_local.astimezone(datetime.timezone.utc)
+    dt_utc = dt_local.astimezone(datetime.UTC)
     return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -88,7 +88,10 @@ class VintageIndex:
                     return
                 raise ValueError("Conflicting value")
             self._conn.execute(
-                "INSERT INTO vintages (source, series, obs_date, value, published, retrieved) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    "INSERT INTO vintages (source, series, obs_date, value, published, retrieved) "
+                    "VALUES (?, ?, ?, ?, ?, ?)"
+                ),
                 (source, series, obs_date, value, published, retrieved),
             )
 
@@ -110,7 +113,10 @@ class VintageIndex:
         _validate_iso_timestamp(t, "t")
         cur = self._conn.cursor()
         cur.execute(
-            "SELECT obs_date, value FROM vintages WHERE source = ? AND series = ? AND published <= ? ORDER BY published ASC, seq ASC",
+            (
+                "SELECT obs_date, value FROM vintages WHERE source = ? AND series = ? AND published <= ? "
+                "ORDER BY published ASC, seq ASC"
+            ),
             (source, series, t),
         )
         return {d: v for d, v in cur.fetchall()}
