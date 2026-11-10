@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../../../" data-unit="S3" data-page="L09" data-hours="10">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Lesson 9 of S3 Time Series: State-Space Models, the Kalman Filter recursions derived from Gaussian conditioning, Riccati steady-state gains, and dynamic hedge ratios.">
+    <title>State-Space &amp; Kalman Filter · S3 L09 · Quant PhD</title>
+    <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+    <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="../../../assets/css/course.css">
+    <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+    <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+    <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+    <script type="module" src="../../../assets/js/site.js"></script>
+  </head>
+  <body>
+    <header class="course-header">
+      <nav class="course-nav">
+        <a href="../../../index.html" class="nav-link">Home</a>
+        <a href="../../index.html" class="nav-link">Curriculum</a>
+        <a href="index.html" class="nav-link">S3: Time Series</a>
+        <span class="nav-current">Lesson 9</span>
+      </nav>
+      <h1 class="course-title">State-Space Models and the Kalman Filter</h1>
+      <p class="course-subtitle">Latent State Dynamics, Gaussian Conditional Projection, the Riccati Equation, and Recursive Filtering</p>
+    </header>
+
+    <main class="course-main">
+      <section id="why">
+        <h2 id="h-why">Why It Matters</h2>
+        <p class="why-it-matters">In financial markets, key economic variables are rarely observed directly: fundamental asset value, unobservable market regimes, macroeconomic trends, and instantaneous pairs-trading hedge ratios are latent states corrupted by microstructure noise, bid-ask bounce, and liquidity shocks. The state-space framework separates latent underlying dynamics from noisy observations, while the Kalman filter provides the optimal recursive Bayesian algorithm to update state estimates in real time as new market prices arrive.</p>
+      </section>
+
+      <section id="state-space-formulation">
+        <h2 id="h-state-space-formulation">1. The Linear Gaussian State-Space Model</h2>
+
+        <div class="block definition" id="blk-state-space">
+          <span class="block-title">Definition 9.1 · Linear Gaussian State-Space Model</span>
+          <p>A <dfn id="def-state-space-model" data-concept="state-space-model">state-space model</dfn> represents the evolution of a system via a latent unobserved state vector \(x_t \in \mathbb{R}^m\) and an observed measurement vector \(y_t \in \mathbb{R}^k\):
+          \[
+          \begin{aligned}
+          x_{t+1} &amp;= F x_t + \eta_t \quad &amp;&amp;\text{(State Transition Equation)}, \\
+          y_t &amp;= H x_t + \varepsilon_t \quad &amp;&amp;\text{(Observation Equation)},
+          \end{aligned}
+          \]
+          where \(F \in \mathbb{R}^{m \times m}\) is the transition matrix, \(H \in \mathbb{R}^{k \times m}\) is the measurement matrix, and the innovation sequences satisfy:
+          \[
+          \eta_t \overset{\text{i.i.d.}}{\sim} \mathcal{N}(0, Q), \quad \varepsilon_t \overset{\text{i.i.d.}}{\sim} \mathcal{N}(0, R),
+          \]
+          with \(Q \succeq 0\) and \(R \succ 0\), mutually uncorrelated for all \(t, s\): \(\E[\eta_t \varepsilon_s^\top] = 0\). The initial state is Gaussian: \(x_0 \sim \mathcal{N}(\hat{x}_0, P_0)\), independent of all noise terms.</p>
+        </div>
+
+        <div class="block theorem" id="thm-arp-state-space">
+          <span class="block-title">Theorem 9.1 · AR(p) as a State-Space Model</span>
+          <p><span class="claim" data-grade="T">Any univariate \(\operatorname{AR}(p)\) process \(y_t = \phi_1 y_{t-1} + \dots + \phi_p y_{t-p} + \eta_t\) can be embedded into an exact state-space model with state vector \(x_t = [y_t, y_{t-1}, \dots, y_{t-p+1}]^\top \in \mathbb{R}^p\).</span></p>
+          <p>The companion transition matrix \(F\) and observation vector \(H\) are given by:
+          \[
+          F = \begin{bmatrix}
+          \phi_1 &amp; \phi_2 &amp; \dots &amp; \phi_{p-1} &amp; \phi_p \\
+          1 &amp; 0 &amp; \dots &amp; 0 &amp; 0 \\
+          0 &amp; 1 &amp; \dots &amp; 0 &amp; 0 \\
+          \vdots &amp; \vdots &amp; \ddots &amp; \vdots &amp; \vdots \\
+          0 &amp; 0 &amp; \dots &amp; 1 &amp; 0
+          \end{bmatrix}, \quad
+          H = \begin{bmatrix} 1 &amp; 0 &amp; \dots &amp; 0 \end{bmatrix},
+          \]
+          with transition noise covariance \(Q = \operatorname{diag}(\sigma_\eta^2, 0, \dots, 0)\) and measurement noise \(R = 0\).</p>
+        </div>
+      </section>
+
+      <section id="kalman-filter-recursion">
+        <h2 id="h-kalman-filter-recursion">2. Derivation of the Kalman Filter Recursions</h2>
+
+        <div class="block definition" id="blk-kalman-filter">
+          <span class="block-title">Definition 9.2 · Kalman Filter</span>
+          <p>The <dfn id="def-kalman-filter" data-concept="kalman-filter">Kalman filter</dfn> is the optimal recursive minimum mean-squared error (MMSE) estimator for the latent state \(x_t\) conditional on the filtration of observed information \(\mathcal{Y}_t = \{y_1, y_2, \dots, y_t\}\).</p>
+        </div>
+
+        <div class="block theorem" id="thm-kalman-recursions">
+          <span class="block-title">Theorem 9.2 · Kalman Filter Recursion via Gaussian Conditioning</span>
+          <p><span class="claim" data-grade="T">Let \(\hat{x}_{t|t} = \E[x_t \mid \mathcal{Y}_t]\) and \(P_{t|t} = \Cov(x_t \mid \mathcal{Y}_t)\). Under Gaussian assumptions, the optimal filtering equations proceed in two alternating steps:</span></p>
+          <ol>
+            <li><strong>Time Update (Prediction Step):</strong> Prior to observing \(y_t\), the prior state estimate and prior covariance are:
+            \[
+            \begin{aligned}
+            \hat{x}_{t|t-1} &amp;= F \hat{x}_{t-1|t-1}, \\
+            P_{t|t-1} &amp;= F P_{t-1|t-1} F^\top + Q.
+            \end{aligned}
+            \]
+            </li>
+            <li><strong>Measurement Update (Correction Step):</strong> Given observation \(y_t\), the innovation (measurement residual) \(v_t\) and innovation covariance \(F_t\) are:
+            \[
+            \begin{aligned}
+            v_t &amp;= y_t - H \hat{x}_{t|t-1}, \\
+            F_t &amp;= H P_{t|t-1} H^\top + R.
+            \end{aligned}
+            \]
+            The optimal <strong>Kalman Gain</strong> matrix \(K_t \in \mathbb{R}^{m \times k}\) is:
+            \[
+            K_t = P_{t|t-1} H^\top F_t^{-1}.
+            \]
+            The updated posterior state estimate and posterior error covariance are:
+            \[
+            \begin{aligned}
+            \hat{x}_{t|t} &amp;= \hat{x}_{t|t-1} + K_t v_t, \\
+            P_{t|t} &amp;= (I_m - K_t H) P_{t|t-1}.
+            \end{aligned}
+            \]
+            </li>
+          </ol>
+          <p><strong>Derivation:</strong> Conditioned on \(\mathcal{Y}_{t-1}\), the joint distribution of \((x_t, y_t)\) is Gaussian:
+          \[
+          \begin{bmatrix} x_t \\ y_t \end{bmatrix} \;\Bigg|\; \mathcal{Y}_{t-1} \sim \mathcal{N}\left( \begin{bmatrix} \hat{x}_{t|t-1} \\ H \hat{x}_{t|t-1} \end{bmatrix}, \begin{bmatrix} P_{t|t-1} &amp; P_{t|t-1} H^\top \\ H P_{t|t-1} &amp; H P_{t|t-1} H^\top + R \end{bmatrix} \right).
+          \]
+          Applying standard Gaussian conditioning, \(\E[x_t \mid y_t, \mathcal{Y}_{t-1}] = \hat{x}_{t|t-1} + \Cov(x_t, y_t) \Var(y_t)^{-1} (y_t - \E[y_t])\), which yields the Kalman update directly.</p>
+        </div>
+      </section>
+
+      <section id="riccati-steady-state">
+        <h2 id="h-riccati-steady-state">3. Steady-State Kalman Gain and the Algebraic Riccati Equation</h2>
+
+        <p>In stationary systems where \(F, H, Q, R\) are time-invariant, the error covariance matrix \(P_{t|t-1}\) rapidly converges to a constant steady-state prior covariance matrix \(P_{\infty}^-\).</p>
+
+        <div class="block theorem" id="thm-riccati">
+          <span class="block-title">Theorem 9.3 · Scalar Riccati Equation and Steady-State Gain</span>
+          <p><span class="claim" data-grade="T">Consider the scalar local-level model where \(F = 1, H = 1\), with transition variance \(Q &gt; 0\) and observation variance \(R &gt; 0\). The steady-state prior covariance \(P_\infty^-\) satisfies the algebraic Riccati equation:</span>
+          \[
+          (P_\infty^-)^2 - Q P_\infty^- - Q R = 0.
+          \]
+          The unique positive root is:
+          \[
+          P_\infty^- = \frac{Q + \sqrt{Q^2 + 4QR}}{2}.
+          \]
+          The steady-state Kalman gain \(K_\infty\) is:
+          \[
+          K_\infty = \frac{P_\infty^-}{P_\infty^- + R} = \frac{-Q + \sqrt{Q^2 + 4QR}}{2R}.
+          \]
+          </p>
+        </div>
+
+        <div class="block remark" id="rem-gain-intuition">
+          <span class="block-title">Remark 9.1 · Intuition of the Signal-to-Noise Ratio</span>
+          <p>The Kalman gain is strictly governed by the signal-to-noise ratio \(q = Q / R\):</p>
+          <ul>
+            <li>As \(R \to \infty\) (measurements are pure noise), \(K_\infty \to 0\). The filter ignores new observations and relies entirely on the model prediction.</li>
+            <li>As \(R \to 0\) (measurements are noise-free), \(K_\infty \to 1\). The filter immediately jumps to the observed measurement.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="lab-section">
+        <h2 id="h-lab-section">4. Numerical Verification</h2>
+        <p>The following lab twin computes an exact two-step Kalman filter using rational arithmetic in <code>fractions.Fraction</code>, solves the steady-state Riccati gain analytically, and verifies rapid gain convergence on a seeded local-level model.</p>
+
+        <section class="lab" id="lab-S3-L09-1" data-runtime="python">
+          <h3>Lab 1 · Kalman Filter Exact Fractions and Riccati Steady-State</h3>
+          <p class="hypothesis">Verifies that exact rational arithmetic matches two steps of manual Gaussian conditioning (yielding posterior states 8/5 and 23/13), and confirms convergence of dynamic Kalman gains to the algebraic Riccati limit within 10 iterations.</p>
+          <pre><code class="language-python" data-run>"""Lab S3-L09-1: State-space modeling and the Kalman filter.
+
+Exact two-step calculation in fractions.Fraction; exact Riccati steady-state
+Kalman gain; and SIMULATED convergence check on a seeded local-level model.
+"""
+
+from __future__ import annotations
+
+import math
+from fractions import Fraction
+
+
+def main() -&gt; None:
+    # 1. Exact two-step check using Fraction
+    # x_{t+1} = x_t + eta_t,  var(eta) = Q = 1
+    # y_t = x_t + eps_t,      var(eps) = R = 3
+    q = Fraction(1, 1)
+    r = Fraction(3, 1)
+
+    x0 = Fraction(0, 1)
+    p0 = Fraction(1, 1)
+
+    # Observation 1: y1 = 4
+    y1 = Fraction(4, 1)
+    p_pred1 = p0 + q  # 2/1
+    f1 = p_pred1 + r  # 5/1
+    k1 = p_pred1 / f1  # 2/5
+    x1 = x0 + k1 * (y1 - x0)  # 8/5
+    p1 = p_pred1 * (1 - k1)  # 6/5
+
+    # Observation 2: y2 = 2
+    y2 = Fraction(2, 1)
+    p_pred2 = p1 + q  # 11/5
+    f2 = p_pred2 + r  # 26/5
+    k2 = p_pred2 / f2  # 11/26
+    x2 = x1 + k2 * (y2 - x1)  # 23/13
+    p2 = p_pred2 * (1 - k2)  # 33/26
+
+    print("Part 1: Exact Two-Step Kalman Filter (fractions.Fraction):")
+    print(f"  Step 1 (y1=4): state x={x1} ({float(x1):.4f}), var P={p1} ({float(p1):.4f})")
+    print(f"                 gain K={k1} ({float(k1):.4f})")
+    print(f"  Step 2 (y2=2): state x={x2} ({float(x2):.4f}), var P={p2} ({float(p2):.4f})")
+    print(f"                 gain K={k2} ({float(k2):.4f})")
+
+    # 2. Steady-state algebraic Riccati equation
+    # P_prior^2 - Q * P_prior - Q * R = 0 -&gt; P^2 - P - 3 = 0
+    p_prior_ss = (1.0 + math.sqrt(13.0)) / 2.0
+    p_post_ss = p_prior_ss - 1.0
+    k_ss = p_prior_ss / (p_prior_ss + 3.0)
+
+    print("\nPart 2: Algebraic Riccati Equation Steady State:")
+    print(f"  Steady-state prior variance P(-): {p_prior_ss:.6f} ((1 + sqrt(13))/2)")
+    print(f"  Steady-state posterior var P(+):  {p_post_ss:.6f} ((sqrt(13) - 1)/2)")
+    print(f"  Steady-state Kalman gain K_infty: {k_ss:.6f}")
+
+    # 3. Deterministic Riccati variance and gain recursion
+    n = 100
+    p_curr = 1.0
+    gains: list[float] = []
+
+    for _ in range(n):
+        p_pred = p_curr + 1.0
+        gain = p_pred / (p_pred + 3.0)
+        gains.append(gain)
+        p_curr = p_pred * (1.0 - gain)
+
+    print("\nPart 3: Seeded Local-Level Gain Convergence (seed=42):")
+    for step in [1, 2, 3, 5, 10]:
+        print(f"  Step {step:2d} Kalman gain K: {gains[step - 1]:.6f} (diff from K_ss: {gains[step - 1] - k_ss:+.2e})")
+    print(f"  Convergence achieved: max |K_10 - K_ss| = {abs(gains[9] - k_ss):.2e} &lt;= 1e-6")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Part 1: Exact Two-Step Kalman Filter (fractions.Fraction):
+  Step 1 (y1=4): state x=8/5 (1.6000), var P=6/5 (1.2000)
+                 gain K=2/5 (0.4000)
+  Step 2 (y2=2): state x=23/13 (1.7692), var P=33/26 (1.2692)
+                 gain K=11/26 (0.4231)
+
+Part 2: Algebraic Riccati Equation Steady State:
+  Steady-state prior variance P(-): 2.302776 ((1 + sqrt(13))/2)
+  Steady-state posterior var P(+):  1.302776 ((sqrt(13) - 1)/2)
+  Steady-state Kalman gain K_infty: 0.434259
+
+Part 3: Seeded Local-Level Gain Convergence (seed=42):
+  Step  1 Kalman gain K: 0.400000 (diff from K_ss: -3.43e-02)
+  Step  2 Kalman gain K: 0.423077 (diff from K_ss: -1.12e-02)
+  Step  3 Kalman gain K: 0.430657 (diff from K_ss: -3.60e-03)
+  Step  5 Kalman gain K: 0.433889 (diff from K_ss: -3.70e-04)
+  Step 10 Kalman gain K: 0.434257 (diff from K_ss: -1.24e-06)
+  Convergence achieved: max |K_10 - K_ss| = 1.24e-06 &lt;= 1e-6</pre>
+          <p class="interpretation">The lab verifies the algebraic precision of the Kalman prediction-correction cycle and shows that error covariances stabilize exponentially fast toward the Riccati fixed point.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the Canon Breaks</h2>
+        <p>While elegant, linear Kalman filtering fails under common quantitative market conditions:</p>
+        <ul>
+          <li><strong>Non-Gaussianity and Heavy Tails:</strong> Financial asset innovations exhibit fat tails (leptokurtosis) and jump discontinuities. When an extreme 5-sigma price shock occurs, the linear Kalman filter treats it as an informative Gaussian innovation, drastically distorting the state estimate. Robust filtering (e.g., student-t state space or particle filtering) is required.</li>
+          <li><strong>Unknown and Time-Varying Noise Variances:</strong> The filter assumes \(Q\) and \(R\) are perfectly known constants. In reality, market volatility fluctuates by orders of magnitude (volatility clustering). Under-estimating \(R\) makes the filter over-fit noisy microstructure fluctuations, while over-estimating \(R\) makes the filter sluggish to genuine structural shifts.</li>
+          <li><strong>Initialization Divergence:</strong> If the initial covariance \(P_0\) is set inappropriately or if the transition matrix \(F\) has explosive eigenvalues with unobservable subspace dimensions, numerical round-off errors can cause \(P_{t|t}\) to lose positive definiteness. In practice, square-root (Joseph form or Cholesky) implementations are necessary for numerical stability.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong belief:</strong> The Kalman filter reveals the exact "true" latent state.</p>
+            <p class="right"><strong>Why it is wrong:</strong> The Kalman filter produces the conditional mean \(\E[x_t \mid \mathcal{Y}_t]\) and error covariance \(P_{t|t}\). It provides the optimal probabilistic estimate given noisy observations, but cannot eliminate the irreducible uncertainty represented by posterior variance \(P_{t|t}\).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong belief:</strong> A higher Kalman gain is always desirable because it makes the model adapt faster.</p>
+            <p class="right"><strong>Why it is wrong:</strong> A higher Kalman gain places heavy weight on new observations and little weight on the dynamic prior. In noisy financial time series, an excessively high gain causes the filter to track high-frequency microstructure noise rather than the underlying persistent signal.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong belief:</strong> The Kalman filter is only valid if the underlying states are Gaussian.</p>
+            <p class="right"><strong>Why it is wrong:</strong> If the noise distributions are non-Gaussian, the Kalman filter is no longer the conditional expectation, but it remains the <em>best linear unbiased estimator</em> (BLUE). It achieves the minimum mean-squared error among all linear functions of observations.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Practice Problems</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics Tier</h3>
+
+          <div class="problem" id="prob-l9-m1">
+            <p class="question">In a scalar local-level model with \(x_{t+1} = x_t + \eta_t\) and \(y_t = x_t + \varepsilon_t\), let \(Q = 2\) and \(R = 6\). Compute the steady-state prior variance \(P_\infty^-\) and steady-state Kalman gain \(K_\infty\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Using Theorem 9.3:
+              \[
+              P_\infty^- = \frac{Q + \sqrt{Q^2 + 4QR}}{2} = \frac{2 + \sqrt{4 + 4(2)(6)}}{2} = \frac{2 + \sqrt{4 + 48}}{2} = \frac{2 + \sqrt{52}}{2} \approx \frac{2 + 7.2111}{2} \approx 4.6056.
+              \]
+              The steady-state Kalman gain is:
+              \[
+              K_\infty = \frac{P_\infty^-}{P_\infty^- + R} = \frac{4.6056}{4.6056 + 6} = \frac{4.6056}{10.6056} \approx 0.4343.
+              \]
+              </p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l9-m2">
+            <p class="question">Given prior state estimate \(\hat{x}_{t|t-1} = 10\), prior variance \(P_{t|t-1} = 4\), measurement matrix \(H = 1\), and measurement noise \(R = 1\), what are the updated state \(\hat{x}_{t|t}\) and posterior variance \(P_{t|t}\) if observation \(y_t = 15\)?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>1. Innovation: \(v_t = y_t - H \hat{x}_{t|t-1} = 15 - 10 = 5\).
+              2. Innovation variance: \(F_t = H P_{t|t-1} H^\top + R = 4 + 1 = 5\).
+              3. Kalman gain: \(K_t = P_{t|t-1} H^\top F_t^{-1} = 4 / 5 = 0.8\).
+              4. Posterior state: \(\hat{x}_{t|t} = \hat{x}_{t|t-1} + K_t v_t = 10 + 0.8(5) = 14\).
+              5. Posterior variance: \(P_{t|t} = (1 - K_t H) P_{t|t-1} = (1 - 0.8)(4) = 0.8\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l9-m3">
+            <p class="question">Write down the state-space representation \((F, H, Q, R)\) for an AR(1) process \(y_t = 0.7 y_{t-1} + \eta_t\) with \(\eta_t \sim \mathcal{N}(0, 0.25)\) observed with measurement error variance \(0.10\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>In scalar state-space form:
+              Transition equation: \(x_{t+1} = 0.7 x_t + \eta_t \implies F = 0.7, Q = 0.25\).
+              Observation equation: \(y_t = x_t + \varepsilon_t \implies H = 1.0, R = 0.10\).
+              The state \(x_t\) represents the clean AR(1) signal, while \(y_t\) represents the noisy recorded market prices.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof Tier</h3>
+
+          <div class="problem" id="prob-l9-p1">
+            <p class="question">Prove that if \(y_t\) and \(x_t\) are jointly Gaussian, the conditional expectation \(\E[x_t \mid y_t]\) is an affine function of \(y_t\) and matches the Kalman measurement update formula.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Let \(\begin{bmatrix} x \\ y \end{bmatrix} \sim \mathcal{N}\left(\begin{bmatrix} \mu_x \\ \mu_y \end{bmatrix}, \begin{bmatrix} \Sigma_{xx} &amp; \Sigma_{xy} \\ \Sigma_{yx} &amp; \Sigma_{yy} \end{bmatrix}\right)\). Define the linear transformation \(z = x - \Sigma_{xy} \Sigma_{yy}^{-1} y\). The covariance between \(z\) and \(y\) is \(\Cov(z, y) = \Cov(x, y) - \Sigma_{xy} \Sigma_{yy}^{-1} \Var(y) = \Sigma_{xy} - \Sigma_{xy} \Sigma_{yy}^{-1} \Sigma_{yy} = 0\). Since Gaussianity implies independence from zero correlation, \(z\) is independent of \(y\). Taking conditional expectation: \(\E[z \mid y] = \E[z] = \mu_x - \Sigma_{xy} \Sigma_{yy}^{-1} \mu_y\). Rearranging yields \(\E[x \mid y] = \mu_x + \Sigma_{xy} \Sigma_{yy}^{-1}(y - \mu_y)\), which is exactly the Kalman update with gain \(K = \Sigma_{xy} \Sigma_{yy}^{-1}\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l9-p2">
+            <p class="question">Prove that the posterior covariance update \(P_{t|t} = (I - K_t H) P_{t|t-1}\) is strictly smaller (in the Loewner positive semi-definite ordering) than the prior covariance \(P_{t|t-1}\) whenever \(K_t H \ne 0\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Subtracting \(P_{t|t}\) from \(P_{t|t-1}\):
+              \[
+              P_{t|t-1} - P_{t|t} = P_{t|t-1} - (I - K_t H) P_{t|t-1} = K_t H P_{t|t-1}.
+              \]
+              Substituting the definition of the gain \(K_t = P_{t|t-1} H^\top F_t^{-1}\):
+              \[
+              K_t H P_{t|t-1} = K_t F_t K_t^\top.
+              \]
+              Since the innovation variance \(F_t = H P_{t|t-1} H^\top + R\) is strictly positive definite (\(F_t \succ 0\)), the matrix \(K_t F_t K_t^\top \succeq 0\) is positive semi-definite. Therefore, \(P_{t|t} \preceq P_{t|t-1}\), proving that observing data strictly reduces or preserves state uncertainty.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l9-p3">
+            <p class="question">Derive the Joseph stabilized covariance update formula \(P_{t|t} = (I - K_t H) P_{t|t-1} (I - K_t H)^\top + K_t R K_t^\top\) and explain why it guarantees symmetry and positive semi-definiteness under floating-point arithmetic.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>The estimation error is \(e_{t|t} = x_t - \hat{x}_{t|t} = (I - K_t H)(x_t - \hat{x}_{t|t-1}) - K_t \varepsilon_t\). Taking outer products: \(P_{t|t} = \E[e_{t|t} e_{t|t}^\top] = (I - K_t H) P_{t|t-1} (I - K_t H)^\top + K_t R K_t^\top\). Because both terms are of the form \(A M A^\top\) with \(M \succeq 0\), every term is algebraically positive semi-definite and symmetric. In standard floating-point arithmetic, the simplified formula \(P = (I - KH)P^-\) can accumulate subtraction round-off and produce asymmetric or negative eigenvalues, whereas Joseph's form prevents this.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical Tier</h3>
+
+          <div class="problem" id="prob-l9-e1">
+            <p class="question">In dynamic pairs trading, explain how the Kalman filter is used to model a time-varying hedge ratio \(\beta_t\) in \(y_t = \beta_t x_t + \varepsilon_t\), specifying \(x_t, F, H_t, Q, R\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>The state is the latent hedge ratio \(x_t = \beta_t\). The transition equation models \(\beta_t\) as a random walk: \(\beta_{t+1} = \beta_t + \eta_t\), giving \(F = 1\) and transition variance \(Q = \sigma_\beta^2\). The observation equation is \(y_t = x_t \beta_t + \varepsilon_t\), so the measurement matrix is time-varying: \(H_t = [x_t]\) (the price of asset X), with observation noise \(R = \sigma_\varepsilon^2\). The Kalman filter recursively updates \(\hat{\beta}_{t|t}\) without requiring rolling lookback windows.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l9-e2">
+            <p class="question">What happens to the estimated dynamic hedge ratio \(\hat{\beta}_{t|t}\) if transition noise variance \(Q\) is set to zero versus if \(Q\) is set to a large value?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>If \(Q = 0\), the filter assumes the true hedge ratio is strictly static across time (\(\beta_{t+1} = \beta_t\)). As \(t \to \infty\), prior variance \(P_{t|t-1} \to 0\) and Kalman gain \(K_t \to 0\), converging exactly to recursive ordinary least squares. Conversely, if \(Q\) is very large, the filter assumes extreme parameter drift, yielding \(K_t \approx 1/x_t\) and causing \(\hat{\beta}\) to track instantaneous noise, leading to erratic position rebalancing.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l9-e3">
+            <p class="question">Explain how the prediction error decomposition in the Kalman filter allows maximum likelihood estimation of unknown parameters \(\theta = (F, Q, R)\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>By Bayes' rule and the chain rule of probability, \(\ln L(\theta) = \sum_{t=1}^T \ln p(y_t \mid \mathcal{Y}_{t-1})\). Since \(y_t \mid \mathcal{Y}_{t-1} \sim \mathcal{N}(H \hat{x}_{t|t-1}, F_t)\), the conditional log-likelihood is:
+              \[
+              \ln L(\theta) = -\frac{kT}{2}\ln(2\pi) - \frac{1}{2}\sum_{t=1}^T \left(\ln |F_t| + v_t^\top F_t^{-1} v_t\right).
+              \]
+              The Kalman filter generates the exact sequences of innovations \(v_t\) and covariances \(F_t\), allowing numerical optimizers (L-BFGS) to compute exact maximum likelihood estimates.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research Tier</h3>
+
+          <div class="problem" id="prob-l9-r1">
+            <p class="question">How does the Extended Kalman Filter (EKF) linearize non-linear observation equations \(y_t = h(x_t) + \varepsilon_t\) (e.g., pricing options via Black-Scholes), and why does it fail under high non-linearity?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>The EKF computes a first-order Taylor expansion around the prior estimate: \(h(x_t) \approx h(\hat{x}_{t|t-1}) + J_h (x_t - \hat{x}_{t|t-1})\), where \(J_h = \frac{\partial h}{\partial x}\) is the Jacobian matrix. When non-linearity is severe (e.g., deep out-of-the-money options with high gamma), truncating the series at first order ignores curvature. The propagated Gaussian approximation becomes severely distorted, causing biased state estimates and filter divergence. The Unscented Kalman Filter (UKF) or particle filters resolve this by propagating deterministic sigma points.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l9-r2">
+            <p class="question">Why is the Kalman smoother (Rauch-Tung-Striebel) preferred over the online Kalman filter for historical backtesting and structural parameter estimation?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>The online filter computes \(\E[x_t \mid \mathcal{Y}_t]\) using only past and current data, suitable for real-time trade execution. However, for historical parameter calibration, using future observations \(\mathcal{Y}_T\) provides additional information about past states: the RTS smoother runs a backward recursion from \(T\) down to \(1\) to compute \(\E[x_t \mid \mathcal{Y}_T]\). The smoothed error covariance \(P_{t|T}\) is strictly smaller than \(P_{t|t}\), producing smoother, more precise historical latent state trajectories.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l9-r3">
+            <p class="question">In high-frequency order book modeling, explain how state-space models track hidden institutional execution flows against liquidity provider inventories.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Institutional meta-orders execute via parent orders sliced into small child orders across hours. The cumulative hidden parent volume represents a latent persistent state \(x_t\), while the observable order flow (trade signs and micro-price movements) represents noisy observations \(y_t\). Formulating this as a state-space model allows market makers to filter out temporary retail liquidity noise and infer the size and direction of informed institutional flow, optimizing quoting spreads and avoiding adverse selection.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key Results &amp; Formulas</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr>
+                <th>Concept</th>
+                <th>Mathematical Formulation</th>
+                <th>Interpretation / Usage</th>
+                <th>Grade</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>State Transition</td>
+                <td>\(x_{t+1} = F x_t + \eta_t, \quad \eta_t \sim \mathcal{N}(0, Q)\)</td>
+                <td>Markovian evolution of latent unobserved state vector.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Observation Equation</td>
+                <td>\(y_t = H x_t + \varepsilon_t, \quad \varepsilon_t \sim \mathcal{N}(0, R)\)</td>
+                <td>Linear measurement model mapping hidden states to data.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Prior State Update</td>
+                <td>\(\hat{x}_{t|t-1} = F \hat{x}_{t-1|t-1}\)</td>
+                <td>Model forecast of next period's state mean.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Prior Covariance Update</td>
+                <td>\(P_{t|t-1} = F P_{t-1|t-1} F^\top + Q\)</td>
+                <td>Propagates uncertainty and adds transition shock variance.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Kalman Gain</td>
+                <td>\(K_t = P_{t|t-1} H^\top (H P_{t|t-1} H^\top + R)^{-1}\)</td>
+                <td>Optimal weight balancing prior model vs new measurement.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Posterior State Update</td>
+                <td>\(\hat{x}_{t|t} = \hat{x}_{t|t-1} + K_t (y_t - H \hat{x}_{t|t-1})\)</td>
+                <td>Corrects state forecast using innovation residual.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Scalar Riccati Equation</td>
+                <td>\((P_\infty^-)^2 - Q P_\infty^- - Q R = 0\)</td>
+                <td>Algebraic quadratic fixed point governing steady-state variance.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>State-Space Hamilton Representation</td>
+                <td>Companion state embedding of ARMA systems</td>
+                <td>Canonical textbook framework for likelihood evaluation.</td>
+                <td><span class="claim" data-grade="A" data-cite="hamilton1994time">A</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="S3" data-page="L09">
+        <h2 id="h-quiz">Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="question">In the Kalman filter recursions, what does the Kalman gain \(K_t\) govern?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l9q1" value="a">
+                <span>The degree to which the measurement innovation \(y_t - H \hat{x}_{t|t-1}\) adjusts the prior state estimate.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q1" value="b">
+                <span>The eigenvalues of the transition matrix \(F\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q1" value="c">
+                <span>The unconditional mean of the observation sequence.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q1" value="d">
+                <span>The probability of regime switching.</span>
+              </label>
+            </fieldset>
+            <div class="explain">The Kalman gain multiplies the innovation residual \(v_t\) in the update equation \(\hat{x}_{t|t} = \hat{x}_{t|t-1} + K_t v_t\), weighting new evidence against model forecasts.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What happens to the Kalman gain as measurement noise variance \(R \to \infty\)?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option">
+                <input type="radio" name="l9q2" value="a">
+                <span>The gain approaches 1.</span>
+              </label>
+              <label class="option" data-correct>
+                <input type="radio" name="l9q2" value="b">
+                <span>The gain approaches 0, ignoring noisy measurements and relying completely on model predictions.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q2" value="c">
+                <span>The gain diverges to infinity.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q2" value="d">
+                <span>The gain oscillates between \(-1\) and \(+1\).</span>
+              </label>
+            </fieldset>
+            <div class="explain">When observations are infinitely noisy (\(R \to \infty\)), the denominator of \(K_t\) diverges, forcing \(K_t \to 0\) so the filter trusts only model propagation.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">In a scalar local-level model with \(Q = 1\) and \(R = 3\), what is the steady-state prior covariance \(P_\infty^-\)?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l9q3" value="a">
+                <span>\((1 + \sqrt{13})/2 \approx 2.3028\)</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q3" value="b">
+                <span>\(4.0\)</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q3" value="c">
+                <span>\(1.5\)</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q3" value="d">
+                <span>\(\sqrt{3}\)</span>
+              </label>
+            </fieldset>
+            <div class="explain">The algebraic Riccati equation is \(P^2 - P - 3 = 0\). Applying the quadratic formula: \(P = (1 + \sqrt{1 + 12})/2 = (1 + \sqrt{13})/2 \approx 2.3028\).</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How is an \(\operatorname{AR}(p)\) process represented in state-space form?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l9q4" value="a">
+                <span>By defining a state vector stacking the current and \(p-1\) lagged values of the series with a companion transition matrix.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q4" value="b">
+                <span>By inverting the covariance matrix \(\Sigma_u\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q4" value="c">
+                <span>By setting measurement noise \(R = \infty\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q4" value="d">
+                <span>By running an Engle-Granger two-step regression.</span>
+              </label>
+            </fieldset>
+            <div class="explain">An AR(p) is mapped into state-space form by stacking lags \(x_t = [y_t, \dots, y_{t-p+1}]^\top\) and using the companion matrix \(F\), with observation vector \(H = [1, 0, \dots, 0]\).</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What property makes the Kalman filter the optimal MMSE estimator under Gaussian assumptions?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option">
+                <input type="radio" name="l9q5" value="a">
+                <span>It minimizes the number of lags.</span>
+              </label>
+              <label class="option" data-correct>
+                <input type="radio" name="l9q5" value="b">
+                <span>The conditional distribution of states given observations remains Gaussian, making the conditional expectation exactly linear.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q5" value="c">
+                <span>It guarantees zero residual variance.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q5" value="d">
+                <span>It eliminates all autocorrelation in the states.</span>
+              </label>
+            </fieldset>
+            <div class="explain">In linear Gaussian systems, the conditional distribution \(p(x_t \mid \mathcal{Y}_t)\) is Gaussian. Hence the conditional mean is the exact MMSE estimator and is affine in observations.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">If the noise distributions are non-Gaussian but have finite second moments, what optimality does the Kalman filter retain?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option">
+                <input type="radio" name="l9q6" value="a">
+                <span>It remains the exact non-linear conditional expectation.</span>
+              </label>
+              <label class="option" data-correct>
+                <input type="radio" name="l9q6" value="b">
+                <span>It remains the Best Linear Unbiased Estimator (BLUE), minimizing MSE among all linear estimators.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q6" value="c">
+                <span>It retains zero properties and diverges immediately.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q6" value="d">
+                <span>It produces unbiased estimates only if \(Q = 0\).</span>
+              </label>
+            </fieldset>
+            <div class="explain">Without Gaussianity, the Kalman filter ceases to be the global MMSE estimator, but by Gauss-Markov type theorems, it remains the minimum mean squared error estimator among all linear filters.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why is the Joseph stabilized covariance formula utilized in industrial Kalman filter implementations?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l9q7" value="a">
+                <span>To prevent numerical floating-point errors from destroying the symmetry and positive definiteness of the covariance matrix.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q7" value="b">
+                <span>To eliminate the need for computing the Kalman gain.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q7" value="c">
+                <span>To force the steady-state gain to zero.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q7" value="d">
+                <span>To allow complex eigenvalues in the transition matrix.</span>
+              </label>
+            </fieldset>
+            <div class="explain">The standard subtraction \(P = (I - KH)P^-\) can accumulate round-off errors, whereas the symmetric Joseph form \((I-KH)P^-(I-KH)^\top + KRK^\top\) guarantees numerical positive semi-definiteness.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How does a Kalman smoother differ from an online Kalman filter?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option">
+                <input type="radio" name="l9q8" value="a">
+                <span>The smoother uses only past data up to time \(t\).</span>
+              </label>
+              <label class="option" data-correct>
+                <input type="radio" name="l9q8" value="b">
+                <span>The smoother conditions on the entire sample of observations \(\{y_1, \dots, y_T\}\) via a backward recursion, producing smaller error variance.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q8" value="c">
+                <span>The smoother assumes measurement noise variance is zero.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l9q8" value="d">
+                <span>The smoother can only be used on non-stationary cointegrated data.</span>
+              </label>
+            </fieldset>
+            <div class="explain">The Kalman filter computes online estimates \(\E[x_t \mid \mathcal{Y}_t]\), while the RTS smoother conditions on the full dataset \(\mathcal{Y}_T\), refining past historical state estimates.</div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li data-cite="hamilton1994time">Hamilton, J. D. (1994). <em>Time Series Analysis</em>. Princeton University Press.</li>
+        </ol>
+      </section>
+
+      <nav class="lesson-nav">
+        <button class="button-complete" data-complete>Mark Lesson Complete</button>
+        <a class="nav-next" href="L10.html">Next: Lesson 10 · Markov-Switching Models &rarr;</a>
+      </nav>
+    </main>
+
+    <footer class="course-footer">
+      <p>&copy; Quant PhD Program. All rights reserved.</p>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../../../" data-unit="S3" data-page="project">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Capstone project for S3 Time Series: Pairs-trading audit. Perform cointegration testing, out-of-sample half-life evaluation, and diagnostic auditing on Federal Reserve FX rates.">
+    <title>Pairs-Trading Audit · S3 Project · Quant PhD</title>
+    <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+    <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="../../../assets/css/course.css">
+    <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+    <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+    <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+    <script type="module" src="../../../assets/js/site.js"></script>
+  </head>
+  <body>
+    <header class="course-header">
+      <nav class="course-nav">
+        <a href="../../../index.html" class="nav-link">Home</a>
+        <a href="../../index.html" class="nav-link">Curriculum</a>
+        <a href="index.html" class="nav-link">S3: Time Series</a>
+        <span class="nav-current">Project</span>
+      </nav>
+      <h1 class="course-title">Project: Pairs-Trading Audit</h1>
+    </header>
+
+    <main class="course-main" data-hours-project="30">
+      <section id="ladder">
+        <h2>Project Ladder</h2>
+        <p>This capstone project progresses across four structured rungs, evaluating the statistical persistence and economic stability of pairs-trading spreads.</p>
+        <ol class="ladder">
+          <li class="rung">
+            <h3 class="rung-title">Rung 1 · Worked Example</h3>
+            <p>An end-to-end execution of the pairs-trading audit on a synthetic cointegrated pair, detailing each econometric test and decision criterion.</p>
+          </li>
+          <li class="rung">
+            <h3 class="rung-title">Rung 2 · Completion</h3>
+            <p>A completion challenge where the half-life persistence estimation and survival decision rules must be correctly implemented.</p>
+          </li>
+          <li class="rung">
+            <h3 class="rung-title">Rung 3 · Independent Project</h3>
+            <p>The primary deliverable: build the production <code>pairs_audit.py</code> engine evaluated by autograder across 50 seeds, and author a professional diagnostic audit memo on Federal Reserve foreign exchange rates.</p>
+          </li>
+          <li class="rung">
+            <h3 class="rung-title">Rung 4 · Stretch</h3>
+            <p>An advanced exploration extending bivariate Engle-Granger testing to multivariate Johansen cointegration systems on three-currency triples.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2>Rung 1 · Worked Example</h2>
+        <p>The pairs-trading audit evaluates whether two candidate assets share a genuine stationary equilibrium relationship or merely exhibit spurious correlation. We estimate the formation hedge ratio \(\hat{\beta}\), evaluate the Engle-Granger residual test statistic against the 5% Monte Carlo critical value \(-3.3378\), compute the out-of-sample trading spread, and evaluate the mean-reversion half-life.</p>
+
+        <section class="lab" id="lab-S3-project-1" data-runtime="python">
+          <h3>Lab 1 · Solved Pairs-Trading Audit Instance</h3>
+          <p class="hypothesis">A planted cointegrated pair on 400 observations rejects the null of no cointegration (t &lt; -3.3378) on the formation window and demonstrates a finite mean-reversion half-life on the trading window.</p>
+          <pre><code class="language-python" data-run>"""Lab S3-project-1: Rung 1 worked example for pairs-trading audit.
+
+SIMULATED: complete worked audit of a seeded cointegration candidate pair.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def ols_1d(y: list[float], x: list[float]) -&gt; tuple[float, float]:
+    m = len(y)
+    mx = sum(x) / m
+    my = sum(y) / m
+    cov = sum((x[i] - mx) * (y[i] - my) for i in range(m))
+    var_x = sum((x[i] - mx) ** 2 for i in range(m))
+    beta = cov / var_x
+    alpha = my - beta * mx
+    return alpha, beta
+
+
+def eg_statistic(y: list[float], x: list[float], split: int) -&gt; float:
+    a, b = ols_1d(y[:split], x[:split])
+    u = [y[t] - a - b * x[t] for t in range(split)]
+    m = len(u)
+    du = [u[i] - u[i - 1] for i in range(1, m)]
+    y_dep = du[1:]
+    x0 = [u[t - 1] for t in range(2, m)]
+    x1 = [du[t - 2] for t in range(2, m)]
+    n_obs = len(y_dep)
+
+    s00 = sum(x0[r] * x0[r] for r in range(n_obs))
+    s01 = sum(x0[r] * x1[r] for r in range(n_obs))
+    s11 = sum(x1[r] * x1[r] for r in range(n_obs))
+    det = s00 * s11 - s01 * s01
+    inv00 = s11 / det
+    inv01 = -s01 / det
+    sy0 = sum(x0[r] * y_dep[r] for r in range(n_obs))
+    sy1 = sum(x1[r] * y_dep[r] for r in range(n_obs))
+    gamma = inv00 * sy0 + inv01 * sy1
+    delta = inv01 * sy0 + (s00 / det) * sy1
+
+    res = [y_dep[r] - gamma * x0[r] - delta * x1[r] for r in range(n_obs)]
+    rss = sum(r * r for r in res)
+    sigma2 = rss / (n_obs - 2)
+    se_gamma = math.sqrt(sigma2 * inv00)
+    return gamma / se_gamma
+
+
+def half_life(spread: list[float]) -&gt; float:
+    y = spread[1:]
+    x = spread[:-1]
+    _, phi = ols_1d(y, x)
+    if phi &lt;= 0.0:
+        raise ValueError("phi &lt;= 0")
+    if phi &gt;= 1.0:
+        return math.inf
+    return math.log(2.0) / (-math.log(phi))
+
+
+def main() -&gt; None:
+    rng = random.Random(42)
+    n = 400
+    split = 240
+    eg_crit_5pct = -3.3378
+
+    # Generate synthetic cointegrated pair
+    rw = [0.0]
+    for _ in range(n - 1):
+        rw.append(rw[-1] + rng.gauss(0.0, 1.0))
+    x = [50.0 + rw[t] for t in range(n)]
+    s = [0.0]
+    for _ in range(n - 1):
+        s.append(0.75 * s[-1] + rng.gauss(0.0, 0.5))
+    y = [2.0 + 1.2 * x[t] + s[t] for t in range(n)]
+
+    # Step 1: Formation hedge ratio
+    alpha, beta = ols_1d(y[:split], x[:split])
+
+    # Step 2: Engle-Granger test on formation window
+    eg_stat = eg_statistic(y, x, split)
+    eg_pass = eg_stat &lt; eg_crit_5pct
+
+    # Step 3: Out-of-sample trading spread and half-life
+    trading_spread = [y[t] - alpha - beta * x[t] for t in range(split, n)]
+    hl = half_life(trading_spread)
+    hl_finite = math.isfinite(hl)
+
+    # Step 4: Final survival verdict
+    pair_survives = eg_pass and hl_finite
+
+    print("Pairs-Trading Audit: Worked Example (SIMULATED):")
+    print(f"  Sample size: n={n} (Formation split={split}, Trading={n - split})")
+    print(f"  Step 1 Formation OLS: alpha = {alpha:.4f}, beta = {beta:.4f}")
+    print(f"  Step 2 EG residual t-statistic: {eg_stat:.4f} (5% critical value: {eg_crit_5pct:.4f})")
+    print(f"         EG null rejected (cointegrated): {eg_pass}")
+    print(f"  Step 3 Trading spread half-life: {hl:.2f} business days (finite: {hl_finite})")
+    print(f"  Step 4 Audit verdict: Pair survives = {pair_survives}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Pairs-Trading Audit: Worked Example (SIMULATED):
+  Sample size: n=400 (Formation split=240, Trading=160)
+  Step 1 Formation OLS: alpha = 1.7176, beta = 1.2025
+  Step 2 EG residual t-statistic: -5.7262 (5% critical value: -3.3378)
+         EG null rejected (cointegrated): True
+  Step 3 Trading spread half-life: 2.48 business days (finite: True)
+  Step 4 Audit verdict: Pair survives = True</pre>
+          <p class="interpretation">The worked example confirms that survival requires simultaneous statistical rejection of the non-cointegration null and strictly stationary dynamics out of sample.</p>
+        </section>
+      </section>
+
+      <section id="rung-2" class="completion">
+        <h2>Rung 2 · Completion Problem</h2>
+        <p>Complete the missing half-life computation and survival logic in the audit pipeline below. Fill in the blanked lines <code>___</code> to achieve an immediate clean run.</p>
+
+        <section class="lab completion" id="lab-S3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion Challenge</h3>
+          <p class="hypothesis">Implementing the exact formula \(h^* = \ln 2 / (-\ln \hat{\phi})\) and survival check reproduces the verified audit verdict.</p>
+          <pre><code class="language-python" data-run>"""Lab S3-project-2: Rung 2 completion problem for pairs-trading audit.
+
+SIMULATED: completion twin containing the full solution to the half-life
+and survival decision rules.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def ols_1d(y: list[float], x: list[float]) -> tuple[float, float]:
+    m = len(y)
+    mx = sum(x) / m
+    my = sum(y) / m
+    cov = sum((x[i] - mx) * (y[i] - my) for i in range(m))
+    var_x = sum((x[i] - mx) ** 2 for i in range(m))
+    beta = cov / var_x
+    alpha = my - beta * mx
+    return alpha, beta
+
+
+def compute_half_life(spread: list[float]) -> float:
+    """Estimate AR(1) spread persistence and compute half-life."""
+    y = spread[1:]
+    x = spread[:-1]
+    _, phi = ols_1d(y, x)
+    if phi <= 0.0:
+        raise ValueError("phi <= 0")
+    if phi >= 1.0:
+        return math.inf
+    return math.log(2.0) / (-math.log(phi))
+
+
+def audit_survives(eg_stat: float, eg_critical: float, half_life_val: float) -> bool:
+    """Return True iff eg_stat is below critical value and half-life is finite."""
+    return bool(eg_stat < eg_critical and math.isfinite(half_life_val))
+
+
+def main() -> None:
+    rng = random.Random(101)
+    n = 450
+    split = 270
+    eg_crit_5pct = -3.3395
+
+    # Simulated candidate pair
+    rw = [0.0]
+    for _ in range(n - 1):
+        rw.append(rw[-1] + rng.gauss(0.0, 1.0))
+    x = [80.0 + rw[t] for t in range(n)]
+    s = [0.0]
+    for _ in range(n - 1):
+        s.append(0.80 * s[-1] + rng.gauss(0.0, 0.6))
+    y = [1.5 + 0.95 * x[t] + s[t] for t in range(n)]
+
+    # Pre-calculated formation values
+    alpha, beta = ols_1d(y[:split], x[:split])
+    trading_spread = [y[t] - alpha - beta * x[t] for t in range(split, n)]
+    eg_stat = -3.5214
+
+    # Completed steps
+    hl = ___
+    survives = ___
+
+    print("Rung 2 Completion Audit Check:")
+    print(f"  Formation EG stat: {eg_stat:.4f} (critical: {eg_crit_5pct:.4f})")
+    print(f"  Trading window spread half-life: {hl:.4f} days")
+    print(f"  Candidate survives audit: {survives}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Rung 2 Completion Audit Check:
+  Formation EG stat: -3.5214 (critical: -3.3395)
+  Trading window spread half-life: 2.3271 days
+  Candidate survives audit: True</pre>
+          <p class="interpretation">The completion test confirms your understanding of the out-of-sample persistence calculation and decision threshold.</p>
+        </section>
+      </section>
+
+      <section id="rung-3">
+        <h2>Rung 3 · Independent Project</h2>
+
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Quantitative trading desks routinely construct pairs-trading strategies based on co-movement of asset prices. However, simple correlation in levels is notoriously vulnerable to spurious regression. To prevent disastrous capital allocation to non-stationary drifting spreads, an econometric auditor must verify cointegration using exact residual critical values and ensure mean-reversion stability out of sample.</dd>
+
+          <dt>Inputs</dt>
+          <dd>
+            <p>1. <code>fx_daily.csv</code> (Federal Reserve H.10 / G.5 noon buying rates): 6,706 daily observations from 2000-01-03 to 2026-09-30 for six major currencies (AUD, CAD, CHF, EUR, GBP, JPY), expressed as USD per unit of foreign currency. Log exchange rates are used throughout.</p>
+            <p>2. Synthetic instances generated by <code>grader/instance.py</code> for the autograder test suite.</p>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            <p>1. Python module <code>pairs_audit.py</code> implementing the six required functions with pure standard library code: <code>alpha_beta</code>, <code>adf_t</code>, <code>trading_spread</code>, <code>eg_t</code>, <code>half_life</code>, and <code>survives</code>.</p>
+            <p>2. A two-page diagnostic audit memo (<code>memo.md</code>) presenting the 15-pair Federal Reserve FX empirical table, detailing methodology, critical values, and an objective risk verdict.</p>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>All code must use standard library Python (no third-party dependencies in student engine). No trading P&amp;L or carry return may be claimed: spot exchange rates do not reflect the interest rate differentials required to finance foreign currency positions. All claims of cointegration must cite exact test statistics and precomputed critical values.</dd>
+
+          <dt>Grading</dt>
+          <dd>Graded by both autograder and rubric: the automated test suite validates numerical precision and econometric properties across 50 random seeds; the written audit memo is evaluated against the 5-criterion rubric.</dd>
+        </dl>
+
+        <section id="empirical-audit">
+          <h3>Empirical FX Audit Execution</h3>
+          <p>The lab twin below executes the full audit pipeline on all 15 currency pairs from <code>data/fx_daily.csv</code>.</p>
+
+          <section class="lab" id="lab-S3-project-3" data-runtime="python" data-files="fx_daily.csv">
+            <h3>Lab 3 · Federal Reserve H.10 FX Pairs Audit</h3>
+            <p class="hypothesis">Evaluating all 15 currency pairs across 6,706 daily observations reveals that none reject the null of no cointegration at the 5% critical value (-3.3287).</p>
+            <pre><code class="language-python" data-run>"""Lab S3-project-3: Empirical pairs-trading audit on Federal Reserve FX rates.
+
+Audits all 15 currency pairs from data/fx_daily.csv (Federal Reserve H.10),
+measuring formation cointegration test statistics against precomputed 5%
+critical values and tracking out-of-sample half-lives.
+"""
+
+from __future__ import annotations
+
+import csv
+import math
+from pathlib import Path
+
+
+def ols_1d(y: list[float], x: list[float]) -&gt; tuple[float, float]:
+    m = len(y)
+    mx = sum(x) / m
+    my = sum(y) / m
+    cov = sum((x[i] - mx) * (y[i] - my) for i in range(m))
+    var_x = sum((x[i] - mx) ** 2 for i in range(m))
+    beta = cov / var_x
+    alpha = my - beta * mx
+    return alpha, beta
+
+
+def eg_t(y: list[float], x: list[float], split: int) -&gt; float:
+    alpha, beta = ols_1d(y[:split], x[:split])
+    u = [y[t] - alpha - beta * x[t] for t in range(split)]
+    m = len(u)
+    du = [u[i] - u[i - 1] for i in range(1, m)]
+    y_dep = du[1:]
+    x0 = [u[t - 1] for t in range(2, m)]
+    x1 = [du[t - 2] for t in range(2, m)]
+    n_obs = len(y_dep)
+
+    s00 = sum(x0[r] * x0[r] for r in range(n_obs))
+    s01 = sum(x0[r] * x1[r] for r in range(n_obs))
+    s11 = sum(x1[r] * x1[r] for r in range(n_obs))
+    det = s00 * s11 - s01 * s01
+    inv00 = s11 / det
+    inv01 = -s01 / det
+    sy0 = sum(x0[r] * y_dep[r] for r in range(n_obs))
+    sy1 = sum(x1[r] * y_dep[r] for r in range(n_obs))
+    gamma = inv00 * sy0 + inv01 * sy1
+    delta = inv01 * sy0 + (s00 / det) * sy1
+
+    res = [y_dep[r] - gamma * x0[r] - delta * x1[r] for r in range(n_obs)]
+    rss = sum(r * r for r in res)
+    sigma2 = rss / (n_obs - 2)
+    se_gamma = math.sqrt(sigma2 * inv00)
+    return gamma / se_gamma
+
+
+def half_life(spread: list[float]) -&gt; float:
+    y = spread[1:]
+    x = spread[:-1]
+    _, phi = ols_1d(y, x)
+    if phi &lt;= 0.0:
+        raise ValueError("phi &lt;= 0")
+    if phi &gt;= 1.0:
+        return math.inf
+    return math.log(2.0) / (-math.log(phi))
+
+
+def main() -&gt; None:
+    data_path = Path("data") / "fx_daily.csv"
+    with data_path.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+
+    currencies = ["AUD", "CAD", "CHF", "EUR", "GBP", "JPY"]
+    n = len(rows)
+    split = math.floor(0.6 * n)  # 4023
+    eg_crit_5pct = -3.3287
+
+    log_rates = {c: [math.log(float(r[c])) for r in rows] for c in currencies}
+
+    print(f"Federal Reserve H.10 FX Audit (N={n}, Formation Split={split}, Critical Value={eg_crit_5pct}):")
+    print("Pair    | Formation Alpha | Beta (Hedge) | EG t-stat | Trading Half-Life | Survives")
+    print("-" * 75)
+
+    survivor_count = 0
+    for i in range(len(currencies)):
+        for j in range(i + 1, len(currencies)):
+            c1, c2 = currencies[i], currencies[j]
+            y = log_rates[c1]
+            x = log_rates[c2]
+            alpha, beta = ols_1d(y[:split], x[:split])
+            stat = eg_t(y, x, split)
+
+            spread = [y[t] - alpha - beta * x[t] for t in range(split, n)]
+            hl = half_life(spread)
+            survives = (stat &lt; eg_crit_5pct) and math.isfinite(hl)
+            if survives:
+                survivor_count += 1
+
+            hl_str = f"{hl:6.2f} d" if math.isfinite(hl) else "    inf "
+            print(
+                f"{c1}/{c2:3s} |     {alpha:7.4f}     |    {beta:7.4f}   |"
+                f"   {stat:6.4f}  |     {hl_str}      |  {survives}"
+            )
+
+    print("-" * 75)
+    print(f"Total surviving pairs: {survivor_count} / 15")
+
+
+main()</code></pre>
+            <pre class="expected" data-tolerance="1e-3">Federal Reserve H.10 FX Audit (N=6706, Formation Split=4023, Critical Value=-3.3287):
+Pair    | Formation Alpha | Beta (Hedge) | EG t-stat | Trading Half-Life | Survives
+---------------------------------------------------------------------------
+AUD/CAD |     -0.0242     |     1.3130   |   -3.1670  |     109.09 d      |  False
+AUD/CHF |     -0.1163     |     0.9311   |   -2.5692  |     558.10 d      |  False
+AUD/EUR |     -0.4902     |     1.1974   |   -2.1230  |     157.85 d      |  False
+AUD/GBP |     -0.6252     |     0.7355   |   -1.1904  |     161.17 d      |  False
+AUD/JPY |      4.8125     |     1.0902   |   -2.3513  |     709.88 d      |  False
+CAD/CHF |     -0.0820     |     0.6312   |   -1.4081  |     650.44 d      |  False
+CAD/EUR |     -0.3531     |     0.9026   |   -2.7097  |     162.35 d      |  False
+CAD/GBP |     -0.4853     |     0.6155   |   -1.4266  |     110.00 d      |  False
+CAD/JPY |      3.3222     |     0.7526   |   -2.4312  |     420.22 d      |  False
+CHF/EUR |     -0.3608     |     1.0755   |   -0.5546  |     1091.24 d      |  False
+CHF/GBP |     -0.3252     |     0.3465   |   -1.2826  |     362.32 d      |  False
+CHF/JPY |      4.1598     |     0.9271   |   -1.6286  |         inf       |  False
+EUR/GBP |     -0.2625     |     0.9145   |   -1.5770  |      51.59 d      |  False
+EUR/JPY |      2.9741     |     0.5978   |   -1.8617  |     881.94 d      |  False
+GBP/JPY |      0.1336     |    -0.0786   |   -1.6872  |      93.76 d      |  False
+---------------------------------------------------------------------------
+Total surviving pairs: 0 / 15</pre>
+            <p class="interpretation">Empirical audit confirms zero surviving pairs out of 15: nominal co-movements between major currencies over 26 years do not satisfy the strict stationary cointegration criterion without interest rate differentials.</p>
+          </section>
+        </section>
+
+        <section id="budget">
+          <h3>Time Budget (30 Hours)</h3>
+          <div class="table-wrap">
+            <table id="hours">
+              <thead>
+                <tr>
+                  <th>Component</th>
+                  <th>Hours</th>
+                  <th>Rationale</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Rung 1 Worked Example</td>
+                  <td>2</td>
+                  <td>Step-by-step annotation and tracing of the solved cointegration audit pipeline.</td>
+                </tr>
+                <tr>
+                  <td>Rung 2 Completion Challenge</td>
+                  <td>3</td>
+                  <td>Interactive implementation and validation of persistence and decision rules.</td>
+                </tr>
+                <tr>
+                  <td>Data Intake &amp; Sample Partitioning</td>
+                  <td>5</td>
+                  <td>Schema verification of H.10 daily FX rates and log transformation validation.</td>
+                </tr>
+                <tr>
+                  <td>Engine Implementation (pairs_audit.py)</td>
+                  <td>9</td>
+                  <td>Writing and unit-testing the six pure-Python econometric estimator routines.</td>
+                </tr>
+                <tr>
+                  <td>Empirical 15-Pair FX Audit</td>
+                  <td>6</td>
+                  <td>Running the audit suite over the 15 currency pairs and compiling diagnostic tables.</td>
+                </tr>
+                <tr>
+                  <td>Audit Memo &amp; Rubric Self-Assessment</td>
+                  <td>5</td>
+                  <td>Authoring the diagnostic memo and calibrating against the level-4 and level-2 exemplars.</td>
+                </tr>
+                <tr>
+                  <td>Total</td>
+                  <td>30</td>
+                  <td>Total capstone hours matching data-hours-project.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="grader-panel" id="grader" data-unit="S3" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="pairs_audit.py" data-starter="starter.py">
+          <h3>Autograder Panel</h3>
+          <p>The autograder executes 13 pytest checks against your <code>pairs_audit.py</code> across 50 pseudo-random seeds, verifying invariance, asymptotic properties, and error handling.</p>
+        </section>
+
+        <section id="rubric-section">
+          <h3>Evaluation Rubric</h3>
+          <div class="table-wrap">
+            <table class="rubric" id="rubric">
+              <thead>
+                <tr>
+                  <th>Criterion</th>
+                  <th>Level 4 (Exemplary)</th>
+                  <th>Level 3 (Proficient)</th>
+                  <th>Level 2 (Developing)</th>
+                  <th>Level 1 (Deficient)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-criterion="C1">
+                  <th>C1: Data and sample</th>
+                  <td>Explicitly specifies <code>fx_daily.csv</code>, all six currencies, the exact date span (2000-01-03 to 2026-09-30), log transformations, the 60% formation split (4,023 days), and trading sample length (2,683 days).</td>
+                  <td>Identifies the currency dataset, date range, log transform, and formation/trading partition with minor omission in observation counts.</td>
+                  <td>Names the currency rates and partition but omits log transformations or exact observation lengths.</td>
+                  <td>Mentions foreign exchange data without specifying currencies, transforms, or window lengths.</td>
+                </tr>
+                <tr data-criterion="C2">
+                  <th>C2: Test design</th>
+                  <td>Formulates the two-step Engle-Granger procedure with no intercept in the residual ADF regression, specifies lag augmentation lags=1, and cites the simulated 5% critical value (-3.3287) explaining why Dickey-Fuller values (-2.8611) are invalid.</td>
+                  <td>Specifies the two-step residual regression without intercept and uses the correct critical value but provides incomplete justification for the Dickey-Fuller discrepancy.</td>
+                  <td>Applies cointegration testing but uses inappropriate critical values (such as standard Dickey-Fuller) or fits an unauthorized intercept in residual ADF.</td>
+                  <td>Mentions testing for cointegration without detailing the regression model or critical threshold.</td>
+                </tr>
+                <tr data-criterion="C3">
+                  <th>C3: Half-life stability</th>
+                  <td>Calculates the exact half-life formula \(h^* = \ln 2 / (-\ln \hat{\phi})\) in business days, reports trading-window estimates for all candidate pairs, and evaluates stability and infinite half-life edge cases.</td>
+                  <td>Computes half-lives in business days and reports trading window values but omits edge-case analysis when \(\hat{\phi} \ge 1\).</td>
+                  <td>Reports spread persistence coefficients without converting them to business-day half-lives or confuses autocorrelation with half-life.</td>
+                  <td>Discusses mean reversion qualitatively without numerical half-life estimation.</td>
+                </tr>
+                <tr data-criterion="C4">
+                  <th>C4: Survivors and multiplicity</th>
+                  <td>Reports exact survival counts (0 out of 15 pairs), contrasts empirical survivorship with the expected false discovery count under 15 independent tests at 5% (0.75 pairs), and explicitly notes cross-pair currency dependence.</td>
+                  <td>Reports the survival count accurately and notes multiple testing risks but omits quantitative false discovery expectations under dependence.</td>
+                  <td>States surviving pairs without considering multiple testing multiplicity or cross-currency correlation.</td>
+                  <td>Provides an arbitrary list of pairs without a clear statistical survival rule.</td>
+                </tr>
+                <tr data-criterion="C5">
+                  <th>C5: Limits and evidence</th>
+                  <td>Names key economic limits: spot rates lack interest differentials (CIP/UIP), structural breaks in exchange rate regimes, fixed lag augmentation, and distinguishes SIMULATED benchmark results from empirical Fed data.</td>
+                  <td>Discusses interest rate differentials and structural breaks but lacks separation between simulated properties and real market limitations.</td>
+                  <td>Mentions market transaction costs or generic execution risks without addressing missing interest carry or econometric assumptions.</td>
+                  <td>Claims unconditional profitability or fails to acknowledge any econometric limitations.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="exemplars">
+          <h3>Audit Memo Exemplars</h3>
+
+          <section class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4">
+            <h4>Exemplar A (Level 4: Exemplary)</h4>
+            <div class="memo-content">
+              <h5>Memorandum: Econometric Audit of Foreign Exchange Pairs Trading</h5>
+              <p><strong>To:</strong> Quantitative Investment Committee<br>
+              <strong>From:</strong> Senior Econometric Auditor<br>
+              <strong>Date:</strong> October 2026<br>
+              <strong>Subject:</strong> Coin-tegration and Out-of-Sample Persistence Audit of Federal Reserve H.10 FX Rates</p>
+
+              <h6>1. Data and Sample Partition</h6>
+              <p>We audit daily noon buying rates in New York from the Federal Reserve Board H.10 release (<code>fx_daily.csv</code>) spanning 6,706 trading days from January 3, 2000 to September 30, 2026. The universe consists of six major currencies quoted as USD per unit of foreign currency: Australian Dollar (AUD), Canadian Dollar (CAD), Swiss Franc (CHF), Euro (EUR), British Pound (GBP), and Japanese Yen (JPY). All rates are analyzed in natural logarithms. The sample is strictly partitioned chronologically: the first 60% of observations (\(T_{\text{form}} = 4,023\) trading days, ending March 2016) serves as the formation window for cointegrating vector estimation; the remaining 40% (\(T_{\text{trade}} = 2,683\) trading days) serves as the un-snooped out-of-sample trading window.</p>
+
+              <h6>2. Econometric Methodology and Precomputed Critical Values</h6>
+              <p>For each of the \(\binom{6}{2} = 15\) unique currency pairs \((y_t, x_t)\), we estimate the formation cointegrating regression \(y_t = \alpha + \beta x_t + u_t\) via ordinary least squares. We test for cointegration by evaluating the Augmented Dickey-Fuller statistic on the formation residuals \(\hat{u}_t\) with no intercept and fixed lag augmentation \(p = 1\):
+              \[
+              \Delta \hat{u}_t = \gamma \hat{u}_{t-1} + \delta_1 \Delta \hat{u}_{t-1} + \varepsilon_t.
+              \]
+              Because OLS selects \(\hat{\alpha}\) and \(\hat{\beta}\) to minimize residual sum of squares, the residuals \(\hat{u}_t\) are spuriously more stationary than a generic random walk. Consequently, standard Dickey-Fuller critical values (\(-2.8611\) at 5%) severely over-reject the null of no cointegration. We employ the precomputed Engle-Granger 5% critical value of \(-3.3287\), established via 20,000 Monte Carlo replications for \(T = 4,023\).</p>
+
+              <h6>3. Out-of-Sample Spread Dynamics and Half-Life</h6>
+              <p>Using the locked formation parameters \((\hat{\alpha}, \hat{\beta})\), we construct the out-of-sample trading spread \(s_t = y_t - \hat{\alpha} - \hat{\beta} x_t\) for \(t \ge 4,023\). Spread persistence is estimated via AR(1) regression \(s_t = c + \phi s_{t-1} + e_t\), yielding the continuous mean-reversion half-life \(h^* = \ln 2 / (-\ln \hat{\phi})\) in business days. Any pair exhibiting \(\hat{\phi} \ge 1\) is assigned \(h^* = \infty\).</p>
+
+              <h6>4. Empirical Findings and Multiplicity Analysis</h6>
+              <p>Across the entire 15-pair universe, <strong>exactly zero pairs survive</strong> the econometric audit. The most negative formation Engle-Granger statistic was observed for AUD/CAD at \(-3.1670\), which fails to breach the \(-3.3287\) barrier. All other pairs exhibited statistics ranging between \(-0.5546\) (CHF/EUR) and \(-2.7097\) (CAD/EUR). Furthermore, on the out-of-sample trading window, the CHF/JPY spread experienced a regime drift yielding \(\hat{\phi} \ge 1\) (\(h^* = \infty\)).</p>
+              <p>In a multiplicity context, conducting 15 independent tests at a 5% significance level would yield an expected false positive rate of \(15 \times 0.05 = 0.75\) spurious cointegrated pairs. Given that the 15 pairs share underlying currencies and are strongly cross-correlated, the effective independent test count is lower, further affirming that the complete absence of rejections reflects genuine economic non-stationarity.</p>
+
+              <h6>5. Economic Constraints and Risk Verdict</h6>
+              <p>We advise the investment committee that pairs-trading models fitted to spot exchange rate levels without accounting for interest rate differentials (uncovered interest parity dynamics) are economically misspecified. Spot FX rates represent non-stationary drift processes; without holding yield differentials, any apparent mean-reversion is transient. Capital deployment into spot currency pairs trading is strongly rejected.</p>
+            </div>
+          </section>
+
+          <section class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2">
+            <h4>Exemplar B (Level 2: Developing)</h4>
+            <div class="memo-content">
+              <h5>Memo: FX Pairs Trading Review</h5>
+              <p>We ran regressions on FX data to find cointegrated pairs for our strategy. We looked at daily currencies like AUD, CAD, EUR, GBP, JPY, and CHF from 2000 to 2026. We split the data into a training window and a testing window.</p>
+              <p>We regressed the currencies on each other and tested the residuals with an ADF test. Some pairs like AUD/CAD had t-stats around -3.16, which is pretty negative. If you use a normal t-distribution critical value of -1.96, almost all pairs look cointegrated! But if we use a tougher cutoff like -3.3, none of the pairs make it.</p>
+              <p>The half-lives of the spreads varied widely. Some had half-lives of 100 days, while CHF/JPY kept trending away. Because none of the pairs passed the -3.3 cutoff, we don't recommend trading these currency pairs right now.</p>
+              <p>Caveats: trading currencies has transaction costs and slippage, and markets change over time.</p>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section id="rung-4">
+        <h2>Rung 4 · Stretch</h2>
+        <p>For research and portfolio extension, investigate multivariate cointegration among three-currency systems (e.g. EUR, CHF, GBP) using the Johansen trace test procedure introduced in Lesson 7. Analyze whether a rank-1 or rank-2 cointegrating space provides superior structural stability over bilateral Engle-Granger regressions.</p>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="engle1987co">Engle, R. F., &amp; Granger, C. W. J. (1987). Co-integration and error correction: Representation, estimation, and testing. <em>Econometrica</em>, 55(2), 251-276.</li>
+          <li data-cite="granger1974spurious">Granger, C. W. J., &amp; Newbold, P. (1974). Spurious regressions in econometrics. <em>Journal of Econometrics</em>, 2(2), 111-120.</li>
+          <li data-cite="dickey1979distribution">Dickey, D. A., &amp; Fuller, W. A. (1979). Distribution of the estimators for autoregressive time series with a unit root. <em>Journal of the American Statistical Association</em>, 74(366a), 427-431.</li>
+          <li data-cite="johansen1991estimation">Johansen, S. (1991). Estimation and hypothesis testing of cointegration vectors in Gaussian vector autoregressive models. <em>Econometrica</em>, 59(6), 1551-1580.</li>
+          <li data-cite="hamilton1994time">Hamilton, J. D. (1994). <em>Time Series Analysis</em>. Princeton University Press.</li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="course-footer">
+      <p>&copy; Quant PhD Program. All rights reserved.</p>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../../../" data-unit="S3" data-page="L10" data-hours="10">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Lesson 10 of S3 Time Series: Markov-switching models, the Hamilton filter for latent regime probabilities, transition matrices, and stationary state distributions.">
+    <title>Markov-Switching Models · S3 L10 · Quant PhD</title>
+    <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+    <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="../../../assets/css/course.css">
+    <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+    <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+    <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+    <script type="module" src="../../../assets/js/site.js"></script>
+  </head>
+  <body>
+    <header class="course-header">
+      <nav class="course-nav">
+        <a href="../../../index.html" class="nav-link">Home</a>
+        <a href="../../index.html" class="nav-link">Curriculum</a>
+        <a href="index.html" class="nav-link">S3: Time Series</a>
+        <span class="nav-current">Lesson 10</span>
+      </nav>
+      <h1 class="course-title">Markov-Switching Models and the Hamilton Filter</h1>
+      <p class="course-subtitle">Discrete Latent Regimes, Transition Probability Dynamics, Stationary Distributions, and Non-Linear Filtering</p>
+    </header>
+
+    <main class="course-main">
+      <section id="why">
+        <h2 id="h-why">Why It Matters</h2>
+        <p class="why-it-matters">Financial asset returns and macroeconomic variables exhibit distinct economic regimes: bull vs. bear markets, low-volatility tranquility vs. high-volatility liquidity crises, and economic expansions vs. recessions. Linear models assume constant parameters throughout the sample, failing to adapt when the economic environment shifts. Markov-switching models allow the data-generating process to transition probabilistically across discrete latent states, while the Hamilton filter recursively infers the unobserved market regime from observable prices.</p>
+      </section>
+
+      <section id="markov-chains">
+        <h2 id="h-markov-chains">1. Discrete-State Markov Chains and Stationary Distributions</h2>
+
+        <p>Let \(S_t \in \{1, 2, \dots, K\}\) denote an unobserved discrete regime variable. The process satisfies the first-order Markov property if the probability of transitioning to state \(j\) depends solely on the current state \(S_{t-1}\):
+        \[
+        P(S_t = j \mid S_{t-1} = i, S_{t-2}, \dots) = P(S_t = j \mid S_{t-1} = i) = p_{ij}.
+        \]
+        The transition probabilities form the \(K \times K\) transition matrix \(\mathbf{P}\), where each row sums to 1: \(\sum_{j=1}^K p_{ij} = 1\).</p>
+
+        <div class="block theorem" id="thm-two-state-stationary">
+          <span class="block-title">Theorem 10.1 · Two-State Stationary Distribution and Duration</span>
+          <p><span class="claim" data-grade="T">For an irreducible, aperiodic 2-state Markov chain with transition probabilities \(p_{12} = a\) and \(p_{21} = b\) (where \(0 &lt; a, b &lt; 1\)):</span>
+          \[
+          \mathbf{P} = \begin{bmatrix} 1 - a &amp; a \\ b &amp; 1 - b \end{bmatrix}.
+          \]
+          The unique stationary probability distribution \(\pi = (\pi_1, \pi_2)\) satisfying \(\pi \mathbf{P} = \pi\) and \(\pi_1 + \pi_2 = 1\) is:
+          \[
+          \pi_1 = \frac{b}{a + b}, \quad \pi_2 = \frac{a}{a + b}.
+          \]
+          Furthermore, the expected continuous duration of the system in state \(j\) is:
+          \[
+          \E[D_1] = \frac{1}{a} = \frac{1}{p_{12}}, \quad \E[D_2] = \frac{1}{b} = \frac{1}{p_{21}}.
+          \]
+          </p>
+          <p><strong>Proof:</strong> The balance equation \(\pi_1 p_{12} = \pi_2 p_{21}\) equates transitions from state 1 to 2 with transitions from state 2 to 1: \(a \pi_1 = b \pi_2\). Substituting \(\pi_2 = 1 - \pi_1\) gives \(a \pi_1 = b(1 - \pi_1) \implies (a + b)\pi_1 = b \implies \pi_1 = b / (a + b)\). The duration in state 1 follows a geometric distribution with exit probability \(a\), whose expectation is \(\sum_{k=1}^\infty k a (1 - a)^{k-1} = 1/a\).</p>
+        </div>
+      </section>
+
+      <section id="hamilton-model">
+        <h2 id="h-hamilton-model">2. The Markov-Switching Autoregressive Model</h2>
+
+        <div class="block definition" id="blk-ms-model">
+          <span class="block-title">Definition 10.1 · Markov-Switching Model</span>
+          <p>A <dfn id="def-markov-switching-model" data-concept="markov-switching-model">markov-switching-model</dfn> (or regime-switching model) is a non-linear time series specification where some or all model parameters depend on an unobserved discrete-state Markov chain \(S_t\).</p>
+          <p><span class="claim" data-grade="A" data-cite="hamilton1989new">Hamilton (1989) formulated the canonical Markov-switching autoregressive mean model for economic time series:</span>
+          \[
+          y_t - \mu_{S_t} = \sum_{i=1}^p \phi_i (y_{t-i} - \mu_{S_{t-i}}) + \varepsilon_t, \quad \varepsilon_t \overset{\text{i.i.d.}}{\sim} \mathcal{N}(0, \sigma^2),
+          \]
+          where the mean parameter takes state-dependent values \(\mu_{S_t} \in \{\mu_1, \mu_2, \dots, \mu_K\}\). In the baseline switching-mean model without autoregressive lags (\(p = 0\)):
+          \[
+          y_t = \mu_{S_t} + \varepsilon_t, \quad \varepsilon_t \sim \mathcal{N}(0, \sigma^2).
+          \]
+          </p>
+        </div>
+      </section>
+
+      <section id="hamilton-filter-recursion">
+        <h2 id="h-hamilton-filter-recursion">3. The Hamilton Filter Recursions</h2>
+
+        <p>Because the true state \(S_t\) is latent, researchers must infer the posterior probability distribution of the regime given the history of observed asset prices \(\mathcal{Y}_t = \{y_1, y_2, \dots, y_t\}\).</p>
+
+        <div class="block theorem" id="thm-hamilton-filter">
+          <span class="block-title">Theorem 10.2 · Hamilton Filter Recursion</span>
+          <p><span class="claim" data-grade="T">Let \(\xi_{t|t-1}^{(j)} = P(S_t = j \mid \mathcal{Y}_{t-1})\) denote the prior probability of regime \(j\), and \(\xi_{t|t}^{(j)} = P(S_t = j \mid \mathcal{Y}_t)\) denote the posterior filtered probability. The Hamilton filter proceeds recursively in two steps:</span></p>
+          <ol>
+            <li><strong>Prediction Step:</strong> Prior to observing \(y_t\), transition probabilities propagate the regime distribution:
+            \[
+            \xi_{t|t-1}^{(j)} = \sum_{i=1}^K p_{ij} \xi_{t-1|t-1}^{(i)}.
+            \]
+            In a 2-state model with \(j = 1\):
+            \[
+            \xi_{t|t-1}^{(1)} = p_{11} \xi_{t-1|t-1}^{(1)} + p_{21} (1 - \xi_{t-1|t-1}^{(1)}).
+            \]
+            </li>
+            <li><strong>Update Step:</strong> Upon observing \(y_t\), evaluate the conditional Gaussian likelihood for each regime:
+            \[
+            \eta_t^{(j)} \equiv f(y_t \mid S_t = j, \mathcal{Y}_{t-1}) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left( -\frac{(y_t - \mu_j)^2}{2\sigma^2} \right).
+            \]
+            Applying Bayes' rule, the updated posterior filtered probability for regime \(j\) is:
+            \[
+            \xi_{t|t}^{(j)} = \frac{\xi_{t|t-1}^{(j)} \eta_t^{(j)}}{\sum_{k=1}^K \xi_{t|t-1}^{(k)} \eta_t^{(k)}}.
+            \]
+            </li>
+          </ol>
+          <p>The marginal density of the observation given history is the denominator: \(f(y_t \mid \mathcal{Y}_{t-1}) = \sum_{k=1}^K \xi_{t|t-1}^{(k)} \eta_t^{(k)}\), allowing evaluation of the sample log-likelihood: \(\ln L = \sum_{t=1}^T \ln f(y_t \mid \mathcal{Y}_{t-1})\).</p>
+        </div>
+      </section>
+
+      <section id="lab-section">
+        <h2 id="h-lab-section">4. Numerical Verification</h2>
+        <p>The following lab twin verifies the exact theoretical stationary distribution against the empirical frequency of a 3000-period seeded simulation, and runs the Hamilton filter to assess regime classification accuracy.</p>
+
+        <section class="lab" id="lab-S3-L10-1" data-runtime="python">
+          <h3>Lab 1 · Markov-Switching Stationary Distribution and Hamilton Filter</h3>
+          <p class="hypothesis">Verifies that the theoretical stationary probability pi1 = b/(a+b) = 2/3 matches the simulated empirical state frequency within sampling tolerance, and confirms that the Hamilton filter achieves over 95% regime classification accuracy on well-separated states.</p>
+          <pre><code class="language-python" data-run>"""Lab S3-L10-1: Markov-switching models and the Hamilton filter.
+
+Exact for stationary regime distribution; SIMULATED for empirical state
+frequencies and Hamilton filter regime classification accuracy.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def normal_pdf(x: float, mean: float, std: float) -&gt; float:
+    """Compute univariate normal probability density."""
+    diff = (x - mean) / std
+    return (1.0 / (math.sqrt(2.0 * math.pi) * std)) * math.exp(-0.5 * diff * diff)
+
+
+def main() -&gt; None:
+    # 2-state Markov chain transition matrix:
+    # P = [[p11, p12], [p21, p22]] = [[0.90, 0.10], [0.20, 0.80]]
+    p11, p12 = 0.90, 0.10
+    p21, p22 = 0.20, 0.80
+
+    # Exact stationary distribution:
+    # pi1 = p21 / (p12 + p21) = 0.20 / 0.30 = 2/3
+    pi1_theo = p21 / (p12 + p21)
+    pi2_theo = p12 / (p12 + p21)
+    duration_1 = 1.0 / p12
+    duration_2 = 1.0 / p21
+
+    print("Part 1: Exact Markov Chain Stationary Properties:")
+    print(f"  Regime 1 stationary probability pi1: {pi1_theo:.6f} (2/3)")
+    print(f"  Regime 2 stationary probability pi2: {pi2_theo:.6f} (1/3)")
+    print(f"  Expected duration in Regime 1:      {duration_1:.1f} periods (1/p12)")
+    print(f"  Expected duration in Regime 2:      {duration_2:.1f} periods (1/p21)")
+
+    # Part 2: Seeded simulation and Hamilton filter
+    rng = random.Random(42)
+    n = 3000
+    mu1, mu2 = 2.0, -2.0
+    sigma = 1.0
+
+    states: list[int] = []
+    observations: list[float] = []
+    state = 1 if rng.random() &lt; pi1_theo else 2
+
+    for _ in range(n):
+        if state == 1:
+            state = 1 if rng.random() &lt; p11 else 2
+        elif rng.random() &gt;= p22:
+            state = 1
+        else:
+            state = 2
+        states.append(state)
+        mean_obs = mu1 if state == 1 else mu2
+        observations.append(rng.gauss(mean_obs, sigma))
+
+    emp_pi1 = sum(1 for s in states if s == 1) / n
+    emp_pi2 = 1.0 - emp_pi1
+
+    # Hamilton filter recursion
+    xi_filtered: list[float] = []
+    xi_curr = pi1_theo
+    correct_classifications = 0
+
+    for t in range(n):
+        # 1. Prediction step
+        xi_pred = p11 * xi_curr + p21 * (1.0 - xi_curr)
+
+        # 2. Update step
+        lik1 = normal_pdf(observations[t], mu1, sigma)
+        lik2 = normal_pdf(observations[t], mu2, sigma)
+        numerator = xi_pred * lik1
+        denominator = numerator + (1.0 - xi_pred) * lik2
+        xi_curr = numerator / denominator if denominator &gt; 0.0 else 0.5
+        xi_filtered.append(xi_curr)
+
+        inferred = 1 if xi_curr &gt; 0.5 else 2
+        if inferred == states[t]:
+            correct_classifications += 1
+
+    accuracy = correct_classifications / n
+
+    print("\nPart 2: Seeded Hamilton Filter Performance (T=3000, seed=42):")
+    print(f"  Empirical frequency Regime 1: {emp_pi1:.4f} (theoretical: {pi1_theo:.4f})")
+    print(f"  Empirical frequency Regime 2: {emp_pi2:.4f} (theoretical: {pi2_theo:.4f})")
+    print(f"  Filter regime classification accuracy: {accuracy:.4%}")
+    print(f"  First 5 filtered probabilities P(S_t=1|Y_t): {[round(p, 4) for p in xi_filtered[:5]]}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Part 1: Exact Markov Chain Stationary Properties:
+  Regime 1 stationary probability pi1: 0.666667 (2/3)
+  Regime 2 stationary probability pi2: 0.333333 (1/3)
+  Expected duration in Regime 1:      10.0 periods (1/p12)
+  Expected duration in Regime 2:      5.0 periods (1/p21)
+
+Part 2: Seeded Hamilton Filter Performance (T=3000, seed=42):
+  Empirical frequency Regime 1: 0.6723 (theoretical: 0.6667)
+  Empirical frequency Regime 2: 0.3277 (theoretical: 0.3333)
+  Filter regime classification accuracy: 99.0333%
+  First 5 filtered probabilities P(S_t=1|Y_t): [0.9997, 1.0, 1.0, 0.9999, 1.0]</pre>
+          <p class="interpretation">The lab confirms the exact stationary ergodic properties of the Markov chain and demonstrates that the Hamilton filter effectively extracts latent regime signals from noisy observations.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the Canon Breaks</h2>
+        <p>While powerful for capturing discrete structural breaks, Markov-switching models exhibit critical real-world limitations:</p>
+        <ul>
+          <li><strong>Fixed Discrete Regimes:</strong> The econometrician must specify the number of states \(K\) ahead of time (typically \(K=2\) or \(K=3\)). Real financial systems do not transition among static archetypes; novel regimes (such as negative nominal yields or flash-crash algorithmic liquidations) fall outside pre-specified states.</li>
+          <li><strong>Constant Transition Probabilities:</strong> Standard Markov chains assume \(p_{ij}\) is time-invariant. In reality, regime transitions are state-dependent and driven by endogenous macroeconomic triggers (e.g., leverage thresholds, market volatility, or central bank interventions). Time-varying transition probability (TVTP) models are required to address this.</li>
+          <li><strong>Estimation and Likelihood Modality:</strong> Maximum likelihood estimation of Markov-switching models via the EM algorithm is prone to finding local optima and unbounded likelihood spikes (singularities) when a regime assigns a single observation to zero variance.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong belief:</strong> The filtered probability \(\xi_{t|t}\) is a forecast of the future market regime.</p>
+            <p class="right"><strong>Why it is wrong:</strong> The filtered probability \(\xi_{t|t} = P(S_t = 1 \mid \mathcal{Y}_t)\) is a contemporaneous estimate of the <em>current</em> regime at time \(t\). A regime forecast for \(h\) steps ahead is given by \(\xi_{t+h|t} = \mathbf{P}^h \xi_{t|t}\), which quickly mean-reverts toward the unconditional stationary distribution \(\pi\).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong belief:</strong> Economic regimes can be labeled with absolute certainty after running the filter.</p>
+            <p class="right"><strong>Why it is wrong:</strong> Because regimes are latent and observations contain Gaussian noise, the filter outputs probabilities in \([0, 1]\). Even during severe market drawdowns, the filter assigns a non-zero probability to the calm regime, reflecting persistent epistemic uncertainty.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Wrong belief:</strong> A simple two-state model is sufficient to describe all market cycles.</p>
+            <p class="right"><strong>Why it is wrong:</strong> A two-state model forces all historical data into two categories (e.g., bull vs. bear). This conflates stagflationary contractions with liquidity crashes, and slow grinds with rapid momentum rallies. Empirical multi-asset desks often employ three or four states to disentangle volatility regimes from drift regimes.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Practice Problems</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics Tier</h3>
+
+          <div class="problem" id="prob-l10-m1">
+            <p class="question">A 2-state Markov chain has transition matrix \(\mathbf{P} = \begin{bmatrix} 0.95 &amp; 0.05 \\ 0.15 &amp; 0.85 \end{bmatrix}\). Calculate the stationary distribution \(\pi = (\pi_1, \pi_2)\) and the expected durations in both regimes.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Here \(a = p_{12} = 0.05\) and \(b = p_{21} = 0.15\). Applying Theorem 10.1:
+              \[
+              \pi_1 = \frac{b}{a + b} = \frac{0.15}{0.05 + 0.15} = \frac{0.15}{0.20} = 0.75, \quad \pi_2 = 1 - 0.75 = 0.25.
+              \]
+              The expected duration in Regime 1 is \(\E[D_1] = 1/a = 1/0.05 = 20\) periods.
+              The expected duration in Regime 2 is \(\E[D_2] = 1/b = 1/0.15 \approx 6.67\) periods.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l10-m2">
+            <p class="question">In a 2-state switching-mean model with \(\mu_1 = 1.0\), \(\mu_2 = -1.0\), and \(\sigma = 1.0\), suppose the predicted regime probability is \(\xi_{t|t-1}^{(1)} = 0.60\). If an observation \(y_t = 1.0\) arrives, compute the updated posterior probability \(\xi_{t|t}^{(1)}\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Evaluate normal likelihood densities:
+              \(\eta_t^{(1)} = \frac{1}{\sqrt{2\pi}} \exp\left(-\frac{(1 - 1)^2}{2}\right) = \frac{1}{\sqrt{2\pi}} \approx 0.39894\).
+              \(\eta_t^{(2)} = \frac{1}{\sqrt{2\pi}} \exp\left(-\frac{(1 - (-1))^2}{2}\right) = \frac{1}{\sqrt{2\pi}} \exp(-2) \approx 0.39894 \times 0.13534 \approx 0.05399\).
+              Joint likelihoods:
+              \(J_1 = 0.60 \times 0.39894 \approx 0.23936\).
+              \(J_2 = 0.40 \times 0.05399 \approx 0.02160\).
+              Updated probability:
+              \[
+              \xi_{t|t}^{(1)} = \frac{J_1}{J_1 + J_2} = \frac{0.23936}{0.23936 + 0.02160} = \frac{0.23936}{0.26096} \approx 0.9172.
+              \]
+              </p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l10-m3">
+            <p class="question">If a 2-state Markov chain has current filtered probability \(\xi_{t|t}^{(1)} = 0.80\) with \(p_{11} = 0.90\) and \(p_{21} = 0.30\), compute the one-step predicted probability \(\xi_{t+1|t}^{(1)}\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Using the prediction step:
+              \[
+              \xi_{t+1|t}^{(1)} = p_{11} \xi_{t|t}^{(1)} + p_{21} (1 - \xi_{t|t}^{(1)}) = (0.90)(0.80) + (0.30)(0.20) = 0.72 + 0.06 = 0.78.
+              \]
+              The predicted probability of remaining in regime 1 next period is 78%.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof Tier</h3>
+
+          <div class="problem" id="prob-l10-p1">
+            <p class="question">Prove that the stationary distribution \(\pi = (\pi_1, \pi_2)\) of a 2-state Markov chain is the left eigenvector of the transition matrix \(\mathbf{P}\) corresponding to eigenvalue \(\lambda = 1\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>By definition of a stationary distribution, \(\pi \mathbf{P} = \pi\). This equation is identical to the left eigenvector equation \(\pi \mathbf{P} = \lambda \pi\) with \(\lambda = 1\). Since every row of \(\mathbf{P}\) sums to 1, \(\mathbf{P} \mathbf{1} = \mathbf{1}\), proving that 1 is always an eigenvalue. By the Perron-Frobenius theorem for irreducible stochastic matrices, the eigenvalue \(\lambda = 1\) is simple and dominant, and its corresponding normalized eigenvector \(\pi\) has strictly positive entries.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l10-p2">
+            <p class="question">Derive the Bayes' rule formula for the Hamilton filter update step \(\xi_{t|t}^{(j)} = \frac{\xi_{t|t-1}^{(j)} f(y_t \mid S_t=j, \mathcal{Y}_{t-1})}{\sum_k \xi_{t|t-1}^{(k)} f(y_t \mid S_t=k, \mathcal{Y}_{t-1})}\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>By definition of conditional probability:
+              \[
+              P(S_t = j \mid y_t, \mathcal{Y}_{t-1}) = \frac{p(y_t, S_t = j \mid \mathcal{Y}_{t-1})}{p(y_t \mid \mathcal{Y}_{t-1})}.
+              \]
+              Expanding the numerator using conditional density: \(p(y_t, S_t = j \mid \mathcal{Y}_{t-1}) = P(S_t = j \mid \mathcal{Y}_{t-1}) f(y_t \mid S_t = j, \mathcal{Y}_{t-1}) = \xi_{t|t-1}^{(j)} \eta_t^{(j)}\). The denominator is obtained by law of total probability summing over all possible states: \(p(y_t \mid \mathcal{Y}_{t-1}) = \sum_{k=1}^K \xi_{t|t-1}^{(k)} \eta_t^{(k)}\). Dividing numerator by denominator yields the exact Hamilton update.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l10-p3">
+            <p class="question">Prove that as the forecast horizon \(h \to \infty\), the multi-step regime forecast \(\xi_{t+h|t}\) converges geometrically to the stationary distribution \(\pi\).</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>The \(h\)-step transition matrix is \(\mathbf{P}^h\). For a 2-state chain, the eigenvalues of \(\mathbf{P}\) are \(\lambda_1 = 1\) and \(\lambda_2 = 1 - a - b\). Since \(0 &lt; a, b &lt; 1\), \(|\lambda_2| = |1 - (a+b)| &lt; 1\). Using spectral decomposition: \(\mathbf{P}^h = \mathbf{1} \pi + \lambda_2^h M_2\). Since \(|\lambda_2| &lt; 1\), \(\lim_{h \to \infty} \lambda_2^h = 0\), so \(\mathbf{P}^h \to \mathbf{1} \pi\). Multiplying by any initial probability vector \(\xi_{t|t}\) yields \(\lim_{h \to \infty} \xi_{t+h|t} = \pi\) at an exponential convergence rate governed by \(|1 - a - b|^h\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical Tier</h3>
+
+          <div class="problem" id="prob-l10-e1">
+            <p class="question">In equity risk management, explain how a regime-switching volatility model (\(\sigma_1 = 12\%\), \(\sigma_2 = 35\%\)) informs dynamic leverage and VaR risk limits compared to static volatility models.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>A static volatility model averages tranquility and crisis periods, producing a long-term sample volatility of ~18%. During calm bull markets, this over-estimates risk, leading to under-utilized capital. During liquidity crises, it under-estimates risk, causing severe VaR breaches. A Markov-switching volatility model dynamically adjusts VaR: when \(\xi_{t|t}^{(2)} &gt; 0.5\), the desk immediately scales leverage down by a factor of \(35/12 \approx 3\), preemptively insulating the fund against crisis drawdowns.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l10-e2">
+            <p class="question">Why does the Hamilton filter often produce a "sawtooth" probability pattern when observation noise \(\sigma\) is large relative to the mean difference \(|\mu_1 - \mu_2|\)?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>When the signal-to-noise ratio \(\Delta \mu / \sigma\) is small, the conditional Gaussian likelihood densities \(\eta_t^{(1)}\) and \(\eta_t^{(2)}\) heavily overlap across most observations. Individual random draws near the decision boundary cause large swings in the likelihood ratio \(\eta_t^{(1)}/\eta_t^{(2)}\), causing the posterior probability \(\xi_{t|t}\) to oscillate rapidly back and forth between 0.3 and 0.7 without establishing high confidence in either regime.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l10-e3">
+            <p class="question">Explain how the Kim smoother (Kim, 1994) uses backward recursion to compute smoothed regime probabilities \(P(S_t = j \mid \mathcal{Y}_T)\) across the entire historical dataset.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>The online filter computes \(P(S_t \mid \mathcal{Y}_t)\), which can be noisy at time \(t\). Kim's smoothing algorithm runs a backward recursion starting from \(t = T-1\) down to \(1\), combining future observations with transition probabilities:
+              \[
+              P(S_t = j \mid \mathcal{Y}_T) = \xi_{t|t}^{(j)} \sum_{k=1}^K \frac{p_{jk} P(S_{t+1} = k \mid \mathcal{Y}_T)}{\xi_{t+1|t}^{(k)}}.
+              \]
+              This incorporates full sample information, resolving transient noise and cleanly demarcating historical recession or crisis start and end dates.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research Tier</h3>
+
+          <div class="problem" id="prob-l10-r1">
+            <p class="question">How do Time-Varying Transition Probability (TVTP) models make regime transitions endogenous to macroeconomic indicators (e.g., yield curve inversions, credit spreads)?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Instead of treating transition probabilities \(p_{ij}\) as static parameters, TVTP models parameterize them via a logistic or probit link function: \(p_{12}(z_t) = \frac{\exp(\gamma_0 + \gamma_1 z_t)}{1 + \exp(\gamma_0 + \gamma_1 z_t)}\), where \(z_t\) is an observable macroeconomic covariate (such as the 10Y-2Y Treasury spread or high-yield credit default spread). This enables the model to predict regime shifts endogenously: as credit spreads widen, the transition probability into a crisis regime surges automatically.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l10-r2">
+            <p class="question">Explain the "singularity problem" in maximum likelihood estimation of Markov-switching models when one regime variance \(\sigma_j^2 \to 0\), and how Bayesian priors resolve it.</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>If the mean of regime \(j\) matches a single data point exactly (\(\mu_j = y_k\)), and its variance shrinks to zero (\(\sigma_j^2 \to 0\)), the Gaussian density evaluates to \((2\pi \sigma_j^2)^{-1/2} \to \infty\), sending the log-likelihood function to positive infinity. Numerical optimizers can get trapped in these spurious boundary singularities. Bayesian estimation resolves this by imposing an inverted-gamma prior on \(\sigma_j^2\), which penalizes near-zero variances and guarantees a smooth, well-behaved posterior surface.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-l10-r3">
+            <p class="question">Why can regime-switching models produce apparent long-memory and fractional integration properties in volatility series (Diebold and Inoue, 2001)?</p>
+            <details class="solution">
+              <summary>Worked Solution</summary>
+              <p>Diebold and Inoue (2001) proved that structural breaks and Markov switching with highly persistent regimes (\(p_{ii} \approx 1\)) generate autocorrelation functions that decay hyperbolically rather than exponentially at intermediate horizons. Standard statistical tests for fractional integration or long memory (like the GPH log-periodogram estimator) cannot distinguish between true fractional integration and regime-switching models with rare shifts, leading analysts to mistakenly model stationary switching processes as long-memory processes.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key Results &amp; Formulas</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr>
+                <th>Concept</th>
+                <th>Mathematical Formulation</th>
+                <th>Interpretation / Usage</th>
+                <th>Grade</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Markov Transition Matrix</td>
+                <td>\(p_{ij} = P(S_t = j \mid S_{t-1} = i), \quad \sum_j p_{ij} = 1\)</td>
+                <td>Discrete-state memoryless transition probabilities.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>2-State Stationary Distribution</td>
+                <td>\(\pi_1 = \frac{b}{a + b}, \quad \pi_2 = \frac{a}{a + b}\)</td>
+                <td>Long-run ergodic probabilities for \(p_{12}=a, p_{21}=b\).</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Expected Regime Duration</td>
+                <td>\(\E[D_1] = 1/p_{12}, \quad \E[D_2] = 1/p_{21}\)</td>
+                <td>Mean persistence duration of continuous residence in a regime.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Markov-Switching Model</td>
+                <td>\(y_t = \mu_{S_t} + \phi(y_{t-1} - \mu_{S_{t-1}}) + \varepsilon_t\)</td>
+                <td>Autoregressive time series with discrete latent regime switching.</td>
+                <td><span class="claim" data-grade="A" data-cite="hamilton1989new">A</span></td>
+              </tr>
+              <tr>
+                <td>Hamilton Prediction Step</td>
+                <td>\(\xi_{t|t-1}^{(j)} = \sum_{i=1}^K p_{ij} \xi_{t-1|t-1}^{(i)}\)</td>
+                <td>Propagates regime distribution via Markov transition matrix.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Hamilton Update Step</td>
+                <td>\(\xi_{t|t}^{(j)} = \frac{\xi_{t|t-1}^{(j)} \eta_t^{(j)}}{\sum_k \xi_{t|t-1}^{(k)} \eta_t^{(k)}}\)</td>
+                <td>Bayesian update of regime probabilities given observation likelihood.</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+              </tr>
+              <tr>
+                <td>Regime Likelihood Evaluation</td>
+                <td>\(\ln L = \sum_{t=1}^T \ln\left(\sum_k \xi_{t|t-1}^{(k)} \eta_t^{(k)}\right)\)</td>
+                <td>Sample log-likelihood evaluated recursively via filter.</td>
+                <td><span class="claim" data-grade="A" data-cite="hamilton1994time">A</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="S3" data-page="L10">
+        <h2 id="h-quiz">Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="question">For a 2-state Markov chain with exit probabilities \(p_{12} = 0.10\) and \(p_{21} = 0.30\), what is the stationary probability of being in state 1?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l10q1" value="a">
+                <span>\(0.75\) (\(3/4\))</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q1" value="b">
+                <span>\(0.25\) (\(1/4\))</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q1" value="c">
+                <span>\(0.50\)</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q1" value="d">
+                <span>\(0.10\)</span>
+              </label>
+            </fieldset>
+            <div class="explain">Using the stationary formula \(\pi_1 = b / (a + b) = 0.30 / (0.10 + 0.30) = 0.30 / 0.40 = 0.75\).</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What does the filtered probability \(\xi_{t|t}^{(j)}\) in the Hamilton filter represent?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l10q2" value="a">
+                <span>The probability that the system is currently in state \(j\) at time \(t\) conditioned on observations up to time \(t\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q2" value="b">
+                <span>The unconditional long-run frequency of state \(j\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q2" value="c">
+                <span>The probability of transitioning to state \(j\) at time \(t+1\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q2" value="d">
+                <span>The probability that the state remains unchanged indefinitely.</span>
+              </label>
+            </fieldset>
+            <div class="explain">Filtered probability \(\xi_{t|t} = P(S_t = j \mid \mathcal{Y}_t)\) is the contemporaneous posterior probability of regime \(j\) given observations up to time \(t\).</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">If the probability of transitioning from state 1 to state 2 is \(p_{12} = 0.04\) per trading day, what is the expected duration of an episode in state 1?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l10q3" value="a">
+                <span>25 trading days</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q3" value="b">
+                <span>4 trading days</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q3" value="c">
+                <span>100 trading days</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q3" value="d">
+                <span>50 trading days</span>
+              </label>
+            </fieldset>
+            <div class="explain">The expected duration of a geometric distribution is \(\E[D] = 1/p_{12} = 1/0.04 = 25\) periods.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">In the update step of the Hamilton filter, what mathematical tool updates prior probabilities into posterior probabilities?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l10q4" value="a">
+                <span>Bayes' rule using conditional observation likelihoods.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q4" value="b">
+                <span>Cholesky matrix factorization.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q4" value="c">
+                <span>Augmented Dickey-Fuller regression.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q4" value="d">
+                <span>The Riccati quadratic equation.</span>
+              </label>
+            </fieldset>
+            <div class="explain">The update step multiplies the prior probability \(\xi_{t|t-1}^{(j)}\) by the conditional Gaussian observation density \(\eta_t^{(j)}\) and normalizes by the total likelihood sum, which is Bayes' rule.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How does a multi-step regime forecast \(\xi_{t+h|t}\) behave as horizon \(h\) increases to infinity?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l10q5" value="a">
+                <span>It converges exponentially to the unconditional stationary distribution \(\pi\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q5" value="b">
+                <span>It converges to zero for all states.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q5" value="c">
+                <span>It remains frozen at the current filtered value \(\xi_{t|t}\).</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q5" value="d">
+                <span>It diverges to infinity.</span>
+              </label>
+            </fieldset>
+            <div class="explain">By ergodicity, \(\mathbf{P}^h \to \mathbf{1}\pi\) as \(h \to \infty\), so all multi-step forecasts converge to the stationary distribution \(\pi\).</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">What is a major limitation of standard Markov-switching models in quantitative finance?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l10q6" value="a">
+                <span>The number of regimes is fixed a priori, unable to generate completely new endogenous states.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q6" value="b">
+                <span>They can only be estimated on sample sizes smaller than 100.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q6" value="c">
+                <span>They require all time series to be cointegrated.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q6" value="d">
+                <span>The transition matrix cannot have non-zero diagonals.</span>
+              </label>
+            </fieldset>
+            <div class="explain">The model requires setting the number of states (e.g., \(K=2\)) in advance, failing to capture unanticipated regime types that did not appear in historical calibrations.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">How does the smoothed probability \(P(S_t = j \mid \mathcal{Y}_T)\) differ from the filtered probability \(P(S_t = j \mid \mathcal{Y}_t)\)?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option">
+                <input type="radio" name="l10q7" value="a">
+                <span>The smoothed probability uses only past observations up to \(t\).</span>
+              </label>
+              <label class="option" data-correct>
+                <input type="radio" name="l10q7" value="b">
+                <span>The smoothed probability incorporates future observations up to \(T\) via backward recursion, refining historical classifications.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q7" value="c">
+                <span>The smoothed probability assumes transition probabilities are zero.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q7" value="d">
+                <span>The smoothed probability is always equal to 0.5.</span>
+              </label>
+            </fieldset>
+            <div class="explain">Filtered probabilities condition only on information available at time \(t\) (\(\mathcal{Y}_t\)), while smoothed probabilities condition on the entire sample \(\mathcal{Y}_T\) via backward smoothing.</div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="question">Why can maximum likelihood estimation of Markov-switching models suffer from likelihood spikes (singularities)?</p>
+            <fieldset style="min-inline-size: 0">
+              <label class="option" data-correct>
+                <input type="radio" name="l10q8" value="a">
+                <span>If a regime mean perfectly matches a single data point and its variance approaches zero, the Gaussian density diverges to infinity.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q8" value="b">
+                <span>The transition matrix determinant is always zero.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q8" value="c">
+                <span>The sample size must be infinite for the EM algorithm to run.</span>
+              </label>
+              <label class="option">
+                <input type="radio" name="l10q8" value="d">
+                <span>Markov chains violate the Gauss-Markov theorem.</span>
+              </label>
+            </fieldset>
+            <div class="explain">When \(\sigma_j \to 0\) at a point where \(\mu_j = y_t\), the normal density \((2\pi \sigma_j^2)^{-1/2} \to \infty\), creating an artificial singularity in the likelihood surface.</div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li data-cite="hamilton1989new">Hamilton, J. D. (1989). A new approach to the economic analysis of nonstationary time series and the business cycle. <em>Econometrica</em>, 57(2), 357-384.</li>
+          <li data-cite="hamilton1994time">Hamilton, J. D. (1994). <em>Time Series Analysis</em>. Princeton University Press.</li>
+        </ol>
+      </section>
+
+      <nav class="lesson-nav">
+        <button class="button-complete" data-complete>Mark Lesson Complete</button>
+        <a class="nav-next" href="project.html">Next: Capstone Project · Pairs-Trading Audit &rarr;</a>
+      </nav>
+    </main>
+
+    <footer class="course-footer">
+      <p>&copy; Quant PhD Program. All rights reserved.</p>
+    </footer>
+  </body>
+</html>
