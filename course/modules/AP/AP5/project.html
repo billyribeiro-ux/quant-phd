@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="AP5" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AP5 Project · Present Value Variance Decomposition</title>
+  <meta name="description" content="Independent project for Module AP5: decompose dividend-yield variance into cash-flow and discount-rate news with a VAR, and evaluate predictability sensitivity.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">AP5 Present Value &amp; Return Predictability</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="24">
+      <header class="page-head">
+        <p class="eyebrow">AP5 project · 24 hours · autograder &amp; rubric</p>
+        <h1>Variance Decomposition of Equity Valuation Ratios</h1>
+        <p class="lede">Decompose aggregate stock market dividend-yield variance into cash-flow news and discount-rate news using a vector autoregression, and test sensitivity to sample, persistence, and specification.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Worked example</span><p>Lab 1 below: a complete Campbell-Shiller VAR estimation, return news extraction, and variance decomposition with every step annotated.</p></div></li>
+          <li><div><span class="rung-title">Completion problem</span><p>Lab 2 below: fill missing discount-rate and cash-flow news multiplier expressions, graded instantly against expected outputs.</p></div></li>
+          <li><div><span class="rung-title">Independent project</span><p>The core specification below: build the variance decomposition engine in <code>reference.py</code>, autograded across 50 consecutive seeds, plus a research note evaluated by rubric.</p></div></li>
+          <li><div><span class="rung-title">Stretch</span><p>Multi-asset and non-linear extensions in <a href="#stretch">the stretch section</a>, including cross-asset Treasury spread integration, threshold VARs, and machine-learning predictive horse races.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-AP5-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: VAR variance decomposition pipeline</h3>
+          <p class="hypothesis">Estimates a first-order VAR on simulated stock returns and dividend-price ratios, derives news multiplier vectors, decomposes return innovations, and verifies long-horizon variance shares.</p>
+          <pre><code class="language-python" data-run>"""Lab AP5-project-1 (Rung 1, Worked Example): Fully Solved VAR Variance Decomposition.
+
+SIMULATED: complete end-to-end Campbell-Shiller VAR variance decomposition pipeline
+estimating return innovations, cash-flow news, discount-rate news, and long-horizon shares.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(42)
+    n_obs = 200
+    rho = 0.96
+
+    # 1. Simulate calibrated return and dividend-price system
+    # z_t = [r_t, dp_t]^T
+    phi_true = np.array([[0.00, 0.10], [0.00, 0.93]])
+    c_true = np.array([0.08, -3.20 * (1.0 - 0.93)])
+    sigma_u = 0.18
+    sigma_v = 0.14
+    cov_uv = -0.72 * sigma_u * sigma_v
+    cov_matrix = np.array([[sigma_u**2, cov_uv], [cov_uv, sigma_v**2]])
+
+    eps = rng.multivariate_normal(mean=[0.0, 0.0], cov=cov_matrix, size=n_obs + 1)
+    z = np.zeros((n_obs + 1, 2))
+    z[0] = [0.08, -3.20]
+    for t in range(n_obs):
+        z[t + 1] = c_true + phi_true @ z[t] + eps[t + 1]
+
+    # 2. OLS VAR(1) Estimation
+    z_lag = z[:-1]
+    z_lead = z[1:]
+    x_mat = np.column_stack([np.ones(n_obs), z_lag])
+    b_mat = np.linalg.lstsq(x_mat, z_lead, rcond=None)[0]
+    phi_hat = b_mat[1:].T
+    residuals = z_lead - x_mat @ b_mat
+    sigma_hat = (residuals.T @ residuals) / (n_obs - 3)
+
+    # 3. Campbell-Shiller News Vectors
+    e_r = np.array([1.0, 0.0])
+    eye_2 = np.eye(2)
+    inv_mat = np.linalg.inv(eye_2 - rho * phi_hat)
+
+    # lambda_dr = e_r^T rho Phi (I - rho Phi)^(-1)
+    lambda_dr = e_r @ (rho * phi_hat) @ inv_mat
+    # lambda_cf = e_r^T (I - rho Phi)^(-1)
+    lambda_cf = e_r @ inv_mat
+
+    n_dr = residuals @ lambda_dr
+    n_cf = residuals @ lambda_cf
+    eta_r = residuals[:, 0]
+
+    # Check return innovation identity: eta_r = n_cf - n_dr
+    max_id_err = float(np.max(np.abs(eta_r - (n_cf - n_dr))))
+
+    # 4. Return Innovation Variance Decomposition
+    var_eta = float(np.var(eta_r, ddof=1))
+    var_cf = float(np.var(n_cf, ddof=1))
+    var_dr = float(np.var(n_dr, ddof=1))
+    cov_cf_dr = float(np.cov(n_cf, n_dr, ddof=1)[0, 1])
+
+    share_dr = var_dr / var_eta
+    share_cf = var_cf / var_eta
+    share_cov = -2.0 * cov_cf_dr / var_eta
+
+    # 5. Dividend-Yield Variance Decomposition
+    # Solve discrete Lyapunov equation for population state covariance
+    eye_4 = np.eye(4)
+    gamma_vec = np.linalg.inv(eye_4 - np.kron(phi_hat, phi_hat)) @ sigma_hat.flatten()
+    gamma_0 = gamma_vec.reshape((2, 2))
+
+    e_dp = np.array([0.0, 1.0])
+    long_run_r_op = inv_mat @ phi_hat
+    long_run_d_op = (e_r @ phi_hat + rho * e_dp @ phi_hat - e_dp) @ inv_mat
+
+    b_r = float((e_r @ long_run_r_op @ gamma_0 @ e_dp) / (e_dp @ gamma_0 @ e_dp))
+    b_d = float((long_run_d_op @ gamma_0 @ e_dp) / (e_dp @ gamma_0 @ e_dp))
+    identity_b = b_r - b_d
+
+    print("Project Rung 1: VAR Variance Decomposition Worked Example")
+    print(f"Sample length T:             {n_obs}")
+    print(f"Estimated rho:               {rho:.4f}")
+    print(f"VAR Phi[0,1] (return slope): {phi_hat[0, 1]:.4f}")
+    print(f"VAR Phi[1,1] (persistence):  {phi_hat[1, 1]:.4f}")
+    print(f"Max return news discrepancy: {max_id_err:.8e}")
+    print(f"Unexpected return var:       {var_eta:.6f}")
+    print(f"Discount-rate news var:      {var_dr:.6f} ({share_dr * 100:.2f}%)")
+    print(f"Cash-flow news var:          {var_cf:.6f} ({share_cf * 100:.2f}%)")
+    print(f"News covariance share:       {share_cov * 100:.2f}%")
+    print(f"Long-horizon return share b_r:   {b_r * 100:.2f}%")
+    print(f"Long-horizon dividend share b_d: {b_d * 100:.2f}%")
+    print(f"Identity b_r - b_d:              {identity_b * 100:.2f}%")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Project Rung 1: VAR Variance Decomposition Worked Example
+Sample length T:             200
+Estimated rho:               0.9600
+VAR Phi[0,1] (return slope): 0.1498
+VAR Phi[1,1] (persistence):  0.8978
+Max return news discrepancy: 1.11022302e-16
+Unexpected return var:       0.030020
+Discount-rate news var:      0.020828 (69.38%)
+Cash-flow news var:          0.012294 (40.95%)
+News covariance share:       -10.33%
+Long-horizon return share b_r:   106.07%
+Long-horizon dividend share b_d: 6.07%
+Identity b_r - b_d:              100.00%</pre>
+          <p class="interpretation">The worked example confirms that unexpected stock return innovations decompose cleanly into cash-flow news and discount-rate news, with discount-rate news accounting for roughly 70% of return variance and 100% of long-horizon dividend-yield variance.</p>
+        </section>
+
+        <section class="lab completion" id="lab-AP5-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: news multipliers and variance shares</h3>
+          <p class="hypothesis">Complete the Campbell-Shiller discount-rate news multiplier vector, the cash-flow news multiplier vector, and the resulting variance shares. When filled correctly, output matches the reference solution.</p>
+          <pre><code class="language-python" data-run>"""Lab AP5-project-2 (Rung 2, Completion): News Multipliers and Return Variance Shares.
+
+SIMULATED: complete solution for the Rung 2 completion problem calculating
+Campbell-Shiller discount-rate and cash-flow news variance shares from a fitted VAR.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def main() -> None:
+    # Given estimated VAR(1) parameters on annual data: z_t = [r_t, dp_t]^T
+    phi = np.array([[0.015, 0.112], [-0.025, 0.935]])
+    sigma = np.array([[0.0324, -0.0185], [-0.0185, 0.0210]])
+    rho = 0.96
+
+    # Step 1: Compute the Campbell-Shiller discount-rate news multiplier
+    # lambda_dr = e_r^T rho Phi (I - rho Phi)^(-1)
+    e_r = np.array([1.0, 0.0])
+    eye_2 = np.eye(2)
+    inv_mat = np.linalg.inv(eye_2 - rho * phi)
+    lambda_dr = ___
+
+    # Step 2: Compute the cash-flow news multiplier
+    # lambda_cf = e_r^T (I - rho Phi)^(-1)
+    lambda_cf = ___
+
+    # Step 3: Compute theoretical variances of return news
+    var_dr = ___
+    var_cf = ___
+    cov_cf_dr = float(lambda_cf @ sigma @ lambda_dr)
+    var_eta = float(e_r @ sigma @ e_r)
+
+    # Step 4: Compute variance shares
+    share_dr = ___
+    share_cf = ___
+    var_identity_err = abs(var_eta - (var_cf + var_dr - 2.0 * cov_cf_dr))
+
+    print("Project Rung 2: Completion Problem Reference Output")
+    print(f"DR multiplier lambda_dr:     [{lambda_dr[0]:.4f}, {lambda_dr[1]:.4f}]")
+    print(f"CF multiplier lambda_cf:     [{lambda_cf[0]:.4f}, {lambda_cf[1]:.4f}]")
+    print(f"Unexpected return var:       {var_eta:.6f}")
+    print(f"Discount-rate news var:      {var_dr:.6f}")
+    print(f"Cash-flow news var:          {var_cf:.6f}")
+    print(f"CF-DR news covariance:       {cov_cf_dr:.6f}")
+    print(f"Variance identity gap:       {var_identity_err:.8e}")
+    print(f"DR news share of variance:   {share_dr * 100:.2f}%")
+    print(f"CF news share of variance:   {share_cf * 100:.2f}%")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Project Rung 2: Completion Problem Reference Output
+DR multiplier lambda_dr:     [-0.0107, 1.0388]
+CF multiplier lambda_cf:     [0.9893, 1.0388]
+Unexpected return var:       0.032400
+Discount-rate news var:      0.023075
+Cash-flow news var:          0.016347
+CF-DR news covariance:       0.003511
+Variance identity gap:       6.93889390e-18
+DR news share of variance:   71.22%
+CF news share of variance:   50.46%</pre>
+          <p class="interpretation">With persistence phi_11 = 0.935, the discount-rate news multiplier on the valuation residual exceeds 1.0, demonstrating that valuation shocks exert long-lived effects on cumulative expected returns.</p>
+        </section>
+
+        <section class="lab" id="lab-AP5-project-3" data-runtime="python">
+          <h3>Lab 3 · Reference values for independent validation</h3>
+          <p class="hypothesis">Runs the core numerical routines on benchmark inputs. Compare your engine's output against these reference values before running the full autograder suite.</p>
+          <pre><code class="language-python" data-run>"""Lab AP5-project-3 (Rung 3, Reference Run): Benchmark Outputs for Autograder Validation.
+
+SIMULATED: runs the reference implementation on fixed benchmark inputs to establish
+gold-standard test numbers for independent project verification.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def main() -&gt; None:
+    # Fixed benchmark input matrix: 100 periods of [r_t, dp_t]
+    rng = np.random.default_rng(2024)
+    n_obs = 100
+    rho = 0.96
+
+    phi_bench = np.array([[0.01, 0.12], [-0.02, 0.91]])
+    sigma_bench = np.array([[0.035, -0.018], [-0.018, 0.020]])
+    c_bench = np.array([0.07, -0.28])
+
+    eps = rng.multivariate_normal(mean=[0.0, 0.0], cov=sigma_bench, size=n_obs + 1)
+    z = np.zeros((n_obs + 1, 2))
+    z[0] = [0.07, -3.10]
+    for t in range(n_obs):
+        z[t + 1] = c_bench + phi_bench @ z[t] + eps[t + 1]
+
+    # 1. Estimate VAR
+    z_lag = z[:-1]
+    z_lead = z[1:]
+    x_mat = np.column_stack([np.ones(n_obs), z_lag])
+    b_mat = np.linalg.lstsq(x_mat, z_lead, rcond=None)[0]
+    c_hat = b_mat[0]
+    phi_hat = b_mat[1:].T
+    resids = z_lead - x_mat @ b_mat
+    sigma_hat = (resids.T @ resids) / (n_obs - 3)
+
+    # 2. Campbell-Shiller News
+    e_r = np.array([1.0, 0.0])
+    eye_2 = np.eye(2)
+    inv_mat = np.linalg.inv(eye_2 - rho * phi_hat)
+    lambda_dr = e_r @ (rho * phi_hat) @ inv_mat
+    lambda_cf = e_r @ inv_mat
+
+    n_dr = resids @ lambda_dr
+    n_cf = resids @ lambda_cf
+    eta = resids[:, 0]
+
+    # Variances
+    var_eta = float(np.var(eta, ddof=1))
+    var_dr = float(np.var(n_dr, ddof=1))
+    var_cf = float(np.var(n_cf, ddof=1))
+    cov_news = float(np.cov(n_cf, n_dr, ddof=1)[0, 1])
+
+    # 3. Dividend-yield variance shares
+    eye_4 = np.eye(4)
+    gamma_vec = np.linalg.inv(eye_4 - np.kron(phi_hat, phi_hat)) @ sigma_hat.flatten()
+    gamma_0 = gamma_vec.reshape((2, 2))
+
+    e_dp = np.array([0.0, 1.0])
+    long_run_r = inv_mat @ phi_hat
+    long_run_d = (e_r @ phi_hat + rho * e_dp @ phi_hat - e_dp) @ inv_mat
+
+    b_r = float((e_r @ long_run_r @ gamma_0 @ e_dp) / (e_dp @ gamma_0 @ e_dp))
+    b_d = float((long_run_d @ gamma_0 @ e_dp) / (e_dp @ gamma_0 @ e_dp))
+
+    # 4. Stambaugh bias for predictive regression of r on dp
+    phi_dp = phi_hat[1, 1]
+    sigma_uv = float(sigma_hat[0, 1])
+    sigma_v2 = float(sigma_hat[1, 1])
+    stambaugh_bias = -(sigma_uv / sigma_v2) * ((1.0 + 3.0 * phi_dp) / n_obs)
+
+    print("Project Rung 3: Benchmark Autograder Validation Output")
+    print(f"Estimated c:                 [{c_hat[0]:.4f}, {c_hat[1]:.4f}]")
+    print(f"Estimated Phi[0,1]:          {phi_hat[0, 1]:.4f}")
+    print(f"Estimated Phi[1,1]:          {phi_hat[1, 1]:.4f}")
+    print(f"Return innovation var:       {var_eta:.6f}")
+    print(f"Discount-rate news var:      {var_dr:.6f}")
+    print(f"Cash-flow news var:          {var_cf:.6f}")
+    print(f"CF-DR covariance:            {cov_news:.6f}")
+    print(f"DR variance share:           {var_dr / var_eta * 100:.2f}%")
+    print(f"Long-horizon b_r:            {b_r * 100:.2f}%")
+    print(f"Long-horizon b_d:            {b_d * 100:.2f}%")
+    print(f"Identity b_r - b_d:          {(b_r - b_d) * 100:.2f}%")
+    print(f"Stambaugh analytical bias:   {stambaugh_bias:.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Project Rung 3: Benchmark Autograder Validation Output
+Estimated c:                 [0.0808, -0.2716]
+Estimated Phi[0,1]:          0.1151
+Estimated Phi[1,1]:          0.9169
+Return innovation var:       0.035234
+Discount-rate news var:      0.016964
+Cash-flow news var:          0.018396
+CF-DR covariance:            0.000063
+DR variance share:           48.15%
+Long-horizon b_r:            96.79%
+Long-horizon b_d:            -3.21%
+Identity b_r - b_d:          100.00%
+Stambaugh analytical bias:   0.0348</pre>
+          <p class="interpretation">Benchmark verification establishes baseline numbers for VAR parameters, unexpected return variance, discount-rate shares, and Stambaugh analytical bias corrections.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification: Variance Decomposition Engine</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Asset allocators and macroeconomic researchers need to understand whether swings in aggregate equity market valuations reflect changing expectations of corporate dividend growth (cash-flow fundamentals) or changing discount rates (time-varying equity risk premia). You will implement a complete, robust VAR variance decomposition pipeline in Python, validate it with the autograder, and synthesize your empirical findings in a research note.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Multivariate time series of log equity returns \(r_t\), log dividend growth \(\Delta d_t\), and log dividend-price ratios \(dp_t\), generated deterministically by <code>grader/instance.py</code> across 50 evaluation seeds.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>A Python module implementing the variance decomposition engine exported by <code>grader/reference.py</code>:
+            <pre><code class="language-pseudocode"># Required API signatures:
+estimate_var(z: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]
+campbell_shiller_news(phi: np.ndarray, residuals: np.ndarray, rho: float = 0.96) -> tuple[np.ndarray, np.ndarray]
+decompose_return_variance(n_cf: np.ndarray, n_dr: np.ndarray) -> dict[str, float]
+dividend_yield_variance_decomposition(phi: np.ndarray, sigma: np.ndarray, rho: float = 0.96) -> dict[str, float]
+predictive_regression(x: np.ndarray, y: np.ndarray, max_lags: int = 4) -> dict[str, float]
+stambaugh_bias(phi_x: float, sigma_uv: float, sigma_v2: float, n_obs: int) -> float
+out_of_sample_r2(y: np.ndarray, x: np.ndarray, n_init: int = 60, constrained: bool = False) -> float</code></pre>
+            and a 4-page research note evaluating sample sensitivity, parameter stability, and macroeconomic implications.
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Standard library and NumPy only; no SciPy, no statsmodels. All functions must be deterministic, validate input dimensions, raise <code>ValueError</code> on invalid inputs, and execute in under 5 seconds per seed in Pyodide.</dd>
+
+          <dt>Grading</dt>
+          <dd>Graded by both autograder and rubric. The autograder tests mathematical identities and numerical accuracy across 50 consecutive seeds, while the rubric evaluates the accompanying empirical research note across five criteria.</dd>
+        </dl>
+      </section>
+
+      <section id="hours-section">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap"><table id="hours">
+          <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+          <tbody>
+            <tr><td>1. VAR estimation &amp; stationarity diagnostics</td><td class="num">4.0</td><td>Fit bivariate and trivariate VAR systems and verify companion matrix stability.</td></tr>
+            <tr><td>2. Campbell-Shiller news extraction</td><td class="num">5.0</td><td>Derive news multiplier vectors and verify the return innovation identity.</td></tr>
+            <tr><td>3. Long-horizon Lyapunov variance decomposition</td><td class="num">5.0</td><td>Solve discrete Lyapunov equations and verify the Cochrane b_r - b_d = 1.0 identity.</td></tr>
+            <tr><td>4. Stambaugh bias &amp; predictive regressions</td><td class="num">4.0</td><td>Implement HAC inference and compute analytical small-sample bias corrections.</td></tr>
+            <tr><td>5. Out-of-sample predictability evaluation</td><td class="num">3.0</td><td>Conduct recursive expanding-window forecasts with economic sign restrictions.</td></tr>
+            <tr><td>6. Empirical research note &amp; sensitivity analysis</td><td class="num">3.0</td><td>Document subperiod stability, rho parameter sensitivity, and cross-asset synthesis.</td></tr>
+            <tr><td><strong>Total</strong></td><td class="num"><strong>24.0</strong></td><td><strong>Comprehensive implementation of the variance decomposition engine and report.</strong></td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section class="grader-panel" id="grader" data-unit="AP5" data-grader="grader/" data-suite="test_project.py" data-solution="reference.py" data-starter="starter.py" data-support="instance.py"></section>
+
+      <section id="rubric">
+        <h2 id="h-rubric">Grading Rubric</h2>
+        <p>The research note is assessed against five criteria across four observable achievement levels (1 = Unsatisfactory, 2 = Developing, 3 = Proficient, 4 = Exemplary).</p>
+        <div class="table-wrap">
+          <table class="rubric">
+            <thead>
+              <tr><th>Criterion</th><th>Level 1 (Unsatisfactory)</th><th>Level 2 (Developing)</th><th>Level 3 (Proficient)</th><th>Level 4 (Exemplary)</th></tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row"><strong>C1 · VAR Formulation &amp; Stability</strong></th>
+                <td>VAR model is mis-specified or eigenvalues violate stationarity without detection.</td>
+                <td>Estimates basic VAR but omits formal stationarity checks or fails to report companion eigenvalues.</td>
+                <td>Estimates stationary VAR with correct companion matrix, intercepts, and unbiased residual covariance.</td>
+                <td>Rigorous VAR specification with lag length selection, companion eigenvalue spectrum, and companion stability bounds.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row"><strong>C2 · News Decomposition &amp; Identities</strong></th>
+                <td>Omits discounting parameter rho or fails unexpected return innovation identity eta = N_cf - N_dr.</td>
+                <td>Computes news series but displays numerical discrepancy exceeding 1e-6 in return identity.</td>
+                <td>Verifies return innovation identity to machine precision and attributes return variance shares correctly.</td>
+                <td>Complete algebraic proof of news vectors with sensitivity analysis across discount factors rho in [0.93, 0.98].</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row"><strong>C3 · Long-Horizon Variance Shares</strong></th>
+                <td>Calculates dividend-yield shares without population Lyapunov equation, yielding b_r - b_d != 1.0.</td>
+                <td>Uses finite-sample truncation horizon without reporting truncation approximation error.</td>
+                <td>Solves discrete Lyapunov equation for population covariance and proves b_r - b_d = 1.0000.</td>
+                <td>Contrasts infinite-horizon Lyapunov solution with multi-horizon truncated sums and details The Dog That Did Not Bark theorem.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row"><strong>C4 · Econometric Rigor &amp; Stambaugh Bias</strong></th>
+                <td>Ignores predictor persistence and quotes unadjusted OLS standard errors with overlapping data.</td>
+                <td>Reports Newey-West standard errors but omits Stambaugh small-sample persistence bias.</td>
+                <td>Quantifies analytical Stambaugh bias and reports both HAC and bias-corrected predictive slope estimates.</td>
+                <td>Comprehensive econometric inference combining Hansen-Hodrick standard errors, analytical Stambaugh corrections, and bootstrap intervals.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row"><strong>C5 · Out-of-Sample &amp; Economic Significance</strong></th>
+                <td>Uses full-sample mean benchmark, introducing lookahead bias into out-of-sample evaluations.</td>
+                <td>Evaluates out-of-sample forecasts without economic restrictions or investor utility quantification.</td>
+                <td>Implements recursive expanding benchmark and demonstrates that Campbell-Thompson constraints restore positive R2_OOS.</td>
+                <td>Rigorous out-of-sample analysis reporting Clark-West test statistics, Sharpe ratios, and mean-variance utility gains across risk aversion parameters.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="exemplars">
+        <h2 id="h-exemplars">Annotated Exemplars</h2>
+
+        <div class="exemplar" data-level="4">
+          <h3>Exemplar A · Exemplary Research Note Extract (Level 4)</h3>
+          <p><em>Exemplary extract demonstrating mathematical precision, exact identity verification, and econometric rigor:</em></p>
+          <blockquote>
+            <p>"We estimate a first-order bivariate vector autoregression on annual CRSP log real returns \(r_{t+1}\) and log dividend-price ratios \(dp_{t+1}\). The estimated companion matrix \(\hat\Phi\) exhibits eigenvalues \(\lambda_1 = 0.938\) and \(\lambda_2 = 0.015\), strictly satisfying stationarity. Using the Campbell-Shiller linearization parameter \(\rho = 0.96\), the return innovation identity \(r_{t+1} - \mathbb{E}_t[r_{t+1}] = N_{CF, t+1} - N_{DR, t+1}\) holds to a maximum absolute error of \(1.1 \times 10^{-16}\). Decomposing the unexpected return variance \(\operatorname{Var}(\eta_r) = 0.0302\), discount-rate news accounts for 74.2% of the variance, cash-flow news accounts for 42.1%, and their covariance contributes \(-16.3\%\). Solving the discrete Lyapunov equation \(\operatorname{vec}(\Gamma_0) = (I - \Phi \otimes \Phi)^{-1} \operatorname{vec}(\Sigma)\), the population dividend-yield variance shares are \(b_r = 0.985\) and \(b_d = -0.015\), satisfying \(b_r - b_d = 1.000000000000\). In predictive regressions, the naive OLS slope \(\hat\beta = 0.098\) (\(t_{NW} = 2.14\)) is subject to a positive Stambaugh small-sample bias of \(0.034\) due to the strong negative correlation \(\rho(u, v) = -0.73\) and persistence \(\phi = 0.938\). The bias-corrected slope is \(\hat\beta_{adj} = 0.064\) (\(t_{adj} = 1.40\)). Recursive out-of-sample forecasting confirms the Welch-Goyal critique for unconstrained OLS (\(R^2_{OOS} = -0.42\%\)), whereas imposing Campbell-Thompson economic non-negativity restrictions restores positive out-of-sample predictive power (\(R^2_{OOS} = +1.85\%\)), generating an annualized certainty equivalent utility gain of 48 basis points for a mean-variance investor with risk aversion \(\gamma = 3\)."</p>
+          </blockquote>
+          <p class="interpretation">Score: 20/20 (Level 4 across C1-C5). Verifies identities to machine precision, identifies companion stability, performs Stambaugh corrections, and evaluates economic utility gains.</p>
+        </div>
+
+        <div class="exemplar" data-level="2">
+          <h3>Exemplar B · Developing Research Note Extract (Level 2)</h3>
+          <p><em>Developing extract displaying common econometric omissions and superficial analysis:</em></p>
+          <blockquote>
+            <p>"We ran a regression of stock returns on the dividend yield. The OLS slope was 0.098 with a significant t-statistic of 2.14, showing that high dividend yields predict high future returns. We then fit a VAR and found that discount-rate news is more volatile than cash-flow news. In our out-of-sample test, the model had a negative R-squared compared to the historical average, showing that market timing is difficult in practice."</p>
+          </blockquote>
+          <p class="interpretation">Score: 10/20 (Level 2 across C1-C5). Fails to check VAR stationarity, omits the Campbell-Shiller mathematical identity, ignores Stambaugh bias entirely despite high persistence, and fails to implement economic forecasting constraints or utility metrics.</p>
+        </div>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Stretch Section</h2>
+        <p>For students seeking advanced research and doctoral portfolio depth:</p>
+        <ul>
+          <li><strong>Cross-Asset VAR Systems:</strong> Expand the state vector \(Z_t\) to include the 10y-2y Treasury term spread and corporate credit default spreads, testing whether a single principal component drives equity, bond, and credit risk premia.</li>
+          <li><strong>Threshold &amp; Regime-Switching Predictability:</strong> Implement a two-state Markov switching VAR to test whether return predictability is concentrated exclusively in economic recessions and bear markets (Henkel, Martin &amp; Nardari 2011).</li>
+          <li><strong>Machine Learning Horse Race:</strong> Evaluate penalized regression (Elastic Net), random forests, and gradient-boosted trees on the Goyal-Welch macroeconomic predictor library, testing out-of-sample utility gains after transactions costs.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="shiller1981do">Shiller (1981), 'Do Stock Prices Move Too Much to be Justified by Subsequent Changes in Dividends?', AER 71(3)</li>
+          <li data-cite="campbell1988dividend">Campbell &amp; Shiller (1988), 'The Dividend-Price Ratio and Expectations of Future Dividends and Discount Factors', RFS 1(3)</li>
+          <li data-cite="fama1988dividend">Fama &amp; French (1988), 'Dividend yields and expected stock returns', JFE 22(1)</li>
+          <li data-cite="stambaugh1999predictive">Stambaugh (1999), 'Predictive regressions', JFE 54(3)</li>
+          <li data-cite="welch2007comprehensive">Welch &amp; Goyal (2008), 'A Comprehensive Look at The Empirical Performance of Equity Premium Prediction', RFS 21(4)</li>
+          <li data-cite="campbell2007predicting">Campbell &amp; Thompson (2008), 'Predicting Excess Stock Returns Out of Sample', RFS 21(4)</li>
+          <li data-cite="cochrane2007dog">Cochrane (2008), 'The Dog That Did Not Bark: A Defense of Return Predictability', RFS 21(4)</li>
+          <li data-cite="cochrane2011presidential">Cochrane (2011), 'Presidential Address: Discount Rates', JF 66(4)</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
