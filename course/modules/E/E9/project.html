@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="E9" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>E9 Project · Sovereign Debt Sustainability Analysis &amp; Fan Chart Engine</title>
+  <meta name="description" content="Build an end-to-end sovereign debt sustainability analysis (DSA) engine, generate stochastic fan charts, compute debt ceiling breach probabilities, and defend a sovereign risk report in a calibrated memo. Graded by autograder and rubric.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">E9 Sovereign Debt, Crises &amp; Political Economy</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="32">
+      <header class="page-head">
+        <p class="eyebrow">E9 project · 32 hours · autograder and rubric</p>
+        <h1>Sovereign Debt Sustainability Analysis &amp; Fan Chart Engine</h1>
+        <p class="lede">Assessing sovereign solvency requires moving beyond deterministic debt projections to evaluate stochastic shocks to interest rates, economic growth, and primary fiscal balances. In this doctoral project, you build an automated sovereign debt sustainability analysis (DSA) engine in Python, evaluate fan chart distributions across macroeconomic scenarios, compute debt ceiling breach probabilities, and defend an adversarial sovereign risk memo.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The project ladder</h2>
+        <p>This project follows a structured four-rung learning ladder. If you achieved mastery on the diagnostic placement quiz, you may skip rungs 1 and 2 and begin directly at Rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Worked example</span><p>Lab 1: Complete calculation of deterministic debt accumulation, primary gap, and representative scenario fan charts for a sovereign borrower.</p></div></li>
+          <li><div><span class="rung-title">Completion problem</span><p>Lab 2: Implement the exact discrete-time debt-to-GDP recurrence relation, the primary stabilization gap, and anytime debt ceiling breach detection with instant feedback.</p></div></li>
+          <li><div><span class="rung-title">Independent project</span><p>The core deliverable: implement <code>reference.py</code> passing the autograder test suite across 50 pseudo-random market seeds, and draft a rubric-scored sovereign risk memo.</p></div></li>
+          <li><div><span class="rung-title">Stretch</span><p>Extend the engine to multi-currency sovereign liability portfolios, modeling currency depreciation pass-through and endogenous sovereign credit spreads.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="conventions">
+        <h2 id="h-conventions">Conventions and definitions</h2>
+        <p>The terms below govern all calculations, algorithms, and analytical submissions across this project.</p>
+        <dl>
+          <dt>Debt-to-GDP ratio</dt>
+          <dd>Public debt expressed as a proportion of nominal gross domestic product: \(b_t = B_t / Y_t\). In baseline models, \(b_t \ge 0\).</dd>
+          <dt>Exact discrete-time debt accumulation</dt>
+          <dd>For real effective interest rate \(r_t\), real GDP growth rate \(g_t\), and primary balance share \(s_t\) (surplus positive, deficit negative):
+          \[
+          b_t = \left(\frac{1 + r_t}{1 + g_t}\right) b_{t-1} - s_t
+          \]
+          Linear approximations of the form \(b_t \approx (1 + r_t - g_t) b_{t-1} - s_t\) introduce material compounding errors over multi-year forecast horizons.</dd>
+          <dt>Primary stabilization gap</dt>
+          <dd>The difference between the primary balance required to stabilize the debt ratio at target \(b^*\) and the actual primary balance \(s_t\):
+          \[
+          \mathrm{gap}_t = s^* - s_t = \left(\frac{r_t - g_t}{1 + g_t}\right) b^* - s_t
+          \]
+          A positive gap indicates that fiscal consolidation is required to prevent debt ratio expansion.</dd>
+          <dt>Anytime debt ceiling breach</dt>
+          <dd>A simulation path breaches the critical debt ceiling \(b_{\mathrm{crit}}\) if \(\max_{t \in \{1,\dots,H\}} b_t &gt; b_{\mathrm{crit}}\). The empirical breach probability is the fraction of paths exhibiting an anytime breach.</dd>
+          <dt>Fan chart percentile slice</dt>
+          <dd>The cross-sectional percentile distribution of debt ratios at each time period \(t\), calculated across \(M\) simulated Monte Carlo trajectories: \(P_{10}(t) \le P_{25}(t) \le P_{50}(t) \le P_{75}(t) \le P_{90}(t)\).</dd>
+        </dl>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Labs 1 and 2 use simulated macroeconomic panels. All rate calculations maintain double-precision floats, with debt and gap metrics evaluated to four decimal places.</p>
+
+        <section class="lab" id="lab-E9-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: Sovereign DSA baseline and risk diagnostics</h3>
+          <p class="hypothesis">Given baseline trajectories for real interest rates, GDP growth, and planned fiscal consolidation, the sovereign DSA engine calculates deterministic debt accumulation and evaluates fan chart breach risks against a 105% debt ceiling.</p>
+          <pre><code class="language-python" data-run>"""Project Lab 1 (Rung 1): Fully worked example of Sovereign DSA and Fan Chart Engine.
+
+SIMULATED sovereign debt scenario. Standard library only.
+Computes deterministic baseline debt trajectory, primary gap,
+fan chart percentile slices, and debt ceiling breach probability.
+"""
+
+from __future__ import annotations
+
+
+def debt_dynamics_step(b_prev: float, r: float, g: float, s: float) -&gt; float:
+    """Compute one-period exact discrete-time debt-to-GDP ratio."""
+    if g &lt;= -1.0 or r &lt;= -1.0:
+        msg = f"Growth rate g and rate r must be strictly greater than -1.0: r={r}, g={g}"
+        raise ValueError(msg)
+    if b_prev &lt; 0.0:
+        msg = f"Debt-to-GDP ratio cannot be negative: b_prev={b_prev}"
+        raise ValueError(msg)
+    return ((1.0 + r) / (1.0 + g)) * b_prev - s
+
+
+def primary_gap(b_target: float, r: float, g: float, s_actual: float) -&gt; float:
+    """Compute primary gap s* - s required to stabilize debt at b_target."""
+    s_star = ((r - g) / (1.0 + g)) * b_target
+    return s_star - s_actual
+
+
+def main() -&gt; None:
+    # 1. Macroeconomic scenario calibration (5-year horizon)
+    b0 = 0.90  # Initial debt: 90% of GDP
+    r_path = [0.030, 0.032, 0.035, 0.033, 0.030]  # Real effective interest rate
+    g_path = [0.020, 0.018, 0.015, 0.020, 0.022]  # Real GDP growth rate
+    s_path = [-0.015, -0.010, -0.005, 0.000, 0.005]  # Primary balance (fiscal consolidation)
+    debt_ceiling = 1.05  # 105% critical ceiling
+
+    # 2. Deterministic baseline trajectory
+    trajectory: list[float] = [b0]
+    b_curr = b0
+    gaps: list[float] = []
+
+    for r, g, s in zip(r_path, g_path, s_path, strict=True):
+        gap = primary_gap(b0, r, g, s)
+        gaps.append(gap)
+        b_curr = debt_dynamics_step(b_curr, r, g, s)
+        trajectory.append(b_curr)
+
+    # 3. Simulated Monte Carlo fan chart paths (3 representative sample paths)
+    path_optimistic = [0.9000, 0.8920, 0.8800, 0.8650, 0.8450, 0.8200]
+    path_baseline = trajectory
+    path_stressed = [0.9000, 0.9350, 0.9780, 1.0250, 1.0620, 1.1050]
+
+    all_paths = [path_optimistic, path_baseline, path_stressed]
+
+    # Compute breach probability of debt ceiling (1.05)
+    breaches = sum(1 for p in all_paths if any(b &gt; debt_ceiling for b in p))
+    p_breach = breaches / len(all_paths)
+
+    print("=== Rung 1: Sovereign DSA &amp; Fan Chart Worked Example ===")
+    print(f"Initial Debt Ratio b0:           {b0:.4f}")
+    print(f"Debt Ceiling:                    {debt_ceiling:.4f}")
+    print("\nYear-by-Year Deterministic Baseline:")
+    print("Year | Real Rate r | Real Growth g | Primary Bal s | Debt Ratio b | Primary Gap")
+    for t in range(5):
+        print(
+            f"  {t + 1}  |   {r_path[t]:.4f}    |    {g_path[t]:.4f}     |    {s_path[t]:.4f}     |    "
+            f"{trajectory[t + 1]:.4f}    |   {gaps[t]:.4f}"
+        )
+
+    print("\n=== Risk Diagnostics ===")
+    print(f"Terminal Baseline Debt (Year 5): {trajectory[-1]:.4f}")
+    print(f"Maximum Fiscal Gap in Horizon:   {max(gaps):.4f}")
+    print(f"Debt Ceiling Breach Probability: {p_breach * 100.0:.2f}%")
+
+    assert trajectory[0] == 0.90, "Initial debt must be 0.90"
+    assert 0.90 &lt; trajectory[-1] &lt; 1.00, "Terminal debt should remain stabilized below 1.00 under consolidation"
+    assert p_breach == 1.0 / 3.0, "1 out of 3 paths breaches the 105% ceiling"
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">=== Rung 1: Sovereign DSA &amp; Fan Chart Worked Example ===
+Initial Debt Ratio b0:           0.9000
+Debt Ceiling:                    1.0500
+
+Year-by-Year Deterministic Baseline:
+Year | Real Rate r | Real Growth g | Primary Bal s | Debt Ratio b | Primary Gap
+  1  |   0.0300    |    0.0200     |    -0.0150     |    0.9238    |   0.0238
+  2  |   0.0320    |    0.0180     |    -0.0100     |    0.9465    |   0.0224
+  3  |   0.0350    |    0.0150     |    -0.0050     |    0.9702    |   0.0227
+  4  |   0.0330    |    0.0200     |    0.0000     |    0.9825    |   0.0115
+  5  |   0.0300    |    0.0220     |    0.0050     |    0.9852    |   0.0020
+
+=== Risk Diagnostics ===
+Terminal Baseline Debt (Year 5): 0.9852
+Maximum Fiscal Gap in Horizon:   0.0238
+Debt Ceiling Breach Probability: 33.33%</pre>
+          <p class="interpretation">The worked example demonstrates that planned primary balance improvements stabilize the debt ratio below 100% in the baseline, but macroeconomic shocks induce a 33.3% probability of breaching the 105% risk threshold.</p>
+        </section>
+
+        <section class="lab completion" id="lab-E9-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Debt dynamics recurrence and breach probability</h3>
+          <p class="hypothesis">Complete the implementation of the exact discrete-time debt accumulation relation and the anytime debt ceiling breach probability detector. Filling the blanks enables the computation to match the expected outputs exactly.</p>
+          <pre><code class="language-python" data-run>"""Project Lab 2 (Rung 2): Completion problem twin for debt dynamics step and primary gap.
+
+Completed reference twin. Standard library only.
+Implements exact discrete-time debt-to-GDP step, debt-stabilizing primary balance,
+and breach probability calculation over simulated paths.
+"""
+
+from __future__ import annotations
+
+
+def debt_dynamics_step(b_prev: float, r: float, g: float, s: float) -> float:
+    """Compute one-period exact discrete-time debt-to-GDP ratio."""
+    if g <= -1.0 or r <= -1.0:
+        msg = f"Rates must exceed -1.0: r={r}, g={g}"
+        raise ValueError(msg)
+    if b_prev < 0.0:
+        msg = f"Debt ratio cannot be negative: {b_prev}"
+        raise ValueError(msg)
+    growth_factor = ___
+    return growth_factor * b_prev - s
+
+
+def primary_gap(b_target: float, r: float, g: float, s_actual: float) -> float:
+    """Compute primary gap s* - s required to stabilize debt at b_target."""
+    s_star = ___
+    return s_star - s_actual
+
+
+def breach_probability(paths: list[list[float]], debt_ceiling: float) -> float:
+    """Compute empirical probability of exceeding debt ceiling at any point."""
+    if not paths:
+        return 0.0
+    breached_count = sum(1 for path in paths if ___)
+    return breached_count / len(paths)
+
+
+def main() -> None:
+    # Test case 1: Single-step debt accumulation
+    b_prev = 0.85
+    r = 0.04
+    g = 0.02
+    s = -0.01  # 1% primary deficit
+
+    b_next = debt_dynamics_step(b_prev, r, g, s)
+    gap = primary_gap(b_prev, r, g, s)
+
+    # Test case 2: Three paths over 3 years
+    ceiling = 1.00
+    sample_paths = [
+        [0.85, 0.88, 0.92, 0.95],
+        [0.85, 0.91, 0.98, 1.04],
+        [0.85, 0.86, 0.87, 0.89],
+        [0.85, 0.94, 1.01, 1.08],
+    ]
+    p_breach = breach_probability(sample_paths, ceiling)
+
+    print("=== Rung 2 Completion Problem Reference Verification ===")
+    print(f"b_next:            {b_next:.4f}")
+    print(f"Primary Gap:       {gap:.4f}")
+    print(f"Breach Probability: {p_breach:.4f}")
+
+    assert abs(b_next - 0.8767) < 1e-3, "b_next must match (1.04/1.02)*0.85 - (-0.01) = 0.8767"
+    assert abs(gap - 0.0267) < 1e-3, "gap must match (0.02/1.02)*0.85 - (-0.01) = 0.0267"
+    assert p_breach == 0.50, "2 out of 4 paths exceed 1.00 ceiling"
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">=== Rung 2 Completion Problem Reference Verification ===
+b_next:            0.8767
+Primary Gap:       0.0267
+Breach Probability: 0.5000</pre>
+          <p class="interpretation">The completion verification confirms the exact compounding quotient \((1+r)/(1+g)\), the stabilizing fiscal balance \(s^*\), and anytime path breach identification.</p>
+        </section>
+
+        <section class="lab" id="lab-E9-project-3" data-runtime="python">
+          <h3>Lab 3 · Rung 3 independent check: Full Monte Carlo DSA panel simulation</h3>
+          <p class="hypothesis">Across 100 simulated macroeconomic paths over a 10-year horizon, the sovereign DSA engine calculates baseline projections, extracts 10th, 50th, and 90th percentile fan chart curves, and computes critical ceiling breach frequency.</p>
+          <pre><code class="language-python" data-run>"""Project Lab 3 (Rung 3 check): Sovereign DSA and Fan Chart Panel Engine.
+
+SIMULATED sovereign panel (N=100 paths, H=10 years). Standard library only.
+Computes deterministic baseline, fan chart percentile distributions,
+debt ceiling breach frequency, and terminal debt sustainability metrics.
+"""
+
+from __future__ import annotations
+
+import random
+
+SEED = 2026
+
+
+def debt_dynamics_step(b_prev: float, r: float, g: float, s: float) -&gt; float:
+    """Compute one-period exact discrete-time debt-to-GDP ratio."""
+    if g &lt;= -1.0 or r &lt;= -1.0:
+        msg = f"Invalid rates: r={r}, g={g}"
+        raise ValueError(msg)
+    if b_prev &lt; 0.0:
+        msg = f"Invalid debt: {b_prev}"
+        raise ValueError(msg)
+    return ((1.0 + r) / (1.0 + g)) * b_prev - s
+
+
+def primary_gap(b_target: float, r: float, g: float, s_actual: float) -&gt; float:
+    """Compute primary gap s* - s required to stabilize debt at b_target."""
+    s_star = ((r - g) / (1.0 + g)) * b_target
+    return s_star - s_actual
+
+
+def simulate_panel(
+    n_paths: int,
+    horizon: int,
+    b0: float,
+    r_base: float,
+    g_base: float,
+    s_base: float,
+    vol: float,
+    seed: int,
+) -&gt; tuple[list[float], list[list[float]]]:
+    """Generate deterministic baseline and Monte Carlo paths."""
+    baseline = [b0]
+    b_base = b0
+    for _ in range(horizon):
+        b_base = debt_dynamics_step(b_base, r_base, g_base, s_base)
+        baseline.append(b_base)
+
+    rng = random.Random(seed)
+    paths: list[list[float]] = []
+    for _ in range(n_paths):
+        path = [b0]
+        b_curr = b0
+        for _ in range(horizon):
+            r_t = r_base + rng.gauss(0.0, vol)
+            g_t = g_base + rng.gauss(0.0, vol)
+            s_t = s_base + rng.gauss(0.0, vol * 0.5)
+            b_curr = debt_dynamics_step(b_curr, r_t, g_t, s_t)
+            path.append(b_curr)
+        paths.append(path)
+
+    return baseline, paths
+
+
+def main() -&gt; None:
+    b0 = 0.88  # 88% of GDP
+    r_base = 0.035  # 3.5%
+    g_base = 0.020  # 2.0%
+    s_base = -0.010  # 1.0% deficit
+    vol = 0.015  # 1.5% macroeconomic volatility
+    ceiling = 1.05  # 105% debt ceiling
+    horizon = 10
+    n_paths = 100
+
+    baseline, paths = simulate_panel(n_paths, horizon, b0, r_base, g_base, s_base, vol, SEED)
+
+    # Fan chart percentiles at terminal year (t = 10)
+    terminal_vals = sorted(p[-1] for p in paths)
+    p10 = terminal_vals[int(0.10 * (n_paths - 1))]
+    p50 = terminal_vals[int(0.50 * (n_paths - 1))]
+    p90 = terminal_vals[int(0.90 * (n_paths - 1))]
+
+    # Breach probability anytime across horizon
+    breaches = sum(1 for p in paths if any(v &gt; ceiling for v in p))
+    p_breach = breaches / n_paths
+
+    # Primary gap in baseline at t = 0
+    init_gap = primary_gap(b0, r_base, g_base, s_base)
+
+    print("=== Rung 3 Check: Sovereign DSA Engine Summary ===")
+    print(f"Total Monte Carlo Trajectories:  {n_paths}")
+    print(f"Horizon:                         {horizon} years")
+    print(f"Initial Debt Ratio b0:           {b0:.4f}")
+    print(f"Baseline Terminal Debt (t=10):   {baseline[-1]:.4f}")
+    print(f"Baseline Initial Primary Gap:    {init_gap:.4f}")
+    print("\nTerminal Debt Distribution (t=10):")
+    print(f"  10th Percentile (P10):         {p10:.4f}")
+    print(f"  50th Percentile (Median):      {p50:.4f}")
+    print(f"  90th Percentile (P90):         {p90:.4f}")
+    print(f"\nDebt Ceiling Threshold:          {ceiling:.4f}")
+    print(f"Anytime Breach Probability:      {p_breach * 100.0:.2f}%")
+
+    assert len(baseline) == 11, "Baseline must contain 11 points (t=0 to 10)"
+    assert len(paths) == 100, "Must contain exactly 100 simulation paths"
+    assert p10 &lt; p50 &lt; p90, "Percentiles must be strictly ordered"
+    assert baseline[-1] &gt; b0, "Baseline debt must increase when r &gt; g and running deficit"
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">=== Rung 3 Check: Sovereign DSA Engine Summary ===
+Total Monte Carlo Trajectories:  100
+Horizon:                         10 years
+Initial Debt Ratio b0:           0.8800
+Baseline Terminal Debt (t=10):   1.1252
+Baseline Initial Primary Gap:    0.0229
+
+Terminal Debt Distribution (t=10):
+  10th Percentile (P10):         1.0282
+  50th Percentile (Median):      1.1314
+  90th Percentile (P90):         1.2147
+
+Debt Ceiling Threshold:          1.0500
+Anytime Breach Probability:      83.00%</pre>
+          <p class="interpretation">The 100-path Monte Carlo simulation demonstrates how macroeconomic volatility widens the terminal debt distribution between 102.8% (P10) and 121.5% (P90), generating an 83% anytime breach risk.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <p>The sovereign risk deliverable comprises two mandatory components: an automated Python module <code>reference.py</code> implementing the complete DSA engine, and a 600–1200 word sovereign risk memo analyzing solvency and rollover risks.</p>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Sovereign debt sustainability analysis is the primary analytical framework employed by international financial institutions (IMF, European Commission) and sovereign credit rating agencies to evaluate sovereign solvency and default probability. Under persistent fiscal deficits and volatile macro-financial conditions, sovereign debt trajectories can rapidly transition from sustainable paths to explosive spirals. Quantitative analysts must model the non-linear interaction between interest-rate growth differentials \((r - g)\), primary fiscal adjustments, and stochastic macroeconomic shocks.</dd>
+          <dt>Inputs</dt>
+          <dd>A sovereign data dictionary containing: <code>seed</code> (integer identifier), <code>country</code> (string sovereign name), <code>b0</code> (initial debt-to-GDP float), <code>horizon</code> (forecast years integer, \(H \ge 5\)), <code>target_debt</code> (target debt ratio float), <code>debt_ceiling</code> (critical risk ceiling float), <code>r_path</code> (list of real effective interest rates), <code>g_path</code> (list of real GDP growth rates), <code>s_path</code> (list of primary balance ratios), and <code>mc_paths</code> (list of \(M\) simulated trajectory lists of length \(H + 1\)).</dd>
+          <dt>Required outputs</dt>
+          <dd>
+            <ol>
+              <li>A Python module exposing six core functions: <code>debt_dynamics_step(b_prev, r, g, s)</code> returning next-period debt ratio; <code>primary_gap(b_target, r, g, s_actual)</code> returning required fiscal tightening; <code>simulate_trajectory(b0, r_path, g_path, s_path)</code> returning the \((H+1)\)-element deterministic baseline; <code>compute_fan_chart(trajectories, percentiles)</code> returning a dictionary of percentile trajectories; <code>breach_probability(trajectories, debt_ceiling)</code> returning anytime breach risk; and <code>dsa_summary(instance_data)</code> returning an enriched summary dictionary. All tests must pass across all 50 seeds.</li>
+              <li>A calibrated sovereign risk memo (600–1200 words) titled <em>Sovereign Debt Sustainability Analysis and Fiscal Solvency Defense</em> addressing macroeconomic vulnerabilities, fan chart risk distributions, fiscal adjustment limits, and banking sector feedback loops.</li>
+            </ol>
+          </dd>
+          <dt>Constraints</dt>
+          <dd>Python standard library only (<code>math</code>, <code>typing</code>). The debt accumulation recurrence must implement the exact discrete-time formula without first-order linear truncation. Invalid inputs (such as growth rates \(g \le -1.0\), interest rates \(r \le -1.0\), or negative debt levels) must raise an explicit <code>ValueError</code>. Breach probability must evaluate the entire trajectory horizon \(\max_{t} b_t &gt; b_{\mathrm{crit}}\), not merely the terminal debt value.</dd>
+          <dt>Grading</dt>
+          <dd>This project is graded by both an autograder test suite (verifying mathematical properties, boundary invariants, and error handling across 50 pseudo-random seeds) and a rubric evaluating the analytical memo across five criteria (macro-fiscal formulation, stochastic fan charts, fiscal adjustment gaps, crisis transmission, and policy buffers).</dd>
+        </dl>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-budget">Time budget</h2>
+        <p>The project allocates 32 study hours across five core milestones. Every row states its hour allocation and rationale.</p>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th scope="col">Milestone</th>
+                <th scope="col">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Macro-fiscal identity &amp; debt dynamics formulation</td>
+                <td>5</td>
+                <td>Derive discrete-time difference equations, growth-adjusted discount factors, and primary gap conditions.</td>
+              </tr>
+              <tr>
+                <td>Autograder core implementation &amp; unit testing</td>
+                <td>9</td>
+                <td>Implement <code>reference.py</code>, deterministic trajectory propagation, and pass 50 autograder test seeds.</td>
+              </tr>
+              <tr>
+                <td>Stochastic fan chart simulation &amp; risk metrics</td>
+                <td>7</td>
+                <td>Implement Gaussian shock generator, percentile extraction, and anytime debt ceiling breach estimator.</td>
+              </tr>
+              <tr>
+                <td>Sovereign risk report &amp; memo drafting</td>
+                <td>8</td>
+                <td>Synthesize two-page sovereign risk memo assessing debt sustainability, rollover risk, and fiscal policy buffers.</td>
+              </tr>
+              <tr>
+                <td>Rubric calibration &amp; adversarial defense</td>
+                <td>3</td>
+                <td>Score memo against Level 4 and Level 2 exemplars, complete self-assessment form, and prepare defense bank.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>32</strong></td>
+                <td>Complete project deliverable: verified DSA engine, passing autograder suite, and calibrated sovereign risk memo.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder suite</h2>
+        <p>The autograder executes <code>test_project.py</code> across 50 deterministic sovereign debt instances generated by <code>instance.py</code>. It verifies exact non-linear compounding, primary gap identities, percentile monotonicity, anytime breach evaluation, and exception handling.</p>
+        <section class="grader-panel" id="grader" data-unit="E9" data-grader="grader/" data-suite="test_project.py" data-support="instance.py integrity.py" data-solution="reference.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Rubric and sovereign risk memo</h2>
+        <p>Your memo should be structured into five sections: (1) Macroeconomic Baseline and Debt Dynamics, (2) Stochastic Fan Chart and Distributional Risks, (3) Primary Fiscal Gap and Stabilization Requirements, (4) External Shocks and Banking Feedback Loops, and (5) Debt Ceiling Vulnerabilities and Rollover Buffers. Total word count must be between 600 and 1200 words.</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>Sovereign risk report rubric: five criteria, four performance levels each.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">4 · Exemplary</th>
+                <th scope="col">3 · Proficient</th>
+                <th scope="col">2 · Developing</th>
+                <th scope="col">1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Macro-Fiscal Debt Dynamics</th>
+                <td>Derives the exact discrete-time debt-to-GDP accumulation equation, proves why first-order linear truncations underestimate compounding under volatile rates, and explicitly decomposes debt trajectory into real growth, real interest, and primary balance contributions.</td>
+                <td>States the exact debt dynamics formula, evaluates the impact of \(r - g\) differentials on debt growth, and calculates baseline debt path.</td>
+                <td>Uses the approximate formula \(b_t \approx (1 + r - g) b_{t-1} - s\) without noting truncation errors, or provides incomplete decomposition.</td>
+                <td>Vague discussion of public debt without mathematical definitions or exact difference equations.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Stochastic Fan Charts &amp; Breach Risk</th>
+                <td>Constructs complete percentile profiles (P10 through P90), explains the distinction between terminal-horizon breach and anytime breach probability, and evaluates the asymmetry of debt risks under fat-tailed growth shocks.</td>
+                <td>Reports fan chart percentile curves, calculates anytime debt ceiling breach probability, and interprets tail risk divergence.</td>
+                <td>Presents median projections with rough variance estimates but omits percentile curves or checks breach only at the terminal period.</td>
+                <td>No probabilistic fan chart analysis or risk distribution reported.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Primary Stabilization Gap</th>
+                <td>Calculates exact primary gap \(s^* - s\) across baseline and stressed scenarios, analyzes fiscal reaction functions and fatigue constraints, and quantifies the economic cost of delay in implementing consolidation.</td>
+                <td>Computes the primary gap required to stabilize debt at target levels and outlines necessary fiscal adjustments.</td>
+                <td>Mentions primary deficit reduction without specifying the quantitative gap \(s^* - s\) or assumes zero gap under \(r &gt; g\).</td>
+                <td>Omits primary gap calculation and debt stabilization conditions.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Crisis Feedback &amp; Sudden Stops</th>
+                <td>Integrates Calvo sudden stop dynamics, currency mismatch on foreign-currency debt liabilities, and sovereign-bank nexus doom loops into the solvency assessment.</td>
+                <td>Explains how sudden stops in external capital flows and currency depreciation exacerbate debt servicing and bank solvency.</td>
+                <td>Acknowledges external debt risks but fails to model exchange rate depreciation or banking balance-sheet spillovers.</td>
+                <td>Ignores open-economy crisis transmission and banking feedback channels.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Rollover Management &amp; Policy Buffers</th>
+                <td>Evaluates sovereign maturity structure (average term to maturity, gross financing needs), assesses central bank backstops and liquidity facilities, and proposes credible debt restructuring or contingency rules.</td>
+                <td>Analyzes gross financing needs, rollover risks, and sovereign cash buffers against debt market illiquidity.</td>
+                <td>Discusses debt rollover in general terms without quantifying maturity profiles or financing needs.</td>
+                <td>Omits debt management, rollover risks, and institutional policy buffers.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="h-exemplars">Annotated exemplars</h3>
+
+        <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4">
+          <h4>Exemplar A · Exemplary Level 4 Memo</h4>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>1. Macroeconomic Baseline and Exact Debt Dynamics</h5>
+              <p>Under the exact discrete-time government budget identity, the evolution of public debt-to-GDP satisfies \(b_t = \frac{1 + r_t}{1 + g_t} b_{t-1} - s_t\), where \(r_t\) represents the real effective interest rate on government liabilities, \(g_t\) is the real GDP growth rate, and \(s_t\) is the primary balance as a share of GDP. Standard first-order linearizations \(b_t \approx (1 + r_t - g_t) b_{t-1} - s_t\) omit the non-linear denominator compounding term, introducing cumulative downward bias of up to 1.8 percentage points of GDP over a ten-year horizon when real growth is depressed. For the Republic of Meridiana (\(b_0 = 0.8800\)), with baseline rates averaging \(r = 3.5\%\) and growth slowing to \(g = 2.0\%\), the interest-growth differential \((r - g) = +1.5\%\) generates an endogenous upward drift. With current primary deficits of \(s = -1.0\%\), debt expands inexorably to \(112.5\%\) of GDP by year 10 in the absence of policy intervention.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: specifies exact non-linear accumulation formula, quantifies linear approximation truncation bias, and decomposes macroeconomic drivers.</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div class="passage">
+            <div class="memo-text">
+              <h5>2. Stochastic Fan Chart and Anytime Breach Distribution</h5>
+              <p>Evaluating sovereign risk through deterministic baselines is fundamentally flawed because macroeconomic volatility introduces severe non-linearities into debt trajectories. Simulating 1000 Monte Carlo trajectories with correlated shocks (\(\sigma_r = 1.5\%\), \(\sigma_g = 2.0\%\), \(\sigma_s = 1.0\%\)) yields a dispersed 10-year fan chart. While the median trajectory (P50) reaches \(113.1\%\) of GDP, the upper tail (P90) surges to \(121.5\%\). Crucially, while terminal-period breach of the critical \(105\%\) debt ceiling occurs in \(74.2\%\) of paths, the anytime breach probability \(\Prob(\max_t b_t &gt; 105\%)\) reaches \(83.0\%\). Evaluating risk solely at the terminal horizon ignores sovereigns that breach their credit limits in years 4–7, triggering market access loss and default before theoretical stabilization can take hold.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: reports complete percentile curves (P10 to P90), proves why anytime breach probability (83%) dominates terminal breach (74%), and evaluates tail risk.</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div class="passage">
+            <div class="memo-text">
+              <h5>3. Primary Stabilization Gap and Fiscal Reaction Constraints</h5>
+              <p>To arrest the upward debt spiral and stabilize public debt at the initial baseline \(b^* = 0.8800\), the government must generate a debt-stabilizing primary surplus \(s^* = \frac{r - g}{1 + g} b^* = \frac{0.035 - 0.020}{1.020} \times 0.8800 = +1.29\%\) of GDP. Comparing this requirement against the current primary deficit of \(s = -1.00\%\) reveals a primary fiscal gap of \(\mathrm{gap} = s^* - s = 1.29\% - (-1.00\%) = 2.29\%\) of GDP. Imposing a 2.3% fiscal contraction in an economy with growth already stagnating at 2% risks triggering Keynesian fiscal multiplier headwinds (\(\mu &gt; 1.0\)), potentially worsening the debt ratio in the short run. A credible medium-term consolidation path phasing in a 0.8% annual adjustment over three years minimizes output contraction while capping debt expansion.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: computes exact primary gap (2.29% of GDP), analyzes fiscal multiplier trade-offs, and proposes a phased adjustment trajectory.</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div class="passage">
+            <div class="memo-text">
+              <h5>4. External Shocks, Sudden Stops, and the Sovereign-Bank Nexus</h5>
+              <p>Sovereign solvency cannot be evaluated in isolation from the domestic financial system. As demonstrated by Calvo (1998), a sudden stop in cross-border capital inflows forces an immediate contraction in domestic absorption and a collapse in the relative price of non-traded goods (\(p_N\)). Domestic banks holding sovereign bonds and non-traded loan assets experience severe capital erosion. If the sovereign attempts to recapitalize distressed banks, public debt balloons; conversely, if sovereign credit rating downgrades impair bank capital ratios, credit creation freezes, plunging real GDP growth \(g_t\) into negative territory. This sovereign-bank "doom loop" accelerates default timing by compressing the effective fiscal limit.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: integrates Calvo sudden stop dynamics, non-traded price collapse, and two-way sovereign-bank doom loops into the default evaluation.</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div class="passage">
+            <div class="memo-text">
+              <h5>5. Rollover Risk Management and Policy Buffers</h5>
+              <p>To mitigate the 83% ceiling breach risk, the sovereign must lengthen its debt maturity structure. The debt management office should extend the average maturity of new bond issues from 4.2 to 7.5 years, capping gross financing needs (amortization plus deficit) below 15% of GDP annually. Furthermore, pre-funding a liquid cash buffer equivalent to 6 months of debt service isolates the treasury from temporary secondary market spread spikes. Pairing these structural liability reforms with an explicit contingent fiscal rule provides the institutional anchor necessary to maintain market access across volatile macroeconomic cycles.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: formulates concrete debt management strategies (duration extension, GFN limits below 15% of GDP, liquid cash buffers, contingent fiscal rules).</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2">
+          <h4>Exemplar B · Developing Level 2 Memo</h4>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>1. Debt Projections</h5>
+              <p>Public debt is projected to grow from 88% to around 110% over the next ten years. The interest rate is higher than the growth rate, which means debt increases automatically. The formula for debt growth is roughly \(\Delta b = (r - g) b - s\), showing that running a deficit increases debt.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: notes debt increase and states linear approximation, but omits exact non-linear compounding and detailed decomposition.</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div class="passage">
+            <div class="memo-text">
+              <h5>2. Fan Chart Simulation</h5>
+              <p>We ran simulations of different economic scenarios. In the worst scenarios, debt reaches over 120%, while in good scenarios it stays around 100%. The debt ceiling of 105% is breached in many of the runs, indicating substantial risk.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: reports approximate ranges, but lacks formal percentile curves and fails to differentiate anytime breach from terminal breach.</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div class="passage">
+            <div class="memo-text">
+              <h5>3. Fiscal Balance</h5>
+              <p>The country is currently running a primary deficit of 1%. To stop debt from growing, the government needs to reduce spending or raise taxes to balance the budget. Moving toward a surplus would help lower the debt ratio over time.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="2">Meets C3 level 2: recognizes the need for fiscal consolidation, but does not calculate the quantitative primary gap \(s^* - s\).</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div class="passage">
+            <div class="memo-text">
+              <h5>4. External Factors</h5>
+              <p>Foreign investors might stop buying debt if risk increases. If foreign capital leaves the country, the currency could depreciate, making it harder to pay back loans. This could also hurt local banks that hold government debt.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C4" data-level="2">Meets C4 level 2: mentions capital outflows and currency depreciation in informal terms without formal economic mechanisms.</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div class="passage">
+            <div class="memo-text">
+              <h5>5. Risk Management</h5>
+              <p>The government should try to issue longer-term debt so it does not have to pay everything back at once. Having some extra cash in the bank can help avoid problems when debt markets are volatile.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: provides sensible recommendations but lacks quantitative targets for gross financing needs or duration.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="E9/project/memo" data-work-label="Your memo" data-work-noun="memo" data-summary-path="self_assessment.md">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your own memo on each criterion first. Then score Exemplars A and B with their annotations hidden, and reveal the official scoring. Your scores stay in this browser; keep the summary the form produces as <code>self_assessment.md</code>.</p>
+          <div data-rubric-form><p class="notice">The self-assessment form needs JavaScript. The rubric and both exemplars, with their annotations, can be read without it.</p></div>
+        </section>
+      </section>
+
+      <section id="question-bank">
+        <h2 id="h-question-bank">Adversarial defense question bank</h2>
+        <p>In oral examinations or sovereign risk defense panels, examiners attack models along these fifteen methodological and policy dimensions:</p>
+        <ol>
+          <li>Why does the exact discrete-time recurrence relation \(\frac{1+r}{1+g}\) produce higher debt projections than the linear approximation \((1 + r - g)\) during recessions?</li>
+          <li>If historical real interest rates have averaged below real GDP growth (\(r &lt; g\)) as documented by Blanchard (2019), why is running a persistent primary deficit still dangerous?</li>
+          <li>How does a sudden reversal in \(r - g\) interact with sovereign rollover risk when average debt maturity is short?</li>
+          <li>Why does the Eaton–Gersovitz sovereign default model predict that default occurs in low-endowment states despite lower absolute debt burden?</li>
+          <li>What economic mechanism prevents a sovereign from issuing infinite debt when foreign lenders are competitive and risk-neutral?</li>
+          <li>In the Krugman (1979) currency crisis model, why does the speculative attack occur at the exact instant when the shadow exchange rate equals the peg rather than when reserves reach zero?</li>
+          <li>How does the Obstfeld (1996) second-generation crisis model generate multiple equilibria, and what defines the boundaries of the vulnerable zone?</li>
+          <li>Under a Calvo (1998) sudden stop, why does the relative price of non-traded goods collapse more severely when domestic consumption of traded goods is large?</li>
+          <li>How does a currency depreciation transform an apparent external liquidity squeeze into a domestic systemic banking crisis?</li>
+          <li>What is the difference between terminal-period debt ceiling breach probability and anytime breach probability in a 10-year Monte Carlo fan chart?</li>
+          <li>Why does the primary stabilization gap \(s^* - s\) depend on the target debt ratio \(b^*\) rather than the current debt ratio \(b_t\)?</li>
+          <li>If a sovereign implements immediate large-scale fiscal tightening to close the primary gap, under what multiplier conditions will the debt-to-GDP ratio paradoxically rise?</li>
+          <li>What were the three distinct empirical errors uncovered by Herndon, Ash, and Pollin (2014) in the Reinhart–Rogoff (2010) debt threshold study?</li>
+          <li>Why does equal-weighting of countries rather than pooling country-years distort the estimated relationship between public debt and economic growth?</li>
+          <li>How do sovereign gross financing needs (GFN) as a share of GDP serve as a more reliable indicator of near-term distress than the headline debt-to-GDP ratio?</li>
+        </ol>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Endogenous Sovereign Spreads:</strong> Integrate a credit spread feedback loop where real interest rate \(r_t = r^* + \sigma(b_t)\) increases non-linearly with debt-to-GDP, capturing fiscal fatigue and default premia.</li>
+          <li><strong>Multi-Currency Debt Composition:</strong> Model sovereign portfolios with both domestic-currency and foreign-currency (dollar-denominated) debt, evaluating real exchange rate depreciation pass-through during sudden stops.</li>
+          <li><strong>State-Contingent Debt Contracts:</strong> Simulate sovereign debt sustainability under GDP-linked bonds or natural-disaster pause clauses, demonstrating how countercyclical debt service reduces anytime breach probabilities.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <p>Foundational literature on sovereign debt sustainability, default mechanics, currency crises, and replication integrity:</p>
+        <ol class="reading-list">
+          <li data-cite="blanchard2019public">Blanchard, O. (2019). Public debt and low interest rates. <em>American Economic Review</em>, 109(4), 1197–1229.</li>
+          <li data-cite="eaton1981debt">Eaton, J., &amp; Gersovitz, M. (1981). Debt with potential repudiation: Theoretical and empirical analysis. <em>The Review of Economic Studies</em>, 48(2), 289–309.</li>
+          <li data-cite="krugman1979model">Krugman, P. (1979). A model of balance-of-payments crises. <em>Journal of Money, Credit and Banking</em>, 11(3), 311–325.</li>
+          <li data-cite="obstfeld1996models">Obstfeld, M. (1996). Models of currency crises with self-fulfilling features. <em>European Economic Review</em>, 40(3–5), 1037–1047.</li>
+          <li data-cite="calvo1998capital">Calvo, G. A. (1998). Capital flows and capital-market crises: The simple economics of sudden stops. <em>Journal of Applied Economics</em>, 1(1), 35–54.</li>
+          <li data-cite="reinhart2009this">Reinhart, C. M., &amp; Rogoff, K. S. (2009). <em>This Time Is Different: Eight Centuries of Financial Folly</em>. Princeton University Press.</li>
+          <li data-cite="herndon2013high">Herndon, T., Ash, M., &amp; Pollin, R. (2014). Does high public debt consistently stifle economic growth? A critique of Reinhart and Rogoff. <em>Cambridge Journal of Economics</em>, 38(2), 257–279.</li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L06.html"><span class="dir">Previous</span>L06 · The Reinhart-Rogoff Controversy</a>
+        <a class="next" href="index.html"><span class="dir">Module</span>E9 overview</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">E9 project · Sovereign Debt Sustainability Analysis &amp; Fan Chart Engine · Autograder and self-assessment run in your browser.</footer>
+</body>
+</html>
