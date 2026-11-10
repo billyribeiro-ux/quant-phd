@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="GM1" data-page="L03" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L03 · Kalman Filter Nowcasting on Ragged Edges · GM1 Macro Data &amp; Nowcasting</title>
+  <meta name="description" content="Handling asynchronous macroeconomic release schedules and ragged-edge panels using Kalman filtering with time-varying observation selection matrices.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">GM1 Macro Data &amp; Nowcasting</a><span class="sep">›</span>
+      <span>L03</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">GM1 · Lesson 3 of 5 · 10 study hours</p>
+        <h1>Kalman Filter Nowcasting on Ragged Edges</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="macro-data-revision" href="L01.html#def-macro-data-revision">macroeconomic data revisions</a>, <a class="concept" data-concept="dynamic-factor-model" href="L02.html#def-dynamic-factor-model">dynamic factor model</a>, <a class="concept" data-concept="kalman-filter" href="../../../concepts.html#kalman-filter">Kalman filter</a>, <a class="concept" data-concept="national-accounts" href="../../../concepts.html#national-accounts">national accounts</a></li>
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="ragged-edge-data" href="L03.html#def-ragged-edge-data">ragged-edge data</a>, <a class="concept" data-concept="nowcasting" href="L03.html#def-nowcasting">nowcasting</a></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or convention</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Macroeconomic data arrives asynchronously in production finance. Surveys print in real time, payrolls follow with weeks of delay, and national accounts take quarters to finalize. This publication mismatch generates a ragged edge at the sample tail. Discarding missing rows blinds investment models to contemporary signals, while crude forward-filling introduces false autocorrelation and spurious shocks. Ragged-edge Kalman filtering solves this fundamental operational challenge by applying time-varying observation selection matrices, providing optimal real-time nowcasts and continuous uncertainty quantification across the macroeconomic cycle.</p>
+
+      <h2 id="ragged-edge-architecture">1. Asynchronous Releases and the Ragged Edge</h2>
+
+      <p>In standard textbook econometrics, datasets are rectangular matrices \(X \in \mathbb{R}^{T \times N}\) with complete observations across all variables \(i \in \{1, \dots, N\}\) and periods \(t \in \{1, \dots, T\}\). In live macroeconomic monitoring, however, publication schedules are severely asynchronous.</p>
+
+      <div class="block definition" id="def-ragged-edge-data-block">
+        <span class="block-title claim" data-grade="C" data-cite="giannone2008nowcasting" data-locator="p. 666">Definition 3.1 · Ragged-Edge Data</span>
+        <p><dfn id="def-ragged-edge-data" data-concept="ragged-edge-data">Ragged-edge data</dfn> refers to panels of macroeconomic time series characterized by missing observations at the end of the sample period caused by heterogeneous, asynchronous publication lags across different reporting agencies and data frequencies.</p>
+        <p>Let \(k_i\) denote the publication delay (in months) for variable \(i\). At calendar vintage date \(v\), the available data vector for observation period \(t\) contains valid entries only for series satisfying \(t \le v - k_i\). When series are stacked into a matrix, the missing values form a staircase or "ragged edge" at the terminal boundary.</p>
+      </div>
+
+      <p>For example, at the end of May (month \(t\)): soft business surveys (PMIs) are available for May (\(k_i = 0\)); non-farm payrolls are available for April (\(k_i = 1\)); industrial production is available for March or April (\(k_i \in \{1, 2\}\)); and quarterly <a class="concept" data-concept="national-accounts" href="../../../concepts.html#national-accounts">national accounts</a> (GDP) are published with a 2- to 3-month lag.</p>
+
+      <h2 id="nowcasting-state-space">2. Nowcasting and State-Space Observation Selection</h2>
+
+      <div class="block definition" id="def-nowcasting-block">
+        <span class="block-title claim" data-grade="A" data-cite="giannone2008nowcasting" data-locator="p. 668">Definition 3.2 · Nowcasting and Selection Matrix</span>
+        <p><dfn id="def-nowcasting" data-concept="nowcasting">Nowcasting</dfn> is the real-time prediction of current-quarter economic activity—specifically quarterly GDP growth and inflation—based on high-frequency, incomplete information sets before official national accounts estimates are compiled and published (<span class="claim" data-grade="A" data-cite="giannone2008nowcasting" data-locator="p. 668">Giannone, Reichlin &amp; Small 2008</span>).</p>
+        <p>In a <a class="concept" data-concept="dynamic-factor-model" href="L02.html#def-dynamic-factor-model">dynamic factor model</a> in state space:</p>
+        \[F_t = A F_{t-1} + u_t, \quad u_t \sim \mathcal{N}(0, Q)\]
+        \[X_t = \Lambda F_t + e_t, \quad e_t \sim \mathcal{N}(0, R)\]
+        <p>where \(R = \diag(\sigma_1^2, \dots, \sigma_N^2)\). When only \(N_t \le N\) variables are observed at period \(t\), let \(M_t\) be an \(N_t \times N\) selection matrix constructed by selecting the rows of the identity matrix \(I_N\) corresponding to the non-missing entries of \(X_t\). The observed subvector \(X_t^* = M_t X_t\) satisfies:</p>
+        \[X_t^* = \Lambda_t^* F_t + e_t^*\]
+        <p>where \(\Lambda_t^* = M_t \Lambda \in \mathbb{R}^{N_t \times r}\) and \(e_t^* = M_t e_t \sim \mathcal{N}(0, R_t^*)\) with \(R_t^* = M_t R M_t' \in \mathbb{R}^{N_t \times N_t}\).</p>
+      </div>
+
+      <h2 id="kalman-filter-ragged">3. Ragged-Edge Kalman Filtering and Uncertainty Monotonicity</h2>
+
+      <p>Given the time-varying selection matrix \(M_t\), the <a class="concept" data-concept="kalman-filter" href="../../../concepts.html#kalman-filter">Kalman filter</a> recursively updates the latent factor state estimates and conditional error covariances (<span class="claim" data-grade="C" data-cite="hamilton1994time" data-locator="p. 372">Hamilton 1994</span>):</p>
+      <ol>
+        <li><strong>Prior Prediction:</strong>
+          \[\hat{F}_{t|t-1} = A \hat{F}_{t-1|t-1}\]
+          \[P_{t|t-1} = A P_{t-1|t-1} A' + Q\]
+        </li>
+        <li><strong>Measurement Update:</strong>
+          <ul>
+            <li>If \(N_t = 0\) (no observations arrive):
+              \[\hat{F}_{t|t} = \hat{F}_{t|t-1}, \quad P_{t|t} = P_{t|t-1}\]
+            </li>
+            <li>If \(N_t &gt; 0\):
+              \[\nu_t = X_t^* - \Lambda_t^* \hat{F}_{t|t-1}\]
+              \[S_t = \Lambda_t^* P_{t|t-1} (\Lambda_t^*)' + R_t^*\]
+              \[K_t = P_{t|t-1} (\Lambda_t^*)' S_t^{-1}\]
+              \[\hat{F}_{t|t} = \hat{F}_{t|t-1} + K_t \nu_t\]
+              \[P_{t|t} = (I_r - K_t \Lambda_t^*) P_{t|t-1}\]
+            </li>
+          </ul>
+        </li>
+      </ol>
+
+      <div class="block theorem" id="thm-monotonicity">
+        <span class="block-title claim" data-grade="T">Theorem 3.1 · Information Monotonicity of Posterior Variance</span>
+        <p>For any non-empty observation subset \(N_t &gt; 0\), the posterior state error covariance \(P_{t|t}\) is weakly smaller than the prior error covariance \(P_{t|t-1}\) in the positive semi-definite Löwner order:</p>
+        \[P_{t|t-1} - P_{t|t} = K_t S_t K_t' \succeq 0\]
+        <p>Furthermore, adding any additional observed indicator strictly reduces nowcast error variance along any direction that has non-zero factor loading and finite idiosyncratic variance.</p>
+      </div>
+
+      <div class="block proof">
+        <p><em>Proof.</em> The Kalman posterior covariance formula expands as:</p>
+        \[P_{t|t} = (I_r - K_t \Lambda_t^*) P_{t|t-1} = P_{t|t-1} - K_t \Lambda_t^* P_{t|t-1}\]
+        <p>From the definition \(K_t = P_{t|t-1} (\Lambda_t^*)' S_t^{-1}\), premultiplying \(S_t\) by \(K_t\) and postmultiplying by \(K_t'\) gives:</p>
+        \[K_t S_t K_t' = (P_{t|t-1} (\Lambda_t^*)' S_t^{-1}) S_t (S_t^{-1} \Lambda_t^* P_{t|t-1}) = P_{t|t-1} (\Lambda_t^*)' S_t^{-1} \Lambda_t^* P_{t|t-1} = K_t \Lambda_t^* P_{t|t-1}\]
+        <p>Therefore, the difference is:</p>
+        \[P_{t|t-1} - P_{t|t} = K_t S_t K_t'\]
+        <p>Since \(S_t = \Lambda_t^* P_{t|t-1} (\Lambda_t^*)' + R_t^*\) is strictly positive definite (\(R_t^* \succ 0\)), for any non-zero vector \(z \in \mathbb{R}^r\), the quadratic form \(z' (K_t S_t K_t') z = (K_t' z)' S_t (K_t' z) \ge 0\). Thus \(K_t S_t K_t' \succeq 0\). \(\blacksquare\)</p>
+      </div>
+
+      <div class="block remark">
+        <p>Because the idiosyncratic covariance matrix \(R\) is diagonal, the measurement update can alternatively be performed as \(N_t\) sequential scalar updates. Sequential scalar updates require zero matrix inversions and handle arbitrary missing-variable patterns with \(O(r^2 N_t)\) arithmetic operations.</p>
+      </div>
+
+      <section class="lab" id="lab-GM1-L03-1" data-runtime="python">
+        <h3>Lab 3 · Ragged-Edge Kalman Filter Nowcasting</h3>
+        <p class="hypothesis">Incorporating sequential monthly data releases across the ragged edge reduces the conditional variance of the latent state nowcast monotonically from the prior forecast uncertainty.</p>
+        <pre><code class="language-python" data-run>"""Lab GM1-L03-1: Ragged-Edge Kalman Filter Nowcasting.
+
+Applies the Kalman filter with missing-observation selection matrices (Giannone,
+Reichlin &amp; Small 2008) to handle asynchronous macroeconomic release schedules.
+Demonstrates the monotonic reduction in nowcast variance as incoming monthly data
+fills the ragged edge of a current-quarter panel.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def run_ragged_kalman_filter(
+    y_ragged: np.ndarray,
+    mat_a: np.ndarray,
+    loadings: np.ndarray,
+    q_cov: np.ndarray,
+    r_cov: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Run Kalman filter handling missing values (NaN) with row selection matrices."""
+    t_len, _ = y_ragged.shape
+    r_dim = mat_a.shape[0]
+
+    state_mean = np.zeros(r_dim, dtype=np.float64)
+    state_cov = np.eye(r_dim, dtype=np.float64)
+
+    filtered_states = np.zeros((t_len, r_dim), dtype=np.float64)
+    filtered_covs = np.zeros((t_len, r_dim, r_dim), dtype=np.float64)
+
+    for t in range(t_len):
+        # 1. Prediction step
+        pred_mean = state_mean if t == 0 else mat_a @ state_mean
+        pred_cov = state_cov if t == 0 else mat_a @ state_cov @ mat_a.T + q_cov
+
+        # 2. Measurement update
+        obs_mask = np.isfinite(y_ragged[t])
+        n_obs = int(np.sum(obs_mask))
+
+        if n_obs == 0:
+            state_mean = pred_mean
+            state_cov = pred_cov
+        else:
+            y_star = y_ragged[t, obs_mask]
+            lambda_star = loadings[obs_mask, :]
+            r_star = r_cov[obs_mask, :][:, obs_mask]
+
+            innov = y_star - lambda_star @ pred_mean
+            innov_cov = lambda_star @ pred_cov @ lambda_star.T + r_star
+
+            kalman_gain = pred_cov @ lambda_star.T @ np.linalg.inv(innov_cov)
+            state_mean = pred_mean + kalman_gain @ innov
+            state_cov = (np.eye(r_dim) - kalman_gain @ lambda_star) @ pred_cov
+            state_cov = 0.5 * (state_cov + state_cov.T)
+
+        filtered_states[t] = state_mean
+        filtered_covs[t] = state_cov
+
+    return filtered_states, filtered_covs
+
+
+def main() -> None:
+    print("GM1 Lab L03-1: Ragged-Edge Kalman Nowcasting & Uncertainty [SIMULATED]")
+    print("===================================================================")
+
+    rng = np.random.default_rng(202)
+    t_len = 12
+    n_vars = 6  # 6 monthly indicators informing GDP growth
+    r_dim = 1  # 1 common activity factor
+
+    # State transition & measurement model
+    mat_a = np.array([[0.80]], dtype=np.float64)
+    q_cov = np.array([[0.36]], dtype=np.float64)
+    loadings = np.array([[0.9], [0.85], [0.75], [0.70], [0.65], [0.60]], dtype=np.float64)
+    r_diag = np.array([0.19, 0.28, 0.44, 0.51, 0.58, 0.64], dtype=np.float64)
+    r_cov = np.diag(r_diag)
+
+    # Generate synthetic observations
+    factors = np.zeros((t_len, r_dim), dtype=np.float64)
+    for t in range(1, t_len):
+        factors[t] = mat_a @ factors[t - 1] + rng.normal(0, np.sqrt(q_cov[0, 0]))
+
+    raw_y = factors @ loadings.T + rng.normal(0, np.sqrt(r_diag), size=(t_len, n_vars))
+
+    # Evaluate nowcast variance at terminal quarter T-1 under 3 sequential information releases:
+    # Release 1 (Month 1): Only fast indicators (financial / surveys, vars 0-1) available
+    y_rel1 = raw_y.copy()
+    y_rel1[-1, 2:] = np.nan
+
+    # Release 2 (Month 2): Mid-quarter indicators (industrial production / retail sales, vars 2-3) arrive
+    y_rel2 = raw_y.copy()
+    y_rel2[-1, 4:] = np.nan
+
+    # Release 3 (Month 3): Full quarter complete (all indicators 0-5 available)
+    y_rel3 = raw_y.copy()
+
+    _, covs1 = run_ragged_kalman_filter(y_rel1, mat_a, loadings, q_cov, r_cov)
+    _, covs2 = run_ragged_kalman_filter(y_rel2, mat_a, loadings, q_cov, r_cov)
+    _, covs3 = run_ragged_kalman_filter(y_rel3, mat_a, loadings, q_cov, r_cov)
+
+    var1 = float(covs1[-1, 0, 0])
+    var2 = float(covs2[-1, 0, 0])
+    var3 = float(covs3[-1, 0, 0])
+
+    # Pre-release prior uncertainty before any month-t observation
+    prior_var = float(mat_a[0, 0] ** 2 * covs1[-2, 0, 0] + q_cov[0, 0])
+
+    print("Nowcast Uncertainty Evolution Through Current Quarter:")
+    print("-------------------------------------------------------------------")
+    print(f"Prior Forecast Variance (T-1|T-2):           {prior_var:7.4f}")
+    print(f"Vintage 1 (Month 1 Surveys, 2/6 vars):       {var1:7.4f}  (std: {np.sqrt(var1):.4f})")
+    print(f"Vintage 2 (Month 2 Hard Data, 4/6 vars):     {var2:7.4f}  (std: {np.sqrt(var2):.4f})")
+    print(f"Vintage 3 (Month 3 Complete Panel, 6/6 vars):{var3:7.4f}  (std: {np.sqrt(var3):.4f})")
+    print("-------------------------------------------------------------------")
+
+    variance_reduction = (1.0 - var3 / prior_var) * 100.0
+    print(f"Total Uncertainty Reduction from Prior:      {variance_reduction:5.2f}%")
+
+    # Verification: Monotonic decrease in posterior error variance
+    assert prior_var > var1 > var2 > var3, "Nowcast variance must strictly decrease as data arrives"
+    print("Monotonic reduction in nowcast uncertainty:   True")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-4">GM1 Lab L03-1: Ragged-Edge Kalman Nowcasting &amp; Uncertainty [SIMULATED]
+===================================================================
+Nowcast Uncertainty Evolution Through Current Quarter:
+-------------------------------------------------------------------
+Prior Forecast Variance (T-1|T-2):            0.4099
+Vintage 1 (Month 1 Surveys, 2/6 vars):        0.1077  (std: 0.3282)
+Vintage 2 (Month 2 Hard Data, 4/6 vars):      0.0868  (std: 0.2946)
+Vintage 3 (Month 3 Complete Panel, 6/6 vars): 0.0780  (std: 0.2794)
+-------------------------------------------------------------------
+Total Uncertainty Reduction from Prior:      80.96%
+Monotonic reduction in nowcast uncertainty:   True</pre>
+        <p class="interpretation">The empirical results confirm that each incoming data vintage monotonically shrinks nowcast uncertainty, reducing prior variance by 80.96% as the quarter progresses from month-1 surveys to a complete monthly panel.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2>Where the Canon Breaks</h2>
+        <p>A widespread heuristic in industrial quantitative research is to "fill" missing ragged-edge entries using forward-filling (last observation carried forward, LOCF) or spline interpolation before feeding data into standard statistical models. This practice introduces grave econometric pathologies:</p>
+        <ul>
+          <li><strong>Distortion of Autocorrelation and Innovations:</strong> Forward-filling sets the observed period-over-period change to zero (\(\Delta X_t = 0\)), artificially signaling an economic standstill or dead calm. When the delayed figure finally prints, the apparent jump creates an artificial outlier innovation.</li>
+          <li><strong>False Precision:</strong> Deterministic imputation methods treat imputed values as known with certainty, underestimating the true posterior covariance of latent state estimates and generating overly tight, fragile confidence intervals.</li>
+          <li><strong>Inconsistent Factor Loadings:</strong> When regression weights or PCA loadings are fitted on imputed series, the covariance structure is distorted by flat-lining segments, biasing factor loadings towards variables with faster release calendars.</li>
+        </ul>
+        <p>The time-varying selection matrix \(M_t\) represents the canonical, mathematically optimal solution: it treats missing values as completely unobserved, conditioning strictly on available signals.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2>Common Pitfalls &amp; Misconceptions</h2>
+        <ul class="misconceptions-list">
+          <li class="misconception">
+            <p class="wrong">Nowcasting requires discarding all incomplete end-of-quarter months until all indicators have been published.</p>
+            <p>Truncating the panel to balanced historical rows discards early-release indicators (such as soft surveys and payrolls) that contain the most timely information. The Kalman filter with selection matrix \(M_t\) updates factor states as soon as any single indicator arrives.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Kalman filtering on ragged edges requires inverting a high-dimensional \(N \times N\) matrix at every time step.</p>
+            <p>When idiosyncratic errors are cross-sectionally uncorrelated (diagonal \(R\)), the measurement update can either be performed by inverting an \(N_t \times N_t\) matrix for observed series only, or computed sequentially as \(N_t\) scalar Kalman updates, requiring zero matrix inversions.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A nowcast model produces a single point estimate that remains constant until official quarterly GDP is released.</p>
+            <p>A nowcast is a dynamic conditional expectation \(\E[y_Q \mid \Omega_v]\) that evolves continuously throughout the quarter as new data vintages \(\Omega_v\) arrive. Every macroeconomic release updates both the point nowcast and contracts its uncertainty band.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2>Practice Problems</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics Tier</h3>
+
+          <div class="problem" id="prob-gm1-l03-m1">
+            <p class="statement"><strong>Problem M1.</strong> In a 5-variable macroeconomic panel, variables 1, 2, and 4 are observed at time \(t\), while variables 3 and 5 are missing due to publication lag. Construct the \(3 \times 5\) selection matrix \(M_t\) and write out the resulting observed loading matrix \(\Lambda_t^*\) in terms of the rows \(\lambda_1, \dots, \lambda_5\) of the full loading matrix \(\Lambda\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The selection matrix \(M_t\) selects the 1st, 2nd, and 4th rows of the \(5 \times 5\) identity matrix \(I_5\):</p>
+              \[M_t = \begin{bmatrix} 1 &amp; 0 &amp; 0 &amp; 0 &amp; 0 \\ 0 &amp; 1 &amp; 0 &amp; 0 &amp; 0 \\ 0 &amp; 0 &amp; 0 &amp; 1 &amp; 0 \end{bmatrix}\]
+              <p>Premultiplying the \(5 \times r\) loading matrix \(\Lambda\) by \(M_t\) extracts rows 1, 2, and 4:</p>
+              \[\Lambda_t^* = M_t \Lambda = \begin{bmatrix} \lambda_1 \\ \lambda_2 \\ \lambda_4 \end{bmatrix} \in \mathbb{R}^{3 \times r}\]
+              <p>The idiosyncratic covariance matrix collapses to the \(3 \times 3\) submatrix \(R_t^* = \diag(\sigma_1^2, \sigma_2^2, \sigma_4^2)\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-gm1-l03-m2">
+            <p class="statement"><strong>Problem M2.</strong> A scalar latent factor \(F_t\) has prior mean \(\hat{F}_{t|t-1} = 1.0\) and prior variance \(P_{t|t-1} = 0.50\). A single indicator \(X_{1,t} = 1.60\) arrives with factor loading \(\lambda_1 = 0.80\) and idiosyncratic noise variance \(R_1 = 0.20\). Compute the innovation \(\nu_t\), innovation variance \(S_t\), Kalman gain \(K_t\), posterior state \(\hat{F}_{t|t}\), and posterior variance \(P_{t|t}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Applying the scalar Kalman filter update equations:</p>
+              <ol>
+                <li><strong>Innovation:</strong> \(\nu_t = X_{1,t} - \lambda_1 \hat{F}_{t|t-1} = 1.60 - 0.80 \times 1.0 = 0.80\).</li>
+                <li><strong>Innovation Covariance:</strong> \(S_t = \lambda_1^2 P_{t|t-1} + R_1 = (0.80)^2 \times 0.50 + 0.20 = 0.64 \times 0.50 + 0.20 = 0.32 + 0.20 = 0.52\).</li>
+                <li><strong>Kalman Gain:</strong> \(K_t = P_{t|t-1} \lambda_1 S_t^{-1} = \frac{0.50 \times 0.80}{0.52} = \frac{0.40}{0.52} = \frac{10}{13} \approx 0.7692\).</li>
+                <li><strong>Posterior State Mean:</strong> \(\hat{F}_{t|t} = \hat{F}_{t|t-1} + K_t \nu_t = 1.0 + 0.7692 \times 0.80 = 1.0 + 0.6154 = 1.6154\).</li>
+                <li><strong>Posterior State Variance:</strong> \(P_{t|t} = (1 - K_t \lambda_1) P_{t|t-1} = (1 - 0.7692 \times 0.80) \times 0.50 = (1 - 0.6154) \times 0.50 = 0.3846 \times 0.50 = 0.1923\).</li>
+              </ol>
+              <p>The observation reduces the factor uncertainty from \(0.50\) down to \(0.1923\) (a \(61.5\%\) variance reduction).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-gm1-l03-m3">
+            <p class="statement"><strong>Problem M3.</strong> In an empirical nowcasting setup, the prior forecast variance for current-quarter GDP is \(0.450\). After the arrival of month-1 survey data, nowcast variance declines to \(0.270\). When month-2 industrial production arrives, nowcast variance further declines to \(0.135\). Calculate the percentage reduction in uncertainty achieved by each vintage relative to the prior.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Percentage uncertainty reduction is measured as \(\Delta\% = \left(1 - \frac{P_{\text{posterior}}}{P_{\text{prior}}}\right) \times 100\%\):</p>
+              <ul>
+                <li><strong>After Month 1 Surveys:</strong> \(\left(1 - \frac{0.270}{0.450}\right) \times 100\% = (1 - 0.60) \times 100\% = 40.0\%\) reduction.</li>
+                <li><strong>After Month 2 Hard Data:</strong> \(\left(1 - \frac{0.135}{0.450}\right) \times 100\% = (1 - 0.30) \times 100\% = 70.0\%\) total reduction from prior.</li>
+              </ul>
+              <p>The incremental reduction between vintage 1 and vintage 2 is \(\left(1 - \frac{0.135}{0.270}\right) \times 100\% = 50.0\%\) of the remaining uncertainty.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof Tier</h3>
+
+          <div class="problem" id="prob-gm1-l03-p1">
+            <p class="statement"><strong>Problem P1.</strong> Prove Theorem 3.1: show that for any linear measurement update with non-singular innovation covariance, the posterior error covariance matrix \(P_{t|t}\) satisfies \(P_{t|t-1} - P_{t|t} \succeq 0\) in the positive semi-definite order.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The standard Kalman covariance update formula is:</p>
+              \[P_{t|t} = (I_r - K_t \Lambda_t^*) P_{t|t-1} = P_{t|t-1} - K_t \Lambda_t^* P_{t|t-1}\]
+              <p>Recall the definition of the Kalman gain matrix:</p>
+              \[K_t = P_{t|t-1} (\Lambda_t^*)' S_t^{-1}, \quad \text{where } S_t = \Lambda_t^* P_{t|t-1} (\Lambda_t^*)' + R_t^*\]
+              <p>Multiply \(K_t\) on the right by \(S_t K_t'\):</p>
+              \[K_t S_t K_t' = (P_{t|t-1} (\Lambda_t^*)' S_t^{-1}) S_t (S_t^{-1} \Lambda_t^* P_{t|t-1}) = P_{t|t-1} (\Lambda_t^*)' S_t^{-1} \Lambda_t^* P_{t|t-1} = K_t \Lambda_t^* P_{t|t-1}\]
+              <p>Therefore, the difference between the prior and posterior error covariance matrices is:</p>
+              \[P_{t|t-1} - P_{t|t} = K_t \Lambda_t^* P_{t|t-1} = K_t S_t K_t'\]
+              <p>Because \(S_t = \Lambda_t^* P_{t|t-1} (\Lambda_t^*)' + R_t^*\) is strictly positive definite (\(R_t^* \succ 0\) and \(P_{t|t-1} \succ 0\)), the quadratic form \(z' (K_t S_t K_t') z = (K_t' z)' S_t (K_t' z) \ge 0\) for all \(z \in \mathbb{R}^r\).</p>
+              <p>Hence \(K_t S_t K_t' \succeq 0\), proving that \(P_{t|t-1} - P_{t|t} \succeq 0\) in the Löwner order. \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-gm1-l03-p2">
+            <p class="statement"><strong>Problem P2.</strong> Derive the equivalence between batch Kalman filtering with selection matrix \(M_t\) and sequential scalar Kalman updates when the idiosyncratic covariance matrix \(R\) is diagonal.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let the observed indicators at time \(t\) be \(X_t^* = [x_1^*, \dots, x_{N_t}^*]'\). Because \(R\) is diagonal, the idiosyncratic disturbances \(e_i, e_j\) are mutually independent for all \(i \neq j\). The joint likelihood factors into the product of marginal conditional distributions:</p>
+              \[p(X_t^* \mid F_t) = \prod_{i=1}^{N_t} p(x_i^* \mid F_t) = \prod_{i=1}^{N_t} \mathcal{N}(x_i^*; \lambda_i F_t, \sigma_i^2)\]
+              <p>By Bayes' rule and the properties of linear Gaussian models, conditioning sequentially on independent signals produces the exact same posterior distribution as conditioning on all signals simultaneously:</p>
+              \[p(F_t \mid X_t^*) \propto p(F_t \mid \Omega_{t-1}) \prod_{i=1}^{N_t} p(x_i^* \mid F_t)\]
+              <p>Let \(\hat{F}_t^{(0)} = \hat{F}_{t|t-1}\) and \(P_t^{(0)} = P_{t|t-1}\). For \(i = 1, \dots, N_t\), update:</p>
+              \[s_i = \lambda_i P_t^{(i-1)} \lambda_i' + \sigma_i^2, \quad k_i = P_t^{(i-1)} \lambda_i' s_i^{-1}\]
+              \[\hat{F}_t^{(i)} = \hat{F}_t^{(i-1)} + k_i (x_i^* - \lambda_i \hat{F}_t^{(i-1)}), \quad P_t^{(i)} = (I_r - k_i \lambda_i) P_t^{(i-1)}\]
+              <p>At step \(N_t\), \(\hat{F}_t^{(N_t)} = \hat{F}_{t|t}\) and \(P_t^{(N_t)} = P_{t|t}\). Each scalar update involves only division by scalar \(s_i\), eliminating matrix inversion entirely. \(\blacksquare\)</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-gm1-l03-p3">
+            <p class="statement"><strong>Problem P3.</strong> Derive the Mariano-Murasawa (2003) quarterly-to-monthly aggregation weight formula connecting quarterly GDP growth to monthly latent factors.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(Y_t^Q\) be the quarterly level of real GDP observed in the third month of each quarter, which is the sum of unobserved monthly output levels: \(Y_t^Q = Y_t^M + Y_{t-1}^M + Y_{t-2}^M\). Taking the geometric mean approximation for log levels \(y_t = \ln Y_t\):</p>
+              \[y_t^Q \approx \frac{1}{3} (y_t^M + y_{t-1}^M + y_{t-2}^M)\]
+              <p>Quarter-over-quarter GDP growth between quarter \(t\) and quarter \(t-3\) (three months prior) is:</p>
+              \[\Delta_3 y_t^Q = y_t^Q - y_{t-3}^Q \approx \frac{1}{3} (y_t^M + y_{t-1}^M + y_{t-2}^M) - \frac{1}{3} (y_{t-3}^M + y_{t-4}^M + y_{t-5}^M)\]
+              <p>Express this in terms of monthly first differences \(\Delta y_t^M = y_t^M - y_{t-1}^M\). Expanding terms yields:</p>
+              \[\Delta_3 y_t^Q \approx \frac{1}{3} \Delta y_t^M + \frac{2}{3} \Delta y_{t-1}^M + \Delta y_{t-2}^M + \frac{2}{3} \Delta y_{t-3}^M + \frac{1}{3} \Delta y_{t-4}^M\]
+              <p>Denoting lag polynomial \(\omega(L) = \frac{1}{3} + \frac{2}{3} L + L^2 + \frac{2}{3} L^3 + \frac{1}{3} L^4\), the quarterly growth rate is a triangularly weighted moving average of monthly growth rates, allowing monthly dynamic factor states to directly bridge into quarterly GDP. \(\blacksquare\)</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical Tier</h3>
+
+          <div class="problem" id="prob-gm1-l03-e1">
+            <p class="statement"><strong>Problem E1.</strong> Design a realistic calendar simulation of the US monthly economic release calendar across a typical calendar month and specify the ragged-edge masking structure.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A standard US monthly macroeconomic calendar displays three distinct publication clusters:</p>
+              <ol>
+                <li><strong>Week 1 (Fast Surveys &amp; Labor):</strong> ISM Manufacturing PMI for month \(t\) released on the 1st business day; Employment Situation (Non-Farm Payrolls, Unemployment) for month \(t-1\) released on the first Friday. Masking: Month \(t\) has ISM available, labor missing.</li>
+                <li><strong>Week 2 (Nominal Prices):</strong> CPI and PPI for month \(t-1\) released around day 12–15. Masking: Inflation enters month \(t-1\).</li>
+                <li><strong>Week 3–4 (Real Hard Activity):</strong> Retail Sales and Industrial Production for month \(t-1\) released around day 15–18; Durable Goods and New Home Sales released around day 25. Masking: Month \(t-1\) is now fully populated, while month \(t\) still contains only soft surveys.</li>
+              </ol>
+              <p>The ragged edge at any day \(d\) corresponds to the binary availability indicator vector \(m_t(d) \in \{0, 1\}^N\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-gm1-l03-e2">
+            <p class="statement"><strong>Problem E2.</strong> Analyze why soft survey indicators (e.g. PMIs) dominate nowcasts at the beginning of a quarter, but their marginal contribution collapses to near zero by month 3.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Early in the quarter (Month 1), soft surveys are the <em>only</em> available contemporary observations; their factor loading \(\Lambda_{\text{soft}}\) provides the sole signal to update \(\hat{F}_{t|t}\), producing substantial variance reduction. However, soft surveys have large idiosyncratic noise variances \(\sigma_{\text{soft}}^2\) reflecting respondent sentiment. By Month 3, hard data (payrolls, industrial production, retail sales) arrive with lower idiosyncratic noise. Because the Kalman filter weights signals inversely to their idiosyncratic variance and prior uncertainty is already low, the Kalman gain on soft data approaches zero.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-gm1-l03-e3">
+            <p class="statement"><strong>Problem E3.</strong> In March 2020 (the onset of COVID-19 lockdowns), standard dynamic factor nowcasting models experienced extreme forecast errors. Explain why the linear Gaussian Kalman filter broke down during this regime.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The standard DFM assumes stationary Gaussian innovations with fixed covariance matrices \(Q\) and \(R\). In March 2020:</p>
+              <ol>
+                <li>Initial claims spiked by orders of magnitude (from 200k to 6.6 million in a single week), representing a 50-sigma shock under historical Gaussian parameters.</li>
+                <li>The Kalman filter treated this extreme print as a combination of common factor shift and idiosyncratic noise according to historical linear gains, initially underestimating the contraction.</li>
+                <li>Subsequent hard data revisions were unprecedentedly violent, breaking the constant-parameter assumption and requiring time-varying volatility or outlier filtering (Carriero et al. 2022).</li>
+              </ol>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research Tier</h3>
+
+          <div class="problem" id="prob-gm1-l03-r1">
+            <p class="statement"><strong>Problem R1.</strong> Compare the two-step estimation procedure of Giannone, Reichlin &amp; Small (2008) against a fully integrated Bayesian Mixed-Frequency VAR (MF-VAR) in terms of computational speed and parameter stability.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The two-step DFM initializes parameters via PCA on balanced historical subsets and runs the Kalman filter once, taking less than one second even for \(N = 100\). It provides robust out-of-sample forecasts because factor dimension reduction suppresses estimation noise. In contrast, Bayesian MF-VARs treat unobserved monthly high-frequency series as latent states sampled via Gibbs sampling (Carter-Kohn / Durbin-Koopman simulation smoothers). While Bayesian MF-VARs fully account for parameter uncertainty, they require intensive MCMC sampling (minutes to hours) and risk severe overfitting if the number of variables exceeds 15 without aggressive shrinkage priors (e.g. Minnesota or Dirichlet-Laplace priors).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-gm1-l03-r2">
+            <p class="statement"><strong>Problem R2.</strong> Formulate a time-varying parameter dynamic factor model (TVP-DFM) where factor loadings \(\Lambda_t\) drift over time, and explain how the ragged-edge Kalman filter must be modified.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let the factor loadings evolve as random walks: \(\lambda_{i,t} = \lambda_{i,t-1} + \eta_{i,t}\) with \(\eta_{i,t} \sim \mathcal{N}(0, \Omega_\lambda)\). The state vector is expanded to concatenate latent factors and vectorized loadings: \(\theta_t = [F_t', \operatorname{vec}(\Lambda_t)']'\). Because the measurement equation \(X_t^* = M_t \Lambda_t F_t + e_t^*\) is bilinear in \(F_t\) and \(\Lambda_t\), the linear Kalman filter is no longer exact. Estimation requires either the Extended Kalman Filter (EKF), Unscented Kalman Filter (UKF), or particle filtering, substantially increasing computational overhead on ragged edges.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-gm1-l03-r3">
+            <p class="statement"><strong>Problem R3.</strong> Propose a methodology to detect whether a sudden divergence between soft survey nowcasts and hard data nowcasts reflects impending turning points or persistent behavioral bias.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Construct a tracking metric based on the cumulative innovation spread: \(\Delta S_t = \sum_{\tau=t-k}^t (\nu_{\tau, \text{soft}} - \nu_{\tau, \text{hard}})\). Under rational expectations and correct model specification, innovations are mean-zero martingales. If soft surveys lead hard data at business cycle turning points, a sustained negative soft innovation will precede negative hard innovations by 1 to 2 quarters. Conversely, if \(\Delta S_t\) drifts persistently without subsequent hard data realization (as observed in post-2016 US sentiment vs hard data), the spread indicates ideological or partisan survey bias, requiring down-weighting soft indicators in the state-space observation matrix \(R\).</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2>Key Results</h2>
+
+        <div class="table-wrap">
+        <table class="key-results">
+          <caption>Key Results: Ragged-Edge Kalman Filter Nowcasting</caption>
+          <thead>
+            <tr>
+              <th scope="col">Concept / Claim</th>
+              <th scope="col">Grade</th>
+              <th scope="col">Registry Citation / Basis</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Ragged-Edge Data Definition</td>
+              <td><span class="grade" data-grade="C">C</span></td>
+              <td>Giannone, Reichlin &amp; Small (2008) <span class="claim" data-grade="C" data-cite="giannone2008nowcasting" data-locator="p. 666">giannone2008nowcasting</span></td>
+            </tr>
+            <tr>
+              <td>Nowcasting Methodology Framework</td>
+              <td><span class="grade" data-grade="A">A</span></td>
+              <td>Giannone, Reichlin &amp; Small (2008) <span class="claim" data-grade="A" data-cite="giannone2008nowcasting" data-locator="p. 668">giannone2008nowcasting</span></td>
+            </tr>
+            <tr>
+              <td>Information Monotonicity of Kalman Error Variance</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 3.1 (Hamilton 1994, Ch. 13)</td>
+            </tr>
+            <tr>
+              <td>Empirical Uncertainty Reduction Verification</td>
+              <td><span class="grade" data-grade="C">C</span></td>
+              <td>Lab 3 (simulation)</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="GM1" data-page="L03" data-cards="cards.json">
+        <h2>Retrieval Practice</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What causes macroeconomic panels in live operational environments to have a ragged edge at the end of the sample?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q1"> <span>Heterogeneous, asynchronous publication schedules across reporting agencies and frequencies</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>Random sensor dropouts in fiber-optic trading connections</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>Government statisticians randomly deleting historical records</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>Computational memory exhaustion in SQL databases</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Ragged edges result naturally from the fact that soft surveys, employment reports, trade balance, and GDP are published with widely differing calendar lags.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does the Kalman filter handle missing entries at observation time \(t\) without resorting to ad-hoc data imputation?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q2"> <span>By applying an observation selection matrix \(M_t\) that selects only the rows of \(\Lambda\) and \(R\) corresponding to available series</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>By filling all missing entries with zeros</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>By carrying forward the last observed numerical values</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>By deleting all latent state variables for that period</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The selection matrix \(M_t\) eliminates unobserved variables from the measurement equation, allowing optimal conditioning on whatever data is available.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens to the posterior error covariance matrix \(P_{t|t}\) when zero variables are observed at time \(t\) (\(N_t = 0\))?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q3"> <span>The posterior covariance equals the prior covariance (\(P_{t|t} = P_{t|t-1}\))</span></label>
+              <label class="option"><input type="radio" name="L03q3"> <span>The posterior covariance collapses to zero</span></label>
+              <label class="option"><input type="radio" name="L03q3"> <span>The algorithm crashes with a division by zero error</span></label>
+              <label class="option"><input type="radio" name="L03q3"> <span>The posterior covariance doubles in value</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>When no new observations arrive, no information is added; the posterior state estimate and covariance remain identical to their prior predictions.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under Theorem 3.1 (Information Monotonicity), what is the mathematical relationship between prior state covariance \(P_{t|t-1}\) and posterior covariance \(P_{t|t}\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q4"> <span>\(P_{t|t-1} - P_{t|t} = K_t S_t K_t' \succeq 0\) in the positive semi-definite Löwner order</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>\(P_{t|t} - P_{t|t-1} \succeq 0\) (error variance always increases)</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>\(\operatorname{det}(P_{t|t}) = \operatorname{det}(P_{t|t-1})\) always</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>\(P_{t|t}\) is unrelated to \(P_{t|t-1}\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Because the innovation covariance \(S_t\) is positive definite, the quadratic form \(K_t S_t K_t'\) is positive semi-definite, guaranteeing uncertainty reduction.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does forward-filling (last observation carried forward) introduce severe biases into macroeconomic factor models?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q5"> <span>It sets period-over-period changes to zero, suppressing true volatility and generating spurious jump innovations when delayed data prints</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>It causes floating-point overflows in Python</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>It inverts the matrix of factor loadings</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>It transforms stationary time series into fractional Brownian motions</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Forward-filling artificially sets \(\Delta X_t = 0\), creating artificial quiet periods followed by artificial shock spikes when delayed actuals arrive.</p></div>
+          </li>
+
+          <li class="item" data-kind="numeric" data-answer="0.10" data-tolerance="0.01">
+            <p class="prompt">A scalar factor has prior variance \(P = 0.50\). The observation loading is \(\lambda = 1.0\) and idiosyncratic noise is \(R = 0.125\). What is the posterior variance \(P_{t|t}\)?</p>
+            <div class="explain" hidden><p>Innovation covariance \(S = \lambda^2 P + R = 1.0 \times 0.50 + 0.125 = 0.625\). Kalman gain \(K = P \lambda / S = 0.50 / 0.625 = 0.80\). Posterior variance \(P_{t|t} = (1 - K \lambda) P = (1 - 0.80) \times 0.50 = 0.10\).</p></div>
+          </li>
+
+          <li class="item" data-kind="numeric" data-answer="60.0" data-tolerance="0.5">
+            <p class="prompt">Prior forecast variance of GDP nowcast is \(0.50\). After incorporating month-1 and month-2 data, the posterior variance is \(0.20\). What percentage of prior forecast uncertainty was eliminated?</p>
+            <div class="explain" hidden><p>Uncertainty reduction is \((1.0 - 0.20 / 0.50) \times 100\% = (1.0 - 0.40) \times 100\% = 60.0\%\).</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">In the Mariano-Murasawa quarterly-monthly aggregation formula, what are the lag weights applied to the monthly growth rates over the 5-month effective window?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q8"> <span>\(\frac{1}{3}, \frac{2}{3}, 1, \frac{2}{3}, \frac{1}{3}\)</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>\(1, 1, 1, 1, 1\)</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>\(0.2, 0.2, 0.2, 0.2, 0.2\)</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>\(\frac{1}{5}, \frac{2}{5}, \frac{3}{5}, \frac{4}{5}, 1\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The triangular lag weighting \(\frac{1}{3}(1 + 2L + 3L^2 + 2L^3 + L^4)\) maps monthly first differences into quarterly growth rates.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2>References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <button type="button" class="button" data-complete>Mark complete</button>
+    </main>
+  </div>
+</body>
+</html>
