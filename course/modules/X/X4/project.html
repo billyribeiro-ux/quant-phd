@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="X4" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X4 Project · Stablecoin Reserve Stress Test</title>
+  <meta name="description" content="Autograded balance-sheet stress test engine and executive risk memo modeling fiat-backed stablecoin reserve portfolios under redemption runs, fire-sale haircuts, and rate shocks. 16 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">X4 Digital Assets as a Macro Asset</a><span class="sep">›</span><span>Project</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="16">
+      <header class="page-head">
+        <p class="eyebrow">Project · X4 · Tier M · 16 hours</p>
+        <h1>Stablecoin Reserve Stress Test</h1>
+        <p class="lede">Fiat-backed stablecoins promise continuous, par-value redeemability at $1.00 on demand while investing client collateral in yield-bearing assets. This structural maturity and liquidity transformation exposes the issuer to self-fulfilling depositor runs, as formalized by <span class="claim" data-grade="A" data-cite="diamond1983bank" data-locator="p. 403">Diamond &amp; Dybvig (1983)</span> and demonstrated in modern wholesale banking runs by <span class="claim" data-grade="A" data-cite="gorton2012securitized" data-locator="Table 3, p. 432">Gorton &amp; Metrick (2012)</span>. When central banks rapidly raise benchmark rates, mark-to-market duration losses deplete reserve buffers (<span class="claim" data-grade="A" data-cite="jiang2024monetary" data-locator="Table 1, p. 12">Jiang et al. 2024</span>). In this project, you will build an institutional balance-sheet stress test engine (<code>stablecoin_stress.py</code>) evaluated across 50 seeded instances by autograder, and author an executive risk memo (<code>memo.md</code>) evaluated by rubric.</p>
+        <div class="hours-split" role="img" aria-label="24 lesson hours and 16 project hours">
+          <span class="lessons" style="width:60%"></span><span class="project" style="width:40%"></span>
+        </div>
+        <p class="eyebrow">24 h lessons · 16 h project (40%)</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The four-rung project ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: Trace a 5-tier liquidation waterfall on a $20B stablecoin balance sheet subjected to a 40% redemption shock and 125 bps interest rate spike.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: Complete the core liquidation step formulas for asset market value consumption, fire-sale haircut loss, and post-run secondary market NAV.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement the complete stress-testing module <code>stablecoin_stress.py</code> satisfying the 50-seed autograder suite and author the executive risk memo <code>memo.md</code> evaluated by rubric.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extend the stress model to incorporate dynamic secondary market discount feedback where secondary DEX prices accelerate primary redemptions.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="worked-example">
+        <h2 id="h-worked-example">Rung 1 · Worked example</h2>
+        <p>In this worked example (seed 42), we model a $20,000M fiat-backed stablecoin with $20,200M in initial reserve assets (a 1.0% equity capital buffer). We apply a 125 bps interest rate shock and trace a multi-tier liquidation waterfall across cash, overnight reverse repo, 3-month T-bills, intermediate Treasury notes, and commercial bank deposits.</p>
+
+        <section class="lab" id="lab-X4-project-1" data-runtime="python">
+          <h3>Lab 1 · Reserve portfolio stress waterfall worked example</h3>
+          <p class="hypothesis">Under a 125 bps rate shock and 40% redemption run ($8,000M), cash and overnight repo will be fully exhausted, forcing liquidations in 3-month T-bills. Despite $22.11M in haircut losses, the 1.0% initial capital buffer maintains remaining NAV above $1.00. Binary search locates the exact critical run size R* = $15,969.71M (79.85% of supply) where secondary NAV drops below the $0.995 peg threshold.</p>
+          <pre><code class="language-python" data-run>"""Lab X4-project-1: Rung 1 worked example for Stablecoin Reserve Stress Test.
+
+SIMULATED reserve portfolio on seed 42. Traces rate shock duration adjustment,
+liquidation waterfall accounting, and binary search for critical peg-break run size R*.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+ORDERED_TIERS = ("cash", "overnight_repo", "tbills_short", "treasury_notes", "bank_deposits")
+
+
+def make_sample_instance() -&gt; dict[str, Any]:
+    """Generate fixed worked example instance (seed 42)."""
+    liabilities = 20000.0  # $20 Billion
+    assets = {
+        "cash": {"par": 3600.0, "duration": 0.0, "haircut": 0.0},
+        "overnight_repo": {"par": 5400.0, "duration": 0.0, "haircut": 0.005},
+        "tbills_short": {"par": 6800.0, "duration": 0.25, "haircut": 0.010},
+        "treasury_notes": {"par": 3000.0, "duration": 2.50, "haircut": 0.035},
+        "bank_deposits": {"par": 1400.0, "duration": 0.0, "haircut": 0.080},
+    }
+    return {
+        "liabilities": liabilities,
+        "assets": assets,
+        "rate_shock_bps": 125.0,  # 125 bps
+        "peg_threshold": 0.995,
+    }
+
+
+def apply_rate_shock(assets: dict[str, dict[str, float]], rate_shock_bps: float) -&gt; dict[str, dict[str, float]]:
+    dy = rate_shock_bps / 10000.0
+    shocked = {}
+    for tier, data in assets.items():
+        par = data["par"]
+        dur = data["duration"]
+        h = data["haircut"]
+        mv = par * max(0.0, 1.0 - dur * dy)
+        shocked[tier] = {"par": par, "duration": dur, "haircut": h, "market_value": mv}
+    return shocked
+
+
+def simulate_waterfall(liabilities: float, shocked: dict[str, dict[str, float]], redemptions: float) -&gt; dict[str, Any]:
+    rem_r = redemptions
+    current_mv = {t: shocked[t]["market_value"] for t in ORDERED_TIERS}
+    haircut_losses = {t: 0.0 for t in ORDERED_TIERS}
+
+    for t in ORDERED_TIERS:
+        if rem_r &lt;= 0:
+            break
+        mv = current_mv[t]
+        h = shocked[t]["haircut"]
+        avail_cash = mv * (1.0 - h)
+
+        if rem_r &lt;= avail_cash:
+            mv_used = rem_r / (1.0 - h)
+            loss = mv_used - rem_r
+            current_mv[t] -= mv_used
+            haircut_losses[t] = loss
+            rem_r = 0.0
+        else:
+            current_mv[t] = 0.0
+            haircut_losses[t] = mv * h
+            rem_r -= avail_cash
+
+    rem_tokens = max(0.0, liabilities - redemptions)
+    rem_mv = sum(current_mv.values())
+    total_loss = sum(haircut_losses.values())
+
+    nav = rem_mv / rem_tokens if rem_tokens &gt; 1e-9 else 1.0
+    return {
+        "nav": nav,
+        "remaining_tokens": rem_tokens,
+        "remaining_mv": rem_mv,
+        "haircut_losses": haircut_losses,
+        "total_haircut_loss": total_loss,
+        "unfulfilled": rem_r,
+    }
+
+
+def main() -&gt; None:
+    print("Lab X4-project-1 | Rung 1 Worked Example: Reserve Stress Waterfall")
+    print("-------------------------------------------------------------------")
+
+    inst = make_sample_instance()
+    liab = inst["liabilities"]
+    shocked = apply_rate_shock(inst["assets"], inst["rate_shock_bps"])
+
+    total_par = sum(v["par"] for v in inst["assets"].values())
+    total_shocked_mv = sum(v["market_value"] for v in shocked.values())
+
+    print(f"Total Liabilities:             ${liab:,.1f}M")
+    print(f"Initial Reserve Par Value:     ${total_par:,.1f}M")
+    print(f"Rate Shock:                    +{inst['rate_shock_bps']:.1f} bps")
+    print(f"Post-Shock Market Value:       ${total_shocked_mv:,.2f}M")
+    print(f"Duration Mark-to-Market Loss:  ${total_par - total_shocked_mv:,.2f}M")
+    print(f"Initial Backing Ratio:         ${total_shocked_mv / liab:.5f}")
+
+    # Stress test under a 40% redemption run ($8,000M)
+    run_amount = 8000.0
+    res_run = simulate_waterfall(liab, shocked, run_amount)
+    print(f"\nStress Scenario: 40% Run (${run_amount:,.1f}M Redemptions):")
+    print(f"  Remaining Tokens:            ${res_run['remaining_tokens']:,.1f}M")
+    print(f"  Remaining Asset Market Val:  ${res_run['remaining_mv']:,.2f}M")
+    print(f"  Total Liquidation Haircuts:  ${res_run['total_haircut_loss']:,.2f}M")
+    print(f"  Post-Run Secondary NAV:      ${res_run['nav']:.5f}")
+
+    # Binary search for R*
+    peg_threshold = inst["peg_threshold"]
+    low = 0.0
+    high = liab
+    for _ in range(50):
+        mid = (low + high) / 2.0
+        nav_mid = simulate_waterfall(liab, shocked, mid)["nav"]
+        if nav_mid &lt; peg_threshold:
+            high = mid
+        else:
+            low = mid
+
+    r_star = (low + high) / 2.0
+    res_star = simulate_waterfall(liab, shocked, r_star)
+    print(f"\nCritical Peg-Break Run Analysis (NAV &lt; ${peg_threshold:.3f}):")
+    print(f"  Critical Run Size R*:        ${r_star:,.2f}M")
+    print(f"  Run Percentage of Supply:    {r_star / liab * 100.0:.2f}%")
+    print(f"  NAV at Critical Point:       ${res_star['nav']:.5f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Lab X4-project-1 | Rung 1 Worked Example: Reserve Stress Waterfall
+-------------------------------------------------------------------
+Total Liabilities:             $20,000.0M
+Initial Reserve Par Value:     $20,200.0M
+Rate Shock:                    +125.0 bps
+Post-Shock Market Value:       $20,085.00M
+Duration Mark-to-Market Loss:  $115.00M
+Initial Backing Ratio:         $1.00425
+
+Stress Scenario: 40% Run ($8,000.0M Redemptions):
+  Remaining Tokens:            $12,000.0M
+  Remaining Asset Market Val:  $12,062.89M
+  Total Liquidation Haircuts:  $22.11M
+  Post-Run Secondary NAV:      $1.00524
+
+Critical Peg-Break Run Analysis (NAV &lt; $0.995):
+  Critical Run Size R*:        $15,969.71M
+  Run Percentage of Supply:    79.85%
+  NAV at Critical Point:       $0.99500</pre>
+          <p class="interpretation">The worked example demonstrates that stablecoin de-pegging occurs through two interconnected channels: initial mark-to-market duration losses from rate shocks, and cumulative fire-sale liquidation haircuts incurred when illiquid reserve tiers are tapped to fund redemption runs.</p>
+        </section>
+      </section>
+
+      <section id="completion-problem">
+        <h2 id="h-completion-problem">Rung 2 · Completion problem</h2>
+        <p>Complete the core liquidation step function <code>compute_liquidation_step</code> and the terminal Net Asset Value function <code>compute_post_run_nav</code>. In the browser editor or local twin, replace the <code>___</code> placeholders with the exact mathematical formulas for market value consumed, haircut loss, and post-run token NAV.</p>
+
+        <section class="lab completion" id="lab-X4-project-2" data-runtime="python">
+          <h3>Lab 2 · Liquidation step and NAV calculation completion problem</h3>
+          <p class="hypothesis">Correctly implementing asset liquidation with haircuts ensures that every dollar of cash raised beyond the cash buffer requires liquidating 1 / (1 - h) dollars of asset market value, causing post-run NAV to decline below $1.00.</p>
+          <pre><code class="language-python" data-run>"""Lab X4-project-2: Rung 2 completion problem for liquidation haircut and NAV calculation.
+
+SIMULATED sample redemption run on a stylized 2-tier reserve portfolio.
+On the project page, the market value consumed, haircut loss, and remaining token NAV
+are blanked:
+mv_used = ___
+loss = ___
+nav = ___
+The twin contains the complete solution.
+"""
+
+from __future__ import annotations
+
+
+def compute_liquidation_step(
+    redemption_amount: float,
+    tier_market_value: float,
+    haircut: float,
+) -> tuple[float, float, float]:
+    """Calculate asset market value consumed, haircut loss, and cash raised."""
+    avail_cash = tier_market_value * (1.0 - haircut)
+    if redemption_amount <= avail_cash:
+        cash_raised = redemption_amount
+        mv_used = ___
+        loss = ___
+    else:
+        cash_raised = avail_cash
+        mv_used = tier_market_value
+        loss = tier_market_value * haircut
+    return mv_used, loss, cash_raised
+
+
+def compute_post_run_nav(
+    remaining_asset_value: float,
+    remaining_tokens: float,
+) -> float:
+    """Calculate Net Asset Value per remaining unredeemed token."""
+    if remaining_tokens <= 1e-9:
+        return 1.0
+    return ___
+
+
+def main() -> None:
+    print("Lab X4-project-2 | Liquidation Step and NAV Calculation (Rung 2)")
+    print("----------------------------------------------------------------")
+
+    liabilities = 10000.0
+    redemptions = 3000.0
+
+    # Stylized 2-tier portfolio: Tier 1 cash buffer ($1000M), Tier 2 repo ($9000M with 1% haircut)
+    cash_mv = 1000.0
+    repo_mv = 9000.0
+    repo_haircut = 0.010
+
+    # Step 1: Liquidate cash (haircut = 0)
+    cash_used, cash_loss, cash_raised = compute_liquidation_step(redemptions, cash_mv, 0.0)
+    rem_redemptions = redemptions - cash_raised
+
+    # Step 2: Liquidate repo for remaining redemptions
+    repo_used, repo_loss, repo_raised = compute_liquidation_step(rem_redemptions, repo_mv, repo_haircut)
+
+    total_loss = cash_loss + repo_loss
+    total_cash = cash_raised + repo_raised
+    rem_tokens = liabilities - total_cash
+    rem_assets = (cash_mv - cash_used) + (repo_mv - repo_used)
+
+    nav = compute_post_run_nav(rem_assets, rem_tokens)
+
+    print(f"Redemptions Requested:       ${redemptions:.1f}M")
+    print(f"Cash Buffer Used:            ${cash_used:.1f}M (Loss: ${cash_loss:.2f}M)")
+    print(f"Repo Market Value Used:      ${repo_used:.2f}M (Loss: ${repo_loss:.2f}M)")
+    print(f"Total Haircut Liquidation:   ${total_loss:.2f}M")
+    print(f"Remaining Unredeemed Tokens: ${rem_tokens:.1f}M")
+    print(f"Remaining Reserve Assets:    ${rem_assets:.2f}M")
+    print(f"Post-Run Secondary NAV:      ${nav:.6f}")
+
+    assert abs(total_cash - redemptions) < 1e-6
+    assert nav < 1.0000
+
+
+main()
+</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Lab X4-project-2 | Liquidation Step and NAV Calculation (Rung 2)
+----------------------------------------------------------------
+Redemptions Requested:       $3000.0M
+Cash Buffer Used:            $1000.0M (Loss: $0.00M)
+Repo Market Value Used:      $2020.20M (Loss: $20.20M)
+Total Haircut Liquidation:   $20.20M
+Remaining Unredeemed Tokens: $7000.0M
+Remaining Reserve Assets:    $6979.80M
+Post-Run Secondary NAV:      $0.997114</pre>
+          <p class="interpretation">When cash reserves are exhausted, liquidating assets subject to fire-sale haircuts creates an asymmetric transfer from unredeemed tokens to exiting redeemers, driving remaining NAV strictly below par.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Independent project specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A global financial regulator is reviewing the risk model of a $10B–$50B fiat-backed stablecoin issuer. The issuer claims its reserve portfolio is 100% liquid and immune to bank runs. You are tasked with developing a deterministic stress-testing engine that simulates monetary tightening rate shocks, executes multi-tier liquidation waterfalls under redemption runs, calculates the Liquidity Coverage Ratio (LCR), and finds the critical redemption threshold \(R^*\) that triggers a break of the secondary market peg.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A problem instance generated by <code>instance.make_instance(seed)</code> specifying:
+            <ul>
+              <li><code>total_liabilities</code>: Total stablecoin tokens outstanding in millions of USD (\(D_0 \in [10000, 50000]\)).</li>
+              <li><code>reserve_assets</code>: Dictionary mapping asset tier names (<code>cash</code>, <code>overnight_repo</code>, <code>tbills_short</code>, <code>treasury_notes</code>, <code>bank_deposits</code>) to their respective <code>par</code> value, modified <code>duration</code>, and liquidation <code>haircut</code>.</li>
+              <li><code>rate_shock_bps</code>: Benchmark monetary tightening yield increase in basis points.</li>
+              <li><code>peg_threshold</code>: Critical NAV threshold (typically 0.995 or 0.990) below which the peg is defined as broken.</li>
+              <li><code>stressed_outflow_30d</code>: 30-day stressed redemption outflow for LCR calculation.</li>
+              <li><code>grid_shocks_bps</code> and <code>grid_redemption_fractions</code>: Dimensions for 2D scenario matrix.</li>
+            </ul>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>Two deliverables:
+            <ol>
+              <li><code>stablecoin_stress.py</code>: Python module implementing:
+                <ul>
+                  <li><code>validate_<wbr>inputs(<wbr>total_<wbr>liabilities,<wbr> reserve_<wbr>assets,<wbr> rate_<wbr>shock_<wbr>bps,<wbr> peg_<wbr>threshold)</code></li>
+                  <li><code>apply_<wbr>rate_<wbr>shock(<wbr>reserve_<wbr>assets,<wbr> rate_<wbr>shock_<wbr>bps)</code></li>
+                  <li><code>simulate_<wbr>redemption_<wbr>waterfall(<wbr>total_<wbr>liabilities,<wbr> shocked_<wbr>assets,<wbr> redemptions)</code></li>
+                  <li><code>find_<wbr>peg_<wbr>break_<wbr>run_<wbr>size(<wbr>total_<wbr>liabilities,<wbr> shocked_<wbr>assets,<wbr> peg_<wbr>threshold,<wbr> tol=1e-5)</code></li>
+                  <li><code>compute_<wbr>liquidity_<wbr>coverage_<wbr>ratio(<wbr>reserve_<wbr>assets,<wbr> stressed_<wbr>outflow_<wbr>30d)</code></li>
+                  <li><code>run_<wbr>stress_<wbr>grid(<wbr>total_<wbr>liabilities,<wbr> base_<wbr>assets,<wbr> rate_<wbr>shocks_<wbr>bps,<wbr> redemption_<wbr>fractions,<wbr> peg_<wbr>threshold=0.995)</code></li>
+                </ul>
+              </li>
+              <li><code>memo.md</code>: A 1,500-word executive risk memo detailing balance-sheet vulnerabilities, Diamond–Dybvig first-mover dynamics, duration risks under monetary tightening, and regulatory policy recommendations.</li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ul>
+              <li>Pure Python standard library (math, typing, collections). No external dependencies.</li>
+              <li>Execution must complete in under 5 seconds in the browser (Pyodide) across all test seeds.</li>
+              <li>Deterministic execution: given the same seed, output values must be byte-for-byte reproducible.</li>
+              <li>All functions must pass strict type-checking (<code>mypy --strict</code>).</li>
+            </ul>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>This project is evaluated by both autograder (100 points, 50 seeds in <code>test_project.py</code>) and rubric (5 criteria across 4 performance levels for <code>memo.md</code>).</dd>
+        </dl>
+
+        <section class="grader-panel" id="grader" data-unit="X4" data-grader="grader/" data-suite="test_project.py" data-support="instance.py integrity.py" data-solution="stablecoin_stress.py" data-starter="starter.py"></section>
+
+        <section class="lab" id="lab-X4-project-3" data-runtime="python">
+          <h3>Lab 3 · Multi-seed reference validation check</h3>
+          <p class="hypothesis">Running the reference implementation across seeds 0 through 4 demonstrates deterministic execution and verifies that critical peg-break run sizes R* and LCRs vary realistically across balance-sheet configurations.</p>
+          <pre><code class="language-python" data-run>"""Lab X4-project-3: Rung 3 reference verification across multiple seeds.
+
+Validates the full reserve portfolio stress testing engine across seeds 0 through 4,
+checking modified duration pricing, liquidation waterfall accounting, and critical run sizes.
+"""
+
+from __future__ import annotations
+
+import random
+from typing import Any
+
+TIER_NAMES: list[str] = ["cash", "overnight_repo", "tbills_short", "treasury_notes", "bank_deposits"]
+
+
+def make_instance(seed: int) -&gt; dict[str, Any]:
+    """Generate deterministic problem instance for seed."""
+    rng = random.Random(seed)
+    total_liabilities = round(10000.0 + (seed * 431) % 40000 + rng.uniform(0.0, 100.0), 2)
+    surplus_pct = 0.002 + ((seed * 17) % 10) * 0.001
+    total_assets = total_liabilities * (1.0 + surplus_pct)
+
+    w_cash = 0.15 + (seed % 7) * 0.01
+    w_repo = 0.25 + ((seed * 3) % 8) * 0.01
+    w_tbills = 0.30 + ((seed * 5) % 6) * 0.01
+    w_bank = 0.08 + (seed % 5) * 0.01
+    w_notes = 1.0 - (w_cash + w_repo + w_tbills + w_bank)
+
+    d_tbills = round(0.20 + (seed % 5) * 0.03, 3)
+    d_notes = round(2.00 + ((seed * 7) % 7) * 0.20, 2)
+
+    h_repo = round(0.005 + (seed % 4) * 0.001, 4)
+    h_tbills = round(0.010 + ((seed * 2) % 5) * 0.002, 4)
+    h_notes = round(0.025 + ((seed * 3) % 4) * 0.005, 4)
+    h_bank = round(0.060 + (seed % 5) * 0.010, 4)
+
+    tier_pars = [
+        round(total_assets * w_cash, 2),
+        round(total_assets * w_repo, 2),
+        round(total_assets * w_tbills, 2),
+        round(total_assets * w_notes, 2),
+        round(total_assets * w_bank, 2),
+    ]
+    tier_durations = [0.0, 0.0, d_tbills, d_notes, 0.0]
+    tier_haircuts = [0.0, h_repo, h_tbills, h_notes, h_bank]
+
+    rate_shock_bps = round(75.0 + (seed * 23) % 175, 1)
+    peg_threshold = 0.995 if seed % 2 == 0 else 0.990
+    stressed_outflow_30d = round(total_liabilities * 0.30, 2)
+
+    return {
+        "seed": seed,
+        "total_liabilities": total_liabilities,
+        "tier_names": list(TIER_NAMES),
+        "tier_pars": tier_pars,
+        "tier_durations": tier_durations,
+        "tier_haircuts": tier_haircuts,
+        "rate_shock_bps": rate_shock_bps,
+        "peg_threshold": peg_threshold,
+        "stressed_outflow_30d": stressed_outflow_30d,
+    }
+
+
+def get_reserve_assets(inst: dict[str, Any]) -&gt; dict[str, dict[str, float]]:
+    """Reconstruct tiered reserve assets dictionary from instance arrays."""
+    names: list[str] = inst["tier_names"]
+    pars: list[float] = inst["tier_pars"]
+    durations: list[float] = inst["tier_durations"]
+    haircuts: list[float] = inst["tier_haircuts"]
+
+    return {
+        name: {"par": p, "duration": d, "haircut": h}
+        for name, p, d, h in zip(names, pars, durations, haircuts, strict=True)
+    }
+
+
+def apply_rate_shock(
+    reserve_assets: dict[str, dict[str, float]],
+    rate_shock_bps: float,
+) -&gt; dict[str, dict[str, float]]:
+    """Apply interest rate shock using modified duration pricing."""
+    dy = rate_shock_bps / 10000.0
+    shocked: dict[str, dict[str, float]] = {}
+    for tier, data in reserve_assets.items():
+        par = float(data["par"])
+        duration = float(data["duration"])
+        haircut = float(data["haircut"])
+        price_factor = max(0.0, 1.0 - duration * dy)
+        shocked[tier] = {
+            "par": par,
+            "duration": duration,
+            "haircut": haircut,
+            "market_value": par * price_factor,
+        }
+    return shocked
+
+
+def simulate_waterfall(
+    total_liabilities: float,
+    shocked_assets: dict[str, dict[str, float]],
+    redemptions: float,
+) -&gt; float:
+    """Execute redemption waterfall and return post-run NAV."""
+    order = ("cash", "overnight_repo", "tbills_short", "treasury_notes", "bank_deposits")
+    current_mv = {t: shocked_assets[t]["market_value"] for t in order}
+    haircuts = {t: shocked_assets[t]["haircut"] for t in order}
+
+    rem_r = redemptions
+    for t in order:
+        if rem_r &lt;= 0.0:
+            break
+        mv = current_mv[t]
+        h = haircuts[t]
+        avail_cash = mv * (1.0 - h)
+        if rem_r &lt;= avail_cash:
+            current_mv[t] -= rem_r / (1.0 - h)
+            rem_r = 0.0
+        else:
+            current_mv[t] = 0.0
+            rem_r -= avail_cash
+
+    rem_tokens = max(0.0, total_liabilities - redemptions)
+    rem_mv = sum(current_mv.values())
+
+    if rem_r &gt; 1e-9:
+        return 0.0
+    if rem_tokens &lt;= 1e-9:
+        return 1.0
+    return rem_mv / rem_tokens
+
+
+def find_peg_break(
+    total_liabilities: float,
+    shocked_assets: dict[str, dict[str, float]],
+    peg_threshold: float,
+) -&gt; tuple[float, float, bool]:
+    """Find critical run size R* that causes NAV &lt; peg_threshold."""
+    if simulate_waterfall(total_liabilities, shocked_assets, 0.0) &lt; peg_threshold:
+        return 0.0, 0.0, True
+
+    if simulate_waterfall(total_liabilities, shocked_assets, total_liabilities - 0.01) &gt;= peg_threshold:
+        return total_liabilities, 1.0, False
+
+    low = 0.0
+    high = total_liabilities
+    for _ in range(60):
+        mid = (low + high) / 2.0
+        if simulate_waterfall(total_liabilities, shocked_assets, mid) &lt; peg_threshold:
+            high = mid
+        else:
+            low = mid
+
+    r_star = (low + high) / 2.0
+    return round(r_star, 4), round(r_star / total_liabilities, 6), True
+
+
+def compute_lcr(reserve_assets: dict[str, dict[str, float]], outflow_30d: float) -&gt; float:
+    """Compute Liquidity Coverage Ratio."""
+    cash = reserve_assets.get("cash", {}).get("par", 0.0)
+    repo = reserve_assets.get("overnight_repo", {}).get("par", 0.0)
+    return (cash + repo) / outflow_30d
+
+
+def main() -&gt; None:
+    print("Lab X4-project-3 | Multi-Seed Stress Testing Suite Verification")
+    print("----------------------------------------------------------------")
+
+    seeds_to_check = [0, 1, 2, 3, 4]
+    hdr = f"{'Seed':&lt;5} | {'Liabilities':&lt;12} | {'Rate Shock':&lt;10} | {'LCR':&lt;8} | {'R* ($M)':&lt;12} | {'Run %':&lt;8} | Peg"
+    print(hdr)
+    print("-" * len(hdr))
+
+    for seed in seeds_to_check:
+        inst = make_instance(seed)
+        liab = float(inst["total_liabilities"])
+        shock_bps = float(inst["rate_shock_bps"])
+        peg_thresh = float(inst["peg_threshold"])
+        outflow_30d = float(inst["stressed_outflow_30d"])
+
+        assets = get_reserve_assets(inst)
+        shocked = apply_rate_shock(assets, shock_bps)
+        lcr = compute_lcr(assets, outflow_30d)
+
+        r_star, r_pct, broken = find_peg_break(liab, shocked, peg_thresh)
+        run_pct_str = f"{r_pct * 100.0:.2f}%"
+
+        line = (
+            f"{seed:&lt;5} | ${liab:&lt;11.1f} | +{shock_bps:&lt;8.1f} | {lcr:&lt;8.2f} | "
+            f"${r_star:&lt;11.1f} | {run_pct_str:&lt;8} | {broken}"
+        )
+        print(line)
+
+        assert lcr &gt; 0.0
+        assert 0.0 &lt;= r_star &lt;= liab
+
+    print("\nAll seed instances validated successfully under reference stress test engine.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Lab X4-project-3 | Multi-Seed Stress Testing Suite Verification
+----------------------------------------------------------------
+Seed  | Liabilities  | Rate Shock | LCR      | R* ($M)      | Run %    | Peg
+----------------------------------------------------------------------------
+0     | $10084.4     | +75.0     | 1.34     | $4020.5      | 39.87%   | True
+1     | $10444.4     | +98.0     | 1.48     | $8511.6      | 81.49%   | True
+2     | $10957.6     | +121.0    | 1.61     | $6859.6      | 62.60%   | True
+3     | $11316.8     | +144.0    | 1.47     | $5826.0      | 51.48%   | True
+4     | $11747.6     | +167.0    | 1.62     | $9376.0      | 79.81%   | True
+
+All seed instances validated successfully under reference stress test engine.</pre>
+          <p class="interpretation">The reference stress test engine correctly identifies the peg-break threshold across diverse balance-sheet compositions and rate shocks, confirming that higher duration allocations and lower cash buffers substantially reduce run tolerance.</p>
+        </section>
+
+        <h3 id="h-hours">Time budget</h3>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 Worked example: read and annotate Lab 1</td><td class="num">2</td><td>Trace balance sheet accounting, duration mark-to-market loss, and liquidation priority order.</td></tr>
+              <tr><td>Rung 2 Completion problem: complete liquidation and NAV</td><td class="num">2</td><td>Implement asset consumption formulas, fire-sale haircuts, and post-run NAV equations.</td></tr>
+              <tr><td>Core stress testing engine implementation</td><td class="num">6</td><td>Write <code>stablecoin_stress.py</code>, implement bisection search, and pass 50-seed autograder suite.</td></tr>
+              <tr><td>Scenario analysis and stress grid validation</td><td class="num">2</td><td>Execute 2D rate-shock and redemption matrix, verifying monotonicity and LCR bounds.</td></tr>
+              <tr><td>Executive risk memo authoring</td><td class="num">4</td><td>Author <code>memo.md</code> covering run dynamics, banking fragility, and regulatory capital rules.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>16</strong></td><td>Matches declared project hours (16 hours of the module's 40 hours).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="rubric">
+        <h2 id="h-rubric">Project Rubric</h2>
+        <p>The executive risk memo <code>memo.md</code> is evaluated across five criteria with four performance levels:</p>
+        <div class="table-wrap">
+          <table class="rubric">
+            <caption>The stablecoin reserve stress test memo: five criteria, four performance levels each. Passing doctoral standard requires level 3 or above on all criteria.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">4 · Exemplary</th>
+                <th scope="col">3 · Proficient</th>
+                <th scope="col">2 · Developing</th>
+                <th scope="col">1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Balance Sheet Modeling &amp; Duration Losses</th>
+                <td>Provides rigorous closed-form duration and convexity pricing; evaluates mark-to-market solvency surplus and compares with Jiang et al. (2024) bank fragility evidence.</td>
+                <td>Accurately models duration-driven price shocks across all asset tiers; computes initial reserve backing ratio post-shock.</td>
+                <td>Applies duration shocks linearly but ignores convexity and fails to differentiate between short T-bills and intermediate notes.</td>
+                <td>Fails to account for duration mark-to-market losses under interest rate shocks; assumes par value for all assets.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Liquidation Waterfall Mechanics &amp; Haircuts</th>
+                <td>Full conservation of funds demonstrated algebraically and computationally; explicitly proves how early redemptions impose negative externalities on unredeemed tokens.</td>
+                <td>Implements strict tier priority (cash to repo to bills to notes to deposits); correctly tracks cash raised, haircut loss, and remaining market value.</td>
+                <td>Applies liquidation order correctly but computes haircut losses additively rather than using the grossing-up factor \(1 / (1 - h)\).</td>
+                <td>Arbitrary liquidation order or omits fire-sale haircuts entirely during asset sales.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Peg-Break Search &amp; Run Threshold Analysis</th>
+                <td>Analytically characterizes the exact de-peg trigger; differentiates between rate-induced insolvency (\(R^* = 0\)) and haircut-induced illiquidity run breaks.</td>
+                <td>Implements robust binary search finding \(R^*\) to within 0.01% precision; confirms NAV boundary condition at \(R^* \pm \epsilon\).</td>
+                <td>Locates approximate run size using coarse grid search with errors exceeding 5% of total liabilities.</td>
+                <td>Cannot locate the critical run size \(R^*\) or reports hard-coded constant percentages.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Scenario Matrix &amp; Liquidity Coverage Ratio</th>
+                <td>Comprehensive risk surface analysis; establishes minimum regulatory LCR required to survive 30-day stressed outflows without tapping duration assets.</td>
+                <td>Produces a fully monotonic 2D grid across rate shocks and redemption sizes; computes LCR strictly from cash and repo buffers.</td>
+                <td>Generates stress matrix but exhibits non-monotonic NAV transitions; LCR includes illiquid asset tiers.</td>
+                <td>Omits the 2D stress matrix or fails to compute Liquidity Coverage Ratio (LCR).</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Institutional Analysis &amp; Policy Recommendations</th>
+                <td>Doctoral-grade executive memorandum; provides actionable regulatory reserve composition rules (e.g. MiCA, GENA), capital surcharge formulas, and emergency liquidity facility designs.</td>
+                <td>Rigorous institutional memo linking empirical findings to Diamond–Dybvig (1983) and Silicon Valley Bank run dynamics; clear reserve recommendations.</td>
+                <td>Mentions Diamond–Dybvig but treats stablecoin runs as purely psychological panic without balance-sheet analysis.</td>
+                <td>Superficial summary lacking economic grounding; no mention of bank run literature.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Exemplar Extracts</h3>
+        <div class="exemplar" data-level="4">
+          <h4>Level 4 Exemplar extract (Exemplary)</h4>
+          <p><em>"Our empirical stress test establishes that Stablecoin Alpha's nominal $20,000M reserve portfolio possesses an effective critical run threshold of \(R^* = \$15,969.71\text{M}\) (79.85% of total liabilities) under a baseline +125 bps monetary tightening shock. The issuer's solvency vulnerability stems not from liquidity exhaustion per se, but from the interaction between duration mark-to-market losses and fire-sale liquidation haircuts. Consistent with <span class="claim" data-grade="A" data-cite="jiang2024monetary" data-locator="Table 1, p. 12">Jiang et al. (2024)</span>, the 2.5-year duration intermediate Treasury tranche incurs an immediate $93.75M unrealized mark-to-market loss. While early redeemers withdraw at par ($1.0000), liquidating T-bills and notes at haircuts of 1.0% and 3.5% consumes $\$1.0101$ and $\$1.0363$ of asset market value per dollar of redemption paid. This generates a classic <span class="claim" data-grade="A" data-cite="diamond1983bank" data-locator="p. 403">Diamond &amp; Dybvig (1983)</span> first-mover advantage: late redeemers face a depleted capital buffer, driving secondary market NAV below the $0.9950 peg break threshold. We recommend mandating a minimum 35% allocation to overnight reverse repo and unencumbered central bank cash to ensure an LCR strictly exceeding 1.20 under 30-day stressed runs."</em></p>
+        </div>
+
+        <div class="exemplar" data-level="2">
+          <h4>Level 2 Exemplar extract (Developing)</h4>
+          <p><em>"The stablecoin has $20,000M in liabilities and $20,200M in reserves. When interest rates rise by 125 bps, the bonds lose some value because of their duration. When people start running to redeem their tokens, the issuer first uses cash, then sells repo and Treasuries. Because there are haircuts when selling these assets, the total assets decrease faster than liabilities. The peg eventually breaks when redemptions reach around 75% to 80% because the NAV drops below $0.995. Stablecoins are like banks and people panic when they see the reserves dropping, so the government should require them to hold more cash."</em></p>
+        </div>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <p>In actual market crises (e.g. the March 2023 USDC de-peg following the Silicon Valley Bank failure), redemptions are not exogenous: when the secondary market price on decentralized exchanges (DEXs like Curve 3pool) falls to $0.980, arbitrageurs buy discounted tokens on-chain and submit them to the issuer for $1.00 par redemption. Implement an endogenous redemption feedback loop where daily redemption volume is an increasing function of the secondary market peg discount \(\max(0, 1.0 - \text{NAV}_t)\), generating self-reinforcing run spirals (<span class="claim" data-grade="A" data-cite="brunnermeier2008market" data-locator="Figure 1, p. 2205">Brunnermeier &amp; Pedersen 2009</span>).</p>
+      </section>
+
+      <section id="reading-list">
+        <h2 id="h-reading-list">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="diamond1983bank"><span class="claim" data-grade="A" data-cite="diamond1983bank" data-locator="pp. 401–419">Diamond &amp; Dybvig (1983), Bank runs, deposit insurance, and liquidity, JPE 91(3)</span></li>
+          <li data-cite="gorton2012securitized"><span class="claim" data-grade="A" data-cite="gorton2012securitized" data-locator="pp. 425–451">Gorton &amp; Metrick (2012), Securitized banking and the run on repo, JFE 104(3)</span></li>
+          <li data-cite="jiang2024monetary"><span class="claim" data-grade="A" data-cite="jiang2024monetary" data-locator="pp. 1–35">Jiang, Matvos, Piskorski &amp; Seru (2024), Monetary tightening and U.S. bank fragility in 2023, JFE 154</span></li>
+          <li data-cite="brunnermeier2008market"><span class="claim" data-grade="A" data-cite="brunnermeier2008market" data-locator="pp. 2201–2238">Brunnermeier &amp; Pedersen (2009), Market liquidity and funding liquidity, RFS 22(6)</span></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
