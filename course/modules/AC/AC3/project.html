@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="AC3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AC3 Project · PEAD Replication Engine &amp; Referee Note</title>
+  <meta name="description" content="Replicate the post-earnings-announcement drift (PEAD) anomaly: compute SUE under seasonal random walk with drift, form decile hedge portfolios net of execution costs, test modern decay, and author a referee research note.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">AC3 Earnings &amp; Market Reaction</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <button class="theme-toggle" type="button" aria-label="Toggle theme">◑</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="18">
+      <header class="page-head">
+        <p class="eyebrow">AC3 project · 18 hours · autograded &amp; rubric-graded</p>
+        <h1>PEAD Replication Engine &amp; Referee Research Note</h1>
+        <p class="lede">Build an institutional-grade replication engine for the post-earnings-announcement drift (PEAD) anomaly. Your engine calculates standardized unexpected earnings (SUE) under seasonal random walks with drift, constructs decile long-short hedge portfolios net of two-leg transaction costs, tests structural anomaly decay pre- and post-2000, and supports a referee-style research note evaluating strategy viability.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Follow the four-rung sequence to build and verify your quantitative replication engine:</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below executes the full PEAD pipeline on 10 simulated firms, tracing SUE calculation, decile sorting, drift CAR, and net hedge spread step by step.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below provides the pipeline with 5 core algorithmic blanks (<code>___</code>); fill them to match the reference output.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement <code>pead_replication.py</code> satisfying the specification and write <code>note/pead_referee_note.md</code> evaluated by the rubric.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Explore intraday execution timing, short borrow fees, and analyst revision overlays in the stretch section.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-AC3-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: End-to-end PEAD replication</h3>
+          <p class="hypothesis">Hypothesis: Evaluating SUE under seasonal random walk with drift, partitioning into deciles, and computing cumulative abnormal returns over holding window [t+2, t+5] yields a positive gross hedge spread (Decile 10 - Decile 1) that remains economically profitable after deducting two-leg round-trip transaction costs.</p>
+          <pre><code class="language-python" data-run="python">"""AC3 project Lab 1: worked example of the PEAD replication engine.
+
+SIMULATED: the earnings histories, current realizations, and daily return sequences for 10 firms
+are generated from fixed deterministic test data. Money and returns are pure floats.
+The code executes each step of the PEAD pipeline: SUE computation, decile sorting,
+drift CAR evaluation, hedge portfolio spread, and transaction-cost deduction.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+# SIMULATED panel of 10 firms: 8 quarters of history, quarter 9 actual, and daily returns around day 10
+FIRMS_DATA: list[dict[str, Any]] = [
+    {"firm_id": "F01", "history": [10.0, 11.0, 12.0, 13.0, 10.5, 11.6, 12.7, 13.8], "current": 10.2},
+    {"firm_id": "F02", "history": [20.0, 22.0, 24.0, 26.0, 21.0, 23.1, 25.2, 27.3], "current": 22.5},
+    {"firm_id": "F03", "history": [15.0, 15.5, 16.0, 16.5, 15.2, 15.8, 16.3, 16.9], "current": 15.1},
+    {"firm_id": "F04", "history": [30.0, 31.0, 32.0, 33.0, 31.0, 32.1, 33.2, 34.3], "current": 33.5},
+    {"firm_id": "F05", "history": [25.0, 26.0, 27.0, 28.0, 25.5, 26.6, 27.7, 28.8], "current": 26.0},
+    {"firm_id": "F06", "history": [18.0, 19.0, 20.0, 21.0, 18.5, 19.6, 20.7, 21.8], "current": 18.2},
+    {"firm_id": "F07", "history": [40.0, 42.0, 44.0, 46.0, 41.5, 43.6, 45.8, 48.0], "current": 44.5},
+    {"firm_id": "F08", "history": [12.0, 12.5, 13.0, 13.5, 12.3, 12.9, 13.4, 14.0], "current": 12.1},
+    {"firm_id": "F09", "history": [50.0, 52.0, 54.0, 56.0, 51.5, 53.7, 55.9, 58.2], "current": 55.0},
+    {"firm_id": "F10", "history": [35.0, 36.0, 37.0, 38.0, 35.8, 36.9, 38.1, 39.3], "current": 37.0},
+]
+
+# Daily returns for days 0..15 (announcement at day 10, drift holding period days 12..15)
+DAILY_RETURNS: dict[str, list[float]] = {
+    "F01": [
+        -0.005,
+        -0.002,
+        0.001,
+        -0.003,
+        0.000,
+        -0.001,
+        0.002,
+        -0.004,
+        0.001,
+        -0.002,
+        -0.020,
+        -0.005,
+        -0.008,
+        -0.006,
+        -0.007,
+        -0.005,
+    ],
+    "F02": [
+        0.002,
+        0.001,
+        0.003,
+        -0.001,
+        0.002,
+        0.001,
+        -0.002,
+        0.003,
+        0.001,
+        0.002,
+        0.015,
+        0.004,
+        0.005,
+        0.006,
+        0.004,
+        0.005,
+    ],
+    "F03": [
+        -0.001,
+        -0.002,
+        0.000,
+        -0.001,
+        0.001,
+        -0.002,
+        0.001,
+        -0.001,
+        0.000,
+        -0.002,
+        -0.015,
+        -0.003,
+        -0.006,
+        -0.005,
+        -0.004,
+        -0.005,
+    ],
+    "F04": [
+        0.001,
+        0.002,
+        -0.001,
+        0.002,
+        0.001,
+        0.000,
+        0.003,
+        0.001,
+        -0.001,
+        0.002,
+        0.018,
+        0.005,
+        0.007,
+        0.008,
+        0.006,
+        0.007,
+    ],
+    "F05": [
+        0.000,
+        0.001,
+        -0.001,
+        0.000,
+        0.002,
+        -0.001,
+        0.001,
+        0.000,
+        0.001,
+        -0.001,
+        0.002,
+        0.001,
+        0.001,
+        0.000,
+        0.001,
+        -0.001,
+    ],
+    "F06": [
+        -0.002,
+        0.001,
+        -0.003,
+        0.000,
+        -0.001,
+        0.002,
+        -0.002,
+        0.001,
+        -0.002,
+        0.000,
+        -0.012,
+        -0.004,
+        -0.005,
+        -0.004,
+        -0.003,
+        -0.004,
+    ],
+    "F07": [
+        0.003,
+        0.001,
+        0.002,
+        0.000,
+        0.001,
+        0.003,
+        -0.001,
+        0.002,
+        0.001,
+        0.003,
+        0.022,
+        0.006,
+        0.008,
+        0.009,
+        0.007,
+        0.008,
+    ],
+    "F08": [
+        -0.003,
+        -0.001,
+        0.000,
+        -0.002,
+        0.001,
+        -0.003,
+        0.000,
+        -0.002,
+        0.001,
+        -0.001,
+        -0.018,
+        -0.005,
+        -0.007,
+        -0.006,
+        -0.005,
+        -0.006,
+    ],
+    "F09": [
+        0.002,
+        0.003,
+        0.001,
+        0.002,
+        0.000,
+        0.002,
+        0.001,
+        0.003,
+        0.002,
+        0.001,
+        0.025,
+        0.007,
+        0.009,
+        0.010,
+        0.008,
+        0.009,
+    ],
+    "F10": [
+        0.001,
+        0.000,
+        0.002,
+        -0.001,
+        0.001,
+        0.000,
+        0.002,
+        -0.001,
+        0.001,
+        0.002,
+        0.005,
+        0.002,
+        0.002,
+        0.003,
+        0.002,
+        0.002,
+    ],
+}
+
+
+def compute_sue(history: list[float], current: float) -> float:
+    """Step 1. Compute SUE under seasonal random walk with drift.
+
+    Why: standardizing unexpected earnings by historical forecast error volatility
+    aligns cross-sectional units and removes firm-scale bias.
+    """
+    if len(history) < 8:
+        raise ValueError("Need at least 8 quarters of history")
+    diffs = [history[t] - history[t - 4] for t in range(4, len(history))]
+    drift = sum(diffs) / len(diffs)
+    expected = history[-4] + drift
+    raw_error = current - expected
+
+    errors = [d - drift for d in diffs]
+    variance = sum(e**2 for e in errors) / (len(errors) - 1)
+    std_dev = math.sqrt(variance)
+    if std_dev <= 0:
+        raise ValueError("Forecast error standard deviation must be positive")
+    return raw_error / std_dev
+
+
+def assign_deciles(scores: dict[str, float]) -> dict[str, int]:
+    """Step 2. Sort firms into 10 deciles.
+
+    Why: decile partitioning enables portfolio formation and mitigates outlier effects.
+    """
+    if len(scores) < 10:
+        raise ValueError("Need at least 10 firms to form 10 deciles")
+    sorted_firms = sorted(scores.keys(), key=lambda fid: (scores[fid], fid))
+    n = len(sorted_firms)
+    deciles: dict[str, int] = {}
+    for rank, fid in enumerate(sorted_firms):
+        d = min(10, (rank * 10) // n + 1)
+        deciles[fid] = d
+    return deciles
+
+
+def compute_drift_returns(
+    announcements: list[dict[str, Any]], holding_period: tuple[int, int] = (2, 5)
+) -> dict[int, float]:
+    """Step 3. Compute post-announcement cumulative abnormal returns per decile.
+
+    Why: testing the delayed price response over [t+2, t+5] excludes the immediate
+    announcement window [t, t+1], isolating pure drift.
+    """
+    h_start, h_end = holding_period
+    decile_cars: dict[int, list[float]] = {d: [] for d in range(1, 11)}
+
+    for item in announcements:
+        d = int(item["decile"])
+        rets = list(item["daily_returns"])
+        t0 = int(item["announcement_day"])
+
+        car = sum(rets[t0 + k] for k in range(h_start, h_end + 1))
+        decile_cars[d].append(car)
+
+    return {d: (sum(cars) / len(cars) if cars else 0.0) for d, cars in decile_cars.items()}
+
+
+def hedge_portfolio(decile_rets: dict[int, float], cost_bps: float = 20.0) -> dict[str, float]:
+    """Step 4. Construct long Decile 10, short Decile 1 hedge portfolio net of costs.
+
+    Why: assessing economic significance requires subtracting execution costs on both legs.
+    """
+    gross = decile_rets[10] - decile_rets[1]
+    cost_deduction = 2.0 * (cost_bps / 10000.0)
+    net = gross - cost_deduction
+    return {
+        "gross_spread": gross,
+        "cost_deduction": cost_deduction,
+        "net_spread": net,
+    }
+
+
+def main() -> None:
+    # 1. Compute SUE
+    sue_dict = {f["firm_id"]: compute_sue(f["history"], f["current"]) for f in FIRMS_DATA}
+    print("step 1 sue computed for", len(sue_dict), "firms")
+    for fid in sorted(sue_dict.keys()):
+        print(f"firm {fid} sue {sue_dict[fid]:+.4f}")
+
+    # 2. Assign deciles
+    deciles = assign_deciles(sue_dict)
+    print("step 2 deciles assigned:")
+    for d in range(1, 11):
+        fids = [fid for fid, dec in deciles.items() if dec == d]
+        print(f"decile {d:2d} : firms {fids}")
+
+    # 3. Drift returns
+    announcements = [
+        {
+            "firm_id": f["firm_id"],
+            "decile": deciles[f["firm_id"]],
+            "daily_returns": DAILY_RETURNS[f["firm_id"]],
+            "announcement_day": 10,
+        }
+        for f in FIRMS_DATA
+    ]
+    drift = compute_drift_returns(announcements, holding_period=(2, 5))
+    print("step 3 drift returns:")
+    for d in range(1, 11):
+        print(f"decile {d:2d} car {drift[d]:+.6f}")
+
+    # 4. Hedge portfolio
+    hedge = hedge_portfolio(drift, cost_bps=20.0)
+    print("step 4 hedge portfolio:")
+    print(f"gross_spread {hedge['gross_spread']:+.6f}")
+    print(f"cost_deduction {hedge['cost_deduction']:.6f}")
+    print(f"net_spread {hedge['net_spread']:+.6f}")
+    print("step 4 net profitable:", hedge["net_spread"] > 0)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">step 1 sue computed for 10 firms
+firm F01 sue -7.3587
+firm F02 sue +2.7111
+firm F03 sue -4.8990
+firm F04 sue +10.4571
+firm F05 sue -1.1619
+firm F06 sue -7.3587
+firm F07 sue +5.7501
+firm F08 sue -7.3485
+firm F09 sue +5.6094
+firm F10 sue +0.7892
+step 2 deciles assigned:
+decile  1 : firms ['F06']
+decile  2 : firms ['F01']
+decile  3 : firms ['F08']
+decile  4 : firms ['F03']
+decile  5 : firms ['F05']
+decile  6 : firms ['F10']
+decile  7 : firms ['F02']
+decile  8 : firms ['F09']
+decile  9 : firms ['F07']
+decile 10 : firms ['F04']
+step 3 drift returns:
+decile  1 car -0.016000
+decile  2 car -0.026000
+decile  3 car -0.024000
+decile  4 car -0.020000
+decile  5 car +0.001000
+decile  6 car +0.009000
+decile  7 car +0.020000
+decile  8 car +0.036000
+decile  9 car +0.032000
+decile 10 car +0.028000
+step 4 hedge portfolio:
+gross_spread +0.044000
+cost_deduction 0.004000
+net_spread +0.040000
+step 4 net profitable: True</pre>
+          <p class="interpretation">The worked example confirms that the top SUE decile outperforms the bottom decile by +4.40% over the post-announcement holding period. Deducting 20 bps of execution friction on both the long and short legs (40 bps total) leaves a net spread of +4.00%, verifying the economic viability of the strategy in the baseline sample.</p>
+        </section>
+
+        <section class="lab completion" id="lab-AC3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Implementing core PEAD primitives</h3>
+          <p class="hypothesis">Complete the 5 blank lines marked <code>___</code>. Line 227 returns the standardized unexpected earnings ratio; Line 238 computes the 1-indexed decile rank; Line 255 sums abnormal returns over the holding window; Line 264 computes total two-leg transaction cost deduction; and Line 265 computes the net spread. When correct, the output matches Lab 1 exactly.</p>
+          <pre><code class="language-python" data-run="python">"""AC3 project Lab 2: Rung 2 completed solution for the PEAD replication engine.
+
+SIMULATED: the earnings histories, current realizations, and daily return sequences for 10 firms
+are generated from fixed deterministic test data. Money and returns are pure floats.
+The code executes each step of the PEAD pipeline: SUE computation, decile sorting,
+drift CAR evaluation, hedge portfolio spread, and transaction-cost deduction.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+# SIMULATED panel of 10 firms: 8 quarters of history, quarter 9 actual, and daily returns around day 10
+FIRMS_DATA: list[dict[str, Any]] = [
+    {"firm_id": "F01", "history": [10.0, 11.0, 12.0, 13.0, 10.5, 11.6, 12.7, 13.8], "current": 10.2},
+    {"firm_id": "F02", "history": [20.0, 22.0, 24.0, 26.0, 21.0, 23.1, 25.2, 27.3], "current": 22.5},
+    {"firm_id": "F03", "history": [15.0, 15.5, 16.0, 16.5, 15.2, 15.8, 16.3, 16.9], "current": 15.1},
+    {"firm_id": "F04", "history": [30.0, 31.0, 32.0, 33.0, 31.0, 32.1, 33.2, 34.3], "current": 33.5},
+    {"firm_id": "F05", "history": [25.0, 26.0, 27.0, 28.0, 25.5, 26.6, 27.7, 28.8], "current": 26.0},
+    {"firm_id": "F06", "history": [18.0, 19.0, 20.0, 21.0, 18.5, 19.6, 20.7, 21.8], "current": 18.2},
+    {"firm_id": "F07", "history": [40.0, 42.0, 44.0, 46.0, 41.5, 43.6, 45.8, 48.0], "current": 44.5},
+    {"firm_id": "F08", "history": [12.0, 12.5, 13.0, 13.5, 12.3, 12.9, 13.4, 14.0], "current": 12.1},
+    {"firm_id": "F09", "history": [50.0, 52.0, 54.0, 56.0, 51.5, 53.7, 55.9, 58.2], "current": 55.0},
+    {"firm_id": "F10", "history": [35.0, 36.0, 37.0, 38.0, 35.8, 36.9, 38.1, 39.3], "current": 37.0},
+]
+
+# Daily returns for days 0..15 (announcement at day 10, drift holding period days 12..15)
+DAILY_RETURNS: dict[str, list[float]] = {
+    "F01": [
+        -0.005,
+        -0.002,
+        0.001,
+        -0.003,
+        0.000,
+        -0.001,
+        0.002,
+        -0.004,
+        0.001,
+        -0.002,
+        -0.020,
+        -0.005,
+        -0.008,
+        -0.006,
+        -0.007,
+        -0.005,
+    ],
+    "F02": [
+        0.002,
+        0.001,
+        0.003,
+        -0.001,
+        0.002,
+        0.001,
+        -0.002,
+        0.003,
+        0.001,
+        0.002,
+        0.015,
+        0.004,
+        0.005,
+        0.006,
+        0.004,
+        0.005,
+    ],
+    "F03": [
+        -0.001,
+        -0.002,
+        0.000,
+        -0.001,
+        0.001,
+        -0.002,
+        0.001,
+        -0.001,
+        0.000,
+        -0.002,
+        -0.015,
+        -0.003,
+        -0.006,
+        -0.005,
+        -0.004,
+        -0.005,
+    ],
+    "F04": [
+        0.001,
+        0.002,
+        -0.001,
+        0.002,
+        0.001,
+        0.000,
+        0.003,
+        0.001,
+        -0.001,
+        0.002,
+        0.018,
+        0.005,
+        0.007,
+        0.008,
+        0.006,
+        0.007,
+    ],
+    "F05": [
+        0.000,
+        0.001,
+        -0.001,
+        0.000,
+        0.002,
+        -0.001,
+        0.001,
+        0.000,
+        0.001,
+        -0.001,
+        0.002,
+        0.001,
+        0.001,
+        0.000,
+        0.001,
+        -0.001,
+    ],
+    "F06": [
+        -0.002,
+        0.001,
+        -0.003,
+        0.000,
+        -0.001,
+        0.002,
+        -0.002,
+        0.001,
+        -0.002,
+        0.000,
+        -0.012,
+        -0.004,
+        -0.005,
+        -0.004,
+        -0.003,
+        -0.004,
+    ],
+    "F07": [
+        0.003,
+        0.001,
+        0.002,
+        0.000,
+        0.001,
+        0.003,
+        -0.001,
+        0.002,
+        0.001,
+        0.003,
+        0.022,
+        0.006,
+        0.008,
+        0.009,
+        0.007,
+        0.008,
+    ],
+    "F08": [
+        -0.003,
+        -0.001,
+        0.000,
+        -0.002,
+        0.001,
+        -0.003,
+        0.000,
+        -0.002,
+        0.001,
+        -0.001,
+        -0.018,
+        -0.005,
+        -0.007,
+        -0.006,
+        -0.005,
+        -0.006,
+    ],
+    "F09": [
+        0.002,
+        0.003,
+        0.001,
+        0.002,
+        0.000,
+        0.002,
+        0.001,
+        0.003,
+        0.002,
+        0.001,
+        0.025,
+        0.007,
+        0.009,
+        0.010,
+        0.008,
+        0.009,
+    ],
+    "F10": [
+        0.001,
+        0.000,
+        0.002,
+        -0.001,
+        0.001,
+        0.000,
+        0.002,
+        -0.001,
+        0.001,
+        0.002,
+        0.005,
+        0.002,
+        0.002,
+        0.003,
+        0.002,
+        0.002,
+    ],
+}
+
+
+def compute_sue(history: list[float], current: float) -> float:
+    """Step 1. Compute SUE under seasonal random walk with drift."""
+    if len(history) < 8:
+        raise ValueError("Need at least 8 quarters of history")
+    diffs = [history[t] - history[t - 4] for t in range(4, len(history))]
+    drift = sum(diffs) / len(diffs)
+    expected = history[-4] + drift
+    raw_error = current - expected
+
+    errors = [d - drift for d in diffs]
+    variance = sum(e**2 for e in errors) / (len(errors) - 1)
+    std_dev = math.sqrt(variance)
+    if std_dev <= 0:
+        raise ValueError("Forecast error standard deviation must be positive")
+    return ___
+
+
+def assign_deciles(scores: dict[str, float]) -> dict[str, int]:
+    """Step 2. Sort firms into 10 deciles."""
+    if len(scores) < 10:
+        raise ValueError("Need at least 10 firms to form 10 deciles")
+    sorted_firms = sorted(scores.keys(), key=lambda fid: (scores[fid], fid))
+    n = len(sorted_firms)
+    deciles: dict[str, int] = {}
+    for rank, fid in enumerate(sorted_firms):
+        d = ___
+        deciles[fid] = d
+    return deciles
+
+
+def compute_drift_returns(
+    announcements: list[dict[str, Any]], holding_period: tuple[int, int] = (2, 5)
+) -> dict[int, float]:
+    """Step 3. Compute post-announcement cumulative abnormal returns per decile."""
+    h_start, h_end = holding_period
+    decile_cars: dict[int, list[float]] = {d: [] for d in range(1, 11)}
+
+    for item in announcements:
+        d = int(item["decile"])
+        rets = list(item["daily_returns"])
+        t0 = int(item["announcement_day"])
+
+        car = ___
+        decile_cars[d].append(car)
+
+    return {d: (sum(cars) / len(cars) if cars else 0.0) for d, cars in decile_cars.items()}
+
+
+def hedge_portfolio(decile_rets: dict[int, float], cost_bps: float = 20.0) -> dict[str, float]:
+    """Step 4. Construct long Decile 10, short Decile 1 hedge portfolio net of costs."""
+    gross = decile_rets[10] - decile_rets[1]
+    cost_deduction = ___
+    net = ___
+    return {
+        "gross_spread": gross,
+        "cost_deduction": cost_deduction,
+        "net_spread": net,
+    }
+
+
+def main() -> None:
+    # 1. Compute SUE
+    sue_dict = {f["firm_id"]: compute_sue(f["history"], f["current"]) for f in FIRMS_DATA}
+    print("step 1 sue computed for", len(sue_dict), "firms")
+    for fid in sorted(sue_dict.keys()):
+        print(f"firm {fid} sue {sue_dict[fid]:+.4f}")
+
+    # 2. Assign deciles
+    deciles = assign_deciles(sue_dict)
+    print("step 2 deciles assigned:")
+    for d in range(1, 11):
+        fids = [fid for fid, dec in deciles.items() if dec == d]
+        print(f"decile {d:2d} : firms {fids}")
+
+    # 3. Drift returns
+    announcements = [
+        {
+            "firm_id": f["firm_id"],
+            "decile": deciles[f["firm_id"]],
+            "daily_returns": DAILY_RETURNS[f["firm_id"]],
+            "announcement_day": 10,
+        }
+        for f in FIRMS_DATA
+    ]
+    drift = compute_drift_returns(announcements, holding_period=(2, 5))
+    print("step 3 drift returns:")
+    for d in range(1, 11):
+        print(f"decile {d:2d} car {drift[d]:+.6f}")
+
+    # 4. Hedge portfolio
+    hedge = hedge_portfolio(drift, cost_bps=20.0)
+    print("step 4 hedge portfolio:")
+    print(f"gross_spread {hedge['gross_spread']:+.6f}")
+    print(f"cost_deduction {hedge['cost_deduction']:.6f}")
+    print(f"net_spread {hedge['net_spread']:+.6f}")
+    print("step 4 net profitable:", hedge["net_spread"] > 0)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">step 1 sue computed for 10 firms
+firm F01 sue -7.3587
+firm F02 sue +2.7111
+firm F03 sue -4.8990
+firm F04 sue +10.4571
+firm F05 sue -1.1619
+firm F06 sue -7.3587
+firm F07 sue +5.7501
+firm F08 sue -7.3485
+firm F09 sue +5.6094
+firm F10 sue +0.7892
+step 2 deciles assigned:
+decile  1 : firms ['F06']
+decile  2 : firms ['F01']
+decile  3 : firms ['F08']
+decile  4 : firms ['F03']
+decile  5 : firms ['F05']
+decile  6 : firms ['F10']
+decile  7 : firms ['F02']
+decile  8 : firms ['F09']
+decile  9 : firms ['F07']
+decile 10 : firms ['F04']
+step 3 drift returns:
+decile  1 car -0.016000
+decile  2 car -0.026000
+decile  3 car -0.024000
+decile  4 car -0.020000
+decile  5 car +0.001000
+decile  6 car +0.009000
+decile  7 car +0.020000
+decile  8 car +0.036000
+decile  9 car +0.032000
+decile 10 car +0.028000
+step 4 hedge portfolio:
+gross_spread +0.044000
+cost_deduction 0.004000
+net_spread +0.040000
+step 4 net profitable: True</pre>
+          <p class="interpretation">Completing the five blanks produces exact numerical concordance with the solution twin. The logic mirrors the production pipeline required in <code>pead_replication.py</code>.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A quantitative hedge fund's equity strategies group is evaluating whether the academic post-earnings-announcement drift anomaly remains investable after factoring in realistic execution costs and post-2000 market structure shifts. You are tasked with constructing the clean replication engine in <code>pead_replication.py</code> and delivering a referee-style research note evaluating strategy efficacy and structural decay.</dd>
+          <dt>Inputs</dt>
+          <dd>The autograder generates deterministic panels of announcing firms using <code>grader/instance.py</code> seeded by your workspace seed. Each instance supplies <code>seed</code>, <code>label</code> (SIMULATED), <code>pre_announcements</code> (historical pre-2000 sample), <code>post_announcements</code> (modern post-2000 sample), and <code>holding_period</code>. Each firm record contains <code>firm_id</code>, <code>history</code> (at least 8 historical quarters of EPS), <code>current</code> (announced EPS), <code>announcement_day</code> (integer index \(t_0\)), and <code>daily_returns</code> (daily abnormal returns spanning the pre- and post-announcement window).</dd>
+          <dt>Required outputs</dt>
+          <dd>A module <code>pead_replication.py</code> defining five functions:
+            <ol style="overflow-wrap: anywhere; word-break: break-word;">
+              <li><code>standardized_unexpected_earnings</code>(history, current): computes SUE under a seasonal random walk with drift.</li>
+              <li><code>assign_deciles</code>(scores): sorts firms into 10 deciles (1..10) breaking ties deterministically by <code>firm_id</code>.</li>
+              <li><code>drift_returns</code>(announcements, holding_period): computes the mean cumulative abnormal return per decile over \([t_0 + h_1, t_0 + h_2]\).</li>
+              <li><code>hedge_portfolio</code>(decile_drift, cost_bps): constructs long D10 / short D1 hedge portfolio and deducts two-leg round-trip costs. Returns <code>gross_spread</code>, <code>cost_deduction</code>, <code>net_spread</code>.</li>
+              <li><code>subsample_decay_test</code>(pre, post, cost_bps): computes pre-2000 and post-2000 gross and net spreads, decay percentage, and a two-sample t-statistic with p-value.</li>
+            </ol>
+            Additionally, write a referee research note in <code>note/pead_referee_note.md</code> (300 to 600 words) evaluated against the 5 rubric criteria below.
+          </dd>
+          <dt>Constraints</dt>
+          <dd>Python standard library only (<code>math</code>, <code>typing</code>, <code>random</code>; no external dependencies). Functions must be pure: no global state, no mutation of inputs, no network access. Input validation is strictly enforced: every invalid input (insufficient history &lt; 8 quarters, non-positive error standard deviation, fewer than 10 firms for decile sorting, negative cost basis, invalid holding periods \(h_1 > h_2\) or non-positive indices) must raise <strong><code>ValueError</code></strong>.</dd>
+          <dt>Grading mode</dt>
+          <dd>Both. The code is evaluated by the autograder in <code>grader/test_project.py</code> across 14 comprehensive property checks, immutability tests, and 50 random seeds. The referee research note is evaluated by the rubric across criteria C1 through C5.</dd>
+        </dl>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours-table">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1: Analyze worked example Lab 1</td><td class="num">1</td><td>Trace the end-to-end execution of SUE, deciles, drift CAR, and hedge spread on 10 simulated firms.</td></tr>
+              <tr><td>Rung 2: Complete completion problem Lab 2</td><td class="num">2</td><td>Fill the 5 core computational lines in SUE standardization, decile mapping, window indexing, and two-leg costs.</td></tr>
+              <tr><td>SUE estimation and cross-sectional decile sorting</td><td class="num">3</td><td>Implement seasonal random walk with drift, innovation volatility scaling, and decile partitioning with strict validation.</td></tr>
+              <tr><td>Post-announcement drift CAR and hedge portfolio</td><td class="num">4</td><td>Implement event-window cumulative abnormal returns, long-short spread construction, and two-leg transaction cost deductions.</td></tr>
+              <tr><td>Subsample decay testing and error handling</td><td class="num">2</td><td>Implement pre/post-2000 subsample decay comparison, two-sample t-test evaluation, and comprehensive ValueError exception handling.</td></tr>
+              <tr><td>Referee research note draft</td><td class="num">3</td><td>Write the 300–600 word referee note evaluating the empirical findings, lookahead risks, and anomaly decay.</td></tr>
+              <tr><td>Referee note revision against rubric and exemplar calibration</td><td class="num">2</td><td>Score the draft against rubric criteria C1–C5, compare against Exemplars A and B, and refine descriptors.</td></tr>
+              <tr><td>Autograder verification across 50 seeds</td><td class="num">1</td><td>Run the pytest test suite locally across seeds 0 to 49, verifying invariant preservation and zero regressions.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>18</strong></td><td>The hub declares 42 lesson hours and this 18-hour project, which together make the module's 60 hours.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Run your implementation against the automated test suite directly in your workspace:</p>
+        <section class="grader-panel" id="grader" data-unit="AC3" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="pead_replication.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>To run the test suite locally against your workspace instance:</p>
+        <pre><code class="language-bash">pytest -q course/modules/AC/AC3/grader/test_project.py</code></pre>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Rung 3 · The Referee Research Note</h2>
+        <p>Write <code>note/pead_referee_note.md</code> evaluating your replication findings as an academic referee or senior quantitative researcher. The note must contain 300 to 600 words, structured under four headings: <strong>Summary</strong>, <strong>Methodology &amp; Replication</strong>, <strong>Economic Significance &amp; Decay</strong>, and <strong>Recommendation</strong>.</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric-note">
+            <caption>The referee research note: five criteria, four performance levels each. A passing submission achieves Level 3 or Level 4 on every criterion.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">4 · Exemplary</th>
+                <th scope="col">3 · Proficient</th>
+                <th scope="col">2 · Developing</th>
+                <th scope="col">1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · SUE &amp; Decile Sorting</th>
+                <td>Fully details SUE seasonal random walk with drift, volatility normalization, and decile partitioning with exact tie-breaking.</td>
+                <td>Explains SUE calculation and decile sorting with correct economic intuition.</td>
+                <td>Mentions SUE or decile sorting but omits historical volatility standardization.</td>
+                <td>Fails to explain SUE or confuses it with unstandardized dollar surprise.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Drift CAR &amp; Lookahead Prevention</th>
+                <td>Explicity verifies holding window exclusion of announcement days [t, t+1] to prevent lookahead bias and microstructure bid-ask bounce.</td>
+                <td>Correctly defines drift holding window [t+2, t+60] without lookahead.</td>
+                <td>Defines holding window but includes announcement day returns in the drift calculation.</td>
+                <td>Vague or incorrect event window specification.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Two-Leg Transaction Costs</th>
+                <td>Models round-trip costs on both long and short legs separately, showing breakeven cost thresholds in basis points.</td>
+                <td>Deducts two-leg transaction costs from gross spread to report net spread.</td>
+                <td>Deducts costs on a single leg only, or treats gross returns as net profits.</td>
+                <td>Ignores transaction costs entirely.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Anomaly Decay &amp; Significance</th>
+                <td>Rigorous subsample decay test pre- vs post-2000 with statistical t-statistic and economic interpretation citing publication decay.</td>
+                <td>Reports pre- and post-2000 drift spreads and notes anomaly attenuation over time.</td>
+                <td>Mentions anomaly decay without comparing numerical subsamples.</td>
+                <td>Asserts PEAD is constant across time without testing.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Structure &amp; Word Count</th>
+                <td>All four headings in order, body length strictly between 300 and 600 words, executive summary in first paragraph.</td>
+                <td>All four headings present with body length between 300 and 600 words.</td>
+                <td>Missing one heading, or word count slightly outside 300–600 words.</td>
+                <td>Unstructured draft or word count severely outside allowable range.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Two notes written to this brief, with overall levels 1 and 3 under the scoring rule. Both evaluate the replication engine figures. Each carries annotations indicating met or missed criteria.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="1" data-scores="2,1,1,1,2" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 1 · C3 1 · C4 1 · C5 2. The note confuses raw surprise with SUE, includes day 0 returns in the drift window, deducts trading friction on only one leg, ignores subsample decay, and omits the Recommendation heading.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>We replicated the PEAD strategy on 50 stocks. The strategy goes long positive surprise stocks and short negative surprise stocks, generating a 5.2% return over 60 days. The strategy appears highly profitable and ready for live capital deployment.</p>
+              <h5>Methodology &amp; Replication</h5>
+              <p>Firms are sorted by their quarterly earnings surprise. We measured cumulative returns starting from the morning of the announcement date through day 60. The top decile generated +3.8% and the bottom decile generated -1.4%.</p>
+              <h5>Economic Significance &amp; Decay</h5>
+              <p>Deducting a 20 bps commission on the long side leaves a net return of 5.0%. Transaction costs are minor and do not impair the strategy. We assume the anomaly works consistently across all time periods without variation.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: discusses sorting on earnings surprise, but omits volatility standardization.</li>
+                <li class="misses" data-criterion="C2" data-level="1">Misses C2: includes announcement day 0 in the drift window, introducing severe lookahead bias.</li>
+                <li class="misses" data-criterion="C3" data-level="1">Misses C3: deducts execution costs on only one leg, ignoring short borrowing fees and short transaction costs.</li>
+                <li class="misses" data-criterion="C4" data-level="1">Misses C4: fails to test pre- vs post-2000 subsample decay.</li>
+                <li class="meets" data-criterion="C5" data-level="2">Meets C5 level 2: has only three headings (missing Recommendation) and under 250 words.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="3" data-scores="4,3,4,3,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 3 · C3 4 · C4 3 · C5 4. The note provides full SUE and decile mechanics, strictly separates announcement from drift window, models two-leg costs with breakeven analysis, documents significant post-2000 decay, and adheres strictly to formatting constraints.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Summary</h5>
+              <p>This referee note evaluates the replication of Bernard &amp; Thomas (1989) post-earnings-announcement drift across 50 simulated firms. The strategy generates an annualized gross spread of +8.40% historically, which compresses to +3.10% in the modern post-2000 subsample. After accounting for two-leg transaction costs, the strategy remains marginally viable only in liquid large-cap securities.</p>
+              <h5>Methodology &amp; Replication</h5>
+              <p>Unexpected earnings are computed using a seasonal random walk with historical drift across 8 prior quarters, standardized by forecast error volatility (SUE). Announcing firms are sorted into 10 deciles. To avoid lookahead bias and microstructure bounce, the post-announcement holding period is strictly restricted to days [t+2, t+60], excluding the contemporaneous announcement window [t, t+1]. Decile 10 earns a 60-day CAR of +4.90% while Decile 1 earns -3.50% in the pre-2000 period.</p>
+              <h5>Economic Significance &amp; Decay</h5>
+              <p>Constructing a zero-cost long/short hedge portfolio yields a gross spread of +8.40%. Accounting for two-leg round-trip transaction costs of 20 bps per leg (40 bps total) reduces the net spread to +8.00% pre-2000. However, in the post-2000 subsample, the gross spread drops to +3.10% (net +2.70%), representing a 63.1% anomaly decay that is statistically significant (t = 4.82, p &lt; 0.001). The breakeven transaction cost is 155 bps round-trip post-2000.</p>
+              <h5>Recommendation</h5>
+              <p>We recommend rejecting unconstrained deployment of standalone PEAD in small-cap universes due to short locate constraints and borrow costs. PEAD signals should instead be integrated as a multi-factor alpha overlay within broader quantitative momentum models.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: thoroughly specifies seasonal SUE, volatility scaling, and decile partitioning.</li>
+                <li class="meets" data-criterion="C2" data-level="3">Meets C2 level 3: strictly restricts holding window to [t+2, t+60] without lookahead bias.</li>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: deducts two-leg costs and calculates the breakeven cost threshold (155 bps).</li>
+                <li class="meets" data-criterion="C4" data-level="3">Meets C4 level 3: documents post-2000 decay (63.1% drop) with t-statistic and p-value.</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: four required headings in order, body length 340 words, clear executive summary.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Intraday execution timing:</strong> Model the execution speed of PEAD entry across the first 30 minutes following market open at day t+2 versus end-of-day VWAP.</li>
+          <li><strong>Short-sale borrow fee overlay:</strong> Incorporate dynamic equity lending fees from Markit/Securities Finance into the short leg of Decile 1 to assess net borrow-adjusted alpha.</li>
+          <li><strong>Analyst revision momentum:</strong> Combine time-series SUE with consensus analyst forecast revision momentum over the 30-day post-announcement window to construct a dual-signal alpha model.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <ol class="reading-list">
+          <li data-cite="ball1968empirical"></li>
+          <li data-cite="bernard1989post"></li>
+          <li data-cite="patton2020you"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Module navigation">
+        <a href="L06.html" class="nav-link prev">
+          <span class="dir">&larr; Previous</span>
+          <span class="title">L06: Voluntary Disclosure Theory</span>
+        </a>
+        <a href="index.html" class="nav-link next">
+          <span class="dir">Overview &rarr;</span>
+          <span class="title">AC3 Module Overview</span>
+        </a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">AC3 project · PEAD Replication Engine &amp; Referee Note · The autograder runs on simulated data.</footer>
+</body>
+</html>
