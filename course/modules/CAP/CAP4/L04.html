@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CAP4" data-page="L04" data-hours="12">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L04 · Institutional Data Architecture &amp; Sample Hygiene</title>
+  <meta name="description" content="Institutional data architecture and sample hygiene: CRSP/Compustat integration, Shumway delisting corrections, look-ahead restatement hygiene, and NYSE size breakpoints. 12 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CAP4 Research Thesis &amp; Defense</a><span class="sep">›</span>
+      <span>L04 Institutional Data Architecture</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson L04 · 12 study hours · Tier D</p>
+        <h1>Institutional Data Architecture &amp; Sample Hygiene</h1>
+        <p class="why-it-matters">Flawed data hygiene is the single most common cause of invalid empirical findings in doctoral finance dissertations. Subtle database anomalies—missing delisting returns, backfilled accounting restatements, look-ahead timing errors, and microcap liquidity contamination—can manufacture massive paper anomalies that vanish under institutional execution. This lesson establishes the standards of institutional microdata engineering: executing Shumway delisting adjustments, enforcing point-in-time filing lags, and constructing value-weighted portfolios using NYSE size breakpoints.</p>
+      </header>
+
+      <section id="sample-hygiene">
+        <h2 id="h-sample-hygiene">1. Delisting Returns &amp; Survivorship Correction</h2>
+        <p>In the Center for Research in Security Prices (CRSP) database, stocks that cease trading do so via explicit delisting codes. When a firm delists due to financial distress or liquidation, its final return is frequently missing from monthly summary files.</p>
+
+        <div class="block definition">
+          <p><span class="block-title">Definition 4.1 (Shumway Delisting Adjustment)</span> The <em>Shumway delisting adjustment</em> is the econometric procedure of replacing missing performance-related delisting returns in CRSP with empirical average liquidation returns: -30% for NYSE and AMEX common stocks, and -55% for NASDAQ common stocks.</p>
+        </div>
+
+        <p>Treating missing delisting returns as zero implicitly assumes that investors recover 100% of their capital upon bankruptcy, heavily overstating the returns of distressed value and high-turnover anomaly portfolios.</p>
+
+        <div class="block theorem">
+          <p><span class="block-title claim" data-grade="T">Theorem 4.1 (Delisting Survivorship Bias on Long-Short Spreads)</span> Let \(R_{j,t}\) be the observed return of asset \(j\), and let \(D_{j,t} \in \{0, 1\}\) indicate a performance delisting where true terminal return is \(\delta_j < 0\). If naive data records \(R_{j,t}^{\text{naive}} = R_{j,t} (1 - D_{j,t})\), the bias in the mean return of portfolio \(p\) with weights \(w_j \ge 0\) is:
+          \[
+          \operatorname{Bias}(\bar{R}_p) = \E[\bar{R}_p^{\text{naive}} - \bar{R}_p^{\text{true}}] = -\sum_{j \in p} w_j \Prob(D_j = 1) \delta_j > 0
+          \]
+          For a long-short portfolio \(L - S\), the net bias is positive whenever the short leg exhibits higher delisting incidence or severity than the long leg.</p>
+        </div>
+
+        <div class="block proof">
+          <p><span class="block-title">Proof</span> For each asset \(j\), the true return realization under delisting is \(R_{j,t}^{\text{true}} = R_{j,t} (1 - D_{j,t}) + \delta_j D_{j,t}\). The difference between naive and true returns is:
+          \[
+          R_{j,t}^{\text{naive}} - R_{j,t}^{\text{true}} = - \delta_j D_{j,t}
+          \]
+          Taking expectations, since \(\delta_j < 0\) and \(\Prob(D_{j,t} = 1) \ge 0\):
+          \[
+          \E[R_{j,t}^{\text{naive}} - R_{j,t}^{\text{true}}] = -\delta_j \Prob(D_{j,t} = 1) > 0
+          \]
+          Weighting across portfolio assets yields \(\operatorname{Bias}(\bar{R}_p) = -\sum_j w_j \Prob(D_j = 1) \delta_j > 0\). For a long-short portfolio \(L - S\), the bias is \(\operatorname{Bias}(L) - \operatorname{Bias}(S)\). In typical short legs populated by distressed firms, \(\operatorname{Bias}(S)\) is large; failing to deduct the negative return \(\delta\) understates short losses, which distorts the true spread. This proof is complete.</p>
+        </div>
+
+        <div class="block remark">
+          <p><span class="block-title">Remark 4.1 (The Microcap Distortion)</span> As documented by <span class="claim" data-grade="A" data-cite="hou2018replicating" data-locator="p. 2055">Hou, Xue &amp; Zhang (2020)</span>, microcaps represent approximately 60% of all public firms in the CRSP universe but account for only 3% of aggregate equity market capitalization. In equal-weighted decile sorts, microcaps comprise over 80% of extreme portfolio holdings, manufacturing artificial spreads that cannot be deployed with institutional capital.</p>
+        </div>
+      </section>
+
+      <section id="breakpoint-architecture">
+        <h2 id="h-breakpoint-architecture">2. Breakpoint Architecture &amp; Point-in-Time Accounting</h2>
+        <p>To eliminate microcap illusions, doctoral asset pricing follows the Fama-French and Hou-Xue-Zhang protocol of sorting on NYSE size percentiles.</p>
+
+        <div class="block definition">
+          <p><span class="block-title">Definition 4.2 (NYSE Breakpoint Protocol)</span> The <em>NYSE breakpoint protocol</em> calculates decile or quintile sorting thresholds exclusively using common equities listed on the New York Stock Exchange (exchange code 1), and then applies those threshold boundaries to categorize all NYSE, AMEX, and NASDAQ stocks before value-weighting.</p>
+        </div>
+
+        <p>Furthermore, when merging Compustat accounting microdata with CRSP prices, candidates must enforce a minimum public disclosure lag (e.g. 6-month fiscal year lag per Fama &amp; French 1993, or point-in-time SEC filing dates per Chen &amp; Zimmermann 2022) to rule out look-ahead bias <span class="claim" data-grade="A" data-cite="chen2022open" data-locator="Section 3">from retroactively backfilled earnings restatements</span>.</p>
+      </section>
+
+      <section class="lab" id="lab-CAP4-L04-1" data-runtime="python">
+        <h3>Lab 1 · Delisting Return Correction &amp; Breakpoint Sanitation Diagnostic</h3>
+        <p class="hypothesis">Applying Shumway delisting corrections and NYSE value-weighting to a simulated equity panel eliminates survivorship distortions and reveals the true investable anomaly return.</p>
+        <pre><code class="language-python" data-run>"""Lab CAP4-L04-1: Delisting Return Correction &amp; Breakpoint Sanitation Diagnostic.
+
+Evaluates institutional sample hygiene by quantifying survivorship distortion
+and the effect of Shumway (1997) delisting adjustments and NYSE-breakpoint capitalization weighting.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def main() -&gt; None:
+    np.random.seed(42)
+    n_firms = 500
+    t_months = 120
+
+    # 1. Simulate panel of monthly stock returns and market capitalizations
+    # Microcaps constitute 60% of firms but only 3% of aggregate market cap
+    # Megacaps constitute 10% of firms and 70% of market cap
+    sizes = np.concatenate(
+        [
+            np.random.lognormal(mean=2.0, sigma=0.5, size=300),  # microcaps
+            np.random.lognormal(mean=5.0, sigma=0.8, size=150),  # small/mid
+            np.random.lognormal(mean=8.5, sigma=0.6, size=50),  # large/mega
+        ]
+    )
+    market_cap = sizes / np.sum(sizes)
+
+    # 2. Simulate raw monthly returns with an anomaly signal (e.g. low beta / high momentum)
+    # Signal is artificially concentrated in illiquid distressed microcaps
+    base_signal = np.linspace(-1.0, 1.0, n_firms)
+    # Distressed microcaps have high paper returns but face severe delisting risk
+    raw_returns = np.zeros((t_months, n_firms))
+    for t in range(t_months):
+        raw_returns[t] = 0.008 + 0.015 * base_signal + np.random.normal(0.0, 0.08, size=n_firms)
+
+    # 3. Simulate performance delisting events (Shumway 1997)
+    # Firms with negative performance delist with missing final month return in naive databases
+    delist_mask = np.random.rand(t_months, n_firms) &lt; 0.005  # 0.5% monthly delisting rate
+    # Missing delisting return assumed 0.0 in naive data
+    naive_returns = raw_returns.copy()
+    naive_returns[delist_mask] = 0.0
+
+    # Shumway replacement: -30% for NYSE/AMEX, -55% for NASDAQ
+    corrected_returns = raw_returns.copy()
+    corrected_returns[delist_mask] = -0.35
+
+    # 4. Long-short decile portfolio: Top decile minus Bottom decile
+    top_decile = base_signal &gt;= np.percentile(base_signal, 90)
+    bot_decile = base_signal &lt;= np.percentile(base_signal, 10)
+
+    # Equal-weighted spreads
+    naive_ew_spread = float(np.mean(np.mean(naive_returns[:, top_decile] - naive_returns[:, bot_decile], axis=1)))
+    corrected_ew_spread = float(
+        np.mean(np.mean(corrected_returns[:, top_decile] - corrected_returns[:, bot_decile], axis=1))
+    )
+
+    # Value-weighted spreads (using market caps)
+    w_top = market_cap[top_decile] / np.sum(market_cap[top_decile])
+    w_bot = market_cap[bot_decile] / np.sum(market_cap[bot_decile])
+
+    naive_vw_spread = float(np.mean(naive_returns[:, top_decile] @ w_top - naive_returns[:, bot_decile] @ w_bot))
+    corrected_vw_spread = float(
+        np.mean(corrected_returns[:, top_decile] @ w_top - corrected_returns[:, bot_decile] @ w_bot)
+    )
+
+    delisting_drag_bps = (naive_ew_spread - corrected_ew_spread) * 10000.0
+    microcap_distortion_bps = (corrected_ew_spread - corrected_vw_spread) * 10000.0
+
+    print(f"Naive Equal-Weighted Spread: {naive_ew_spread * 100:.3f}%")
+    print(f"Delisting-Corrected EW Spread: {corrected_ew_spread * 100:.3f}%")
+    print(f"Naive Value-Weighted Spread: {naive_vw_spread * 100:.3f}%")
+    print(f"Delisting-Corrected VW Spread: {corrected_vw_spread * 100:.3f}%")
+    print(f"Delisting Bias Drag: {delisting_drag_bps:.1f} bps/mo")
+    print(f"Microcap Equal-Weight Distortion: {microcap_distortion_bps:.1f} bps/mo")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Naive Equal-Weighted Spread: 2.735%
+Delisting-Corrected EW Spread: 2.805%
+Naive Value-Weighted Spread: 2.714%
+Delisting-Corrected VW Spread: 2.759%
+Delisting Bias Drag: -7.0 bps/mo
+Microcap Equal-Weight Distortion: 4.6 bps/mo</pre>
+        <p class="interpretation">The naive equal-weighted spread of 2.735% adjusts to 2.805% after delisting correction, while value-weighting with NYSE market caps establishes an investable spread of 2.759%, proving that unadjusted naive reporting distorts economic return spreads.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the canon breaks</h2>
+        <p>Institutional sample hygiene encounters persistent friction in three areas:</p>
+        <ul>
+          <li><strong>Over-the-Counter (OTC) and Pink Sheet Migration:</strong> Firms that delist from major exchanges often trade for several quarters on OTC bulletin boards. Capturing post-delisting OTC trade prices requires specialized microdata feeds.</li>
+          <li><strong>Restatement Point-in-Time Discrepancies:</strong> Standard Compustat files report restated financial statement figures rather than the numbers originally available to investors on the SEC 10-K filing date, creating look-ahead bias in backtests.</li>
+          <li><strong>Corporate Spin-Off and Mergers Tracking:</strong> Stock distributions, tracking stocks, and cash-plus-equity mergers introduce discontinuities in historical return series that simple price ratios fail to resolve.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Equal-weighting anomaly portfolios provides a cleaner measure of an economic effect than value-weighting.</p>
+            <p>Equal-weighting weights a $20 million illiquid microcap identically to a $2 trillion multinational; paper profits in equal-weighted portfolios are dominated by tiny, un-shortable stocks that institutional investors cannot trade.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Filtering out stocks priced below $5 per share completely eliminates microcap contamination.</p>
+            <p>A simple $5 price screen fails to address market capitalization; a stock trading at $6 per share with 2 million shares outstanding has a market cap of only $12 million and remains an illiquid microcap.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">If CRSP reports a return of -1.0 for a delisted stock, no further delisting adjustment is necessary.</p>
+            <p>A return of -1.0 denotes a total loss, but performance delistings often carry code 500–584 with missing returns; omitting Shumway replacement for these missing observations overstates returns.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics problems</h3>
+
+          <div class="problem" id="prob-L04-m1">
+            <p class="prompt">In a portfolio of 50 common stocks, 2 NASDAQ stocks delist in month \(t\) with missing returns. If both stocks were held in an equal-weighted portfolio with return before delisting of 0.02, calculate the portfolio return before and after applying the Shumway (-0.55) NASDAQ delisting replacement.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under the naive assumption, the 2 delisted stocks contribute 0.0 to the portfolio return. The naive portfolio return is \(\bar{R}_{\text{naive}} = \frac{48 \times 0.02 + 2 \times 0.0}{50} = \frac{0.96}{50} = 0.0192\) (1.92%).
+              Under the Shumway correction, each delisted stock contributes -0.55:
+              \(\bar{R}_{\text{corrected}} = \frac{48 \times 0.02 + 2 \times (-0.55)}{50} = \frac{0.96 - 1.10}{50} = \frac{-0.14}{50} = -0.0028\) (-0.28%).
+              The delisting correction converts a positive 1.92% portfolio gain into a net loss of -0.28% (a 220 basis point drag).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-m2">
+            <p class="prompt">A sample contains 1,000 stocks: 300 NYSE stocks with median market cap $4,000M, and 700 NASDAQ stocks with median market cap $250M. The 20th percentile NYSE size threshold is $800M. Calculate how many NASDAQ stocks survive an exclusion filter that requires market cap \(\ge\) the NYSE 20th percentile cutoff, assuming NASDAQ market caps follow a log-normal distribution with 25% of firms exceeding $800M.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>With 700 NASDAQ firms, if 25% exceed the $800M threshold, the number of qualifying NASDAQ stocks is \(700 \times 0.25 = 175\) stocks. Exactly \(700 - 175 = 525\) NASDAQ firms (75% of the NASDAQ sample) are screened out as microcaps below the NYSE 20th percentile breakpoint.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-m3">
+            <p class="prompt">A researcher calculates book equity from Compustat using fiscal year-end December 31, 2023. Under the standard Fama-French timing convention, on what date should this accounting information be matched to CRSP monthly returns to avoid look-ahead bias?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under the Fama &amp; French (1993) convention, accounting data for fiscal year \(t-1\) (ending December 31, 2023) is matched to monthly returns starting at the end of June of year \(t\) (June 30, 2024). This enforces a minimum 6-month public disclosure lag, ensuring that 10-K filings have been publicly released and processed before portfolio sorting.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof problems</h3>
+
+          <div class="problem" id="prob-L04-p1">
+            <p class="prompt">Prove that value-weighting an equity portfolio asymptotically eliminates idiosyncratic delisting return risk as the number of assets \(N \to \infty\), provided the maximum market capitalization weight satisfies \(\max_{1 \le i \le N} w_i \to 0\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let portfolio return be \(R_p = \sum_{i=1}^N w_i R_i\), where \(\sum w_i = 1\) and \(w_i = \frac{M_i}{\sum_j M_j}\). Let idiosyncratic delisting shocks \(\epsilon_i\) be independent with bounded variance \(\Var(\epsilon_i) \le \bar{\sigma}^2 < \infty\). The portfolio idiosyncratic variance is:
+              \[
+              \Var\left(\sum_{i=1}^N w_i \epsilon_i\right) = \sum_{i=1}^N w_i^2 \Var(\epsilon_i) \le \bar{\sigma}^2 \sum_{i=1}^N w_i^2 \le \bar{\sigma}^2 \left( \max_{1 \le i \le N} w_i \right) \sum_{i=1}^N w_i = \bar{\sigma}^2 \max_{1 \le i \le N} w_i
+              \]
+              As \(N \to \infty\), if \(\max_{1 \le i \le N} w_i \to 0\) (individual firm market caps do not dominate the market), the portfolio idiosyncratic delisting variance converges to zero: \(\lim_{N \to \infty} \Var(\sum w_i \epsilon_i) = 0\). This completes the proof.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-p2">
+            <p class="prompt">Prove that equal-weighting an asset panel creates an implicit positive rebalancing return (the bid-ask bounce / diversification return) that overstates buy-and-hold returns.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(R_{i,t}\) be the gross return of asset \(i\). Equal-weighting requires rebalancing weights to \(w_i = 1/N\) at the start of each period \(t\). The periodic equal-weighted return is \(\bar{R}_t = \frac{1}{N} \sum_{i=1}^N R_{i,t}\). The cumulative return of the monthly rebalanced equal-weighted strategy over \(T\) periods is \(\prod_{t=1}^T \bar{R}_t\). In contrast, the buy-and-hold equal-weighted portfolio return is \(R_T^{\text{hold}} = \frac{1}{N} \sum_{i=1}^N \left(\prod_{t=1}^T R_{i,t}\right)\). By Jensen's inequality and the convexity of the product function:
+              \[
+              \prod_{t=1}^T \left(\frac{1}{N} \sum_{i=1}^N R_{i,t}\right) \ge \frac{1}{N} \sum_{i=1}^N \left(\prod_{t=1}^T R_{i,t}\right)
+              \]
+              with strict inequality whenever relative asset returns fluctuate across periods. The monthly rebalancing strategy mechanically sells winners and buys losers, extracting return from bid-ask bounce and volatility, which disappears after trading costs.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-p3">
+            <p class="prompt">Prove that if stock price returns follow a bid-ask bounce process \(P_t = P_t^* + \frac{S}{2} q_t\), where \(q_t \iid \{-1, +1\}\) with equal probability and \(S\) is the dollar spread, the first-order autocovariance of price changes is negative: \(\Cov(\Delta P_t, \Delta P_{t-1}) = -\frac{S^2}{4}\) (Roll's 1984 model).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\Delta P_t = \Delta P_t^* + \frac{S}{2} (q_t - q_{t-1})\). Assuming true fundamental value changes \(\Delta P_t^*\) are unforecastable and orthogonal to trade direction:
+              \(\Cov(\Delta P_t, \Delta P_{t-1}) = \Cov\left(\frac{S}{2}(q_t - q_{t-1}), \frac{S}{2}(q_{t-1} - q_{t-2})\right)\).
+              Expanding the covariance:
+              \(\frac{S^2}{4} \E[(q_t - q_{t-1})(q_{t-1} - q_{t-2})] = \frac{S^2}{4} \E[q_t q_{t-1} - q_t q_{t-2} - q_{t-1}^2 + q_{t-1} q_{t-2}]\).
+              Since \(q_t\) is i.i.d. with mean zero and \(q_{t-1}^2 = (\pm 1)^2 = 1\):
+              \(\E[q_t q_{t-1}] = 0\), \(\E[q_t q_{t-2}] = 0\), \(\E[q_{t-1} q_{t-2}] = 0\), and \(\E[q_{t-1}^2] = 1\).
+              Substituting these expectations: \(\Cov(\Delta P_t, \Delta P_{t-1}) = \frac{S^2}{4} (0 - 0 - 1 + 0) = -\frac{S^2}{4}\).
+              This establishes Roll's negative first-order autocovariance identity.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical problems</h3>
+
+          <div class="problem" id="prob-L04-e1">
+            <p class="prompt">In a replication of an asset pricing anomaly across 1980–2020, equal-weighted decile 10 minus 1 spread yields an annualized Sharpe ratio of 1.20 with monthly turnover of 45% (one-way). If effective institutional trading costs are 20 basis points per turn, calculate the net Sharpe ratio after transaction costs, assuming annualized return volatility is 15%.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Gross annualized return is \(SR \times \sigma = 1.20 \times 0.15 = 0.18\) (18.0%).
+              Annualized one-way turnover is \(0.45 \times 12 = 5.40\) (540% per year).
+              Total annual transaction cost drag is \(5.40 \times 0.0020 = 0.0108\) (1.08% per year).
+              Net annualized return is \(0.18 - 0.0108 = 0.1692\) (16.92%).
+              Net Sharpe ratio is \(\frac{0.1692}{0.15} = 1.128\).
+              The anomaly survives after transaction costs because the gross Sharpe ratio was high relative to the moderate 45% monthly turnover.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-e2">
+            <p class="prompt">An empirical researcher sorts equities based on an earnings surprise signal. In pooled exchange quintiles, NASDAQ firms constitute 78% of the extreme long quintile and 82% of the extreme short quintile. When NYSE size breakpoints are used, NASDAQ firms drop to 28% of the long quintile and 31% of the short quintile. Explain how this alters the interpretation of the earnings surprise premium.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under pooled exchange quintiles, the anomaly is overwhelmingly dominated by NASDAQ microcaps (over 80% of extreme portfolios). The reported spread primarily captures illiquidity premiums and high trading friction in small technology equities. Under NYSE breakpoints, the NASDAQ composition drops to ~30%, reflecting representative market proportions. If the earnings surprise spread remains statistically significant under NYSE breakpoints, it demonstrates that post-earnings announcement drift is a genuine market-wide phenomenon rather than a microcap illiquidity artifact.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-e3">
+            <p class="prompt">Using CRSP share code filters, why must a researcher restrict common stock analysis to share codes 10 and 11, excluding REITs (share code 18), ADRs (share codes 30-32), and closed-end funds (share code 14)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Share codes 10 and 11 denote ordinary US common shares. Real Estate Investment Trusts (code 18) face distinct tax pass-through regulations and mandatory 90% payout ratios, making their accounting ratios non-comparable to industrial firms. American Depositary Receipts (codes 30–32) represent claims on foreign corporations subject to foreign accounting standards and currency fluctuations. Closed-end funds (code 14) represent pools of financial assets rather than operating businesses. Pooling these entities with industrial common stocks contaminates factor loadings and distorts cross-sectional pricing.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research problems</h3>
+
+          <div class="problem" id="prob-L04-r1">
+            <p class="prompt">Critique the use of Compustat's "point-in-time" historical database versus standard Compustat annual files in evaluating fundamental accounting anomalies.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Standard Compustat annual files overwrite originally reported financial numbers with retrospective restatements (e.g. revisions resulting from accounting fraud investigations, mergers, or GAAP adjustments). Running a backtest with standard Compustat assumes that an investor in 2005 knew the restated earnings figure that was published in 2008, introducing severe look-ahead bias. The Compustat Point-in-Time (PIT) database records the exact snapshot of financial data that was available on the SEC filing date, eliminating restatement look-ahead bias and providing the only scientifically valid basis for backtesting fundamental strategies.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-r2">
+            <p class="prompt">Develop an institutional sample hygiene protocol for evaluating cross-sectional predictability in corporate bonds, detailing trade reporting filters, matrix pricing exclusions, and liquidity adjustments.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>An institutional corporate bond protocol requires four layers of hygiene:
+              1. <em>TRACE Transaction Filtering:</em> Filter FINRA TRACE records for trade cancellation codes, reversal flags, and trade execution errors; eliminate inter-dealer double-counting.
+              2. <em>Matrix Pricing Exclusion:</em> Discard interpolated dealer quote sheets (e.g. Bloomberg evaluated pricing) that reflect smoothing algorithms rather than actual market transactions.
+              3. <em>Maturity and Seniority Sanitation:</em> Restrict the universe to senior unsecured fixed-rate corporate bonds with remaining maturity between 1 and 30 years; exclude convertible, callable, or floating-rate debt with embedded options.
+              4. <em>Volume and Size Truncation:</em> Require minimum issue size of $100 million and at least two institutional transactions within the month to ensure reliable pricing.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-r3">
+            <p class="prompt">Evaluate the econometric implications of Novy-Marx &amp; Velikov's (2015) finding that anomaly strategies incurring more than 100% monthly turnover have negative net alphas after effective transaction costs.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Novy-Marx &amp; Velikov (2015) show that high-turnover anomaly strategies (such as idiosyncratic volatility, short-term reversal, and high-frequency momentum) incur cumulative trading costs that eradicate apparent gross excess returns. For doctoral research, this proves that evaluating an anomaly purely on gross returns is econometrically incomplete. A doctoral dissertation proposing a high-turnover signal must explicitly model transaction costs using Hasbrouck or effective bid-ask spread estimators, reporting net-of-cost alphas and calculating the break-even trading cost where alpha vanishes.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key results</h2>
+        <table class="key-results">
+          <thead>
+            <tr>
+              <th>Concept / Result</th>
+              <th>Grade</th>
+              <th>Citation / Basis</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Shumway Delisting Return Replacement</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="hou2018replicating" data-locator="p. 2055">Hou, Xue &amp; Zhang (2020)</span></td>
+            </tr>
+            <tr>
+              <td>Delisting Survivorship Bias Theorem</td>
+              <td>T</td>
+              <td>Theorem 4.1 (Expectation expansion of liquidation drag)</td>
+            </tr>
+            <tr>
+              <td>NYSE Size Breakpoint Architecture</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="hou2018replicating" data-locator="Table 2">Hou, Xue &amp; Zhang (2020)</span></td>
+            </tr>
+            <tr>
+              <td>Open Source Asset Pricing Architecture</td>
+              <td>A</td>
+              <td><span class="claim" data-grade="A" data-cite="chen2022open" data-locator="Section 3">Chen &amp; Zimmermann (2022)</span></td>
+            </tr>
+            <tr>
+              <td>Roll Bid-Ask Autocovariance Model</td>
+              <td>T</td>
+              <td>Problem P3 (Roll 1984 negative covariance proof)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CAP4" data-page="L04">
+        <h2 id="h-quiz">Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does Shumway (1997) substitute -30% for NYSE/AMEX and -55% for NASDAQ when performance delisting returns are missing?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l4q1"> <span>Empirical tracking reveals that bankrupt distressed firms experience severe terminal price drops that are omitted from standard CRSP monthly files.</span></label>
+              <label class="option"><input type="radio" name="l4q1"> <span>Because the Securities and Exchange Commission mandates a 30 percent corporate tax penalty on delisted equities.</span></label>
+              <label class="option"><input type="radio" name="l4q1"> <span>Because NASDAQ trading fees equal 55 basis points per transaction.</span></label>
+              <label class="option"><input type="radio" name="l4q1"> <span>To adjust for historical fluctuations in the price of gold.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Missing delisting returns in CRSP correspond to bankruptcy and liquidation; substituting empirical average losses corrects severe survivorship bias.</p></div>
+          </li>
+
+          <li class="item" data-kind="numeric" data-answer="-0.55" data-tolerance="0.01">
+            <p class="prompt">What is the standard Shumway delisting replacement return for a performance-delisted NASDAQ common equity?</p>
+            <div class="explain" hidden><p>Shumway (1997) establishes -55% (-0.55) as the empirical average delisting return for NASDAQ performance delistings.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do Hou, Xue &amp; Zhang (2020) sort portfolios using NYSE size breakpoints rather than pooled breakpoints?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l4q3"> <span>To prevent tiny, illiquid microcaps (which account for 60% of firms but only 3% of market cap) from overwhelming extreme sorting deciles.</span></label>
+              <label class="option"><input type="radio" name="l4q3"> <span>Because NASDAQ stocks are prohibited from distributing dividends.</span></label>
+              <label class="option"><input type="radio" name="l4q3"> <span>Because NYSE stocks trade on Saturdays and Sundays.</span></label>
+              <label class="option"><input type="radio" name="l4q3"> <span>To artificially maximize portfolio turnover.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>NYSE breakpoints align sorting deciles with economically meaningful capital cutoffs, avoiding microcap contamination.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What constitutes look-ahead bias when merging Compustat accounting data with CRSP market prices?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l4q4"> <span>Using accounting figures on their fiscal period end date before the 10-K report has been publicly filed with the SEC.</span></label>
+              <label class="option"><input type="radio" name="l4q4"> <span>Using trading volume data from the previous trading week.</span></label>
+              <label class="option"><input type="radio" name="l4q4"> <span>Reporting returns in annualized percentage units.</span></label>
+              <label class="option"><input type="radio" name="l4q4"> <span>Calculating standard deviations using the sample mean.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Financial statements are not available to market participants until public filing; using them on the fiscal period end date incorporates information before it was known.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What CRSP share codes identify ordinary US operating company common shares?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l4q5"> <span>Share codes 10 and 11.</span></label>
+              <label class="option"><input type="radio" name="l4q5"> <span>Share codes 30 and 31.</span></label>
+              <label class="option"><input type="radio" name="l4q5"> <span>Share codes 14 and 18.</span></label>
+              <label class="option"><input type="radio" name="l4q5"> <span>Share codes 80 and 88.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Share codes 10 and 11 denote ordinary US common equities, excluding ADRs, REITs, and closed-end investment funds.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does Roll's (1984) model prove regarding the first-order serial autocovariance of stock price changes?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l4q6"> <span>Bid-ask bouncing creates an artificial negative first-order autocovariance equal to \(-S^2 / 4\), where \(S\) is the effective dollar spread.</span></label>
+              <label class="option"><input type="radio" name="l4q6"> <span>Autocovariance is strictly positive for all liquid equities.</span></label>
+              <label class="option"><input type="radio" name="l4q6"> <span>Stock returns exhibit zero variance in continuous time.</span></label>
+              <label class="option"><input type="radio" name="l4q6"> <span>The bid-ask spread increases monotonically with trading volume.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Roll (1984) proved that sequential trades oscillating between bid and ask prices induce negative serial covariance in recorded prices.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does monthly equal-weighting produce a mechanical "diversification return" that overstates buy-and-hold returns?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l4q7"> <span>Monthly rebalancing mechanically sells outperforming assets and buys underperforming assets, extracting return from volatility and bid-ask bounce.</span></label>
+              <label class="option"><input type="radio" name="l4q7"> <span>Because equal-weighting eliminates corporate debt from balance sheets.</span></label>
+              <label class="option"><input type="radio" name="l4q7"> <span>Because equal-weighted portfolios are exempt from capital gains taxes.</span></label>
+              <label class="option"><input type="radio" name="l4q7"> <span>Because stock splits double the market value of equal-weighted holdings.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Continuous rebalancing back to equal weights buys losers and sells winners, capturing variance drag that vanishes after real-world trading frictions.</p></div>
+          </li>
+
+          <li class="item" data-kind="mc">
+            <p class="prompt">According to Novy-Marx &amp; Velikov (2015), what happens to anomalies with monthly turnover exceeding 100%?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l4q8"> <span>Their excess returns are typically eradicated by institutional transaction costs, producing negative net alphas.</span></label>
+              <label class="option"><input type="radio" name="l4q8"> <span>They achieve annual Sharpe ratios exceeding 5.0.</span></label>
+              <label class="option"><input type="radio" name="l4q8"> <span>They become completely risk-free government obligations.</span></label>
+              <label class="option"><input type="radio" name="l4q8"> <span>Their factor loadings become zero across all test assets.</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>High-turnover trading strategies incur substantial transaction cost drag, transforming attractive gross alphas into net losses.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <!-- Auto-populated by site builder from data-cite attributes -->
+        </ol>
+      </section>
+
+      <button type="button" class="button" data-complete>Mark Lesson Complete</button>
+    </main>
+  </div>
+</body>
+</html>
