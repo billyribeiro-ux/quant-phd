@@ -1179,4 +1179,4 @@ Present one finished research result or trade idea to a hostile investment commi
   - *Sources:* none of its own
   - *Reading scope:* Discipline-specific, selected by the student and verified through the registry
   - *Lab:* Thesis pipeline template on Atlas.
-  - *Project — Thesis* (`rubric`): An original, pre-registered contribution extending a replicated result, delivered as a journal-format paper with a full replication package and defended orally against the rubric. *Deliverable:* Paper, replication package, defense.
+  - *Project — Thesis* (`both`): An original, pre-registered contribution extending a replicated result, delivered as a journal-format paper with a full replication package and defended orally against the rubric. *Deliverable:* Paper, replication package, defense.
