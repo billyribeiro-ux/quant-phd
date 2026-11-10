@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS5" data-page="L08" data-hours="9">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L08 · Systems Boundaries · CS5 C++ &amp; Systems for Finance</title>
+  <meta name="description" content="Systems boundaries in finance: high-performance Python-C++ interop via C ABI and ctypes, pybind11 architectural trade-offs, and freestanding WebAssembly (WASM) compilation.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS5 C++ &amp; Systems for Finance</a><span class="sep">›</span>
+      <span>L08</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS5 · Lesson 8 of 8 · 9 study hours</p>
+        <h1>Systems Boundaries: Python Bindings and WebAssembly</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="compilation-model" href="L01.html#def-compilation-model">compilation model</a> (L01), <a class="concept" data-concept="python-exceptions" href="../../../concepts.html#python-exceptions">Python exceptions</a> (CS1), <a class="concept" data-concept="type-hints" href="../../../concepts.html#type-hints">type hints</a> (CS1), <a class="concept" data-concept="direct-proof" href="../../../concepts.html#direct-proof">direct proof</a> (M1)</li>
+          <li><strong>Introduces:</strong> Python bindings for C++, Compilation to WebAssembly</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Production quantitative architectures pair high-level research interfaces with high-performance native engines. Quantitative researchers model strategies in Python, but execution and Monte Carlo kernels execute in C++. Crossing the language boundary requires understanding the C Application Binary Interface (ABI), name mangling, pointer ownership, and exception translation. Furthermore, targeting WebAssembly (WASM) enables executing high-performance pricing kernels natively in client browsers.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>The C ABI and Foreign Function Interfaces</h2>
+
+      <p>C++ compilers mangle function names to encode namespaces, classes, and parameter types for overload resolution. Because mangling schemes vary across compilers, binary interoperability between languages standardizes on the un-mangled C Application Binary Interface (ABI).</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 8.1 <span class="name">(Python-C++ Bindings)</span></span>
+        <p><dfn id="def-python-cpp-bindings" data-concept="python-cpp-bindings">Python bindings for C++</dfn> establish communication mechanisms bridging high-level Python code with native C++ shared libraries across foreign function boundaries. Three primary architectural patterns exist: (1) C ABI exported functions via <code>extern "C"</code> consumed through standard Python <code>ctypes</code>, requiring zero external compilation dependencies; (2) CPython native C extension modules interacting directly with <code>PyObject*</code>; and (3) header-only C++ template binding frameworks (e.g. pybind11, nanobind) wrapping C++ classes into Python types using compile-time type introspection.</p>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 8.2 <span class="name">(C ABI Demangling Invariance)</span></span>
+        <p><strong>Assumption 1:</strong> A function is declared with <code>extern "C"</code> linkage at global namespace scope.<br>
+        <strong>Statement:</strong> The generated object file symbol table exports the exact unmangled identifier name, providing cross-compiler binary linkage stability.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>The C++ specification requires that functions declared with <code>extern "C"</code> follow C language linkage conventions. In C linkage, parameter types and enclosing scopes are not encoded into the symbol string. The exported symbol in the ELF or Mach-O symbol table corresponds directly to the literal function name (with an optional leading underscore depending on platform convention), allowing dynamic linkers to bind foreign function calls without compiler-specific demangling routines. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Status Codes and Boundary Exception Propagation</h2>
+
+      <p>Exceptions cannot safely cross the C ABI boundary. Throwing a C++ exception across an <code>extern "C"</code> interface into a C or Python caller causes immediate process termination or stack corruption. Robust bindings enforce boundary containment: C++ functions catch internal exceptions and return integer status codes, which the Python wrapper translates into idiomatic Python exceptions.</p>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 8.3 <span class="name">(Deterministic Boundary Error Mapping)</span></span>
+        <p><strong>Assumption 1:</strong> Native kernel execution returns status code \(c \in \mathbb{Z}\), where \(c = 0\) denotes success and \(c &gt; 0\) maps bijectively to failure domain \(\mathcal{E}\).<br>
+        <strong>Statement:</strong> The boundary wrapper guarantees that every native failure raises an associated Python exception without leaking uninitialized pointer memory.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Before passing output pointers to the foreign function, the caller allocates stack space for outputs. The foreign call executes and writes outputs only when status \(c = 0\). If \(c \ne 0\), the foreign function returns before writing invalid state. The wrapper checks \(c \ne 0\) immediately following the call, maps \(c\) to its registered exception type \(E(c) \in \mathcal{E}\), and raises \(E(c)\). Control never transfers to client code with uninitialized memory. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Compiling Systems to WebAssembly (WASM)</h2>
+
+      <p>WebAssembly provides an execution target for compiling C++ into a portable, binary virtual machine format executed at near-native speeds in browser runtimes and sandboxed serverless environments.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 8.4 <span class="name">(WebAssembly Compilation Model)</span></span>
+        <p><dfn id="def-webassembly-compilation" data-concept="webassembly-compilation">Compilation to WebAssembly</dfn> (target <code>wasm32</code>) transforms C++ translation units into a stack-based binary bytecode format. The binary module begins with an invariant 8-byte header: 4 magic bytes (<code>\0asm</code> / <code>0x00 0x61 0x73 0x6d</code>) followed by a 4-byte little-endian version number (<code>0x01 0x00 0x00 0x00</code>). Execution operates inside a sandboxed linear memory buffer (a contiguous byte array isolated from host system memory), with function imports and exports mediating host interaction.</p>
+      </div>
+
+      <section class="lab" id="lab-CS5-L08-1" data-runtime="python">
+        <h3>Lab 1 · Foreign function interface and WebAssembly header validator</h3>
+        <p class="hypothesis">Simulating C ABI status code translation verifies that non-zero native return codes map to descriptive Python exceptions. Inspecting synthetic and compiled WebAssembly binaries verifies the canonical 8-byte WASM header and rejects corrupt magic bytes.</p>
+        <pre><code class="language-python" data-run>"""CS5 Lab L08: C ABI status code mapping and WebAssembly wasm32 binary header validator.
+
+Standard library only. Simulates C ABI foreign function interface status-to-exception translation
+and inspects the canonical 8-byte WebAssembly binary module header and section identifiers.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import NamedTuple
+
+STATUS_SUCCESS = 0
+ERR_NON_FINITE_FLOAT = 1
+ERR_NON_POSITIVE_PARAM = 2
+ERR_INSUFFICIENT_PATHS = 3
+ERR_INVALID_SEED = 4
+
+WASM_MAGIC = b"\x00\x61\x73\x6d"  # \0asm
+WASM_VERSION = b"\x01\x00\x00\x00"  # Version 1 (little-endian uint32)
+
+
+class CAbiPricingResult(NamedTuple):
+    call: float
+    call_se: float
+    put: float
+    put_se: float
+
+
+def simulated_c_abi_kernel(
+    s0: float,
+    strike: float,
+    rate: float,
+    vol: float,
+    maturity: float,
+    n_paths: int,
+    seed: int,
+) -&gt; tuple[int, tuple[float, float, float, float] | None]:
+    """Models native C++ function exposed via extern 'C' returning integer status code."""
+    for val in (s0, strike, rate, vol, maturity):
+        if not math.isfinite(val):
+            return ERR_NON_FINITE_FLOAT, None
+    if s0 &lt;= 0.0 or strike &lt;= 0.0 or vol &lt;= 0.0 or maturity &lt;= 0.0:
+        return ERR_NON_POSITIVE_PARAM, None
+    if n_paths &lt; 2:
+        return ERR_INSUFFICIENT_PATHS, None
+    if not (0 &lt;= seed &lt;= (1 &lt;&lt; 64) - 1):
+        return ERR_INVALID_SEED, None
+
+    # Dummy calculation for boundary testing
+    df = math.exp(-rate * maturity)
+    call_est = df * max(s0 - strike, 0.0)
+    put_est = df * max(strike - s0, 0.0)
+    return STATUS_SUCCESS, (call_est, 0.01, put_est, 0.01)
+
+
+def python_ctypes_wrapper(
+    s0: float,
+    strike: float,
+    rate: float,
+    vol: float,
+    maturity: float,
+    n_paths: int,
+    seed: int,
+) -&gt; CAbiPricingResult:
+    """Python ctypes wrapper translating C ABI status codes to Python exceptions."""
+    status, payload = simulated_c_abi_kernel(s0, strike, rate, vol, maturity, n_paths, seed)
+    if status == STATUS_SUCCESS and payload is not None:
+        return CAbiPricingResult(*payload)
+    if status == ERR_NON_FINITE_FLOAT:
+        raise ValueError("C ABI kernel error: floating-point parameter is not finite")
+    if status == ERR_NON_POSITIVE_PARAM:
+        raise ValueError("C ABI kernel error: financial parameters must be strictly positive")
+    if status == ERR_INSUFFICIENT_PATHS:
+        raise ValueError("C ABI kernel error: n_paths must be &gt;= 2")
+    if status == ERR_INVALID_SEED:
+        raise ValueError("C ABI kernel error: seed out of 64-bit unsigned integer range")
+    raise RuntimeError(f"Unknown C ABI status code: {status}")
+
+
+def validate_wasm32_binary(binary_bytes: bytes) -&gt; dict[str, str]:
+    """Validates the 8-byte header of a freestanding wasm32 compiled binary."""
+    if len(binary_bytes) &lt; 8:
+        raise ValueError(f"WASM binary must be at least 8 bytes; got {len(binary_bytes)}")
+
+    magic = binary_bytes[:4]
+    version = binary_bytes[4:8]
+
+    if magic != WASM_MAGIC:
+        raise ValueError(f"Invalid WASM magic bytes: {magic.hex()} (expected {WASM_MAGIC.hex()})")
+    if version != WASM_VERSION:
+        raise ValueError(f"Unsupported WASM version: {version.hex()} (expected {WASM_VERSION.hex()})")
+
+    ver_int = int.from_bytes(version, byteorder="little")
+    return {
+        "magic": magic.decode("ascii", errors="replace"),
+        "magic_hex": magic.hex(),
+        "version": str(ver_int),
+        "header_valid": "true",
+    }
+
+
+def run_systems_boundary_experiments() -&gt; None:
+    print("CS5 L08: Foreign Function Interface (C ABI) and WebAssembly Header Model")
+
+    # Experiment 1: Successful C ABI invocation
+    res = python_ctypes_wrapper(100.0, 100.0, 0.05, 0.20, 1.0, 5000, 42)
+    print(f"C ABI call successful: call={res.call:.4f}, put={res.put:.4f}")
+
+    # Experiment 2: C ABI error code propagation
+    for test_name, params in [
+        ("Negative volatility", (100.0, 100.0, 0.05, -0.20, 1.0, 5000, 42)),
+        ("Insufficient paths (N=1)", (100.0, 100.0, 0.05, 0.20, 1.0, 1, 42)),
+        ("Non-finite spot price (NaN)", (float("nan"), 100.0, 0.05, 0.20, 1.0, 5000, 42)),
+    ]:
+        try:
+            python_ctypes_wrapper(*params)
+            print(f"C ABI: Unexpected success on {test_name}")
+        except ValueError as err:
+            print(f"C ABI status translation ({test_name}): {err}")
+
+    # Experiment 3: WebAssembly wasm32 binary header verification
+    synthetic_wasm_module = WASM_MAGIC + WASM_VERSION + b"\x01\x04\x01\x60\x00\x00"  # Header + type section stub
+    wasm_info = validate_wasm32_binary(synthetic_wasm_module)
+    print(f"WASM binary validation: magic=0x{wasm_info['magic_hex']} (\\0asm), version={wasm_info['version']}")
+
+    # Invalid WASM magic test
+    try:
+        validate_wasm32_binary(b"\x7fELF" + WASM_VERSION)  # ELF header instead of WASM
+        print("WASM: Unexpected success on ELF binary")
+    except ValueError as err:
+        print(f"WASM header rejection (corrupt magic): {err}")
+
+
+def main() -&gt; None:
+    run_systems_boundary_experiments()
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">CS5 L08: Foreign Function Interface (C ABI) and WebAssembly Header Model
+C ABI call successful: call=0.0000, put=0.0000
+C ABI status translation (Negative volatility): C ABI kernel error: financial parameters must be strictly positive
+C ABI status translation (Insufficient paths (N=1)): C ABI kernel error: n_paths must be &gt;= 2
+C ABI status translation (Non-finite spot price (NaN)): C ABI kernel error: floating-point parameter is not finite
+WASM binary validation: magic=0x0061736d (\0asm), version=1
+WASM header rejection (corrupt magic): Invalid WASM magic bytes: 7f454c46 (expected 0061736d)</pre>
+        <p class="interpretation">The experiment confirms that foreign function boundaries safely translate numerical status codes into high-level language exceptions. It also demonstrates how WebAssembly loaders validate the binary magic header before instantiating linear memory.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>Memory ownership across the Python-C++ boundary is a fertile source of segmentation faults. When C++ allocates an array on the heap and passes a raw pointer to Python via <code>ctypes</code>, neither Python's garbage collector nor C++'s RAII runtime automatically tracks the cross-boundary reference. If C++ frees the memory while Python retains a pointer, subsequent reads corrupt data. Conversely, if neither runtime takes explicit ownership, memory leaks permanently. Safe interop requires explicit memory contracts: either Python allocates the buffer and passes a pointer to C++, or C++ exports an explicit deallocation function.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">You can catch a C++ exception directly in Python using standard <code>try ... except</code> blocks without a binding wrapper.</p>
+            <p>C++ exceptions unwinding the stack across a raw C ABI boundary trigger immediate process termination via <code>std::terminate()</code>. Exceptions must be caught on the C++ side and mapped to error codes or Python exception objects via the CPython API.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">WebAssembly modules have direct access to host files, network sockets, and system memory.</p>
+            <p>WebAssembly runs inside a strictly isolated sandbox. A WASM module cannot access host memory or file systems directly; all interactions occur through explicitly imported host functions (or WebAssembly System Interface / WASI abstractions).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Calling a C++ function through <code>ctypes</code> incurs zero overhead.</p>
+            <p>While the executed C++ computation is native speed, crossing the CPython FFI boundary incurs marshaling overhead (converting Python integer and float objects into raw C machine words). For micro-benchmarks executing in sub-microsecond intervals, FFI call overhead can dominate execution time unless operations are batched.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problems</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · Declaring an extern "C" Function Interface</span>
+            <p>Write the C++ header signature for an exported function <code>black_scholes_call</code> taking five doubles and returning a double, callable from Python <code>ctypes</code>.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>extern "C" double black_scholes_call(double s0, double strike, double rate, double vol, double maturity);</code>.<br>
+              The <code>extern "C"</code> prevents name mangling, allowing <code>ctypes.CDLL.black_scholes_call</code> to locate the symbol by its exact name.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · Configuring ctypes Parameter and Return Types</span>
+            <p>Given loaded library <code>lib</code> in Python, configure <code>argtypes</code> and <code>restype</code> for <code>black_scholes_call</code>.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>lib.black_scholes_call.argtypes = [ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double]</code><br>
+              <code>lib.black_scholes_call.restype = ctypes.c_double</code>.<br>
+              Explicit typing ensures Python marshals 64-bit IEEE 754 floats correctly into CPU floating-point registers.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · WebAssembly Magic Bytes Verification</span>
+            <p>What are the four hex bytes representing the WebAssembly binary file signature?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The four bytes are <code>0x00 0x61 0x73 0x6d</code>, which corresponds directly to the ASCII string representation <code>\0asm</code>, identifying the binary file as a valid WebAssembly bytecode module.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · Memory Isolation of WebAssembly Linear Memory</span>
+            <p>Prove that an out-of-bounds pointer write within a WebAssembly module cannot corrupt host process memory.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>WebAssembly instructions access memory via 32-bit offsets into a contiguous host-allocated virtual array \(\mathcal{M} = [0, S)\). The WASM virtual machine bounds-checks every memory load and store instruction against size \(S\) (or maps a 4 GB virtual guard page around \(\mathcal{M}\)). Any access \(p \ge S\) triggers an immediate hardware trap / WASM runtime error, terminating the module before bytes outside \(\mathcal{M}\) can be touched.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Non-Reentrancy of the Global Interpreter Lock (GIL)</span>
+            <p>Prove that releasing the GIL (<code>Py_BEGIN_ALLOW_THREADS</code>) in C++ allows multi-threaded CPU-bound pricing without Python thread blocking.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>CPython enforces single-thread bytecode execution via the mutex GIL. Calling <code>Py_BEGIN_ALLOW_THREADS</code> releases the mutex lock before entering the C++ compute loop. The calling thread executes purely native machine instructions without touching CPython object state. Other Python threads can acquire the GIL concurrently, enabling true parallel multi-core execution.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Status Code Bijective Mapping Guarantee</span>
+            <p>Prove that mapping distinct integer status codes \(1, \dots, K\) to distinct Python exception subclasses guarantees exact failure classification.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let function \(m: \{1, \dots, K\} \to \mathcal{E}\) map integer codes to exception classes. Because \(m\) is constructed bijectively (\(m(i) \ne m(j)\) for \(i \ne j\)), observing exception class \(E\) identifies source error code \(i = m^{-1}(E)\) uniquely. The caller can handle specific failures (e.g. invalid volatility vs insufficient paths) in dedicated <code>except</code> branches without ambiguity.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Interpreting Lab 1 C ABI Output</span>
+            <p>From Lab 1 output, identify the three error conditions correctly mapped to Python <code>ValueError</code> exceptions.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Lab 1 successfully translated: (1) negative volatility into <code>financial parameters must be strictly positive</code>, (2) \(N=1\) paths into <code>n_paths must be &gt;= 2</code>, and (3) NaN spot price into <code>floating-point parameter is not finite</code>.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · WebAssembly Header Inspection</span>
+            <p>In Lab 1, why was the synthetic binary starting with <code>\x7fELF</code> rejected?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The first four bytes were <code>7f454c46</code> (the standard ELF executable magic), failing the requirement that all WebAssembly modules begin with magic bytes <code>0061736d</code>.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · FFI Call Overhead Amortization</span>
+            <p>If crossing the Python-C++ FFI boundary takes 200 ns, compare the relative overhead of pricing 100,000 paths in a single batch vs calling the pricer 100,000 times for 1 path each.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Calling the pricer once for 100,000 paths incurs a single FFI boundary penalty of 200 ns (amortized: 0.002 ns/path, completely negligible). Calling it 100,000 times for 1 path incurs \(100,000 \times 200\) ns = 20 milliseconds purely in boundary marshaling, swamping computation time.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · Zero-Copy NumPy Array Sharing via PyBuffer</span>
+            <p>How does the Python Buffer Protocol (<code>Py_buffer</code>) achieve zero-copy data sharing between NumPy arrays and C++ kernels?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The buffer protocol exposes raw memory metadata: pointer address, element size, shape, and strides. When a C++ extension receives a NumPy array, it queries <code>PyObject_GetBuffer()</code> to obtain the direct memory pointer. C++ algorithms read and write the underlying memory directly in place without data copying or serialization.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Pyodide and WebAssembly in Browser Quantitative Pricing</span>
+            <p>How does Pyodide execute Python and compiled C++ extensions together in client-side WebAssembly?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Pyodide is the CPython interpreter compiled to WebAssembly via Emscripten. When C++ shared libraries are compiled to <code>wasm32</code>, Emscripten links them dynamically into Pyodide's virtual address space, enabling Python code executing in the browser to invoke native C++ kernels without server round-trip latency.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Nanobind vs Pybind11 Binary Footprint</span>
+            <p>Why does <code>nanobind</code> produce binaries up to 4x smaller and faster than <code>pybind11</code>?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>pybind11</code> instantiates heavy C++ template metaprogramming bloat for every bound type, enlarging shared library size. <code>nanobind</code> moves binding logic into compact non-template C runtime routines, employs vectorcall calling conventions (PEP 590), and drastically reduces generated binary footprint.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>C ABI symbol demangling invariance under extern "C" (Proposition 8.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §1 from C++ language linkage rules</td></tr>
+              <tr><td>Deterministic boundary error mapping from status codes (Proposition 8.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2 from bijective error mapping</td></tr>
+              <tr><td>Canonical 8-byte WebAssembly binary header verification</td><td><span class="grade" data-grade="C">C</span><span class="citation" data-cite="stroustrup2022tour"></span></td><td>Lab 1 model results and Stroustrup (2022)</td></tr>
+              <tr><td>Sandboxed linear memory isolation of WebAssembly runtimes</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §6 (P1) via bounds-checking semantics</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS5" data-page="L08" data-cards="cards.json">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <p>Answer from memory, then check. Finishing the quiz adds this lesson's cards to your review deck.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is <code>extern "C"</code> required when exporting C++ functions to Python via <code>ctypes</code>?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q1"> <span>It enables Python to execute garbage collection in C++</span></label>
+              <label class="option" data-correct><input type="radio" name="L08q1"> <span>It disables C++ name mangling, exporting the exact unmangled symbol name for dynamic loading</span></label>
+              <label class="option"><input type="radio" name="L08q1"> <span>It automatically converts all floats to double precision</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Proposition 8.2: <code>extern "C"</code> disables C++ name mangling, allowing dynamic libraries to export clean symbols.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens if a C++ exception escapes across an <code>extern "C"</code> boundary into a C or Python caller?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q2"> <span>Python automatically converts it to a standard ValueError</span></label>
+              <label class="option" data-correct><input type="radio" name="L08q2"> <span>The runtime terminates the process immediately via <code>std::terminate()</code></span></label>
+              <label class="option"><input type="radio" name="L08q2"> <span>The exception is safely ignored and execution continues</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Exceptions cannot cross C ABI boundaries; unhandled exceptions across the boundary abort the process.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1" data-tolerance="0">
+            <p class="prompt">What is the canonical WebAssembly version number encoded in bytes 4 through 7 of a valid WASM binary?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Definition 8.4 specifies WebAssembly version 1 (<code>0x01 0x00 0x00 0x00</code>).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does WebAssembly isolate memory from the host system?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q4"> <span>It operates inside a bounds-checked linear memory byte array isolated from host virtual memory</span></label>
+              <label class="option"><input type="radio" name="L08q4"> <span>It encrypts all memory addresses with 256-bit AES</span></label>
+              <label class="option"><input type="radio" name="L08q4"> <span>It writes all variables to temporary disk files</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 8.4: WebAssembly executes within a sandboxed linear memory buffer isolated from host memory.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What are the first four magic bytes of every valid WebAssembly binary?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L08q5"> <span><code>\x7fELF</code></span></label>
+              <label class="option" data-correct><input type="radio" name="L08q5"> <span><code>\0asm</code> (<code>0x00 0x61 0x73 0x6d</code>)</span></label>
+              <label class="option"><input type="radio" name="L08q5"> <span><code>\xca\xfe\xba\xbe</code></span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 8.4: All WASM binaries begin with the 4-byte signature <code>0x00 0x61 0x73 0x6d</code>.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why should high-frequency pricing calls across the Python-C++ boundary be batched?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q6"> <span>To amortize the foreign function boundary marshaling latency across thousands of operations</span></label>
+              <label class="option"><input type="radio" name="L08q6"> <span>Because C++ cannot execute more than one call per second</span></label>
+              <label class="option"><input type="radio" name="L08q6"> <span>Batching is required by Python syntax</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Problem E3 explains that crossing FFI incurs marshaling overhead, making batched operations dramatically faster.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="8" data-tolerance="0">
+            <p class="prompt">How many total bytes comprise the mandatory WebAssembly binary module header?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>The header consists of 4 magic bytes plus 4 version bytes = 8 bytes total.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does releasing the Python GIL in C++ extensions benefit Monte Carlo pricing?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q8"> <span>It allows multiple native C++ worker threads to execute in parallel across all CPU cores</span></label>
+              <label class="option"><input type="radio" name="L08q8"> <span>It automatically vectorizes scalar loops</span></label>
+              <label class="option"><input type="radio" name="L08q8"> <span>It doubles available RAM</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Releasing the GIL allows other threads and C++ compute kernels to achieve full multi-core parallel execution.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson draws foundational principles from Stroustrup (2022), <em>A Tour of C++</em>, 3rd edition (registry key <code>stroustrup2022tour</code>). All mathematical and systems boundary properties are verified via direct proofs and Lab 1 model executions.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L07.html"><span class="dir">Previous</span>L07 · Struct-of-Arrays Memory Layout</a>
+        <a class="next" href="project.html"><span class="dir">Next</span>CS5 Project · C++ Monte Carlo Kernel</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS5 · C++ &amp; Systems for Finance · High-Performance Computing and Systems Architecture</footer>
+</body>
+</html>

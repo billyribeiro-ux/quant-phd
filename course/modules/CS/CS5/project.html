@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS5" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CS5 Project · C++ Monte Carlo kernel</title>
+  <meta name="description" content="Port a Python Monte Carlo pricer to C++ with identical seeded output, expose it to Python via C ABI bindings, and document the speedup and where it comes from.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS5 C++ &amp; Systems for Finance</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="52">
+      <header class="page-head">
+        <p class="eyebrow">CS5 project · 52 hours · autograded · SIMULATED data</p>
+        <h1>C++ Monte Carlo kernel</h1>
+        <p class="lede">Port a Python Monte Carlo pricer to C++ with identical seeded output, expose it to Python, and document the speedup and where it comes from. Deliverables comprise a high-performance C++ kernel, C ABI bindings, equivalence test suites, and empirical benchmarks on SIMULATED market data.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Follow the four-rung project ladder to transition from reference verification to native systems engineering.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Worked example</span><p>Lab 1 below: a fully solved two-path Monte Carlo calculation in Python tracing exact SplitMix64 state updates, Box-Muller normal deviates, and discounted European payoffs.</p></div></li>
+          <li><div><span class="rung-title">Completion</span><p>Lab 2 below: completing the Box-Muller polar transformation and the unbiased sample variance denominator \(n - 1\) in an executable pricer.</p></div></li>
+          <li><div><span class="rung-title">Independent</span><p>The core specification: develop the C++ Monte Carlo pricer, expose it through C ABI bindings, verify exact bit-for-bit RNG stream replication, and execute the autograder suite.</p></div></li>
+          <li><div><span class="rung-title">Stretch</span><p>Extend the pricing kernel with C++20 concept-constrained payoff functors and evaluate cache line utilization across AoS and SoA batching layouts.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+
+        <section class="lab" id="lab-CS5-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: step-by-step path generation</h3>
+          <p class="hypothesis">The script executes a two-path Monte Carlo pricing calculation on SIMULATED market parameters, printing intermediate 64-bit generator words, uniforms, normal deviates, terminal asset values, and discounted payoffs.</p>
+          <pre><code class="language-python" data-run>"""CS5 Project Rung 1: Worked example tracing Monte Carlo path generation.
+
+Standard library only. SIMULATED data. Traces exact SplitMix64 state transitions,
+uniform extraction, Box-Muller normal generation, and discounted payoffs.
+"""
+
+from __future__ import annotations
+
+import math
+
+SPLITMIX_GAMMA: int = 0x9E3779B97F4A7C15
+SPLITMIX_MUL1: int = 0xBF58476D1CE4E5B9
+SPLITMIX_MUL2: int = 0x94D049BB133111EB
+MASK64: int = 0xFFFFFFFFFFFFFFFF
+TWO_POW_53: float = 9007199254740992.0
+
+
+def step_splitmix64(state: int) -&gt; tuple[int, int]:
+    """Advance 64-bit state by one step and return (new_state, output_64bit)."""
+    state = (state + SPLITMIX_GAMMA) &amp; MASK64
+    z = state
+    z = ((z ^ (z &gt;&gt; 30)) * SPLITMIX_MUL1) &amp; MASK64
+    z = ((z ^ (z &gt;&gt; 27)) * SPLITMIX_MUL2) &amp; MASK64
+    out = (z ^ (z &gt;&gt; 31)) &amp; MASK64
+    return state, out
+
+
+def trace_two_paths() -&gt; None:
+    """Trace a 2-path Monte Carlo option pricing calculation step by step."""
+    s0 = 100.0
+    strike = 100.0
+    rate = 0.05
+    vol = 0.20
+    maturity = 1.0
+    seed = 42
+
+    drift = (rate - 0.5 * vol * vol) * maturity
+    vol_sqrt_t = vol * math.sqrt(maturity)
+    df = math.exp(-rate * maturity)
+
+    state = seed &amp; MASK64
+    discounted_calls: list[float] = []
+    discounted_puts: list[float] = []
+
+    print(f"Parameters: S0={s0:.1f}, K={strike:.1f}, r={rate:.2f}, sigma={vol:.2f}, tau={maturity:.1f}, seed={seed}")
+    print(f"Drift term: (r - 0.5*sigma^2)*tau = {drift:.6f}")
+    print(f"Diffusion multiplier: sigma*sqrt(tau) = {vol_sqrt_t:.6f}")
+    print(f"Discount factor: exp(-r*tau) = {df:.6f}")
+
+    for path_idx in range(2):
+        state, x1 = step_splitmix64(state)
+        state, x2 = step_splitmix64(state)
+        u1 = ((x1 &gt;&gt; 11) + 0.5) / TWO_POW_53
+        u2 = ((x2 &gt;&gt; 11) + 0.5) / TWO_POW_53
+
+        z = math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
+        st = s0 * math.exp(drift + vol_sqrt_t * z)
+        c_payoff = max(st - strike, 0.0)
+        p_payoff = max(strike - st, 0.0)
+        dc = df * c_payoff
+        dp = df * p_payoff
+        discounted_calls.append(dc)
+        discounted_puts.append(dp)
+
+        print(
+            f"Path {path_idx + 1}: x1=0x{x1:016x} x2=0x{x2:016x} u1={u1:.6f} u2={u2:.6f} "
+            f"z={z:+.6f} ST={st:.4f} CallPayoff={c_payoff:.4f} PutPayoff={p_payoff:.4f}"
+        )
+
+    call_mean = sum(discounted_calls) / 2.0
+    put_mean = sum(discounted_puts) / 2.0
+    # Sample variance with ddof = 1
+    call_var = sum((x - call_mean) ** 2 for x in discounted_calls) / 1.0
+    put_var = sum((x - put_mean) ** 2 for x in discounted_puts) / 1.0
+    call_se = math.sqrt(call_var / 2.0)
+    put_se = math.sqrt(put_var / 2.0)
+
+    print(f"Estimated Call Price: {call_mean:.6f} (SE: {call_se:.6f})")
+    print(f"Estimated Put Price:  {put_mean:.6f} (SE: {put_se:.6f})")
+
+
+def main() -&gt; None:
+    trace_two_paths()
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Parameters: S0=100.0, K=100.0, r=0.05, sigma=0.20, tau=1.0, seed=42
+Drift term: (r - 0.5*sigma^2)*tau = 0.030000
+Diffusion multiplier: sigma*sqrt(tau) = 0.200000
+Discount factor: exp(-r*tau) = 0.951229
+Path 1: x1=0xbdd732262feb6e95 x2=0x28efe333b266f103 u1=0.741565 u2=0.159910 z=+0.414720 ST=111.9569 CallPayoff=11.9569 PutPayoff=0.0000
+Path 2: x1=0x47526757130f9f52 x2=0x581ce1ff0e4ae394 u1=0.278601 u2=0.344191 z=-0.891886 ST=86.2106 CallPayoff=0.0000 PutPayoff=13.7894
+Estimated Call Price: 5.686886 (SE: 5.686886)
+Estimated Put Price:  6.558450 (SE: 6.558450)</pre>
+          <p class="interpretation">The numerical trace confirms that SplitMix64 produces deterministic 64-bit unsigned integers, mapping into strictly open uniform intervals \((0, 1)\) that Box-Muller transforms into standard normal values without domain exceptions.</p>
+        </section>
+
+        <section class="lab completion" id="lab-CS5-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Box-Muller and sample variance</h3>
+          <p class="hypothesis">Fill in the two blanks for Box-Muller normal generation and sample variance degrees of freedom. The completed kernel prints European call and put estimates for 1,000 SIMULATED paths.</p>
+          <pre><code class="language-python" data-run>"""CS5 Project Rung 2: Completion problem for Monte Carlo pricing kernel.
+
+Standard library only. SIMULATED data. Fills in the Box-Muller normal transform
+and unbiased sample variance calculation.
+"""
+
+from __future__ import annotations
+
+import math
+
+SPLITMIX_GAMMA: int = 0x9E3779B97F4A7C15
+SPLITMIX_MUL1: int = 0xBF58476D1CE4E5B9
+SPLITMIX_MUL2: int = 0x94D049BB133111EB
+MASK64: int = 0xFFFFFFFFFFFFFFFF
+TWO_POW_53: float = 9007199254740992.0
+
+
+def step_splitmix64(state: int) -> tuple[int, int]:
+    state = (state + SPLITMIX_GAMMA) & MASK64
+    z = state
+    z = ((z ^ (z >> 30)) * SPLITMIX_MUL1) & MASK64
+    z = ((z ^ (z >> 27)) * SPLITMIX_MUL2) & MASK64
+    out = (z ^ (z >> 31)) & MASK64
+    return state, out
+
+
+def complete_pricer(n_paths: int = 1000, seed: int = 777) -> tuple[float, float, float, float]:
+    """Execute completed Monte Carlo pricer for European options."""
+    s0 = 100.0
+    strike = 100.0
+    rate = 0.05
+    vol = 0.20
+    maturity = 1.0
+
+    state = seed & MASK64
+    drift = (rate - 0.5 * vol * vol) * maturity
+    vol_sqrt_t = vol * math.sqrt(maturity)
+    df = math.exp(-rate * maturity)
+
+    calls: list[float] = [0.0] * n_paths
+    puts: list[float] = [0.0] * n_paths
+
+    for i in range(n_paths):
+        state, x1 = step_splitmix64(state)
+        state, x2 = step_splitmix64(state)
+        u1 = ((x1 >> 11) + 0.5) / TWO_POW_53
+        u2 = ((x2 >> 11) + 0.5) / TWO_POW_53
+
+        # Completed line 1: Box-Muller transform
+        z = math.sqrt(-2.0 * math.log(u1)) * ___
+
+        st = s0 * math.exp(drift + vol_sqrt_t * z)
+        calls[i] = df * max(st - strike, 0.0)
+        puts[i] = df * max(strike - st, 0.0)
+
+    call_price = sum(calls) / n_paths
+    put_price = sum(puts) / n_paths
+
+    # Completed line 2: Unbiased sample variance with n - 1 degrees of freedom
+    call_var = sum((c - call_price) ** 2 for c in calls) / ___
+    put_var = sum((p - put_price) ** 2 for p in puts) / ___
+
+    call_se = math.sqrt(call_var / n_paths)
+    put_se = math.sqrt(put_var / n_paths)
+
+    return call_price, call_se, put_price, put_se
+
+
+def main() -> None:
+    cp, c_se, pp, p_se = complete_pricer(n_paths=1000, seed=777)
+    print("Paths: 1000, Seed: 777")
+    print(f"Call: {cp:.6f} +/- {c_se:.6f}")
+    print(f"Put:  {pp:.6f} +/- {p_se:.6f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Paths: 1000, Seed: 777
+Call: 10.220507 +/- 0.451922
+Put:  5.722231 +/- 0.278527</pre>
+          <p class="interpretation">With \(n - 1\) in the denominator, the sample variance produces an unbiased estimator of variance, and the resulting standard error accurately bounds Monte Carlo sampling error.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>
+            A quantitative trading team requires an ultra-low latency European option pricer capable of simulating millions of geometric Brownian motion trajectories per second. The simulation must provide identical seeded output between a high-level Python prototyping layer and an optimized C++ production engine, enabling automated regression testing across languages.
+          </dd>
+
+          <dt>Inputs</dt>
+          <dd>
+            Option pricing calculations accept seven parameters:
+            <ul>
+              <li><code>s0</code> (float &gt; 0): Spot asset price at \(t=0\).</li>
+              <li><code>strike</code> (float &gt; 0): Option strike price \(K\).</li>
+              <li><code>rate</code> (float): Continuously compounded risk-free rate \(r\).</li>
+              <li><code>vol</code> (float &gt; 0): Annualized asset price volatility \(\sigma\).</li>
+              <li><code>maturity</code> (float &gt; 0): Time to expiration \(\tau\) in years.</li>
+              <li><code>n_paths</code> (int \(\ge\) 2): Number of simulated terminal price paths.</li>
+              <li><code>seed</code> (int in \([0, 2^{64}-1]\)): 64-bit unsigned integer initialization seed.</li>
+            </ul>
+            All float parameters must be finite real numbers.
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            <ul>
+              <li><code>rng_stream(seed: int, count: int) -&gt; list[int]</code>: Returns the first <code>count</code> 64-bit unsigned integers generated by SplitMix64.</li>
+              <li><code>price_call_and_put(s0: float, strike: float, rate: float, vol: float, maturity: float, n_paths: int, seed: int) -&gt; tuple[float, float, float, float]</code>: Returns <code>(call_price, call_se, put_price, put_se)</code>.</li>
+              <li><code>kernel/mc_pricer.hpp</code> &amp; <code>kernel/mc_pricer.cpp</code>: Native C++20 implementation of the generator and pricing kernel.</li>
+              <li><code>bindings/streamkernel.py</code>: Python binding wrapping the compiled shared library via <code>ctypes</code>.</li>
+              <li><code>BENCHMARK.md</code>: Empirical comparison documenting execution timing, hardware specifications, compiler flags, and speedup ratios.</li>
+              <li><code>REPORT.md</code>: Technical architectural report analyzing where execution speedups originate (cache locality, register allocation, compiler vectorization).</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            Modern C++ (C++20) compiled with <code>-O2</code> or <code>-O3</code>. No external third-party libraries (standard library only). The Python layer must use <code>ctypes</code> and standard library modules. The following conditions must raise <code>ValueError</code>:
+            (1) Non-finite floating-point parameters (NaN, \(+\infty\), \(-\infty\));
+            (2) <code>s0 &lt;= 0.0</code>;
+            (3) <code>strike &lt;= 0.0</code>;
+            (4) <code>vol &lt;= 0.0</code>;
+            (5) <code>maturity &lt;= 0.0</code>;
+            (6) <code>n_paths &lt; 2</code>;
+            (7) <code>seed &lt; 0</code> or <code>seed &gt;= 2^64</code>;
+            (8) <code>count &lt; 0</code> in <code>rng_stream</code>.
+            Prices must match the Python reference solution within relative tolerance \(10^{-9}\) plus absolute tolerance \(10^{-12}\). The random number stream must match bit-for-bit.
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>
+            Grading: autograder. The project is evaluated by an automated acceptance test suite in <code>grader/test_project.py</code> over seeds 0 through 49. The autograder validates bit-for-bit stream equality, pricing tolerance bounds, standard error degrees of freedom (\(n - 1\)), spot monotonicity, and boundary condition error handling.
+          </dd>
+        </dl>
+      </section>
+
+      <section id="hours-budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Rung 1 worked example</td><td class="num">2</td><td>Trace step-by-step state advances, uniform conversion, and Box-Muller transforms.</td></tr>
+              <tr><td>Rung 2 completion</td><td class="num">2</td><td>Complete polar normal coordinate generation and unbiased sample variance calculation.</td></tr>
+              <tr><td>SplitMix64 64-bit generator in C++</td><td class="num">8</td><td>Implement fast 64-bit integer generator with bitwise bit-shifts and verify stream parity.</td></tr>
+              <tr><td>Monte Carlo pricer kernel in C++</td><td class="num">10</td><td>Write single-pass geometric Brownian motion pricer evaluating call and put payoffs.</td></tr>
+              <tr><td>C ABI and ctypes binding interface</td><td class="num">8</td><td>Expose extern "C" entry points, translate integer error codes to Python exceptions.</td></tr>
+              <tr><td>Unit tests and cross-language equivalence</td><td class="num">8</td><td>Run test_project.py locally across seeds 0 to 49 to confirm bit-for-bit parity.</td></tr>
+              <tr><td>Benchmarking and profiling suite</td><td class="num">8</td><td>Benchmark native C++ vs Python CPython across path counts, record execution times.</td></tr>
+              <tr><td>Technical architecture report</td><td class="num">6</td><td>Analyze memory layout, register pressure, cache miss rates, and compiler optimization.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>52</strong></td><td>Sum of project component hours matching data-hours-project.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>The autograder evaluates your solution against the formal interface contract across 50 independent pseudorandom seeds.</p>
+        <section class="grader-panel" id="grader" data-unit="CS5" data-grader="grader/" data-suite="test_project.py" data-solution="reference.py" data-starter="starter.py" data-support="instance.py integrity.py"></section>
+      </section>
+
+      <section id="rung3-labs">
+        <h2 id="h-rung3">Rung 3 check · Independent verification baseline</h2>
+        <section class="lab" id="lab-CS5-project-3" data-runtime="python">
+          <h3>Lab 3 · Baseline verification and put-call parity check</h3>
+          <p class="hypothesis">Runs the Monte Carlo pricing engine over 10,000 SIMULATED paths, printing the first four 64-bit generator outputs, European call and put estimates, and verifying numerical put-call parity.</p>
+          <pre><code class="language-python" data-run>"""CS5 Project Rung 3: Independent verification driver and performance baseline.
+
+Standard library only. SIMULATED data. Runs the reference pricing kernel over
+10,000 paths, validating stream integrity, option values, and put-call parity.
+"""
+
+from __future__ import annotations
+
+import math
+
+SPLITMIX_GAMMA: int = 0x9E3779B97F4A7C15
+SPLITMIX_MUL1: int = 0xBF58476D1CE4E5B9
+SPLITMIX_MUL2: int = 0x94D049BB133111EB
+MASK64: int = 0xFFFFFFFFFFFFFFFF
+TWO_POW_53: float = 9007199254740992.0
+
+
+def step_splitmix64(state: int) -&gt; tuple[int, int]:
+    state = (state + SPLITMIX_GAMMA) &amp; MASK64
+    z = state
+    z = ((z ^ (z &gt;&gt; 30)) * SPLITMIX_MUL1) &amp; MASK64
+    z = ((z ^ (z &gt;&gt; 27)) * SPLITMIX_MUL2) &amp; MASK64
+    out = (z ^ (z &gt;&gt; 31)) &amp; MASK64
+    return state, out
+
+
+def run_benchmark(n_paths: int = 10000, seed: int = 20261110) -&gt; None:
+    s0 = 100.0
+    strike = 100.0
+    rate = 0.05
+    vol = 0.20
+    maturity = 1.0
+
+    state = seed &amp; MASK64
+    first_four: list[str] = []
+    for _ in range(4):
+        state, val = step_splitmix64(state)
+        first_four.append(f"0x{val:016x}")
+
+    # Reset state for path pricing
+    state = seed &amp; MASK64
+    drift = (rate - 0.5 * vol * vol) * maturity
+    vol_sqrt_t = vol * math.sqrt(maturity)
+    df = math.exp(-rate * maturity)
+
+    calls: list[float] = [0.0] * n_paths
+    puts: list[float] = [0.0] * n_paths
+    st_sum = 0.0
+
+    for i in range(n_paths):
+        state, x1 = step_splitmix64(state)
+        state, x2 = step_splitmix64(state)
+        u1 = ((x1 &gt;&gt; 11) + 0.5) / TWO_POW_53
+        u2 = ((x2 &gt;&gt; 11) + 0.5) / TWO_POW_53
+
+        z = math.sqrt(-2.0 * math.log(u1)) * math.cos(2.0 * math.pi * u2)
+        st = s0 * math.exp(drift + vol_sqrt_t * z)
+        st_sum += st
+
+        calls[i] = df * max(st - strike, 0.0)
+        puts[i] = df * max(strike - st, 0.0)
+
+    call_price = sum(calls) / n_paths
+    put_price = sum(puts) / n_paths
+    mean_st = st_sum / n_paths
+
+    call_var = sum((c - call_price) ** 2 for c in calls) / (n_paths - 1)
+    put_var = sum((p - put_price) ** 2 for p in puts) / (n_paths - 1)
+    call_se = math.sqrt(call_var / n_paths)
+    put_se = math.sqrt(put_var / n_paths)
+
+    parity_lhs = call_price - put_price
+    parity_rhs = df * (mean_st - strike)
+
+    print(f"Rung 3 Benchmark Results (Paths: {n_paths}, Seed: {seed}):")
+    print(f"Generator first 4 outputs: {', '.join(first_four)}")
+    print(f"Call Price: {call_price:.6f} (SE: {call_se:.6f})")
+    print(f"Put Price:  {put_price:.6f} (SE: {put_se:.6f})")
+    print(f"Put-Call Parity: LHS={parity_lhs:.6f}, RHS={parity_rhs:.6f}, Diff={abs(parity_lhs - parity_rhs):.2e}")
+
+
+def main() -&gt; None:
+    run_benchmark()
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Rung 3 Benchmark Results (Paths: 10000, Seed: 20261110):
+Generator first 4 outputs: 0xc767cf09e4860326, 0x67045b1bd6ba2ff0, 0xacaaf0df087caaf8, 0xb06374e07002817e
+Call Price: 10.577583 (SE: 0.145769)
+Put Price:  5.539824 (SE: 0.087314)
+Put-Call Parity: LHS=5.037758, RHS=5.037758, Diff=2.84e-14</pre>
+          <p class="interpretation">The put-call parity discrepancy is bounded at machine precision (\(\sim 10^{-14}\)), confirming that call and put payoffs evaluate identical underlying terminal spot paths.</p>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch challenges</h2>
+        <p>For learners seeking advanced systems engineering extensions:</p>
+        <ul>
+          <li><strong>C++20 Concept-Constrained Payoffs:</strong> Refactor the pricing loop into a generic function template accepting arbitrary payoff functors constrained by a C++20 <code>Payoff</code> concept requiring <code>double operator()(double s_t) const</code>.</li>
+          <li><strong>Struct-of-Arrays (SoA) SIMD Kernel:</strong> Batch uniform draws into 64-byte aligned contiguous arrays and evaluate Box-Muller and terminal prices using AVX2 or NEON SIMD vector intrinsics.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="stroustrup2022tour">Stroustrup, B. (2022). <em>A Tour of C++</em>, 3rd edition. Pearson Education.</li>
+          <li data-cite="glasserman2003monte">Glasserman, P. (2003). <em>Monte Carlo Methods in Financial Engineering</em>. Springer.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">CS5 · C++ &amp; Systems for Finance · High-Performance Computing and Systems Architecture</footer>
+</body>
+</html>

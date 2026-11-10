@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS5" data-page="L01" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01 · Compilation and Linking · CS5 C++ &amp; Systems for Finance</title>
+  <meta name="description" content="Translation units, header separation, linker symbol tables, the One Definition Rule (ODR), and compiler optimization flags in financial systems.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS5 C++ &amp; Systems for Finance</a><span class="sep">›</span>
+      <span>L01</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS5 · Lesson 1 of 8 · 10 study hours</p>
+        <h1>C++ Compilation and Linkage Model</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="deterministic-computation" href="../../../concepts.html#deterministic-computation">deterministic computation</a> (CS4), <a class="concept" data-concept="bit-for-bit-reproducibility" href="../../../concepts.html#bit-for-bit-reproducibility">bit-for-bit reproducibility</a> (CS4), <a class="concept" data-concept="direct-proof" href="../../../concepts.html#direct-proof">direct proof</a> (M1)</li>
+          <li><strong>Introduces:</strong> C++ compilation and linking model</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Quantitative trading infrastructure demands nanosecond-scale execution predictability. Achieving deterministic binaries requires mastering the translation pipeline from preprocessing to symbol linkage. Understanding the One Definition Rule and compiler optimization stages prevents catastrophic multiple-definition link errors and silent undefined behavior across multi-module pricing libraries.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Translation Units and Separate Compilation</h2>
+
+      <p>C++ builds systems through separate compilation: source files are parsed and transformed independently into machine code object files before a linker combines them into an executable binary or shared library. The input to the compiler proper is not the raw source file on disk, but a preprocessed stream of tokens known as a translation unit.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(Translation Unit)</span></span>
+        <p>A <strong>translation unit</strong> (TU) is the sequence of tokens produced after the preprocessor resolves all preprocessor directives (including <code>#include</code>, <code>#define</code>, <code>#ifdef</code>, and macro expansions) on a single source implementation file. The <dfn id="def-compilation-model" data-concept="compilation-model">C++ compilation and linking model</dfn> partitions system construction into two decoupled phases: translation of independent TUs into relocatable object files (<code>.o</code> or <code>.obj</code>) exposing symbol tables, followed by global symbol resolution and address relocation performed by the linker.</p>
+      </div>
+
+      <p>Headers (<code>.hpp</code> or <code>.h</code>) should contain declarations, type definitions, inline functions, and template definitions. They must not contain non-inline variable definitions or non-inline function bodies with external linkage, because every TU that includes the header generates an identical strong symbol, triggering linker collisions.</p>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 1.2 <span class="name">(Separate Compilation Invariance)</span></span>
+        <p><strong>Assumption 1:</strong> Translation units \(T_1, \dots, T_k\) contain no cyclic header dependencies and expose mutually disjoint strong external definitions.<br>
+        <strong>Assumption 2:</strong> The preprocessor state for each TU is fully determined by the compiler invocation flags and source files.<br>
+        <strong>Statement:</strong> The generated object file \(\mathcal{O}_i\) for translation unit \(T_i\) is invariant to the compilation order of all other units \(T_j\) (\(j \ne i\)).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By Assumption 2, the compiler operates as a pure function mapping the isolated token stream of \(T_i\) and optimization flags to machine code and an exported symbol table. Because Assumption 1 guarantees that no compiler state persists across invocations of distinct translation units, the output \(\mathcal{O}_i = f(T_i)\) depends solely on \(T_i\). Permuting the compilation sequence of \(T_1, \dots, T_k\) leaves each individual input \(T_i\) unchanged, yielding identical relocatable object files. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Linkage and the One Definition Rule (ODR)</h2>
+
+      <p>Symbols in C++ possess either external linkage, internal linkage, or no linkage. External linkage permits a symbol to be referenced across distinct translation units. Internal linkage restricts visibility strictly to the current translation unit.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.3 <span class="name">(One Definition Rule)</span></span>
+        <p>The <strong>One Definition Rule (ODR)</strong> establishes three requirements:</p>
+        <ol>
+          <li>Within any single translation unit, a non-inline variable or non-inline function must not have more than one definition.</li>
+          <li>Across the entire program, every non-inline function or variable with external linkage must have exactly one definition in one translation unit.</li>
+          <li>An inline function, inline variable, class definition, or template may be defined in multiple translation units, provided each definition consists of an identical sequence of tokens and resolves all names to the identical entities.</li>
+        </ol>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 1.4 <span class="name">(Linker Collision on Non-Inline Duplication)</span></span>
+        <p><strong>Assumption 1:</strong> Two distinct translation units \(T_1\) and \(T_2\) define a function <code>double calc()</code> with external linkage without the <code>inline</code> specifier.<br>
+        <strong>Statement:</strong> The linker must terminate with a multiple-definition collision error during static link resolution.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Translation unit \(T_1\) generates object file \(\mathcal{O}_1\) with a strong external symbol table entry for the mangled name of <code>calc()</code>. Translation unit \(T_2\) independently generates object file \(\mathcal{O}_2\) with an identical strong external symbol table entry. During the symbol resolution pass, the linker merges the global symbol tables of \(\mathcal{O}_1\) and \(\mathcal{O}_2\). Because neither symbol carries the weak or discardable flag assigned to inline functions, the existence of two strong definitions for the same identifier in the global scope violates condition 2 of Definition 1.3. Standard linkers refuse ambiguous relocations and emit a fatal symbol collision. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Compiler Optimization Flags in Financial Systems</h2>
+
+      <p>Modern compilers apply rigorous code transformations controlled by optimization levels:</p>
+      <ul>
+        <li><code>-O0</code>: Disables optimizations. Direct translation from AST to stack-based assembly. Used exclusively for interactive debugging.</li>
+        <li><code>-O2</code>: Enables aggressive local and inter-procedural optimizations: common subexpression elimination, loop unrolling, register allocation, instruction scheduling, and dead code elimination.</li>
+        <li><code>-O3</code>: Enables full <code>-O2</code> plus aggressive auto-vectorization, loop vectorization, function inlining heuristics, and SIMD instruction selection.</li>
+        <li><code>-flto</code> (Link-Time Optimization): Defers code generation until link time, enabling inlining and optimization across translation unit boundaries.</li>
+      </ul>
+
+      <section class="lab" id="lab-CS5-L01-1" data-runtime="python">
+        <h3>Lab 1 · Translation unit linkage and ODR resolution simulator</h3>
+        <p class="hypothesis">Simulating separate translation units demonstrates that multiple strong definitions of the same symbol trigger link collisions, whereas identical inline definitions are successfully deduplicated by the linker.</p>
+        <pre><code class="language-python" data-run>"""CS5 Lab L01: Multi-translation unit compilation and One Definition Rule (ODR) linker model.
+
+Standard library only. Deterministic integer symbol tracking. Simulates separate compilation
+of translation units into object symbol tables, testing strong vs weak/inline symbol linkage
+and detecting One Definition Rule violations.
+"""
+
+from __future__ import annotations
+
+from typing import NamedTuple
+
+
+class Symbol(NamedTuple):
+    name: str
+    is_inline: bool
+    is_internal: bool
+    signature_hash: int
+
+
+class LinkerError(Exception):
+    pass
+
+
+class TranslationUnit:
+    def __init__(self, name: str) -&gt; None:
+        self.name = name
+        self.symbols: dict[str, Symbol] = {}
+
+    def add_definition(self, name: str, is_inline: bool = False, is_internal: bool = False, body_id: int = 1) -&gt; None:
+        sig_hash = hash((name, body_id))
+        self.symbols[name] = Symbol(name, is_inline, is_internal, sig_hash)
+
+
+class Linker:
+    def __init__(self) -&gt; None:
+        self.global_table: dict[str, tuple[str, Symbol]] = {}
+
+    def link(self, units: list[TranslationUnit]) -&gt; dict[str, str]:
+        resolved: dict[str, str] = {}
+        for tu in units:
+            for name, sym in tu.symbols.items():
+                if sym.is_internal:
+                    # Internal linkage: scoped to TU, never conflicts globally
+                    continue
+                if name in self.global_table:
+                    prev_tu, prev_sym = self.global_table[name]
+                    if not sym.is_inline or not prev_sym.is_inline:
+                        raise LinkerError(
+                            f"ODR violation: duplicate strong symbol '{name}' defined in both {prev_tu} and {tu.name}"
+                        )
+                    if sym.signature_hash != prev_sym.signature_hash:
+                        msg = (
+                            f"ODR ill-formed violation: inline symbol '{name}' "
+                            f"has conflicting definitions between {prev_tu} and {tu.name}"
+                        )
+                        raise LinkerError(msg)
+                    # Inline duplicate is deduplicated
+                    resolved[name] = f"deduplicated (kept from {prev_tu})"
+                else:
+                    self.global_table[name] = (tu.name, sym)
+                    resolved[name] = f"defined in {tu.name}"
+        return resolved
+
+
+def run_odr_experiments() -&gt; None:
+    print("CS5 L01: Translation Unit Linkage and ODR Resolution Model")
+
+    # Experiment 1: Valid multi-unit program with inline functions and internal linkage
+    tu1 = TranslationUnit("engine.cpp")
+    tu1.add_definition("calculate_delta", is_inline=False, is_internal=False, body_id=101)
+    tu1.add_definition("inline_vol_helper", is_inline=True, is_internal=False, body_id=202)
+    tu1.add_definition("local_seed_state", is_inline=False, is_internal=True, body_id=303)
+
+    tu2 = TranslationUnit("pricer.cpp")
+    tu2.add_definition("price_option", is_inline=False, is_internal=False, body_id=404)
+    tu2.add_definition("inline_vol_helper", is_inline=True, is_internal=False, body_id=202)
+    tu2.add_definition("local_seed_state", is_inline=False, is_internal=True, body_id=505)
+
+    linker = Linker()
+    resolved = linker.link([tu1, tu2])
+    print(f"Valid link: {len(resolved)} global symbols resolved:")
+    for sym_name, status in sorted(resolved.items()):
+        print(f"  {sym_name}: {status}")
+
+    # Experiment 2: Duplicate non-inline strong definition (ODR violation)
+    tu3 = TranslationUnit("analytics.cpp")
+    tu3.add_definition("calculate_delta", is_inline=False, is_internal=False, body_id=606)
+
+    try:
+        linker_fail = Linker()
+        linker_fail.link([tu1, tu3])
+        print("Linker: Unexpected success")
+    except LinkerError as err:
+        print(f"Detected expected link collision: {err}")
+
+    # Experiment 3: Inline definition with mismatched tokens across TUs
+    tu4 = TranslationUnit("mismatched_header.cpp")
+    tu4.add_definition("inline_vol_helper", is_inline=True, is_internal=False, body_id=999)
+
+    try:
+        linker_odr_diff = Linker()
+        linker_odr_diff.link([tu1, tu4])
+        print("Linker: Unexpected success on mismatched inline")
+    except LinkerError as err:
+        print(f"Detected inline definition mismatch: {err}")
+
+
+def main() -&gt; None:
+    run_odr_experiments()
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">CS5 L01: Translation Unit Linkage and ODR Resolution Model
+Valid link: 3 global symbols resolved:
+  calculate_delta: defined in engine.cpp
+  inline_vol_helper: deduplicated (kept from engine.cpp)
+  price_option: defined in pricer.cpp
+Detected expected link collision: ODR violation: duplicate strong symbol 'calculate_delta' defined in both engine.cpp and analytics.cpp
+Detected inline definition mismatch: ODR ill-formed violation: inline symbol 'inline_vol_helper' has conflicting definitions between engine.cpp and mismatched_header.cpp</pre>
+        <p class="interpretation">The experiment confirms that non-inline symbols must be defined in exactly one translation unit. Marking shared helper functions as <code>inline</code> in headers permits deduplication while avoiding linker collisions.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>The One Definition Rule creates insidious failure modes when inline definitions diverge across translation units. When two translation units include different versions of a header (for example, due to differing preprocessor macros such as <code>-DDEBUG</code> in one TU and <code>-DNDEBUG</code> in another), the inline definitions differ in tokens or layout. Compilers and standard linkers are not required to diagnose token mismatches across distinct object files. The linker arbitrarily selects one definition and discards the other, resulting in silent memory corruption, struct field offset mismatches, and undefined behavior at runtime.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Header files are compiled independently into their own object files.</p>
+            <p>Headers are never compiled on their own. The preprocessor textually pastes the header contents into the including <code>.cpp</code> source file. The compiler operates strictly on the combined translation unit stream.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">The <code>inline</code> keyword guarantees that the compiler will substitute the function body at the call site.</p>
+            <p>In modern C++, <code>inline</code> is primarily a linkage instruction to the linker, permitting multiple identical definitions across translation units. Inlining decisions for performance are determined by compiler cost heuristics, not the <code>inline</code> keyword.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Putting a global constant variable in a header file is safe without <code>inline</code>.</p>
+            <p>In C++, a non-const global variable in a header creates a strong symbol in every translation unit that includes it, causing duplicate symbol linker errors. To share a global constant safely across headers in C++17/20, mark it <code>inline constexpr</code>.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problems</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · Internal Linkage via Static Specifier</span>
+            <p>Explain the effect of marking a global function <code>static double compute_rate()</code> in a C++ translation unit.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The <code>static</code> keyword on a namespace-scope function gives the symbol internal linkage. The symbol is entered into the local symbol table of the object file and is not visible to the linker from other translation units, preventing name collisions with identical identifiers in other files.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · Preprocessor Header Guards</span>
+            <p>Why are <code>#pragma once</code> or <code>#ifndef HEADER_H</code> preprocessor guards mandatory in C++ header files?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Header guards prevent a header file from being included multiple times within the same translation unit. Without guards, duplicate class declarations or typedefs within a single TU cause immediate compilation errors under condition 1 of the One Definition Rule.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · External Variable Declarations</span>
+            <p>How does a translation unit declare a variable that is defined in another translation unit without creating a new definition?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By using the <code>extern</code> keyword without an initializer: <code>extern double g_volatility;</code>. This introduces a non-defining declaration that informs the compiler of the symbol's type, leaving the reference unresolved until the linker links it to the defining translation unit.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · Proof of Inline Deduplication Correctness</span>
+            <p>Prove that if all translation units contain identical inline definitions under Assumption 3 of ODR, any linker choice of retained symbol preserves semantic equivalence.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let translation units \(T_1, \dots, T_k\) each define inline function \(f\). By Assumption 3, the token sequence and name resolution in each \(T_i\) are identical. The compiler generates identical machine instruction sequences \(M\) in each object file \(\mathcal{O}_i\). Because the linker selects one copy \(M_r\) and replaces all external call sites with relocations to \(M_r\), the executed machine code at runtime is identical regardless of which index \(r\) the linker retains.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Link-Time Optimization Elimination of Call Overhead</span>
+            <p>Prove that under whole-program link-time optimization (LTO), a non-inline function call across translation units can achieve zero-overhead inlining identical to a single TU.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>During LTO compilation with <code>-flto</code>, the compiler emits intermediate representation (IR) bytecode into object files instead of finalized machine code. At link time, the LTO driver merges the entire IR program into a single unified module. The inliner operates across the merged AST, substituting the callee IR directly into the caller IR regardless of original TU boundaries, eliminating call prologue and epilogue overhead.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Invariant of Anonymous Namespaces</span>
+            <p>Prove that an entity defined in an unnamed namespace possesses unique internal linkage per translation unit.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The C++ standard specifies that an unnamed namespace <code>namespace { ... }</code> behaves as if it were <code>namespace _Unique_ID { ... } using namespace _Unique_ID;</code>, where <code>_Unique_ID</code> is a compiler-generated identifier guaranteed distinct for each translation unit. Because the generated namespace name is unique across TUs, mangled symbol names never collide across object files.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Interpreting Lab 1 Linker Output</span>
+            <p>From Lab 1 output, explain why <code>calculate_delta</code> provoked a linker error while <code>inline_vol_helper</code> linked successfully.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In Lab 1, <code>calculate_delta</code> was defined as a strong external symbol in both <code>engine.cpp</code> and <code>analytics.cpp</code>, directly violating ODR rule 2. In contrast, <code>inline_vol_helper</code> was flagged as <code>inline</code> in both units with matching signatures, allowing the linker to deduplicate the symbol and retain one definition.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · Cost of Optimization Flags</span>
+            <p>Why do trading teams compile debug builds with <code>-O0 -g</code> but production kernels with <code>-O3 -DNDEBUG</code>?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>-O0 -g</code> retains exact correspondence between source lines and machine instructions, enabling accurate breakpoint debugging and variable inspection. In contrast, <code>-O3</code> optimizes away dead code, inlines functions, and eliminates frame pointers, while <code>-DNDEBUG</code> disables runtime <code>assert()</code> overhead, maximizing execution speed.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Header Token Divergence Risk</span>
+            <p>What specific danger did Lab 1 demonstrate when <code>mismatched_header.cpp</code> defined an inline function with a different body ID?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>When inline definitions share the same identifier but contain differing token sequences or semantics, the program becomes ill-formed (no diagnostic required). The linker cannot know which definition is intended, risking arbitrary runtime corruption depending on link order.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · C++20 Modules vs Header Translation Units</span>
+            <p>How do C++20 modules fundamentally alter the traditional macro-based translation unit compilation model?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>C++20 modules replace textual inclusion with compiled module interfaces (BMI). Modules do not leak preprocessor macros into importing files, parse interface definitions once into structured metadata rather than re-parsing headers in every TU, and provide explicit export semantics for symbols, resolving header guard and macro collision vulnerabilities.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Symbol Visibility and Shared Library Relocations</span>
+            <p>Why do high-frequency trading platforms compile shared libraries with <code>-fvisibility=hidden</code>?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By default, dynamic shared objects export all non-static symbols, requiring position-independent code (PIC) to resolve calls through the Global Offset Table (GOT) and Procedure Linkage Table (PLT). Compiling with hidden visibility turns internal function calls into direct relative jumps, avoiding PLT indirection and enabling cross-function inlining.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Deterministic Reproducible Builds</span>
+            <p>What compiler options are necessary to ensure bit-for-bit binary reproducibility across distributed build nodes?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Compilers embed file paths, timestamps, and randomized symbol names by default. Achieving bit-for-bit reproducibility requires <code>-ffile-prefix-map</code> to strip host directory paths, fixed locale settings (<code>LC_ALL=C</code>), pinned compiler toolchains, and disabling embedded build timestamps via macros like <code>__DATE__</code>.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Separate compilation invariance across translation units (Proposition 1.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §1 via deterministic function model</td></tr>
+              <tr><td>Multiple strong external symbol definitions cause link failure (Proposition 1.4)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2 from One Definition Rule axioms</td></tr>
+              <tr><td>Linker deduplication of identical inline symbols across units</td><td><span class="grade" data-grade="C">C</span><span class="citation" data-cite="stroustrup2022tour"></span></td><td>Lab 1 linker simulation and Stroustrup (2022)</td></tr>
+              <tr><td>Anonymous namespaces provide unique per-TU internal linkage</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §6 (P3) from C++ namespace mapping</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS5" data-page="L01" data-cards="cards.json">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <p>Answer from memory, then check. Finishing the quiz adds this lesson's cards to your review deck.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What constitutes a C++ translation unit?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q1"> <span>A raw source file before preprocessor execution</span></label>
+              <label class="option" data-correct><input type="radio" name="L01q1"> <span>The token stream resulting from preprocessor expansion of a single source file and all included headers</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>The final executable binary linked across all modules</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 1.1: A translation unit is the preprocessed token sequence generated from one implementation file and its included dependencies.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What occurs if two translation units define the same non-inline function with external linkage?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q2"> <span>The compiler compiles the first and ignores the second silently</span></label>
+              <label class="option" data-correct><input type="radio" name="L01q2"> <span>The linker terminates with a multiple-definition collision error</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>The program runs, invoking whichever definition was compiled last</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Proposition 1.4: Non-inline symbols produce strong definitions; two identical strong symbols violate ODR condition 2, causing linker termination.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the primary role of the <code>inline</code> keyword in modern C++?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q3"> <span>Forcing the compiler to inline code at the assembly level</span></label>
+              <label class="option" data-correct><input type="radio" name="L01q3"> <span>Instructing the linker to permit and deduplicate identical definitions across multiple translation units</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>Restricting the function visibility strictly to internal linkage</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>In C++, <code>inline</code> allows a definition to appear in multiple translation units without violating the One Definition Rule.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="3" data-tolerance="0">
+            <p class="prompt">In Lab 1, how many total global symbols were successfully resolved during the valid link experiment?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Lab 1 resolved exactly 3 global symbols: <code>calculate_delta</code>, <code>inline_vol_helper</code>, and <code>price_option</code>.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which keyword specifies internal linkage for a namespace-scope function?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q5"> <span><code>extern</code></span></label>
+              <label class="option" data-correct><input type="radio" name="L01q5"> <span><code>static</code></span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span><code>inline</code></span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The <code>static</code> keyword on namespace-scope entities restricts their linkage strictly to the enclosing translation unit.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What compiler optimization flag enables link-time cross-TU inlining?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q6"> <span><code>-O0</code></span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span><code>-Wall</code></span></label>
+              <label class="option" data-correct><input type="radio" name="L01q6"> <span><code>-flto</code></span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Link-Time Optimization (<code>-flto</code>) preserves intermediate representation across translation units to perform whole-program inlining.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0" data-tolerance="0">
+            <p class="prompt">How many strong external definitions of a non-inline function may exist across an entire valid C++ program according to the ODR?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Condition 2 of Definition 1.3 states that every non-inline function with external linkage must have exactly 1 definition.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How should a shared global constant be declared in a C++17/20 header to prevent duplicate symbols?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q8"> <span><code>double my_const = 1.0;</code></span></label>
+              <label class="option" data-correct><input type="radio" name="L01q8"> <span><code>inline constexpr double my_const = 1.0;</code></span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span><code>extern double my_const = 1.0;</code></span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>inline constexpr</code> permits defining the constant in the header while instructing the linker to deduplicate instances across translation units.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson draws foundational principles from Stroustrup (2022), <em>A Tour of C++</em>, 3rd edition (registry key <code>stroustrup2022tour</code>). All mathematical and compilation properties are verified via direct proofs and Lab 1 model executions.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="index.html"><span class="dir">Previous</span>CS5 Module Hub</a>
+        <a class="next" href="L02.html"><span class="dir">Next</span>L02 · Value Semantics</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS5 · C++ &amp; Systems for Finance · High-Performance Computing and Systems Architecture</footer>
+</body>
+</html>

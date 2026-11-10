@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS5" data-page="L02" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L02 · Value Semantics · CS5 C++ &amp; Systems for Finance</title>
+  <meta name="description" content="C++ value semantics, copy versus move constructors, rvalue references, the Rule of Zero, and object lifecycle guarantees in high-throughput financial engines.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS5 C++ &amp; Systems for Finance</a><span class="sep">›</span>
+      <span>L02</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS5 · Lesson 2 of 8 · 10 study hours</p>
+        <h1>Value Semantics and Object Lifecycle</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="compilation-model" href="L01.html#def-compilation-model">compilation model</a> (L01), <a class="concept" data-concept="type-hints" href="../../../concepts.html#type-hints">type hints</a> (CS1), <a class="concept" data-concept="direct-proof" href="../../../concepts.html#direct-proof">direct proof</a> (M1)</li>
+          <li><strong>Introduces:</strong> value semantics</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Financial execution engines process millions of market messages per second. Languages relying on pointer indirection and reference semantics suffer pointer chasing, garbage collection pauses, and uncontrolled object aliasing. C++ value semantics guarantees independent object identity, deterministic stack allocation, and zero-cost ownership transfer through move semantics, eliminating heap allocation bottlenecks along critical latency paths.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Value Semantics versus Reference Semantics</h2>
+
+      <p>In languages like Java or Python, non-primitive variables hold references (pointers) to objects allocated on the heap. Assigning one variable to another creates an alias: both variables reference the identical underlying memory. Mutating one variable mutates the other. In contrast, C++ defaults to value semantics.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(Value Semantics)</span></span>
+        <p>A type exhibits <dfn id="def-value-semantics" data-concept="value-semantics">value semantics</dfn> (or copy-on-assignment semantics) if assignment and initialization create independent objects with separate identities such that subsequent modifications to one object leave all other objects unaffected. If \(a\) and \(b\) are instances of a value type, the assignment \(b = a\) ensures that \(a == b\) holds immediately following assignment, yet \(\&a \ne \&b\), guaranteeing disjoint storage locations.</p>
+      </div>
+
+      <p>Value semantics simplifies reasoning in multi-threaded trading engines. Because values are not shared by reference across threads, functions can consume objects by value without fear of external mutation or race conditions.</p>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 2.2 <span class="name">(Independence of Value Assignment)</span></span>
+        <p><strong>Assumption 1:</strong> Type \(T\) satisfies regular value semantics with deep-copy assignment.<br>
+        <strong>Statement:</strong> For distinct object instances \(a, b \in T\) with \(a \ne b\), mutating the state of \(a\) via any member operation \(m(a)\) produces zero change in the observable state of \(b\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By Definition 2.1, \(a\) and \(b\) occupy disjoint memory regions: \(\mathrm{addr}(a) \cap \mathrm{addr}(b) = \emptyset\). Because \(T\) implements deep-copy semantics, all dynamically owned buffers are distinct: \(\mathrm{heap}(a) \cap \mathrm{heap}(b) = \emptyset\). A mutating member function \(m(a)\) writes only to bytes contained in \(\mathrm{addr}(a) \cup \mathrm{heap}(a)\). Because the intersection with the storage of \(b\) is empty, the bit pattern representing the state of \(b\) remains strictly unchanged. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Move Semantics and Rvalue References</h2>
+
+      <p>Deep copying large dynamic buffers (such as price vectors or order books) imposes severe memory allocation and cache thrashing overhead. C++11 introduced rvalue references (<code>T&&</code>) and move semantics to distinguish temporary expressions from named lvalues.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.3 <span class="name">(Lvalues, Rvalues, and Move Semantics)</span></span>
+        <p>An <strong>lvalue</strong> is an expression that designates an object possessing an identifiable memory address (identity) that persists beyond a single expression. An <strong>rvalue</strong> designates a temporary object or value that has no persistent identity and will be destroyed at the end of the full expression. <strong>Move semantics</strong> transfers internal resource handles (pointers, file descriptors) from an expiring rvalue to a destination object in \(\mathcal{O}(1)\) time, leaving the source in a valid but unspecified state.</p>
+      </div>
+
+      <p><code>std::move(x)</code> does not move anything at runtime; it is an unconditional static cast converting an lvalue reference <code>x</code> into an rvalue reference <code>static_cast&lt;T&&&gt;(x)</code>, enabling overload resolution to select the move constructor or move assignment operator.</p>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 2.4 <span class="name">(Complexity of Resource Transfer)</span></span>
+        <p><strong>Assumption 1:</strong> A container manages a dynamically allocated buffer of size \(N\) via a pointer.<br>
+        <strong>Statement:</strong> Copy construction requires \(\mathcal{O}(N)\) memory allocation and byte copy operations, whereas move construction requires \(\mathcal{O}(1)\) pointer swaps.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Copy construction allocates a new buffer of \(N\) elements and executes \(N\) copy operations, taking time proportional to \(N\). Move construction reads the source pointer \(p\), copies \(p\) to the destination pointer, and sets the source pointer to <code>nullptr</code>. This requires exactly three machine word assignments, executing in \(\mathcal{O}(1)\) time independent of \(N\). \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>The Rules of Zero, Three, and Five</h2>
+
+      <p>C++ controls object lifecycle through special member functions: default constructor, copy constructor, copy assignment operator, move constructor, move assignment operator, and destructor.</p>
+      <ul>
+        <li><strong>Rule of Zero:</strong> Classes that do not directly manage raw resources should define none of the special member functions. Resource management should be delegated to standard RAII types (<code>std::vector</code>, <code>std::unique_ptr</code>, <code>std::string</code>).</li>
+        <li><strong>Rule of Three:</strong> If a class manages a raw resource and defines a custom destructor, copy constructor, or copy assignment operator, it must define all three to prevent double-free errors.</li>
+        <li><strong>Rule of Five:</strong> To support efficient move semantics, classes defining the Rule of Three should also explicitly implement or default the move constructor and move assignment operator.</li>
+      </ul>
+
+      <section class="lab" id="lab-CS5-L02-1" data-runtime="python">
+        <h3>Lab 1 · Value semantics and reallocation operation tracker</h3>
+        <p class="hypothesis">Tracking object lifecycle operations demonstrates that <code>std::vector</code> reallocations execute zero deep copies when the type provides a <code>noexcept</code> move constructor, but fall back to copy construction if move operations risk throwing exceptions.</p>
+        <pre><code class="language-python" data-run>"""CS5 Lab L02: Value semantics, object lifecycle, and move semantics operational model.
+
+Standard library only. Deterministic integer operation counter. Tracks default construction,
+copy construction, move construction, copy assignment, move assignment, and destruction
+across dynamic container reallocations and value transfers.
+"""
+
+from __future__ import annotations
+
+
+class LifecycleTracker:
+    def __init__(self) -&gt; None:
+        self.default_constructs = 0
+        self.copy_constructs = 0
+        self.move_constructs = 0
+        self.copy_assigns = 0
+        self.move_assigns = 0
+        self.destructs = 0
+
+    def reset(self) -&gt; None:
+        self.default_constructs = 0
+        self.copy_constructs = 0
+        self.move_constructs = 0
+        self.copy_assigns = 0
+        self.move_assigns = 0
+        self.destructs = 0
+
+
+GLOBAL_TRACKER = LifecycleTracker()
+
+
+class TracedValue:
+    def __init__(self, value: int = 0) -&gt; None:
+        self.value = value
+        self.is_moved_from = False
+        GLOBAL_TRACKER.default_constructs += 1
+
+    @classmethod
+    def from_value(cls, value: int) -&gt; TracedValue:
+        return cls(value)
+
+    def copy(self) -&gt; TracedValue:
+        GLOBAL_TRACKER.copy_constructs += 1
+        return TracedValue(self.value)
+
+    def move(self) -&gt; TracedValue:
+        GLOBAL_TRACKER.move_constructs += 1
+        val = self.value
+        self.is_moved_from = True
+        self.value = 0
+        return TracedValue(val)
+
+    def destroy(self) -&gt; None:
+        GLOBAL_TRACKER.destructs += 1
+
+
+class SimulatedVector:
+    """Models std::vector dynamic reallocation behavior with geometric capacity doubling."""
+
+    def __init__(self, use_noexcept_move: bool = True) -&gt; None:
+        self.capacity = 0
+        self.data: list[TracedValue] = []
+        self.use_noexcept_move = use_noexcept_move
+
+    def push_back_lvalue(self, item: TracedValue) -&gt; None:
+        self._ensure_capacity()
+        self.data.append(item.copy())
+
+    def push_back_rvalue(self, item: TracedValue) -&gt; None:
+        self._ensure_capacity()
+        self.data.append(item.move())
+
+    def _ensure_capacity(self) -&gt; None:
+        if len(self.data) &lt; self.capacity:
+            return
+        new_cap = 1 if self.capacity == 0 else self.capacity * 2
+        new_data: list[TracedValue] = []
+        for x in self.data:
+            if self.use_noexcept_move:
+                new_data.append(x.move())
+            else:
+                new_data.append(x.copy())
+            x.destroy()
+        self.data = new_data
+        self.capacity = new_cap
+
+    def clear(self) -&gt; None:
+        for x in self.data:
+            x.destroy()
+        self.data = []
+
+
+def run_value_semantics_experiments() -&gt; None:
+    print("CS5 L02: Value Semantics and Move vs Copy Reallocation Tracker")
+
+    # Sequence 1: push_back 8 rvalue items with noexcept move
+    GLOBAL_TRACKER.reset()
+    vec_move = SimulatedVector(use_noexcept_move=True)
+    for i in range(8):
+        v = TracedValue(i * 10)
+        vec_move.push_back_rvalue(v)
+        v.destroy()
+
+    print(
+        f"Push 8 rvalues (noexcept move): "
+        f"moves={GLOBAL_TRACKER.move_constructs}, copies={GLOBAL_TRACKER.copy_constructs}, "
+        f"destructs={GLOBAL_TRACKER.destructs}, capacity={vec_move.capacity}"
+    )
+    vec_move.clear()
+
+    # Sequence 2: push_back 8 rvalue items without noexcept move (reallocations fall back to copy)
+    GLOBAL_TRACKER.reset()
+    vec_copy = SimulatedVector(use_noexcept_move=False)
+    for i in range(8):
+        v = TracedValue(i * 10)
+        vec_copy.push_back_rvalue(v)
+        v.destroy()
+
+    print(
+        f"Push 8 rvalues (copy on realloc): "
+        f"moves={GLOBAL_TRACKER.move_constructs}, copies={GLOBAL_TRACKER.copy_constructs}, "
+        f"destructs={GLOBAL_TRACKER.destructs}, capacity={vec_copy.capacity}"
+    )
+    vec_copy.clear()
+
+    # Sequence 3: push_back 8 lvalue items (always deep copied at insertion)
+    GLOBAL_TRACKER.reset()
+    vec_lvalue = SimulatedVector(use_noexcept_move=True)
+    for i in range(8):
+        v = TracedValue(i * 10)
+        vec_lvalue.push_back_lvalue(v)
+        v.destroy()
+
+    print(
+        f"Push 8 lvalues (deep copies): "
+        f"moves={GLOBAL_TRACKER.move_constructs}, copies={GLOBAL_TRACKER.copy_constructs}, "
+        f"destructs={GLOBAL_TRACKER.destructs}, capacity={vec_lvalue.capacity}"
+    )
+    vec_lvalue.clear()
+
+
+def main() -&gt; None:
+    run_value_semantics_experiments()
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">CS5 L02: Value Semantics and Move vs Copy Reallocation Tracker
+Push 8 rvalues (noexcept move): moves=15, copies=0, destructs=15, capacity=8
+Push 8 rvalues (copy on realloc): moves=8, copies=7, destructs=15, capacity=8
+Push 8 lvalues (deep copies): moves=7, copies=8, destructs=15, capacity=8</pre>
+        <p class="interpretation">The experiment confirms that vector capacity doubling performs \(\mathcal{O}(N)\) moves when expanding from capacity 1 to 8. Marking move constructors <code>noexcept</code> is necessary for standard library containers to select move semantics during reallocations without compromising the strong exception safety guarantee.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>A moved-from object in C++ is guaranteed to be in a "valid but unspecified state." This guarantee is weaker than full re-initialization. Calling member functions that require specific preconditions (such as accessing elements of a moved-from vector without checking <code>empty()</code>) triggers undefined behavior. Furthermore, if a programmer passes <code>std::move(x)</code> to a function that accepts its parameter by <code>const&amp;</code>, the compiler silently falls back to copy construction without error or warning, defeating the performance optimization unnoticed.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><code>std::move</code> performs an asynchronous data transfer or moves memory in hardware.</p>
+            <p><code>std::move</code> generates zero assembly instructions at runtime. It is purely a compile-time cast that casts an expression to an rvalue reference type (<code>T&&</code>), enabling the compiler to select move constructor overloads.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Returning a local object by <code>std::move(local_var)</code> accelerates function returns.</p>
+            <p>Wrapping a return statement with <code>std::move</code> disables Named Return Value Optimization (NRVO). Compilers can elide copies and moves completely by constructing the object directly in the caller's stack frame. Applying <code>std::move</code> forces an unnecessary move construction.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A moved-from object is automatically destroyed and its memory deallocated.</p>
+            <p>A moved-from object remains fully alive until it leaves its enclosing lexical scope. Its destructor will execute normally when the scope ends; therefore, the move constructor must leave the source object in a state where destruction is safe (e.g. setting raw pointers to <code>nullptr</code>).</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problems</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · Writing a Custom Move Constructor</span>
+            <p>Given a class <code>Buffer</code> managing <code>double* data_</code> and <code>size_t size_</code>, write the signature and implementation of its <code>noexcept</code> move constructor.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The move constructor steals the pointer and resets the source:<br>
+              <code>Buffer(Buffer&amp;&amp; other) noexcept : data_(other.data_), size_(other.size_) { other.data_ = nullptr; other.size_ = 0; }</code>.<br>
+              Marking it <code>noexcept</code> guarantees standard containers will use move operations during reallocation.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · Self-Assignment in Move Assignment</span>
+            <p>Why must a move assignment operator <code>operator=(Buffer&amp;&amp; other)</code> check for self-assignment <code>this != &amp;other</code>?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>If code invokes <code>buf = std::move(buf)</code>, releasing the destination buffer before stealing from <code>other</code> destroys the very data being moved. Checking for self-assignment prevents premature deallocation and dangling pointers.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · The Rule of Zero in Practice</span>
+            <p>How does replacing a raw pointer member with <code>std::vector&lt;double&gt;</code> allow a class to adhere to the Rule of Zero?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>std::vector</code> already implements the Rule of Five correctly. When a class contains only members with valid copy, move, and destruction semantics, the compiler automatically synthesizes optimal special member functions, eliminating boilerplate and memory leaks.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · Invariant of Move Construction on Resource Conservation</span>
+            <p>Prove that move construction preserves total allocated system resources without creating duplicate ownership.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let system resources be denoted by set \(R\). Prior to move construction, source object \(S\) owns resource handle \(h \in R\). Move construction assigns \(h\) to destination object \(D\) and assigns null to \(S\). Because \(S\) no longer refers to \(h\) and \(D\) is the sole reference, the cardinality \(|R|\) is unchanged, and exactly one active owner holds \(h\), preventing double-free upon destruction.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Necessity of noexcept for Strong Exception Safety</span>
+            <p>Prove why <code>std::vector</code> reallocation cannot use a move constructor that may throw without violating the strong exception safety guarantee.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The strong guarantee requires that if an operation throws, program state is restored to its exact pre-call condition. Suppose <code>std::vector</code> moves elements \(0, \dots, k-1\) to a new buffer, and moving element \(k\) throws. Elements \(0, \dots, k-1\) in the old buffer are already in a moved-from state and cannot be deterministically un-moved if move operations throw. Thus, state cannot be restored. Hence, only <code>noexcept</code> moves permit moving; throwing moves force copy construction.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Amortized Cost of Dynamic Array Reallocation</span>
+            <p>Prove that pushing \(N\) elements into an initially empty geometric vector with doubling factor 2 performs at most \(2N\) total moves.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Reallocations occur at sizes \(1, 2, 4, 8, \dots, 2^k &lt; N\). The total elements moved across all reallocations is \(\sum_{j=0}^{k} 2^j = 2^{k+1} - 1 &lt; 2N\). Adding the \(N\) direct insertions yields fewer than \(3N\) total operations, proving \(\mathcal{O}(1)\) amortized move cost per insertion.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Interpreting Lab 1 Operation Counts</span>
+            <p>In Lab 1, why did pushing 8 rvalues with <code>noexcept</code> move execute 15 moves and 0 copies?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>There are 8 direct insertions. Reallocations occur when size reaches 1 (1 move), 2 (2 moves), and 4 (4 moves). Total moves = \(8 + 1 + 2 + 4 = 15\). Because move is marked <code>noexcept</code>, all reallocations use move constructors, resulting in 0 copies.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · Reallocation with Throwing Move Constructors</span>
+            <p>In Lab 1, why did the second experiment perform 7 copies and 8 moves?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Because the move constructor was not <code>noexcept</code>, the container could not guarantee strong exception safety during buffer expansion. It fell back to copy construction during reallocations (\(1 + 2 + 4 = 7\) copies) while still moving the incoming temporary rvalues (8 moves).</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Lvalue Insertions vs Rvalue Insertions</span>
+            <p>In Lab 1, why did pushing 8 lvalues execute 8 copies and 7 moves?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Because the arguments were persistent lvalues, inserting them into the vector required deep copies (8 copies). However, during buffer reallocations, existing vector elements were transferred via move semantics (7 moves).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · Pass-by-Value with std::move Idiom</span>
+            <p>When is passing a parameter by value and moving it into a member variable superior to overloading on <code>const&amp;</code> and <code>&amp;&amp;</code>?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For a constructor taking \(k\) independent arguments, overloading on lvalues and rvalues requires \(2^k\) separate overload signatures. Accepting parameters by value requires only 1 signature. Callers passing rvalues incur 1 move into the parameter and 1 move into the member (2 cheap moves), eliminating combinatorial boilerplate.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Small String Optimization (SSO) and Value Semantics</span>
+            <p>How does Small String Optimization (SSO) affect the performance of value semantics for short financial tickers?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>SSO stores strings up to 15 or 22 characters directly in an internal stack buffer inside the string object, avoiding heap allocation. For short strings like equity tickers ("AAPL", "MSFT"), copying and moving take identical fixed-word memory copies, completely eliminating dynamic allocation latency.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Relocation Semantics in Future C++</span>
+            <p>What is the limitation of C++ move semantics compared to destructive relocation (as in Rust), and how would trivial relocation improve vector resizing?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>C++ move semantics leaves the moved-from source object alive, requiring its destructor to execute later. Trivial relocation allows moving objects via raw <code>memcpy</code> without running destructors on the old storage, reducing vector resizing to a single bulk memory transfer.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Independence of value-typed objects under assignment (Proposition 2.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §1 from memory disjunction axioms</td></tr>
+              <tr><td>\(\mathcal{O}(1)\) resource transfer via move construction (Proposition 2.4)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2 from pointer swap mechanics</td></tr>
+              <tr><td>Amortized \(\mathcal{O}(1)\) moves during geometric capacity doubling</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §6 (P3) via geometric series summation</td></tr>
+              <tr><td>Reallocation fallback to copy construction when move is not noexcept</td><td><span class="grade" data-grade="C">C</span><span class="citation" data-cite="stroustrup2022tour"></span></td><td>Lab 1 model results and Stroustrup (2022)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS5" data-page="L02" data-cards="cards.json">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <p>Answer from memory, then check. Finishing the quiz adds this lesson's cards to your review deck.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What defines value semantics in C++?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q1"> <span>Variables share a single heap object through pointers</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q1"> <span>Assignment produces an independent object such that mutating one never affects the other</span></label>
+              <label class="option"><input type="radio" name="L02q1"> <span>All objects must be allocated on the heap via <code>new</code></span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 2.1: Value semantics ensures that copies have independent identity and separate storage.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the runtime cost of <code>std::move(x)</code>?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q2"> <span>A deep copy of all elements in <code>x</code></span></label>
+              <label class="option"><input type="radio" name="L02q2"> <span>An asynchronous thread-safe memory transfer</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q2"> <span>Zero runtime instructions (it is purely a compile-time rvalue cast)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>std::move</code> is a static cast to an rvalue reference <code>T&&</code>; it generates no machine instructions.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why must move constructors for custom types be marked <code>noexcept</code>?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q3"> <span>To prevent the compiler from generating any destructor</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q3"> <span>To allow <code>std::vector</code> to use move operations during buffer reallocations while maintaining strong exception safety</span></label>
+              <label class="option"><input type="radio" name="L02q3"> <span>Because throwing exceptions in constructors is forbidden by the language</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>If a move constructor can throw, <code>std::vector</code> falls back to copying to preserve the strong exception safety guarantee.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="15" data-tolerance="0">
+            <p class="prompt">In Lab 1, how many total move operations occurred when pushing 8 rvalues into a vector with a <code>noexcept</code> move constructor?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Lab 1 recorded 8 direct pushes + 1 + 2 + 4 reallocation moves = 15 total moves.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What state is an object left in after being moved from?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q5"> <span>The object is immediately deallocated and freed</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q5"> <span>A valid but unspecified state whose destructor can execute safely</span></label>
+              <label class="option"><input type="radio" name="L02q5"> <span>Identical to its pre-move state</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>C++ standard guarantees moved-from objects remain in a valid but unspecified state until destruction.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does the Rule of Zero recommend?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q6"> <span>Never use constructors or destructors in C++</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q6"> <span>Rely on standard RAII types for resource management and define zero custom special member functions</span></label>
+              <label class="option"><input type="radio" name="L02q6"> <span>Always set all integer member variables to zero in default constructors</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The Rule of Zero advises using standard library types like <code>std::vector</code> and <code>std::unique_ptr</code> to manage resources automatically.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="7" data-tolerance="0">
+            <p class="prompt">In Lab 1, how many copy operations occurred when pushing 8 rvalues into a vector whose move constructor was not <code>noexcept</code>?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Lab 1 recorded 7 copies during reallocations (1 at cap 1, 2 at cap 2, 4 at cap 4).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens when you return a local variable using <code>return std::move(local);</code>?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q8"> <span>It guarantees optimal speed by forcing compiler vectorization</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q8"> <span>It inhibits Named Return Value Optimization (NRVO), forcing an unnecessary move construction instead of copy elision</span></label>
+              <label class="option"><input type="radio" name="L02q8"> <span>It causes a compile error because local variables cannot be moved</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>NRVO elides both copies and moves by constructing directly in the caller frame. <code>std::move</code> disables NRVO.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson draws foundational principles from Stroustrup (2022), <em>A Tour of C++</em>, 3rd edition (registry key <code>stroustrup2022tour</code>). All mathematical and lifecycle properties are verified via direct proofs and Lab 1 model executions.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L01.html"><span class="dir">Previous</span>L01 · Compilation and Linking</a>
+        <a class="next" href="L03.html"><span class="dir">Next</span>L03 · RAII and Ownership</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS5 · C++ &amp; Systems for Finance · High-Performance Computing and Systems Architecture</footer>
+</body>
+</html>

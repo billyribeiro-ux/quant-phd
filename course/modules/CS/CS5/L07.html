@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS5" data-page="L07" data-hours="9">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L07 · Struct-of-Arrays Layout · CS5 C++ &amp; Systems for Finance</title>
+  <meta name="description" content="Array-of-structures (AoS) versus struct-of-arrays (SoA) memory layouts, cache line utilization, SIMD vectorization, and order book streaming efficiency.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS5 C++ &amp; Systems for Finance</a><span class="sep">›</span>
+      <span>L07</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS5 · Lesson 7 of 8 · 9 study hours</p>
+        <h1>Array-of-Structures versus Struct-of-Arrays Layout</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="memory-hierarchy" href="L06.html#def-memory-hierarchy">memory hierarchy</a> (L06), <a class="concept" data-concept="value-semantics" href="L02.html#def-value-semantics">value semantics</a> (L02), <a class="concept" data-concept="direct-proof" href="../../../concepts.html#direct-proof">direct proof</a> (M1)</li>
+          <li><strong>Introduces:</strong> Array-of-structs vs. struct-of-arrays layout</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">High-throughput market data engines process gigabytes of quote feeds per second. Traditional object-oriented design groups attributes into records (Array-of-Structures), scattering relevant numeric fields across memory alongside unused metadata. Struct-of-Arrays layout groups identical fields contiguously, doubling effective cache line utilization and unlocking compiler auto-vectorization across price calculations and risk pipelines.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Memory Layouts: AoS versus SoA</h2>
+
+      <p>Data layout in memory dictates how effectively hardware prefetchers and SIMD vector registers operate on financial streams:</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 7.1 <span class="name">(AoS and SoA Memory Organization)</span></span>
+        <p>In an <strong>Array-of-Structures (AoS)</strong> layout, individual composite records are stored consecutively in memory: <code>struct Quote { double bid; double ask; uint32_t bid_sz; uint32_t ask_sz; uint64_t ts; }; Quote quotes[M];</code>. In a <strong>Struct-of-Arrays (SoA)</strong> layout, each field is stored in its own contiguous array across all \(M\) records: <code>struct QuotesSoA { double bids[M]; double asks[M]; uint32_t bid_sizes[M]; uint32_t ask_sizes[M]; uint64_t timestamps[M]; };</code>. The <dfn id="def-struct-of-arrays" data-concept="struct-of-arrays">Array-of-structs vs. struct-of-arrays layout</dfn> choice determines how memory bandwidth is divided between active numerical payloads and inactive metadata during selective field traversals.</p>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 7.2 <span class="name">(Cache Line Utilization Factor)</span></span>
+        <p><strong>Assumption A1:</strong> Cache lines are \(L = 64\) bytes, aligned to 64-byte boundaries.<br>
+        <strong>Assumption 2:</strong> A record has total size \(S\) bytes, of which \(U &lt; S\) bytes are accessed by a selective field algorithm.<br>
+        <strong>Statement:</strong> The cache line bandwidth utilization under AoS is \(\eta_{\mathrm{AoS}} = U / S\), whereas under SoA it is \(\eta_{\mathrm{SoA}} = 1.0\) (100%), reducing loaded cache lines by a factor of \(S / U\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>In AoS, each record occupies \(S\) bytes in memory. To read \(U\) bytes of interest from \(M\) records, the CPU must transfer \(M \times S\) total bytes across the memory bus, loading \(\lceil M \cdot S / L \rceil\) cache lines. Out of every \(S\) bytes loaded into L1 cache, only \(U\) bytes are used, yielding utilization \(\eta_{\mathrm{AoS}} = (M \cdot U) / (M \cdot S) = U / S &lt; 1.0\). In SoA, the \(U\) active bytes are stored in contiguous arrays totaling \(M \times U\) bytes, loading \(\lceil M \cdot U / L \rceil\) cache lines. Every byte in each loaded line is consumed, yielding \(\eta_{\mathrm{SoA}} = 1.0\). The ratio of loaded lines is \((M \cdot S / L) / (M \cdot U / L) = S / U\). \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Hardware Alignment, Padding, and SIMD Vectorization</h2>
+
+      <p>Modern compilers auto-vectorize loops only when memory can be loaded into SIMD vector registers (AVX-256 or AVX-512) in continuous chunks without gather/scatter instructions:</p>
+      <ul>
+        <li><strong>AoS SIMD Penalty:</strong> To compute midpoint prices \((bid + ask) / 2\) on AoS data, the compiler must either issue strided loads, execute permute instructions to unpack interleaved bids and asks, or fall back to scalar arithmetic.</li>
+        <li><strong>SoA SIMD Alignment:</strong> In SoA, <code>bids</code> and <code>asks</code> are contiguous 64-bit float arrays. An AVX-512 load instruction (<code>_mm512_load_pd</code>) loads 8 contiguous doubles in a single CPU cycle. Adding the two vector registers (<code>_mm512_add_pd</code>) computes 8 midpoint prices simultaneously.</li>
+      </ul>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 7.3 <span class="name">(Bus Traffic Reduction on Quote Midpoints)</span></span>
+        <p><strong>Assumption A1:</strong> A Quote record has size \(S = 32\) bytes (8B bid, 8B ask, 4B bid_size, 4B ask_size, 8B timestamp), and cache lines are 64 bytes.<br>
+        <strong>Statement:</strong> Evaluating midpoint prices for \(M = 1024\) quotes under SoA transfers exactly 16,384 bytes across the memory bus, whereas AoS transfers 32,768 bytes, consuming exactly 2.0x less memory bandwidth.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Computing midpoints requires reading only <code>bid</code> (8B) and <code>ask</code> (8B), giving active payload \(U = 16\) bytes per quote. Total payload is \(1024 \times 16 = 16,384\) bytes. Under AoS, loading \(M = 1024\) records of 32 bytes transfers \(1024 \times 32 = 32,768\) bytes (\(32,768 / 64 = 512\) cache lines). Under SoA, reading <code>bids</code> (8,192B) and <code>asks</code> (8,192B) transfers exactly \(8,192 + 8,192 = 16,384\) bytes (\(16,384 / 64 = 256\) cache lines). The bandwidth ratio is \(32,768 / 16,384 = 2.0\). \(\blacksquare\)</p>
+      </div>
+
+      <section class="lab" id="lab-CS5-L07-1" data-runtime="python">
+        <h3>Lab 1 · Array-of-structs vs struct-of-arrays cache model</h3>
+        <p class="hypothesis">Under Assumption A1 (64B cache line), evaluating midpoint prices across 1,024 quotes loads 512 cache lines in AoS (50% utilization, 16,384 bytes wasted metadata) versus 256 cache lines in SoA (100% utilization, 0 wasted bytes), reducing memory bus traffic by exactly 2.0x.</p>
+        <pre><code class="language-python" data-run>"""CS5 Lab L07: Array-of-structs (AoS) vs Struct-of-arrays (SoA) cache and bandwidth model.
+
+Standard library only. Deterministic integer counter under Assumption A1 (64-byte cache line).
+Evaluates cache lines loaded, memory bus traffic, and cache capacity efficiency when computing
+midpoint prices across M order book quote records in AoS vs SoA layouts.
+"""
+
+from __future__ import annotations
+
+
+def run_aos_vs_soa_cache_benchmark() -&gt; None:
+    print("CS5 L07: Array-of-Structs (AoS) vs Struct-of-Arrays (SoA) Cache Model (Assumption A1: 64B Line)")
+
+    line_size = 64  # 64-byte hardware cache line
+    m_quotes = 1024  # number of market quotes
+
+    # Layout 1: Array-of-Structs (AoS)
+    # struct Quote { double bid; double ask; uint32_t bid_sz; uint32_t ask_sz; uint64_t ts; };
+    # Size: 8 + 8 + 4 + 4 + 8 = 32 bytes per Quote record.
+    quote_size = 32
+    line_size // quote_size  # 2 quotes per 64B cache line
+
+    # Midpoint kernel reads only bid (8B) and ask (8B) = 16B useful payload per quote
+    useful_bytes_per_quote = 16
+    total_useful_payload = m_quotes * useful_bytes_per_quote
+
+    aos_total_bytes = m_quotes * quote_size
+    aos_lines_loaded = aos_total_bytes // line_size
+    aos_bus_traffic = aos_lines_loaded * line_size
+    aos_utilization = total_useful_payload / aos_bus_traffic
+
+    print(f"Array-of-Structs (AoS) Layout (Quote size: {quote_size}B, M={m_quotes}):")
+    print(f"  Distinct cache lines loaded: {aos_lines_loaded}")
+    print(f"  Total memory bus traffic:    {aos_bus_traffic} bytes")
+    print(f"  Useful payload bytes read:   {total_useful_payload} bytes")
+    print(f"  Cache line utilization:      {aos_utilization:.1%}")
+    print(f"  Wasted unread metadata:      {aos_bus_traffic - total_useful_payload} bytes")
+
+    # Layout 2: Struct-of-Arrays (SoA)
+    # struct QuotesSoA { double bids[M]; double asks[M]; ... };
+    # bids array: 1024 * 8 = 8192 bytes; asks array: 1024 * 8 = 8192 bytes
+    bids_bytes = m_quotes * 8
+    asks_bytes = m_quotes * 8
+    bids_lines = bids_bytes // line_size
+    asks_lines = asks_bytes // line_size
+
+    soa_lines_loaded = bids_lines + asks_lines
+    soa_bus_traffic = soa_lines_loaded * line_size
+    soa_utilization = total_useful_payload / soa_bus_traffic
+
+    print(f"\nStruct-of-Arrays (SoA) Layout (Contiguous bids[] and asks[], M={m_quotes}):")
+    print(f"  Distinct cache lines loaded: {soa_lines_loaded}")
+    print(f"  Total memory bus traffic:    {soa_bus_traffic} bytes")
+    print(f"  Useful payload bytes read:   {total_useful_payload} bytes")
+    print(f"  Cache line utilization:      {soa_utilization:.1%}")
+    print(f"  Wasted unread metadata:      {soa_bus_traffic - total_useful_payload} bytes")
+
+    # Relative comparison
+    line_reduction_ratio = aos_lines_loaded / soa_lines_loaded
+    traffic_reduction_ratio = aos_bus_traffic / soa_bus_traffic
+    print("\nComparative Layout Efficiency:")
+    print(f"  Cache lines ratio (AoS / SoA): {line_reduction_ratio:.1f}x fewer cache lines loaded in SoA")
+    print(f"  Bandwidth ratio  (AoS / SoA): {traffic_reduction_ratio:.1f}x less memory bus traffic in SoA")
+
+
+def main() -&gt; None:
+    run_aos_vs_soa_cache_benchmark()
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">CS5 L07: Array-of-Structs (AoS) vs Struct-of-Arrays (SoA) Cache Model (Assumption A1: 64B Line)
+Array-of-Structs (AoS) Layout (Quote size: 32B, M=1024):
+  Distinct cache lines loaded: 512
+  Total memory bus traffic:    32768 bytes
+  Useful payload bytes read:   16384 bytes
+  Cache line utilization:      50.0%
+  Wasted unread metadata:      16384 bytes
+
+Struct-of-Arrays (SoA) Layout (Contiguous bids[] and asks[], M=1024):
+  Distinct cache lines loaded: 256
+  Total memory bus traffic:    16384 bytes
+  Useful payload bytes read:   16384 bytes
+  Cache line utilization:      100.0%
+  Wasted unread metadata:      0 bytes
+
+Comparative Layout Efficiency:
+  Cache lines ratio (AoS / SoA): 2.0x fewer cache lines loaded in SoA
+  Bandwidth ratio  (AoS / SoA): 2.0x less memory bus traffic in SoA</pre>
+        <p class="interpretation">The experiment confirms the theoretical prediction of Proposition 7.3: SoA layout eliminates memory pollution from unused metadata fields, halving cache line transfers and doubling effective memory throughput.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s3"><span class="section-number">3</span>Where the Canon Breaks</h2>
+        <p>SoA is not universally superior. When an algorithm requires full-record access (such as writing or serializing an entire quote containing bid, ask, sizes, and timestamps to disk or a network socket), SoA scatters the fields across five disparate memory arrays. Writing a single quote touches five separate cache lines, inducing write-allocate cache pollution and increasing memory bus traffic. The optimal hybrid layout is <strong>Array-of-Structs-of-Arrays (AoSoA)</strong> (or tiled SoA), where data is packed into fixed-size SIMD-width tiles (e.g. 8 or 16 quotes per struct), balancing vectorization with cache locality.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s4"><span class="section-number">4</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Object-oriented Array-of-Structures is always more efficient because all fields of an entity are stored together.</p>
+            <p>Storing all fields together is only efficient when all fields are accessed simultaneously. When algorithms compute over a subset of fields (e.g. price analytics ignoring trade IDs), AoS forces the CPU to load unused metadata, halving cache capacity.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Struct fields in C++ are always packed contiguously with zero padding.</p>
+            <p>Compilers insert padding bytes between struct members to satisfy hardware alignment restrictions (e.g. aligning 8-byte doubles on 8-byte addresses). Ordering struct members carelessly (e.g. interleaving 1-byte chars and 8-byte doubles) inflates struct size with wasted padding.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">SoA layout requires manual indexing and cannot provide clean object-oriented APIs.</p>
+            <p>Modern C++ uses proxy reference iterators and C++20 ranges to present an SoA collection as if it were a sequence of regular objects, combining clean value semantics with optimal physical memory layout.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s5"><span class="section-number">5</span>Problems</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · Struct Padding and Alignment Calculation</span>
+            <p>Calculate <code>sizeof(BadQuote)</code> vs <code>sizeof(GoodQuote)</code> on x86-64 where <code>BadQuote</code> has members <code>char exchange; double price; int size;</code> and <code>GoodQuote</code> orders them <code>double price; int size; char exchange;</code>.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In <code>BadQuote</code>: <code>exchange</code> takes 1B + 7B padding (aligning <code>price</code> to 8B) + 8B <code>price</code> + 4B <code>size</code> + 4B tail padding = 24 bytes. In <code>GoodQuote</code>: 8B <code>price</code> + 4B <code>size</code> + 1B <code>exchange</code> + 3B tail padding = 16 bytes. Ordering from largest to smallest alignment saves 33% memory.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · SoA Data Structure Definition</span>
+            <p>Write the C++ definition for an SoA order book price ladder holding up to 10,000 levels with <code>prices</code>, <code>quantities</code>, and <code>order_counts</code>.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>struct PriceLadderSoA { std::vector&lt;double&gt; prices; std::vector&lt;uint32_t&gt; quantities; std::vector&lt;uint16_t&gt; order_counts; };</code>.<br>
+              Each vector allocates a contiguous buffer, permitting SIMD vectorization across price updates.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · SIMD Vector Width Computation</span>
+            <p>How many 64-bit doubles fit into an AVX-512 register, and how many cache lines are required to fill it?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>An AVX-512 register is 512 bits = 64 bytes wide. It holds exactly \(512 / 64 = 8\) doubles. A 64-byte AVX-512 load consumes exactly one 64-byte hardware cache line.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · General Memory Bandwidth Ratio Under Field Subsetting</span>
+            <p>Prove that for any record of size \(S\) where an algorithm reads a proper subset of fields totaling \(U &lt; S\) bytes, the memory bandwidth ratio \(\eta_{\mathrm{SoA}} / \eta_{\mathrm{AoS}} = S / U &gt; 1\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By Proposition 7.2, \(\eta_{\mathrm{AoS}} = U / S\) and \(\eta_{\mathrm{SoA}} = 1.0\). The ratio is \(1.0 / (U / S) = S / U\). Because \(U\) is a proper subset of fields, \(U &lt; S\), which implies \(S / U &gt; 1.0\), guaranteeing that SoA transfers strictly less data across the memory bus than AoS.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Minimum Cache Footprint for AoSoA Tiled Layout</span>
+            <p>Prove that in an AoSoA layout with tile width \(W = L / s\) where \(L\) is the cache line size and \(s\) is element size, selective field operations achieve 100% cache line utilization.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let tile struct <code>Tile</code> contain <code>double bids[W]</code> followed by <code>double asks[W]</code>. Since \(W = L / s = 64 / 8 = 8\), <code>bids[8]</code> occupies exactly \(8 \times 8 = 64\) bytes, matching line size \(L\). Accessing <code>bids</code> loads an entire 64-byte cache line containing exclusively bid elements, consuming 100% of the loaded bytes without loading <code>asks</code> or metadata.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Vectorization Invariance Under Structure Transposition</span>
+            <p>Prove that computing \(\sum_{i=1}^M a_i \cdot b_i\) on AoS data requires scatter/gather or permutation instructions, whereas SoA requires zero permutations.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In AoS, elements \(a_i\) and \(b_i\) are interleaved in memory with stride \(S &gt; s\). SIMD vector registers require adjacent packed lanes. Loading interleaved elements into packed vector registers requires either vector gather instructions (<code>_mm256_i32gather_pd</code>) or unpack/shuffle permutations. In SoA, \(a_i\) and \(b_i\) are contiguous, loaded via simple aligned vector loads (<code>_mm256_load_pd</code>) without permutations.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Interpreting Lab 1 Cache Lines Loaded</span>
+            <p>In Lab 1, why did AoS require 512 cache lines while SoA required only 256 cache lines?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Each 32-byte Quote in AoS meant only 2 quotes fit per 64-byte line, requiring \(1024 / 2 = 512\) lines for 1,024 quotes. In SoA, only <code>bids</code> (128 lines) and <code>asks</code> (128 lines) were loaded, totaling \(128 + 128 = 256\) lines—exactly half the cache footprint.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · Quantifying Unused Metadata Pollution in Lab 1</span>
+            <p>From Lab 1, how many bytes of unused metadata were transferred to CPU caches during the AoS midpoint calculation?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>AoS transferred 32,768 total bytes, of which only 16,384 bytes were active bid/ask values. Exactly \(32,768 - 16,384 = 16,384\) bytes (50%) of memory traffic consisted of unused size and timestamp fields that polluted L1 cache.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Layout Selection in Order Matching Engine</span>
+            <p>In a limit order matching engine, would you store active order books in AoS or SoA, and why?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Price levels are best stored in SoA (or AoSoA) because matching algorithms repeatedly sweep contiguous prices and aggregate quantities during execution. Individual orders in the order queue are often kept in AoS because fills update or cancel specific individual orders as complete entities.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · AoSoA Hybrid Tiling in GPU Kernels</span>
+            <p>Why do GPU CUDA kernels and AVX-512 kernels standardize on AoSoA (Array-of-Structs-of-Arrays) layouts?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>GPU threads execute in warps of 32 threads. Struct-of-Arrays-of-Arrays (AoSoA) packs 32 elements per tile. When a warp executes an instruction on field \(k\), the 32 threads access 32 contiguous memory addresses, achieving 100% coalesced memory transactions in a single memory bus cycle.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Columnar Database Storage Alignment with SoA</span>
+            <p>How does the Parquet and Arrow columnar storage model in quantitative finance directly mirror SoA memory design?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Apache Arrow and Parquet store time-series data column-by-column (SoA). When an econometric query scans only trading volumes or closing prices, the engine reads only the contiguous column chunks from disk/memory, skipping gigabytes of unreferenced columns and enabling SIMD aggregation.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Reflection and Code Generation for SoA Containers</span>
+            <p>How will C++26 static reflection simplify the automatic generation of SoA container wrappers from standard structs?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Currently, converting a struct to SoA requires manual boilerplate or macro libraries like Boost.Fusion. C++26 static reflection will inspect struct member types and names at compile time, automatically generating <code>std::vector&lt;Field_i&gt;</code> arrays and synthesized tuple accessor proxies with zero boilerplate.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s6"><span class="section-number">6</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Cache line utilization ratio \(\eta_{\mathrm{AoS}} = U / S\) vs \(\eta_{\mathrm{SoA}} = 1.0\) (Proposition 7.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §1 under Assumption A1</td></tr>
+              <tr><td>2.0x memory bus traffic reduction in SoA midpoint calculation (Proposition 7.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2 from quote layout geometry</td></tr>
+              <tr><td>Empirical verification of 512 vs 256 cache lines loaded in quote benchmark</td><td><span class="grade" data-grade="C">C</span><span class="citation" data-cite="stroustrup2022tour"></span></td><td>Lab 1 model results and Stroustrup (2022)</td></tr>
+              <tr><td>Elimination of SIMD shuffle permutations under contiguous SoA storage</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §5 (P3) via register lane packing</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS5" data-page="L07" data-cards="cards.json">
+        <h2 id="s7"><span class="section-number">7</span>Retrieval Quiz</h2>
+        <p>Answer from memory, then check. Finishing the quiz adds this lesson's cards to your review deck.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What distinguishes an Array-of-Structures (AoS) from a Struct-of-Arrays (SoA) layout?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L07q1"> <span>AoS is stored on the stack while SoA is stored in CPU registers</span></label>
+              <label class="option" data-correct><input type="radio" name="L07q1"> <span>AoS stores full records consecutively, whereas SoA stores each field in a separate contiguous array</span></label>
+              <label class="option"><input type="radio" name="L07q1"> <span>SoA can only hold integer values</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 7.1: AoS groups records together; SoA groups individual fields across records contiguously.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="2" data-tolerance="0">
+            <p class="prompt">In Lab 1, by what factor was memory bus traffic reduced when computing quote midpoints using SoA instead of AoS?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Proposition 7.3: SoA required 16,384 bytes vs 32,768 bytes for AoS, achieving a 2.0x reduction.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does SoA layout accelerate SIMD vectorization on modern CPUs?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q3"> <span>Identical fields are stored contiguously, allowing direct vector loads without shuffle or gather instructions</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span>It completely eliminates compiler optimization flags</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span>It enables 128-bit floating point arithmetic</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Section 2: Contiguous field storage allows hardware SIMD units to load vectors directly without permutations.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="256" data-tolerance="0">
+            <p class="prompt">In Lab 1, how many total cache lines were loaded under the SoA layout across bids and asks?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Lab 1 loaded 128 lines for bids + 128 lines for asks = 256 cache lines.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">When is Array-of-Structures (AoS) more efficient than Struct-of-Arrays (SoA)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q5"> <span>When operations access and modify all fields of an individual record simultaneously</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span>When running matrix multiplications</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span>AoS is never efficient under any circumstance</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Section 3: When operations touch all fields of a record, AoS keeps them in a single cache line, avoiding multiple line loads.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="50" data-tolerance="0">
+            <p class="prompt">What was the cache line bandwidth utilization percentage of AoS in Lab 1?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Lab 1 measured 50% utilization (16B active payload out of 32B record size).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is an Array-of-Structs-of-Arrays (AoSoA) hybrid layout?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q7"> <span>A tiled structure where fixed SIMD-width chunks (e.g. 8 or 16 records) are stored in SoA tiles inside an array</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span>A binary search tree containing nested hash maps</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span>An obsolete C99 memory extension</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Section 3: AoSoA tiles records into SIMD-width vectors, balancing vectorization with record locality.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does struct member ordering affect memory footprint?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q8"> <span>Ordering members from largest alignment to smallest minimizes compiler-inserted padding bytes</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span>Compilers reorder struct members automatically at runtime</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span>Member order has zero effect on struct size</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Misconception 2 and Problem M1: Proper ordering avoids wasted alignment padding between fields.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <p>This lesson draws foundational principles from Stroustrup (2022), <em>A Tour of C++</em>, 3rd edition (registry key <code>stroustrup2022tour</code>). All mathematical and layout efficiency properties are verified via direct proofs and Lab 1 model executions.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L06.html"><span class="dir">Previous</span>L06 · Memory Hierarchy and Cache Effects</a>
+        <a class="next" href="L08.html"><span class="dir">Next</span>L08 · Python Bindings and WebAssembly</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS5 · C++ &amp; Systems for Finance · High-Performance Computing and Systems Architecture</footer>
+</body>
+</html>

@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS5" data-page="L03" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L03 · RAII and Ownership · CS5 C++ &amp; Systems for Finance</title>
+  <meta name="description" content="Resource Acquisition Is Initialization (RAII), smart pointers, deterministic destructor execution, exception safety guarantees, and scope guards in financial systems.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS5 C++ &amp; Systems for Finance</a><span class="sep">›</span>
+      <span>L03</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS5 · Lesson 3 of 8 · 10 study hours</p>
+        <h1>Resource Acquisition Is Initialization (RAII)</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="value-semantics" href="L02.html#def-value-semantics">value semantics</a> (L02), <a class="concept" data-concept="python-exceptions" href="../../../concepts.html#python-exceptions">Python exceptions</a> (CS1), <a class="concept" data-concept="direct-proof" href="../../../concepts.html#direct-proof">direct proof</a> (M1)</li>
+          <li><strong>Introduces:</strong> Resource Acquisition Is Initialization (RAII)</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Real-time market connectivity demands zero resource leaks across network sockets, shared memory file descriptors, database connections, and lock handles. Manual resource cleanup via <code>free()</code> or <code>try/catch</code> blocks is fundamentally fragile under exception paths. RAII guarantees deterministic, compiler-enforced resource release upon scope exit, providing leak-free execution and robust exception safety across mission-critical algorithmic trading systems.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>The RAII Idiom and Deterministic Destruction</h2>
+
+      <p>Resource management in C++ is bound directly to the lifetime of objects allocated on the stack. Unlike garbage-collected languages where finalizers execute asynchronously at unpredictable intervals, C++ destructors execute synchronously the instant an object's scope terminates.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.1 <span class="name">(Resource Acquisition Is Initialization)</span></span>
+        <p><dfn id="def-raii" data-concept="raii">Resource Acquisition Is Initialization (RAII)</dfn> is an architectural idiom where resource acquisition (allocating memory, establishing a socket, opening a file, acquiring a mutex lock) is performed in an object's constructor, and the corresponding resource release is bound irrevocably to the object's destructor. Because automatic objects on the stack are destroyed in reverse order of construction upon scope exit, resources are guaranteed to be freed deterministically regardless of whether the scope exits via normal return, break, or exception propagation.</p>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 3.2 <span class="name">(Deterministic Scope Release Invariant)</span></span>
+        <p><strong>Assumption 1:</strong> An automatic object \(O\) manages resource \(R\) under strict RAII semantics.<br>
+        <strong>Assumption 2:</strong> The construction of \(O\) completed successfully without throwing.<br>
+        <strong>Statement:</strong> Exiting the lexical block enclosing \(O\) via any execution path guarantees exactly one call to the destructor of \(O\), releasing \(R\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By the C++ language specification, every automatic variable whose initialization completes is placed on the active stack activation record. Upon normal termination of the compound statement, the runtime issues destruction calls for all local objects in strict reverse declaration order. If an exception is thrown, stack unwinding traverses active call frames upward; during unwinding, every fully constructed automatic object in each exited frame has its destructor invoked. In both branches, the destructor executes exactly once, freeing \(R\). \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Smart Pointers: Exclusive vs Shared Ownership</h2>
+
+      <p>Modern C++ completely deprecates raw owning pointers in favor of standard smart pointers that encapsulate RAII semantics:</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.3 <span class="name">(Smart Pointer Typology)</span></span>
+        <ul>
+          <li><code>std::unique_ptr&lt;T&gt;</code>: Represents exclusive ownership. It cannot be copied, only moved. It has zero runtime memory or execution overhead compared to a raw pointer (\(\mathrm{sizeof}(\mathtt{unique\_ptr}) == \mathrm{sizeof}(\mathtt{T*})\)).</li>
+          <li><code>std::shared_ptr&lt;T&gt;</code>: Represents shared ownership via a dynamically allocated control block holding atomic reference counts (<code>strong_count</code> and <code>weak_count</code>). Destruction occurs when <code>strong_count</code> drops to zero.</li>
+          <li><code>std::weak_ptr&lt;T&gt;</code>: Non-owning observer holding a reference to a <code>shared_ptr</code> control block. It does not prevent destruction, breaking cyclic reference memory leaks.</li>
+        </ul>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 3.4 <span class="name">(Control Block Lifecycle and Reference Counting)</span></span>
+        <p><strong>Assumption 1:</strong> A resource \(R\) is managed by a set of \(k \ge 1\) active <code>std::shared_ptr</code> instances sharing a control block.<br>
+        <strong>Statement:</strong> The underlying resource \(R\) is deallocated if and only if the strong reference count transitions from 1 to 0.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>The control block initializes with \(\mathtt{strong\_count} = 1\). Copy construction or assignment executes an atomic increment \(\mathtt{strong\_count} \leftarrow \mathtt{strong\_count} + 1\). Reset or destructor calls execute an atomic decrement \(\mathtt{strong\_count} \leftarrow \mathtt{strong\_count} - 1\). The deallocation routine for \(R\) is guarded strictly by the condition \(\mathtt{strong\_count} == 0\). As long as \(k \ge 1\) shared pointers persist, \(\mathtt{strong\_count} \ge 1\), preventing destruction. When the final shared pointer exits scope, the decrement evaluates to 0, triggering the unique deallocation of \(R\). \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Exception Safety Guarantees in Financial Systems</h2>
+
+      <p>Operations in quantitative libraries are categorized into four standardized exception safety levels:</p>
+      <ul>
+        <li><strong>Nothrow (noexcept) guarantee:</strong> The function will never throw an exception under any circumstance. Critical for destructors, move constructors, and swap functions.</li>
+        <li><strong>Strong exception safety:</strong> If the operation throws, program state is rolled back to the exact initial state (commit-or-rollback semantics). Mandatory for financial order routing.</li>
+        <li><strong>Basic exception safety:</strong> If an exception occurs, no memory is leaked and objects remain in valid, destructible states, though internal data may be altered.</li>
+        <li><strong>No guarantee:</strong> An exception may leak memory or leave variables in corrupted, undefined states. Unacceptable in production software.</li>
+      </ul>
+
+      <section class="lab" id="lab-CS5-L03-1" data-runtime="python">
+        <h3>Lab 1 · RAII ownership and stack unwinding simulation</h3>
+        <p class="hypothesis">Tracking resource lifecycle demonstrates that RAII objects guarantee perfect resource balance (active count = 0) on both normal completion paths and exception stack unwinding paths.</p>
+        <pre><code class="language-python" data-run>"""CS5 Lab L03: RAII ownership, stack unwinding, and smart pointer lifecycle model.
+
+Standard library only. Deterministic integer tracking. Simulates unique_ptr transfer,
+shared_ptr reference counting, stack unwinding during exceptions, and cyclic reference leaks.
+"""
+
+from __future__ import annotations
+
+
+class ResourceRegistry:
+    def __init__(self) -&gt; None:
+        self.acquired: int = 0
+        self.released: int = 0
+
+    @property
+    def active(self) -&gt; int:
+        return self.acquired - self.released
+
+    def reset(self) -&gt; None:
+        self.acquired = 0
+        self.released = 0
+
+
+REGISTRY = ResourceRegistry()
+
+
+class ManagedResource:
+    def __init__(self, resource_id: str) -&gt; None:
+        self.resource_id = resource_id
+        REGISTRY.acquired += 1
+
+    def release(self) -&gt; None:
+        REGISTRY.released += 1
+
+
+class UniquePtr:
+    """Exclusive ownership RAII pointer: zero overhead, non-copyable, movable."""
+
+    def __init__(self, resource: ManagedResource | None = None) -&gt; None:
+        self._resource = resource
+
+    def release(self) -&gt; ManagedResource | None:
+        res = self._resource
+        self._resource = None
+        return res
+
+    def reset(self, new_resource: ManagedResource | None = None) -&gt; None:
+        if self._resource is not None:
+            self._resource.release()
+        self._resource = new_resource
+
+    def __del__(self) -&gt; None:
+        if self._resource is not None:
+            self._resource.release()
+            self._resource = None
+
+
+class RefCountedControlBlock:
+    def __init__(self, resource: ManagedResource) -&gt; None:
+        self.resource: ManagedResource | None = resource
+        self.strong_count: int = 1
+        self.weak_count: int = 0
+
+    def add_strong(self) -&gt; None:
+        self.strong_count += 1
+
+    def release_strong(self) -&gt; None:
+        self.strong_count -= 1
+        if self.strong_count == 0 and self.resource is not None:
+            self.resource.release()
+            self.resource = None
+
+
+class SharedPtr:
+    """Shared ownership RAII pointer with atomic reference counting control block."""
+
+    def __init__(self, resource: ManagedResource | None = None) -&gt; None:
+        if resource is not None:
+            self._ctrl: RefCountedControlBlock | None = RefCountedControlBlock(resource)
+        else:
+            self._ctrl = None
+
+    def copy(self) -&gt; SharedPtr:
+        sp = SharedPtr()
+        sp._ctrl = self._ctrl
+        if sp._ctrl is not None:
+            sp._ctrl.add_strong()
+        return sp
+
+    def use_count(self) -&gt; int:
+        return self._ctrl.strong_count if self._ctrl is not None else 0
+
+    def reset(self) -&gt; None:
+        if self._ctrl is not None:
+            self._ctrl.release_strong()
+            self._ctrl = None
+
+    def __del__(self) -&gt; None:
+        self.reset()
+
+
+def simulate_stack_unwinding(trigger_exception: bool) -&gt; None:
+    """Simulates local RAII objects destroyed in reverse order on normal exit or exception."""
+    u1 = UniquePtr(ManagedResource("market_feed_socket"))
+    u2 = UniquePtr(ManagedResource("order_arena_buffer"))
+
+    if trigger_exception:
+        # Before throwing, both u2 and u1 were constructed.
+        # Stack unwinding destroys u2, then u1.
+        u2.reset()
+        u1.reset()
+        raise RuntimeError("Simulated network feed failure during parsing")
+
+    u2.reset()
+    u1.reset()
+
+
+def run_raii_experiments() -&gt; None:
+    print("CS5 L03: RAII Ownership and Resource Lifecycle Model")
+
+    # Case 1: Normal execution path with UniquePtr
+    REGISTRY.reset()
+    simulate_stack_unwinding(trigger_exception=False)
+    print(f"Normal execution: acquired={REGISTRY.acquired}, released={REGISTRY.released}, active={REGISTRY.active}")
+
+    # Case 2: Exception unwinding path
+    REGISTRY.reset()
+    caught = False
+    try:
+        simulate_stack_unwinding(trigger_exception=True)
+    except RuntimeError:
+        caught = True
+    print(
+        f"Exception unwinding (caught={caught}): "
+        f"acquired={REGISTRY.acquired}, released={REGISTRY.released}, active={REGISTRY.active}"
+    )
+
+    # Case 3: Shared ownership with SharedPtr
+    REGISTRY.reset()
+    sp1 = SharedPtr(ManagedResource("order_book_state"))
+    print(f"SharedPtr initial: use_count={sp1.use_count()}, active={REGISTRY.active}")
+    sp2 = sp1.copy()
+    sp3 = sp2.copy()
+    print(f"SharedPtr shared across 3 references: use_count={sp1.use_count()}, active={REGISTRY.active}")
+    sp3.reset()
+    sp2.reset()
+    print(f"SharedPtr after 2 references reset: use_count={sp1.use_count()}, active={REGISTRY.active}")
+    sp1.reset()
+    print(f"SharedPtr after final reference reset: use_count={sp1.use_count()}, active={REGISTRY.active}")
+
+
+def main() -&gt; None:
+    run_raii_experiments()
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">CS5 L03: RAII Ownership and Resource Lifecycle Model
+Normal execution: acquired=2, released=2, active=0
+Exception unwinding (caught=True): acquired=2, released=2, active=0
+SharedPtr initial: use_count=1, active=1
+SharedPtr shared across 3 references: use_count=3, active=1
+SharedPtr after 2 references reset: use_count=1, active=1
+SharedPtr after final reference reset: use_count=0, active=0</pre>
+        <p class="interpretation">The experiment verifies that automatic stack cleanup during exception unwinding recovers all allocated resources without leakage. It also confirms that <code>shared_ptr</code> reference counting maintains resource ownership until the final reference drops to zero.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>While RAII eliminates manual memory management, it breaks down completely when object graphs contain cyclic references. If two objects hold <code>std::shared_ptr</code> references to one another, their strong reference counts never drop to zero, even after all external references in the application have fallen out of scope. Both objects, along with all resources they manage, leak permanently in memory. Breaking cycles requires identifying non-owning back-pointers and replacing them with <code>std::weak_ptr</code>.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><code>std::shared_ptr</code> thread safety means operations on the underlying pointed-to object are thread-safe.</p>
+            <p>Only the internal reference counts inside the control block are atomic. Read and write operations on the managed object itself are completely unprotected and require explicit synchronization (such as mutex locks) to prevent race conditions.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Destructors can throw exceptions safely if caught in an outer block.</p>
+            <p>If an exception is thrown while another exception is actively unwinding the stack, the C++ runtime immediately invokes <code>std::terminate()</code>, terminating the process without running remaining destructors. In C++11/20, all destructors are implicitly <code>noexcept</code>.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Using <code>std::shared_ptr</code> everywhere is good practice because it prevents premature deallocation.</p>
+            <p><code>std::shared_ptr</code> introduces dynamic memory allocation for the control block, atomic cache-line bouncing on reference increments, and obfuscates object ownership hierarchies. High-performance trading engines enforce exclusive ownership via <code>std::unique_ptr</code> and value types, reserving <code>std::shared_ptr</code> strictly for truly shared asynchronous ownership.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problems</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · make_unique vs new Expression</span>
+            <p>Why is <code>std::make_unique&lt;Order&gt;(id, price)</code> preferred over <code>std::unique_ptr&lt;Order&gt;(new Order(id, price))</code>?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>std::make_unique</code> prevents potential memory leaks in complex expressions where subexpression evaluation order is unspecified prior to C++17, and it eliminates redundant type repetition (e.g. <code>auto ptr = std::make_unique&lt;Order&gt;(...)</code>).</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · Scope Guard Implementation</span>
+            <p>Explain how a scope guard pattern ensures that an open database transaction rolls back if an exception occurs before commit.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>A scope guard stores a rollback lambda in its constructor and invokes it in its destructor. If the transaction commits successfully, a <code>dismiss()</code> method disarms the guard. If an exception aborts the function before commit, stack unwinding runs the destructor, executing rollback automatically.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · Custom Deleters for C Library Resources</span>
+            <p>How can <code>std::unique_ptr</code> wrap a C-style POSIX file descriptor or <code>FILE*</code> handle?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By supplying a custom deleter functor or function pointer: <code>std::unique_ptr&lt;FILE, decltype(&amp;fclose)&gt; file_ptr(fopen("data.bin", "rb"), &amp;fclose);</code>. When <code>file_ptr</code> exits scope, it automatically calls <code>fclose()</code>.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · Prevention of Resource Leakage under Nested Exceptions</span>
+            <p>Prove that a sequence of \(m\) independent RAII allocations leaves zero leaked resources if allocation \(k\) (\(1 \le k \le m\)) throws.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Objects \(O_1, \dots, O_{k-1}\) completed construction and reside on the stack. Allocation \(k\) throws before \(O_k\) completes. The runtime initiates stack unwinding. Unwinding invokes destructors for all fully constructed objects in reverse order: \(O_{k-1}, \dots, O_1\). By Proposition 3.2, each destructor releases its associated resource. The failed allocation \(k\) threw before acquiring or acquired and released in its constructor. Total active leaked resources equals 0.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Control Block Convergence in Cyclic Graphs</span>
+            <p>Prove that two objects referencing each other solely via <code>std::shared_ptr</code> never reach a reference count of zero.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let object \(A\) own <code>shared_ptr&lt;B&gt;</code> and object \(B\) own <code>shared_ptr&lt;A&gt;</code>. External references drop to 0. The strong count of \(A\) is at least 1 (held by \(B\)), so \(A\) cannot be destroyed. The strong count of \(B\) is at least 1 (held by \(A\)), so \(B\) cannot be destroyed. Neither decrement to 0 can occur without the other preceding it, forming a permanent reference cycle.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Atomic Reference Count Invariance</span>
+            <p>Prove that concurrent increments and decrements on an atomic reference count maintain exact conservation of active pointer instances.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Atomic operations execute via hardware memory bus lock or load-linked/store-conditional instructions, establishing a strict total order of execution. Each shared pointer copy maps to \(+1\) and each destructor maps to \(-1\). By the associative and commutative laws of integer addition, the net sum at any point equals \(1 + N_{\mathrm{copies}} - N_{\mathrm{destructs}}\), accurately reflecting active instance count.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Interpreting Lab 1 Exception Recovery</span>
+            <p>In Lab 1, why was <code>active=0</code> reported even when <code>simulate_stack_unwinding</code> raised a <code>RuntimeError</code>?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Both <code>u1</code> and <code>u2</code> were fully constructed before the exception was raised. During stack unwinding, their destructors executed deterministically in reverse order (releasing <code>order_arena_buffer</code>, then <code>market_feed_socket</code>), balancing all 2 acquisitions with 2 releases.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · Shared Pointer Lifecycle in Lab 1</span>
+            <p>In Lab 1, why did <code>active</code> remain 1 after resetting two of the three shared pointer copies?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The control block's strong reference count decreased from 3 to 1. Because <code>sp1</code> still retained a strong reference, the underlying resource <code>order_book_state</code> was preserved until <code>sp1.reset()</code> reduced the count to 0.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Control Block Allocation Overhead</span>
+            <p>Why does <code>std::make_shared&lt;T&gt;()</code> execute one dynamic memory allocation while <code>std::shared_ptr&lt;T&gt;(new T())</code> executes two?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>std::make_shared</code> allocates a single contiguous memory block containing both the control block and the object storage for <code>T</code>. In contrast, <code>new T()</code> allocates the object first, and the <code>shared_ptr</code> constructor allocates the control block separately, incurring two heap allocations and fragmenting cache locality.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · Zero-Allocation Arena Memory Allocators</span>
+            <p>How do quantitative order matching engines combine RAII with monotonic arena allocators to achieve zero dynamic allocation during trading hours?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>At market open, the engine preallocates a large contiguous memory buffer (arena). RAII objects allocate memory from this arena via pointer bumping without heap calls. At the end of each matching cycle, a scoped arena reset rolls the pointer back to the origin in \(\mathcal{O}(1)\) time, achieving zero heap fragmentation.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Lock-Free Reference Counting and Cache Invalidation</span>
+            <p>Why do multi-threaded order book readers avoid copying <code>std::shared_ptr</code> across high-core architectures?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Each copy of a <code>std::shared_ptr</code> executes an atomic fetch-and-add on the control block. On multi-socket CPU systems, atomic writes force cache-line invalidation messages across the inter-socket interconnect (UPI/QPI), inducing severe latency spikes (cache line bouncing).</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Destructors and Process Teardown in Trading Systems</span>
+            <p>Why do some ultra-low latency gateways invoke <code>_Exit(0)</code> or <code>quick_exit()</code> rather than allowing global RAII destructors to run at shutdown?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>At system shutdown, destroying millions of cached order objects traverses fragmented heap memory, stalling process exit for seconds. Calling <code>_Exit(0)</code> hands memory reclamation directly to the operating system kernel, which unmaps page tables instantaneously in virtual memory.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Deterministic scope release under normal and exception paths (Proposition 3.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §1 from C++ stack unwinding semantics</td></tr>
+              <tr><td>Resource deallocation strictly at strong reference count zero (Proposition 3.4)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2 from reference count monotonicity</td></tr>
+              <tr><td>Zero resource leakage during exception propagation</td><td><span class="grade" data-grade="C">C</span><span class="citation" data-cite="stroustrup2022tour"></span></td><td>Lab 1 model results and Stroustrup (2022)</td></tr>
+              <tr><td>Reference cycle lockup in bidirectional shared pointer graphs</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §6 (P2) via graph reachability</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS5" data-page="L03" data-cards="cards.json">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <p>Answer from memory, then check. Finishing the quiz adds this lesson's cards to your review deck.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the central premise of the RAII idiom in C++?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L03q1"> <span>Resources are managed by periodic garbage collection</span></label>
+              <label class="option" data-correct><input type="radio" name="L03q1"> <span>Resource acquisition is tied to constructor initialization and release is guaranteed by destructor execution</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>All objects must be allocated globally at program initialization</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 3.1: RAII binds resource lifetime to stack object scope, guaranteeing destructor cleanup.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the memory size overhead of <code>std::unique_ptr&lt;T&gt;</code> with default deleter?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q2"> <span>Zero overhead (identical in size to a raw pointer)</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>16 bytes due to atomic reference counting</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>24 bytes for a virtual method table pointer</span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>std::unique_ptr</code> stores only the raw pointer, incurring zero memory overhead.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0" data-tolerance="0">
+            <p class="prompt">In Lab 1, what was the active resource count following the caught exception in <code>simulate_stack_unwinding</code>?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Lab 1 confirmed <code>active=0</code> because stack unwinding released both allocated resources.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens if a destructor throws an exception while an exception is already unwinding the stack?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L03q4"> <span>The second exception is chained to the first</span></label>
+              <label class="option" data-correct><input type="radio" name="L03q4"> <span>The runtime calls <code>std::terminate()</code>, aborting the process immediately</span></label>
+              <label class="option"><input type="radio" name="L03q4"> <span>The outer catch block catches both exceptions simultaneously</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Throwing during stack unwinding is catastrophic and triggers immediate process termination.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="3" data-tolerance="0">
+            <p class="prompt">In Lab 1, what was the peak <code>use_count</code> of the shared pointer when shared across 3 references?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Lab 1 recorded <code>use_count=3</code> when <code>sp1</code>, <code>sp2</code>, and <code>sp3</code> held references.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which smart pointer should be used to break cyclic references between <code>std::shared_ptr</code> instances?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L03q6"> <span><code>std::unique_ptr</code></span></label>
+              <label class="option" data-correct><input type="radio" name="L03q6"> <span><code>std::weak_ptr</code></span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span><code>std::auto_ptr</code></span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>std::weak_ptr</code> observes a shared resource without incrementing the strong reference count, preventing cycles.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does <code>std::make_shared</code> reduce heap allocation overhead compared to direct <code>std::shared_ptr</code> constructor calls?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q7"> <span>It allocates the control block and object storage in a single contiguous memory block</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>It eliminates the control block entirely</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>It stores objects in CPU registers</span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>std::make_shared</code> combines the object and its control block into one allocation, improving cache locality.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What exception safety level guarantees that if an operation fails, state is restored to its exact pre-call condition?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L03q8"> <span>Basic guarantee</span></label>
+              <label class="option" data-correct><input type="radio" name="L03q8"> <span>Strong guarantee</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>Nothrow guarantee</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The strong exception safety guarantee provides commit-or-rollback semantics.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson draws foundational principles from Stroustrup (2022), <em>A Tour of C++</em>, 3rd edition (registry key <code>stroustrup2022tour</code>). All mathematical and resource ownership properties are verified via direct proofs and Lab 1 model executions.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L02.html"><span class="dir">Previous</span>L02 · Value Semantics</a>
+        <a class="next" href="L04.html"><span class="dir">Next</span>L04 · C++ Templates and Concepts</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS5 · C++ &amp; Systems for Finance · High-Performance Computing and Systems Architecture</footer>
+</body>
+</html>

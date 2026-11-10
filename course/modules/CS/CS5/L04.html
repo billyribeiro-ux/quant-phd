@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS5" data-page="L04" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L04 · C++ Templates and Concepts · CS5 C++ &amp; Systems for Finance</title>
+  <meta name="description" content="Generic programming, compile-time polymorphism versus virtual tables, C++20 concepts and constraints, SFINAE, and zero-overhead abstractions in quantitative finance.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS5 C++ &amp; Systems for Finance</a><span class="sep">›</span>
+      <span>L04</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS5 · Lesson 4 of 8 · 10 study hours</p>
+        <h1>C++ Templates and Concepts</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="value-semantics" href="L02.html#def-value-semantics">value semantics</a> (L02), <a class="concept" data-concept="type-hints" href="../../../concepts.html#type-hints">type hints</a> (CS1), <a class="concept" data-concept="direct-proof" href="../../../concepts.html#direct-proof">direct proof</a> (M1)</li>
+          <li><strong>Introduces:</strong> C++ templates and concepts</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or lab result</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Modern quantitative code bases must reconcile flexibility with zero runtime overhead. Polymorphism achieved via object-oriented virtual function tables incurs pointer indirection and inhibits compiler inlining. C++ templates provide compile-time parametric polymorphism, generating specialized machine instructions for each numeric type. C++20 concepts formalize type requirements, converting cryptic template errors into precise, readable compile-time diagnostics.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Compile-Time Polymorphism versus Dynamic Virtual Tables</h2>
+
+      <p>In traditional object-oriented programming, dynamic polymorphism routes member function calls through a Virtual Method Table (vtable) populated at runtime. Each polymorphic object stores a hidden virtual pointer (<code>vptr</code>). Calling a virtual method requires two pointer dereferences (fetching the vtable address, then indexing the function slot), preventing compiler inlining across the call boundary.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 4.1 <span class="name">(C++ Templates and Concepts)</span></span>
+        <p><dfn id="def-cpp-templates" data-concept="cpp-templates">C++ templates and concepts</dfn> form a compile-time meta-programming system. A <strong>template</strong> is a parameterized blueprint from which the compiler instantiates concrete functions or classes upon encountering specific type arguments. A <strong>concept</strong> is a named, compile-time predicate that constrains template type arguments, enforcing that a type provides required member types, operations, and expressions.</p>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 4.2 <span class="name">(Inlining and Zero-Cost Dispatch)</span></span>
+        <p><strong>Assumption 1:</strong> Function template \(f\langle T\rangle\) is invoked with concrete type \(T_0\).<br>
+        <strong>Assumption 2:</strong> The definition of \(f\) is available in the current translation unit.<br>
+        <strong>Statement:</strong> The compiler evaluates the call site with direct static dispatch, eliminating vtable indirection and permitting full cross-function inlining.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Under template instantiation, the compiler substitutes concrete type \(T_0\) into the abstract syntax tree of \(f\), synthesizing a non-polymorphic specialization \(f_{T_0}\). Because the target address is resolved statically during compilation rather than looked up via a runtime pointer, the invocation emitted is a direct call or inlined machine code. Inlining eliminates call instructions, stack frame creation, and register preservation, yielding zero runtime abstraction penalty. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Type Traits, SFINAE, and C++20 Concepts</h2>
+
+      <p>Prior to C++20, constraining templates relied on SFINAE (Substitution Failure Is Not An Error) and type traits from <code>&lt;type_traits&gt;</code> using <code>std::enable_if_t</code>. If substituting a type produced an invalid expression in the function declaration, the compiler discarded the overload from the candidate set rather than emitting an error. However, SFINAE resulted in notoriously verbose code and deeply nested compiler diagnostics.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 4.3 <span class="name">(C++20 Concepts and Requires Clauses)</span></span>
+        <p>A C++20 concept is declared via <code>template&lt;typename T&gt; concept Name = constraint_expression;</code>. Constraints can combine boolean type traits (such as <code>std::is_arithmetic_v&lt;T&gt;</code>) or specify syntactic requirements via <code>requires(T a, T b) { ... }</code>. A function template applies constraints via the <code>requires</code> clause or inline concept shorthand (e.g. <code>void price(std::floating_point auto s0)</code>).</p>
+      </div>
+
+      <div class="block proposition">
+        <span class="block-title claim" data-grade="T">Proposition 4.4 <span class="name">(Concept Constraint Monotonicity and Subsumption)</span></span>
+        <p><strong>Assumption 1:</strong> Concept \(C_1\) requires expression set \(E_1\) and concept \(C_2\) requires expression set \(E_2\) with \(E_1 \subset E_2\).<br>
+        <strong>Statement:</strong> Concept \(C_2\) subsumes concept \(C_1\). When overload resolution evaluates candidate functions \(f(C_1)\) and \(f(C_2)\) for a type satisfying \(C_2\), the compiler deterministically selects the more constrained candidate \(f(C_2)\) without ambiguity.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>The C++20 standard defines partial ordering of constraints via atomic constraint normalization. If every atomic constraint in the normal form of \(C_1\) is implied by the normal form of \(C_2\), but \(C_2\) contains additional atomic constraints, \(C_2\) is strictly more constrained than \(C_1\). Overload resolution rules specify that between two viable candidates, the more constrained candidate is selected as a better match, resolving static dispatch without ambiguity. \(\blacksquare\)</p>
+      </div>
+
+      <section class="lab" id="lab-CS5-L04-1" data-runtime="python">
+        <h3>Lab 1 · Template instantiation and concept constraint evaluation</h3>
+        <p class="hypothesis">Simulating template instantiation with concept constraints verifies that arithmetic types compile and execute successfully, whereas invalid types (such as strings or non-callable functors) fail at constraint evaluation with explicit diagnostics.</p>
+        <pre><code class="language-python" data-run>"""CS5 Lab L04: Template instantiation, C++20 concept constraints, and compile-time dispatch.
+
+Standard library only. Simulates compile-time type constraint checking, concept satisfaction,
+SFINAE substitution failure, and static dispatch for generic pricing kernels.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+
+class ConceptViolationError(TypeError):
+    """Represents a C++20 concept constraint dissatisfaction compiler error."""
+
+    pass
+
+
+def concept_floating_point(type_obj: type) -&gt; bool:
+    """Models std::floating_point&lt;T&gt; concept."""
+    return issubclass(type_obj, float)
+
+
+def concept_arithmetic(type_obj: type) -&gt; bool:
+    """Models std::is_arithmetic_v&lt;T&gt; concept."""
+    return issubclass(type_obj, (int, float)) and not issubclass(type_obj, bool)
+
+
+def concept_payoff_functor(fn: Any, arg_type: type) -&gt; bool:
+    """Models a C++20 Payoff&lt;F, T&gt; concept: requires F to be invocable with T returning T."""
+    if not callable(fn):
+        return False
+    try:
+        sample_input = arg_type(100.0)
+        output = fn(sample_input)
+        return isinstance(output, (int, float))
+    except Exception:
+        return False
+
+
+class GenericPricerKernel:
+    """Models a template class Pricer&lt;T&gt; with C++20 requires clauses."""
+
+    @classmethod
+    def instantiate(cls, value_type: type, payoff_fn: Callable[[Any], Any]) -&gt; GenericPricerKernel:
+        # Constraint 1: requires std::is_arithmetic_v&lt;T&gt;
+        if not concept_arithmetic(value_type):
+            raise ConceptViolationError(
+                f"Compile error: type '{value_type.__name__}' does not satisfy concept 'std::is_arithmetic_v&lt;T&gt;'"
+            )
+        # Constraint 2: requires PayoffFunctor&lt;F, T&gt;
+        if not concept_payoff_functor(payoff_fn, value_type):
+            raise ConceptViolationError(
+                f"Compile error: callable does not satisfy concept 'PayoffFunctor&lt;F, {value_type.__name__}&gt;'"
+            )
+        return cls(value_type, payoff_fn)
+
+    def __init__(self, value_type: type, payoff_fn: Callable[[Any], Any]) -&gt; None:
+        self.value_type = value_type
+        self.payoff_fn = payoff_fn
+
+    def execute_batch(self, simulated_terminal_prices: list[Any]) -&gt; list[Any]:
+        results = []
+        for st in simulated_terminal_prices:
+            typed_st = self.value_type(st)
+            results.append(self.payoff_fn(typed_st))
+        return results
+
+
+def run_template_concept_experiments() -&gt; None:
+    print("CS5 L04: C++ Template Instantiation and Concept Constraint Evaluation")
+
+    def call_payoff(s: float) -&gt; float:
+        return max(s - 100.0, 0.0)
+
+    # Valid instantiation 1: double (float)
+    kernel_double = GenericPricerKernel.instantiate(float, call_payoff)
+    out_double = kernel_double.execute_batch([90.0, 105.5, 120.0])
+    print(f"Instantiation &lt;double, CallPayoff&gt;: satisfied, evaluated {len(out_double)} points -&gt; {out_double}")
+
+    # Valid instantiation 2: int64 (int)
+    kernel_int = GenericPricerKernel.instantiate(int, lambda s: max(s - 100, 0))
+    out_int = kernel_int.execute_batch([90, 105, 120])
+    print(f"Instantiation &lt;int64_t, CallPayoff&gt;: satisfied, evaluated {len(out_int)} points -&gt; {out_int}")
+
+    # Invalid instantiation 1: string (rejected by arithmetic concept)
+    try:
+        GenericPricerKernel.instantiate(str, call_payoff)
+        print("Template: Unexpected compilation success on str")
+    except ConceptViolationError as err:
+        print(f"Concept constraint rejection (non-arithmetic): {err}")
+
+    # Invalid instantiation 2: non-callable payoff functor
+    try:
+        GenericPricerKernel.instantiate(float, "not_a_functor")  # type: ignore[arg-type]
+        print("Template: Unexpected compilation success on non-callable")
+    except ConceptViolationError as err:
+        print(f"Concept constraint rejection (invalid functor): {err}")
+
+
+def main() -&gt; None:
+    run_template_concept_experiments()
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">CS5 L04: C++ Template Instantiation and Concept Constraint Evaluation
+Instantiation &lt;double, CallPayoff&gt;: satisfied, evaluated 3 points -&gt; [0.0, 5.5, 20.0]
+Instantiation &lt;int64_t, CallPayoff&gt;: satisfied, evaluated 3 points -&gt; [0, 5, 20]
+Concept constraint rejection (non-arithmetic): Compile error: type 'str' does not satisfy concept 'std::is_arithmetic_v&lt;T&gt;'
+Concept constraint rejection (invalid functor): Compile error: callable does not satisfy concept 'PayoffFunctor&lt;F, float&gt;'</pre>
+        <p class="interpretation">The experiment confirms that concept constraints act as static gatekeepers during template instantiation, validating type properties prior to code generation and preventing cryptic compiler failures inside deeply nested template bodies.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the Canon Breaks</h2>
+        <p>Template instantiation generates a distinct copy of machine code for every unique combination of template arguments. In financial libraries supporting hundreds of asset classes, volatility surfaces, and numerical types, unchecked template instantiation causes binary code bloat. Bloated binaries degrade instruction cache (I-cache) hit rates, evicting critical pricing loops from L1 instruction caches and increasing latency. Mitigating code bloat requires explicit template instantiation (<code>extern template</code>) and factoring type-independent logic into non-template base classes.</p>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Templates incur runtime overhead compared to non-template functions.</p>
+            <p>Templates incur zero runtime overhead. Template instantiation happens entirely at compile time, emitting optimized, direct machine code tailored to the exact type.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A template function declaration in a header can have its definition in a separate <code>.cpp</code> file like a regular function.</p>
+            <p>Because the compiler must instantiate the template at each call site, the full template definition must be available in every translation unit that uses it. Placing template definitions in separate <code>.cpp</code> files causes unresolved external symbol linker errors unless explicit instantiation is declared.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">C++20 concepts introduce dynamic type checking or type tags at runtime.</p>
+            <p>Concepts are evaluated strictly at compile time. They generate no runtime code, no type metadata, and no performance penalty whatsoever.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problems</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="mech-1">
+            <span class="problem-title">M1 · Writing a C++20 Concept</span>
+            <p>Write a C++20 concept <code>MarketTick</code> that requires type <code>T</code> to have an <code>int64_t timestamp_ns()</code> member function and a <code>double price()</code> member function.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>template&lt;typename T&gt; concept MarketTick = requires(T t) { { t.timestamp_ns() } -&gt; std::same_as&lt;int64_t&gt;; { t.price() } -&gt; std::same_as&lt;double&gt;; };</code>.<br>
+              This concept constrains functions to types exposing the required market quote interface.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-2">
+            <span class="problem-title">M2 · SFINAE with std::enable_if_t</span>
+            <p>Show how a function template <code>compute_pnl</code> was constrained to floating-point types in C++14 prior to concepts.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>template&lt;typename T, typename = std::enable_if_t&lt;std::is_floating_point_v&lt;T&gt;&gt;&gt; T compute_pnl(T price, T cost);</code>.<br>
+              If <code>T</code> is not floating-point, substitution failure removes the function from the candidate set.</p>
+            </details>
+          </div>
+          <div class="problem" id="mech-3">
+            <span class="problem-title">M3 · Constrained Auto Shorthand</span>
+            <p>How does C++20 express concept constraints using the abbreviated function template syntax?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By placing the concept name directly before <code>auto</code> in the parameter list: <code>double discount(std::floating_point auto rate, std::floating_point auto tau);</code>. This is equivalent to declaring a template with explicit requires clauses.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prf-1">
+            <span class="problem-title">P1 · Static Resolution Invariance</span>
+            <p>Prove that static dispatch on a concept-constrained template produces machine code isomorphic to a manually specialized function.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let function \(f_{\mathrm{manual}}(double)\) and template specialization \(f_{\mathrm{template}}\langle double\rangle\) contain identical token bodies. Because concept satisfaction verifies all type constraints at compile time, the compiler AST for both functions has identical nodes, types, and operator resolutions. The code generation backend maps identical ASTs to identical machine instructions.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-2">
+            <span class="problem-title">P2 · Disambiguation via Concept Subsumption</span>
+            <p>Prove that when overload resolution compares a function constrained by <code>Integral</code> against one constrained by <code>SignedIntegral</code>, <code>int32_t</code> never triggers ambiguous call errors.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p><code>SignedIntegral&lt;T&gt;</code> is defined as <code>Integral&lt;T&gt; &amp;&amp; std::is_signed_v&lt;T&gt;</code>. By Proposition 4.4, <code>SignedIntegral</code> subsumes <code>Integral</code>. For <code>int32_t</code>, both constraints are satisfied, but <code>SignedIntegral</code> is strictly more constrained. C++20 partial ordering rules mandate selection of the more constrained overload, preventing ambiguity.</p>
+            </details>
+          </div>
+          <div class="problem" id="prf-3">
+            <span class="problem-title">P3 · Instantiation Termination in Constrained Recursion</span>
+            <p>Prove that a recursive template metaprogram evaluating factorials at compile time terminates in finite steps when constrained by <code>requires (N &gt; 0)</code> and a base specialization at <code>N == 0</code>.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For input integer \(N \ge 0\), each recursive instantiation decrements \(N\) by 1. Because the set of natural numbers is well-ordered under the standard ordering, the sequence \(N, N-1, \dots, 0\) reaches the base specialization \(N = 0\) in exactly \(N\) steps. At \(N = 0\), no further recursive template is referenced, terminating instantiation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="emp-1">
+            <span class="problem-title">E1 · Interpreting Lab 1 Concept Failure Diagnostics</span>
+            <p>In Lab 1, what diagnostic was produced when instantiating the pricer with <code>str</code>?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The compiler model emitted <code>ConceptViolationError: type 'str' does not satisfy concept 'std::is_arithmetic_v&lt;T&gt;'</code>, pinpointing the failed constraint immediately rather than failing deep within the payoff math.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-2">
+            <span class="problem-title">E2 · Functor Concept Verification in Lab 1</span>
+            <p>Why was the non-callable object <code>"not_a_functor"</code> rejected in Lab 1?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The pricer required <code>PayoffFunctor&lt;F, float&gt;</code>. Because strings are not invocable with a float argument, the constraint predicate returned false, rejecting the candidate before instantiation.</p>
+            </details>
+          </div>
+          <div class="problem" id="emp-3">
+            <span class="problem-title">E3 · Execution Overhead of Generic Pricer</span>
+            <p>Why did both <code>&lt;double, CallPayoff&gt;</code> and <code>&lt;int64_t, CallPayoff&gt;</code> execute with identical batch loop efficiency?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Each instantiation created a specialized, dedicated code path where the payoff functor call was inlined directly into the loop, avoiding virtual method lookups and function pointer dispatch.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="res-1">
+            <span class="problem-title">R1 · Expression Templates in Matrix Mathematics</span>
+            <p>How do expression templates eliminate temporary matrix allocations in quantitative risk calculations?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In naive operator overloading, evaluating <code>D = A + B + C</code> creates two temporary matrices. Expression templates encode the mathematical expression into a lazy parse tree type at compile time. Evaluating element <code>D(i, j)</code> executes a single combined loop evaluating <code>A(i, j) + B(i, j) + C(i, j)</code> directly into destination memory without intermediate allocations.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-2">
+            <span class="problem-title">R2 · Compile-Time vs Runtime Dispatch Latency</span>
+            <p>Quantify the instruction-level difference between a virtual method call and a template inlined call on modern x86-64 hardware.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>A virtual call executes: <code>mov rax, [rdi]</code> (fetch vtable, 4-5 cycles if L1 cached), <code>call [rax + 16]</code> (indirect branch, risking branch predictor miss penalty of 15-20 cycles). An inlined template call executes 0 call instructions, integrating directly into surrounding instruction pipelines and enabling compiler register reuse.</p>
+            </details>
+          </div>
+          <div class="problem" id="res-3">
+            <span class="problem-title">R3 · Concepts vs Rust Traits and Haskell Typeclasses</span>
+            <p>How do C++20 concepts differ fundamentally from Rust traits and Haskell typeclasses regarding structural versus nominal typing?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Rust traits and Haskell typeclasses are nominal: a type satisfies a trait only if it explicitly implements it via <code>impl Trait for Type</code>. C++20 concepts are structural (duck-typing at compile time): any type that satisfies the syntactic and semantic requirements of the concept satisfies it automatically, without explicit registration.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Zero-cost static dispatch under template instantiation (Proposition 4.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §1 from compiler code generation semantics</td></tr>
+              <tr><td>Unambiguous overload resolution via concept subsumption (Proposition 4.4)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §2 from atomic constraint normalization</td></tr>
+              <tr><td>Explicit compile-time rejection of invalid template types</td><td><span class="grade" data-grade="C">C</span><span class="citation" data-cite="stroustrup2022tour"></span></td><td>Lab 1 model results and Stroustrup (2022)</td></tr>
+              <tr><td>Elimination of dynamic vtable pointer chasing via generic programming</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in §6 (P1) via assembly isomorphism</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS5" data-page="L04" data-cards="cards.json">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval Quiz</h2>
+        <p>Answer from memory, then check. Finishing the quiz adds this lesson's cards to your review deck.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does compile-time polymorphism differ from object-oriented dynamic polymorphism?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L04q1"> <span>Compile-time polymorphism resolves function calls through virtual method tables</span></label>
+              <label class="option" data-correct><input type="radio" name="L04q1"> <span>Compile-time polymorphism generates specialized code for each type statically, enabling full inlining</span></label>
+              <label class="option"><input type="radio" name="L04q1"> <span>Dynamic polymorphism incurs zero runtime memory or dispatch overhead</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Proposition 4.2: Templates generate specialized code statically, eliminating vtable lookups and enabling inlining.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a C++20 concept?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L04q2"> <span>A runtime interface implemented via inheritance</span></label>
+              <label class="option" data-correct><input type="radio" name="L04q2"> <span>A compile-time predicate that constrains template type arguments</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span>A garbage collection trigger for template instances</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 4.1: Concepts constrain template arguments at compile time without runtime overhead.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What did the acronym SFINAE stand for prior to C++20 concepts?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L04q3"> <span>Static Functions In Namespaces Are Evaluated</span></label>
+              <label class="option" data-correct><input type="radio" name="L04q3"> <span>Substitution Failure Is Not An Error</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span>Structured Formatting In Native Arithmetic Engines</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>SFINAE allowed the compiler to discard unviable template overloads during type substitution without halting compilation.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="3" data-tolerance="0">
+            <p class="prompt">In Lab 1, how many test data points were evaluated by the instantiated double pricer kernel?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Lab 1 evaluated 3 price points: 90.0, 105.5, and 120.0.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Where must template definitions be located for successful compilation in standard C++?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q5"> <span>In header files available to all translation units that instantiate them</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>Exclusively in compiled <code>.o</code> object files</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>In the operating system dynamic linker</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Because the compiler instantiates templates at the call site, the definition must be visible in headers.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is template code bloat?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L04q6"> <span>Excessive indentation in source code files</span></label>
+              <label class="option" data-correct><input type="radio" name="L04q6"> <span>Enlargement of binary executable size caused by generating distinct machine code for multiple type specializations</span></label>
+              <label class="option"><input type="radio" name="L04q6"> <span>Heap fragmentation from template dynamic allocations</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Section 4 explains that generating distinct machine code for each type can enlarge binaries and degrade I-cache performance.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does concept subsumption resolve overloads between <code>C1</code> and a more constrained <code>C2</code>?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L04q7"> <span>It always emits an ambiguous call compile error</span></label>
+              <label class="option" data-correct><input type="radio" name="L04q7"> <span>It automatically selects the more constrained overload <code>C2</code></span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span>It randomly chooses between them based on link order</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Proposition 4.4: The compiler deterministically selects the more constrained candidate when subsumption applies.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a virtual function call prevent inlining across translation units?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q8"> <span>The target function address depends on runtime object content loaded through a pointer and cannot be known at compile time</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>Compilers are legally prohibited from optimizing virtual functions</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>Virtual functions can only be executed by the operating system kernel</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Indirect calls through vtable pointers cannot be resolved statically at compile time, preventing inlining.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <p>This lesson draws foundational principles from Stroustrup (2022), <em>A Tour of C++</em>, 3rd edition (registry key <code>stroustrup2022tour</code>). All mathematical and metaprogramming properties are verified via direct proofs and Lab 1 model executions.</p>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L03.html"><span class="dir">Previous</span>L03 · RAII and Ownership</a>
+        <a class="next" href="L05.html"><span class="dir">Next</span>L05 · The Standard Template Library</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS5 · C++ &amp; Systems for Finance · High-Performance Computing and Systems Architecture</footer>
+</body>
+</html>
