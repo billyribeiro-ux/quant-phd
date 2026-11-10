@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="AP3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AP3 Project · Euler-Equation GMM &amp; Hansen-Jagannathan Engine</title>
+  <meta name="description" content="Implement Hansen &amp; Singleton (1982) nonlinear GMM estimation of consumption Euler equations and the model-free Hansen &amp; Jagannathan (1991) stochastic discount factor volatility bound. Autograded code and rubric-graded evaluation report.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">AP3 Consumption-Based Pricing &amp; Its Puzzles</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="28">
+      <header class="page-head">
+        <p class="eyebrow">AP3 · Project · 28 study hours · Dual evaluation</p>
+        <h1>Euler-Equation GMM &amp; Hansen-Jagannathan Engine</h1>
+        <p class="lede">Construct an industrial-grade econometric engine that estimates nonlinear consumption Euler equations via two-step Generalized Method of Moments, executes the Hansen J-test of overidentifying restrictions, and evaluates empirical discount factors against the nonparametric Hansen-Jagannathan volatility frontier.</p>
+        <ul class="meta-row">
+          <li><strong>Deliverables:</strong> Python engine (<code>ccapm_engine.py</code>) and research evaluation memo (<code>report.md</code>)</li>
+          <li><strong>Evaluation:</strong> Dual mode (autograder for code; rubric for evaluation memo)</li>
+          <li><strong>Time budget:</strong> 28 hours (28% of module hours)</li>
+        </ul>
+      </header>
+
+      <section id="ladder">
+        <h2>The project ladder</h2>
+        <p>At the doctoral tier, rungs 1 and 2 provide targeted calibration before tackling the full independent engine. If you met the placement bar on the module page, you may proceed directly to rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: two-step GMM estimation and Hansen-Jagannathan bound calculation on a calibrated endowment economy, with every econometric step annotated.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below: complete the core Hansen-Jagannathan bound computation function. It is graded instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The specification in <a href="#spec">§3</a>: write <code>ccapm_engine.py</code>, autograded across 50 seeded instances in <a href="#grader">the autograder panel</a>, and compose the empirical evaluation report <code>report.md</code> graded by rubric in <a href="#rubric-section">§4</a>.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Open-ended research extensions in <a href="#stretch">§6</a>: external habit persistence, Epstein-Zin recursive preferences, and Hansen-Jagannathan distance.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2>Rungs 1 and 2</h2>
+        <section class="lab" id="lab-AP3-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: GMM Euler Estimation &amp; Hansen-Jagannathan Frontier</h3>
+          <p class="hypothesis">Estimate subjective discount factor \(\beta\) and risk aversion \(\gamma\) from simulated consumption growth and asset returns using two-step GMM, compute the Hansen J-statistic, and evaluate the minimum SDF volatility bound at \(\nu = 0.98\).</p>
+          <pre><code class="language-python" data-run>import numpy as np
+from scipy.optimize import minimize
+from scipy.special import gammaincc
+
+# Rung 1 Worked Example: GMM Euler Estimation &amp; Hansen-Jagannathan Frontier
+rng = np.random.default_rng(0)
+t_periods = 160
+beta_true, gamma_true = 0.98, 2.0
+
+log_gc = rng.normal(0.018, 0.022, size=t_periods)
+c_growth = np.exp(log_gc)
+std_c = (log_gc - 0.018) / 0.022
+
+rf_log = -np.log(beta_true) + gamma_true * 0.018 - 0.5 * (gamma_true * 0.022) ** 2
+r0 = np.exp(rf_log + 0.006 * rng.normal(0.0, 1.0, size=t_periods))
+
+cov1 = gamma_true * 0.65 * 0.022 * 0.08
+mu1 = rf_log - 0.5 * (0.08**2) + cov1
+z1 = 0.65 * std_c + np.sqrt(1.0 - 0.65**2) * rng.normal(0.0, 1.0, size=t_periods)
+r1 = np.exp(mu1 + 0.08 * z1)
+returns = np.column_stack([r0, r1])
+
+instruments = np.column_stack([np.ones(t_periods), np.roll(c_growth, 1)])
+instruments[0, 1] = np.exp(0.018)
+
+
+def moments(theta: np.ndarray) -&gt; np.ndarray:
+    b, g = float(theta[0]), float(theta[1])
+    m = b * (c_growth ** (-g))
+    u0 = m * returns[:, 0] - 1.0
+    u1 = m * returns[:, 1] - 1.0
+    return np.column_stack(
+        [
+            u0 * instruments[:, 0],
+            u0 * instruments[:, 1],
+            u1 * instruments[:, 0],
+            u1 * instruments[:, 1],
+        ]
+    )
+
+
+def objective(theta: np.ndarray, w: np.ndarray) -&gt; float:
+    g_bar = np.mean(moments(theta), axis=0)
+    return float(g_bar.T @ w @ g_bar)
+
+
+# Step 1: Identity weighting matrix
+w1 = np.eye(4)
+res1 = minimize(objective, [0.95, 2.0], args=(w1,), method="Nelder-Mead")
+
+# Step 2: Optimal weighting matrix
+h1 = moments(res1.x)
+s_matrix = (h1.T @ h1) / float(t_periods)
+w2 = np.linalg.pinv(s_matrix)
+res2 = minimize(objective, res1.x, args=(w2,), method="Nelder-Mead")
+
+beta_hat, gamma_hat = float(res2.x[0]), float(res2.x[1])
+j_stat = float(t_periods * objective(res2.x, w2))
+df = 4 - 2
+j_pval = float(gammaincc(df / 2.0, j_stat / 2.0))
+
+print(f"GMM estimates: beta = {beta_hat:.4f}, gamma = {gamma_hat:.4f}")
+print(f"Hansen J-statistic: {j_stat:.4f} (p-value: {j_pval:.4f})")
+
+# Hansen-Jagannathan bound at nu = 0.98
+mu_r = np.mean(returns, axis=0)
+sigma_r = np.cov(returns, rowvar=False)
+sigma_inv = np.linalg.pinv(sigma_r)
+diff = np.ones(2) - 0.98 * mu_r
+hj_vol = float(np.sqrt(diff.T @ sigma_inv @ diff))
+print(f"Hansen-Jagannathan volatility lower bound at E[M]=0.98: {hj_vol:.4f}")</code></pre>
+          <pre class="expected" data-tolerance="1e-6">GMM estimates: beta = 0.9660, gamma = 1.2308
+Hansen J-statistic: 0.3028 (p-value: 0.8595)
+Hansen-Jagannathan volatility lower bound at E[M]=0.98: 5.2079</pre>
+          <p class="interpretation">The first step uses an identity weighting matrix to obtain consistent parameter estimates. The second step forms the sample spectral density matrix \(S_T\) from instrumented residuals and uses its pseudoinverse as the optimal weighting matrix. The Hansen J-statistic tests whether all 4 orthogonality conditions hold simultaneously; the high p-value reflects failure to reject the true data-generating process. The Hansen-Jagannathan bound establishes that any valid discount factor with mean 0.98 must have volatility exceeding 5.21.</p>
+        </section>
+
+        <section class="lab completion" id="lab-AP3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Hansen-Jagannathan Bound Computation</h3>
+          <p class="hypothesis">Replace each <code>___</code> blank with the mathematical expressions for the pricing error vector \(\mathbf{1} - \nu \mu\) and the quadratic variance form \(\delta^\top \Sigma^{-1} \delta\). When both expressions are correct, the volatility outputs will match the theoretical bound.</p>
+          <pre><code class="language-python" data-run>import numpy as np
+
+# Rung 2 Completion Problem: Hansen-Jagannathan Bound Computation
+rng = np.random.default_rng(123)
+t_periods = 180
+
+# 2 simulated asset return series
+returns = np.column_stack(
+    [
+        1.02 + rng.normal(0.0, 0.015, size=t_periods),
+        1.08 + rng.normal(0.0, 0.150, size=t_periods),
+    ]
+)
+
+
+def compute_hj_bound(gross_returns: np.ndarray, nu_target: float) -> float:
+    """Compute the Hansen-Jagannathan minimum SDF volatility at target mean nu_target."""
+    mu = np.mean(gross_returns, axis=0)
+    cov = np.cov(gross_returns, rowvar=False)
+    diff = ___
+    var_m = float(___)
+    return float(np.sqrt(max(0.0, var_m)))
+
+
+bound_095 = compute_hj_bound(returns, 0.95)
+bound_098 = compute_hj_bound(returns, 0.98)
+bound_100 = compute_hj_bound(returns, 1.00)
+
+print(f"HJ bound at E[M]=0.95: {bound_095:.4f}")
+print(f"HJ bound at E[M]=0.98: {bound_098:.4f}")
+print(f"HJ bound at E[M]=1.00: {bound_100:.4f}")</code></pre>
+          <pre class="expected" data-tolerance="1e-6">HJ bound at E[M]=0.95: 2.1605
+HJ bound at E[M]=0.98: 0.3607
+HJ bound at E[M]=1.00: 1.6470</pre>
+          <p class="interpretation">The pricing vector \(\delta = \mathbf{1} - \nu \mu\) represents the uncentered pricing error on unit payoff assets for an SDF with expectation \(\nu\). The quadratic form \(\delta^\top \Sigma^{-1} \delta\) yields the variance of the orthogonal projection of the SDF onto the excess return space.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2>Rung 3 · Independent project specification</h2>
+        <dl class="spec" style="overflow-wrap: anywhere; word-break: break-word;">
+          <dt>Context</dt>
+          <dd>A quantitative research team is evaluating macroeconomic factor models against standard historical equities and bonds. They require an automated econometrics library to estimate consumption Euler equations via two-step GMM (Hansen &amp; Singleton 1982), compute standard errors and overidentifying test statistics, and benchmark the volatility of candidate consumption-based discount factors against the non-parametric Hansen-Jagannathan (1991) volatility frontier.</dd>
+
+          <dt>Inputs</dt>
+          <dd>The autograder supplies deterministic synthetic panel instances from <code>grader/instance.py</code>, seeded by your workspace ID. Each instance provides:
+            <ul>
+              <li><code>c_growth</code>: 1D array of strictly positive aggregate consumption growth ratios \(c_{t+1}/c_t\).</li>
+              <li><code>gross_returns</code>: 2D array of shape \((T, N)\) containing gross returns of \(N\) test assets.</li>
+              <li><code>instruments</code>: 2D array of shape \((T, L)\) containing predetermined instruments known at time \(t\).</li>
+              <li><code>nu_grid</code>: 1D array of candidate SDF expectations \(\nu = \E[M]\).</li>
+            </ul>
+            All data are labelled <strong>SIMULATED</strong>.
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>Deliver <code>ccapm_engine.py</code> implementing:
+            <ul style="overflow-wrap: anywhere;">
+              <li><code>euler_residuals(params, c_growth, gross_returns)</code>: returns \((T, N)\) array of pricing errors.</li>
+              <li><code>sample_moments(params, c_growth, gross_returns, instruments)</code>: returns \((N \cdot L,)\) array of sample moments.</li>
+              <li><code>spectral_covariance(residuals_kron)</code>: returns \((K, K)\) spectral density matrix \(S_T\).</li>
+              <li><code>gmm_objective</code>: evaluates scalar objective function \(g(\theta)^\top W g(\theta)\).</li>
+              <li><code>gmm_gradient</code>: evaluates analytical gradient vector \(2 G(\theta)^\top W g(\theta)\).</li>
+              <li><code>estimate_gmm</code>: computes two-step GMM parameter estimates, Hansen J-test, and standard errors.</li>
+              <li><code>hansen_jagannathan_bound</code>: constructs lower volatility bound \(\sigma(M)\) across mean targets \(\nu\).</li>
+              <li><code>evaluate_consumption_sdf</code>: computes mean and volatility for power utility SDF \(M_{t+1}\).</li>
+            </ul>
+            For the evaluation report, provide <code>report/report.md</code> analyzing the empirical performance, the J-test rejection, the equity-premium puzzle, the risk-free-rate puzzle, and the Hansen-Jagannathan diagnostic, together with <code>report/self_assessment.md</code>.
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>NumPy, SciPy, and Python standard library only. Pure functional architecture: raise exact <code>ValueError</code> for dimension mismatches, non-positive returns, non-positive consumption growth, non-positive discount factor \(\beta\), or non-finite inputs. The test suite must complete all checks within 60 seconds.</dd>
+
+          <dt>Grading</dt>
+          <dd>The curriculum grades this project by both autograder and rubric: <code>ccapm_engine.py</code> is tested against 50 seeds with the automated test suite, while <code>report.md</code> is evaluated by rubric across five distinct analytical criteria.</dd>
+        </dl>
+
+        <h3>Time budget</h3>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th scope="col">Component</th>
+                <th scope="col">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Econometric specification &amp; derivations</td>
+                <td>5</td>
+                <td>Derive analytical Jacobian of Euler moment conditions and verify quadratic form gradients.</td>
+              </tr>
+              <tr>
+                <td>GMM estimation &amp; J-test implementation</td>
+                <td>8</td>
+                <td>Implement two-step GMM optimization, spectral covariance matrix estimation, and chi-square inference.</td>
+              </tr>
+              <tr>
+                <td>Hansen-Jagannathan bound calculation</td>
+                <td>5</td>
+                <td>Implement dual projection theorem and compute the parabolic minimum SDF volatility frontier.</td>
+              </tr>
+              <tr>
+                <td>Stress testing &amp; mutant analysis</td>
+                <td>4</td>
+                <td>Validate test suite sensitivity against 5 common student bugs and verify seed invariance.</td>
+              </tr>
+              <tr>
+                <td>Technical evaluation report</td>
+                <td>4</td>
+                <td>Synthesize empirical results, explain J-test rejection, and diagnose equity-premium and risk-free-rate puzzles.</td>
+              </tr>
+              <tr>
+                <td>Self-assessment</td>
+                <td>2</td>
+                <td>Score report against the five rubric criteria and compare against annotated exemplars A and B.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>28</strong></td>
+                <td>Sum of project components matching declared project hours.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="grader-panel" id="grader" data-unit="AP3" data-grader="grader/" data-suite="test_project.py"
+                 data-support="instance.py" data-solution="ccapm_engine.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="rubric-section">
+        <h2>Evaluation rubric</h2>
+        <p>The evaluation memo <code>report.md</code> is evaluated against five criteria across four achievement levels.</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>Assessment rubric for CCAPM evaluation report (report.md).</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">4 · Exemplary</th>
+                <th scope="col">3 · Proficient</th>
+                <th scope="col">2 · Developing</th>
+                <th scope="col">1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Econometric specification</th>
+                <td>Explicitly derives the nonlinear Euler orthogonality conditions \(\E[(u_{t+1}(\theta) \otimes z_t)] = 0\), proves the asymptotic distribution of the two-step estimator, and states exact regularity conditions.</td>
+                <td>States the nonlinear Euler equations and instruments, and correctly outlines two-step GMM mechanics.</td>
+                <td>Mentions GMM moment conditions without writing out the Kronecker instrument product or asymptotic distribution.</td>
+                <td>Presents incorrect moment equations or confuses GMM with ordinary least squares.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Hansen J-test analysis</th>
+                <td>Reports exact J-statistic, degrees of freedom \(NL - P\), and p-value; proves why the J-test evaluates model overidentification rather than parameter fit, and interprets rejection.</td>
+                <td>Reports J-statistic and p-value with correct degrees of freedom, giving a sound statistical interpretation.</td>
+                <td>Reports J-statistic but uses incorrect degrees of freedom or misinterprets the p-value.</td>
+                <td>Omits the Hansen J-test or treats failure to reject as proof that the model is true.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Hansen-Jagannathan frontier</th>
+                <td>Derives the dual projection theorem for \(\sigma(M)/\E[M]\), plots or tabulates candidate consumption SDFs against the frontier, and proves that adding assets tightens the bound.</td>
+                <td>Computes the Hansen-Jagannathan bound across target means and correctly identifies feasible versus rejected SDFs.</td>
+                <td>Computes the bound at a single point without constructing the frontier or interpreting volatility.</td>
+                <td>Fails to calculate the HJ bound or confuses it with the Markowitz mean-variance frontier.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Puzzles diagnosis</th>
+                <td>Quantifies the equity-premium puzzle (Mehra-Prescott 1985) and risk-free-rate puzzle (Weil 1989), showing algebraically why high \(\gamma\) generates counterfactually high riskless rates under CRRA utility.</td>
+                <td>Explains both the equity-premium and risk-free-rate puzzles with quantitative historical benchmarks.</td>
+                <td>Describes the equity-premium puzzle but neglects the risk-free-rate puzzle or intertemporal substitution.</td>
+                <td>Provides only superficial descriptions of the puzzles without quantitative formulas or data.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Literature synthesis &amp; extensions</th>
+                <td>Critically evaluates potential resolutions (external habit, Epstein-Zin, rare disasters), citing verified registry keys with exact findings and limitations.</td>
+                <td>Discusses at least two extensions from the literature that address the failure of the power utility CCAPM.</td>
+                <td>Mentions alternative models in passing without discussing how they break the CRRA link between RRA and EIS.</td>
+                <td>Concludes without discussing model limitations or published extensions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Exemplars</h3>
+        <p>Compare your draft evaluation report against the following two annotated exemplars.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A (Level 4 · Exemplary)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. Derives the complete nonlinear GMM orthogonality structure with instruments. Reports exact J-test statistics with 2 degrees of freedom. Maps consumption SDFs into Hansen-Jagannathan volatility space and demonstrates why standard CRRA specifications lie deep in the rejected region. Rigorously analyzes both Mehra-Prescott and Weil puzzles with exact mathematical decompositions.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Econometric Methodology &amp; Moment Orthogonality</h5>
+              <p>Under the time-separable CRRA framework, the Euler equation for any gross return \(R_{i, t+1}\) is \(\E_t[m_{t+1} R_{i, t+1} - 1] = 0\) with \(m_{t+1} = \beta (c_{t+1}/c_t)^{-\gamma}\). By the law of iterated expectations, for any instrument vector \(z_t \in \mathcal{F}_t\), the unconditional moments satisfy \(\E[(m_{t+1} R_{i, t+1} - 1) \otimes z_t] = \mathbf{0}\). With \(N = 2\) assets and \(L = 2\) instruments, the system provides \(K = 4\) empirical moments to estimate \(P = 2\) parameters, yielding \(K - P = 2\) overidentifying restrictions.</p>
+              <h5>GMM Estimation &amp; Hansen J-Test Rejection</h5>
+              <p>Two-step efficient GMM on seed 0 yields \(\hat{\beta} = 0.9660\) (\(\se = 0.0412\)) and \(\hat{\gamma} = 1.2308\) (\(\se = 0.8145\)). While the first-order discount factor is economically plausible, testing the model against multiple assets with historical equity premium levels yields a Hansen J-statistic of \(J_T = 14.82\) (\(p = 0.0006\) under \(\chi^2_2\)), decisively rejecting the null hypothesis that the power utility CCAPM prices the cross-section.</p>
+              <h5>Hansen-Jagannathan Diagnostics &amp; Dual Puzzles</h5>
+              <p>The Hansen-Jagannathan bound establishes that for \(\nu = \E[M] = 0.98\), any admissible discount factor must have standard deviation \(\sigma(M) \ge 5.2079\). In contrast, the consumption SDF with \(\hat{\gamma} = 1.23\) exhibits \(\sigma(M) = 0.024\), missing the lower bound by over two orders of magnitude. For the model to enter the feasible HJ region, risk aversion must exceed \(\gamma \ge 35\). However, following Weil (1989), setting \(\gamma = 35\) forces the elasticity of intertemporal substitution to \(\psi = 1/\gamma \approx 0.0286\), driving the equilibrium real risk-free rate up to roughly \(48\%\) per annum, generating the risk-free-rate puzzle.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: states complete Kronecker moment orthogonality and identifies degrees of freedom.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: reports parameter estimates with standard errors, test statistics, and p-values.</li>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: contrasts model SDF volatility with exact numerical Hansen-Jagannathan bound.</li>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: links equity premium requirement \(\gamma \ge 35\) to catastrophic risk-free rate distortion.</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: articulates the coupling of RRA and EIS under CRRA utility as the core structural breakdown.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B (Level 2 · Developing)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2. States Euler equation without specifying instrument Kronecker structure. Reports estimated parameters but confuses degrees of freedom in the J-test. Mentions the Hansen-Jagannathan bound without stating numerical values or plotting the frontier. Mentions the equity premium puzzle but ignores the risk-free rate puzzle.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Model Summary</h5>
+              <p>We estimated the consumption CAPM using GMM with beta and gamma. The Euler equation is \(E[m R] = 1\).</p>
+              <h5>Results</h5>
+              <p>We ran the optimization and found beta is about 0.96 and gamma is 1.2. The J-test statistic is 14.82 and it rejected with 4 degrees of freedom. The consumption model has low volatility so it doesn't match the stock market Sharpe ratio, which is the equity premium puzzle described by Mehra and Prescott.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="misses" data-criterion="C1" data-level="2">Misses C1 level 3: fails to state instrument orthogonality conditions or regularity assumptions.</li>
+                <li class="misses" data-criterion="C2" data-level="2">Misses C2 level 3: incorrectly states 4 degrees of freedom instead of \(K - P = 2\).</li>
+                <li class="misses" data-criterion="C3" data-level="2">Misses C3 level 3: discusses volatility vaguely without reporting numerical Hansen-Jagannathan bound.</li>
+                <li class="misses" data-criterion="C4" data-level="2">Misses C4 level 3: completely omits Weil's risk-free rate puzzle.</li>
+                <li class="misses" data-criterion="C5" data-level="2">Misses C5 level 3: lacks literature synthesis or discussion of Epstein-Zin preferences.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+      </section>
+
+      <section id="reading">
+        <h2>Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="hansen1982generalized">Hansen &amp; Singleton (1982), "Generalized Instrumental Variables Estimation of Nonlinear Rational Expectations Models", Econometrica 50(5).</li>
+          <li data-cite="hansen1991implications">Hansen &amp; Jagannathan (1991), "Implications of Security Market Data for Models of Dynamic Economies", Journal of Political Economy 99(2).</li>
+          <li data-cite="mehra1985equity">Mehra &amp; Prescott (1985), "The Equity Premium: A Puzzle", Journal of Monetary Economics 15(2).</li>
+          <li data-cite="weil1989equity">Weil (1989), "The Equity Premium Puzzle and the Risk-Free Rate Puzzle", Journal of Monetary Economics 24(3).</li>
+          <li data-cite="breeden1979intertemporal">Breeden (1979), "An Intertemporal Asset Pricing Model with Stochastic Consumption and Investment Opportunities", Journal of Financial Economics 7(3).</li>
+          <li data-cite="lucas1978asset">Lucas (1978), "Asset Prices in an Exchange Economy", Econometrica 46(6).</li>
+        </ol>
+      </section>
+
+      <section id="stretch">
+        <h2>Rung 4 · Stretch extensions</h2>
+        <p>For your professional research portfolio, consider implementing one of the following canonical extensions:</p>
+        <ul>
+          <li><strong>External Habit Persistence (Campbell &amp; Cochrane 1999):</strong> Implement state-dependent surplus consumption ratio \(S_t = (C_t - X_t)/C_t\) and estimate the habit-adjusted Euler equations.</li>
+          <li><strong>Epstein-Zin (1989) Recursive Utility:</strong> Decouple relative risk aversion \(\gamma\) from elasticity of intertemporal substitution \(\psi\), including the return on the wealth portfolio in the SDF.</li>
+          <li><strong>Hansen-Jagannathan Distance (Hansen &amp; Jagannathan 1997):</strong> Implement the quadratic pricing error metric \(\delta_{HJ} = \min_{m \in \mathcal{M}} \|m - y\|\) to compare misspecified models.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
