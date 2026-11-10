@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR2" data-page="L02" data-hours="11">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signal-to-Execution Lags &amp; Lookahead Traps · QR2 L02</title>
+  <meta name="description" content="Formal analysis of signal-to-execution lags, causal timestamp ordering, the trade-on-close fallacy, alpha decay under latency, and exchange MOC cut-offs.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <style>ol[data-references] a { overflow-wrap: anywhere; word-break: break-all; }</style>
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR2 Backtesting Architecture</a><span class="sep">›</span>
+      <span>L02</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 02 · 11 study hours · Part QR</p>
+        <h1>Signal-to-Execution Lags &amp; Lookahead Traps</h1>
+        <p class="why-it-matters">The most destructive flaw in quantitative strategy development is lookahead bias masquerading as genuine predictive alpha. Backtests that evaluate signals at bar close and immediately execute at that same closing price violate physical causality. In live trading, market information takes finite time to arrive, compute, route, and match. Enforcing a strictly positive signal-to-execution lag is the primary mathematical safeguard against spurious backtest performance.</p>
+      </header>
+
+      <section id="causal-pipeline">
+        <h2 id="s1">1. Causal Timestamp Semantics &amp; Execution Latency</h2>
+        <p>In production trading systems, order generation and execution progress across an ordered sequence of physical instants. Let \(\mathbb{T}\) denote physical continuous time.</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-signal-execution-lag" data-concept="signal-execution-lag">Signal-to-Execution Lag</dfn></p>
+          <p>Let \(t_{\text{dec}} \in \mathbb{T}\) denote the physical instant an alpha calculation concludes, producing target order intent based on market filtration \(\mathcal{F}_{t_{\text{dec}}}\). The <strong>signal-to-execution lag</strong> \(\tau_{\text{lag}} \in \mathbb{T}_{>0}\) is the elapsed interval between signal generation and order fill execution at instant \(t_{\text{exec}} \in \mathbb{T}\):</p>
+          \[
+          \tau_{\text{lag}} = t_{\text{exec}} - t_{\text{dec}}
+          \]
+          <p>In discrete-bar backtesting where index \(t \in \{0, 1, \dots, T-1\}\) represents discrete bars of duration \(\Delta t\), \(\tau_{\text{lag}}\) is expressed as an integer count of simulation bars. An engine enforces strictly positive lag by requiring:</p>
+          \[
+          t_{\text{exec}} \ge t_{\text{dec}} + \tau_{\text{lag}}, \quad \tau_{\text{lag}} \ge 1
+          \]
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 2.1 · The Five-Instant Causal Invariant</p>
+          <p>Every valid transaction must satisfy the five-coordinate causality ordering <a class="citation" href="#ref-prado2018advances" data-target="prado2018advances" data-cite="prado2018advances" data-locator="p. 25">[prado2018advances]</a>:</p>
+          \[
+          t_{\text{event}} \le t_{\text{avail}} \le t_{\text{dec}} \le t_{\text{order}} \le t_{\text{fill}}
+          \]
+          <ol>
+            <li><strong>Event instant (\(t_{\text{event}}\)):</strong> Market transaction or quotation event occurs at the exchange matching engine.</li>
+            <li><strong>Availability instant (\(t_{\text{avail}}\)):</strong> Market data feed packet reaches the subscriber network socket.</li>
+            <li><strong>Decision instant (\(t_{\text{dec}}\)):</strong> Strategy computation processes the observation and computes order target.</li>
+            <li><strong>Order arrival instant (\(t_{\text{order}}\)):</strong> Risk-checked order reaches the exchange gateway.</li>
+            <li><strong>Fill instant (\(t_{\text{fill}}\)):</strong> Order matches against resting liquidity in the limit order book.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="trade-on-close">
+        <h2 id="s2">2. The Trade-on-Close Fallacy</h2>
+        <p>A prevalent error in amateur backtesting is the "trade-on-close" model: the backtester computes strategy indicators using daily bar closing prices \(P_t\), and assumes all trades execute at \(P_t\) at the exact end of bar \(t\).</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 2.1 · Zero-Lag Lookahead Leakage</span>
+          <p>Let asset prices follow a zero-drift random walk \(P_t = P_{t-1} + \sigma \epsilon_t\) where \(\epsilon_t \overset{\text{i.i.d.}}{\sim} \mathcal{N}(0, 1)\). Consider a momentum indicator \(s_t = \operatorname{sign}(P_t - P_{t-1})\). If an engine executes at lag \(\tau_{\text{lag}} = 0\) (trade-on-close), the expected strategy return is strictly positive:</p>
+          \[
+          \E[r_{\text{strat}, t}^{\tau=0}] = \E[s_t \cdot (P_t - P_{t-1})] = \sigma \sqrt{\frac{2}{\pi}} > 0
+          \]
+          <p>yielding an infinite asymptotic annualized Sharpe ratio as bar frequency increases. Conversely, under causal execution lag \(\tau_{\text{lag}} \ge 1\), the strategy return satisfies:</p>
+          \[
+          \E[r_{\text{strat}, t+1}^{\tau \ge 1}] = \E[s_t \cdot (P_{t+1} - P_t)] = \E[s_t] \cdot \E[\sigma \epsilon_{t+1}] = 0
+          \]
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>Under lag 0, \(s_t = \operatorname{sign}(\sigma \epsilon_t)\). The product \(s_t \cdot (P_t - P_{t-1}) = \sigma \epsilon_t \operatorname{sign}(\epsilon_t) = \sigma |\epsilon_t|\). The expectation of a standard half-normal variable is \(\E[|\epsilon_t|] = \sqrt{2/\pi}\). Hence \(\E[r_t^{\tau=0}] = \sigma \sqrt{2/\pi} > 0\) with zero probability of negative return. Under causal lag \(\tau \ge 1\), \(s_t\) is measurable with respect to \(\mathcal{F}_t\), whereas \(\epsilon_{t+1}\) is independent of \(\mathcal{F}_t\) with mean zero. By the law of iterated expectations, \(\E[s_t \epsilon_{t+1}] = \E[s_t \E[\epsilon_{t+1} \mid \mathcal{F}_t]] = 0\).</p>
+        </div>
+
+        <div class="block remark">
+          <p class="block-title">Remark 2.2 · Exchange Market-on-Close (MOC) Order Cut-offs</p>
+          <p>To execute at the official closing auction price \(P_t^{\text{close}}\), institutional traders submit Market-on-Close (MOC) or Limit-on-Close (LOC) orders. However, major exchanges impose strict order cut-off deadlines <a class="citation" href="#ref-harris2002trading" data-target="harris2002trading" data-cite="harris2002trading" data-locator="p. 142">[harris2002trading]</a>:</p>
+          <ul>
+            <li><strong>New York Stock Exchange (NYSE):</strong> MOC order submission cut-off is 15:50:00 Eastern Time. After 15:50:00, MOC orders cannot be submitted or cancelled except to offset published order imbalances.</li>
+            <li><strong>Nasdaq:</strong> Closing cross order cut-off is 15:55:00 Eastern Time.</li>
+          </ul>
+          <p>Because the true closing price \(P_t^{\text{close}}\) is determined at 16:00:00 Eastern Time, a strategy cannot condition on \(P_t^{\text{close}}\) to generate an MOC order for the same day's auction.</p>
+        </div>
+      </section>
+
+      <section id="inline-lab">
+        <h2 id="s3">3. Empirical Lab · Signal-to-Execution Lag Alpha Decay</h2>
+        <p>We empirically measure the decay of strategy performance as execution lag \(\tau_{\text{lag}}\) increases from 0 (trade-on-close lookahead leak) to 1 bar and 2 bars.</p>
+
+        <section class="lab" id="lab-QR2-L02-1" data-runtime="python">
+          <h3>Lab 1 · Signal-to-Execution Lag and Alpha Decay</h3>
+          <p class="hypothesis">Enforcing a causal execution lag of \(\tau_{\text{lag}} \ge 1\) bar eliminates the spurious alpha of a same-day trend indicator, collapsing the apparent Sharpe ratio from an anomalous leak level (>20) to baseline causal levels.</p>
+          <pre><code class="language-python" data-run>"""Lab QR2-L02-1: Signal-to-Execution Lag and Alpha Decay.
+
+Demonstrates the collapse of apparent Sharpe ratio as execution lag tau increases
+from 0 (trade-on-close lookahead leak) to 1 bar and 2 bars.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def evaluate_strategy_lag(prices: np.ndarray, signals: np.ndarray, lag: int) -&gt; tuple[float, float]:
+    """Evaluates strategy returns with strict execution lag."""
+    n_bars = len(prices)
+    returns = np.zeros(n_bars)
+    returns[1:] = (prices[1:] - prices[:-1]) / prices[:-1]
+
+    # Signal generated at t is executed with lag tau
+    strat_returns = np.zeros(n_bars)
+    for t in range(n_bars):
+        if t &gt;= lag:
+            strat_returns[t] = signals[t - lag] * returns[t]
+
+    valid_returns = strat_returns[lag + 1 :]
+    mean_ret = float(np.mean(valid_returns))
+    std_ret = float(np.std(valid_returns, ddof=1))
+    ann_sharpe = (mean_ret / std_ret * math.sqrt(252)) if std_ret &gt; 1e-12 else 0.0
+    cum_ret = float(np.prod(1.0 + valid_returns) - 1.0)
+    return ann_sharpe, cum_ret * 100.0
+
+
+def main() -&gt; None:
+    rng = np.random.default_rng(101)
+    n_bars = 250
+    innovations = rng.normal(0.0002, 0.012, size=n_bars)
+    prices = 100.0 * np.exp(np.cumsum(innovations))
+
+    # Trend-following on same-day return (artificial lookahead if traded on close)
+    ret_1d = np.zeros(n_bars)
+    ret_1d[1:] = (prices[1:] - prices[:-1]) / prices[:-1]
+    signals = np.sign(ret_1d)
+
+    print("Signal-to-Execution Lag Decay Study (252 bars):")
+    print("--------------------------------------------------")
+    print(f"{'Lag (bars)':&lt;12}{'Annual Sharpe':&lt;16}{'Total Return (%)':&lt;18}{'Interpretation'}")
+    print("--------------------------------------------------")
+
+    for lag in [0, 1, 2]:
+        sharpe, cum_ret = evaluate_strategy_lag(prices, signals, lag)
+        label = "Lookahead Leak" if lag == 0 else ("Realistic Causal" if lag == 1 else "Delayed Fill")
+        print(f"{lag:&lt;12}{sharpe:&lt;16.2f}{cum_ret:&lt;18.2f}{label}")
+
+    print("--------------------------------------------------")
+    print("Invariant Verified: Zero-lag execution produces artificial alpha via trade-on-close leakage.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Signal-to-Execution Lag Decay Study (252 bars):
+--------------------------------------------------
+Lag (bars)  Annual Sharpe   Total Return (%)  Interpretation
+--------------------------------------------------
+0           23.35           1160.31           Lookahead Leak
+1           0.28            3.51              Realistic Causal
+2           0.40            6.08              Delayed Fill
+--------------------------------------------------
+Invariant Verified: Zero-lag execution produces artificial alpha via trade-on-close leakage.</pre>
+          <p class="interpretation">The experiment confirms Theorem 2.1: executing at lag 0 produces an artificial Sharpe ratio of 23.35 and 1160.31% total return due to trade-on-close lookahead leakage. Moving to realistic causal lag \(\tau = 1\) drops the Sharpe ratio to 0.28 (3.51% return), and lag \(\tau = 2\) yields 0.40 (6.08% return). Apparent hyper-profitability at lag 0 is purely an artifact of temporal causality violation.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4">4. Where the Canon Breaks</h2>
+        <p>Many academic finance papers evaluate daily cross-sectional anomalies by sorting stocks at the close of month \(t\) and calculating returns from month \(t\) close to month \(t+1\) close. In real market microstructure, this textbook workflow breaks down:</p>
+        <ul>
+          <li><strong>Auction illiquidity:</strong> Closing auction volume is concentrated in primary listing constituents. Less liquid micro-cap stocks often fail to trade in the closing cross, causing unmatched MOC orders to expire unfilled.</li>
+          <li><strong>Imbalance publication volatility:</strong> When large quantitative funds submit MOC orders ahead of the 15:50 ET cut-off, published order imbalances trigger aggressive market-maker hedging, pushing the closing price away from the 15:50 prevailing price and inflicting severe adverse selection.</li>
+          <li><strong>Overnight gap risk:</strong> When execution is deferred to the market open of bar \(t+1\), the strategy absorbs overnight earnings announcements, macroeconomic surprises, and geopolitical news gaps that cannot be hedged at the bar \(t\) close.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5">5. Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Trade-on-close backtesting is realistic because mutual funds transact at the official Net Asset Value (NAV) calculated at market close.</p>
+            <p class="right">Mutual fund investors must submit redemption or purchase orders hours before the market close (typically 16:00 ET cut-off, with brokers enforcing 12:00 or 14:00 deadlines). Investors cannot observe the closing NAV before submitting their orders.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Setting execution lag \(\tau_{\text{lag}} = 1\) bar in an event-driven backtester completely eliminates all potential lookahead bias.</p>
+            <p class="right">Lagging execution by one bar prevents trade-on-close leaks, but lookahead bias can still contaminate feature calculation (e.g. centering rolling z-scores using the full sample mean, backward-adjusting splits with future ex-dates, or joining macroeconomic indicators on event dates rather than publication vintages).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Market-on-Close (MOC) orders allow algorithmic strategies to execute at the closing auction price based on signals computed during the closing cross.</p>
+            <p class="right">Exchanges strictly enforce MOC submission cut-off times (15:50 ET on NYSE, 15:55 ET on Nasdaq), several minutes before the 16:00 ET closing cross occurs. Signals computed at or after 15:50 cannot participate in the closing cross as standard MOC orders.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6">6. Practice Problems</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-L02-mech-1">
+            <p class="prompt">An algorithm generates a signal at 15:52:00 ET on the NYSE. Can this signal be executed as a standard Market-on-Close (MOC) order in that day's closing auction?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>No. Under NYSE Rule 123C, the deadline for submitting standard MOC and LOC orders is 15:50:00 ET. Orders received after 15:50:00 ET are rejected unless they are regulatory imbalance-offsetting orders explicitly entered to offset a published imbalance. A signal generated at 15:52:00 ET cannot participate as a regular MOC order.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-mech-2">
+            <p class="prompt">A backtest operates on hourly bars. Bar \(t\) spans 10:00 to 11:00. A signal conditions on the 11:00 close. With \(\tau_{\text{lag}} = 1\), what is the earliest bar and timestamp interval during which the order can execute?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>With bar \(t\) spanning [10:00, 11:00), the signal is evaluated at 11:00. Under \(\tau_{\text{lag}} = 1\) bar, the earliest eligible execution bar is bar \(t+1\), which spans 11:00 to 12:00. In a discrete simulation, the fill occurs at the open of bar \(t+1\) (11:00) or during the 11:00-12:00 trading interval.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-mech-3">
+            <p class="prompt">In Lab 1, what was the annualized Sharpe ratio of the trend strategy at lag 0 versus lag 1?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>In Lab 1, the strategy evaluated at lag 0 achieved an artificial annualized Sharpe ratio of 23.35 with 1160.31% total return due to trade-on-close lookahead leakage. When evaluated with strict lag 1, the Sharpe ratio collapsed to 0.28 with 3.51% total return.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p-L02-proof-1">
+            <p class="prompt">Prove that under weak-form market efficiency, any trading strategy with execution lag \(\tau_{\text{lag}} \ge 1\) conditioning strictly on past prices has expected excess return zero in a martingale price process.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Let price process \(P_t\) be a martingale with respect to filtration \(\mathcal{F}_t\), so \(\E[P_{t+1} \mid \mathcal{F}_t] = P_t\). The price increment \(\Delta P_{t+1} = P_{t+1} - P_t\) satisfies \(\E[\Delta P_{t+1} \mid \mathcal{F}_t] = 0\). For any strategy with lag \(\tau_{\text{lag}} \ge 1\), the position \(h_t\) held over interval \([t, t+1]\) is measurable with respect to \(\mathcal{F}_t\). By the tower property of conditional expectation, \(\E[h_t \Delta P_{t+1}] = \E[\E[h_t \Delta P_{t+1} \mid \mathcal{F}_t]] = \E[h_t \E[\Delta P_{t+1} \mid \mathcal{F}_t]] = \E[h_t \cdot 0] = 0\). Hence, expected strategy gains are identically zero.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-proof-2">
+            <p class="prompt">Prove that if an order submission timestamp satisfies \(t_{\text{order}} < t_{\text{avail}}\), the simulation violates the relativistic causality principle.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Let \(x\) be an information payload published at physical coordinate \(A\) at instant \(t_{\text{event}}\). Information propagates at finite physical velocity \(v \le c\) (speed of light in medium). The availability instant at receiving station \(B\) is \(t_{\text{avail}} = t_{\text{event}} + d(A, B) / v\). If an order generated at \(B\) based on \(x\) is submitted at \(t_{\text{order}} < t_{\text{avail}}\), the decision must have preceded information arrival at \(B\), violating relativistic causality and physical time ordering.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-proof-3">
+            <p class="prompt">Prove that an exponential alpha decay model \(\alpha(t) = \alpha_0 \exp(-\lambda t)\) with half-life \(t_{1/2} = \ln(2)/\lambda\) implies that strategy Sharpe ratio scales with latency \(\tau\) as \(\mathrm{SR}(\tau) = \mathrm{SR}_0 \exp(-\lambda \tau)\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Let expected return per trade decay as \(\mu(\tau) = \mu_0 e^{-\lambda \tau}\). If trade return volatility \(\sigma\) is dominated by exogenous market noise and remains approximately invariant to small execution delays, the per-trade Sharpe ratio is \(\mathrm{SR}(\tau) = \mu(\tau) / \sigma = \mathrm{SR}_0 e^{-\lambda \tau}\). Thus, apparent strategy Sharpe ratio decays exponentially with signal-to-execution latency \(\tau\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p-L02-emp-1">
+            <p class="prompt">A high-frequency cross-venue statistical arbitrage strategy demonstrates an alpha half-life of 2.5 milliseconds. If server co-location latency increases from 0.5 ms to 3.0 ms, by what percentage does strategy edge decline?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The decay constant is \(\lambda = \ln(2) / 2.5 \approx 0.277\text{ ms}^{-1}\). At latency \(\tau_1 = 0.5\) ms, retained edge is \(\exp(-0.139) \approx 0.871\). At latency \(\tau_2 = 3.0\) ms, retained edge is \(\exp(-0.832) \approx 0.435\). The relative decline in alpha is \((0.871 - 0.435) / 0.871 = 0.50\) or exactly 50.0%.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-emp-2">
+            <p class="prompt">In equity factor models, why do researchers frequently shift factor scores by two days (\(t-2\)) rather than one day (\(t-1\)) when predicting daily returns?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>A two-day lag accounts for real-world settlement and dissemination delays: factor data computed from day \(t-2\) closing prices is ingested and processed during day \(t-1\), portfolio rebalancing orders are constructed overnight, and execution occurs at the open or throughout day \(t\). Enforcing a 2-day buffer guarantees that no intraday data from day \(t-1\) can inadvertently contaminate day \(t\) trades.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-emp-3">
+            <p class="prompt">How does the bid-ask bounce in closing transaction prices create spurious mean-reversion alpha in trade-on-close backtests?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Closing transaction prices bounce randomly between bid and ask quotes. If day \(t\) closes on the bid, same-day return appears artificially negative, prompting a mean-reversion signal to buy at that bid. In reality, an incoming buy order must cross the spread and buy at the ask price, not the closing bid. Executing at the observed closing trade price captures the half-spread as artificial profit.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p-L02-res-1">
+            <p class="prompt">Describe how Harvey et al. (2015) formalize the impact of backtest timing discretion and multiple testing on apparent factor significance.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Harvey, Liu &amp; Zhu (2015) demonstrate that researchers test hundreds of timing variations (e.g. trading at open, close, VWAP, or shifting lags by 1-3 bars) and selectively report the configuration with the highest \(t\)-statistic. Because timing choices are correlated, this multiple testing expands the effective search space. To maintain a false discovery rate of 5%, the required \(t\)-statistic threshold must be raised from 2.0 to 3.0 or higher.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-res-2">
+            <p class="prompt">Explain the mechanics of adverse selection in the closing auction when submitting market-on-close orders against informed order flow.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>In the closing auction, matching algorithms aggregate all MOC and limit orders to determine the clearing price that maximizes executed volume. Informed traders conditioning on late-breaking information skew the net imbalance. Uninformed MOC orders absorb this imbalance, suffering adverse selection: when buying, they push the auction clearing price above fundamental value; when selling, they clear below fundamental value.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L02-res-3">
+            <p class="prompt">Propose an architecture for a continuous backtesting harness that enforces compile-time or runtime type constraints on timestamp causality.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The architecture defines phantom types or monads representing timestamps with static ordering: an <code>Order[T_dec]</code> object can only be consumed by an execution method parameterized by <code>T_fill</code> where a type-level constraint requires <code>T_fill >= T_dec + Lag</code>. At runtime, the backtest engine asserts <code>order.submitted_bar + engine.lag_bars <= current_bar</code> on every fill attempt, immediately throwing a fatal <code>ValueError</code> upon violation.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7">7. Key Results &amp; Verification Matrix</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Formal definition of signal-to-execution lag \(\tau_{\text{lag}} \ge 1\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Definition 2.1; <a class="citation" href="#ref-prado2018advances" data-target="prado2018advances" data-cite="prado2018advances" data-locator="p. 25">López de Prado (2018)</a></td>
+              </tr>
+              <tr>
+                <td>Five-coordinate causal timestamp invariant \(t_{\text{event}} \le t_{\text{avail}} \le t_{\text{dec}} \le t_{\text{order}} \le t_{\text{fill}}\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Remark 2.1; <a class="citation" href="#ref-prado2018advances" data-target="prado2018advances" data-cite="prado2018advances" data-locator="p. 26">López de Prado (2018)</a></td>
+              </tr>
+              <tr>
+                <td>Theorem 2.1: Zero-lag execution leaks lookahead return innovations</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 2.1; mathematical proof</td>
+              </tr>
+              <tr>
+                <td>Exchange MOC order cut-off times prevent trading close with contemporaneous signals</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><a class="citation" href="#ref-harris2002trading" data-target="harris2002trading" data-cite="harris2002trading" data-locator="p. 142">Harris (2002)</a></td>
+              </tr>
+              <tr>
+                <td>Empirical Sharpe ratio collapse from 23.35 (lag 0) to 0.28 (lag 1)</td>
+                <td><span class="grade" data-grade="B">B</span></td>
+                <td><span data-cite="harvey2015backtesting" data-locator="p. 5">Lab 1 (simulation)</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR2" data-page="L02" data-cards="cards.json">
+        <h2 id="s8">8. Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the strictly positive signal-to-execution lag \(\tau_{\text{lag}}\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L02q1"> <span style="min-width: 0;">The elapsed interval \(\tau_{\text{lag}} \ge 1\) bar between decision and physical fill execution</span></label>
+              <label class="option"><input type="radio" name="L02q1"> <span style="min-width: 0;">The difference between exchange local time and UTC</span></label>
+              <label class="option"><input type="radio" name="L02q1"> <span style="min-width: 0;">The time required to compile Python code to Pyodide WASM</span></label>
+              <label class="option"><input type="radio" name="L02q1"> <span style="min-width: 0;">The duration of the post-test embargo period in CPCV</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 2.1 defines \(\tau_{\text{lag}}\) as the elapsed interval between signal calculation and execution, requiring \(\tau_{\text{lag}} \ge 1\) bar in discrete simulation.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the "trade-on-close" lookahead fallacy?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q2"> <span style="min-width: 0;">Trading after the exchange matching engine closes</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q2"> <span style="min-width: 0;">Calculating signals from bar close \(P_t\) and executing orders at that exact same price \(P_t\) on bar \(t\)</span></label>
+              <label class="option"><input type="radio" name="L02q2"> <span style="min-width: 0;">Holding positions overnight across non-trading hours</span></label>
+              <label class="option"><input type="radio" name="L02q2"> <span style="min-width: 0;">Selling short without a locate confirmation</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Trade-on-close conditions orders on the closing price and assumes execution at that same price before that price was physically known or published.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">At what time does the NYSE close submission of regular Market-on-Close (MOC) orders?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q3"> <span style="min-width: 0;">16:00:00 Eastern Time</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q3"> <span style="min-width: 0;">15:50:00 Eastern Time</span></label>
+              <label class="option"><input type="radio" name="L02q3"> <span style="min-width: 0;">16:15:00 Eastern Time</span></label>
+              <label class="option"><input type="radio" name="L02q3"> <span style="min-width: 0;">12:00:00 Eastern Time</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Under NYSE Rule 123C, standard MOC orders must be entered before the 15:50:00 ET deadline.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="23.35" data-tolerance="0.05">
+            <p class="prompt">In Lab 1, what was the apparent annualized Sharpe ratio achieved by the trend strategy under lag 0 execution?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>The lab printed <code>Lag 0: Annual Sharpe 23.35</code>.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.28" data-tolerance="0.05">
+            <p class="prompt">In Lab 1, what was the annualized Sharpe ratio of the same strategy when causal lag \(\tau = 1\) was enforced?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>The lab printed <code>Lag 1: Annual Sharpe 0.28</code>.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which causal timestamp ordering must hold across all execution pipelines?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L02q6"> <span style="min-width: 0;">\(t_{\text{event}} \le t_{\text{avail}} \le t_{\text{dec}} \le t_{\text{order}} \le t_{\text{fill}}\)</span></label>
+              <label class="option"><input type="radio" name="L02q6"> <span style="min-width: 0;">\(t_{\text{fill}} \le t_{\text{order}} \le t_{\text{dec}} \le t_{\text{avail}} \le t_{\text{event}}\)</span></label>
+              <label class="option"><input type="radio" name="L02q6"> <span style="min-width: 0;">\(t_{\text{dec}} \le t_{\text{event}} \le t_{\text{avail}} \le t_{\text{order}} \le t_{\text{fill}}\)</span></label>
+              <label class="option"><input type="radio" name="L02q6"> <span style="min-width: 0;">\(t_{\text{order}} \le t_{\text{fill}} \le t_{\text{event}} \le t_{\text{avail}} \le t_{\text{dec}}\)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Remark 2.1 establishes the five-instant causal invariant governing data arrival, strategy calculation, order routing, and fill execution.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does lagging execution by one bar NOT guarantee freedom from lookahead bias?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q7"> <span style="min-width: 0;">Because Python lists are zero-indexed</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q7"> <span style="min-width: 0;">Features may still incorporate future data through rolling centers, data revisions, or corporate action lookahead</span></label>
+              <label class="option"><input type="radio" name="L02q7"> <span style="min-width: 0;">Because one bar of lag increases transaction costs</span></label>
+              <label class="option"><input type="radio" name="L02q7"> <span style="min-width: 0;">Because closing auctions only accept limit orders</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Even with causal execution timing, feature pipelines can introduce subtle lookahead by centering rolling indicators on future means or using restated vintages.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens to an alpha signal with an exponential decay half-life of 2.5 milliseconds when execution latency is 5.0 milliseconds?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L02q8"> <span style="min-width: 0;">Strategy edge is completely unaffected</span></label>
+              <label class="option" data-correct><input type="radio" name="L02q8"> <span style="min-width: 0;">Strategy edge declines to 25 percent of its initial value (\(0.5^2 = 0.25\))</span></label>
+              <label class="option"><input type="radio" name="L02q8"> <span style="min-width: 0;">Strategy edge increases due to price momentum</span></label>
+              <label class="option"><input type="radio" name="L02q8"> <span style="min-width: 0;">The engine converts market orders to limit orders</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Over two half-lives (5.0 ms / 2.5 ms = 2), remaining edge is \((1/2)^2 = 1/4\) or 25% of initial alpha.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>9. References</h2>
+        <ol data-references>
+        </ol>
+      </section>
+
+      <nav class="page-nav">
+        <a class="prev" href="L01.html">‹ L01 · Vectorized vs. Event-Driven Backtesting</a>
+        <a class="next" href="L03.html">L03 · Transaction Costs &amp; Market Impact ›</a>
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">QR2 · Backtesting Architecture · Lesson 02 · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

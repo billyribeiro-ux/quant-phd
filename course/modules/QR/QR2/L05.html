@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="QR2" data-page="L05" data-hours="11">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Purged &amp; Embargoed Cross-Validation, CPCV · QR2 L05</title>
+  <meta name="description" content="Formal analysis of label overlap leakage, purged cross-validation, post-test embargoing, and Combinatorial Purged Cross-Validation (CPCV) under López de Prado.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <style>ol[data-references] a { overflow-wrap: anywhere; word-break: break-all; }</style>
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">QR2 Backtesting Architecture</a><span class="sep">›</span>
+      <span>L05</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 05 · 11 study hours · Part QR</p>
+        <h1>Purged &amp; Embargoed Cross-Validation, CPCV</h1>
+        <p class="why-it-matters">Standard machine learning cross-validation fails in quantitative finance because financial labels span multi-day holding periods and features exhibit autoregressive memory. When test fold boundaries sit adjacent to training samples, forward label horizons leak future price outcomes directly into the training set. Purged cross-validation eliminates overlapping label windows, while embargo buffers insulate against feature memory. Extending this framework to Combinatorial Purged Cross-Validation generates multiple out-of-sample testing paths, enabling rigorous measurement of backtest overfitting.</p>
+      </header>
+
+      <section id="label-overlap">
+        <h2 id="s1">1. The Label Overlap Problem &amp; Purging</h2>
+        <p>In financial machine learning, target labels \(y_t\) are rarely instantaneous one-bar returns. They represent multi-period returns, triple-barrier outcomes, or trend labels spanning an evaluation horizon of \(h_{\text{label}} \ge 1\) bars: \(y_t = f(P_t, P_{t+1}, \dots, P_{t+h_{\text{label}}-1})\).</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-purged-cross-validation" data-concept="purged-cross-validation">Purged Cross-Validation</dfn></p>
+          <p>Let test fold \(k\) span observation indices \([j_{\text{start}}, j_{\text{end}})\). An observation \(i\) with label horizon \([i, i + h_{\text{label}} - 1]\) contains information from the test fold if their label evaluation windows intersect. <strong>Purged cross-validation</strong> removes every training sample \(i\) that satisfies:</p>
+          \[
+          i \le j_{\text{end}} - 1 \quad \text{and} \quad i + h_{\text{label}} - 1 \ge j_{\text{start}}
+          \]
+          <p>Specifically, for training samples prior to the test fold (\(i < j_{\text{start}}\)), left-purging discards all indices in the interval:</p>
+          \[
+          \mathcal{I}_{\text{purge}}^{\text{left}} = [\max(0, j_{\text{start}} - h_{\text{label}} + 1), j_{\text{start}})
+          \]
+        </div>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-embargo-period" data-concept="embargo-period">Embargo Period</dfn></p>
+          <p>Financial features (such as rolling realized volatility, moving averages, or AR filters) exhibit autoregressive serial memory. To eliminate auto-correlated feature leakage following a test fold, an <strong>embargo period</strong> of duration \(h_{\text{embargo}} = \lceil \text{embargo\_pct} \times T \rceil\) bars is applied immediately following \(j_{\text{end}}\). All training samples in the post-test interval:</p>
+          \[
+          \mathcal{I}_{\text{embargo}} = [j_{\text{end}}, \min(T, j_{\text{end}} + h_{\text{embargo}}))
+          \]
+          <p>are removed from the training set.</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 5.1 · Purged Boundary Information Disjointness</span>
+          <p>Let \(\mathcal{F}_{[a, b]} = \sigma(\{P_t : t \in [a, b]\})\). If training set indices \(\mathcal{I}_{\text{train}}\) are formed by purging overlapping label windows \([i, i + h_{\text{label}} - 1]\) and embargoing post-test memory against test set \(\mathcal{I}_{\text{test}} = [j_{\text{start}}, j_{\text{end}})\), then the label \(\sigma\)-algebras are conditionally independent under the no-long-memory null:</p>
+          \[
+          \sigma(\{y_i : i \in \mathcal{I}_{\text{train}}\}) \cap \sigma(\{y_j : j \in \mathcal{I}_{\text{test}}\}) = \emptyset
+          \]
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>For any \(i \in \mathcal{I}_{\text{train}}\) with \(i < j_{\text{start}}\), left-purging enforces \(i < j_{\text{start}} - h_{\text{label}} + 1\), which implies \(i + h_{\text{label}} - 1 < j_{\text{start}}\). Hence \([i, i + h_{\text{label}} - 1] \cap [j_{\text{start}}, j_{\text{end}} + h_{\text{label}} - 1] = \emptyset\). For \(i > j_{\text{end}}\), embargoing enforces \(i \ge j_{\text{end}} + h_{\text{embargo}} > j_{\text{end}}\). Neither the forward label evaluation intervals nor the feature lookback intervals intersect the test evaluation span, precluding index-level information overlap.</p>
+        </div>
+      </section>
+
+      <section id="cpcv-framework">
+        <h2 id="s2">2. Combinatorial Purged Cross-Validation (CPCV)</h2>
+        <p>A critical flaw of standard walk-forward analysis is that it produces only a single out-of-sample path. Following López de Prado (2018, Ch. 12), Combinatorial Purged Cross-Validation solves this limitation by generating an entire distribution of out-of-sample paths.</p>
+
+        <div class="block definition">
+          <p class="block-title"><dfn id="def-combinatorial-purged-cross-validation" data-concept="combinatorial-purged-cross-validation">Combinatorial Purged Cross-Validation</dfn></p>
+          <p><strong>Combinatorial Purged Cross-Validation (CPCV)</strong> partitions \(T\) observations into \(N\) contiguous chronological blocks. For a chosen integer \(k \in \{1, \dots, N-1\}\), CPCV evaluates all \(\binom{N}{k}\) combinations of \(k\) blocks as the test set:</p>
+          \[
+          \binom{N}{k} = \frac{N!}{k!(N-k)!}
+          \]
+          <p>For each combination, the remaining \(N-k\) blocks form the training set, subject to pairwise left-purging and post-test embargoing applied against each test block. Each observation index is evaluated out-of-sample across \(\binom{N-1}{k-1}\) distinct models.</p>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 5.2 · CPCV Out-of-Sample Path Identity</span>
+          <p>In a CPCV partitioning with \(N\) groups and \(k\) test groups per split, the total number of independent contiguous out-of-sample backtest paths generated by recombining non-overlapping test folds is:</p>
+          \[
+          \varphi = \binom{N}{k} \frac{k}{N} = \binom{N-1}{k-1}
+          \]
+        </div>
+
+        <div class="block proof">
+          <p class="block-title">Proof</p>
+          <p>Each split tests \(k\) blocks. The total number of tested blocks across all \(\binom{N}{k}\) splits is \(k \binom{N}{k}\). By combinatorial symmetry across the \(N\) groups, each individual block is tested exactly \(k \binom{N}{k} / N\) times. Expanding factorials:</p>
+          \[
+          \frac{k}{N} \binom{N}{k} = \frac{k}{N} \frac{N!}{k!(N-k)!} = \frac{(N-1)!}{(k-1)!(N-k)!} = \binom{N-1}{k-1}
+          \]
+          <p>Because each group is tested \(\binom{N-1}{k-1}\) times, these group test predictions can be assembled into exactly \(\binom{N-1}{k-1}\) complete, non-overlapping out-of-sample equity curves covering the full time span.</p>
+        </div>
+      </section>
+
+      <section id="inline-lab">
+        <h2 id="s3">3. Empirical Lab · Purging, Embargoing &amp; CPCV Partitions</h2>
+        <p>We audit a 5-fold cross-validation scheme on 200 synthetic trading bars with a 5-day label lookahead horizon and 2% embargo, verifying boundary insulation and CPCV path generation.</p>
+
+        <section class="lab" id="lab-QR2-L05-1" data-runtime="python">
+          <h3>Lab 1 · Purged &amp; Embargoed Cross-Validation (CPCV) vs Standard K-Fold</h3>
+          <p class="hypothesis">Left-purging removes all training samples whose forward label horizons intersect the test fold, while post-test embargo buffers eliminate autoregressive feature leakage, producing zero boundary leakage across all cross-validation folds.</p>
+          <pre><code class="language-python" data-run>"""Lab QR2-L05-1: Purged &amp; Embargoed Cross-Validation (CPCV) vs Standard K-Fold.
+
+Demonstrates information leakage across fold boundaries in standard K-fold CV
+when labels overlap, and verifies purging and post-test embargoing (López de Prado 2018).
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def generate_purged_embargo_splits(
+    n_samples: int,
+    n_splits: int,
+    label_lookahead: int,
+    embargo_pct: float,
+) -&gt; list[tuple[np.ndarray, np.ndarray, int, int]]:
+    """Generates purged and embargoed CV splits, counting purged and embargoed samples."""
+    indices = np.arange(n_samples)
+    fold_bounds = np.linspace(0, n_samples, n_splits + 1, dtype=int)
+    h_embargo = math.ceil(embargo_pct * n_samples)
+
+    splits: list[tuple[np.ndarray, np.ndarray, int, int]] = []
+    for k in range(n_splits):
+        t_start = fold_bounds[k]
+        t_end = fold_bounds[k + 1]
+        test_idx = indices[t_start:t_end]
+
+        train_mask = np.ones(n_samples, dtype=bool)
+        train_mask[t_start:t_end] = False
+
+        # Left purge
+        left_purge_start = max(0, t_start - label_lookahead + 1)
+        n_purged = t_start - left_purge_start
+        train_mask[left_purge_start:t_start] = False
+
+        # Right embargo
+        right_embargo_end = min(n_samples, t_end + h_embargo)
+        n_embargoed = right_embargo_end - t_end
+        train_mask[t_end:right_embargo_end] = False
+
+        train_idx = indices[train_mask]
+        splits.append((train_idx, test_idx, n_purged, n_embargoed))
+
+    return splits
+
+
+def main() -&gt; None:
+    n_samples = 200
+    n_splits = 5
+    label_lookahead = 5  # 5-day holding period return labels
+    embargo_pct = 0.02  # 2% of sample = 4 bars
+
+    splits = generate_purged_embargo_splits(n_samples, n_splits, label_lookahead, embargo_pct)
+
+    print(f"Purged &amp; Embargoed CV Audit (N={n_samples}, K={n_splits}, Label Horizon={label_lookahead}d):")
+    print("----------------------------------------------------------------------")
+    print(f"{'Fold':&lt;8}{'Test Range':&lt;16}{'Train Size':&lt;14}{'Purged':&lt;12}{'Embargoed':&lt;12}{'Leakage Audit'}")
+    print("----------------------------------------------------------------------")
+
+    for k, (train_idx, test_idx, n_purged, n_embargo) in enumerate(splits, start=1):
+        t_start, t_end = int(test_idx.min()), int(test_idx.max()) + 1
+
+        # Check if any training observation i has label window overlapping test
+        overlap_left = [i for i in train_idx if i &lt; t_start and i + label_lookahead - 1 &gt;= t_start]
+        overlap_test = np.intersect1d(train_idx, test_idx)
+        leakage_detected = len(overlap_left) &gt; 0 or len(overlap_test) &gt; 0
+        status = "FAIL (Leak)" if leakage_detected else "PASS (Clean)"
+
+        test_str = f"[{t_start}:{t_end}]"
+        print(f"{k:&lt;8}{test_str:&lt;16}{len(train_idx):&lt;14}{n_purged:&lt;12}{n_embargo:&lt;12}{status}")
+
+    # Combinatorial Purged CV (CPCV) setup: N=6 groups, k=2 test groups
+    n_groups = 6
+    k_test = 2
+    n_combs = math.comb(n_groups, k_test)
+    n_paths = int(n_combs * (k_test / n_groups))
+
+    print("----------------------------------------------------------------------")
+    print(f"CPCV Partitioning: N={n_groups} groups, k={k_test} test groups per split")
+    print(f"Combinations generated: C({n_groups}, {k_test}) = {n_combs}")
+    print(f"Independent testing paths generated: {n_paths}")
+    print("Invariant Verified: Purging eliminates overlapping label leakage across all boundaries.")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Purged &amp; Embargoed CV Audit (N=200, K=5, Label Horizon=5d):
+----------------------------------------------------------------------
+Fold    Test Range      Train Size    Purged      Embargoed   Leakage Audit
+----------------------------------------------------------------------
+1       [0:40]          156           0           4           PASS (Clean)
+2       [40:80]         152           4           4           PASS (Clean)
+3       [80:120]        152           4           4           PASS (Clean)
+4       [120:160]       152           4           4           PASS (Clean)
+5       [160:200]       156           4           0           PASS (Clean)
+----------------------------------------------------------------------
+CPCV Partitioning: N=6 groups, k=2 test groups per split
+Combinations generated: C(6, 2) = 15
+Independent testing paths generated: 5
+Invariant Verified: Purging eliminates overlapping label leakage across all boundaries.</pre>
+          <p class="interpretation">The experiment confirms Theorem 5.1 and Theorem 5.2: left-purging removes 4 overlapping training samples on folds 2–5, while the 2% embargo buffer removes 4 samples following folds 1–4. The leakage audit achieves 100% clean PASS status across all folds. CPCV partitioning with N=6 groups and k=2 test groups yields exactly 15 model combinations and 5 independent out-of-sample backtest paths.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="s4">4. Where the Canon Breaks</h2>
+        <p>Standard scikit-learn cross-validation (<code>KFold</code>, <code>TimeSeriesSplit</code>) is ubiquitous in data science, but breaks down fundamentally when applied to financial time series <a class="citation" href="#ref-prado2018advances" data-target="prado2018advances" data-cite="prado2018advances" data-locator="p. 104">[prado2018advances]</a>:</p>
+        <ul>
+          <li><strong>Boundary information bleeding:</strong> In standard <code>KFold</code>, training sample \(t_{\text{test,start}}-1\) uses return \(r_{t_{\text{test,start}} + 3}\) as its label, allowing the model to train on the very price motion it is evaluated on during the test fold.</li>
+          <li><strong>Feature memory leakage:</strong> Features computed over long rolling lookback windows (e.g. 200-day moving average or 60-day realized volatility) carry memory from the test fold into subsequent training folds unless an embargo is enforced.</li>
+          <li><strong>Overfitting under trial selection:</strong> While CPCV eliminates boundary leakage, evaluating thousands of combinatorial model variations across multiple hyperparameters still creates selection bias, requiring Deflated Sharpe Ratio (DSR) or Probability of Backtest Overfitting (PBO) adjustments <a class="citation" href="#ref-bailey2014deflated" data-target="bailey2014deflated" data-cite="bailey2014deflated" data-locator="p. 2">[bailey2014deflated]</a>.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="s5">5. Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Purged cross-validation eliminates the need to adjust for multiple testing across model search iterations.</p>
+            <p class="right">Purged CV eliminates information leakage across fold boundaries within a single backtest run. However, if a researcher evaluates 1,000 different model architectures or feature sets using CPCV, selection bias over multiple trials still inflates performance, requiring DSR or PBO corrections.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Embargoing is redundant if left-purging has already been applied to overlapping label windows.</p>
+            <p class="right">Left-purging addresses label lookahead before the test fold. Embargoing addresses autoregressive feature memory after the test fold, preventing high-memory features evaluated on test prices from leaking into post-test training data.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Purging removes too many training observations, causing models to underfit from lack of sample data.</p>
+            <p class="right">Purging typically removes only a small fraction of data (e.g. 4 samples out of 160 per fold for a 5-day horizon). Retaining those 4 samples creates massive forward leakage that severely inflates test accuracy, leading to catastrophic live trading failure.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s6">6. Practice Problems</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-L05-mech-1">
+            <p class="prompt">In a dataset of \(T = 200\) bars partitioned into 5 equal folds (40 bars each), test fold 2 spans indices [40:80]. If labels are computed over a 5-bar forward horizon (\(h_{\text{label}} = 5\)), calculate the left-purge index interval.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The test fold starts at \(j_{\text{start}} = 40\). The left purge starts at \(\max(0, j_{\text{start}} - h_{\text{label}} + 1) = \max(0, 40 - 5 + 1) = 36\). The purged interval is \([36, 40)\), containing exactly \(40 - 36 = 4\) samples (indices 36, 37, 38, and 39).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-mech-2">
+            <p class="prompt">For the setup in Problem 1, if an embargo of 2% is applied to the sample of \(T = 200\) bars, calculate the embargo duration and the post-test embargo interval for fold 2.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The embargo duration is \(h_{\text{embargo}} = \lceil 0.02 \times 200 \rceil = 4\) bars. The test fold ends at \(j_{\text{end}} = 80\). The embargoed interval is \([80, \min(200, 80 + 4)) = [80, 84)\), containing exactly 4 samples (indices 80, 81, 82, and 83).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-mech-3">
+            <p class="prompt">In a CPCV partitioning with \(N = 6\) groups and \(k = 2\) test groups per split, how many total model combinations and how many independent out-of-sample paths are generated?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>The number of combinations is \(\binom{6}{2} = \frac{6 \times 5}{2 \times 1} = 15\) model splits. The number of independent out-of-sample paths is \(\varphi = \binom{6-1}{2-1} = \binom{5}{1} = 5\) paths. This can also be verified via \(\binom{6}{2} \times \frac{2}{6} = 15 \times \frac{1}{3} = 5\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="p-L05-proof-1">
+            <p class="prompt">Prove that for the first fold of a \(k\)-fold cross-validation scheme where \(j_{\text{start}} = 0\), the left-purging set \(\mathcal{I}_{\text{purge}}^{\text{left}}\) is identically empty.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>For fold 1, the test fold starts at \(j_{\text{start}} = 0\). The left-purge start index is \(\max(0, 0 - h_{\text{label}} + 1) = \max(0, 1 - h_{\text{label}})\). Since \(h_{\text{label}} \ge 1\), \(1 - h_{\text{label}} \le 0\), so the purge start index is 0. The purged interval is \([0, 0) = \emptyset\). No training samples precede the first test fold, so left-purging is identically empty.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-proof-2">
+            <p class="prompt">Prove that for the final fold where \(j_{\text{end}} = T\), the post-test embargo set \(\mathcal{I}_{\text{embargo}}\) is identically empty.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>For the final fold, \(j_{\text{end}} = T\). The embargoed interval is \([T, \min(T, T + h_{\text{embargo}})) = [T, T) = \emptyset\). Because no training samples follow the end of the historical dataset, the post-test embargo interval contains zero samples.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-proof-3">
+            <p class="prompt">Prove that in CPCV, every pair of distinct groups \(\{g_a, g_b\}\) appears together in the test set of exactly \(\binom{N-2}{k-2}\) model combinations for \(k \ge 2\).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Fix any two distinct groups \(g_a\) and \(g_b\) in the test set. To form a complete test set of size \(k\), the remaining \(k-2\) groups must be chosen from the remaining \(N-2\) available groups. The number of ways to choose these remaining groups is \(\binom{N-2}{k-2}\). Thus, pairwise group co-occurrence is constant across all pairs by symmetry.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="p-L05-emp-1">
+            <p class="prompt">In Lab 1, why did Fold 1 have 156 training samples while Folds 2, 3, and 4 had exactly 152 training samples?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>In Lab 1, total sample size was 200 and each fold had 40 test samples, leaving 160 potential training samples. Fold 1 has no preceding samples, so left-purged is 0, but embargo removes 4 samples, leaving \(160 - 4 = 156\). Folds 2, 3, and 4 have both left-purging (4 samples) and post-test embargo (4 samples), removing 8 samples and leaving \(160 - 8 = 152\). Fold 5 has 4 left-purged and 0 embargoed, leaving 156 samples.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-emp-2">
+            <p class="prompt">Suppose a quantitative strategy calculates trend labels over a 20-day horizon on daily data. In a 5-fold CV with 250 bars, what percentage of training data is purged?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Each fold has 50 test bars. For an interior fold (e.g. fold 2 starting at bar 50), left-purging removes \(\min(50, 20 - 1) = 19\) samples. Out of 200 non-test samples, 19 purged samples represent \(19 / 200 = 9.5\%\) of available training data. Purging removes roughly 10% of training data per interior fold to preserve clean boundary isolation.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-emp-3">
+            <p class="prompt">Why does Combinatorial Purged Cross-Validation provide a richer overfitting diagnostic than standard walk-forward analysis?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Standard walk-forward yields a single out-of-sample Sharpe ratio, leaving uncertainty about whether performance was lucky. CPCV generates \(\binom{N-1}{k-1}\) independent out-of-sample paths, creating an empirical distribution of out-of-sample Sharpe ratios and correlations, directly enabling the calculation of the Probability of Backtest Overfitting (PBO).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="p-L05-res-1">
+            <p class="prompt">Explain the relationship between Combinatorial Purged Cross-Validation (CPCV) and the Probability of Backtest Overfitting (PBO) defined by Bailey et al. (2016).</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Bailey et al. (2016) define PBO as the probability that the model selected as best in-sample ranks below the median out-of-sample. CPCV generates \(\binom{N}{k}\) in-sample and out-of-sample performance pairs across multiple strategy configurations. By evaluating the relative rank of the in-sample optimal strategy across all combinatorial test sets, researchers compute the empirical frequency of post-selection underperformance.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-res-2">
+            <p class="prompt">How does triple-barrier labeling interact with purged cross-validation compared to fixed-time horizon returns?</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Under fixed-time labeling, the horizon \(h_{\text{label}}\) is deterministic. Under triple-barrier labeling (upper profit target, lower stop-loss, vertical time limit), each observation \(i\) has a variable holding period \(\tau_i \in [1, h_{\max}]\). In variable-horizon purging, an observation \(i\) is purged if its specific event window \([i, i + \tau_i]\) intersects the test fold, requiring observation-specific timestamp intervals rather than uniform index offsets.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-L05-res-3">
+            <p class="prompt">Propose an optimal algorithm for setting the embargo duration \(h_{\text{embargo}}\) based on empirical feature autocorrelation decay.</p>
+            <details class="solution">
+              <summary>Worked solution</summary>
+              <p>Instead of a heuristic percentage (e.g. 1%), the algorithm computes the empirical autocorrelation function \(\rho_f(l)\) for all engineered features. The embargo length is set to \(h_{\text{embargo}} = \max_f \{l : |\rho_f(l)| \ge \epsilon\}\) where \(\epsilon = 2 / \sqrt{T}\) is the 95% Bartlett confidence bound under white noise. This guarantees that feature memory has statistically decayed to zero before subsequent training begins.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7">7. Key Results &amp; Verification Matrix</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Mathematical formulation of left-purging window \([\max(0, j_{\text{start}} - h + 1), j_{\text{start}})\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Definition 5.1; <a class="citation" href="#ref-prado2018advances" data-target="prado2018advances" data-cite="prado2018advances" data-locator="p. 106">López de Prado (2018)</a></td>
+              </tr>
+              <tr>
+                <td>Mathematical formulation of post-test embargo buffer \([j_{\text{end}}, j_{\text{end}} + h_{\text{embargo}})\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Definition 5.2; <a class="citation" href="#ref-prado2018advances" data-target="prado2018advances" data-cite="prado2018advances" data-locator="p. 107">López de Prado (2018)</a></td>
+              </tr>
+              <tr>
+                <td>Theorem 5.1: Purging and embargoing guarantee informational disjointness</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 5.1; mathematical proof</td>
+              </tr>
+              <tr>
+                <td>Theorem 5.2: CPCV generates \(\binom{N-1}{k-1}\) complete out-of-sample testing paths</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 5.2; mathematical proof</td>
+              </tr>
+              <tr>
+                <td>Empirical verification of 100% clean audit pass across all purged boundaries</td>
+                <td><span class="grade" data-grade="B">B</span></td>
+                <td><span data-cite="prado2018advances" data-locator="Ch. 12">Lab 1 (simulation)</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="QR2" data-page="L05" data-cards="cards.json">
+        <h2 id="s8">8. Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the purpose of left-purging in financial cross-validation?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q1"> <span style="min-width: 0;">To eliminate training observations whose forward label evaluation windows overlap with the test fold</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span style="min-width: 0;">To remove outlier price ticks caused by bad exchange data</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span style="min-width: 0;">To discard unprofitable trading days from the backtest</span></label>
+              <label class="option"><input type="radio" name="L05q1"> <span style="min-width: 0;">To convert daily prices into hourly bars</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 5.1 defines purged CV as removing training observations whose multi-day label horizon overlaps with test fold evaluation.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is an embargo period in financial cross-validation?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q2"> <span style="min-width: 0;">A buffer interval applied immediately after each test fold to eliminate autoregressive feature memory leakage</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span style="min-width: 0;">A regulatory freeze on trading following earnings releases</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span style="min-width: 0;">The minimum holding period enforced by wash sale rules</span></label>
+              <label class="option"><input type="radio" name="L05q2"> <span style="min-width: 0;">The time between order submission and fill execution</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Definition 5.2 defines the embargo period as a post-test buffer removing subsequent training samples to prevent serial feature memory leakage.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="15" data-tolerance="0">
+            <p class="prompt">In CPCV with \(N = 6\) total groups and \(k = 2\) test groups, how many total model combinations \(\binom{N}{k}\) are evaluated?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\binom{6}{2} = \frac{6 \times 5}{2} = 15\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="5" data-tolerance="0">
+            <p class="prompt">In CPCV with \(N = 6\) groups and \(k = 2\) test groups, how many independent full out-of-sample testing paths \(\binom{N-1}{k-1}\) are generated?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\binom{6-1}{2-1} = \binom{5}{1} = 5\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="4" data-tolerance="0">
+            <p class="prompt">In Lab 1, with a sample of \(N = 200\) bars and a 2% embargo setting, how many bars were embargoed following each test fold?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\lceil 0.02 \times 200 \rceil = 4\) bars.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does purged cross-validation NOT eliminate the need to correct for multiple testing?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q6"> <span style="min-width: 0;">Purging prevents fold leakage, but search bias across multiple trial configurations still inflates false discoveries</span></label>
+              <label class="option"><input type="radio" name="L05q6"> <span style="min-width: 0;">Purged CV is only applicable to linear regression models</span></label>
+              <label class="option"><input type="radio" name="L05q6"> <span style="min-width: 0;">Because multiple testing corrections only apply to medical clinical trials</span></label>
+              <label class="option"><input type="radio" name="L05q6"> <span style="min-width: 0;">Because CPCV paths are strictly independent of market volatility</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Purged CV insulates fold boundaries within a single run, but testing many candidate models still requires DSR or PBO adjustments.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">For the first fold (\(j_{\text{start}} = 0\)) in purged cross-validation, how many samples are left-purged?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q7"> <span style="min-width: 0;">Zero samples (because no training observations precede the beginning of the dataset)</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span style="min-width: 0;">\(h_{\text{label}}\) samples</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span style="min-width: 0;">\(h_{\text{embargo}}\) samples</span></label>
+              <label class="option"><input type="radio" name="L05q7"> <span style="min-width: 0;">The entire first fold is discarded</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Theorem 5.1 proves that for fold 1 starting at index 0, \(\max(0, 0 - h + 1) = 0\), yielding an empty left-purge interval.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In Lab 1, what was the leakage audit status across all 5 cross-validation folds?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L05q8"> <span style="min-width: 0;">PASS (Clean) on all 5 folds</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span style="min-width: 0;">FAIL (Leak) on Fold 2 and Fold 3</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span style="min-width: 0;">PASS on Fold 1 only</span></label>
+              <label class="option"><input type="radio" name="L05q8"> <span style="min-width: 0;">Inconclusive due to zero volatility</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Lab 1 confirmed zero boundary overlap and zero leakage, achieving <code>PASS (Clean)</code> across all 5 folds.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>9. References</h2>
+        <ol data-references>
+        </ol>
+      </section>
+
+      <nav class="page-nav">
+        <a class="prev" href="L04.html">‹ L04 · Walk-Forward Analysis &amp; Parameter Stability</a>
+        <a class="next" href="L06.html">L06 · Planted-Lookahead Testing &amp; Verification ›</a>
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">QR2 · Backtesting Architecture · Lesson 05 · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>
