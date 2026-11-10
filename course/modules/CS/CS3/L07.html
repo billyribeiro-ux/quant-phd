@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS3" data-page="L07" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L07 · Columnar Storage and Parquet · CS3</title>
+  <meta name="description" content="Lesson 7 of CS3: Columnar storage architectures, projection pruning, the Apache Parquet file format, compression schemes, vectorized execution, and DuckDB analytical query processing. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS3 Data, Databases &amp; SQL</a><span class="sep">›</span>
+      <span>L07</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS3 · Lesson 7 of 8 · 8 study hours</p>
+        <h1>Columnar Storage and Parquet</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="database-index" href="L06.html#def-database-index">database index</a></li>
+          <li><strong>Introduces:</strong> columnar storage, Parquet format</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Quantitative analytical workloads are column-intensive. Calculating an average price, estimating a covariance matrix, or evaluating factor exposures scans millions of rows across only two or three columns out of a fifty-column table. Traditional row-oriented databases force the operating system to load every unneeded attribute into CPU cache, bottlenecking queries on I/O bandwidth. Columnar storage fundamentally reorders physical memory layout by storing contiguous vectors of homogeneous column data. Coupled with vectorized execution engines like DuckDB and compressed disk formats like Apache Parquet, columnar storage reduces physical I/O transfer by over eighty percent.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Row-Oriented vs Columnar Architecture</h2>
+      <p>Building on physical storage concepts from <a class="concept" data-concept="database-index" href="L06.html#def-database-index">database indexes</a>, columnar systems redefine memory organization.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 7.1 <span class="name">(Columnar Storage)</span></span>
+        <p><dfn id="def-columnar-storage" data-concept="columnar-storage">Columnar storage</dfn> (Decomposition Storage Model, DSM) stores all values of each column contiguously in memory and on disk, contrasting with row-oriented storage (N-ary Storage Model, NSM) where all attributes of a single tuple reside contiguously on a page. In a table of \(N\) rows and \(M\) columns, row storage stores values in sequence \((c_{1,1}, \dots, c_{1,M}), (c_{2,1}, \dots, c_{2,M}), \dots\), whereas columnar storage stores vectors \((c_{1,1}, \dots, c_{N,1}), \dots, (c_{1,M}, \dots, c_{N,M})\).</p>
+      </div>
+
+      <div class="block definition">
+        <span class="block-title">Definition 7.2 <span class="name">(Parquet Format)</span></span>
+        <p>The <dfn id="def-parquet-format" data-concept="parquet-format">Parquet format</dfn> is an open-source, columnar binary file format structured hierarchically:
+        <ol>
+          <li><strong>Row Groups:</strong> Horizontal partitions of rows (typically 100,000 to 1,000,000 rows each) enabling parallel reading.</li>
+          <li><strong>Column Chunks:</strong> Contiguous byte streams within each row group holding data for a single column.</li>
+          <li><strong>Data Pages:</strong> Indivisible units of compression and encoding (typically 1 MiB) within a column chunk.</li>
+          <li><strong>File Footer:</strong> Trailing metadata containing the full schema, page locations, and statistics (min/max/null counts) per chunk for predicate pushdown.</li>
+        </ol></p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 7.1 <span class="name">(DuckDB and Vectorized Execution)</span></span>
+        <p><span class="claim" data-grade="A" data-cite="raasveldt2019duckdb" data-locator="Section 1">DuckDB is an embeddable analytical database</span> running in-process without client-server socket overhead. DuckDB combines columnar storage with vectorized query execution, processing columnar arrays in fixed-size vector chunks (typically 2048 values) that fit directly within CPU L1/L2 caches, eliminating per-tuple interpretation dispatch.</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Projection Pruning and Compression</h2>
+      <p>The mathematical performance advantage of columnar architecture over row stores derives from projection pruning.</p>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 7.1 <span class="name">(Projection Pruning I/O Reduction Invariant)</span></span>
+        <p>Let a relation \(R\) have \(M\) columns with byte widths \(w_1, w_2, \dots, w_M\), such that total row width is \(W_{\text{row}} = \sum_{i=1}^M w_i\). For an analytical aggregation referencing attribute subset \(Q \subseteq \{1, \dots, M\}\), the theoretical physical bytes scanned under columnar layout \(B_{\text{col}}\) versus row layout \(B_{\text{row}}\) for \(N\) uncompressed rows satisfies:
+        \[
+        \frac{B_{\text{col}}}{B_{\text{row}}} = \frac{\sum_{j \in Q} w_j}{\sum_{i=1}^M w_i} < 1 \quad (\text{for all } Q \subsetneq \{1, \dots, M\}).
+        \]
+        The I/O bandwidth reduction factor is given by \(\rho = W_{\text{row}} / \sum_{j \in Q} w_j\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>In a row-oriented storage model, entire row tuples are serialized contiguously across disk pages. To evaluate any predicate or aggregation on attribute subset \(Q\), the storage subsystem must transfer entire page blocks into memory buffers, reading all \(W_{\text{row}}\) bytes per row: \(B_{\text{row}} = N \times W_{\text{row}} = N \sum_{i=1}^M w_i\).
+        In a columnar storage model, each column vector is stored in separate contiguous blocks. The query planner identifies that only columns \(j \in Q\) are required (projection pruning). The storage engine issues read requests strictly for the column chunks corresponding to \(Q\), reading \(B_{\text{col}} = N \sum_{j \in Q} w_j\).
+        Dividing \(B_{\text{col}}\) by \(B_{\text{row}}\) yields the ratio \(\sum_{j \in Q} w_j / \sum_{i=1}^M w_i\). Since all column widths \(w_i > 0\) and \(Q\) is a proper subset of all columns, this ratio is strictly less than 1, proving the invariant.</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 7.1 <span class="name">(Market Trade Price Aggregation)</span></span>
+        <p>Suppose a trade table contains 8 fields: <code>trade_id</code> (8B), <code>timestamp</code> (8B), <code>price</code> (8B), <code>qty</code> (4B), <code>venue</code> (4B), <code>trader</code> (4B), <code>account</code> (4B), and <code>flags</code> (4B), totaling \(W_{\text{row}} = 44\) bytes.
+        Evaluating <code>SELECT AVG(price) FROM trades</code> requires only the 8-byte <code>price</code> column.
+        The I/O ratio is \(8 / 44 \approx 0.1818\), achieving an exact 5.50x I/O reduction factor and pruning 81.8% of memory bus traffic.</p>
+      </div>
+
+      <section class="lab" id="lab-CS3-L07-1" data-runtime="python">
+        <h3>Lab 1 · Columnar Storage vs Row Layout Projection Pruning</h3>
+        <p class="hypothesis">Verifies that evaluating an average price query over 10,000 simulated trade records reads exactly 440,000 bytes in a row store versus 80,000 bytes in a columnar store, achieving an exact 5.50x bandwidth reduction factor.</p>
+        <pre><code class="language-python" data-run>"""CS3 Lesson 7 Inline Lab 1: Columnar storage vs row layout projection pruning.
+
+Measures memory buffers and bytes scanned for a single-column analytical aggregation
+under row-oriented (NSM) versus columnar (DSM) physical layouts.
+Data: SIMULATED trade records.
+"""
+
+from __future__ import annotations
+
+import struct
+from typing import NamedTuple
+
+
+class RowTrade(NamedTuple):
+    trade_id: int  # int64 (8 bytes)
+    timestamp_ns: int  # int64 (8 bytes)
+    price_cents: int  # int64 (8 bytes)
+    qty: int  # int32 (4 bytes)
+    venue_id: int  # int32 (4 bytes)
+    trader_id: int  # int32 (4 bytes)
+    account_id: int  # int32 (4 bytes)
+    flags: int  # int32 (4 bytes)
+    # Total row size: 8 + 8 + 8 + 4 + 4 + 4 + 4 + 4 = 44 bytes
+
+
+ROW_FORMAT = "=qqqiiiii"
+ROW_SIZE = struct.calcsize(ROW_FORMAT)  # 44 bytes
+
+
+def simulate_row_store(n_rows: int) -&gt; bytes:
+    """Serialize n_rows into a contiguous row-major binary buffer."""
+    buf = bytearray()
+    for i in range(n_rows):
+        packed = struct.pack(
+            ROW_FORMAT,
+            100000 + i,  # trade_id
+            1600000000000000000 + i * 1000,  # timestamp_ns
+            15025 + (i % 50),  # price_cents
+            100 + (i % 10) * 10,  # qty
+            1,  # venue_id
+            42,  # trader_id
+            999,  # account_id
+            0,  # flags
+        )
+        buf.extend(packed)
+    return bytes(buf)
+
+
+def simulate_column_store(n_rows: int) -&gt; dict[str, bytes]:
+    """Serialize n_rows into individual column vectors."""
+    trade_ids = bytearray()
+    timestamps = bytearray()
+    prices = bytearray()
+    qtys = bytearray()
+    venues = bytearray()
+    traders = bytearray()
+    accounts = bytearray()
+    flags = bytearray()
+
+    for i in range(n_rows):
+        trade_ids.extend(struct.pack("=q", 100000 + i))
+        timestamps.extend(struct.pack("=q", 1600000000000000000 + i * 1000))
+        prices.extend(struct.pack("=q", 15025 + (i % 50)))
+        qtys.extend(struct.pack("=i", 100 + (i % 10) * 10))
+        venues.extend(struct.pack("=i", 1))
+        traders.extend(struct.pack("=i", 42))
+        accounts.extend(struct.pack("=i", 999))
+        flags.extend(struct.pack("=i", 0))
+
+    return {
+        "trade_id": bytes(trade_ids),
+        "timestamp_ns": bytes(timestamps),
+        "price_cents": bytes(prices),
+        "qty": bytes(qtys),
+        "venue_id": bytes(venues),
+        "trader_id": bytes(traders),
+        "account_id": bytes(accounts),
+        "flags": bytes(flags),
+    }
+
+
+def main() -&gt; None:
+    n_rows = 10000
+    row_buffer = simulate_row_store(n_rows)
+    column_store = simulate_column_store(n_rows)
+
+    print(f"Total simulated rows: {n_rows}")
+    print(f"Row layout record size: {ROW_SIZE} bytes")
+    print(f"Total row buffer size: {len(row_buffer)} bytes ({len(row_buffer) / 1024:.1f} KiB)")
+
+    # Analytical query: SELECT AVG(price_cents) FROM trades
+    # 1. In row-store: must stream all records; each price requires stride through row buffer
+    row_bytes_read = len(row_buffer)  # I/O subsystem must scan entire row blocks
+    price_sum_row = 0
+    for i in range(n_rows):
+        offset = i * ROW_SIZE
+        # price_cents is 3rd field: offset + 8 (trade_id) + 8 (timestamp_ns) = offset + 16
+        price_cents = struct.unpack_from("=q", row_buffer, offset + 16)[0]
+        price_sum_row += price_cents
+    avg_price_row = price_sum_row / n_rows
+
+    # 2. In column-store: projection pruning reads ONLY the price_cents vector
+    price_vector = column_store["price_cents"]
+    column_bytes_read = len(price_vector)
+    price_sum_col = 0
+    for i in range(n_rows):
+        price_cents = struct.unpack_from("=q", price_vector, i * 8)[0]
+        price_sum_col += price_cents
+    avg_price_col = price_sum_col / n_rows
+
+    assert avg_price_row == avg_price_col
+
+    print(f"Calculated average price: {avg_price_row:.2f} cents")
+    print(f"Row store bytes scanned: {row_bytes_read} bytes")
+    print(f"Column store bytes scanned: {column_bytes_read} bytes")
+    print(f"I/O Reduction Factor: {row_bytes_read / column_bytes_read:.2f}x")
+    print(f"Exact theoretical savings: {(1.0 - column_bytes_read / row_bytes_read) * 100:.1f}% bandwidth pruned")
+    assert column_bytes_read == n_rows * 8
+    assert row_bytes_read == n_rows * 44
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Total simulated rows: 10000
+Row layout record size: 44 bytes
+Total row buffer size: 440000 bytes (429.7 KiB)
+Calculated average price: 15049.50 cents
+Row store bytes scanned: 440000 bytes
+Column store bytes scanned: 80000 bytes
+I/O Reduction Factor: 5.50x
+Exact theoretical savings: 81.8% bandwidth pruned</pre>
+        <p class="interpretation">The benchmark confirms that columnar projection pruning eliminates 81.8% of data transfers while reproducing the exact identical aggregated average price.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">3</span>Where the Canon Breaks</h2>
+      <p>Columnar storage introduces fundamental trade-offs that make it unsuitable for transactional workloads:</p>
+      <ul>
+        <li><strong>Prohibitive Single-Row Insert Latency:</strong> In an OLTP row store, inserting a new trade appends one 44-byte block to the end of the active page. In a columnar store, appending a single row requires seeking and writing to \(M\) distinct column files or chunks, multiplying disk head movements and transaction commit latency by \(M\). Columnar engines require batch ingestion buffers.</li>
+        <li><strong>Dictionary Page Overflow on Floats:</strong> Columnar engines achieve high compression using dictionary encoding on repetitive strings or integers. Real-world financial floating-point prices and fractional interest rates have high entropy with near-unique trailing digits, causing dictionary tables to overflow and reverting to raw bit storage without compression gains.</li>
+        <li><strong>Update and Delete Penalties:</strong> Updating a single cell in a Parquet file cannot be done in place without decompressing and rewriting the entire row group. Analytical columnar engines require copy-on-write delta files or merge-on-read architectures.</li>
+      </ul>
+
+      <section id="misconceptions">
+        <h2 id="s4"><span class="section-number">4</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Columnar databases are always faster than row databases for all queries.</p>
+            <p>Columnar databases are superior for analytical scans across many rows and few columns (OLAP). For point queries selecting an entire row by primary key (<code>SELECT * WHERE id = 123</code>), columnar stores must reconstruct the tuple from \(M\) separate column vectors, performing significantly worse than a row store.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Parquet files require an external database server to be read.</p>
+            <p>Parquet is a self-contained, serverless binary file format. All schema, column chunks, data pages, and statistics are stored inside the file itself. In-process engines like DuckDB or embedded Python readers parse Parquet files directly from local disk or cloud object storage without any active daemon.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Compressing columns with gzip or snappy is all that columnar formats do.</p>
+            <p>Generic byte compressors (gzip, snappy) operate on raw byte streams. Columnar engines apply lightweight column-aware encodings (dictionary encoding, run-length encoding, delta encoding, bit-packing) that allow database execution engines to evaluate filter predicates directly on encoded vectors without decompressing.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s5"><span class="section-number">5</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+
+          <div class="problem" id="p7-1">
+            <p class="prompt">A historical trade table has 30 columns totaling 120 bytes per row. An algorithm scans 100,000,000 rows to calculate the sum of trading volume (a single 8-byte column). Calculate the total gigabytes transferred under: (a) a row store; and (b) a columnar store.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>(a) In a row store: \(100 \times 10^6 \times 120 \text{ bytes} = 1.2 \times 10^{10} \text{ bytes} = 12.0 \text{ GB}\). (b) In a columnar store: \(100 \times 10^6 \times 8 \text{ bytes} = 8.0 \times 10^8 \text{ bytes} = 0.8 \text{ GB}\) (800 MB). Columnar projection pruning reduces I/O transfer by 11.2 GB (a 15x reduction factor).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p7-2">
+            <p class="prompt">Explain how a Parquet file's footer statistics (min and max values per column chunk) enable predicate pushdown for a query: <code>WHERE trade_date = '2020-05-15'</code>.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The reader inspects the footer metadata before loading any data pages. For each row group, it checks whether the query target ('2020-05-15') falls within the recorded \([\min(\text{trade\_date}), \max(\text{trade\_date})]\) interval. If the target date is strictly less than min or greater than max, the query engine skips the entire row group, avoiding reading any compressed data pages from disk.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p7-3">
+            <p class="prompt">A column of 1,000,000 trade venue strings contains only three distinct values: 'NASDAQ', 'NYSE', and 'BATS'. Calculate the uncompressed byte size versus a 2-bit dictionary-encoded bit-packed vector.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Uncompressed strings averaging 5 bytes require \(1{,}000{,}000 \times 5 = 5{,}000{,}000\) bytes (5.0 MB). With dictionary encoding, 3 distinct values require \(\lceil \log_2 3 \rceil = 2\) bits per row. Total bit-packed storage is \(1{,}000{,}000 \times 2 \text{ bits} = 2{,}000{,}000 \text{ bits} = 250{,}000\) bytes (250 KB), plus negligible dictionary table overhead. Dictionary encoding achieves a 20x compression ratio.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+
+          <div class="problem" id="p7-4">
+            <p class="prompt">Prove that run-length encoding (RLE) on a sorted column with \(U\) distinct contiguous runs achieves a compression ratio bounded by \(O(N / U)\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In an uncompressed column of \(N\) elements of size \(w\) bytes, total size is \(S_{\text{raw}} = N \cdot w\). Run-length encoding stores each contiguous run as a pair \((\text{value}, \text{count})\), requiring \(w + w_{\text{count}}\) bytes per run. For \(U\) distinct runs, total encoded size is \(S_{\text{RLE}} = U (w + w_{\text{count}})\). The compression ratio is \(S_{\text{raw}} / S_{\text{RLE}} = (N \cdot w) / [U (w + w_{\text{count}})] = \frac{w}{w + w_{\text{count}}} \cdot \frac{N}{U} = O(N / U)\). For highly repetitive data where \(U \ll N\), RLE achieves massive linear compression proportional to average run length \(N/U\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p7-5">
+            <p class="prompt">Prove that tuple reconstruction cost for \(M\) columns under columnar storage requires \(M\) distinct memory gathers, and establish the conditions under which row stores outperform column stores.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In a columnar store, each column vector \(C_j\) is stored in a separate memory buffer. To materialize a complete row tuple \(t_i = (C_1[i], \dots, C_M[i])\), the CPU must issue \(M\) distinct memory read operations at non-contiguous memory offsets \(C_j + i \cdot w_j\). In a row store, the tuple resides contiguously at offset \(i \cdot W_{\text{row}}\), loading all \(M\) attributes in 1 memory fetch (or 1 cache line). If a query projects \(k\) columns, columnar requires \(k\) memory gathers. When \(k / M\) approaches 1 and the query selects few rows (point lookups), the cache-locality penalty of \(M\) scattered gathers exceeds the sequential row fetch cost, proving that row stores outperform column stores for full-tuple point lookups.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p7-6">
+            <p class="prompt">Prove that delta encoding on monotonically increasing integer timestamps converts unbounded dynamic range into a bounded difference domain.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let raw timestamps be strictly increasing: \(T_0 < T_1 < \dots < T_N\). In raw representation, each timestamp requires 64 bits to span historical epochs (\(0 \le T_i < 2^{64}\)). Delta encoding stores the initial anchor \(T_0\) and consecutive forward differences \(\Delta_i = T_i - T_{i-1} > 0\). If maximum sampling interval is bounded by \(\Delta_{\max}\), then \(\Delta_i \in [1, \Delta_{\max}]\). Each delta can be packed in \(\lceil \log_2(\Delta_{\max}) \rceil\) bits. For tick data sampled at microsecond intervals with \(\Delta_{\max} \le 1000\), each timestamp is compressed from 64 bits down to 10 bits, proving domain boundedness.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+
+          <div class="problem" id="p7-7">
+            <p class="prompt">A quantitative firm migrates a 5-terabyte CSV tick dataset to compressed Apache Parquet with Snappy compression. If Parquet reduces physical disk footprint to 600 gigabytes, calculate the compression ratio and quantify the monthly cloud object storage cost reduction at \$0.023 per GB/month.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Initial storage is 5,000 GB, and compressed Parquet storage is 600 GB. The compression ratio is \(5000 / 600 \approx 8.33\)x (an 88.0% space reduction). Initial monthly storage cost is \(5000 \times \$0.023 = \$115.00\). New storage cost is \(600 \times \$0.023 = \$13.80\). Monthly cost reduction is \(\$115.00 - \$13.80 = \$101.20\) per month (88% cost savings).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p7-8">
+            <p class="prompt">An analytical query in DuckDB computes <code>SUM(volume)</code> across 50 million trades stored in Parquet. The file is split into 50 row groups of 1 million rows each. Predicate pushdown on <code>trade_date</code> eliminates 45 of the 50 row groups. Calculate the percentage of data pages skipped without reading from disk.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Total row groups is 50. The query optimizer skips 45 row groups using footer min/max statistics. The percentage of skipped data is \(45 / 50 = 0.90\) or 90.0%. Only 5 row groups (10% of the dataset) are decompressed and scanned into memory.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p7-9">
+            <p class="prompt">A portfolio backtesting script reads equity prices using Python <code>csv.reader</code> versus vectorized DuckDB querying the equivalent Parquet table. The CSV scan takes 45.0 seconds, while DuckDB completes in 0.9 seconds. Calculate the execution speedup factor.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Execution time drops from 45.0 seconds to 0.9 seconds. The speedup factor is \(45.0 / 0.9 = 50.0\)x. Vectorized C++ columnar decoding, multithreaded decompression, and SIMD projection eliminate Python string parsing overhead.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+
+          <div class="problem" id="p7-10">
+            <p class="prompt">Analyze why in-process embeddable analytical databases (such as DuckDB) eliminate the primary performance bottlenecks of client-server database architectures (such as PostgreSQL) for data science workloads.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Client-server databases communicate over TCP loopback sockets or Unix domain sockets. To transfer 10 million rows to a Python process, PostgreSQL must serialize records into network wire protocol packets, incur OS kernel context switches, send data through socket buffers, and deserialize objects in Python memory. DuckDB runs embedded in the Python process memory space. Query results are written directly into Apache Arrow memory pointers shared with NumPy and pandas with zero socket overhead, zero serialization, and zero memory copying.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p7-11">
+            <p class="prompt">Evaluate the architectural trade-offs between Apache Arrow (in-memory columnar specification) and Apache Parquet (on-disk storage format) in modern quantitative pipelines.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Apache Parquet is optimized for cold on-disk storage: it uses heavy compression (snappy, zstd), complex variable-length bit-packing, and deep hierarchical row groups that must be decoded before CPU processing. Apache Arrow is an uncompressed (or lightly compressed) in-memory columnar format optimized for SIMD vector execution and zero-copy sharing across programming languages (C++, Python, Rust). A production quant pipeline stores historical data in Parquet on disk and memory-maps or decodes it into Arrow tables in RAM for model training.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p7-12">
+            <p class="prompt">How does column chunk dictionary encoding enable filter evaluation directly on compressed data vectors without decompressing underlying string payloads?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When a column chunk is dictionary-encoded, string values are replaced by small integer IDs (e.g., 0, 1, 2) and an auxiliary dictionary table maps IDs to string values. To evaluate <code>WHERE symbol = 'AAPL'</code>, the query engine looks up 'AAPL' once in the dictionary table, finding ID = 1. It then executes a vectorized equality scan directly on the array of integer IDs (<code>id == 1</code>) using hardware vector instructions. Because integer comparison is orders of magnitude faster than string comparison and strings never need decoding, query throughput increases dramatically.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s6"><span class="section-number">6</span>Key-Results Table</h2>
+        <table class="key-results">
+          <thead>
+            <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>DuckDB architecture: embeddable analytical database with vectorized query execution</td>
+              <td><span class="grade" data-grade="A">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="raasveldt2019duckdb" data-locator="Section 1">Raasveldt &amp; Mühleisen (2019), SIGMOD, §1</span></td>
+            </tr>
+            <tr>
+              <td>Projection pruning bandwidth bound: I/O reduction ratio equals queried width over total width</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 7.1 (Projection pruning bound)</td>
+            </tr>
+            <tr>
+              <td>Run-length encoding compression ratio: bounded by O(N / U) on sorted column runs</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Problem 7.4 (RLE run bound)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS3" data-page="L07" data-cards="cards.json">
+        <h2 id="s7"><span class="section-number">7</span>Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the physical storage layout difference between row stores (NSM) and columnar stores (DSM)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q1"> <span>Row stores keep all attributes of a tuple together; columnar stores keep all values of a column together</span></label>
+              <label class="option"><input type="radio" name="L07q1"> <span>Row stores only run in memory; columnar stores only run on tape drives</span></label>
+              <label class="option"><input type="radio" name="L07q1"> <span>Row stores do not support primary keys</span></label>
+              <label class="option"><input type="radio" name="L07q1"> <span>Columnar stores do not support numeric data</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Row stores serialize full tuples contiguously; columnar stores serialize each column vector contiguously.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is projection pruning in columnar databases?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q2"> <span>Reading only the storage blocks for columns referenced by the query</span></label>
+              <label class="option"><input type="radio" name="L07q2"> <span>Deleting unused tables from disk</span></label>
+              <label class="option"><input type="radio" name="L07q2"> <span>Dropping all NULL rows from query output</span></label>
+              <label class="option"><input type="radio" name="L07q2"> <span>Converting floating-point numbers to integers</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Projection pruning avoids reading column chunks from disk when those columns are not needed by the query.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Where does a Parquet file store the schema and column chunk min/max statistics?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q3"> <span>In the File Footer at the end of the file</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span>In a separate .txt file</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span>In the operating system registry</span></label>
+              <label class="option"><input type="radio" name="L07q3"> <span>In the master database catalog server</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Parquet stores file metadata and chunk statistics in the file footer so readers can seek directly to metadata first.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="80" data-tolerance="0">
+            <p class="prompt">If a table has total row width of 50 bytes and an analytical query references 10 bytes of columns, what percentage of I/O transfer is pruned?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Queried ratio is 10/50 = 20%. Pruned percentage is 100% - 20% = 80%.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do columnar stores compress data much more effectively than row stores?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q5"> <span>Values in a single column share identical data types, similar magnitudes, and repetitive patterns</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span>Columnar databases delete duplicate rows automatically</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span>Columnar formats use 16-bit floating-point math</span></label>
+              <label class="option"><input type="radio" name="L07q5"> <span>Row stores do not support compression algorithms</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Homogeneous data vectors exhibit high redundancy, enabling specialized encodings like RLE, delta, and dictionary compression.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What query workload is poorly suited for a columnar database?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q6"> <span>High-frequency single-row transactional inserts and updates</span></label>
+              <label class="option"><input type="radio" name="L07q6"> <span>Calculating the average price across 10 million rows</span></label>
+              <label class="option"><input type="radio" name="L07q6"> <span>Computing correlation between two factor returns</span></label>
+              <label class="option"><input type="radio" name="L07q6"> <span>Filtering a table on date ranges</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Inserting or updating single rows requires modifying multiple separate column chunks, creating high write latency.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the role of Apache Arrow in modern data engineering?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q7"> <span>A standardized in-memory columnar format enabling zero-copy data sharing across execution engines</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span>A relational database replacement for SQLite</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span>A distributed file system protocol</span></label>
+              <label class="option"><input type="radio" name="L07q7"> <span>A web browser rendering framework</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Arrow provides an in-memory columnar layout for fast SIMD processing and zero-copy data sharing between languages.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does DuckDB execute queries differently from traditional row-at-a-time iterators?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L07q8"> <span>It processes data in vectorized columnar batches that fit inside CPU cache lines</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span>It translates SQL queries into Python loops</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span>It requires remote server clusters to execute any query</span></label>
+              <label class="option"><input type="radio" name="L07q8"> <span>It converts all queries into nested-loop scans</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>DuckDB uses vectorized execution vectors (e.g. 2048 values) to maximize CPU cache locality and instruction pipelining.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="raasveldt2019duckdb"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L06.html"><span class="dir">Previous</span>L06 Database Indexes</a>
+        <a class="next" href="L08.html"><span class="dir">Next</span>L08 The Data Manifest</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS3 · Data, Databases &amp; SQL · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

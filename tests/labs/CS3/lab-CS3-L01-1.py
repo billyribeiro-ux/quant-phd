@@ -105,5 +105,4 @@ def main() -> None:
     print(f"Relational closure verified: {is_relation}")
 
 
-if __name__ == "__main__":
-    main()
+main()

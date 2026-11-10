@@ -372,7 +372,9 @@ def open_store(path: str, *, engine: str = "sqlite") -> Store:
         return Store(conn)
     if engine == "duckdb":
         try:
-            import duckdb  # noqa: F401
+            import importlib
+
+            importlib.import_module("duckdb")
         except ImportError as exc:
             raise ValueError(f"duckdb engine cannot be imported: {exc}") from exc
         raise ValueError("duckdb engine is not configured on grader path")

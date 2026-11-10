@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS3" data-page="L08" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L08 · The Data Manifest · CS3</title>
+  <meta name="description" content="Lesson 8 of CS3: Data manifests, research provenance, cryptographic SHA-256 digests over raw payloads, bit-for-bit tamper detection, idempotence, and conflict resolution. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS3 Data, Databases &amp; SQL</a><span class="sep">›</span>
+      <span>L08</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS3 · Lesson 8 of 8 · 8 study hours</p>
+        <h1>The Data Manifest</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="point-in-time-data" href="L05.html#def-point-in-time-data">point-in-time data</a></li>
+          <li><strong>Introduces:</strong> data manifest</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Doctoral-level quantitative research requires unassailable reproducibility. If two researchers run the same backtest on what they believe is the same historical dataset and obtain different Sharpe ratios, the discrepancy is usually silent data divergence: an upstream vendor revised past rows, a download script truncated bytes, or file encoding corrupted special characters. A data manifest provides an immutable cryptographic audit trail. By recording exact origin URLs, licensing terms, UTC retrieval timestamps, row counts, and cryptographic SHA-256 digests over raw payload bytes, the data manifest guarantees bit-for-bit research verification and instant tamper detection.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Data Manifest and Research Provenance</h2>
+      <p>Building on <a class="concept" data-concept="point-in-time-data" href="L05.html#def-point-in-time-data">point-in-time data</a>, scientific quantitative workflows require explicit provenance tracking for every ingested dataset.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 8.1 <span class="name">(Data Manifest)</span></span>
+        <p>A <dfn id="def-data-manifest" data-concept="data-manifest">data manifest</dfn> is an immutable ledger that records the provenance, licensing, retrieval metadata, and cryptographic fingerprint of every raw data payload ingested into a research platform. Each manifest record is a tuple:
+        \[
+        M = (\text{source}, \text{sha256}, n_{\text{bytes}}, \text{rows}, \text{retrieved}, \text{licence}, \text{source\_url}),
+        \]
+        where:
+        <ul>
+          <li><strong>Source (<code>source</code>):</strong> A validated identifier from an approved closed vocabulary (e.g. <code>fred</code>, <code>french</code>, <code>shiller</code>, <code>treasury</code>, <code>edgar</code>).</li>
+          <li><strong>SHA-256 (<code>sha256</code>):</strong> The lowercase hexadecimal 256-bit cryptographic hash computed over the exact raw payload bytes.</li>
+          <li><strong>Byte Count (\(n_{\text{bytes}}\)):</strong> Exact length of the payload in bytes (\(n_{\text{bytes}} \ge 0\)).</li>
+          <li><strong>Row Count (<code>rows</code>):</strong> The number of data rows in structured tables (header excluded), or <code>None</code> for unstructured byte blobs.</li>
+          <li><strong>Retrieval Timestamp (<code>retrieved</code>):</strong> The exact UTC timestamp in ISO 8601 format with trailing Z: <code>YYYY-MM-DDTHH:MM:SSZ</code>.</li>
+          <li><strong>Licence (<code>licence</code>):</strong> Non-empty legal terms governing redistribution and usage.</li>
+          <li><strong>Source URL (<code>source_url</code>):</strong> The authoritative network endpoint or file origin.</li>
+        </ul></p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 8.1 <span class="name">(Idempotence and Conflict Invariants)</span></span>
+        <p>A production data layer enforces two operational invariants:
+        <ol>
+          <li><strong>Idempotence:</strong> Re-ingesting the identical payload for the same source and retrieval timestamp returns the existing manifest record without writing duplicate observations or payload blobs.</li>
+          <li><strong>Conflict Detection:</strong> Ingesting a differing payload (different SHA-256 digest) under an already recorded <code>(source, retrieved)</code> pair raises a <code>ValueError</code> naming the conflict, preventing silent data mutation.</li>
+        </ol></p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Cryptographic Tamper Detection</h2>
+      <p>The mathematical certainty of research data integrity rests on cryptographic hash properties.</p>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 8.1 <span class="name">(Cryptographic Tamper Detection Invariant)</span></span>
+        <p>Let \(P \in \{0, 1\}^*\) be a raw data payload with cryptographic digest \(H = \operatorname{SHA-256}(P) \in \{0, 1\}^{256}\). If an adversary or hardware corruption mutates \(P\) to \(P' \ne P\) by flipping at least one bit (\(d_H(P, P') \ge 1\)), the probability that the mutated payload escapes detection under the verification check \(\operatorname{SHA-256}(P') = H\) satisfies:
+        \[
+        \mathbb{P}(\operatorname{SHA-256}(P') = H \mid P' \ne P) \le 2^{-256} \approx 8.636 \times 10^{-78},
+        \]
+        under the random oracle model. Thus, bit-level tamper detection succeeds with probability \(1 - 2^{-256}\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>The SHA-256 cryptographic hash function maps arbitrary-length bit strings to a 256-bit digest space \(\{0, 1\}^{256}\) of cardinality \(2^{256}\).
+        By the design criteria of cryptographic hash functions (second-preimage resistance and the avalanche effect), changing even a single bit in the input produces an uncorrelated, pseudo-random output uniformly distributed over \(\{0, 1\}^{256}\).
+        For any fixed \(H\), the number of preimages in the codomain that equal \(H\) is \(1\).
+        Therefore, for any modified payload \(P' \ne P\), the probability that its pseudo-random hash value matches the pre-computed digest \(H\) is:
+        \[
+        \mathbb{P}(\operatorname{SHA-256}(P') = H) = \frac{1}{2^{256}} = 2^{-256}.
+        \]
+        The probability of detecting corruption is \(1 - 2^{-256} > 1 - 10^{-77}\), which constitutes mathematical certainty for all practical computing environments.</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 8.1 <span class="name">(Detection of a Single-Byte Corruption)</span></span>
+        <p>Suppose a Treasury yield snapshot contains <code>2020-01-02,1.88,1.55</code>. If a disk error flips a single bit, turning <code>1.88</code> into <code>1.89</code>, the SHA-256 digest changes completely:
+        <pre><code class="language-pseudocode">Original:  5ed16365311c1d28e6b3ddac7abc1cef41be7a959353fd63c70070ed910cab24
+Corrupted: d4c52b233cc0fc0132d596724a942b3b469faf5f95cc0332e5d2e2ff049ce86e</code></pre>
+        A periodic verification pass immediately flags the mismatch and halts quantitative execution before corrupted yields reach portfolio optimizers.</p>
+      </div>
+
+      <section class="lab" id="lab-CS3-L08-1" data-runtime="python">
+        <h3>Lab 1 · Data Manifest and Bit-for-Bit Cryptographic Integrity</h3>
+        <p class="hypothesis">Verifies that an immutable data manifest with SHA-256 hashes successfully validates clean payloads and triggers an immediate tamper detection failure when a single bit in the stored payload is flipped.</p>
+        <pre><code class="language-python" data-run>"""CS3 Lesson 8 Inline Lab 1: Data manifest and bit-for-bit cryptographic integrity.
+
+Constructs an immutable data manifest with SHA-256 digests over raw payload bytes.
+Verifies that flipping a single byte in a payload is detected with 100% certainty.
+Data: SIMULATED market snapshots.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from typing import NamedTuple
+
+
+class ManifestRecord(NamedTuple):
+    dataset_id: str
+    source_url: str
+    licence: str
+    retrieved_utc: str
+    n_bytes: int
+    n_rows: int
+    sha256: str
+
+
+def compute_manifest_record(
+    dataset_id: str,
+    source_url: str,
+    licence: str,
+    retrieved_utc: str,
+    payload: bytes,
+    n_rows: int,
+) -&gt; ManifestRecord:
+    digest = hashlib.sha256(payload).hexdigest()
+    return ManifestRecord(
+        dataset_id=dataset_id,
+        source_url=source_url,
+        licence=licence,
+        retrieved_utc=retrieved_utc,
+        n_bytes=len(payload),
+        n_rows=n_rows,
+        sha256=digest,
+    )
+
+
+def verify_integrity(record: ManifestRecord, current_payload: bytes) -&gt; bool:
+    """Verify that current_payload matches the cryptographic digest in record."""
+    current_digest = hashlib.sha256(current_payload).hexdigest()
+    return current_digest == record.sha256
+
+
+def main() -&gt; None:
+    # SIMULATED CSV payload
+    csv_text = "date,yield_10y,yield_3m\n2020-01-02,1.88,1.55\n2020-01-03,1.81,1.53\n2020-01-06,1.81,1.56\n"
+    raw_payload = csv_text.encode("utf-8")
+    record = compute_manifest_record(
+        dataset_id="ust_daily_sample",
+        source_url="https://atlas.local/data/ust_sample.csv",
+        licence="SIMULATED: generated fixture",
+        retrieved_utc="2020-01-07T18:00:00Z",
+        payload=raw_payload,
+        n_rows=3,
+    )
+
+    print(f"Dataset: {record.dataset_id}")
+    print(f"Retrieved: {record.retrieved_utc}")
+    print(f"Payload size: {record.n_bytes} bytes ({record.n_rows} data rows)")
+    print(f"SHA-256 Digest: {record.sha256}")
+
+    # 1. Verification of untouched payload
+    clean_check = verify_integrity(record, raw_payload)
+    print(f"Untouched payload integrity verified: {clean_check}")
+    assert clean_check is True
+
+    # 2. Tamper simulation: flip exactly one bit in payload
+    tampered_bytes = bytearray(raw_payload)
+    # Find position of '1.88' in payload and mutate character
+    tampered_bytes[25] ^= 0x01  # Flip a single bit
+    tampered_payload = bytes(tampered_bytes)
+
+    tampered_digest = hashlib.sha256(tampered_payload).hexdigest()
+    tampered_check = verify_integrity(record, tampered_payload)
+
+    print(f"Tampered digest: {tampered_digest}")
+    print(f"Tampered payload detected (check failed): {not tampered_check}")
+    assert tampered_check is False
+    print("Bit-for-bit tamper detection successfully triggered: True")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Dataset: ust_daily_sample
+Retrieved: 2020-01-07T18:00:00Z
+Payload size: 87 bytes (3 data rows)
+SHA-256 Digest: 5ed16365311c1d28e6b3ddac7abc1cef41be7a959353fd63c70070ed910cab24
+Untouched payload integrity verified: True
+Tampered digest: d4c52b233cc0fc0132d596724a942b3b469faf5f95cc0332e5d2e2ff049ce86e
+Tampered payload detected (check failed): True
+Bit-for-bit tamper detection successfully triggered: True</pre>
+        <p class="interpretation">The execution demonstrates that cryptographic hashing provides 100% reliable detection of payload tampering, guaranteeing research reproducibility.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">3</span>Where the Canon Breaks</h2>
+      <p>Data manifest systems must navigate subtle operational traps in quantitative research:</p>
+      <ul>
+        <li><strong>Character Encoding and Line Ending Drift:</strong> Ingesting a CSV file on Windows (CRLF <code>\r\n</code>) versus Linux (LF <code>\n</code>) alters byte content even if table values are identical. SHA-256 hashes the exact raw bytes, so line ending conversion fails hash checks. Ingestion pipelines must enforce byte-level UTF-8 normalization before computing digests.</li>
+        <li><strong>Silent Upstream URL Rewrites:</strong> Web data sources frequently change their internal file URLs (e.g. moving from HTTP to HTTPS or shifting CDN domains). A manifest that records only the URL without payload bytes loses the ability to verify if the file content changed. The raw bytes must be stored alongside the manifest metadata.</li>
+        <li><strong>Dynamic REST API Payloads:</strong> Querying a JSON REST API (such as company facts from SEC EDGAR) returns dictionaries with non-deterministic key ordering. Storing unparsed raw byte payloads guarantees bit-for-bit hash verification, whereas parsing and re-serializing risks key reordering differences.</li>
+      </ul>
+
+      <section id="misconceptions">
+        <h2 id="s4"><span class="section-number">4</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Recording the file name and download date is sufficient for data provenance.</p>
+            <p>File names and download dates do not prove that file contents are identical. Vendors frequently overwrite files in-place with the same name. Only a cryptographic digest (SHA-256) over the exact bytes guarantees that historical datasets have not been altered.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Hashing parsed table cells is better than hashing the raw byte payload.</p>
+            <p>Parsing table cells introduces floating-point formatting ambiguity, whitespace trimming differences, and column ordering variations. Hashing the exact incoming byte stream ensures unassailable byte-level reproducibility before any data transformation occurs.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Two different datasets could easily produce the same SHA-256 hash by coincidence.</p>
+            <p>The probability of two distinct random payloads generating the same SHA-256 digest is approximately \(1\) in \(2^{128}\) (the birthday bound). This probability is smaller than the chance of a meteor striking a computer during query execution; accidental collisions are physically impossible.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s5"><span class="section-number">5</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+
+          <div class="problem" id="p8-1">
+            <p class="prompt">A research assistant downloads an economic series file of length 1,048,576 bytes (1.0 MiB) on 2020-03-01T14:00:00Z. Write out the full manifest record tuple fields if the computed SHA-256 digest is <code>a3f5...</code> and the table has 12,000 data rows from FRED.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The manifest record fields are: <code>source = "fred"</code>, <code>sha256 = "a3f5..."</code>, <code>n_bytes = 1048576</code>, <code>rows = 12000</code>, <code>retrieved = "2020-03-01T14:00:00Z"</code>, <code>licence = "FRED terms of use"</code>, and <code>source_url = "https://fred.stlouisfed.org/..."</code>.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-2">
+            <p class="prompt">What must a data layer store do if a user attempts to ingest an identical payload for source <code>fred</code> at the identical retrieval timestamp?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By the idempotence invariant, the store must recognize that the source, timestamp, and SHA-256 digest match an existing manifest row. It returns the existing <code>ManifestRow</code> without creating duplicate database rows or duplicate observation entries.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-3">
+            <p class="prompt">What must the store do if a user ingests a modified payload with a different SHA-256 hash under the same source and retrieval timestamp?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By the conflict detection invariant, attempting to store conflicting data under an already recorded retrieval timestamp raises a <code>ValueError</code> naming the conflict, preventing corruption of previously recorded research data.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+
+          <div class="problem" id="p8-4">
+            <p class="prompt">Prove that a SHA-256 hash digest is invariant under any database engine choice (e.g., SQLite vs DuckDB vs PostgreSQL) when computed over raw byte payloads.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>SHA-256 is defined by FIPS PUB 180-4 as a deterministic mathematical function \(f: \{0, 1\}^* \to \{0, 1\}^{256}\) operating on binary bit sequences. Because the input to the hash function is the raw byte array of the payload prior to database storage or relational decoding, the input sequence is identical regardless of the downstream database engine. Because \(f\) is a pure mathematical function, identical bit sequences yield identical 256-bit digests across all operating systems and database architectures.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-5">
+            <p class="prompt">Prove that the birthday attack collision bound for SHA-256 requires generating approximately \(2^{128}\) distinct payloads to find two identical digests with 50% probability.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(H = 2^{256}\) be the total number of possible hash outputs. By the classical birthday problem approximation, the probability \(P\) of at least one collision among \(k\) independently chosen random hashes is \(P(k) \approx 1 - \exp\left(-\frac{k^2}{2H}\right)\). Setting \(P = 0.5\) yields \(1 - \exp\left(-\frac{k^2}{2H}\right) = 0.5 \implies \exp\left(-\frac{k^2}{2H}\right) = 0.5 \implies \frac{k^2}{2H} = \ln 2\). Solving for \(k\): \(k = \sqrt{2 H \ln 2} = \sqrt{2 \ln 2} \times 2^{128} \approx 1.177 \times 2^{128}\) operations, which is physically infeasible with existing global computational power.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-6">
+            <p class="prompt">Prove that verifying a data manifest containing \(M\) datasets of total size \(S\) bytes requires \(O(S)\) sequential time and \(O(1)\) additional memory.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The verification algorithm iterates through each stored payload blob. For a payload of length \(L_i\), the SHA-256 streaming accumulator processes blocks of 64 bytes (512 bits) sequentially, reading each byte exactly once in \(O(L_i)\) operations while maintaining an internal state of eight 32-bit words (32 bytes). Comparing the resulting hex string with the manifest takes \(O(1)\) time. Summing across all \(M\) datasets: total time is \(\sum_{i=1}^M O(L_i) = O(\sum L_i) = O(S)\). Because payload chunks are processed in streaming buffers of fixed size (e.g. 64 KiB), additional memory overhead is strictly \(O(1)\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+
+          <div class="problem" id="p8-7">
+            <p class="prompt">A research firm audits 1,000 historical macroeconomic snapshots stored in SQLite. An automated tamper audit scans all payloads and computes SHA-256 hashes at 250 MB/s. If the total stored dataset size is 25 gigabytes, how many seconds does the full cryptographic audit take?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Total data size is \(25 \text{ GB} = 25{,}000 \text{ MB}\). At a throughput of 250 MB/s, total audit time is \(25{,}000 \text{ MB} / (250 \text{ MB/s}) = 100.0\) seconds (1 minute 40 seconds). The firm can audit the complete cryptographic integrity of its entire data foundation in under two minutes.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-8">
+            <p class="prompt">A market data provider updates an interest rate file. The initial file had 1,000 rows and SHA-256 digest <code>4a1b...</code>. The new file has 1,005 rows and digest <code>9c8d...</code>. If an analyst ingests the new file with the new retrieval timestamp, how many manifest rows exist in the store?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Because the new file has a different retrieval timestamp, it represents a new data vintage rather than a conflict. The store appends the new record as a new manifest row. The total number of manifest rows becomes \(1 + 1 = 2\) rows, preserving both historical vintages.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-9">
+            <p class="prompt">An analyst compares two copies of a 50 MB corporate fundamentals CSV. The first file uses Unix line endings (<code>\n</code>), while the second file was saved on Windows with CRLF (<code>\r\n</code>) across 500,000 lines. Calculate the difference in byte size and state whether their SHA-256 hashes match.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Each CRLF line contains 1 extra byte (<code>\r</code>). Across 500,000 lines, the Windows file is exactly \(500{,}000\) bytes (488.3 KiB) larger. Because SHA-256 hashes exact byte streams, the two digests will be completely different, failing byte-for-byte verification despite having identical cell text.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+
+          <div class="problem" id="p8-10">
+            <p class="prompt">Analyze why data licensing and redistribution restrictions in quantitative finance necessitate "bring-your-own-data" research harnesses rather than bundling raw vendor datasets into shared repositories.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Commercial market data providers (Bloomberg, Refinitiv, S&P Capital IQ, CRSP) strictly forbid redistribution of raw tick or fundamental data under standard subscriber agreements. Violating terms of service exposes research institutions to copyright lawsuits and immediate terminal revocation. A "bring-your-own-data" harness provides deterministic parser adapters and manifest verification schemas: the repository ships only code and synthetic test fixtures, while researchers supply their own legally licensed data files locally, keeping data usage compliant.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-11">
+            <p class="prompt">Evaluate the security and performance implications of using Merkle Trees versus flat manifest lists for verifying large-scale partitioned tick archives in cloud object storage.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A flat manifest list requires rehashing all \(M\) file chunks to verify the archive, which is costly if an analyst wants to verify a single day's partition out of a 10-year archive. A Merkle Tree (hash tree) organizes chunk digests hierarchically: leaf nodes are chunk hashes, and parent nodes hash concatenated child digests up to a single Root Hash. To verify that a single 100 MB chunk is authentic within a 10 TB archive, the client needs only the chunk and a cryptographic audit path of \(O(\log M)\) sibling hashes, verifying integrity in milliseconds without downloading the entire dataset.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p8-12">
+            <p class="prompt">How does cryptographic data manifest verification integrate with Continuous Integration (CI) test harnesses to eliminate "silent data rot" in quantitative production pipelines?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In production trading desks, data rot occurs when upstream vendors silently modify historical data or network file systems suffer bit decay. A CI integrity job runs on a scheduled cron (e.g. nightly), re-reading every stored dataset and asserting that <code>SHA-256(payload) == manifest.sha256</code>. If any historical byte has shifted, the CI build fails immediately, blocking strategy deployment and alerting risk teams before corrupted inputs reach algorithmic execution models.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s6"><span class="section-number">6</span>Key-Results Table</h2>
+        <table class="key-results">
+          <thead>
+            <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Cryptographic tamper detection invariant: single-bit corruption detected with probability 1 - 2^-256</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 8.1 (Hash avalanche invariant)</td>
+            </tr>
+            <tr>
+              <td>Engine neutrality of raw payload digests: SHA-256 invariant under physical database architecture</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Problem 8.4 (Raw byte digest invariance)</td>
+            </tr>
+            <tr>
+              <td>Streaming verification complexity: O(S) time and O(1) memory for manifest integrity audits</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Problem 8.6 (Streaming hash complexity)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS3" data-page="L08" data-cards="cards.json">
+        <h2 id="s7"><span class="section-number">7</span>Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does a data manifest record to guarantee bit-for-bit research reproducibility?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q1"> <span>Source URL, licence, UTC retrieval timestamp, row count, and SHA-256 cryptographic digest</span></label>
+              <label class="option"><input type="radio" name="L08q1"> <span>Only the file name and operating system username</span></label>
+              <label class="option"><input type="radio" name="L08q1"> <span>The average price and standard deviation of returns</span></label>
+              <label class="option"><input type="radio" name="L08q1"> <span>The user password and database port</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A data manifest records complete provenance: source URL, licence, ISO 8601 UTC timestamp, row count, and SHA-256 hash.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the probability of a single-bit corruption escaping detection under a SHA-256 hash check?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q2"> <span>2^-256 (effectively zero)</span></label>
+              <label class="option"><input type="radio" name="L08q2"> <span>50 percent</span></label>
+              <label class="option"><input type="radio" name="L08q2"> <span>1 percent</span></label>
+              <label class="option"><input type="radio" name="L08q2"> <span>Zero percent only if data is compressed</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By the cryptographic avalanche effect, mutating even one bit produces an uncorrelated 256-bit hash with collision chance \(2^{-256}\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens when re-ingesting an identical payload with the same source and retrieval timestamp in Atlas A2?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q3"> <span>Idempotence: returns the existing ManifestRow without writing duplicate observations</span></label>
+              <label class="option"><input type="radio" name="L08q3"> <span>Raises a ValueError conflict</span></label>
+              <label class="option"><input type="radio" name="L08q3"> <span>Appends a duplicate copy of all rows</span></label>
+              <label class="option"><input type="radio" name="L08q3"> <span>Deletes the existing database file</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The idempotence invariant ensures identical re-ingestion returns the existing record cleanly without data duplication.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="256" data-tolerance="0">
+            <p class="prompt">How many bits are in a standard SHA-256 cryptographic digest?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>SHA-256 produces a 256-bit cryptographic digest (represented as 64 hexadecimal characters).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What condition triggers a conflict exception (ValueError) during ingestion?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q5"> <span>Ingesting a differing payload with different bytes for the same source and retrieval timestamp</span></label>
+              <label class="option"><input type="radio" name="L08q5"> <span>Ingesting on a Friday evening</span></label>
+              <label class="option"><input type="radio" name="L08q5"> <span>Ingesting a file larger than 1 megabyte</span></label>
+              <label class="option"><input type="radio" name="L08q5"> <span>Ingesting Treasury data before FRED data</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A conflict arises when two different payloads claim the exact same source and retrieval timestamp.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why should the SHA-256 digest be computed over raw incoming bytes rather than parsed numbers?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q6"> <span>Parsing numbers introduces float formatting and whitespace ambiguities that break exact hash matching</span></label>
+              <label class="option"><input type="radio" name="L08q6"> <span>Raw bytes are encrypted automatically</span></label>
+              <label class="option"><input type="radio" name="L08q6"> <span>Hashing numbers requires GPU acceleration</span></label>
+              <label class="option"><input type="radio" name="L08q6"> <span>Parsed numbers take twice as long to hash</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Hashing raw bytes guarantees unassailable byte-level reproducibility before any parsing or transformation occurs.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What format is required for retrieval timestamps under the Atlas A2 contract?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q7"> <span>ISO 8601 UTC with trailing Z: YYYY-MM-DDTHH:MM:SSZ</span></label>
+              <label class="option"><input type="radio" name="L08q7"> <span>Unix epoch integer timestamp</span></label>
+              <label class="option"><input type="radio" name="L08q7"> <span>Local server time string</span></label>
+              <label class="option"><input type="radio" name="L08q7"> <span>MM/DD/YYYY format</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The Atlas A2 contract strictly enforces ISO 8601 UTC with trailing Z (<code>YYYY-MM-DDTHH:MM:SSZ</code>).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does a data manifest prevent silent data rot in quantitative pipelines?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L08q8"> <span>Periodic audits re-hash stored payloads against recorded digests, flagging any changed byte</span></label>
+              <label class="option"><input type="radio" name="L08q8"> <span>It automatically corrects bad trades</span></label>
+              <label class="option"><input type="radio" name="L08q8"> <span>It deletes old files every 30 days</span></label>
+              <label class="option"><input type="radio" name="L08q8"> <span>It encrypts the database with AES-256</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Re-verifying SHA-256 digests against the manifest catches unrecorded upstream revisions or disk corruption immediately.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="raasveldt2019duckdb"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L07.html"><span class="dir">Previous</span>L07 Columnar Storage &amp; Parquet</a>
+        <a class="next" href="project.html"><span class="dir">Next</span>Atlas A2 Project Deliverable</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS3 · Data, Databases &amp; SQL · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

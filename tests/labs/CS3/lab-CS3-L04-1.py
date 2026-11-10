@@ -133,5 +133,4 @@ def main() -> None:
     print(f"Tie-breaking rule on seq verified: {results[2].prevailing_bid == Decimal('150.02')}")
 
 
-if __name__ == "__main__":
-    main()
+main()

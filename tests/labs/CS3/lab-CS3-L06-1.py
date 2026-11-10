@@ -103,5 +103,4 @@ def main() -> None:
     print(f"Exhaustive full scan touched exactly all {n_records} rows: True")
 
 
-if __name__ == "__main__":
-    main()
+main()

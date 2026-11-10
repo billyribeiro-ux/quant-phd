@@ -85,5 +85,4 @@ def main() -> None:
     print("Bit-for-bit tamper detection successfully triggered: True")
 
 
-if __name__ == "__main__":
-    main()
+main()

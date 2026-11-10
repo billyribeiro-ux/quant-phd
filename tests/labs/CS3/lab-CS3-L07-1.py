@@ -119,5 +119,4 @@ def main() -> None:
     assert row_bytes_read == n_rows * 44
 
 
-if __name__ == "__main__":
-    main()
+main()

@@ -82,5 +82,4 @@ def main() -> None:
     print("Point-in-time discipline successfully prevented 4 look-ahead leaks: True")
 
 
-if __name__ == "__main__":
-    main()
+main()
