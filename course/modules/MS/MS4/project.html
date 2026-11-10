@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="MS4" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MS4 Project · Factor Strategy Capacity Study</title>
+  <meta name="description" content="Project for MS4: estimate the capacity of a factor investment strategy under square-root market impact, solve for break-even and profit-maximizing AUM, implement cost mitigation, and author an analytical research memo.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">MS4</a><span class="sep">›</span><span>Project</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="20">
+      <header class="page-head">
+        <p class="eyebrow">Project · MS4 · 20 study hours</p>
+        <h1>Factor Strategy Capacity Study</h1>
+        <p class="lede">Build an institutional capacity and execution cost engine under the empirical square-root law of market impact. You will derive trade lists and turnover, compute portfolio-level friction coefficients, trace net alpha decay, solve for break-even and profit-maximizing assets under management (AUM), implement buy–hold buffer zones with hysteresis to mitigate trading drag, and author an analytical research memo evaluating strategy viability across market regimes.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">Four-rung project ladder</h2>
+        <ol class="ladder">
+          <li>
+            <span class="rung-title">Worked example</span>
+            <p>Walk through an end-to-end worked solution on a calibrated 5-asset portfolio (Lab 1), inspecting trade allocation, square-root execution drag, analytical capacity limits, and buffer-zone weights.</p>
+          </li>
+          <li>
+            <span class="rung-title">Completion</span>
+            <p>Complete the core algebraic relations for the portfolio friction coefficient, capacity extrema, and buffer filtering in an instant-feedback browser lab (Lab 2).</p>
+          </li>
+          <li>
+            <span class="rung-title">Independent</span>
+            <p>Implement the complete capacity engine (<code>capacity.py</code>) evaluated across 50 seeded market universes by autograder, and author the analytical research memo (<code>report.md</code>) evaluated by rubric.</p>
+          </li>
+          <li>
+            <span class="rung-title">Stretch</span>
+            <p>Extend the capacity engine to dynamic multi-period rebalancing under multi-strategy trade netting and state-dependent liquidity regimes.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2 id="h-rung-1">Rung 1 · Worked example</h2>
+        <p>Lab 1 provides a fully solved reference instance of the factor capacity problem on a calibrated 5-stock portfolio. It demonstrates the exact sequence of calculations: portfolio weight differentials, trade sizing, square-root market impact cost aggregation, friction coefficient \(\kappa\), break-even AUM \(A^*\), optimal AUM \(A_{\text{opt}}\), and buffer-zone holdings selection.</p>
+
+        <section class="lab" id="lab-MS4-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example · Factor capacity calibration and optimal AUM</h3>
+          <p class="hypothesis">Under a calibrated 5-asset equity universe with 10% gross alpha, calculating square-root market impact costs across target weights yields a portfolio friction coefficient \(\kappa \approx 4.78 \times 10^{-7}\), resulting in an exact break-even capacity \(A^* \approx \$43.74\text{B}\), optimal capacity \(A_{\text{opt}} \approx \$19.44\text{B}\) (ratio \(4/9\)), and buffer hysteresis preserves holdings within the hold band.</p>
+          <pre><code class="language-python" data-run>"""Lab MS4-project-1: Rung 1 worked example · Factor strategy capacity calibration.
+
+Provides an end-to-end worked solution computing trade lists, square-root market impact,
+portfolio friction kappa, capacity limits, and buffer mitigation on a calibrated universe.
+SIMULATED: 5-asset portfolio with known ground-truth parameters.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def run_worked_example() -&gt; None:
+    prices = [25.0, 50.0, 75.0, 100.0, 125.0]
+    adv = [10000000.0, 20000000.0, 15000000.0, 30000000.0, 25000000.0]
+    sigma = [0.020, 0.018, 0.025, 0.015, 0.022]
+    w_initial = [0.20, 0.20, 0.20, 0.20, 0.20]
+    w_target = [0.35, 0.10, 0.05, 0.30, 0.20]
+    aum = 10000000.0
+    gross_alpha = 0.10
+    prefactor_y = 0.50
+
+    # Step 1: Compute trade lists
+    n = len(w_initial)
+    dollar_trades = [aum * (w_target[i] - w_initial[i]) for i in range(n)]
+    share_trades = [dollar_trades[i] / prices[i] for i in range(n)]
+    turnover_dollars = 0.5 * sum(abs(d) for d in dollar_trades)
+    turnover_frac = turnover_dollars / aum
+
+    print("Step 1 · Trade Allocation and Turnover:")
+    print(f"  AUM:                   {aum:.2f}")
+    for i in range(n):
+        print(f"  Asset {i}: trade dollars = {dollar_trades[i]:.2f}, shares = {share_trades[i]:.2f}")
+    print(f"  Turnover Dollars:      {turnover_dollars:.2f}")
+    print(f"  Turnover Fraction:     {turnover_frac:.4f} ({turnover_frac * 100.0:.2f}%)")
+
+    # Step 2: Estimate market impact costs
+    total_cost = 0.0
+    total_traded = sum(abs(d) for d in dollar_trades)
+    for i in range(n):
+        abs_d = abs(dollar_trades[i])
+        if abs_d &gt; 1e-9:
+            impact = prefactor_y * sigma[i] * math.sqrt(abs_d / adv[i])
+            cost_i = abs_d * impact
+            total_cost += cost_i
+    eff_bps = (total_cost / total_traded) * 10000.0 if total_traded &gt; 0 else 0.0
+
+    print("Step 2 · Square-Root Market Impact:")
+    print(f"  Total Impact Cost:     {total_cost:.2f}")
+    print(f"  Effective Spread:      {eff_bps:.2f} bps")
+
+    # Step 3: Find capacity limits
+    kappa = prefactor_y * sum(sigma[i] * (abs(w_target[i] - w_initial[i]) ** 1.5) / math.sqrt(adv[i]) for i in range(n))
+    a_star = (gross_alpha / kappa) ** 2
+    a_opt = (4.0 / 9.0) * a_star
+    max_d_alpha = (4.0 / 27.0) * (gross_alpha**3) / (kappa**2)
+    net_opt = gross_alpha / 3.0
+
+    print("Step 3 · Strategy Capacity Limits:")
+    print(f"  Portfolio Friction:    {kappa:.8e}")
+    print(f"  Break-even AUM A*:     {a_star:.2f}")
+    print(f"  Optimal AUM A_opt:     {a_opt:.2f}")
+    print(f"  A_opt / A* Ratio:      {a_opt / a_star:.4f}")
+    print(f"  Net Alpha at A_opt:    {net_opt * 100.0:.2f}% ({net_opt * 10000.0:.1f} bps)")
+    print(f"  Max Dollar Alpha:      {max_d_alpha:.2f}")
+
+    # Step 4: Cost mitigation via buffer zones
+    ranks = [1.0, 5.0, 4.0, 2.0, 3.0]
+    target_k = 3
+    buffer_ratio = 1.5
+    k_hold = math.floor(target_k * buffer_ratio)  # 4
+
+    # Existing holdings: assets where w_initial &gt; 1e-6 (all 5 held)
+    is_held = [w &gt; 1e-6 for w in w_initial]
+    retained = [i for i in range(n) if is_held[i] and ranks[i] &lt;= k_hold]
+    retained.sort(key=lambda idx: ranks[idx])
+    selected = retained[:target_k]
+
+    w_mitigated = [0.0] * n
+    for idx in selected:
+        w_mitigated[idx] = 1.0 / target_k
+
+    print("Step 4 · Cost Mitigation Weights:")
+    for i in range(n):
+        print(f"  Asset {i}: weight = {w_mitigated[i]:.4f}")
+    print(f"  Weights Sum:           {sum(w_mitigated):.6f}")
+
+
+def main() -&gt; None:
+    run_worked_example()
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Step 1 · Trade Allocation and Turnover:
+  AUM:                   10000000.00
+  Asset 0: trade dollars = 1500000.00, shares = 60000.00
+  Asset 1: trade dollars = -1000000.00, shares = -20000.00
+  Asset 2: trade dollars = -1500000.00, shares = -20000.00
+  Asset 3: trade dollars = 1000000.00, shares = 10000.00
+  Asset 4: trade dollars = 0.00, shares = 0.00
+  Turnover Dollars:      2500000.00
+  Turnover Fraction:     0.2500 (25.00%)
+Step 2 · Square-Root Market Impact:
+  Total Impact Cost:     15120.51
+  Effective Spread:      30.24 bps
+Step 3 · Strategy Capacity Limits:
+  Portfolio Friction:    4.78152611e-07
+  Break-even AUM A*:     43738807315.38
+  Optimal AUM A_opt:     19439469917.95
+  A_opt / A* Ratio:      0.4444
+  Net Alpha at A_opt:    3.33% (333.3 bps)
+  Max Dollar Alpha:      647982330.60
+Step 4 · Cost Mitigation Weights:
+  Asset 0: weight = 0.3333
+  Asset 1: weight = 0.0000
+  Asset 2: weight = 0.0000
+  Asset 3: weight = 0.3333
+  Asset 4: weight = 0.3333
+  Weights Sum:           1.000000</pre>
+          <p class="interpretation">The worked example confirms that profit-maximizing AUM occurs strictly at \(\frac{4}{9}\) of break-even capacity, delivering maximum dollar alpha while retaining one-third of gross alpha net of costs.</p>
+        </section>
+      </section>
+
+      <section id="rung-2">
+        <h2 id="h-rung-2">Rung 2 · Completion problem</h2>
+        <p>In Lab 2, the core algebraic implementations of the friction coefficient \(\kappa\), the capacity closed-form solutions, and the buffer retention logic have been removed. Fill in the missing expressions to pass the instant verification check.</p>
+
+        <section class="lab completion" id="lab-MS4-project-2" data-runtime="python">
+          <h3>Lab MS4-project-2: Completion Problem for Friction Kappa &amp; Buffer Logic</h3>
+          <p class="hypothesis">Hypothesis: Completing the square-root friction formulas, closed-form capacity extrema, and buffer retention correctly reproduces benchmark metrics.</p>
+          <pre><code class="language-python" data-run>&quot;&quot;&quot;Lab MS4-project-2: Rung 2 completion problem · Capacity calibration solver.
+
+Completed twin for Rung 2. Computes the aggregate friction coefficient kappa,
+derives optimal AUM under square-root impact, and filters assets through buffer hysteresis.
+SIMULATED: 4-asset portfolio verification check.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import math
+
+
+def calculate_friction_kappa(
+    w_initial: list[float],
+    w_target: list[float],
+    adv: list[float],
+    sigma: list[float],
+    prefactor_y: float = 0.5,
+) -&gt; float:
+    &quot;&quot;&quot;Compute aggregate portfolio market impact friction coefficient.&quot;&quot;&quot;
+    n = len(w_initial)
+    friction = float(
+        prefactor_y * sum(sigma[i] * (abs(w_target[i] - w_initial[i]) ** 1.5) / math.sqrt(adv[i]) for i in range(n))
+    )
+    return friction
+
+
+def solve_capacity_limits(gross_alpha: float, kappa: float) -&gt; tuple[float, float, float]:
+    &quot;&quot;&quot;Solve for break-even AUM, profit-maximizing AUM, and max dollar alpha.&quot;&quot;&quot;
+    breakeven_aum = (___
+    optimal_aum = (___
+    max_dollar_alpha = (___
+    return breakeven_aum, optimal_aum, max_dollar_alpha
+
+
+def apply_buffer_retention(
+    ranks: list[float],
+    current_weights: list[float],
+    target_k: int,
+    buffer_ratio: float = 1.5,
+) -&gt; list[float]:
+    &quot;&quot;&quot;Select holdings with buffer-zone hysteresis.&quot;&quot;&quot;
+    n = len(ranks)
+    k_hold = ___
+    is_held = [w &gt; 1e-6 for w in current_weights]
+    retained = [i for i in range(n) if is_held[i] and ranks[i] &lt;= k_hold]
+    retained.sort(key=lambda idx: ranks[idx])
+
+    if len(retained) &gt;= target_k:
+        selected = retained[:target_k]
+    else:
+        needed = target_k - len(retained)
+        unheld = [i for i in range(n) if i not in retained]
+        unheld.sort(key=lambda idx: ranks[idx])
+        selected = retained + unheld[:needed]
+
+    weights = [0.0] * n
+    for idx in selected:
+        weights[idx] = 1.0 / target_k
+    return weights
+
+
+def run_completion_check() -&gt; None:
+    w_init = [0.25, 0.25, 0.25, 0.25]
+    w_tgt = [0.40, 0.10, 0.30, 0.20]
+    adv = [20000000.0, 15000000.0, 30000000.0, 25000000.0]
+    sigma = [0.020, 0.025, 0.018, 0.022]
+    alpha = 0.09
+    prefactor = 0.50
+
+    kappa = calculate_friction_kappa(w_init, w_tgt, adv, sigma, prefactor)
+    a_star, a_opt, max_d = solve_capacity_limits(alpha, kappa)
+
+    ranks = [1.0, 4.0, 2.0, 3.0]
+    target_k = 2
+    weights = apply_buffer_retention(ranks, w_init, target_k, buffer_ratio=1.5)
+
+    print(f&quot;Friction Kappa:     {kappa:.8e}&quot;)
+    print(f&quot;Break-even AUM A*:  {a_star:.2f}&quot;)
+    print(f&quot;Optimal AUM A_opt:  {a_opt:.2f}&quot;)
+    print(f&quot;Max Dollar Alpha:   {max_d:.2f}&quot;)
+    print(f&quot;Selected Weights:   {weights}&quot;)
+    print(f&quot;Valid Probability:  {math.isclose(sum(weights), 1.0, abs_tol=1e-5)}&quot;)
+
+
+def main() -&gt; None:
+    run_completion_check()
+
+
+main()
+</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Friction Kappa:     3.60371731e-07
+Break-even AUM A*:  62371126244.75
+Optimal AUM A_opt:  27720500553.22
+Max Dollar Alpha:   831615016.60
+Selected Weights:   [0.5, 0.0, 0.5, 0.0]
+Valid Probability:  True</pre>
+          <p class="interpretation">The completed functions match closed-form analytical extrema and verify buffer-zone hysteresis selection.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec" style="overflow-wrap: anywhere; word-break: break-word;">
+          <dt>Context</dt>
+          <dd>A quantitative asset management firm operates an equity factor strategy. As assets under management expand, portfolio rebalancing incurs severe execution drag via the square-root law of market impact. You will build a production-grade capacity modeling module (<code>capacity.py</code>) that computes trade lists, models market impact, traces net alpha degradation, derives analytical break-even and profit-maximizing capacity thresholds, and implements buy–hold buffer zones with hysteresis to mitigate turnover. In addition, you will author an analytical research memo (<code>report.md</code>) advising the investment committee on optimal scaling and execution policy.</dd>
+          <dt>Inputs</dt>
+          <dd>Deterministic market and strategy instances from <code>make_instance(seed)</code> in <code>grader/instance.py</code>, containing universe size <code>n_assets = 50</code>, share prices (<code>prices</code>), daily dollar volume (<code>adv</code>), daily return volatility (<code>sigma</code>), initial weights (<code>w_initial</code>), target factor weights (<code>w_target</code>), annualized gross alpha (<code>gross_alpha</code>), test AUM (<code>aum_test</code>), dimensionless prefactor (<code>prefactor_y = 0.50</code>), asset signal ranks (<code>ranks</code>), target portfolio size (<code>target_n_assets = 15</code>), and buffer multiplier (<code>buffer_ratio = 1.5</code>).</dd>
+          <dt>Required outputs</dt>
+          <dd>Implement the module <code>capacity.py</code> exposing five public functions:
+          <ul>
+            <li><code>compute_trade_lists(...)</code>: returns <code>dollar_trades</code>, <code>share_trades</code>, <code>turnover_dollars</code>, and <code>turnover_fraction</code>.</li>
+            <li><code>estimate_impact_costs(...)</code>: returns <code>total_cost_dollars</code> and <code>effective_spread_bps</code> under the square-root impact model.</li>
+            <li><code>simulate_capacity_curve(...)</code>: evaluates <code>cost_dollars</code>, <code>cost_bps</code>, <code>net_alpha</code>, and <code>dollar_alpha</code> across the input grid.</li>
+            <li><code>find_capacity_limits(...)</code>: returns <code>breakeven_aum</code> \(A^*\), <code>optimal_aum</code> \(A_{\text{opt}}\), <code>max_dollar_alpha</code>, <code>net_alpha_at_optimal</code>, and <code>friction_kappa</code>.</li>
+            <li><code>mitigate_costs(...)</code>: implements buy–hold buffer hysteresis, retaining held assets within the buffer zone and filling unheld top assets to maintain exactly <code>target_n_assets</code> equal holdings.</li>
+          </ul>
+          In addition, submit the research memo <code>report.md</code> evaluated by the rubric below.</dd>
+          <dt>Constraints</dt>
+          <dd>Standard library only (<code>math</code>, <code>typing</code>). Floating-point arithmetic must operate at full precision internally. All inputs must be validated; invalid dimensions, negative prices/volatilities/volumes, non-normalized weights, and non-positive gross alpha must raise <code>ValueError</code> with descriptive messages.</dd>
+          <dt>Grading</dt>
+          <dd>Both grading modes apply: the Python module <code>capacity.py</code> is evaluated by the autograder test suite across 50 seeded instances, and the analytical research memo <code>report.md</code> is evaluated by rubric across five criteria with observable performance levels.</dd>
+          <dt>Reading list</dt>
+          <dd>See <a href="#reading">the reading section</a> for verified literature on implementation shortfall, trading costs, anomaly net returns, and strategy capacity.</dd>
+        </dl>
+
+        <h3 id="exceptions">Exception table</h3>
+        <p>The implementation must validate input integrity and raise <code>ValueError</code> under the following conditions:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Condition</th><th>Exception</th><th>Required message substring</th></tr></thead>
+            <tbody>
+              <tr><td>AUM non-positive (<code>aum &lt;= 0</code>)</td><td><code>ValueError</code></td><td>"aum must be positive"</td></tr>
+              <tr><td>Gross alpha non-positive (<code>gross_alpha &lt;= 0</code>)</td><td><code>ValueError</code></td><td>"gross_alpha must be positive"</td></tr>
+              <tr><td>Asset count fewer than 3 (<code>len(w_initial) &lt; 3</code>)</td><td><code>ValueError</code></td><td>"portfolio must contain at least 3 assets"</td></tr>
+              <tr><td>Mismatched vector lengths between weights, ADV, sigma, or prices</td><td><code>ValueError</code></td><td>"length"</td></tr>
+              <tr><td>Negative or zero ADV, price, or volatility in any constituent asset</td><td><code>ValueError</code></td><td>"must be positive"</td></tr>
+              <tr><td>Buffer ratio less than 1.0 (<code>buffer_ratio &lt; 1.0</code>)</td><td><code>ValueError</code></td><td>"buffer_ratio must be &gt;= 1.0"</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap"><table id="hours">
+            <thead><tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr></thead>
+            <tbody>
+              <tr><td>Rung 1 worked example: study trade allocation and capacity derivation</td><td class="num">1</td><td>Inspect Lab 1 step-by-step impact scaling, friction aggregation, and buffer retention.</td></tr>
+              <tr><td>Rung 2 completion problem: implement core formulas in browser</td><td class="num">1</td><td>Derive friction kappa, capacity extrema, and buffer filtering in Lab 2 runtime.</td></tr>
+              <tr><td>Mathematical formulation: square-root impact scaling and portfolio friction</td><td class="num">3</td><td>Prove the \(A^{3/2}\) cost scaling law and the \(\frac{4}{9}\) optimal capacity ratio.</td></tr>
+              <tr><td>Implementation: trade calculation and market impact model</td><td class="num">3</td><td>Implement <code>compute_trade_lists</code> and <code>estimate_impact_costs</code> with robust input validation.</td></tr>
+              <tr><td>Implementation: capacity simulation and analytical solver</td><td class="num">3</td><td>Implement <code>simulate_capacity_curve</code> and <code>find_capacity_limits</code> with exact closed-form checks.</td></tr>
+              <tr><td>Implementation: buffer-zone cost mitigation with hysteresis</td><td class="num">3</td><td>Implement <code>mitigate_costs</code> with holding band retention, sorting, and weight normalization.</td></tr>
+              <tr><td>Autograder verification: run test suite across seeds 0–49</td><td class="num">2</td><td>Verify determinism, scaling invariance, KKT conditions, and exception handling.</td></tr>
+              <tr><td>Authoring research memo <code>report.md</code></td><td class="num">3</td><td>Draft sections on Model, Estimators, Benchmark Grid, Sensitivity, and Recommendations.</td></tr>
+              <tr><td>Rubric self-assessment and exemplar calibration</td><td class="num">1</td><td>Calibrate report against Level 2 and Level 4 exemplars and reconcile scoring discrepancies.</td></tr>
+              <tr><td><strong>Total</strong></td><td class="num"><strong>20</strong></td><td>Matches declared project hours (20 hours of the module's 50 hours).</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Submit your <code>capacity.py</code> implementation below to execute the verification suite against your unique workspace seed.</p>
+        <section class="grader-panel" id="grader" data-unit="MS4" data-grader="grader/" data-suite="test_project.py" data-support="instance.py integrity.py" data-solution="capacity.py" data-starter="starter.py"></section>
+      </section>
+
+      <section id="local">
+        <h2 id="h-local">Running the suite locally</h2>
+        <p>To run the test suite locally in your environment, place <code>capacity.py</code> alongside the grader files and run pytest:</p>
+        <pre><code class="no-math">QF_SEED=42 pytest -q -p no:cacheprovider --assert=plain -W error grader/test_project.py</code></pre>
+      </section>
+
+      <section id="report">
+        <h2 id="h-report">Rung 3 · The report</h2>
+        <p>The research memo documents the theoretical foundations, numerical estimates, and structural insights of the factor strategy capacity study. Lab 3 generates the exact benchmark grid required in the memo.</p>
+
+        <section class="lab" id="lab-MS4-project-3" data-runtime="python">
+          <h3>Lab 3 · Benchmark parameter grid for research memo</h3>
+          <p class="hypothesis">Evaluating capacity limits across impact prefactors \(Y \in \{0.30, 0.50, 0.70\}\) and gross alpha \(\alpha_0 \in \{0.06, 0.10\}\) will demonstrate that capacity scales inversely with the square of the impact prefactor and directly with the square of gross alpha.</p>
+          <pre><code class="language-python" data-run>"""Lab MS4-project-3: Rung 3 benchmark parameter grid for research memo.
+
+Generates comparative strategy capacity and optimal AUM estimates across varying
+market impact prefactors (Y in {0.30, 0.50, 0.70}) and gross alpha levels (alpha in {0.06, 0.10}).
+SIMULATED: reference universe calibration for student analytical memo.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def run_benchmark_parameter_grid() -&gt; None:
+    # 5-asset factor portfolio
+    universe = [
+        (0.20, 0.35, 25000000.0, 0.020),
+        (0.20, 0.10, 35000000.0, 0.018),
+        (0.20, 0.05, 18000000.0, 0.026),
+        (0.20, 0.30, 45000000.0, 0.016),
+        (0.20, 0.20, 30000000.0, 0.022),
+    ]
+
+    prefactors = [0.30, 0.50, 0.70]
+    alphas = [0.06, 0.10]
+
+    print("Factor Strategy Capacity Sensitivity Grid:")
+    print("-----------------------------------------------------------------------------------------")
+    print("Prefactor Y | Gross Alpha | Friction Kappa | Break-even AUM ($B) | Optimal AUM ($B) | Max Dollar Alpha ($M)")
+    print("-----------------------------------------------------------------------------------------")
+
+    for y in prefactors:
+        kappa = y * sum(vol * (abs(w_tgt - w_init) ** 1.5) / math.sqrt(adv) for w_init, w_tgt, adv, vol in universe)
+        for alpha in alphas:
+            a_star = (alpha / kappa) ** 2
+            a_opt = (4.0 / 9.0) * a_star
+            max_d_alpha = (4.0 / 27.0) * (alpha**3) / (kappa**2)
+
+            a_star_billions = a_star / 1e9
+            a_opt_billions = a_opt / 1e9
+            max_d_millions = max_d_alpha / 1e6
+
+            print(
+                f"{y:11.2f} | {alpha * 100.0:10.1f}% | {kappa:14.6e} | "
+                f"{a_star_billions:19.2f} | {a_opt_billions:16.2f} | {max_d_millions:21.2f}"
+            )
+
+
+def main() -&gt; None:
+    run_benchmark_parameter_grid()
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Factor Strategy Capacity Sensitivity Grid:
+-----------------------------------------------------------------------------------------
+Prefactor Y | Gross Alpha | Friction Kappa | Break-even AUM ($B) | Optimal AUM ($B) | Max Dollar Alpha ($M)
+-----------------------------------------------------------------------------------------
+       0.30 |        6.0% |   2.280112e-07 |               69.25 |            30.78 |                615.51
+       0.30 |       10.0% |   2.280112e-07 |              192.35 |            85.49 |               2849.60
+       0.50 |        6.0% |   3.800187e-07 |               24.93 |            11.08 |                221.58
+       0.50 |       10.0% |   3.800187e-07 |               69.25 |            30.78 |               1025.86
+       0.70 |        6.0% |   5.320262e-07 |               12.72 |             5.65 |                113.05
+       0.70 |       10.0% |   5.320262e-07 |               35.33 |            15.70 |                523.40</pre>
+          <p class="interpretation">The grid provides the empirical sensitivity table required for the student research memo, quantifying how execution efficiency directly dictates institutional scale.</p>
+        </section>
+
+        <h3 id="rubric-section">Evaluation rubric</h3>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>The factor capacity research memo: five criteria, four performance levels each. Passing requires Level 3 or above on all criteria.</caption>
+            <thead><tr><th scope="col">Criterion</th><th scope="col">4 · Exemplary</th><th scope="col">3 · Proficient</th><th scope="col">2 · Developing</th><th scope="col">1 · Beginning</th></tr></thead>
+            <tbody>
+              <tr data-criterion="C1"><th scope="row">C1 · Impact formulation and cost scaling</th><td>Derives the \(A^{3/2}\) total cost scaling law from the asset-level square-root impact model \(I = Y \sigma \sqrt{D/\text{ADV}}\), states the exact expression for aggregate friction \(\kappa\), and contrasts sub-linear impact against naive linear cost models.</td><td>States the square-root impact equation, defines \(\kappa\), and explains why unit trading costs grow with \(\sqrt{A}\).</td><td>Mentions square-root impact but fails to derive aggregate portfolio cost scaling or confuses dollar costs with percentage costs.</td><td>Describes trading frictions informally without mathematical formulation.</td></tr>
+              <tr data-criterion="C2"><th scope="row">C2 · Capacity closed forms and optimality</th><td>Proves the closed-form solutions for break-even AUM \(A^* = (\alpha_0 / \kappa)^2\) and profit-maximizing AUM \(A_{\text{opt}} = \frac{4}{9} A^*\), derives the first-order condition on dollar alpha, and demonstrates that net alpha equals \(\frac{1}{3}\alpha_0\) at optimum.</td><td>States formulas for \(A^*\) and \(A_{\text{opt}}\), calculates numerical values, and notes the \(\frac{4}{9}\) ratio.</td><td>Calculates break-even AUM but omits profit-maximizing capacity or confuses maximum dollar profit with maximum percentage alpha.</td><td>Presents numbers without theoretical formulas or derivations.</td></tr>
+              <tr data-criterion="C3"><th scope="row">C3 · Benchmark sensitivity analysis</th><td>Presents the complete Lab 3 sensitivity grid, analyzes scaling with respect to impact prefactor \(Y\) (scaling as \(Y^{-2}\)) and alpha \(\alpha_0\) (scaling as \(\alpha_0^2\)), and interprets institutional implications under Frazzini et al. (2018).</td><td>Presents the sensitivity grid and accurately discusses how higher gross alpha and lower impact prefactors expand strategy capacity.</td><td>Reports partial grid results but omits sensitivity scaling interpretation.</td><td>Omits the simulation grid or reports unsubstantiated figures.</td></tr>
+              <tr data-criterion="C4"><th scope="row">C4 · Cost mitigation and hysteresis</th><td>Details the mechanics of buy–hold buffer zones, specifies buy and hold cutoffs \(K_{\text{buy}}\) and \(K_{\text{hold}}\), quantifies turnover reduction without material loss of factor exposure, and evaluates internal netting across strategy sleeves.</td><td>Explains buffer-zone mechanics, reports turnover reduction, and identifies why boundary turnover destroys net alpha.</td><td>Mentions buffer zones but omits mathematical specification of cutoffs or fails to quantify turnover savings.</td><td>Does not discuss trading-cost mitigation techniques.</td></tr>
+              <tr data-criterion="C5"><th scope="row">C5 · Institutional limits and literature</th><td>Evaluates institutional capacity constraints citing verified literature keys (Novy-Marx &amp; Velikov 2016, Patton &amp; Weller 2020, Frazzini et al. 2018), assigns evidence grades (T, A, C) with locators, and critiques backtest over-optimism.</td><td>Cites primary literature sources on trading costs and anomalies and identifies structural limitations of static capacity modeling.</td><td>Mentions real-world execution frictions in generic terms without citing specific literature findings.</td><td>Lacks literature citations or discussion of model limitations.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Two exemplars</h3>
+        <p>Review the following annotated student memo excerpts to calibrate your self-assessment. Exemplar A illustrates common defects resulting in a failing grade (Level 2), whereas Exemplar B demonstrates exemplary execution meeting all Level 4 descriptors.</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="2" data-scores="2,2,1,2,1" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 1 · C4 2 · C5 1. The memo states basic formulas but confuses percentage and dollar scaling, omits the sensitivity grid analysis, fails to define buffer cutoffs rigorously, and provides no literature citations.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Market impact and portfolio scaling</h5>
+              <p>Trading costs are calculated using square-root impact: \(I = 0.5 \sigma \sqrt{Q / V}\). As fund size expands, we trade larger dollar amounts, so total costs increase with fund size squared.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="2">Meets C1 level 2: identifies the square-root impact formula and notes that costs increase with fund size.</li>
+                <li class="misses" data-criterion="C1" data-level="3">Misses C1 level 3: incorrectly claims total costs scale with \(A^2\) rather than \(A^{1.5}\), and fails to define aggregate friction \(\kappa\).</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Capacity limits</h5>
+              <p>Break-even capacity occurs when trading costs equal gross alpha. We can solve this to find the maximum AUM the fund can manage before losing money.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="2">Meets C2 level 2: recognizes break-even capacity concept.</li>
+                <li class="misses" data-criterion="C2" data-level="3">Misses C2 level 3: omits the closed-form formula \(A^* = (\alpha_0 / \kappa)^2\) and does not mention profit-maximizing capacity \(A_{\text{opt}} = \frac{4}{9} A^*\).</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. Exemplary in mathematical rigor, analytical precision, empirical sensitivity analysis, and grounded institutional context.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Market impact and portfolio scaling</h5>
+              <p>Under the empirical square-root law of market impact (Almgren et al. 2001; Bouchaud et al. 2018), executing a dollar trade \(D_i = A |\Delta w_i|\) incurs execution price concession \(I_i = Y \sigma_i \sqrt{D_i / \text{ADV}_i}\). Aggregating dollar costs across all \(N\) portfolio constituents yields \(\mathcal{C}(A) = \sum_{i=1}^N D_i I_i = Y A^{3/2} \sum_{i=1}^N \sigma_i \frac{|\Delta w_i|^{3/2}}{\sqrt{\text{ADV}_i}} = \kappa A^{3/2}\), where \(\kappa \equiv Y \sum_{i=1}^N \sigma_i \frac{|\Delta w_i|^{3/2}}{\sqrt{\text{ADV}_i}}\). Consequently, unit transaction costs expressed as a fraction of fund AUM scale sub-linearly with the square root of assets: \(\mathcal{C}(A) / A = \kappa \sqrt{A}\). This fundamentally refutes naive linear transaction cost assumptions, establishing that unit costs increase continuously with scale.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: completely derives the \(A^{3/2}\) total cost scaling and \(\kappa \sqrt{A}\) fractional cost scaling, providing exact definitions for all structural parameters.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Capacity closed forms and optimality</h5>
+              <p>Net annualized alpha follows \(\alpha^{\text{net}}(A) = \alpha_0 - \kappa \sqrt{A}\). Setting net alpha to zero yields the break-even capacity \(A^* = (\alpha_0 / \kappa)^2\). However, an institutional asset manager seeking to maximize total firm value optimizes total dollar alpha: \(\mathcal{P}(A) \equiv A \cdot \alpha^{\text{net}}(A) = \alpha_0 A - \kappa A^{3/2}\). Differentiating with respect to \(A\) gives \(\frac{d\mathcal{P}}{dA} = \alpha_0 - \frac{3}{2}\kappa A^{1/2} = 0\), establishing the unique global maximum at \(A_{\text{opt}} = \left(\frac{2\alpha_0}{3\kappa}\right)^2 = \frac{4}{9} A^* \approx 0.4444 A^*\). At this optimal operating scale, net alpha is exactly \(\alpha^{\text{net}}(A_{\text{opt}}) = \alpha_0 - \kappa \left(\frac{2\alpha_0}{3\kappa}\right) = \frac{1}{3}\alpha_0\), and total dollar alpha reaches \(\mathcal{P}(A_{\text{opt}}) = \frac{4}{27} \frac{\alpha_0^3}{\kappa^2}\). Expanding AUM beyond \(A_{\text{opt}}\) toward \(A^*\) degrades total economic profit despite generating positive net return.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: provides rigorous proofs of both break-even and profit-maximizing capacities, establishing the exact \(\frac{4}{9}\) ratio and \(\frac{1}{3}\alpha_0\) net alpha property.</li>
+              </ul>
+            </aside>
+          </div>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Benchmark grid sensitivity and cost mitigation</h5>
+              <p>Across our calibrated sensitivity grid (Lab 3), capacity exhibits extreme sensitivity to execution efficiency and gross predictability: \(A^* \propto \alpha_0^2 / Y^2\). When the impact prefactor decreases from \(Y = 0.70\) (aggressive execution) to \(Y = 0.30\) (patient institutional execution per Frazzini et al. 2018), capacity expands by a factor of \((0.70 / 0.30)^2 \approx 5.44\). Furthermore, implementing buy–hold buffer zones with \(K_{\text{buy}} = 15\) and \(K_{\text{hold}} = 22\) (\(\text{buffer\_ratio} = 1.5\)) introduces hysteresis that cuts portfolio rebalancing turnover by over 45% while retaining 96% of pure factor exposure. This turnover reduction lowers friction \(\kappa\) by ~40%, expanding optimal AUM by over 2.7x.</p>
+            </div>
+            <aside class="annotation" aria-label="Annotation">
+              <ul>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: thoroughly interprets the sensitivity grid, detailing \(Y^{-2}\) and \(\alpha_0^2\) scaling laws.</li>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: quantifies turnover reduction and capacity expansion under buffer hysteresis.</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: contextualizes findings within institutional empirical literature (Frazzini et al. 2018).</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch extensions</h2>
+        <p>The standard model evaluates capacity for a static single-period rebalance. For portfolio extension and advanced research, explore:</p>
+        <ol class="stretch-goals">
+          <li><strong>Multi-strategy cross-netting:</strong> Implement an integrated rebalancing engine that combines Value, Momentum, and Quality sleeves, netting opposing trades internally before routing to market. Measure the portfolio-level netting ratio \(1 - \frac{\sum_i |\sum_s D_{i,s}|}{\sum_i \sum_s |D_{i,s}|}\) and trace the resulting capacity expansion.</li>
+          <li><strong>Dynamic multi-period rebalancing:</strong> Model order execution across multi-day trading horizons using the Garleanu–Pedersen framework, balancing tracking error against transient and permanent market impact.</li>
+          <li><strong>Cross-asset impact spillovers:</strong> Incorporate cross-asset market impact matrices \(\Gamma\) to account for correlated price pressure when liquidating baskets of factor peers simultaneously.</li>
+        </ol>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="perold1988implementation">Perold (1988), <em>The implementation shortfall: Paper versus reality</em>. The Journal of Portfolio Management 14(3), 4–9.</li>
+          <li data-cite="novymarx2015taxonomy">Novy-Marx &amp; Velikov (2016), <em>A Taxonomy of Anomalies and Their Trading Costs</em>. Review of Financial Studies 29(1), 104–147.</li>
+          <li data-cite="patton2020you">Patton &amp; Weller (2020), <em>What you see is not what you get: The costs of trading market anomalies</em>. Journal of Financial Economics 137(2), 515–549.</li>
+          <li data-cite="frazzini2018trading">Frazzini, Israel &amp; Moskowitz (2018), <em>Trading Costs</em>. SSRN Working Paper 3229719.</li>
+          <li data-cite="almgren2001optimal">Almgren &amp; Chriss (2001), <em>Optimal execution of portfolio transactions</em>. Journal of Risk 3(2), 5–39.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
