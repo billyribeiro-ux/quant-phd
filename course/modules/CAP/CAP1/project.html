@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CAP1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CAP1 Project · Replication Package &amp; Referee Report</title>
+  <meta name="description" content="Build an end-to-end reproducible replication package for an empirical asset pricing study, diagnose all empirical divergences, and write a rigorous doctoral referee report.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CAP1 Reading, Refereeing &amp; Replicating</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="48">
+      <header class="page-head">
+        <p class="eyebrow">CAP1 project · 48 hours · autograder and rubric</p>
+        <h1>Replication Package &amp; Referee Report</h1>
+        <p class="lede">You receive an empirical cross-sectional asset pricing paper submitted to a premier finance journal. Your task is twofold: first, construct an automated, deterministic replication package that replicates the paper's core table from raw panel data, documenting and decomposing every empirical divergence; second, author a formal, constructive referee report evaluating identification, data filtering, and econometric inference.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>At the doctoral tier, rungs 1 and 2 are focused on core operational mechanics per the expertise reversal literature <span class="claim" data-grade="A" data-cite="kalyuga2003expertise tetzlaff2025cornerstone" data-locator="Abstract">demonstrating that experienced learners gain maximum mastery through targeted problem-solving rather than extensive scaffolding</span>. Complete the worked example and completion problem before beginning the independent capstone.</p>
+        <ol class="ladder">
+          <li>
+            <div>
+              <span class="rung-title">Rung 1 · Worked example</span>
+              <p>Lab 1 below: An end-to-end walkthrough of CRSP universe filtering, Shumway delisting adjustment, value-weighting, and divergence decomposition on sample stock returns.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 2 · Completion problem</span>
+              <p>Lab 2 below: Fill in the missing implementations of the finite-sample clustered standard error degrees-of-freedom multiplier and the articulation discrepancy identity.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 3 · Independent project</span>
+              <p>The full capstone deliverable: build <code>replication_engine.py</code> passing all 7 autograder tests across 50 seeds, generate the replication package manifest, and draft a formal doctoral referee report evaluated by rubric.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 4 · Stretch</span>
+              <p>Open-ended extensions in §8: global asset pricing extensions, Docker/Nix container manifests, and specification curve sensitivity audits.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+
+        <section class="lab" id="lab-CAP1-project-1" data-runtime="python" data-packages="numpy">
+          <h3>Lab 1 · Worked example: End-to-end replication audit</h3>
+          <p class="hypothesis">This worked example demonstrates the 4-step pipeline: filtering ordinary US common shares, compounding Shumway delisting penalties, calculating value-weighted portfolio returns, and computing the divergence wedge against the published target.</p>
+          <pre><code class="language-python" data-run>"""Lab Project 1 (Worked Example): End-to-end replication audit and divergence decomposition."""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def main() -&gt; None:
+    # 5 stocks, 1 month
+    permnos = np.array([10001, 10002, 10003, 10004, 10005])
+    shrcd = np.array([11, 10, 31, 11, 12])  # 31 is REIT, 12 is foreign ADR
+    exchcd = np.array([1, 2, 1, 3, 1])
+    raw_ret = np.array([0.05, -0.02, 0.15, 0.08, -0.10])
+    dlret = np.array([np.nan, np.nan, np.nan, -0.40, np.nan])
+    dlstcd = np.array([0, 0, 0, 580, 0])  # Stock 4 delisted for performance
+    me = np.array([500.0, 1500.0, 200.0, 300.0, 800.0])
+
+    # 1. Share code filtering (SHRCD 10/11 only)
+    valid_mask = np.isin(shrcd, [10, 11]) &amp; np.isin(exchcd, [1, 2, 3])
+    print(f"Step 1: Universe Filter: Retained {np.sum(valid_mask)} of {len(permnos)} stocks (excluded REIT and ADR).")
+
+    # 2. Shumway Delisting Adjustment on filtered stocks
+    adj_ret = np.copy(raw_ret)
+    for i in range(len(permnos)):
+        if dlstcd[i] &gt; 0:
+            d_ret = dlret[i]
+            if np.isnan(d_ret):
+                d_ret = -0.55 if exchcd[i] == 3 else -0.30
+            adj_ret[i] = (1.0 + raw_ret[i]) * (1.0 + d_ret) - 1.0
+
+    s4_raw = raw_ret[3]
+    s4_adj = adj_ret[3]
+    s4_dl = dlret[3]
+    print(f"Step 2: Delist Adj on Stock 4: Raw {s4_raw:+.2f} -&gt; Compounded {s4_adj:+.4f} (DLRET = {s4_dl:.2f})")
+
+    # 3. Portfolio Weighting: Equal-weighted vs Value-weighted on valid stocks
+    valid_ret = adj_ret[valid_mask]
+    valid_me = me[valid_mask]
+
+    ew_ret = float(np.mean(valid_ret))
+    weights = valid_me / np.sum(valid_me)
+    vw_ret = float(np.sum(weights * valid_ret))
+
+    print(f"Step 3: Equal-Weighted Return: {ew_ret * 100:.3f}%")
+    print(f"        Value-Weighted Return: {vw_ret * 100:.3f}%")
+    print(f"        Weighting Wedge: {(vw_ret - ew_ret) * 100:+.3f}%")
+
+    # 4. Articulation breakdown
+    published_target = 0.040  # 4.0%
+    divergence = vw_ret - published_target
+    print(f"Step 4: Divergence from target ({published_target * 100:.1f}%): {divergence * 100:+.3f}%")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Step 1: Universe Filter: Retained 3 of 5 stocks (excluded REIT and ADR).
+Step 2: Delist Adj on Stock 4: Raw +0.08 -&gt; Compounded -0.3520 (DLRET = -0.40)
+Step 3: Equal-Weighted Return: -10.733%
+        Value-Weighted Return: -4.809%
+        Weighting Wedge: +5.925%
+Step 4: Divergence from target (4.0%): -8.809%</pre>
+          <p class="interpretation">Notice that filtering out REITs and ADRs removes extreme outliers, while compounding the -40% delisting return on Stock 4 transforms a raw +8% return into a severe -35.2% loss. Value-weighting further dampens microcap volatility, yielding a clean divergence breakdown.</p>
+        </section>
+
+        <section class="lab completion" id="lab-CAP1-project-2" data-runtime="python" data-packages="numpy">
+          <h3>Lab 2 · Completion problem: Clustered SE df correction and divergence articulation</h3>
+          <p class="hypothesis">Complete the two essential econometric functions: the finite-sample degrees-of-freedom adjustment for clustered covariance and the articulation identity verifying that step deltas sum exactly to total empirical divergence.</p>
+          <pre><code class="language-python" data-run>"""Lab Project 2 (Completion Problem Solution): Clustered SE df correction and divergence articulation."""
+
+from __future__ import annotations
+
+
+def compute_cluster_df_factor(n_obs: int, n_params: int, n_clusters: int) -> float:
+    """Compute the finite-sample degrees-of-freedom adjustment for clustered standard errors."""
+    cluster_adjustment = ___
+    sample_adjustment = ___
+    return cluster_adjustment * sample_adjustment
+
+
+def check_articulation_identity(
+    published_val: float,
+    replicated_val: float,
+    step_deltas: list[float],
+) -> tuple[float, float, bool]:
+    """Check that sum of incremental step deltas articulates exactly to total divergence."""
+    total_divergence = ___
+    sum_deltas = ___
+    articulation_gap = ___
+    is_articulated = abs(articulation_gap) &lt; 1e-10
+    return total_divergence, articulation_gap, is_articulated
+
+
+def main() -> None:
+    # 1. Degrees of freedom factor check
+    n_obs = 1200
+    n_params = 4
+    n_clusters = 50
+
+    df_factor = compute_cluster_df_factor(n_obs, n_params, n_clusters)
+    print(f"Degrees of freedom multiplier for G = {n_clusters}, N = {n_obs}, K = {n_params}: {df_factor:.6f}")
+
+    # 2. Articulation check
+    published = 0.850
+    replicated = 0.420
+    deltas = [-0.070, -0.110, -0.120, -0.010, -0.120]  # sample, shrcd, delist, winsor, vw
+
+    tot_div, gap, ok = check_articulation_identity(published, replicated, deltas)
+    print(f"Total empirical divergence: {tot_div:+.3f}")
+    print(f"Sum of step deltas:        {sum(deltas):+.3f}")
+    print(f"Articulation gap:          {gap:.12f}")
+    print(f"Identity holds exactly:    {ok}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-9">Degrees of freedom multiplier for G = 50, N = 1200, K = 4: 1.022968
+Total empirical divergence: -0.430
+Sum of step deltas:        -0.430
+Articulation gap:          0.000000000000
+Identity holds exactly:    True</pre>
+          <p class="interpretation">The degrees-of-freedom factor scales the asymptotic sandwich covariance matrix by \(\frac{G}{G-1} \times \frac{N-1}{N-K}\), preventing underestimation of standard errors when cluster counts are moderate. The articulation identity ensures that no unexplained residual wedges remain in your replication diagnosis.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A submitted research manuscript claims to discover a novel persistent anomaly yielding 85 basis points per month in long-short spread returns with a reported t-statistic of 3.84 under equal-weighting and unadjusted CRSP returns. As an independent referee commissioned by the journal, you must execute a computational replication audit of Table 1 using raw panel data, evaluate the credibility of the empirical claims, and author an authoritative referee report assessing whether the findings represent a genuine risk premium, an anomaly driven by microcap illiquidity, or an artifact of delisting survivorship bias.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A panel of equity securities across \(T\) months containing stock identifiers (<code>permnos</code>), monthly timestamps (<code>months</code>), CRSP share codes (<code>shrcd</code>), exchange codes (<code>exchcd</code>), unadjusted monthly returns (<code>raw_ret</code>), delisting codes (<code>dlstcd</code>), delisting returns (<code>dlret</code>), market equity market capitalizations (<code>me</code>), predictive characteristic signals (<code>signal</code>), and benchmark market/factor series (<code>mkt</code>, <code>smb</code>, <code>hml</code>).</dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            Two unified deliverables:
+            <ol>
+              <li>An autograded Python module <code>replication_engine.py</code> implementing:
+                <ul>
+                  <li><code>apply_<wbr>share_<wbr>code_<wbr>filter</code>: CRSP share code (10/11) and major exchange (1/2/3) filtering.</li>
+                  <li><code>apply_<wbr>delisting_<wbr>adjustment</code>: Shumway (1997) compounding and missing return penalty imputation (-30% NYSE/AMEX, -55% NASDAQ).</li>
+                  <li><code>winsorize_<wbr>cross_<wbr>section</code>: Monthly cross-sectional outlier clipping.</li>
+                  <li><code>form_<wbr>sorted_<wbr>portfolios</code>: Quintile portfolio sort and long-short spread construction under equal-weighting and value-weighting.</li>
+                  <li><code>estimate_<wbr>regression</code>: Factor regression estimation with OLS, White HC0, Newey-West HAC, and clustered standard errors with degrees-of-freedom corrections.</li>
+                  <li><code>decompose_<wbr>replication_<wbr>divergence</code>: Sequential waterfall decomposition satisfying exact articulation.</li>
+                  <li><code>verify_<wbr>manifest</code>: Cryptographic SHA-256 package verification.</li>
+                </ul>
+              </li>
+              <li>A formal 3-to-5 page written referee report formatted according to Berk, Harvey &amp; Hirshleifer (2017), containing:
+                <ul>
+                  <li>Part 1: Confidential cover letter to the Editor with recommendation (Reject, Major Revision, Minor Revision, Accept) and concise rationale.</li>
+                  <li>Part 2: Report to the Authors with an objective Executive Summary, prioritized Major Comments (identification, data filters, inference), and constructive Minor Comments.</li>
+                </ul>
+              </li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Deterministic execution under Python 3.14 with NumPy; zero look-ahead bias across time; strict cross-sectional winsorization per period; exact articulation discrepancy zero; all claims in the referee report must cite exact table panels, equations, and literature registry keys.</dd>
+
+          <dt>Grading mode</dt>
+          <dd>The curriculum grades this project by both autograder and rubric: the computational module is graded automatically against deterministic pytest properties across 50 random seeds; the written referee report is graded by rubric across 5 criteria and four performance levels, calibrated against annotated exemplars.</dd>
+        </dl>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th class="num">Hours</th>
+                <th>Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Data filtering &amp; Shumway delisting adjustment</td>
+                <td class="num">10</td>
+                <td>Filtering CRSP universe and compounding delisting returns with performance code imputation.</td>
+              </tr>
+              <tr>
+                <td>Signal generation &amp; portfolio sorting</td>
+                <td class="num">10</td>
+                <td>Monthly cross-sectional winsorization and computing EW vs VW long-short spreads.</td>
+              </tr>
+              <tr>
+                <td>Econometric regressions &amp; clustered inference</td>
+                <td class="num">8</td>
+                <td>Estimating factor models with OLS, White, Newey-West, and two-way clustered standard errors.</td>
+              </tr>
+              <tr>
+                <td>Divergence decomposition &amp; articulation</td>
+                <td class="num">8</td>
+                <td>Decomposing total empirical wedge into articulated step-by-step waterfall contributions.</td>
+              </tr>
+              <tr>
+                <td>Package manifest &amp; deterministic test harness</td>
+                <td class="num">4</td>
+                <td>Assembling replication directory, hashing outputs, and passing 50 autograder seeds.</td>
+              </tr>
+              <tr>
+                <td>Doctoral referee report authoring</td>
+                <td class="num">8</td>
+                <td>Drafting confidential remarks and formal author report following Berk et al. standards.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td class="num"><strong>48</strong></td>
+                <td>Capstone project comprises 40% of the 120-hour module budget.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>Paste or load your <code>replication_engine.py</code> and execute the automated verification suite. The autograder runs your solution across your workspace instance seed, verifying universe filters, compounding rules, covariance matrices, and articulation identities.</p>
+        <section class="grader-panel" id="grader" data-unit="CAP1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="replication_engine.py" data-starter="starter.py" data-packages="numpy"></section>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Rubric &amp; Exemplars</h2>
+        <p>Your written referee report is evaluated across 5 doctoral-level scholarly criteria. Every criterion is scored across 4 performance levels with observable descriptors.</p>
+
+        <div class="table-wrap">
+          <table class="rubric">
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">Level 4 · Exemplary</th>
+                <th scope="col">Level 3 · Proficient</th>
+                <th scope="col">Level 2 · Developing</th>
+                <th scope="col">Level 1 · Unsatisfactory</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Computational Reproducibility &amp; Architecture</th>
+                <td>Containerized reproducible pipeline; bit-for-bit verification; automated diff logging with zero manual intervention.</td>
+                <td>Fully automated deterministic pipeline; complete SHA-256 manifest; verified reproduction of baseline figures.</td>
+                <td>Code runs with manual intervention; missing deterministic random seeds; manifest lacks cryptographic checksums.</td>
+                <td>Code fails to execute or relies on unpinned dependencies; no verification manifest; files unorganized.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Data Filtering &amp; Pipeline Integrity</th>
+                <td>Exhaustive CRSP/Compustat link auditing; dual NYSE-breakpoint analysis; robust treatment of microcaps vs large-caps.</td>
+                <td>Applies standard SHRCD 10/11 and exchange 1/2/3 filters; full Shumway delisting compounding; monthly cross-sectional winsorization.</td>
+                <td>Applies simple share code filter but omits exchange filtering; applies delisting adjustment without NASDAQ penalty.</td>
+                <td>Ignores CRSP share code filtering; treats missing delisting returns as zero; pools winsorization across time.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Econometric Scrutiny &amp; Inference</th>
+                <td>Complete specification curve analysis; exact GRS finite-sample F-testing; Shanken error-in-variables corrections.</td>
+                <td>Estimates two-way clustered standard errors with degrees-of-freedom corrections; reports Newey-West HAC; audits factor betas.</td>
+                <td>Reports White HC0 standard errors but overlooks serial correlation; omits finite-sample degrees-of-freedom adjustments.</td>
+                <td>Reports homoskedastic standard errors on panel data; ignores firm or time clustering; claims causality from correlation.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Divergence Diagnosis &amp; Articulation</th>
+                <td>Exhaustive multi-way sensitivity decomposition; isolates exact microcap contribution; reconciles point estimate and SE divergence.</td>
+                <td>Step-by-step waterfall decomposition attributing exact basis points to sample, filters, delisting, and weighting; zero articulation gap.</td>
+                <td>Computes replication difference but fails to articulate intermediate steps; sum of deltas does not match total gap.</td>
+                <td>Fails to explain difference between published and replicated numbers; attributes divergence vaguely to data noise.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Referee Report Scholarly Rigor</th>
+                <td>Masterful constructive critique per Berk et al.; provides concrete identification tests; delivers decisive editorial recommendation.</td>
+                <td>Separates confidential editor remarks from author report; prioritizes fatal identification flaws over minor suggestions.</td>
+                <td>Identifies legitimate flaws but organizes poorly; provides vague recommendations without actionable guidance.</td>
+                <td>Hostile or superficial tone; lists personal complaints; conflates minor formatting issues with fatal defects.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section id="exemplar-4">
+          <h3>Exemplar · Level 4 (Exemplary Referee Report)</h3>
+          <article class="exemplar" data-level="4">
+            <h4>Part 1: Confidential Remarks to the Editor</h4>
+            <p><strong>Recommendation:</strong> Reject.</p>
+            <p><strong>Summary Rationale:</strong> While the paper addresses an interesting question regarding predictive signals in cross-sectional equity returns, the empirical findings do not survive basic data integrity checks. Specifically, as documented in my replication audit, the reported long-short spread of 85 bps/month (\(t = 3.84\)) is entirely an artifact of equal-weighting microcap stocks and omitting delisting return adjustments. When standard Shumway (1997) delisting corrections are applied and returns are value-weighted across NYSE/AMEX/NASDAQ common stocks, the spread shrinks to 18 bps/month (\(t = 1.12\)), rendering the anomaly economically and statistically indistinguishable from zero.</p>
+
+            <h4>Part 2: Report to the Authors</h4>
+            <p><strong>Executive Summary:</strong> The manuscript proposes a novel characteristic signal based on firm operating momentum and asserts that a zero-cost long-short decile portfolio generates 85 basis points per month in abnormal alpha. The authors claim this spread cannot be explained by standard multi-factor models and represents evidence of behavioral underreaction.</p>
+
+            <p><strong>Major Comments:</strong></p>
+            <ol>
+              <li><em>Delisting Return Bias:</em> In Table 1, the authors compute monthly returns from the CRSP monthly stock file without compounding delisting returns (<code>DLRET</code>). Per <span class="claim" data-grade="A" data-cite="shumway1997delisting" data-locator="p. 330">Shumway (1997)</span>, missing delisting returns for performance-related delisting codes (500, 520, 551–574, 580, 584) average -30% for NYSE/AMEX and -55% for NASDAQ issues. In the short leg (Decile 1), approximately 4.2% of firm-months experience performance delistings. Imputing standard delisting penalties reduces the long-short spread by 17 basis points per month (\(\Delta_{\text{delist}} = -0.17\%\)).</li>
+              <li><em>Microcap Domination &amp; Portfolio Weighting:</em> The reported results rely exclusively on equal-weighted returns without NYSE size breakpoints. Following <span class="claim" data-grade="A" data-cite="hou2018replicating" data-locator="Table 2">Hou, Xue &amp; Zhang (2020)</span>, microcaps represent over 60% of the cross-section by firm count but less than 3% of aggregate market value. Re-estimating Table 1 under value-weighting reduces the monthly spread from 0.65% to 0.18% (\(t = 1.12\)). The anomaly exists solely in illiquid securities where transaction costs exceed gross profits per <span class="claim" data-grade="A" data-cite="novymarx2015taxonomy" data-locator="Table 4">Novy-Marx &amp; Velikov (2015)</span>.</li>
+              <li><em>Standard Error Clustering:</em> The pooled panel regression in Table 3 reports OLS standard errors (\(t = 3.42\)). Estimating two-way clustered standard errors by firm and month per <span class="claim" data-grade="A" data-cite="petersen2008estimating" data-locator="Table 5">Petersen (2009)</span> inflates the standard error from 0.0021 to 0.0048, dropping the t-statistic to 1.48.</li>
+            </ol>
+
+            <p><strong>Minor Comments:</strong> Table 1 lacks explicit units in the column headers; equation 4 omits time subscript indexing; the sample description does not state whether closed-end funds (SHRCD 12) were filtered.</p>
+          </article>
+        </section>
+
+        <section id="exemplar-2">
+          <h3>Exemplar · Level 2 (Developing Referee Report)</h3>
+          <article class="exemplar" data-level="2">
+            <h4>Part 1: Confidential Remarks to the Editor</h4>
+            <p><strong>Recommendation:</strong> Major Revision.</p>
+            <p><strong>Summary Rationale:</strong> The paper has some interesting empirical results but I could not replicate the exact numbers in Table 1. My numbers were smaller. The authors need to check their code and do more robustness tests.</p>
+
+            <h4>Part 2: Report to the Authors</h4>
+            <p><strong>General Assessment:</strong> This paper investigates whether an equity signal predicts returns. The authors find positive results. However, I have several concerns with their methodology.</p>
+
+            <p><strong>Comments:</strong></p>
+            <ol>
+              <li>I tried replicating Table 1 using CRSP data and got a return spread of about 0.50% instead of 0.85%. The authors should explain why my replication does not match their published table.</li>
+              <li>The paper uses equal-weighted portfolios. The authors should also show value-weighted returns because equal-weighting is sometimes criticized in the literature.</li>
+              <li>The authors should run their regressions with different standard errors, including Newey-West and clustered standard errors, and see if the t-statistics stay above 2.0.</li>
+              <li>There are several typos in Section 2, and Figure 1 is difficult to read. The authors should improve their figures and cite more papers on momentum.</li>
+            </ol>
+          </article>
+        </section>
+
+        <section id="adversarial-bank">
+          <h3 id="h-bank">Adversarial Question Bank (16 Attack Angles)</h3>
+          <p>When defending a replication package or referee report against an editorial board or adversarial committee, expect targeted interrogation across these 16 vetted attack angles:</p>
+          <ol id="question-bank">
+            <li><em>Universe Contamination:</em> Did you filter CRSP share codes to strictly 10 and 11, or did foreign ADRs (12) and REITs (31) contaminate the small-cap deciles?</li>
+            <li><em>Survivorship &amp; Delisting Compounding:</em> How exactly did you compound delisting returns (<code>DLRET</code>) when both regular monthly return and delisting return occur in the cessation month?</li>
+            <li><em>NASDAQ Imputation Asymmetry:</em> Why did you assign -55% rather than -30% to NASDAQ performance delistings with missing delisting returns? Cite empirical literature justification.</li>
+            <li><em>Look-Ahead Signal Lagging:</em> In forming quarterly accounting characteristics from Compustat, what calendar lag did you enforce to ensure accounting data was publicly disclosed before portfolio formation?</li>
+            <li><em>Cross-Sectional vs Pooled Winsorization:</em> Did you winsorize your characteristic signals per month, or across the pooled panel? If pooled, how did you avoid inter-temporal look-ahead leakage?</li>
+            <li><em>Microcap Influence &amp; Breakpoints:</em> What percentage of your long-short spread's profitability survives when portfolio decile breakpoints are determined solely by NYSE-listed stocks?</li>
+            <li><em>Finite-Sample Cluster Correction:</em> In computing clustered covariance matrices across 48 time clusters, did you apply the finite-sample degrees-of-freedom multiplier \(\frac{G}{G-1} \times \frac{N-1}{N-K}\)?</li>
+            <li><em>Two-Way Covariance Positive Semi-Definiteness:</em> In computing Cameron-Gelbach-Miller two-way clustered covariance \(V_e + V_t - V_{et}\), how did you handle non-positive eigenvalues in the intersection matrix?</li>
+            <li><em>Shanken EIV Attenuation:</em> In two-pass Fama-MacBeth regressions, did you report naive time-series average standard errors or adjust for generated regressors via the Shanken (1992) factor?</li>
+            <li><em>GRS Exact F-Test vs Asymptotic Chi-Square:</em> When testing pricing errors across 25 size/value portfolios over 360 months, what is the discrepancy between the exact GRS F-statistic and the asymptotic \(\chi^2\) test?</li>
+            <li><em>Stepwise Articulation Discrepancy:</em> Does your waterfall divergence table satisfy exact articulation where intermediate step deltas sum identically to the total published-vs-replicated wedge?</li>
+            <li><em>Post-Publication Sample Decay:</em> Following McLean &amp; Pontiff (2016), how much did the anomaly's monthly Sharpe ratio decay in the out-of-sample period following original publication?</li>
+            <li><em>Trading Cost Hurdle:</em> Under Novy-Marx &amp; Velikov (2015) transaction cost models, does the net turnover-adjusted alpha remain statistically distinguishable from zero?</li>
+            <li><em>Multiple Testing Adjustment:</em> Does the reported t-statistic clear the Harvey, Liu &amp; Zhu (2016) \(t \ge 3.0\) hurdle, or survive Benjamini-Hochberg FDR control across the factor zoo?</li>
+            <li><em>Specification Curve Density:</em> What proportion of the full combinatorial specification grid (sampling windows, control sets, winsorization bounds) yields statistically significant positive alpha?</li>
+            <li><em>Constructive Editorial Recommendation:</em> In your referee report, did you explicitly distinguish fatal identification flaws that warrant outright rejection from fixable empirical limitations amenable to revision?</li>
+          </ol>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Global Cross-Country Replication:</strong> Replicate the assigned anomaly across 40 international equity markets using open global data, evaluating whether return decay correlates with country-level arbitrage capital and short-sale constraints.</li>
+          <li><strong>Specification Curve Dashboard:</strong> Build an interactive D3 visualization displaying the complete specification curve across all 512 permutations of data filtering, winsorization, and clustering choices.</li>
+          <li><strong>Containerized Nix Manifest:</strong> Package the full replication package within a deterministic, containerized Nix flake guaranteeing bit-for-bit software environment reproduction on Linux and macOS architectures.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading</h2>
+        <ol class="reading-list">
+          <li data-cite="berk2017write"></li>
+          <li data-cite="hou2018replicating"></li>
+          <li data-cite="chen2022open"></li>
+          <li data-cite="petersen2008estimating"></li>
+          <li data-cite="shumway1997delisting"></li>
+          <li data-cite="mclean2016academic"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s-references">References</h2>
+        <ol data-references></ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">CAP1 project · Quant PhD Program</footer>
+</body>
+</html>
