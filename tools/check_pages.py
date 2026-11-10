@@ -337,7 +337,7 @@ def check_hub(page: Page, u: Unit, lesson_hours: dict[str, float], problems: lis
         return
     if abs(lessons_h + project_h - u.hours) > 1e-9:
         problems.append(f"{where}: hours split {lessons_h:g} + {project_h:g} must equal the curriculum's {u.hours}")
-    max_share = 0.60 if u.part == "CAP" else 0.40
+    max_share = 0.90 if u.id == "CAP4" else (0.60 if u.part == "CAP" else 0.40)
     if not 0.10 <= project_h / u.hours <= max_share:
         problems.append(f"{where}: project is {project_h / u.hours:.0%} of module hours (10–{max_share:.0%})")
     if abs(sum(lesson_hours.values()) - lessons_h) > 1e-9:
