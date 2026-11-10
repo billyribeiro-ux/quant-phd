@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CF7" data-page="L01" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01 · Model Architecture &amp; Separation of Concerns</title>
+  <meta name="description" content="Design principles for institutional financial models: partitioning into inputs, calculations, and presentation outputs, directed acyclic graphs of cell dependencies, formula consistency, and the FAST Standard. 8 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">CF7 Financial Modeling</a><span class="sep">›</span><span>L01 Model Architecture</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 01 · 8 study hours</p>
+        <h1>Model Architecture &amp; Separation of Concerns</h1>
+        <p class="why-it-matters">A financial model is an executable quantitative representation of a firm's operational and capital structure. When input assumptions, calculation schedules, and presentation summaries are intermingled, models become opaque, fragile, and prone to catastrophic omission errors. Software engineering principles demand strict separation of concerns, topological dependency ordering, and formula invariance across time. Adopting formal model architecture prevents structural corruption, accelerates auditing, and establishes the foundation for automated code reconciliation.</p>
+      </header>
+
+      <section id="s1-architecture">
+        <h2 id="h-s1-architecture">1. The Tripartite Model Architecture</h2>
+        <p>Institutional financial modeling requires a formal separation between data inputs, calculation processing, and presentation outputs. The industry benchmark for financial model design is codified in the <span class="claim" data-grade="A" data-cite="fastndfast">FAST Standard (Flexible, Appropriate, Structured, Transparent)</span>, which governs commercial modeling in infrastructure finance, project finance, and investment banking.</p>
+
+        <div class="block definition" id="def-model-architecture-block">
+          <h3>Definition 1.1 · Model Architecture</h3>
+          <p>A <dfn id="def-model-architecture" data-concept="model-architecture">model architecture</dfn> is a tripartite partition of a financial projection system into three mutually disjoint functional domains:
+          \[
+          \mathcal{M} = (\mathcal{I}, \mathcal{C}, \mathcal{O})
+          \]
+          where:
+          </p>
+          <ul>
+            <li><strong>Input Domain \(\mathcal{I}\):</strong> The collection of invariant scalar parameters, time-series vectors, historical statements, and scenario switches. No cell in \(\mathcal{I}\) contains a calculation formula.</li>
+            <li><strong>Calculation Domain \(\mathcal{C}\):</strong> The collection of dynamic schedules, corkscrew roll-forwards, tax calculations, and debt balances. No cell in \(\mathcal{C}\) contains hard-coded numeric constants other than structural identity constants (such as 0, 1, or days in a year).</li>
+            <li><strong>Output Domain \(\mathcal{O}\):</strong> The presentation layer displaying primary financial statements, executive dashboards, debt covenant summaries, and valuation returns. Cells in \(\mathcal{O}\) contain links to \(\mathcal{C}\) and \(\mathcal{I}\) but perform no primary accounting transformations.</li>
+          </ul>
+        </div>
+
+        <div class="block remark" id="rem-fast-principles">
+          <h3>Remark 1.1 · FAST Modeling Axioms</h3>
+          <p>The <span class="claim" data-grade="A" data-cite="fastndfast">FAST Standard §1.01–1.04</span> imposes four structural requirements on financial workbooks:</p>
+          <ul>
+            <li><strong>Flexible:</strong> The model must accommodate immediate scenario shifts, revised forecast horizons, and structural capital revisions without formula recoding.</li>
+            <li><strong>Appropriate:</strong> The model detail must reflect the commercial requirements of the transaction without spurious micro-complexity that increases error surface area.</li>
+            <li><strong>Structured:</strong> Calculation logic flows strictly from left to right (time) and top to bottom (dependency hierarchy), with uniform column design across all worksheets.</li>
+            <li><strong>Transparent:</strong> Formulas must be simple, readable, and atomic. Long nested <code>IF</code> statements and multi-line formulas are prohibited in favor of modular intermediate calculation flags.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="s2-dag-topology">
+        <h2 id="h-s2-dag-topology">2. Directed Acyclic Graphs &amp; Dependency Topology</h2>
+        <p>Every non-circular financial model can be formalized as a directed graph whose vertices represent variables (cells) and whose directed edges represent calculation references.</p>
+
+        <div class="block definition" id="def-model-dag">
+          <h3>Definition 1.2 · Model Dependency Graph</h3>
+          <p>Let \(V\) denote the set of all model variables partitioned into \(V = V_{\mathcal{I}} \cup V_{\mathcal{C}} \cup V_{\mathcal{O}}\). The <em>model dependency graph</em> is a directed graph \(G = (V, E)\) where a directed edge \((u, v) \in E\) exists if and only if the calculation of variable \(v\) depends directly on variable \(u\).</p>
+        </div>
+
+        <div class="block theorem" id="thm-topological-order">
+          <h3><span class="block-title claim" data-grade="T">Theorem 1.1 · Topological Evaluability</span></h3>
+          <p class="hypotheses"><strong>Assumptions.</strong> Let \(G = (V, E)\) be a model dependency graph with finite vertex set \(V\). Assume that \(G\) contains no directed cycles, such that for every directed path \((v_1, v_2, \dots, v_k)\), \(v_1 \neq v_k\).</p>
+          <p class="statement">Then there exists a strict topological ordering \(\pi: V \to \{1, 2, \dots, |V|\}\) such that for every directed edge \((u, v) \in E\), \(\pi(u) < \pi(v)\). Consequently, all model variables can be evaluated sequentially in a single forward pass without iteration or algebraic circularity.</p>
+        </div>
+
+        <div class="block proof">
+          <p><strong>Proof.</strong> Let \(G = (V, E)\) be a finite directed acyclic graph. We proceed by induction on \(|V|\). Since \(G\) is finite and acyclic, it must contain at least one vertex \(s \in V\) with in-degree zero (a source vertex with no incoming edges; otherwise, traversing backwards indefinitely in a finite graph would produce a cycle). Assign \(\pi(s) = 1\). Consider the induced subgraph \(G' = G \setminus \{s\}\). Subgraph \(G'\) is also finite and acyclic on \(|V| - 1\) vertices. By the induction hypothesis, \(G'\) admits a valid topological ordering \(\pi': V \setminus \{s\} \to \{2, \dots, |V|\}\). For every edge \((s, v) \in E\), \(\pi(s) = 1 < \pi'(v)\), and for every edge \((u, v)\) in \(G'\), \(\pi'(u) < \pi'(v)\). Setting \(\pi(v) = \pi'(v)\) for all \(v \neq s\) completes the topological ordering. Sequential evaluation in the order \(\pi^{-1}(1), \pi^{-1}(2), \dots\) ensures that every operand is evaluated prior to its referencing operator.</p>
+        </div>
+
+        <p>In practice, modern spreadsheet computation engines (such as Microsoft Excel's dependency calculation tree) dynamically construct this topological sort. When financial schedules introduce circular interest relationships (such as debt balances determining interest, which determines cash flow, which in turn sizes debt balances), the graph ceases to be acyclic. We analyze circularity resolution in Lesson 3.</p>
+      </section>
+
+      <section id="s3-corkscrew-consistency">
+        <h2 id="h-s3-corkscrew-consistency">3. The Corkscrew Roll-Forward &amp; Structural Consistency</h2>
+        <p>A core structural convention of institutional modeling is the <em>corkscrew</em> (or roll-forward account). The corkscrew models the intertemporal balance of a balance sheet stock account driven by period cash flows.</p>
+
+        <div class="block definition" id="def-corkscrew">
+          <h3>Definition 1.3 · Corkscrew Roll-Forward</h3>
+          <p>Let \(S_t\) denote the closing balance of a balance sheet stock variable at period \(t\). A <em>corkscrew roll-forward</em> is a discrete dynamic recursion:
+          \[
+          S_t = S_{t-1} + \sum_{k=1}^m A_{k, t} - \sum_{j=1}^p D_{j, t}
+          \]
+          where \(S_{t-1}\) is the opening balance, \(A_{k, t} \ge 0\) are period additions (e.g., capital expenditure, new debt draws, net income), and \(D_{j, t} \ge 0\) are period deductions (e.g., depreciation, principal amortizations, dividend payouts).</p>
+        </div>
+
+        <div class="block example" id="ex-ppe-corkscrew">
+          <h3>Example 1.1 · Net PP&amp;E Corkscrew</h3>
+          <p>Consider a firm with opening net property, plant, and equipment (PP&amp;E) of 180.0 million at \(t=0\). For forecast period \(t=1\), revenue is 432.0 million, capital expenditure is 6.0% of revenue, and annual depreciation is 10.0% of opening net PP&amp;E. The roll-forward calculates:</p>
+          <ul>
+            <li>Opening Net PP&amp;E: \(S_0 = 180.00\)</li>
+            <li>Additions (CapEx): \(A_1 = 432.0 \times 0.06 = 25.92\)</li>
+            <li>Deductions (Depreciation): \(D_1 = 180.0 \times 0.10 = 18.00\)</li>
+            <li>Closing Net PP&amp;E: \(S_1 = 180.00 + 25.92 - 18.00 = 187.92\)</li>
+          </ul>
+        </div>
+
+        <div class="block remark" id="rem-one-formula">
+          <h3>Remark 1.2 · The One-Formula-Per-Row Rule</h3>
+          <p>Under <span class="claim" data-grade="A" data-cite="fastndfast">FAST Standard §2.01</span>, every calculation row must maintain an identical formula across all forecast columns. If a formula in column \(E\) (representing Year 2) differs in structure from column \(D\) (representing Year 1), the model breaches structural consistency. Any period-dependent logic (such as switching from historical actuals to forecast estimates) must be handled by explicit time flags or masks, not by manual formula alteration across columns.</p>
+        </div>
+
+        <section class="lab" id="lab-CF7-L01-1" data-runtime="python">
+          <h3>Lab 1 · Topological Dependency &amp; Schedule Evaluation</h3>
+          <p class="hypothesis">Predicted before running: The projection engine evaluates schedules in strict topological order from an isolated inputs dictionary, generating Period 1 revenue of 540.0000, Period 3 revenue of 612.4680, and unlevered net income of 101.2500 and 114.8378 respectively without hard-coded constants in calculation logic.</p>
+          <pre><code class="language-python" data-run>"""Lab CF7-L01-1: Model Architecture &amp; Separation of Concerns.
+
+Demonstrates topological dependency ordering and strict separation of input parameters,
+calculation schedules, and output presentation in a corporate financial model.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def run_model_dag(inputs: dict[str, Any]) -&gt; dict[str, list[float]]:
+    """Evaluate financial model schedules in strict topological dependency order."""
+    base_rev = float(inputs["base_revenue"])
+    growth_rates: list[float] = [float(g) for g in inputs["revenue_growth"]]
+    gross_margin = float(inputs["gross_margin"])
+    sga_rate = float(inputs["sga_rate"])
+    tax_rate = float(inputs["tax_rate"])
+
+    revenues: list[float] = []
+    gross_profits: list[float] = []
+    ebitdas: list[float] = []
+    net_incomes: list[float] = []
+
+    current_rev = base_rev
+    for g in growth_rates:
+        # Step 1: Revenue calculation
+        current_rev = current_rev * (1.0 + g)
+        # Step 2: Gross profit calculation
+        gp = current_rev * gross_margin
+        # Step 3: Operating expense &amp; EBITDA
+        sga = current_rev * sga_rate
+        ebitda = gp - sga
+        # Step 4: Tax and Net Income (unlevered)
+        tax = ebitda * tax_rate
+        ni = ebitda - tax
+
+        revenues.append(current_rev)
+        gross_profits.append(gp)
+        ebitdas.append(ebitda)
+        net_incomes.append(ni)
+
+    return {
+        "revenue": revenues,
+        "gross_profit": gross_profits,
+        "ebitda": ebitdas,
+        "net_income": net_incomes,
+    }
+
+
+def main() -&gt; None:
+    inputs: dict[str, Any] = {
+        "base_revenue": 500.0,
+        "revenue_growth": [0.08, 0.07, 0.06],
+        "gross_margin": 0.45,
+        "sga_rate": 0.20,
+        "tax_rate": 0.25,
+    }
+
+    results = run_model_dag(inputs)
+    print("Period 1 Revenue:", f"{results['revenue'][0]:.4f}")
+    print("Period 3 Revenue:", f"{results['revenue'][2]:.4f}")
+    print("Period 1 EBITDA:", f"{results['ebitda'][0]:.4f}")
+    print("Period 3 EBITDA:", f"{results['ebitda'][2]:.4f}")
+    print("Period 1 Net Income:", f"{results['net_income'][0]:.4f}")
+    print("Period 3 Net Income:", f"{results['net_income'][2]:.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Period 1 Revenue: 540.0000
+Period 3 Revenue: 612.4680
+Period 1 EBITDA: 135.0000
+Period 3 EBITDA: 153.1170
+Period 1 Net Income: 101.2500
+Period 3 Net Income: 114.8378</pre>
+          <p class="interpretation">Observed output confirms that sequential topological evaluation produces deterministic financial statements with zero side effects, preserving strict separation between the input dictionary and calculation schedules.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the Canon Breaks</h2>
+        <p>The classical spreadsheet modeling canon posits that all business logic can be intuitively expressed across grid-based 2D worksheets. In institutional corporate finance, this premise breaks under three real-world conditions:</p>
+        <ol>
+          <li><strong>Intertemporal Path-Dependent Loops:</strong> Complex debt covenants, cash flow sweeps, and revolver interest dependencies induce cyclic dependency graphs. When circular calculation modes are enabled in commercial spreadsheet software, calculation order becomes non-deterministic and can fail to converge or mask divergent explosive behavior.</li>
+          <li><strong>Dimensional Explosion:</strong> Multi-asset portfolio models, product-line SKU reconciliations, and multi-currency consolidations force spreadsheet builders to duplicate calculation tabs, creating vast surfaces for formula desynchronization and reference corruption.</li>
+          <li><strong>Version Control Incompatibility:</strong> Proprietary binary XML workbooks (<code>.xlsx</code>) cannot be cleanly diffed, branched, or peer-reviewed under modern version control systems (Git), making it virtually impossible to audit who changed which formula cell in a multi-analyst transaction team.</li>
+        </ol>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul>
+          <li class="misconception">
+            <p class="wrong">Embedding assumption values directly inside calculation formulas (e.g. <code>=D5*0.25</code>) saves space and speeds up model execution.</p>
+            <p>Hard-coding numeric literals in formulas is the single most common cause of catastrophic spreadsheet errors. It obscures model assumptions from peer review, prevents automated sensitivity analysis, and guarantees that subsequent parameter updates will leave orphaned calculation cells unchanged.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A financial model whose balance sheet balances (\(\mathrm{Assets} = \mathrm{Liabilities} + \mathrm{Equity}\)) is mathematically and commercially verified.</p>
+            <p>A balanced balance sheet is a necessary condition of double-entry bookkeeping, but it provides zero assurance against formula specification errors. For example, omitting an entire operating expense line item simultaneously inflates net income and ending cash by identical amounts, preserving mathematical balance while producing a fatally overvalued transaction recommendation.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Financial modelers can safely use different formula structures in different columns to accommodate historical versus forecast years.</p>
+            <p>Varying formulas across columns breaks the FAST Standard's consistency axiom and invites dragging/fill errors during model updates. Production models must use uniform formulas across all timeline columns, governed by explicit binary flags (e.g. <code>ForecastFlag = IF(Year &gt; BaseYear, 1, 0)</code>).</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <div class="problem" id="p-mech-1">
+            <p class="statement">A firm has Year 0 revenue of 250.0 million. The model projects revenue growth of 10.0% in Year 1, 8.0% in Year 2, and 6.0% in Year 3. Gross margin is fixed at 40.0% and SG&amp;A expense is 18.0% of revenue. Calculate revenue and EBITDA for Year 1, Year 2, and Year 3.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For Year 1: \(\mathrm{Rev}_1 = 250.0 \times 1.10 = 275.00\) million. Gross profit is \(275.0 \times 0.40 = 110.00\) million. SG&amp;A is \(275.0 \times 0.18 = 49.50\) million. \(\mathrm{EBITDA}_1 = 110.00 - 49.50 = 60.50\) million.</p>
+              <p>For Year 2: \(\mathrm{Rev}_2 = 275.0 \times 1.08 = 297.00\) million. Gross profit is \(297.0 \times 0.40 = 118.80\) million. SG&amp;A is \(297.0 \times 0.18 = 53.46\) million. \(\mathrm{EBITDA}_2 = 118.80 - 53.46 = 65.34\) million.</p>
+              <p>For Year 3: \(\mathrm{Rev}_3 = 297.0 \times 1.06 = 314.82\) million. Gross profit is \(314.82 \times 0.40 = 125.928\) million. SG&amp;A is \(314.82 \times 0.18 = 56.6676\) million. \(\mathrm{EBITDA}_3 = 125.928 - 56.6676 = 69.2604\) million.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-mech-2">
+            <p class="statement">A corkscrew schedule tracks term debt. Opening term debt at Year 0 is 80.0 million. The credit agreement mandates annual principal amortization of 16.0 million or the remaining balance, whichever is less. Calculate closing term debt for Years 1, 2, 3, 4, 5, and 6.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>We evaluate the recursion \(D_t = \max(0.0, D_{t-1} - 16.0)\):</p>
+              <ul>
+                <li>Year 1: \(D_1 = 80.0 - 16.0 = 64.0\) million.</li>
+                <li>Year 2: \(D_2 = 64.0 - 16.0 = 48.0\) million.</li>
+                <li>Year 3: \(D_3 = 48.0 - 16.0 = 32.0\) million.</li>
+                <li>Year 4: \(D_4 = 32.0 - 16.0 = 16.0\) million.</li>
+                <li>Year 5: \(D_5 = 16.0 - 16.0 = 0.0\) million.</li>
+                <li>Year 6: \(D_6 = \max(0.0, 0.0 - 16.0) = 0.0\) million.</li>
+              </ul>
+            </details>
+          </div>
+
+          <div class="problem" id="p-mech-3">
+            <p class="statement">A financial model contains 5 variables: \(A\) (Base parameter), \(B = 2A + 5\), \(C = A^2\), \(D = B + C\), and \(E = D / 10\). Write down the adjacency matrix of this dependency graph and identify a valid topological evaluation sequence.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The directed edges are \((A, B), (A, C), (B, D), (C, D), (D, E)\). In topological order, a parent must precede all its children. Since \(A\) has in-degree zero, \(\pi(A) = 1\). Both \(B\) and \(C\) depend only on \(A\), so they can occupy positions 2 and 3 in either order. \(D\) depends on \(B\) and \(C\), so \(\pi(D) = 4\). Finally, \(E\) depends on \(D\), so \(\pi(E) = 5\). A valid topological evaluation sequence is \((A, B, C, D, E)\) (or \((A, C, B, D, E)\)).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <div class="problem" id="p-proof-1">
+            <p class="statement">Prove that if a financial model's dependency graph \(G = (V, E)\) contains a directed cycle \(C = (v_1, v_2, \dots, v_k, v_1)\), no topological ordering \(\pi: V \to \{1, \dots, |V|\}\) exists.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Suppose for contradiction that there exists a valid topological sort \(\pi: V \to \{1, \dots, |V|\}\). By definition of a topological sort, for every directed edge \((u, v) \in E\), it must hold that \(\pi(u) < \pi(v)\). Since \(C\) is a directed cycle, we have the sequence of directed edges \((v_1, v_2), (v_2, v_3), \dots, (v_k, v_1)\). Applying the strict inequality along the cycle yields \(\pi(v_1) < \pi(v_2) < \pi(v_3) < \dots < \pi(v_k) < \pi(v_1)\). By transitivity of the strict inequality relation on integers, this implies \(\pi(v_1) < \pi(v_1)\), which is a contradiction. Hence, no topological ordering can exist for a graph containing a directed cycle.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-proof-2">
+            <p class="statement">Let a stock account satisfy the corkscrew recursion \(S_t = S_{t-1} + A_t - D_t\) for \(t = 1, \dots, T\). Prove by induction that the cumulative balance is given by \(S_T = S_0 + \sum_{t=1}^T A_t - \sum_{t=1}^T D_t\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Base case: For \(T = 1\), \(S_1 = S_0 + A_1 - D_1 = S_0 + \sum_{t=1}^1 A_t - \sum_{t=1}^1 D_t\), which holds identically. Inductive hypothesis: Assume the identity holds for \(T = k\), so \(S_k = S_0 + \sum_{t=1}^k A_t - \sum_{t=1}^k D_t\). Inductive step: For \(T = k + 1\), by definition of the corkscrew recursion, \(S_{k+1} = S_k + A_{k+1} - D_{k+1}\). Substituting the inductive hypothesis for \(S_k\) gives \(S_{k+1} = \left( S_0 + \sum_{t=1}^k A_t - \sum_{t=1}^k D_t \right) + A_{k+1} - D_{k+1} = S_0 + \sum_{t=1}^{k+1} A_t - \sum_{t=1}^{k+1} D_t\). By mathematical induction, the identity holds for all integers \(T \ge 1\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-proof-3">
+            <p class="statement">Suppose a model partitions calculation into \(m\) sequential stages \(V_1, V_2, \dots, V_m\) where edges only point from \(V_i\) to \(V_j\) with \(i \le j\). Prove that any intra-stage graph that is acyclic ensures global acyclicity.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Suppose each induced subgraph \(G[V_i]\) is acyclic. Suppose for contradiction that \(G\) contains a directed cycle \(C = (u_1, u_2, \dots, u_p, u_1)\). Let \(\text{stage}(u)\) be the index \(i\) such that \(u \in V_i\). Since directed edges only point from \(V_i\) to \(V_j\) with \(i \le j\), the sequence of stages along the cycle must satisfy \(\text{stage}(u_1) \le \text{stage}(u_2) \le \dots \le \text{stage}(u_p) \le \text{stage}(u_1)\). This requires that all vertices in the cycle belong to the identical stage: \(\text{stage}(u_1) = \text{stage}(u_2) = \dots = \text{stage}(u_p) = i\). But this implies that the cycle \(C\) is entirely contained within the induced subgraph \(G[V_i]\), contradicting the premise that every intra-stage subgraph is acyclic. Hence \(G\) must be globally acyclic.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <div class="problem" id="p-emp-1">
+            <p class="statement">An analyst audits a 10-period corporate model where operating expenses were hard-coded as constant values instead of referencing the inflation index row. If inflation averages 3.0% annually, calculate the percentage by which operating expenses are understated in Year 10.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let base operating expense be \(E_0\). The hard-coded model sets \(E_{10}^{\text{hard}} = E_0\). Under compounding inflation of 3.0% per annum, true operating expense is \(E_{10}^{\text{true}} = E_0 \times (1.03)^{10} \approx E_0 \times 1.343916\). The percentage understatement is \(\frac{E_{10}^{\text{true}} - E_{10}^{\text{hard}}}{E_{10}^{\text{true}}} = \frac{1.343916 - 1.0}{1.343916} \approx \frac{0.343916}{1.343916} \approx 25.59\%\). The hard-coded expense is understated by 25.59%.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-emp-2">
+            <p class="statement">A private equity model contains 40 calculation worksheets with an average of 250 calculation cells per sheet. If the empirical cell error rate is \(p = 0.015\) per cell, calculate the probability that the workbook contains at least one calculation error under an independent error model.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The total number of calculation cells is \(N = 40 \times 250 = 10{,}000\) cells. Under an independent cell error probability of \(p = 0.015\), the probability that a cell is error-free is \(1 - p = 0.985\). The probability that all \(N\) cells are error-free is \((0.985)^{10{,}000} \approx e^{-150} \approx 7.2 \times 10^{-66}\). Therefore, the probability of at least one calculation error is \(1 - (0.985)^{10{,}000} \approx 1.0\) (virtually 100% certainty, consistent with the empirical survey literature of Panko 1998).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-emp-3">
+            <p class="statement">A financial modeler replaces a dynamic formula linking CapEx to revenue (6.0%) with a static average in 3 out of 5 forecast columns. If revenue accelerates from 100 to 150, 200, 250, and 300, calculate the discrepancy in cumulative 5-year CapEx between the dynamic model and the corrupted static model.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Dynamic CapEx: \(0.06 \times (100 + 150 + 200 + 250 + 300) = 0.06 \times 1000 = 60.00\) million. Suppose the corrupted model uses Year 1 CapEx (\(100 \times 0.06 = 6.0\)) for the last 3 years: CapEx values are \(6.0, 9.0, 6.0, 6.0, 6.0\). Sum of corrupted CapEx is \(6.0 + 9.0 + 18.0 = 33.00\) million. The cumulative discrepancy is \(60.00 - 33.00 = 27.00\) million of unmodeled capital expenditure.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <div class="problem" id="p-res-1">
+            <p class="statement">Critique the architectural trade-offs between implementing financial models in commercial grid spreadsheets versus domain-specific compiled code (e.g. Python/Rust). Under what organizational governance conditions should an institution mandate migration from spreadsheets to code?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Spreadsheets offer immediate visual layout, zero compile overhead, and rapid ad-hoc prototyping accessible to non-programming financial analysts. However, they suffer from lack of modular abstractions, invisible formula edits, high cell error rates, and absence of automated regression test harnesses. Organizations should mandate code migration when: (1) models execute mission-critical capital allocation or regulatory submissions; (2) models must execute thousands of Monte Carlo parameter sweeps; or (3) multiple teams concurrently maintain the modeling logic, requiring Git branching, pull request code reviews, and continuous integration testing.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-res-2">
+            <p class="statement">Design a formal schema for an automated CI/CD linter that enforces the FAST Standard on spreadsheet workbooks prior to investment committee submission. What structural rules can be validated statically?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A static spreadsheet linter can validate: (1) Formula consistency: require identical token ASTs across all columns in a calculation block; (2) Hardcode detection: parse formula tokens to flag any numeric literal other than structural constants (0, 1, 2, 365); (3) Dependency flow: verify that formulas reference only cells in the same column or prior columns/sheets, prohibiting backward time references; (4) Balance check validation: verify that every balance sheet contains a dedicated zero-check formula linked to automated assertion gates.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-res-3">
+            <p class="statement">Analyze how modern reactive web frameworks and computational graphs (e.g., PyTorch autograd or Directed Acyclic Graph workflow managers) formalize model architecture compared to 2D cell grids.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Reactive DAG frameworks explicitly declare nodes as named, typed state containers and edges as pure transformation functions. Unlike 2D cell grids where references are bound to spatial coordinates (e.g., <code>$D$15</code>), computational graphs decouple semantic variable identity from physical layout. This enables automatic differentiation for sensitivity analysis, distributed parallel evaluation of independent branches, and formal memory management without orphaned cell risk.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <caption>Core architectural principles and formal properties established in Lesson 01.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Claim / Formula</th>
+                <th scope="col">Grade</th>
+                <th scope="col">Basis / Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Tripartite separation of inputs, calculations, and presentation outputs</td>
+                <td><span class="claim" data-grade="A" data-cite="fastndfast">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="fastndfast">FAST Standard §1.01–1.04</span></td>
+              </tr>
+              <tr>
+                <td>Topological evaluability of acyclic dependency graphs</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 1.1 (proof by induction on graph vertices)</td>
+              </tr>
+              <tr>
+                <td>One-formula-per-row structural consistency requirement</td>
+                <td><span class="claim" data-grade="A" data-cite="fastndfast">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="fastndfast">FAST Standard §2.01</span></td>
+              </tr>
+              <tr>
+                <td>Corkscrew roll-forward identity \(S_t = S_{t-1} + A_t - D_t\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 1.3 and Problem P-Proof-2</td>
+              </tr>
+              <tr>
+                <td>Elimination of hard-coded numeric literals in calculation blocks</td>
+                <td><span class="claim" data-grade="A" data-cite="fastndfast">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="fastndfast">FAST Standard §1.02</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CF7" data-page="L01" data-cards="cards.json">
+        <h2 id="h-quiz">Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What are the three primary functional domains of a standardized financial model architecture?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q1"> Assets, Liabilities, and Stockholders' Equity</label>
+              <label class="option" data-correct><input type="radio" name="q1"> Inputs, Calculations, and Outputs</label>
+              <label class="option"><input type="radio" name="q1"> Revenue, Costs, and Net Income</label>
+            </fieldset>
+            <div class="explain" hidden><p>Formal model architecture strictly partitions the workbook into Inputs, Calculations, and Outputs (FAST Standard §1.01).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does the FAST Standard's "one formula per row" principle mandate?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q2"> A worksheet may contain at most one calculation formula</label>
+              <label class="option" data-correct><input type="radio" name="q2"> Every calculation row must maintain an identical formula structure across all timeline columns</label>
+              <label class="option"><input type="radio" name="q2"> Formulas must never exceed one row in height</label>
+            </fieldset>
+            <div class="explain" hidden><p>Identical formulas across all forecast columns ensure structural integrity and prevent fill/drag errors (FAST Standard §2.01).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under what mathematical condition is a financial model guaranteed to be evaluable in a single forward pass?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q3"> When all formulas are linear</label>
+              <label class="option" data-correct><input type="radio" name="q3"> When its cell dependency graph is a directed acyclic graph (DAG)</label>
+              <label class="option"><input type="radio" name="q3"> When balance sheet cash equals zero</label>
+            </fieldset>
+            <div class="explain" hidden><p>An acyclic dependency graph admits a topological sort, permitting single forward pass evaluation (Theorem 1.1).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the function of a corkscrew roll-forward schedule in a financial model?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q4"> To calculate discount factors using logarithmic compounding</label>
+              <label class="option" data-correct><input type="radio" name="q4"> To dynamically track the balance of a stock account from opening balance plus additions minus deductions</label>
+              <label class="option"><input type="radio" name="q4"> To spiral cash flows across currency boundaries</label>
+            </fieldset>
+            <div class="explain" hidden><p>Corkscrew schedules model balance sheet stock balances over time: Opening + Additions - Deductions = Closing (Definition 1.3).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="187.92" data-tolerance="0.01">
+            <p class="prompt">A firm has opening net PP&amp;E of 180.0. In Year 1, capital expenditure is 25.92 and depreciation is 18.00. What is closing net PP&amp;E?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(180.0 + 25.92 - 18.00 = 187.92\) (Example 1.1).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why are hard-coded numeric constants prohibited in calculation blocks?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q6"> Excel formulas cannot process integer constants</label>
+              <label class="option" data-correct><input type="radio" name="q6"> They obscure parameter assumptions, break scenario testing, and create silent audit failures</label>
+              <label class="option"><input type="radio" name="q6"> They reduce calculation speed in 64-bit processors</label>
+            </fieldset>
+            <div class="explain" hidden><p>Hard-coding parameters inside formulas hides assumptions and prevents centralized scenario updates (FAST Standard §1.02).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which structural feature in a financial model introduces a directed cycle in its dependency graph?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q7"> Net working capital calculated from accounts receivable and payable</label>
+              <label class="option" data-correct><input type="radio" name="q7"> Revolver interest calculated on average debt balances where borrowing is sized to buffer cash</label>
+              <label class="option"><input type="radio" name="q7"> Straight-line depreciation of gross fixed assets</label>
+            </fieldset>
+            <div class="explain" hidden><p>Revolver borrowing depends on cash deficit, which depends on interest expense, which depends on revolver borrowing, forming a cycle.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How should time-based switches (e.g. historical actuals versus forecast) be modeled under the FAST Standard?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q8"> By manually typing different formulas in historical columns</label>
+              <label class="option" data-correct><input type="radio" name="q8"> By explicit binary time flags multiplied into uniform row formulas</label>
+              <label class="option"><input type="radio" name="q8"> By deleting historical columns prior to valuation</label>
+            </fieldset>
+            <div class="explain" hidden><p>Explicit time flags (0 or 1) preserve the one-formula-per-row rule while dynamically activating forecast logic (FAST Standard §2.01).</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li id="ref-fastndfast">
+            <span class="author">FAST Standard Organisation</span>.
+            <span class="title">The FAST Standard | Full version of the FAST Standard modelling guide</span>.
+            <span class="publisher">FAST Standard Organisation</span>.
+            <a href="https://fast-standard.org/the-fast-standard/">fast-standard.org/the-fast-standard/</a>.
+          </li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="index.html"><span class="dir">Module</span>CF7 overview</a>
+        <a class="next" href="L02.html"><span class="dir">Next</span>L02 · The Integrated Three-Statement Model</a>
+      </nav>
+    </main>
+  </div>
+</body>
+</html>

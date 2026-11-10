@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CF7" data-page="L03" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L03 · Debt Schedules &amp; Revolver Circularity</title>
+  <meta name="description" content="Tranche corkscrews, revolving credit buffers, the circular interest dilemma, contraction mapping fixed-point iteration, and exact algebraic closed-form resolution. 8 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb"><a href="../../../index.html">Program map</a><span class="sep">›</span><a href="index.html">CF7 Financial Modeling</a><span class="sep">›</span><span>L03 Debt Schedules &amp; Circularity</span></nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 03 · 8 study hours</p>
+        <h1>Debt Schedules &amp; Revolver Circularity</h1>
+        <p class="why-it-matters">In leveraged transactions, corporate debt is structured into layered tranches with distinct seniorities, amortization schedules, and interest margins. Sizing a revolving credit facility to absorb operational cash swings creates the most famous circularity in quantitative finance: revolver debt determines interest expense, which determines taxes and net income, which dictates operating cash flow, which in turn determines the required revolver borrowing. Solving this feedback loop using contraction mappings and exact algebraic closed forms eliminates unstable spreadsheet iteration and prevents computational divergence.</p>
+      </header>
+
+      <section id="s1-debt-schedules">
+        <h2 id="h-s1-debt-schedules">1. Debt Tranche Architecture &amp; Corkscrews</h2>
+        <p>In an <a class="concept" data-concept="integrated-three-statement-model" href="L02.html#def-integrated-three-statement-model">integrated three-statement model</a>, liabilities cannot be modeled as a single aggregate number. Corporate capital structures feature multiple debt tranches (e.g. senior secured term loans, second-lien facilities, unsecured notes, and revolving lines), each governed by distinct credit agreements.</p>
+
+        <div class="block definition" id="def-debt-schedule-block">
+          <h3>Definition 3.1 · Debt Schedule</h3>
+          <p>A <dfn id="def-debt-schedule" data-concept="debt-schedule">debt schedule</dfn> is a dedicated calculation sub-model within the <a class="concept" data-concept="model-architecture" href="L01.html#def-model-architecture">model architecture</a> that tracks each debt tranche \(k \in \{1, \dots, K\}\) across forecast periods \(t = 1, \dots, T\) through a corkscrew roll-forward:
+          \[
+          D_{k, t} = D_{k, t-1} + B_{k, t} - A_{k, t} - S_{k, t}
+          \]
+          where \(D_{k, t-1}\) is the opening principal balance, \(B_{k, t} \ge 0\) is new borrowing, \(A_{k, t} \ge 0\) is contractual mandatory amortization, and \(S_{k, t} \ge 0\) is optional prepayment or sweep of excess cash flow. The schedule computes:
+          </p>
+          <ul>
+            <li><strong>Average Debt Balance:</strong> \(\bar{D}_{k, t} = \frac{D_{k, t-1} + D_{k, t}}{2}\)</li>
+            <li><strong>Interest Expense:</strong> \(\mathrm{Int}_{k, t} = \bar{D}_{k, t} \times r_{k, t}\) where \(r_{k, t}\) is the contractual interest rate.</li>
+            <li><strong>Total Interest Expense:</strong> \(\mathrm{TotalInt}_t = \sum_{k=1}^K \mathrm{Int}_{k, t}\).</li>
+          </ul>
+        </div>
+
+        <div class="block remark" id="rem-average-vs-ending">
+          <h3>Remark 3.1 · The Average Balance Convention</h3>
+          <p>Under <span class="claim" data-grade="A" data-cite="fastndfast">FAST Standard §4.02</span>, interest expense should be computed on average period debt rather than closing debt. If principal repayments occur smoothly or semi-annually across the year, computing interest on the opening balance overstates interest expense, while computing interest on closing debt understates it. The arithmetic mean \(\bar{D}_t = 0.5(D_{t-1} + D_t)\) represents the first-order trapezoidal integration of the instantaneous debt trajectory.</p>
+        </div>
+      </section>
+
+      <section id="s2-revolver-circularity">
+        <h2 id="h-s2-revolver-circularity">2. The Revolver Interest Circularity Dilemma</h2>
+        <p>A <a class="concept" data-concept="revolving-credit-facility" href="../../../concepts.html#revolving-credit-facility">revolving credit facility</a> operates as a liquidity buffer to ensure that the firm's cash balance never drops below a required operational threshold \(C_{\min}\).</p>
+
+        <div class="block definition" id="def-revolver-circularity-block">
+          <h3>Definition 3.2 · Revolver Circularity</h3>
+          <p><dfn id="def-revolver-circularity" data-concept="revolver-circularity">Revolver circularity</dfn> is the mutual algebraic dependence between revolving debt borrowing and net interest expense:
+          </p>
+          <ol>
+            <li>Revolver borrowing \(R_t\) is sized to fund the net cash deficit below minimum cash \(C_{\min}\).</li>
+            <li>Net cash deficit depends on Cash Flow from Operations (\(\mathrm{CFO}_t\)).</li>
+            <li>\(\mathrm{CFO}_t\) depends on Net Income (\(\mathrm{NI}_t\)) and taxes, which depend directly on total interest expense (\(\mathrm{Int}_t\)).</li>
+            <li>Total interest expense depends on the average revolver balance \(\bar{R}_t = \frac{R_{t-1} + R_t}{2}\).</li>
+          </ol>
+          <p>This closed dependency graph induces the fixed-point mapping \(R_t = \Phi(R_t)\).</p>
+        </div>
+
+        <div class="block theorem" id="thm-contraction-mapping">
+          <h3><span class="block-title claim" data-grade="T">Theorem 3.1 · Contraction Mapping of the Revolver Loop</span></h3>
+          <p class="hypotheses"><strong>Assumptions.</strong>
+          1. The corporate marginal tax rate satisfies \(\tau \in [0, 1)\).<br>
+          2. The dividend payout ratio satisfies \(d \in [0, 1)\).<br>
+          3. The annual revolver interest rate satisfies \(r_R \in (0, 0.50)\).<br>
+          4. Earnings before taxes remain positive (\(\mathrm{EBT}_t > 0\)), preserving the marginal <a class="concept" data-concept="depreciation-tax-shield" href="../../../concepts.html#depreciation-tax-shield">depreciation tax shield</a> and interest tax shield.<br>
+          5. Average balance interest convention is applied: \(\mathrm{Int}_R = r_R \frac{R_{t-1} + R_t}{2}\).
+          </p>
+          <p class="statement">The circularity update operator \(\Phi: \R \to \R\) is a strict contraction mapping with Lipschitz constant:
+          \[
+          L = \frac{(1 - d)(1 - \tau) r_R}{2} < 0.25 < 1
+          \]
+          Consequently, the sequence of fixed-point iterates \(R^{(k+1)} = \Phi(R^{(k)})\) converges geometrically to a unique fixed point \(R^*\) from any initial estimate \(R^{(0)}\) at rate \(\mathcal{O}(L^k)\).</p>
+        </div>
+
+        <div class="block proof">
+          <p><strong>Proof.</strong> Let \(R\) and \(R'\) be two candidate revolver ending balances. Holding all pre-interest cash flows constant, the difference in net interest expense is \(\Delta \mathrm{Int} = \frac{r_R}{2}(R - R')\). This changes pre-tax income by \(-\Delta \mathrm{Int}\) and tax expense by \(-\tau \Delta \mathrm{Int}\). Net income changes by \(-(1-\tau) \Delta \mathrm{Int}\). Cash dividends change by \(-d(1-\tau) \Delta \mathrm{Int}\). Retained operational cash changes by \(-(1-d)(1-\tau) \Delta \mathrm{Int} = -\frac{(1-d)(1-\tau)r_R}{2}(R - R')\). To restore ending cash to \(C_{\min}\), the required revolver borrowing in the next iteration must offset this cash change:
+          \[
+          \Phi(R) - \Phi(R') = \frac{(1-d)(1-\tau)r_R}{2}(R - R')
+          \]
+          Taking absolute values yields \(|\Phi(R) - \Phi(R')| = L |R - R'|\) with \(L = \frac{(1-d)(1-\tau)r_R}{2}\). Since \(1-d \le 1\), \(1-\tau \le 1\), and \(r_R < 0.50\), we have \(L < \frac{1 \times 1 \times 0.50}{2} = 0.25 < 1\). By the Banach Fixed-Point Theorem, \(\Phi\) is a strict contraction on \(\R\), possessing a unique fixed point \(R^*\), and the iterative error satisfies \(|R^{(k)} - R^*| \le \frac{L^k}{1 - L} |R^{(1)} - R^{(0)}|\).</p>
+        </div>
+      </section>
+
+      <section id="s3-closed-form">
+        <h2 id="h-s3-closed-form">3. The Analytical Closed-Form Solution</h2>
+        <p>While Gauss-Seidel iteration converges reliably in code, relying on spreadsheet iterative calculation mode (<code>iteration = TRUE</code>) invites model instability. We can solve the circular loop analytically in closed form, eliminating iterative calculations entirely.</p>
+
+        <div class="block theorem" id="thm-closed-form-revolver">
+          <h3><span class="block-title claim" data-grade="T">Theorem 3.2 · Closed-Form Revolver Solution</span></h3>
+          <p class="hypotheses"><strong>Assumptions.</strong>
+          1. The firm maintains minimum cash \(C_{\min}\) with opening cash \(C_{t-1}\) and opening revolver \(R_{t-1}\).<br>
+          2. Cash yields interest at annual rate \(r_C\), and the revolver costs \(r_R\), both computed on average balances.<br>
+          3. Core pre-revolver, pre-cash-interest cash flow is:
+          \[
+          \mathrm{CF}^{\text{core}}_t = (1-d)(1-\tau)(\mathrm{EBIT}_t - \mathrm{TermInt}_t) + \mathrm{Depr}_t - \Delta \mathrm{NWC}_t - \mathrm{CapEx}_t - \mathrm{TermAmort}_t
+          \]
+          4. Define the after-tax, after-dividend multiplier \(\alpha = (1 - d)(1 - \tau)\).
+          </p>
+          <p class="statement">If the firm experiences a cash deficit requiring revolver borrowing without exceeding commitment \(\bar{R}_{\max}\), the exact ending revolver balance is given by:
+          \[
+          R_t = \frac{(C_{\min} - C_{t-1}) - \mathrm{CF}^{\text{core}}_t - \alpha r_C \left(\frac{C_{t-1} + C_{\min}}{2}\right) + R_{t-1} \left(1 + \frac{\alpha r_R}{2}\right)}{1 - \frac{\alpha r_R}{2}}
+          \]
+          If this value is negative, no revolver debt is needed (\(R_t = 0\)), and surplus ending cash is:
+          \[
+          C_t = \frac{C_{t-1} \left(1 + \frac{\alpha r_C}{2}\right) + \mathrm{CF}^{\text{core}}_t - R_{t-1} \left(1 + \frac{\alpha r_R}{2}\right)}{1 - \frac{\alpha r_C}{2}} \ge C_{\min}
+          \]
+          </p>
+        </div>
+
+        <div class="block proof">
+          <p><strong>Proof.</strong> Under a cash deficit, ending cash is held at \(C_t = C_{\min}\). The average cash balance is fixed at \(\bar{C}_t = \frac{C_{t-1} + C_{\min}}{2}\), yielding net cash interest income of \(\alpha r_C \bar{C}_t\). The average revolver balance is \(\bar{R}_t = \frac{R_{t-1} + R_t}{2}\), generating after-tax net interest drain of \(\alpha r_R \frac{R_{t-1} + R_t}{2}\). The net change in cash over the period is \(\Delta \mathrm{Cash}_t = C_{\min} - C_{t-1}\). Setting the cash flow identity \(\Delta \mathrm{Cash}_t = \mathrm{CF}^{\text{core}}_t + \alpha r_C \bar{C}_t - \frac{\alpha r_R}{2}(R_{t-1} + R_t) + (R_t - R_{t-1})\) and rearranging:
+          \[
+          C_{\min} - C_{t-1} - \mathrm{CF}^{\text{core}}_t - \alpha r_C \bar{C}_t + R_{t-1} \left(1 + \frac{\alpha r_R}{2}\right) = R_t \left(1 - \frac{\alpha r_R}{2}\right)
+          \]
+          Dividing by \((1 - \frac{\alpha r_R}{2}) > 0\) yields the closed-form formula for \(R_t\). In the surplus case where \(R_t = 0\), setting \(R_t = 0\) in the general cash identity \(\Delta C_t = \mathrm{CF}^{\text{core}}_t + \frac{\alpha r_C}{2}(C_{t-1} + C_t) - \frac{\alpha r_R}{2} R_{t-1} - R_{t-1}\) and solving for \(C_t\) produces the surplus cash expression.</p>
+        </div>
+
+        <section class="lab" id="lab-CF7-L03-1" data-runtime="python">
+          <h3>Lab 1 · Revolver Circularity: Iteration vs. Closed Form</h3>
+          <p class="hypothesis">Predicted before running: The Gauss-Seidel iterative solver and the exact analytical closed form yield identical revolver balances of 29.257451, converging in exactly 10 iterations with absolute discrepancy bounded below \(10^{-12}\).</p>
+          <pre><code class="language-python" data-run>"""Lab CF7-L03-1: Revolver Circularity: Iteration vs. Closed Form.
+
+Demonstrates the resolution of circular interest dependencies between revolver borrowing,
+net interest expense, earnings before tax, and operating cash flow using both
+Gauss-Seidel fixed-point iteration and the exact analytical closed form.
+"""
+
+from __future__ import annotations
+
+
+def solve_revolver_iterative(
+    c_min: float,
+    c_prev: float,
+    r_prev: float,
+    cf_core: float,
+    r_rate: float,
+    c_rate: float,
+    tax_rate: float,
+    term_int: float,
+    ebit: float,
+    depr: float,
+    delta_nwc: float,
+    capex: float,
+    term_amort: float,
+    div_rate: float = 0.0,
+    tol: float = 1e-12,
+    max_iter: int = 100,
+) -&gt; tuple[float, float, int]:
+    """Resolve circularity via fixed-point iteration."""
+    r_curr = r_prev
+    iterations = 0
+
+    for _k in range(max_iter):
+        iterations += 1
+        r_bar = 0.5 * (r_prev + r_curr)
+        c_bar = 0.5 * (c_prev + c_min)
+        net_int = term_int + r_rate * r_bar - c_rate * c_bar
+        ebt = ebit - net_int
+        tax = tax_rate * max(0.0, ebt)
+        ni = ebt - tax
+        div = div_rate * ni
+
+        cfo = ni + depr - delta_nwc
+        cfi = -capex
+        cff = -term_amort - div + (r_curr - r_prev)
+        c_projected = c_prev + cfo + cfi + cff
+
+        # Update revolver to restore cash to c_min
+        r_next = r_curr + (c_min - c_projected)
+        diff = abs(r_next - r_curr)
+        r_curr = r_next
+        if diff &lt; tol:
+            break
+
+    return r_curr, c_min, iterations
+
+
+def solve_revolver_closed_form(
+    c_min: float,
+    c_prev: float,
+    r_prev: float,
+    cf_core: float,
+    r_rate: float,
+    c_rate: float,
+    tax_rate: float,
+    div_rate: float = 0.0,
+) -&gt; tuple[float, float]:
+    """Resolve circularity via exact algebraic closed form."""
+    alpha = (1.0 - div_rate) * (1.0 - tax_rate)
+    c_bar = 0.5 * (c_prev + c_min)
+    num = (c_min - c_prev) - cf_core - alpha * c_rate * c_bar + r_prev * (1.0 + 0.5 * alpha * r_rate)
+    den = 1.0 - 0.5 * alpha * r_rate
+    r_closed = num / den
+    return r_closed, c_min
+
+
+def main() -&gt; None:
+    c_min = 30.0
+    c_prev = 20.0
+    r_prev = 15.0
+    ebit = 35.0
+    term_int = 3.0
+    depr = 8.0
+    delta_nwc = 6.0
+    capex = 22.0
+    term_amort = 5.0
+    tax_rate = 0.25
+    r_rate = 0.08
+    c_rate = 0.02
+    div_rate = 0.10
+
+    alpha = (1.0 - div_rate) * (1.0 - tax_rate)
+    cf_core = alpha * (ebit - term_int) + depr - delta_nwc - capex - term_amort
+
+    r_iter, _c_iter, iters = solve_revolver_iterative(
+        c_min=c_min,
+        c_prev=c_prev,
+        r_prev=r_prev,
+        cf_core=cf_core,
+        r_rate=r_rate,
+        c_rate=c_rate,
+        tax_rate=tax_rate,
+        term_int=term_int,
+        ebit=ebit,
+        depr=depr,
+        delta_nwc=delta_nwc,
+        capex=capex,
+        term_amort=term_amort,
+        div_rate=div_rate,
+    )
+
+    r_closed, _c_closed = solve_revolver_closed_form(
+        c_min=c_min,
+        c_prev=c_prev,
+        r_prev=r_prev,
+        cf_core=cf_core,
+        r_rate=r_rate,
+        c_rate=c_rate,
+        tax_rate=tax_rate,
+        div_rate=div_rate,
+    )
+
+    discrepancy = abs(r_closed - r_iter)
+    print("Iterative Revolver Balance:", f"{r_iter:.6f}")
+    print("Closed-Form Revolver Balance:", f"{r_closed:.6f}")
+    print("Iteration Count:", str(iters))
+    print("Absolute Discrepancy:", f"{discrepancy:.14f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Iterative Revolver Balance: 29.257451
+Closed-Form Revolver Balance: 29.257451
+Iteration Count: 10
+Absolute Discrepancy: 0.00000000000000</pre>
+          <p class="interpretation">Observed output confirms Theorem 3.1 and Theorem 3.2: the algebraic closed form matches the convergent limit of the iterative feedback loop to machine floating-point precision, proving that iterative spreadsheet calculation can be eliminated entirely.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the Canon Breaks</h2>
+        <p>The classical linear circularity solution assumes interest rates and covenant terms are smooth, continuous functions of debt. In leveraged finance, this assumption breaks down under three real-world credit terms:</p>
+        <ol>
+          <li><strong>Discontinuous Covenant Ratchets:</strong> Credit agreements typically specify step-function pricing grids (e.g., pricing is SOFR + 200 bps if \(\mathrm{Debt}/\mathrm{EBITDA} \le 3.0\times\), jumping discontinuously to SOFR + 275 bps if leverage exceeds \(3.0\times\)). Near the boundary, the circularity operator exhibits discontinuous jumps and can produce limit cycles that oscillate indefinitely between the two pricing states without converging.</li>
+          <li><strong>Nonlinear Cash Sweeps:</strong> Senior term loans frequently mandate an Excess Cash Flow (ECF) sweep: 50% of ECF if leverage is above \(3.5\times\), stepping down to 25% or 0% at lower leverage. The non-smooth piece-wise linear function introduces kinks into the dependency topology.</li>
+          <li><strong>PIK (Payment-in-Kind) Toggles:</strong> Mezzanine tranches may feature PIK toggles where interest is capitalized into principal if cash interest coverage breaches a minimum threshold, dynamically altering future balance sheet amortization profiles.</li>
+        </ol>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul>
+          <li class="misconception">
+            <p class="wrong">Enabling "Iterative Calculation" in Excel is the industry-standard method for managing circular models.</p>
+            <p>Iterative calculation in Excel is dangerous because it applies globally to the entire application. When enabled, any accidental typo that creates a genuine formula error (e.g. <code>A1 = A1 + 1</code>) will not trigger an alert; instead, Excel silently iterates until the iteration cap is reached, poisoning the entire workbook.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Computing interest expense on opening debt instead of average debt eliminates circularity without material consequence.</p>
+            <p>In highly leveraged buyouts (LBOs) where rapid debt paydown occurs, calculating interest on opening debt systematically overstates interest expense and tax shields, understating projected equity returns. The closed form achieves exact mathematical rigor without introducing lag distortion.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A revolving credit line can absorb arbitrarily large cash deficits.</p>
+            <p>All revolving facilities carry a legally binding commitment limit. If the calculated borrowing \(R_t^*\) exceeds the commitment \(\bar{R}_{\max}\), the facility binds: the model must cap borrowing at \(\bar{R}_{\max}\) and allow cash to fall below \(C_{\min}\), triggering a covenant breach or liquidity shortfall warning.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <div class="problem" id="p-mech-1">
+            <p class="statement">A company has opening cash of 20.0 million, required minimum cash of 25.0 million, opening revolver debt of 15.0 million, and core cash flow \(\mathrm{CF}^{\text{core}} = 10.0\) million. The revolver interest rate is 8.0%, cash interest rate is 2.0%, tax rate is 25.0%, and dividend payout is zero. Calculate the closed-form ending revolver balance.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>We apply Theorem 3.2 with \(d = 0\), so \(\alpha = 1 - \tau = 0.75\). \(\bar{C} = 0.5 \times (20.0 + 25.0) = 22.5\). \(\alpha r_C \bar{C} = 0.75 \times 0.02 \times 22.5 = 0.3375\). Term \(R_{t-1}(1 + 0.5 \alpha r_R) = 15.0 \times (1 + 0.5 \times 0.75 \times 0.08) = 15.0 \times 1.03 = 15.45\). Denominator is \(1 - 0.5 \alpha r_R = 1 - 0.03 = 0.97\). Numerator: \((25.0 - 20.0) - 10.0 - 0.3375 + 15.45 = 5.0 - 10.0 - 0.3375 + 15.45 = 10.1125\). Ending revolver is \(R_1 = 10.1125 / 0.97 \approx 10.4253\) million.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-mech-2">
+            <p class="statement">Using the parameters of Problem P-Mech-1, execute the first 3 Gauss-Seidel iterations starting from \(R^{(0)} = 15.0\) million. Confirm that the sequence approaches 10.4253.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Iteration 1: With \(R^{(0)} = 15.0\), \(\bar{R} = 15.0\). After-tax revolver interest is \(0.75 \times 0.08 \times 15.0 = 0.90\). After-tax cash interest is \(0.3375\). Net cash flow is \(\mathrm{CF}^{\text{core}} + 0.3375 - 0.90 + (R^{(1)} - 15.0) = 9.4375 + R^{(1)} - 15.0\). Ending cash must equal 25.0: \(20.0 + 9.4375 + R^{(1)} - 15.0 = 25.0 \implies R^{(1)} = 25.0 - 14.4375 = 10.5625\).</p>
+              <p>Iteration 2: \(\bar{R} = 0.5 \times (15.0 + 10.5625) = 12.78125\). After-tax revolver interest is \(0.75 \times 0.08 \times 12.78125 = 0.766875\). Setting ending cash to 25.0 yields \(R^{(2)} = 25.0 - (20.0 + 10.0 + 0.3375 - 0.766875 - 15.0) = 25.0 - 14.570625 = 10.429375\).</p>
+              <p>Iteration 3: \(\bar{R} = 0.5 \times (15.0 + 10.429375) = 12.7146875\). Interest is \(0.75 \times 0.08 \times 12.7146875 = 0.762881\). Sizing revolver: \(R^{(3)} = 25.0 - (15.3375 - 0.762881) = 10.425381\). The sequence \(15.0 \to 10.5625 \to 10.4294 \to 10.4254\) converges rapidly to \(10.4253\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-mech-3">
+            <p class="statement">A firm with opening cash of 40.0 million and opening revolver of 10.0 million generates strong core cash flow of 35.0 million. Minimum cash is 25.0 million. Show that the deficit closed form yields a negative borrowing requirement, and compute the true ending surplus cash balance.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>With \(\alpha = 0.75\), \(r_C = 0.02\), \(r_R = 0.08\), and \(\bar{C} = 25.0\): Sizing formula numerator: \((25.0 - 40.0) - 35.0 - (0.75 \times 0.02 \times 32.5) + 10.0 \times (1 + 0.03) = -15.0 - 35.0 - 0.4875 + 10.30 = -40.1875\). Since \(R^* = -40.1875 / 0.97 < 0\), the firm has excess cash. The revolver is paid off completely (\(R_1 = 0.0\)). Surplus ending cash is: \(C_1 = \frac{40.0 \times (1 + 0.0075) + 35.0 - 10.0 \times (1 + 0.03)}{1 - 0.0075} = \frac{40.30 + 35.0 - 10.30}{0.9925} = \frac{65.00}{0.9925} \approx 65.4912\) million, well above \(C_{\min} = 25.0\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <div class="problem" id="p-proof-1">
+            <p class="statement">Prove that the Lipschitz constant \(L = \frac{(1-d)(1-\tau)r_R}{2}\) is strictly monotonically decreasing in the marginal corporate tax rate \(\tau\) and dividend payout ratio \(d\). Interpret this economically.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Taking partial derivatives: \(\frac{\partial L}{\partial \tau} = -\frac{(1-d)r_R}{2} < 0\) for \(d < 1\) and \(r_R > 0\); \(\frac{\partial L}{\partial d} = -\frac{(1-\tau)r_R}{2} < 0\) for \(\tau < 1\) and \(r_R > 0\). Both derivatives are strictly negative on the domain. Economically, higher taxes provide a larger interest tax shield (\(\tau \cdot \mathrm{Int}\)), which dampens the net cash drain of incremental debt interest. Higher dividends reduce the net earnings retained from pre-interest operations, but since interest reduces dividends, it cushions cash flow volatility. Hence, higher tax shields and dividend flexibility dampen feedback oscillations, accelerating iterative convergence.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-proof-2">
+            <p class="statement">Prove that if interest is calculated on beginning debt balances (\(\mathrm{Int}_t = r_R R_{t-1}\)), the dependency graph is acyclic and requires no iteration or closed-form circularity adjustment.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>If \(\mathrm{Int}_t = r_R R_{t-1}\), interest expense at period \(t\) depends exclusively on the predetermined historical stock \(R_{t-1}\). In the model dependency graph, the directed edge points from \(R_{t-1}\) to \(\mathrm{Int}_t\). Since \(R_{t-1}\) was evaluated in period \(t-1\), \(\mathrm{Int}_t\) is an input with known numerical value at the start of period \(t\). Net income, taxes, and operating cash flow can then be evaluated sequentially without reference to \(R_t\). Finally, \(R_t\) is evaluated as a simple linear function of ending cash deficit. No edge exists from \(R_t\) to \(\mathrm{Int}_t\), so the graph contains no directed cycle.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-proof-3">
+            <p class="statement">Prove that the error between beginning-debt interest and average-debt interest in period \(t\) is proportional to the net borrowing \(\Delta R_t = R_t - R_{t-1}\), and determine its sign.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Beginning-debt interest is \(\mathrm{Int}_t^{\text{beg}} = r_R R_{t-1}\). Average-debt interest is \(\mathrm{Int}_t^{\text{avg}} = r_R \frac{R_{t-1} + R_t}{2}\). The error is \(\mathcal{E} = \mathrm{Int}_t^{\text{beg}} - \mathrm{Int}_t^{\text{avg}} = r_R \left( R_{t-1} - \frac{R_{t-1} + R_t}{2} \right) = \frac{r_R}{2}(R_{t-1} - R_t) = -\frac{r_R}{2} \Delta R_t\). If the firm draws additional debt (\(\Delta R_t > 0\)), \(\mathcal{E} < 0\), meaning beginning-debt interest underestimates true interest expense by exactly \(\frac{r_R \Delta R_t}{2}\). If the firm repays debt (\(\Delta R_t < 0\)), beginning-debt interest overestimates interest expense.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <div class="problem" id="p-emp-1">
+            <p class="statement">In an LBO transaction, a sponsor models 500 million of senior term debt amortizing at 50 million annually and an 8.0% interest rate. Compare Year 1 interest expense calculated on opening debt versus average debt. If the exit multiple is applied to Year 5 EBITDA, does this error affect enterprise value?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Opening debt interest in Year 1: \(500.0 \times 0.08 = 40.00\) million. Average debt interest: \(0.5 \times (500.0 + 450.0) \times 0.08 = 475.0 \times 0.08 = 38.00\) million. The opening balance method overstates Year 1 interest by 2.00 million. However, because EBITDA is measured <em>before</em> interest expense, EBITDA is completely invariant to interest calculations. An exit multiple applied to EBITDA is unaffected. However, equity value is distorted because the extra 2.00 million of interest reduces cumulative cash flow and debt paydown, understating closing equity value by \((1 - \tau) \times 2.00 = 1.50\) million in Year 1.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-emp-2">
+            <p class="statement">A distressed borrower has minimum cash of 30.0 million and an available revolving credit facility of 50.0 million. In a severe downturn, the closed-form formula indicates a required borrowing of \(R^* = 78.4\) million. Determine the actual borrowing, ending cash, and the liquidity shortfall.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Because the commitment cap is 50.0 million, the lender will not advance 78.4 million. The model caps borrowing at \(R_{\max} = 50.0\) million. The unfunded cash deficit is \(78.4 - 50.0 = 28.4\) million (adjusted for interest tax effects). Ending cash drops below minimum cash to approximately \(30.0 - 28.4 = 1.6\) million. The model must flag a 28.4 million liquidity shortfall and covenant violation.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-emp-3">
+            <p class="statement">An analyst runs an iterative financial model in Excel with maximum iterations set to 100 and maximum change set to 0.001. If the contraction modulus is \(L = 0.20\) and initial error is 50 million, calculate the number of iterations required to achieve tolerance \(\epsilon = 10^{-6}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The error after \(k\) iterations satisfies \(e_k \le L^k e_0 = (0.20)^k \times 50.0\). Setting \((0.20)^k \times 50.0 \le 10^{-6}\) yields \((0.20)^k \le \frac{10^{-6}}{50.0} = 2.0 \times 10^{-8}\). Taking natural logarithms: \(k \ln(0.20) \le \ln(2.0 \times 10^{-8}) \implies -1.60944 k \le -17.7275 \implies k \ge 17.7275 / 1.60944 \approx 11.01\). Exactly 12 iterations are required to reach micro-dollar precision.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <div class="problem" id="p-res-1">
+            <p class="statement">Investigate the bifurcation behavior of a financial model where the revolver interest rate includes a debt-to-EBITDA covenant ratchet. Formulate the conditions under which the model exhibits chaotic oscillation or two-point limit cycles.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let the pricing grid be \(r_R = r_{\text{low}}\) if \(D_t \le \bar{D}\), and \(r_{\text{high}}\) if \(D_t > \bar{D}\). When the unconstrained equilibrium borrowing sits exactly in the vicinity of \(\bar{D}\), a low interest rate yields lower interest expense, higher net income, higher cash flow, and lower borrowing \(R < \bar{D}\). But at \(R < \bar{D}\), the lower rate is validated. Conversely, if high debt triggers the higher rate, interest rises, cash flow falls, and borrowing expands further above \(\bar{D}\). If the jump \(\Delta r = r_{\text{high}} - r_{\text{low}}\) is large relative to cash headroom, the piecewise mapping \(\Phi\) lacks a continuous fixed point and oscillates in an alternating 2-cycle \(\{R_{\text{low}}, R_{\text{high}}\}\). In professional modeling, ratchets must be evaluated on lagged (prior-period) leverage to restore acyclicity.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-res-2">
+            <p class="statement">Design a general multi-tranche debt allocation solver that handles senior term debt, junior mezzanine PIK debt, and revolving credit in a unified linear programming framework.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The problem is formulated as a constrained linear program at each period \(t\): Minimize total financing cost \(\sum_k r_k \bar{D}_k\) subject to: (1) Cash conservation: \(C_t \ge C_{\min}\); (2) Seniority priority: tranches are repaid in order of lien seniority (\(D_1\) repaid before \(D_2\)); (3) Capacity constraints: \(R_t \le \bar{R}_{\max}\) and \(D_{k, t} \ge 0\); (4) Covenant constraints: \(\sum_k D_{k, t} \le \theta \cdot \mathrm{EBITDA}_t\). The dual shadow prices indicate the marginal cost of liquidity and covenant tightness.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p-res-3">
+            <p class="statement">Analyze how corporate cash sweeps (mandating that 50% of free cash flow prepay debt) affect the contraction factor of the financial model. Does a cash sweep accelerate or decelerate convergence?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A cash sweep links term debt prepayment to excess cash flow: \(S_t = \gamma \max(0, \mathrm{CFE}_t)\). Since \(\mathrm{CFE}_t\) depends on interest, this introduces an additional term into the feedback operator. An incremental dollar of debt increases interest expense, which reduces free cash flow, which in turn reduces the mandated debt prepayment, leaving ending debt higher. The effective feedback multiplier expands from \(\frac{\alpha r_R}{2}\) to \(\frac{\alpha r_R}{2} (1 + \gamma)\). For \(\gamma = 0.5\), the Lipschitz constant increases by 50%, slowing the geometric convergence rate, though remaining well within the contraction threshold \(L < 1\).</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <caption>Fundamental debt schedule and circularity identities established in Lesson 03.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Claim / Formula</th>
+                <th scope="col">Grade</th>
+                <th scope="col">Basis / Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Contraction mapping of revolver circularity with modulus \(L < 0.25\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 3.1 (proof by Banach Fixed-Point Theorem)</td>
+              </tr>
+              <tr>
+                <td>Exact closed-form revolver borrowing formula without iteration</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 3.2 and Lab 1</td>
+              </tr>
+              <tr>
+                <td>Average balance convention for interest calculations</td>
+                <td><span class="claim" data-grade="A" data-cite="fastndfast">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="fastndfast">FAST Standard §4.02</span></td>
+              </tr>
+              <tr>
+                <td>Debt corkscrew roll-forward \(D_t = D_{t-1} + B_t - A_t - S_t\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 3.1</td>
+              </tr>
+              <tr>
+                <td>Revolver commitment cap constraint \(R_t \le \bar{R}_{\max}\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 3.2 and Problem P-Emp-2</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CF7" data-page="L03" data-cards="cards.json">
+        <h2 id="h-quiz">Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What causes revolver circularity in an integrated financial model?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q1"> Depreciation depending on past CapEx</label>
+              <label class="option" data-correct><input type="radio" name="q1"> Sizing revolver debt to fund a cash deficit that itself depends on the interest expense of that debt</label>
+              <label class="option"><input type="radio" name="q1"> Calculating sales growth from GDP</label>
+            </fieldset>
+            <div class="explain" hidden><p>Revolver borrowing depends on cash deficit, which depends on interest expense, which depends on revolver borrowing (Definition 3.2).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is the revolver circularity loop guaranteed to converge under standard corporate conditions?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q2"> Because Excel limits iterations to 100</label>
+              <label class="option" data-correct><input type="radio" name="q2"> The feedback operator is a strict contraction mapping with Lipschitz constant \(L = \frac{(1-d)(1-\tau)r_R}{2} < 0.25 < 1\)</label>
+              <label class="option"><input type="radio" name="q2"> Because corporate interest rates are always negative</label>
+            </fieldset>
+            <div class="explain" hidden><p>Because \(L < 0.25\), the Banach Fixed-Point Theorem guarantees geometric convergence (Theorem 3.1).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the primary advantage of using an algebraic closed form over iterative calculations in spreadsheets?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q3"> It increases the file size of the workbook</label>
+              <label class="option" data-correct><input type="radio" name="q3"> It eliminates the need for iterative calculation mode, preventing silent model corruption and convergence failures</label>
+              <label class="option"><input type="radio" name="q3"> It avoids having to pay taxes</label>
+            </fieldset>
+            <div class="explain" hidden><p>Closed forms compute the exact solution in a single DAG pass without enabling dangerous global spreadsheet iteration (Theorem 3.2).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does the FAST Standard recommend calculating interest on average debt balances rather than opening balances?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q4"> To increase tax expense</label>
+              <label class="option" data-correct><input type="radio" name="q4"> To accurately reflect debt changes occurring smoothly across the period, avoiding systematic over- or under-estimation</label>
+              <label class="option"><input type="radio" name="q4"> Average balances are mandated by the Federal Reserve</label>
+            </fieldset>
+            <div class="explain" hidden><p>Average debt trapezoidally integrates intra-year borrowing and repayments (FAST Standard §4.02).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="10.4253" data-tolerance="0.01">
+            <p class="prompt">Opening cash is 20.0, minimum cash is 25.0, opening revolver is 15.0, core cash flow is 10.0, revolver rate is 8.0%, cash rate is 2.0%, tax rate is 25.0%, and dividends are zero. What is the closed-form ending revolver balance?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(R_1 = 10.1125 / 0.97 \approx 10.4253\) million (Problem P-Mech-1).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens when the closed-form revolver formula returns a negative value?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q6"> The lender demands penalty interest</label>
+              <label class="option" data-correct><input type="radio" name="q6"> The firm has a cash surplus: revolver balance is set to zero, and ending cash exceeds minimum cash</label>
+              <label class="option"><input type="radio" name="q6"> The model crashes with a #NUM! error</label>
+            </fieldset>
+            <div class="explain" hidden><p>A negative requirement indicates that core cash flow is sufficient to pay off all debt, leaving surplus cash above \(C_{\min}\) (Theorem 3.2).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does an increase in the corporate tax rate \(\tau\) affect the circularity contraction modulus \(L\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="q7"> It increases \(L\), slowing convergence</label>
+              <label class="option" data-correct><input type="radio" name="q7"> It decreases \(L\) because the interest tax shield dampens net cash flow sensitivity</label>
+              <label class="option"><input type="radio" name="q7"> It has zero mathematical impact</label>
+            </fieldset>
+            <div class="explain" hidden><p>\(\partial L / \partial \tau = -(1-d)r_R / 2 < 0\). Higher tax shields cushion cash flow variations (Problem P-Proof-1).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="38.00" data-tolerance="0.01">
+            <p class="prompt">A debt tranche amortizes from 500.0 to 450.0 over the year at an 8.0% interest rate. What is the interest expense under the average balance convention?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\bar{D} = 0.5 \times (500 + 450) = 475.0\). \(\mathrm{Int} = 475.0 \times 0.08 = 38.00\) million (Problem P-Emp-1).</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li id="ref-fastndfast">
+            <span class="author">FAST Standard Organisation</span>.
+            <span class="title">The FAST Standard | Full version of the FAST Standard modelling guide</span>.
+            <span class="publisher">FAST Standard Organisation</span>.
+            <a href="https://fast-standard.org/the-fast-standard/">fast-standard.org/the-fast-standard/</a>.
+          </li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L02.html"><span class="dir">Previous</span>L02 · The Integrated Three-Statement Model</a>
+        <a class="next" href="L04.html"><span class="dir">Next</span>L04 · Scenario and Sensitivity Analysis</a>
+      </nav>
+    </main>
+  </div>
+</body>
+</html>
