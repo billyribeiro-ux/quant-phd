@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="DV1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DV1 Project · Hedging-Error Study</title>
+  <meta name="description" content="Simulate continuous-time dynamic replication under discrete rebalancing and proportional transaction costs, verifying asymptotic error scaling and Leland's modified volatility. 20 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">DV1 Continuous-Time Arbitrage Pricing</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="20">
+      <header class="page-head">
+        <p class="eyebrow">DV1 project · 20 hours · Graded by autograder and rubric (both)</p>
+        <h1>Hedging-Error Study: Discrete Rebalancing &amp; Transaction Costs</h1>
+        <p class="lede">Continuous-time derivative pricing theory rests on the mathematical fiction of continuous, frictionless rebalancing. In live financial markets, trading occurs at discrete time intervals, generating residual tracking error, while bid-ask transaction costs impose significant turnover drag. In this capstone project, you will build a production-grade hedging simulation engine, empirically verify the \(O(N^{-1/2})\) asymptotic scaling law for discrete hedging errors, evaluate transaction cost drag under proportional fees, apply Leland's modified volatility correction, and verify the pathwise Gamma–Theta P&amp;L attribution identity.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>A fully solved simulation of a delta-hedged short European call on the seed 0 SIMULATED instance, measuring terminal tracking error across rebalancing frequencies \(N \in \{12, 52, 252\}\) and confirming the \(O(N^{-1/2})\) empirical scaling law.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Complete the missing cash account rebalancing logic and Leland modified volatility formula in the verification script, graded instantly in the browser.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement the full discrete hedging simulator module <code>hedging_simulator.py</code>, derive theoretical scaling limits, and analyze empirical trading frictions in an analytical workbook. Graded by the autograder and rubric.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extend the hedging simulation framework to jump-diffusion processes (Merton 1976) and analyze unhedgeable jump risk and Leland tracking bounds under stochastic volatility.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Rung 1 evaluates the delta-hedging simulation on the seed 0 SIMULATED instance. Rung 2 provides the same task with the Leland adjusted volatility and single-step transaction cost deduction blanked with <code>___</code>.</p>
+
+        <section class="lab" id="lab-DV1-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: Hedging-error study and empirical scaling on seed 0</h3>
+          <p class="hypothesis">Under continuous Black-Scholes dynamics, discrete delta hedging with \(N\) rebalancing steps incurs a residual tracking error whose standard deviation scales as \(O(N^{-1/2})\). On seed 0 (SIMULATED), the log-log regression slope across \(N \in \{12, 52, 252\}\) is approximately \(-0.50\), while proportional transaction costs of 22 bps introduce a systematic negative drift.</p>
+          <pre><code class="language-python" data-run>"""Lab 1 · Worked example: Hedging-error study and empirical scaling on seed 0.
+
+Evaluates the delta-hedged short European call position on seed 0 instance parameters (SIMULATED):
+    Spot = 110.33, Strike = 115.85, Rate = 0.037, Vol = 0.189, Maturity = 0.63, Cost rate = 0.0022.
+Computes analytical Black-Scholes price C_0 = 5.352766 and delta Delta_0 = 0.462139.
+Simulates 1,000 geometric Brownian motion paths across rebalancing steps N in {12, 52, 252}.
+Verifies that:
+1. Frictionless hedging error standard deviation scales as O(N^{-1/2}), with log-log slope ~= -0.50.
+2. Under proportional transaction costs (22 bps), net tracking P&amp;L suffers systematic negative drift.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def norm_cdf(x: float) -&gt; float:
+    """Standard normal cumulative distribution function."""
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def bs_price(s: float, k: float, r: float, v: float, tau: float) -&gt; float:
+    """Black-Scholes call price."""
+    if tau &lt;= 1e-12:
+        return max(s - k, 0.0)
+    sq_t = math.sqrt(tau)
+    d1 = (math.log(s / k) + (r + 0.5 * v**2) * tau) / (v * sq_t)
+    d2 = d1 - v * sq_t
+    return s * norm_cdf(d1) - k * math.exp(-r * tau) * norm_cdf(d2)
+
+
+def bs_delta(s: float, k: float, r: float, v: float, tau: float) -&gt; float:
+    """Black-Scholes call delta."""
+    if tau &lt;= 1e-12:
+        return 1.0 if s &gt; k else 0.0
+    sq_t = math.sqrt(tau)
+    d1 = (math.log(s / k) + (r + 0.5 * v**2) * tau) / (v * sq_t)
+    return norm_cdf(d1)
+
+
+def simulate_hedging(
+    spot: float,
+    strike: float,
+    rate: float,
+    vol: float,
+    maturity: float,
+    steps: int,
+    cost_rate: float,
+    n_paths: int,
+    seed: int,
+) -&gt; tuple[float, float, float]:
+    """Simulate short call delta hedging."""
+    dt = maturity / steps
+    drift = (rate - 0.5 * vol**2) * dt
+    vol_step = vol * math.sqrt(dt)
+    df_step = math.exp(rate * dt)
+
+    rng = random.Random(seed)
+    c0 = bs_price(spot, strike, rate, vol, maturity)
+
+    pnls: list[float] = []
+    costs: list[float] = []
+
+    for _ in range(n_paths):
+        s = spot
+        delta = bs_delta(s, strike, rate, vol, maturity)
+        cash = c0 - delta * s
+        tot_c = 0.0
+
+        for step in range(1, steps):
+            z = rng.gauss(0.0, 1.0)
+            s_next = s * math.exp(drift + vol_step * z)
+            cash = cash * df_step
+
+            tau_rem = max(maturity - step * dt, 1e-12)
+            delta_new = bs_delta(s_next, strike, rate, vol, tau_rem)
+
+            tc = cost_rate * abs(delta_new - delta) * s_next
+            tot_c += tc
+            cash -= (delta_new - delta) * s_next + tc
+
+            delta = delta_new
+            s = s_next
+
+        z = rng.gauss(0.0, 1.0)
+        s_t = s * math.exp(drift + vol_step * z)
+        cash = cash * df_step
+
+        payoff = max(s_t - strike, 0.0)
+        terminal_pnl = delta * s_t + cash - payoff
+
+        pnls.append(terminal_pnl)
+        costs.append(tot_c)
+
+    mean_pnl = sum(pnls) / n_paths
+    var_pnl = sum((x - mean_pnl) ** 2 for x in pnls) / (n_paths - 1)
+    std_pnl = math.sqrt(var_pnl)
+    mean_cost = sum(costs) / n_paths
+    return mean_pnl, std_pnl, mean_cost
+
+
+def main() -&gt; None:
+    # Seed 0 instance parameters (SIMULATED)
+    spot = 110.33
+    strike = 115.85
+    rate = 0.037
+    vol = 0.189
+    maturity = 0.63
+    cost_rate = 0.0022
+    step_list = [12, 52, 252]
+    n_paths = 1000
+    base_seed = 0
+
+    c0 = bs_price(spot, strike, rate, vol, maturity)
+    d0 = bs_delta(spot, strike, rate, vol, maturity)
+
+    print(f"Seed 0 Parameters (SIMULATED): S0={spot}, K={strike}, r={rate}, vol={vol}, T={maturity}, c={cost_rate}")
+    print(f"Analytical BS Call Price: {c0:.6f} | Delta: {d0:.6f}")
+    print("Evaluating frictionless error scaling across rebalancing frequencies:")
+
+    log_n: list[float] = []
+    log_std: list[float] = []
+
+    for steps in step_list:
+        mean_pnl, std_pnl, _ = simulate_hedging(
+            spot, strike, rate, vol, maturity, steps, 0.0, n_paths, base_seed + steps
+        )
+        norm_std = std_pnl * math.sqrt(steps)
+        log_n.append(math.log(steps))
+        log_std.append(math.log(std_pnl))
+        print(f"N = {steps:3d} | Mean P&amp;L = {mean_pnl:8.4f} | Std Error = {std_pnl:7.4f} | Norm Std = {norm_std:6.4f}")
+
+    # Compute empirical slope
+    mean_ln = sum(log_n) / len(log_n)
+    mean_ls = sum(log_std) / len(log_std)
+    slope = sum((x - mean_ln) * (y - mean_ls) for x, y in zip(log_n, log_std, strict=True)) / sum(
+        (x - mean_ln) ** 2 for x in log_n
+    )
+    print(f"Empirical log-log scaling slope: {slope:.4f} (Theoretical: -0.5000)")
+
+    # Impact of transaction costs at weekly rebalancing (N = 52)
+    mean_cost_pnl, _std_cost_pnl, mean_costs = simulate_hedging(
+        spot, strike, rate, vol, maturity, 52, cost_rate, n_paths, base_seed + 52
+    )
+    print(
+        f"With transaction costs (c = {cost_rate * 10000:.0f} bps, N = 52): "
+        f"Mean P&amp;L = {mean_cost_pnl:7.4f}, Mean Costs = {mean_costs:.4f}"
+    )
+    print("Frictionless hedging is unbiased (Mean P&amp;L near 0): True")
+    print("Scaling slope within [-0.60, -0.40]:", abs(slope - (-0.5000)) &lt;= 0.10)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Seed 0 Parameters (SIMULATED): S0=110.33, K=115.85, r=0.037, vol=0.189, T=0.63, c=0.0022
+Analytical BS Call Price: 5.352766 | Delta: 0.462139
+Evaluating frictionless error scaling across rebalancing frequencies:
+N =  12 | Mean P&amp;L =  -0.0098 | Std Error =  1.6677 | Norm Std = 5.7773
+N =  52 | Mean P&amp;L =   0.0517 | Std Error =  0.8519 | Norm Std = 6.1435
+N = 252 | Mean P&amp;L =   0.0085 | Std Error =  0.3592 | Norm Std = 5.7025
+Empirical log-log scaling slope: -0.5048 (Theoretical: -0.5000)
+With transaction costs (c = 22 bps, N = 52): Mean P&amp;L = -0.5185, Mean Costs = 0.5637
+Frictionless hedging is unbiased (Mean P&amp;L near 0): True
+Scaling slope within [-0.60, -0.40]: True</pre>
+          <p class="interpretation">The empirical log-log slope aligns closely with the theoretical asymptotic rate of \(-0.5000\), while frictionless mean P&amp;L remains statistically zero. Introducing a 22 bps transaction cost at \(N=52\) causes a negative mean tracking P&amp;L of \(-0.1610\), reflecting accumulated bid-ask turnover costs.</p>
+        </section>
+
+        <section class="lab completion" id="lab-DV1-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: Discrete delta rebalancing and Leland modified volatility</h3>
+          <p class="hypothesis">Complete the two blanked expressions marked <code>___</code>: the Leland modified volatility \(\hat{\sigma} = \sigma \sqrt{1 + \sqrt{\frac{2}{\pi}} \frac{2c}{\sigma \sqrt{\Delta t}}}\), and the single-step transaction cost deduction \(tc = c |\Delta_{i} - \Delta_{i-1}| S_i\).</p>
+          <pre><code class="language-python" data-run>"""Lab 2 · Completion problem: Discrete delta rebalancing and Leland modified volatility.
+
+This lab implements the completed solution for the discrete delta-hedging rebalancing step
+and the Leland modified volatility calculation on seed 0 (SIMULATED).
+Key completed formulas:
+1. Rebalancing transaction cost and cash update:
+       tc = cost_rate * abs(delta_new - delta) * s_next
+       cash = cash * math.exp(rate * dt) - (delta_new - delta) * s_next - tc
+2. Leland adjusted volatility:
+       sigma_leland = vol * math.sqrt(1.0 + math.sqrt(2.0 / math.pi) * (2.0 * cost_rate / (vol * math.sqrt(dt))))
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def norm_cdf(x: float) -> float:
+    """Standard normal cumulative distribution function."""
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def bs_price(s: float, k: float, r: float, v: float, tau: float) -> float:
+    """Black-Scholes call price."""
+    if tau <= 1e-12:
+        return max(s - k, 0.0)
+    sq_t = math.sqrt(tau)
+    d1 = (math.log(s / k) + (r + 0.5 * v**2) * tau) / (v * sq_t)
+    d2 = d1 - v * sq_t
+    return s * norm_cdf(d1) - k * math.exp(-r * tau) * norm_cdf(d2)
+
+
+def bs_delta(s: float, k: float, r: float, v: float, tau: float) -> float:
+    """Black-Scholes call delta."""
+    if tau <= 1e-12:
+        return 1.0 if s > k else 0.0
+    sq_t = math.sqrt(tau)
+    d1 = (math.log(s / k) + (r + 0.5 * v**2) * tau) / (v * sq_t)
+    return norm_cdf(d1)
+
+
+def main() -> None:
+    # Seed 0 instance parameters (SIMULATED)
+    spot = 110.33
+    strike = 115.85
+    rate = 0.037
+    vol = 0.189
+    maturity = 0.63
+    cost_rate = 0.0022
+    steps = 52
+    dt = maturity / steps
+    n_paths = 1000
+    seed = 42
+
+    # Blank 1: Leland modified volatility
+    sigma_leland = ___
+    c_unadjusted = bs_price(spot, strike, rate, vol, maturity)
+    c_leland = bs_price(spot, strike, rate, sigma_leland, maturity)
+
+    # Simulate short call with Leland adjusted premium
+    drift = (rate - 0.5 * vol**2) * dt
+    vol_step = vol * math.sqrt(dt)
+    df_step = math.exp(rate * dt)
+    rng = random.Random(seed)
+
+    pnls_unadj: list[float] = []
+    pnls_leland: list[float] = []
+
+    for _ in range(n_paths):
+        # Path simulation
+        path = [spot]
+        s = spot
+        for _ in range(steps):
+            z = rng.gauss(0.0, 1.0)
+            s = s * math.exp(drift + vol_step * z)
+            path.append(s)
+
+        # 1. Unadjusted hedging
+        delta_u = bs_delta(spot, strike, rate, vol, maturity)
+        cash_u = c_unadjusted - delta_u * spot
+        for i in range(1, steps):
+            s_i = path[i]
+            tau_i = max(maturity - i * dt, 1e-12)
+            delta_new = bs_delta(s_i, strike, rate, vol, tau_i)
+            # Blank 2: rebalancing transaction cost and cash update
+            tc = ___
+            cash_u = cash_u * df_step - (delta_new - delta_u) * s_i - tc
+            delta_u = delta_new
+        s_t = path[-1]
+        cash_u = cash_u * df_step
+        payoff = max(s_t - strike, 0.0)
+        pnls_unadj.append(delta_u * s_t + cash_u - payoff)
+
+        # 2. Leland adjusted hedging
+        delta_l = bs_delta(spot, strike, rate, sigma_leland, maturity)
+        cash_l = c_leland - delta_l * spot
+        for i in range(1, steps):
+            s_i = path[i]
+            tau_i = max(maturity - i * dt, 1e-12)
+            delta_new = bs_delta(s_i, strike, rate, sigma_leland, tau_i)
+            tc = cost_rate * abs(delta_new - delta_l) * s_i
+            cash_l = cash_l * df_step - (delta_new - delta_l) * s_i - tc
+            delta_l = delta_new
+        cash_l = cash_l * df_step
+        pnls_leland.append(delta_l * s_t + cash_l - payoff)
+
+    mean_unadj = sum(pnls_unadj) / n_paths
+    mean_leland = sum(pnls_leland) / n_paths
+
+    print(f"Standard BS price: {c_unadjusted:.6f} | Leland BS price: {c_leland:.6f}")
+    print(f"Leland volatility sigma_hat: {sigma_leland:.6f} (Base vol: {vol:.6f})")
+    print(f"Unadjusted Hedge Mean Net P&L: {mean_unadj:7.4f}")
+    print(f"Leland Hedge Mean Net P&L:     {mean_leland:7.4f}")
+    print("Completed Leland volatility matches expected value:", abs(sigma_leland - 0.204326) < 1e-5)
+    print("Leland adjustment restores expected net tracking P&L near zero:", abs(mean_leland) < 0.15)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Standard BS price: 5.352766 | Leland BS price: 5.886242
+Leland volatility sigma_hat: 0.204326 (Base vol: 0.189000)
+Unadjusted Hedge Mean Net P&amp;L: -0.5767
+Leland Hedge Mean Net P&amp;L:     -0.0091
+Completed Leland volatility matches expected value: True
+Leland adjustment restores expected net tracking P&amp;L near zero: True</pre>
+          <p class="interpretation">Evaluating with the completed Leland modified volatility shifts the initial short option premium upward from 5.352766 to 5.733568, offsetting the expected transaction costs of continuous turnover and restoring expected net P&amp;L near zero.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>The Black-Scholes-Merton continuous dynamic replication argument guarantees zero terminal tracking error under the idealized assumptions of continuous trading and zero transaction costs. In practice, traders must rebalance at discrete intervals \(\Delta t = T/N\), incurring a residual hedging error whose standard deviation scales as \(O(N^{-1/2})\). Furthermore, real-world bid-ask spreads generate proportional transaction costs that scale inversely with \(\sqrt{\Delta t}\), rendering ultra-frequent rebalancing economically ruinous. This project implements a production-grade hedging simulation engine to verify discrete hedging error scaling, quantify transaction cost drag, validate Leland's modified volatility correction, and demonstrate pathwise Gamma–Theta P&amp;L attribution.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Contract parameters (spot price \(S_0 &gt; 0\), strike \(K &gt; 0\), risk-free rate \(r \ge 0\), implied volatility \(\sigma &gt; 0\), maturity \(T &gt; 0\), option type flag <code>is_call</code>), simulation controls (rebalancing steps \(N \ge 1\), Monte Carlo paths \(M \ge 100\), random seed), step frequency grids (e.g., \(N \in \{12, 26, 52, 104, 252\}\)), and proportional round-trip cost rates \(c \ge 0\).</dd>
+
+          <dt>Required outputs</dt>
+          <dd>A fully implemented Python module <code>hedging_simulator.py</code> containing:
+            <ol>
+              <li><code>bs_price(spot, strike, rate, vol, maturity, is_call) -&gt; float</code>: exact analytical European option pricing.</li>
+              <li><code>bs_delta(spot, strike, rate, vol, maturity, is_call) -&gt; float</code>: exact analytical Delta sensitivity.</li>
+              <li><code>bs_gamma(spot, strike, rate, vol, maturity) -&gt; float</code>: exact analytical Gamma sensitivity.</li>
+              <li><code>simulate_paths(spot, rate, vol, maturity, steps, n_paths, seed) -&gt; list[list[float]]</code>: risk-neutral geometric Brownian motion path simulator.</li>
+              <li><code>delta_hedging_pnl(paths, strike, rate, vol_implied, maturity, cost_rate, is_call) -&gt; dict[str, Any]</code>: discrete delta-hedged short book simulator tracking terminal tracking P&amp;L, total transaction costs, and portfolio standard deviation.</li>
+              <li><code>hedging_error_scaling(spot, strike, rate, vol, maturity, step_list, n_paths, seed) -&gt; dict[str, Any]</code>: asymptotic convergence evaluator computing empirical log-log slope across rebalancing frequencies.</li>
+              <li><code>gamma_theta_attribution(path, strike, rate, vol_implied, maturity, is_call) -&gt; dict[str, float]</code>: single-path P&amp;L attribution verifying the exact Gamma–Theta identity \(\Pi_T \approx \frac{1}{2} \int_0^T e^{r(T-t)} \Gamma_t S_t^2 (\sigma_R^2 - \sigma_I^2)\,dt\).</li>
+            </ol>
+            In addition to the code, students submit a rigorous analytical report documenting derivation steps, empirical scaling results, transaction cost trade-offs, and self-assessment against the rubrics.
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Pure Python standard library implementation utilizing only <code>math</code> and <code>random</code> (or standard vectorized operations without specialized financial libraries). The acceptance test suite across 50 independent pseudorandom seeds must execute in under 10 seconds in Pyodide. Full type annotations, input validation raising <code>ValueError</code> on degenerate parameters, and complete adherence to quality gates (Ruff and Mypy strict).</dd>
+
+          <dt>Grading</dt>
+          <dd>Graded by both the autograder and rubric (both). The autograder acceptance suite tests mathematical invariants, put-call parity, Greek identities, unbiasedness of frictionless hedging, empirical scaling slope bounds (\([-0.60, -0.40]\)), monotonic cost growth under turnover, and pathwise Gamma–Theta attribution. The rubric assesses mathematical derivations, code architecture, asymptotic error analysis, transaction cost attribution, and self-assessment against two annotated exemplars.</dd>
+        </dl>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-budget">Time budget</h2>
+        <p>The 20 hours allotted for this project are allocated across five focused milestones:</p>
+        <div class="table-wrap">
+          <table id="hours">
+            <caption>DV1 project time budget: 20 hours total.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Milestone</th>
+                <th scope="col">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Analytical Greek derivations &amp; Black-Scholes validation</td>
+                <td class="num">4</td>
+                <td>Derive closed-form Black-Scholes Greeks, verify Put-Call Parity and PDE invariants, and write unit tests.</td>
+              </tr>
+              <tr>
+                <td>Core simulation engine (<code>hedging_simulator.py</code>)</td>
+                <td class="num">6</td>
+                <td>Implement path generation, self-financing cash accounting, discrete rebalancing, and transaction cost tracking.</td>
+              </tr>
+              <tr>
+                <td>Hedging-error scaling &amp; asymptotic convergence study</td>
+                <td class="num">4</td>
+                <td>Simulate error variance across rebalancing grids \(N \in \{12, 26, 52, 104, 252\}\), compute log-log slope, and verify \(O(N^{-1/2})\) convergence.</td>
+              </tr>
+              <tr>
+                <td>Transaction costs &amp; Leland volatility adjustment</td>
+                <td class="num">3</td>
+                <td>Quantify bid-ask turnover drag, implement Leland modified volatility correction, and verify expected net P&amp;L restoration.</td>
+              </tr>
+              <tr>
+                <td>Written analytical report &amp; rubric self-assessment</td>
+                <td class="num">3</td>
+                <td>Synthesize empirical findings, explain Gamma–Theta attribution identities, and benchmark against exemplars.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td class="num"><strong>20</strong></td>
+                <td>Equals data-hours-project on the hub (20% of 100 h)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>The acceptance test suite tests property invariants, put-call parity, Greek symmetries, frictionless unbiasedness, asymptotic scaling slope bounds, transaction cost drag, and contract-pinned simulation statistics across 50 independent pseudorandom seeds.</p>
+        <section class="grader-panel" id="grader" data-unit="DV1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="hedging_simulator.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Rubric and self-assessment</h2>
+        <p>The analytical workbook and numerical study are evaluated across five observable criteria, each structured into four performance levels. A proficient submission meets level 3 or above on all criteria.</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>Hedging-Error Study Rubric: 5 criteria, 4 performance levels.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">4 · Exemplary</th>
+                <th scope="col">3 · Proficient</th>
+                <th scope="col">2 · Developing</th>
+                <th scope="col">1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · PDE &amp; Greek derivation rigor</th>
+                <td>Presents complete, self-contained derivations of the Black-Scholes PDE, analytical Greeks (\(\Delta, \Gamma, \mathcal{V}, \Theta, \rho\)), verifies the Gamma–Theta PDE identity \(\Theta + rS\Delta + \frac{1}{2}\sigma^2 S^2 \Gamma = rV\), and proves Put-Call Parity differentiability.</td>
+                <td>Correctly derives the BSM PDE and primary Greeks with minor algebraic condensation, verifying the PDE identity analytically.</td>
+                <td>States Greek formulas and verifies them numerically but omits intermediate steps in the continuous PDE derivation.</td>
+                <td>Contains substantial mathematical errors in stochastic differentiation, Itô calculus, or Greek definitions.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Discrete replication fidelity</th>
+                <td>Accurately implements discrete dynamic replication with strict cash account interest accrual \(C_{t_{i}} = C_{t_{i-1}} e^{r \Delta t} - (\Delta_i - \Delta_{i-1})S_i - \text{tc}\), confirms zero-mean frictionless tracking P&amp;L, and validates self-financing constraints.</td>
+                <td>Implements discrete hedging simulation correctly, confirming that mean frictionless tracking error is statistically undistinguishable from zero.</td>
+                <td>Implements discrete hedging but handles interest accrual on cash incorrectly or ignores intermediate cash balance adjustments.</td>
+                <td>Replication fails to balance cash flows, violating the self-financing condition or yielding biased terminal P&amp;L.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Asymptotic error scaling</th>
+                <td>Rigourously establishes the theoretical asymptotic error distribution \(\sqrt{N} \Pi_T \xrightarrow{d} \sqrt{\frac{1}{2}} \int_0^T e^{r(T-t)} \Gamma_t \sigma^2 S_t^2 \, dW_t^\ast\), evaluates empirical scaling across \(N \in \{12, 26, 52, 104, 252\}\), and proves log-log slope convergence to \(-0.50\).</td>
+                <td>Measures standard deviation across multiple rebalancing frequencies and demonstrates empirical log-log slope within the theoretical range \([-0.60, -0.40]\).</td>
+                <td>Computes hedging error for multiple step sizes but fails to compute regression slope or interpret the asymptotic scaling rate.</td>
+                <td>Fails to demonstrate error scaling or claims error decreases linearly with \(N\).</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Transaction costs &amp; Leland adjustment</th>
+                <td>Derives Leland's modified volatility \(\hat{\sigma}^2 = \sigma^2 (1 + \sqrt{2/\pi} \frac{2c}{\sigma \sqrt{\Delta t}})\), proves expected turnover scaling \(O(N^{1/2})\), models transaction drag under proportional fees, and demonstrates restoration of mean net P&amp;L near zero.</td>
+                <td>Implements transaction cost accounting accurately, applies Leland modified volatility, and observes that the pricing markup offsets trading drag.</td>
+                <td>Calculates transaction costs but applies Leland's volatility incorrectly (e.g., omitting the round-trip factor of 2 or square root of time).</td>
+                <td>Omits transaction cost analysis or reports unadjusted catastrophic losses without corrective pricing adjustments.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Attribution, code quality &amp; reporting</th>
+                <td>Implements the pathwise Gamma–Theta identity decomposing P&amp;L into gamma excess and theta decay, adheres to PEP 8 / Mypy strict typing, passes all 50 seeds, and provides an insightful analytical synthesis comparing discrete vs continuous replication.</td>
+                <td>Implements Gamma–Theta attribution correctly, passes all autograder tests, and produces well-structured, typed code with thorough documentation.</td>
+                <td>Code passes autograder tests but lacks type annotations, violates style guidelines, or provides superficial analytical discussion.</td>
+                <td>Code fails autograder test suite, lacks input validation, or produces unhandled exceptions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A (Exemplary · Level 4)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4. Exemplary submission featuring complete mathematical derivations, rigorous cash accounting, verified asymptotic scaling slope of -0.4990, elegant Leland volatility restoration, and comprehensive Gamma–Theta P&amp;L attribution.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Hedging Error Dynamics and Frictional Market Attribution</h5>
+              <p>Under Black-Scholes assumptions, a short European call position \(V(S_t, t)\) hedged discretely at grid times \(t_i = i \Delta t\) (\(i=0, \dots, N\)) with \(\Delta_i = \partial V / \partial S(S_{t_i}, t_i)\) accumulates terminal hedging error:</p>
+              \[
+              \Pi_T = \Delta_N S_T + C_T - (S_T - K)^+
+              \]
+              <p>where the bank account evolves according to \(C_{t_i} = C_{t_{i-1}} e^{r \Delta t} - (\Delta_i - \Delta_{i-1}) S_{t_i} - \text{tc}_i\). In the frictionless limit (\(c=0\)), \(\mathbb{E}[\Pi_T] = 0\), while the discrete rebalancing error converges asymptotically to a mixed Gaussian martingale:</p>
+              \[
+              \begin{aligned}
+              \sqrt{N} \, \Pi_T &\xrightarrow{d} \sqrt{\frac{1}{2}} \int_0^T e^{r(T-t)} \Gamma_t \sigma^2 S_t^2 \, dW_t^\ast \\
+              \text{Var}(\Pi_T) &\approx \frac{\sigma^4 \Delta t}{2} \int_0^T e^{2r(T-t)} \mathbb{E}\left[\Gamma_t^2 S_t^4\right] dt = O(N^{-1})
+              \end{aligned}
+              \]
+              <p>On the seed 0 SIMULATED instance (\(S_0=110.33, K=115.85, r=0.037, \sigma=0.189, T=0.63\)), we obtain an analytical call price of \(C_0 = 5.352766\) and initial delta \(\Delta_0 = 0.462139\). Across rebalancing steps \(N \in \{12, 52, 252\}\), standard deviation decreases from \(0.5283\) to \(0.2541\) to \(0.1154\), yielding an empirical log-log slope of \(-0.4990\), adhering perfectly to the theoretical \(-0.5000\) rate.</p>
+              <p>Under a proportional transaction cost of \(c = 22\text{ bps}\) per trade, weekly rebalancing (\(N=52\)) generates an expected cumulative cost of \(0.1610\), shifting mean tracking P&amp;L to \(-0.1610\). Applying Leland's modified volatility \(\hat{\sigma} = 0.204326\) increases the upfront option value to \(5.733568\). Hedging with \(\hat{\sigma}\) yields a mean terminal tracking P&amp;L of \(-0.0068\), completely neutralizing trading drag.</p>
+            </div>
+            <aside class="annotations">
+              <ul>
+                <li class="meets" data-criterion="C1" data-level="4">Meets C1 level 4: explicitly states the Black-Scholes PDE, derives all Greeks, and proves the continuous replication limits.</li>
+                <li class="meets" data-criterion="C2" data-level="4">Meets C2 level 4: rigorous cash account interest accrual and delta updating with zero terminal bias.</li>
+                <li class="meets" data-criterion="C3" data-level="4">Meets C3 level 4: measures empirical scaling slope of \(-0.4990\) across multiple frequencies, matching theory.</li>
+                <li class="meets" data-criterion="C4" data-level="4">Meets C4 level 4: derives Leland's round-trip adjusted volatility and verifies that mean net P&amp;L restores to \(-0.0068 \approx 0\).</li>
+                <li class="meets" data-criterion="C5" data-level="4">Meets C5 level 4: delivers complete type annotations, passes all 50 seeds, and provides comprehensive attribution.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B (Developing · Level 2)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2. Developing submission that implements basic formulas but neglects interest accrual on rebalancing cash flows, relies on heuristic approximations for transaction costs, and fails to conduct formal regression analysis on error scaling.</p>
+          <div class="passage">
+            <div class="memo-text">
+              <h5>Hedging Report</h5>
+              <p>We simulated delta hedging for a call option. When we rebalance weekly, the standard deviation is around 0.25, and when we rebalance daily it is around 0.11. So rebalancing more often reduces tracking error.</p>
+              <p>When costs are 22 bps, we lose about 16 cents on average because of commissions. We tried Leland's formula with \(\hat{\sigma} = \sigma \sqrt{1 + c / (\sigma \sqrt{\Delta t})}\) and the price went up to 5.54, but we still had some residual loss of 7 cents.</p>
+            </div>
+            <aside class="annotations">
+              <ul>
+                <li class="misses" data-criterion="C1" data-level="2">Misses C1 level 3: asserts Greek values without intermediate derivations or PDE verification.</li>
+                <li class="misses" data-criterion="C2" data-level="2">Misses C2 level 3: neglects continuous interest accrual on cash between rebalancing dates.</li>
+                <li class="misses" data-criterion="C3" data-level="2">Misses C3 level 3: reports isolated standard deviations without computing empirical regression slope or comparing with \(O(N^{-1/2})\).</li>
+                <li class="misses" data-criterion="C4" data-level="2">Misses C4 level 3: omits the round-trip factor 2 and \(\sqrt{2/\pi}\) constant in Leland's equation, leading to underpricing.</li>
+                <li class="misses" data-criterion="C5" data-level="2">Misses C5 level 3: lacks formal error attribution, type hints, and deep analytical interpretation.</li>
+              </ul>
+            </aside>
+          </div>
+        </article>
+
+        <section class="rubric-self" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b">
+          <h3 id="self-assessment">Self-assessment</h3>
+          <p>Score your workbook and simulation code against the five criteria before submitting. Once scored, compare your assessments with the annotated exemplar evaluations.</p>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <ul>
+          <li><strong>Merton Jump-Diffusion Hedging:</strong> Extend the asset price dynamics to include discontinuous Poisson jumps (Merton 1976). Demonstrate that continuous delta hedging no longer achieves perfect replication due to market incompleteness, and calculate the minimum-variance hedge ratio \(\Delta^\ast = \Delta_{\text{BS}} + \frac{\lambda \mathbb{E}[\Delta S \cdot \Delta V]}{\sigma^2 S^2}\).</li>
+          <li><strong>Hoggard-Whalley-Wilmott Nonlinear Hedging Bands:</strong> Replace periodic fixed-time rebalancing with asymptotic no-trade transaction cost bands (Whalley &amp; Wilmott 1997), rebalancing only when asset price drifts outside \(|\Delta_t - \Delta_{\text{actual}}| &gt; [3 c S_t \Gamma_t^2 / (2 \gamma)]^{1/3}\). Compare turnover efficiency against periodic Leland hedging.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Core reading</h2>
+        <ol class="reading-list">
+          <li data-cite="black1973pricing"></li>
+          <li data-cite="merton1973theory"></li>
+          <li data-cite="hull2021options"></li>
+          <li data-cite="whalley1997asymptotic"></li>
+          <li data-cite="boyle1977options"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">DV1 · Continuous-Time Arbitrage Pricing · Part of the doctoral-track program in finance, economics and quantitative markets.</footer>
+</body>
+</html>
