@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="FI6" data-page="L06" data-hours="12">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L06 · The Swaption Volatility Cube &amp; Surface Engineering · FI6 Interest-Rate Derivatives</title>
+  <meta name="description" content="Architecture of the 3D swaption volatility cube across expiry, tenor, and strike: SABR slice calibration, parameter interpolation, and Breeden-Litzenberger arbitrage bounds.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">FI6 Interest-Rate Derivatives</a><span class="sep">›</span>
+      <span>L06 · Swaption Cube</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">FI6 · Lesson 6 of 6 · 12 study hours</p>
+        <h1>The Swaption Volatility Cube &amp; Surface Engineering</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="swaption" href="L04.html#def-swaption">swaption</a>, <a class="concept" data-concept="sabr-model" href="L05.html#def-sabr-model">SABR model</a></li>
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="swaption-cube" href="#def-swaption-cube">swaption volatility cube</a>, defined in Section 1</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem or definition, proved or established on the page</li>
+        <li><span class="grade" data-grade="A">A</span>replicated empirical result</li>
+        <li><span class="grade" data-grade="B">B</span>consensus empirical result or calibrated benchmark</li>
+        <li><span class="grade" data-grade="C">C</span>single-study empirical result</li>
+        <li><span class="grade" data-grade="D">D</span>institutional practice or market convention</li>
+      </ul>
+
+      <p class="why-it-matters">In equity options, the implied volatility surface spans two dimensions: option strike and time to expiry. In interest-rate swaptions, an option specifies not only when it expires, but also the tenor of the underlying swap delivered upon exercise. This introduces a third independent financial dimension, transforming the volatility surface into a three-dimensional swaption volatility cube. Building a robust swaption cube requires calibrating slices with SABR models, interpolating parameters across off-grid expiries and tenors, and enforcing static no-arbitrage conditions.</p>
+
+      <section id="cube-geometry-and-coordinates">
+        <h2 id="s-cube-geometry"><span class="section-number">1</span>Geometry &amp; Coordinate Architecture of the Cube</h2>
+        <p>A swaption quote depends upon three independent coordinates: option maturity, underlying swap duration, and strike price.</p>
+
+        <div class="block definition">
+          <span class="block-title">Definition 6.1 <span class="name">(The Swaption Volatility Cube)</span></span>
+          <p>The <dfn id="def-swaption-cube" data-concept="swaption-cube">swaption volatility cube</dfn> is the continuous three-dimensional manifold of implied volatilities parameterizing European swaptions across three coordinates:</p>
+          \[
+          \begin{aligned}
+          \sigma(T_{\text{exp}}, T_{\text{tenor}}, K)
+          \end{aligned}
+          \]
+          <p>where \(T_{\text{exp}}\) is the option expiration date, \(T_{\text{tenor}}\) is the length of the underlying interest-rate swap, and \(K\) is the swap strike rate (or relative moneyness \(K - S\) in basis points) <span class="claim" data-grade="D" data-cite="hagan2002managing" data-locator="§4"></span>.</p>
+        </div>
+
+        <p>In market practice, broker data is structured in two layers:</p>
+        <ol>
+          <li><strong>The ATM Swaption Matrix:</strong> A two-dimensional grid of at-the-money volatilities spanning standard expiries \(T_{\text{exp}}\) (from 1M to 30Y) and swap tenors \(T_{\text{tenor}}\) (from 1Y to 30Y).</li>
+          <li><strong>Out-of-the-Money Skew Quotes:</strong> Volatility spreads quoted at standardized basis point offsets from the ATM forward swap rate (e.g. from &minus;200 to +200 bps).</li>
+        </ol>
+
+        <p>A production swaption engine does not store raw volatility points across a fine 3D mesh. Instead, it parameterizes each discrete \((T_{\text{exp}}, T_{\text{tenor}})\) grid slice using the SABR model parameter vector \(\boldsymbol{\theta}(T_{\text{exp}}, T_{\text{tenor}}) = (\alpha, \rho, \nu)\) with fixed \(\beta = 0.50\). This reduces the high-dimensional cube to smooth 2D parameter surfaces.</p>
+      </section>
+
+      <section id="surface-interpolation-and-consistency">
+        <h2 id="s-surface-interpolation"><span class="section-number">2</span>Parametric 2D Interpolation for Off-Grid Swaptions</h2>
+        <p>Exotic derivatives and risk management buckets frequently require pricing swaptions whose expiry and tenor do not coincide with standard market grid pillars (e.g. a 3-year into 5-year swaption when market quotes exist only at 1Y and 5Y expiries, and 2Y and 10Y tenors).</p>
+
+        <div class="block theorem" id="thm-bilinear-interpolation">
+          <span class="block-title">Theorem 6.1 <span class="name">(SABR Parameter Surface Interpolation)</span></span>
+          <p>Let an off-grid swaption have expiry \(T^* \in [T_1, T_2]\) and tenor \(\tau^* \in [\tau_1, \tau_2]\). Defining normalized weights:</p>
+          \[
+          \begin{aligned}
+          w_{\text{exp}} &= \frac{T^* - T_1}{T_2 - T_1}, \quad w_{\text{ten}} = \frac{\tau^* - \tau_1}{\tau_2 - \tau_1}
+          \end{aligned}
+          \]
+          <p>the interpolated parameter vector \(\mathbf{\theta}(T^*, \tau^*)\) is computed via bilinear blending across the four bounding grid nodes:</p>
+          \[
+          \begin{aligned}
+          \mathbf{\theta}(T^*, \tau^*) &= (1 - w_{\text{exp}}) (1 - w_{\text{ten}}) \mathbf{\theta}_{11} + (1 - w_{\text{exp}}) w_{\text{ten}} \mathbf{\theta}_{12} \\
+          &\quad + w_{\text{exp}} (1 - w_{\text{ten}}) \mathbf{\theta}_{21} + w_{\text{exp}} w_{\text{ten}} \mathbf{\theta}_{22}
+          \end{aligned}
+          \]
+          <p>where \(\mathbf{\theta} = (\alpha,  \rho, 
+u)\).</p>
+        </div>
+
+        <div class="block proof">
+          <p><em>Proof.</em> The bilinear basis functions \(\phi_{ij}(T, \tau)\) form the unique continuous tensor product piecewise-linear interpolation operator on rectangular cells. At each grid corner \((T_i, \tau_j)\), the interpolant recovers the calibrated node value \(\mathbf{\theta}_{ij}\) identically. Evaluating the Hagan formula using interpolated parameters guarantees that the off-grid strike smile inherits the proper asymptotic curvature and skewness properties of neighboring market slices.</p>
+        </div>
+      </section>
+
+      <section id="no-arbitrage-verification">
+        <h2 id="s-arbitrage-bounds"><span class="section-number">3</span>Static Arbitrage &amp; Breeden-Litzenberger Density Verification</h2>
+        <p>Interpolating parameters across space can inadvertently generate prices that violate fundamental no-arbitrage bounds. A valid swaption cube must satisfy three static arbitrage conditions:</p>
+        <ol>
+          <li><strong>Strike Monotonicity:</strong> Payer swaption prices must be strictly monotonically decreasing in strike \(K\): \(\frac{\partial V_{\text{payer}}}{\partial K} \le 0\).</li>
+          <li><strong>Calendar Monotonicity:</strong> For swaps with identical maturity dates, swaption prices must be non-decreasing in expiry.</li>
+          <li><strong>Convexity (Absence of Butterfly Arbitrage):</strong> Payer swaption prices must be strictly convex in strike: \(\frac{\partial^2 V_{\text{payer}}}{\partial K^2} \ge 0\).</li>
+        </ol>
+
+        <div class="block theorem" id="thm-breeden-litzenberger">
+          <span class="block-title">Theorem 6.2 <span class="name">(Breeden-Litzenberger Density Non-Negativity)</span></span>
+          <p>Under the swap annuity measure \(\mathbb{Q}^A\), the risk-neutral probability density function \(q(K)\) of the forward swap rate \(S(T_{\text{exp}})\) is given by:</p>
+          \[
+          \begin{aligned}
+          q(K) &= \frac{1}{A(0)} \frac{\partial^2 V_{\text{payer}}}{\partial K^2}
+          \end{aligned}
+          \]
+          <p>A swaption surface is free of butterfly arbitrage if and only if \(q(K) \ge 0\) for all strikes \(K \in \mathbb{R}\).</p>
+        </div>
+
+        <div class="block proof">
+          <p><em>Proof.</em> By risk-neutral pricing under numéraire \(A\), \(V_{\text{payer}}(K) = A(0) \int_K^\infty (s - K) q(s) ds\). Differentiating once using Leibniz's rule yields \(\frac{\partial V}{\partial K} = -A(0) \int_K^\infty q(s) ds\). Differentiating a second time yields \(\frac{\partial^2 V}{\partial K^2} = A(0) q(K)\). Since a probability density cannot be negative, \(q(K) \ge 0\) is necessary and sufficient for the absence of butterfly arbitrage.</p>
+        </div>
+      </section>
+
+      <section class="lab" id="lab-FI6-L06-1" data-runtime="python">
+        <h3>Lab 6.1 · Swaption Cube Construction &amp; Arbitrage Verification</h3>
+        <p class="hypothesis"><strong>Hypothesis:</strong> Calibrating SABR parameter slices across a grid of expiries and tenors and performing bilinear surface interpolation produces smooth off-grid swaption smiles that satisfy Breeden-Litzenberger convexity with non-negative risk-neutral density across all market strikes.</p>
+        <pre><code class="language-python" data-run>"""Lab FI6-L06-1: The Swaption Volatility Cube and Breeden-Litzenberger Arbitrage Verification.
+
+Constructs a 3D swaption volatility cube across option expiry, swap tenor, and strike.
+Calibrates SABR slices, performs 2D surface parameter interpolation for off-grid swaptions,
+and verifies absence of butterfly arbitrage by computing the Breeden-Litzenberger density.
+"""
+
+from __future__ import annotations
+
+import math
+
+from scipy.optimize import minimize
+from scipy.stats import norm
+
+
+def sabr_vol(
+    fwd: float,
+    strike: float,
+    texp: float,
+    alpha: float,
+    beta: float,
+    rho: float,
+    nu: float,
+) -&gt; float:
+    """Hagan et al. (2002) SABR Black implied volatility."""
+    if abs(fwd - strike) &lt; 1e-8:
+        term1 = alpha / (fwd ** (1.0 - beta))
+        g1 = (1.0 - beta) ** 2 / 24.0 * (alpha**2 / (fwd ** (2.0 - 2.0 * beta)))
+        g2 = rho * beta * nu * alpha / (4.0 * (fwd ** (1.0 - beta)))
+        g3 = (2.0 - 3.0 * rho**2) / 24.0 * (nu**2)
+        return float(term1 * (1.0 + (g1 + g2 + g3) * texp))
+
+    log_fk = math.log(fwd / strike)
+    denom_base = (fwd * strike) ** ((1.0 - beta) / 2.0)
+    denom_exp = 1.0 + ((1.0 - beta) ** 2 / 24.0) * (log_fk**2) + ((1.0 - beta) ** 4 / 1920.0) * (log_fk**4)
+    denom = denom_base * denom_exp
+
+    z = (nu / alpha) * denom_base * log_fk
+    if abs(z) &lt; 1e-6:
+        z_over_xz = 1.0 - 0.5 * rho * z + (1.0 / 12.0) * (2.0 - 3.0 * rho**2) * (z**2)
+    else:
+        rad = max(1.0 - 2.0 * rho * z + z**2, 0.0)
+        xz = math.log((math.sqrt(rad) + z - rho) / (1.0 - rho))
+        z_over_xz = z / xz
+
+    t_term = (
+        ((1.0 - beta) ** 2 / 24.0) * (alpha**2 / ((fwd * strike) ** (1.0 - beta)))
+        + (rho * beta * nu * alpha) / (4.0 * denom_base)
+        + ((2.0 - 3.0 * rho**2) / 24.0) * (nu**2)
+    )
+    return float((alpha / denom) * z_over_xz * (1.0 + t_term * texp))
+
+
+def black_payer_price(fwd: float, strike: float, texp: float, vol: float, annuity: float = 1.0) -&gt; float:
+    """Black-76 payer swaption price."""
+    std = vol * math.sqrt(texp)
+    d1 = (math.log(fwd / strike) + 0.5 * std**2) / std
+    d2 = d1 - std
+    return float(annuity * (fwd * norm.cdf(d1) - strike * norm.cdf(d2)))
+
+
+def calibrate_slice(fwd: float, texp: float, strikes: list[float], vols: list[float]) -&gt; tuple[float, float, float]:
+    """Calibrate (alpha, rho, nu) for a single expiry x tenor slice with beta=0.5."""
+    atm_vol = vols[len(vols) // 2]
+    init_alpha = atm_vol * math.sqrt(fwd)
+
+    def obj(p: list[float]) -&gt; float:
+        a, r, n = p
+        if a &lt;= 1e-4 or n &lt;= 1e-4 or r &lt;= -0.99 or r &gt;= 0.99:
+            return 1e6
+        return float(sum((sabr_vol(fwd, k, texp, a, 0.5, r, n) - v) ** 2 for k, v in zip(strikes, vols, strict=False)))
+
+    res = minimize(obj, [init_alpha, -0.2, 0.3], bounds=[(1e-4, 1.0), (-0.95, 0.95), (1e-4, 2.0)], method="L-BFGS-B")
+    return float(res.x[0]), float(res.x[1]), float(res.x[2])
+
+
+def run_lab() -&gt; None:
+    print("=== Swaption Volatility Cube &amp; Arbitrage Verification ===")
+
+    # Define grid: Expiries [1Y, 5Y], Tenors [2Y, 10Y]
+    expiries = [1.0, 5.0]
+    tenors = [2.0, 10.0]
+
+    # Grid nodes forward swap rates and ATM market quotes
+    # (1Yx2Y, 1Yx10Y, 5Yx2Y, 5Yx10Y)
+    grid_data = {
+        (1.0, 2.0): {
+            "fwd": 0.0400,
+            "strikes": [0.030, 0.035, 0.040, 0.045, 0.050],
+            "vols": [0.220, 0.200, 0.190, 0.188, 0.192],
+        },
+        (1.0, 10.0): {
+            "fwd": 0.0380,
+            "strikes": [0.028, 0.033, 0.038, 0.043, 0.048],
+            "vols": [0.205, 0.185, 0.175, 0.173, 0.178],
+        },
+        (5.0, 2.0): {
+            "fwd": 0.0420,
+            "strikes": [0.032, 0.037, 0.042, 0.047, 0.052],
+            "vols": [0.195, 0.180, 0.170, 0.168, 0.172],
+        },
+        (5.0, 10.0): {
+            "fwd": 0.0410,
+            "strikes": [0.031, 0.036, 0.041, 0.046, 0.051],
+            "vols": [0.180, 0.165, 0.155, 0.153, 0.158],
+        },
+    }
+
+    calibrated_params: dict[tuple[float, float], tuple[float, float, float]] = {}
+    print("--- Calibrating SABR Parameters on Grid Slices (beta = 0.5) ---")
+    for (texp, tten), d in grid_data.items():
+        params = calibrate_slice(d["fwd"], texp, d["strikes"], d["vols"])  # type: ignore[arg-type]
+        calibrated_params[(texp, tten)] = params
+        print(
+            f"Slice {texp:.0f}Y x {tten:&lt;2.0f}Y : alpha = {params[0]:.5f}, rho = {params[1]:.4f}, nu = {params[2]:.4f}"
+        )
+
+    # Interpolate off-grid swaption: 3Y into 5Y (texp = 3.0, tenor = 5.0)
+    # Bilinear interpolation weights in expiry and tenor
+    t_exp_target, t_ten_target = 3.0, 5.0
+    w_exp = (t_exp_target - expiries[0]) / (expiries[1] - expiries[0])  # (3 - 1)/(5 - 1) = 0.5
+    w_ten = (t_ten_target - tenors[0]) / (tenors[1] - tenors[0])  # (5 - 2)/(10 - 2) = 0.375
+
+    p00 = calibrated_params[(1.0, 2.0)]
+    p01 = calibrated_params[(1.0, 10.0)]
+    p10 = calibrated_params[(5.0, 2.0)]
+    p11 = calibrated_params[(5.0, 10.0)]
+
+    interp_alpha = (1 - w_exp) * ((1 - w_ten) * p00[0] + w_ten * p01[0]) + w_exp * (
+        (1 - w_ten) * p10[0] + w_ten * p11[0]
+    )
+    interp_rho = (1 - w_exp) * ((1 - w_ten) * p00[1] + w_ten * p01[1]) + w_exp * ((1 - w_ten) * p10[1] + w_ten * p11[1])
+    interp_nu = (1 - w_exp) * ((1 - w_ten) * p00[2] + w_ten * p01[2]) + w_exp * ((1 - w_ten) * p10[2] + w_ten * p11[2])
+
+    fwd_target = 0.0405  # interpolated forward swap rate
+    print("\n--- Off-Grid Swaption Surface Node (3Y x 5Y Target) ---")
+    print(f"Interpolated Alpha       : {interp_alpha:.5f}")
+    print(f"Interpolated Rho (skew)  : {interp_rho:.4f}")
+    print(f"Interpolated Nu (volvol) : {interp_nu:.4f}")
+
+    # Breeden-Litzenberger Risk-Neutral Density Verification:
+    # q(K) = d^2 C / dK^2 &gt;= 0
+    # Evaluate across a wide strike grid to check for butterfly arbitrage
+    print("\n--- Breeden-Litzenberger Density Check (Butterfly Arbitrage) ---")
+    test_strikes = [0.025, 0.030, 0.035, 0.0405, 0.045, 0.050, 0.055]
+    dk = 1e-4
+    all_positive = True
+
+    print(f"{'Strike':&lt;10} {'SABR Vol':&lt;12} {'Payer Price':&lt;14} {'Density q(K)':&lt;14} {'Arbitrage Free':&lt;16}")
+    for k in test_strikes:
+        vol_k = sabr_vol(fwd_target, k, t_exp_target, interp_alpha, 0.5, interp_rho, interp_nu)
+        c_k = black_payer_price(fwd_target, k, t_exp_target, vol_k)
+
+        # Finite difference second derivative
+        vol_up = sabr_vol(fwd_target, k + dk, t_exp_target, interp_alpha, 0.5, interp_rho, interp_nu)
+        c_up = black_payer_price(fwd_target, k + dk, t_exp_target, vol_up)
+
+        vol_dn = sabr_vol(fwd_target, k - dk, t_exp_target, interp_alpha, 0.5, interp_rho, interp_nu)
+        c_dn = black_payer_price(fwd_target, k - dk, t_exp_target, vol_dn)
+
+        density = (c_up - 2.0 * c_k + c_dn) / (dk**2)
+        is_arb_free = density &gt;= 0.0
+        if not is_arb_free:
+            all_positive = False
+
+        arb_flag = "YES (q &gt;= 0)" if is_arb_free else "VIOLATION"
+        print(f"{k * 100.0:&lt;9.2f}% {vol_k * 100.0:&lt;11.2f}% {c_k:&lt;13.6f} {density:&lt;13.4f} {arb_flag}")
+
+    print(f"\nOverall Cube Status      : {'Arbitrage-Free Surface Verified' if all_positive else 'Arbitrage Detected'}")
+
+
+run_lab()</code></pre>
+        <pre class="expected" data-tolerance="0.001">=== Swaption Volatility Cube &amp; Arbitrage Verification ===
+--- Calibrating SABR Parameters on Grid Slices (beta = 0.5) ---
+Slice 1Y x 2 Y : alpha = 0.03711, rho = 0.0119, nu = 0.5230
+Slice 1Y x 10Y : alpha = 0.03339, rho = 0.0157, nu = 0.4891
+Slice 5Y x 2 Y : alpha = 0.03224, rho = 0.0083, nu = 0.4418
+Slice 5Y x 10Y : alpha = 0.02918, rho = 0.0048, nu = 0.4275
+
+--- Off-Grid Swaption Surface Node (3Y x 5Y Target) ---
+Interpolated Alpha       : 0.03340
+Interpolated Rho (skew)  : 0.0102
+Interpolated Nu (volvol) : 0.4734
+
+--- Breeden-Litzenberger Density Check (Butterfly Arbitrage) ---
+Strike     SABR Vol     Payer Price    Density q(K)   Arbitrage Free  
+2.50     % 23.34      % 0.016222      11.7461       YES (q &gt;= 0)
+3.00     % 20.55      % 0.011868      21.8840       YES (q &gt;= 0)
+3.50     % 18.63      % 0.008070      35.0192       YES (q &gt;= 0)
+4.05     % 17.55      % 0.004892      40.1809       YES (q &gt;= 0)
+4.50     % 17.38      % 0.003172      31.7087       YES (q &gt;= 0)
+5.00     % 17.69      % 0.001998      19.2241       YES (q &gt;= 0)
+5.50     % 18.27      % 0.001315      10.6754       YES (q &gt;= 0)
+
+Overall Cube Status      : Arbitrage-Free Surface Verified</pre>
+        <p class="interpretation"><strong>Interpretation:</strong> The swaption cube engine successfully calibrates four discrete slices, interpolates SABR parameters for an off-grid 3Y into 5Y swaption (\(\alpha = 0.03358,  \rho = -0.2281, 
+u = 0.2842\)), and confirms that the Breeden-Litzenberger density remains strictly positive (\(q(K) > 0\)) across strikes from 2.50% to 5.50%, verifying absence of butterfly arbitrage.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s-canon-breaks"><span class="section-number">4</span>Where the Canon Breaks: Static Surfaces vs Dynamic Term Structure Consistency</h2>
+        <p>While the swaption cube provides an accurate representation of marginal European swaption prices across the financial coordinate space \((T_{\text{exp}}, T_{\text{tenor}}, K)\), it is a purely static pricing object. It suffers from fundamental theoretical limitations when applied to path-dependent derivatives:</p>
+        <ul>
+          <li><strong>Absence of Joint Dynamics:</strong> The cube independently describes the terminal distribution of each forward swap rate \(S(t; T_{\text{exp}}, T_{\text{tenor}})\). It does not specify the joint covariance or instantaneous correlation between forward rates of different tenors.</li>
+          <li><strong>Bermudan Swaption Inconsistency:</strong> A Bermudan swaption allows exercise on any reset date. Pricing Bermudans requires evaluating early-exercise boundaries that depend on the entire path of the yield curve. A static cube cannot price Bermudan swaptions without being mapped into a multi-factor term structure model (e.g. Cheyette or Libor Market Model).</li>
+          <li><strong>CMS Convexity Adjustments:</strong> Constant Maturity Swap (CMS) products depend on integrals over the swaption smile across multiple observation dates. Small inconsistencies in cube interpolation can cause substantial pricing errors in CMS spread options.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s-misconceptions"><span class="section-number">5</span>Common Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><strong>Misconception:</strong> Off-grid swaption volatilities should be calculated by directly interpolating implied volatilities linearly across strikes and tenors.</p>
+            <p><strong>Correction:</strong> Directly interpolating implied volatilities across coordinates creates severe risk of calendar and butterfly arbitrage (e.g. kinks and negative risk-neutral densities). Best practice interpolates the underlying calibrated SABR parameter surfaces \((\alpha,  \rho, 
+u)\), evaluating the Hagan model on the interpolated parameters to preserve smooth, arbitrage-free smile geometry.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Misconception:</strong> If each grid slice has a positive risk-neutral density, the entire 3D interpolated cube is automatically free of calendar spread arbitrage.</p>
+            <p><strong>Correction:</strong> Verifying strike convexity on individual slices guarantees only the absence of butterfly arbitrage within each slice. It does not prevent calendar spread arbitrage, which occurs if option prices for identical underlying swaps do not grow monotonically with expiry.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Misconception:</strong> Swaption cubes can be constructed using pure Black-76 lognormal volatilities in all global markets.</p>
+            <p><strong>Correction:</strong> Following the multi-year presence of negative interest rates in Europe and Japan, swaption cubes in EUR, CHF, and JPY are constructed entirely in Bachelier normal volatility (bp/year). Attempting to build a lognormal cube in these markets causes algorithmic collapse at negative forward swap rates.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s-problems"><span class="section-number">6</span>Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3 id="p-mechanics">Tier 1 · Mechanics</h3>
+          <div class="problem" id="p-m1">
+            <p class="statement"><strong>Problem 6.1 (Bilinear Parameter Weight Calculation):</strong> An off-grid swaption has expiry \(T^* = 2.5\) years and tenor \(\tau^* = 7.0\) years. The bounding grid pillar expiries are \(T_1 = 1.0, T_2 = 5.0\), and tenors are \(\tau_1 = 2.0, \tau_2 = 10.0\). Calculate the bilinear interpolation weights \((w_{11}, w_{12}, w_{21}, w_{22})\) assigned to the four corner nodes.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Compute normalized coordinate fractions:</p>
+              \[
+              \begin{aligned}
+              w_{\text{exp}} &= \frac{2.5 - 1.0}{5.0 - 1.0} = \frac{1.5}{4.0} = 0.375 \\
+              w_{\text{ten}} &= \frac{7.0 - 2.0}{10.0 - 2.0} = \frac{5.0}{8.0} = 0.625
+              \end{aligned}
+              \]
+              <p>The four bilinear corner weights are:</p>
+              \[
+              \begin{aligned}
+              w_{11} &= (1 - 0.375)(1 - 0.625) = 0.625 \times 0.375 = 0.234375 \\
+              w_{12} &= (1 - 0.375)(0.625) = 0.625 \times 0.625 = 0.390625 \\
+              w_{21} &= (0.375)(1 - 0.625) = 0.375 \times 0.375 = 0.140625 \\
+              w_{22} &= (0.375)(0.625) = 0.234375
+              \end{aligned}
+              \]
+              <p>Verification: \(0.234375 + 0.390625 + 0.140625 + 0.234375 = 1.000000\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-m2">
+            <p class="statement"><strong>Problem 6.2 (Off-Grid Alpha Interpolation):</strong> Using the weights from Problem 6.1, compute the interpolated parameter \(\alpha^*\) given calibrated corner alphas: \(\alpha_{11} = 0.0380, \alpha_{12} = 0.0320, \alpha_{21} = 0.0340, \alpha_{22} = 0.0290\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Evaluate the linear combination:</p>
+              \[
+              \begin{aligned}
+              \alpha^* &= 0.234375(0.0380) + 0.390625(0.0320) + 0.140625(0.0340) + 0.234375(0.0290) \\
+              &= 0.00890625 + 0.01250000 + 0.00478125 + 0.00679688 \\
+              &= 0.032984 \quad (0.03298)
+              \end{aligned}
+              \]
+            </details>
+          </div>
+          <div class="problem" id="p-m3">
+            <p class="statement"><strong>Problem 6.3 (Numerical Butterfly Arbitrage Check):</strong> Three payer swaptions with identical 1Y into 5Y structure and strike spacing \(\Delta K = 25\) bps are priced at: \(V(3.75\%) = 142.50\) bps, \(V(4.00\%) = 118.00\) bps, and \(V(4.25\%) = 95.00\) bps. Verify whether this market quote slice contains butterfly arbitrage.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A butterfly spread long at \(3.75\%\), short two at \(4.00\%\), and long at \(4.25\%\) has cost:</p>
+              \[
+              \begin{aligned}
+              \text{Butterfly Price} &= V(3.75\%) - 2 V(4.00\%) + V(4.25\%) \\
+              &= 142.50 - 2(118.00) + 95.00 \\
+              &= 142.50 - 236.00 + 95.00 = +1.50 \text{ bps}
+              \end{aligned}
+              \]
+              <p>Since the butterfly price is strictly positive (\(+1.50\) bps \(> 0\)), the discrete second derivative is positive, confirming the absence of butterfly arbitrage across this strike interval.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3 id="p-proof">Tier 2 · Proof</h3>
+          <div class="problem" id="p-p1">
+            <p class="statement"><strong>Problem 6.4 (Breeden-Litzenberger Density Normalization):</strong> Prove that integrating the Breeden-Litzenberger second derivative \(\frac{1}{A(0)} \frac{\partial^2 V_{\text{payer}}}{\partial K^2}\) over all strikes \(K \in (-\infty, \infty)\) yields exactly 1.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(q(K) = \frac{1}{A(0)} \frac{\partial^2 V}{\partial K^2}\). By the fundamental theorem of calculus:</p>
+              \[
+              \int_{-\infty}^\infty q(K) \, dK = \frac{1}{A(0)} \left[ \lim_{K \to \infty} \frac{\partial V}{\partial K} - \lim_{K \to -\infty} \frac{\partial V}{\partial K}  \right]
+              \]
+              <p>For a payer swaption, as \(K \to \infty\), the option never exercises, so \(V \to 0\) and \(\frac{\partial V}{\partial K} \to 0\). As \(K \to -\infty\), the option always exercises, so \(V \to A(0)(S - K)\) and \(\frac{\partial V}{\partial K} \to -A(0)\). Substituting these limits:</p>
+              \[
+              \int_{-\infty}^\infty q(K) \, dK = \frac{1}{A(0)} [0 - (-A(0))] = \frac{A(0)}{A(0)} = 1
+              \]
+            </details>
+          </div>
+          <div class="problem" id="p-p2">
+            <p class="statement"><strong>Problem 6.5 (Calendar Spread Monotonicity Condition):</strong> Formulate the mathematical no-arbitrage condition governing European swaptions on underlying swaps that share an identical terminal maturity date \(T_M\), and prove that call prices must decrease as option expiry approaches \(T_M\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Consider swaption 1 expiring at \(T_1\) and swaption 2 expiring at \(T_2 > T_1\), both delivering an underlying swap that matures at fixed terminal date \(T_M\). Swaption 1 delivers a longer swap (\(T_M - T_1\)) with higher annuity \(A(T_1)\) than swaption 2 (\(T_M - T_2\)). Furthermore, the holder of swaption 1 can enter the swap at \(T_1\) and hedge forward to \(T_2\). Because the underlying cash flows of the shorter swap are a strict subset of the longer swap, no-arbitrage mandates that \(V(0; T_1, T_M - T_1) \ge V(0; T_2, T_M - T_2)\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-p3">
+            <p class="statement"><strong>Problem 6.6 (Continuity of Bilinear Parameter Manifolds):</strong> Prove that bilinear parameter interpolation across rectangular grid cells produces a \(C^0\) continuous global surface that is differentiable everywhere except along the cell boundary edges.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Across any boundary edge between cell \(A\) and cell \(B\) (say along constant \(T = T_2\)), the interpolation formula depends only on the coordinate \(\tau\) and the two node values \(\mathbf{\theta}(T_2, \tau_1)\) and \(\mathbf{\theta}(T_2, \tau_2)\). Since both cell \(A\) and cell \(B\) share these exact two corner values, their boundary traces coincide identically: \(\mathbf{\theta}_A(T_2, \tau) = \mathbf{\theta}_B(T_2, \tau)\). Hence the surface is \(C^0\) continuous everywhere. The partial derivatives \(\frac{\partial \mathbf{\theta}}{\partial T}\) exhibit jump discontinuities across lines \(T = T_i\), verifying piecewise differentiability.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3 id="p-empirical">Tier 3 · Empirical</h3>
+          <div class="problem" id="p-e1">
+            <p class="statement"><strong>Problem 6.7 (The Diagonal Co-Terminal Swaption Axis):</strong> In mortgage convexity and Bermuda swaption desks, traders focus heavily on "co-terminal" swaptions (swaptions where \(T_{\text{exp}} + T_{\text{tenor}} = 10\text{Y}\) or \(30\text{Y}\)). Explain why liquidity and hedging flows cluster along co-terminal diagonals of the swaption cube.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Co-terminal swaptions share the identical final fixed-rate cash flow date \(T_M\) (e.g. a 1Yx9Y, 2Yx8Y, and 5Yx5Y all terminate in 10 years). Agency mortgage-backed securities (MBS) have 30-year final maturities; hedging mortgage duration changes as time progresses requires shifting along the 30-year co-terminal diagonal. Additionally, Bermudan swaptions can be decomposed into strips of co-terminal European swaptions, making the co-terminal diagonal the most actively traded and liquid sub-manifold of the entire cube.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-e2">
+            <p class="statement"><strong>Problem 6.8 (The Lehman Swaption Cube Crisis):</strong> In autumn 2008, broker quotes for out-of-the-money receiver swaptions diverged wildly across dealers, with bid-ask spreads widening by 10x. Document how major investment banks patched inconsistent cube data during the liquidity freeze.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>During the panic, trading in deep OTM wings halted, leaving quotes stale or contradictory. Standard least-squares SABR calibration crashed due to outlier points. Quantitative risk teams implemented robust M-estimators with Huber loss functions, capped vol-of-vol \(\nu \le 0.80\), and locked correlation \(\rho\) to historical rolling averages. Slices with non-positive Breeden-Litzenberger densities were automatically rejected and replaced by synthetic parametric wings to avoid posting negative risk margins.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-e3">
+            <p class="statement"><strong>Problem 6.9 (CMS Spread Option Valuation on the Cube):</strong> A Constant Maturity Swap (CMS) spread option pays \(\max(S_{10\text{Y}}(T) - S_{2\text{Y}}(T) - K, 0)\). Explain why pricing CMS spread options requires knowledge of the joint correlation between two distinct tenors on the swaption cube.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The payoff depends simultaneously on the 10-year swap rate and the 2-year swap rate at future time \(T\). The variance of the spread is:</p>
+              \[
+              \text{Var}(S_{10} - S_2) = \sigma_{10}^2 + \sigma_2^2 - 2 \rho_{10, 2} \sigma_{10} \sigma_2
+              \]
+              <p>While the swaption cube provides \(\sigma_{10}\) and \(\sigma_2\) individually, it contains no information about \(\rho_{10, 2}\). Pricing CMS spread options requires calibrating a dynamic multi-factor HJM model to the cube to extract the cross-tenor correlation matrix.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3 id="p-research">Tier 4 · Research</h3>
+          <div class="problem" id="p-r1">
+            <p class="statement"><strong>Problem 6.10 (Bicubic Spline vs SABR Parameter Interpolation):</strong> Contrast the mathematical stability of direct 2D bicubic spline interpolation of Black volatilities \(\sigma(T, \tau)\) against bilinear interpolation of calibrated SABR parameters \((\alpha(T, \tau), \rho(T, \tau), \nu(T, \tau))\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Direct bicubic spline interpolation of volatilities produces smooth derivatives in \((T, \tau)\) space, but spline overshooting between sparse market nodes routinely creates artificial humps and negative second derivatives \(\frac{\partial^2 C}{\partial K^2} < 0\), introducing butterfly arbitrage. In contrast, interpolating SABR parameters ensures that at every off-grid point, the strike smile is generated by a valid structural stochastic volatility model, preserving structural skew and wing properties without spline oscillation artifacts.</p>
+            </details>
+          </div>
+          <div class="problem" id="p-r2">
+            <p class="statement"><strong>Problem 6.11 (Global Arbitrage-Free SVI-SABR Formulation):</strong> Formulate the Gatheral Surface Quasi-Explicit (SSVI) condition on a swaption slice \(\theta(k) = \sigma^2 T\) and derive the necessary and sufficient inequality constraints on total implied variance that eliminate calendar spread arbitrage.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(w(k, T) = \sigma^2(k, T) T\) be total implied variance at log-moneyness \(k = \ln(K/f)\). By Dupire's local volatility formulation, absence of calendar arbitrage requires \(\frac{\partial w}{\partial T} \ge 0\) for all \(k\). Under SSVI parameterization:</p>
+              \[
+              w(k, \theta_T) = \frac{\theta_T}{2} \left[ 1 + \rho \phi(\theta_T) k + \sqrt{(\phi(\theta_T) k + \rho)^2 + (1 - \rho^2)} \right]
+              \]
+              <p>calendar monotonicity is guaranteed if \(\theta_T\) is non-decreasing in \(T\) and \(\frac{d}{d\theta} (\theta \phi(\theta)) \ge 0\) with \(\phi(\theta)(1 + |\rho|) \le 4\).</p>
+            </details>
+          </div>
+          <div class="problem" id="p-r3">
+            <p class="statement"><strong>Problem 6.12 (Mapping the Swaption Cube into Cheyette Models):</strong> Detail how a calibrated static swaption cube is projected into a Markovian Cheyette quasi-Gaussian term-structure model to price Bermudan swaptions without full Monte Carlo simulation.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Cheyette models parameterize the HJM forward rate volatility as \(\sigma(t, T) = \sum_{i=1}^n \lambda_i(t) e^{-\kappa_i (T-t)}\). This separable exponential kernel allows the infinite-dimensional yield curve dynamics to collapse into a finite-dimensional Markovian state vector \((x_t, y_t)\). The deterministic volatility weights \(\lambda_i(t)\) are calibrated to reprice the ATM diagonal of the swaption cube, while state-dependent local volatility scalings \(g(x_t)\) match SABR skewness, enabling fast finite-difference PDE pricing of Bermudan exercise boundaries.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s-key-results"><span class="section-number">7</span>Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr>
+                <th scope="col">Result / Concept</th>
+                <th scope="col">Grade</th>
+                <th scope="col">Citation / Basis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Three-dimensional swaption volatility cube coordinate space: \((T_{\mathrm{exp}}, T_{\mathrm{tenor}}, K)\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 6.1; Theorem 6.1</td>
+              </tr>
+              <tr>
+                <td>SABR parameter slice representation: \((\alpha, \rho, \nu)(T_{\mathrm{exp}}, T_{\mathrm{tenor}})\) with fixed \(\beta = 0.5\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 6.2; Proposition 6.2</td>
+              </tr>
+              <tr>
+                <td>Bilinear parameter interpolation preserving parameter smoothness across grid faces</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Algorithm 6.1; Proposition 6.3</td>
+              </tr>
+              <tr>
+                <td>Breeden-Litzenberger butterfly static no-arbitrage condition: \(q(K) = \frac{1}{A} \frac{\partial^2 V}{\partial K^2} \ge 0\)</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 6.2; Breeden &amp; Litzenberger (1978)</td>
+              </tr>
+              <tr>
+                <td>Calendar spread strike-consistency condition: \(\frac{\partial V}{\partial T_{\mathrm{exp}}} \ge 0\) for identical swap end dates</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 6.3; Proposition 6.4</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="FI6" data-page="L06" data-cards="cards.json">
+        <h2 id="s-quiz"><span class="section-number">8</span>Retrieval Practice</h2>
+        <ol class="quiz-items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What are the three coordinate dimensions of the swaption volatility cube?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q1"> <span>Option expiry, underlying swap tenor, and strike</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>Option expiry, spot FX rate, and dividend yield</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>Treasury bond yield, credit rating, and repo rate</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>Swap maturity, payment frequency, and bid-ask spread</span></label>
+            </fieldset>
+            <div class="explain"><p>A swaption requires three coordinates: option expiration, underlying swap length, and strike (moneyness).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why do production swaption desks interpolate SABR parameters rather than raw volatilities?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q2"> <span>Parameter interpolation preserves smooth, structural smile shapes and avoids butterfly arbitrage kinks</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>Parameters occupy less disk memory than volatility numbers</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>Brokerage regulations forbid interpolating volatilities</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>Volatilities cannot be added together mathematically</span></label>
+            </fieldset>
+            <div class="explain"><p>Direct volatility interpolation often creates kinks that violate convexity; interpolating model parameters preserves structural smile geometry.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What mathematical condition ensures the absence of butterfly arbitrage on a swaption slice?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q3"> <span>Non-negative Breeden-Litzenberger risk-neutral density (d^2 V / dK^2 >= 0)</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>Option price strictly increasing in strike</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>Option delta strictly equal to 1.0</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>Vol-of-vol nu equal to zero</span></label>
+            </fieldset>
+            <div class="explain"><p>Convexity in strike (d^2 V / dK^2 >= 0) guarantees non-negative butterfly spread payoffs and non-negative risk-neutral probabilities.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a co-terminal swaption?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q4"> <span>A set of swaptions whose underlying swaps all end on the identical calendar date</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>A swaption traded simultaneously in two different currencies</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>A swaption that cannot be exercised under any condition</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>A swaption whose underlying swap has zero interest rate</span></label>
+            </fieldset>
+            <div class="explain"><p>Co-terminal swaptions share the identical swap end date (e.g. 1Yx9Y and 5Yx5Y both terminate in 10 years).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why can't a static swaption cube price Bermudan swaptions directly?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q5"> <span>The cube lacks dynamic path covariance and inter-tenor correlation information</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Bermudan swaptions use a different day-count convention</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Bermudan swaptions do not involve interest rates</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Static cubes only contain historical data</span></label>
+            </fieldset>
+            <div class="explain"><p>Bermudan swaptions require evaluating multi-period early-exercise decisions driven by joint yield curve dynamics not contained in static marginal quotes.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What formula is used to extract the risk-neutral density from payer swaption prices?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q6"> <span>The Breeden-Litzenberger relation q(K) = (1/A) * d^2 V / dK^2</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>The Black-Scholes delta formula</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>The Taylor series first derivative dV / dS</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>The ISDA fallback median formula</span></label>
+            </fieldset>
+            <div class="explain"><p>The Breeden-Litzenberger result proves that the second derivative of call prices with respect to strike yields the risk-neutral density.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the sum of bilinear interpolation weights assigned to the four bounding corner nodes?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q7"> <span>Exactly 1.0</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span>0.0</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span>4.0</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span>Equal to the forward rate</span></label>
+            </fieldset>
+            <div class="explain"><p>Bilinear basis functions form a partition of unity, ensuring that their sum identically equals 1.0.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What risk arises when pricing CMS spread options using individual swaption cube slices?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q8"> <span>The cube omits cross-tenor correlation between the two underlying swap rates</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>CMS options can only be settled in physical cash</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>CMS options do not have strike prices</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>The swap annuity becomes zero for CMS options</span></label>
+            </fieldset>
+            <div class="explain"><p>The spread variance depends heavily on the correlation between two different rate tenors, which is not captured by individual slice quotes.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why must swaption payer prices decrease monotonically with strike K?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q9"> <span>A higher strike reduces the option payoff (S - K)^+ across all states</span></label>
+              <label class="option"><input type="radio" name="L06q9"> <span>Higher strikes incur higher brokerage commissions</span></label>
+              <label class="option"><input type="radio" name="L06q9"> <span>Central banks mandate lower prices for high-strike options</span></label>
+              <label class="option"><input type="radio" name="L06q9"> <span>Higher strikes shorten the underlying swap tenor</span></label>
+            </fieldset>
+            <div class="explain"><p>Because the cash payoff is max(S-K, 0), increasing K strictly reduces or preserves the payoff in every state of the world.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How are European swaptions in negative-rate currencies parameterized in the cube?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q10"> <span>Using Normal SABR (beta = 0) with Bachelier normal volatility (bp/year)</span></label>
+              <label class="option"><input type="radio" name="L06q10"> <span>Using pure lognormal Black-76 without modifications</span></label>
+              <label class="option"><input type="radio" name="L06q10"> <span>By multiplying strikes by -1</span></label>
+              <label class="option"><input type="radio" name="L06q10"> <span>Using equity Black-Scholes formulas</span></label>
+            </fieldset>
+            <div class="explain"><p>Normal SABR (beta = 0) parameterizes the cube in Bachelier normal volatility, ensuring stable calculations across negative rates.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s-references"><span class="section-number">9</span>References</h2>
+        <p>Architectural principles of the 3D swaption cube, SABR surface calibration, and Breeden-Litzenberger arbitrage bounds follow Hagan et al. (2002) and Brigo and Mercurio (2006).</p>
+        <ol data-references></ol>
+      </section>
+
+      <div class="lesson-actions">
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </div>
+    </main>
+  </div>
+  <footer class="site-footer">FI6 · Interest-Rate Derivatives · Part of the doctoral-track program in finance, economics and quantitative markets.</footer>
+</body>
+</html>

@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="FI6" data-page="L01" data-hours="12">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01 · Multi-Curve Framework &amp; OIS Discounting · FI6 Interest-Rate Derivatives</title>
+  <meta name="description" content="Dual-curve pricing foundations: collateralized OIS discounting versus tenor-specific floating forward curves, basis spreads, bootstrapping, and linear swap valuation.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">FI6 Interest-Rate Derivatives</a><span class="sep">›</span>
+      <span>L01 · Multi-Curve Framework</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">FI6 · Lesson 1 of 6 · 12 study hours</p>
+        <h1>Multi-Curve Framework &amp; OIS Discounting</h1>
+        <p class="why-it-matters">Before August 2007, fixed income pricing relied on a single yield curve where forward rates and discount factors shared an identical term structure. When interbank credit and liquidity risk widened tenor basis spreads, single-curve valuation collapsed. <dfn id="def-multi-curve-discounting" data-concept="multi-curve-discounting">Multi-curve discounting</dfn> separates the discount curve, determined by collateralized overnight index swap (OIS) rates under Credit Support Annexes, from forwarding curves for floating reference rates. This dual-curve architecture governs all modern linear and non-linear interest rate derivatives.</p>
+      </header>
+
+      <section id="collapse-of-single-curve">
+        <h2 id="s-collapse-single-curve">1. The Collapse of Single-Curve Valuation</h2>
+        <p>In classical textbook theory, a zero-coupon bond \(P(t, T)\) served both to discount future cash flows and to define simple forward rates:</p>
+        \[
+        \begin{aligned}
+        F(t; T_1, T_2) &= \frac{1}{\tau}
+        \left( \frac{P(t, T_1)}{P(t, T_2)} - 1 \right)
+        \end{aligned}
+        \]
+        <p>This formulation assumed that an investor could borrow or lend unsecured funds at the risk-free rate. In August 2007, the spread between 3-month interbank offer rates and 3-month overnight index swaps expanded from historical levels of 5–10 basis points to over 150 basis points <span class="claim" data-grade="A" data-cite="hull2021options" data-locator="Chapter 9">due to acute bank counterparty credit risk and term liquidity hoarding</span>.</p>
+
+        <div class="block definition" id="def-collateral-discounting">
+          <p><strong>Definition 1.1 (Collateralized Discount Curve).</strong> Under a standardized Credit Support Annex (CSA) with zero minimum transfer amounts and daily cash variation margining in currency \(C\), the cash flows of a derivative position are discounted at the overnight collateral rate \(r_c(t)\). For USD derivatives, this benchmark discount factor is:</p>
+          \[
+          \begin{aligned}
+          P_D(t, T) &= \mathbb{E}_t^{\mathbb{Q}}
+          \left[ \exp\left( -\int_t^T r_c(u) du \right) \right]
+          \end{aligned}
+          \]
+        </div>
+
+        <div class="block theorem" id="thm-replication-funding">
+          <p><span class="block-title claim" data-grade="T">Theorem 1.1 (Funding Replication Theorem).</span> If a derivative is fully collateralized with daily cash margining earning overnight rate \(r_c(t)\), absence of arbitrage implies that the unique risk-neutral pricing measure \(\mathbb{Q}^D\) uses the collateralized bank account \(B_D(t) = \exp\left(\int_0^t r_c(u) du\right)\) as numeraire.</p>
+        </div>
+        <div class="block proof">
+          <p><em>Proof.</em> Consider a self-financing replication portfolio \(\Pi(t)\) hedging derivative \(V(t)\). Daily cash collateral \(C(t) = V(t)\) is posted by the out-of-the-money counterparty to the in-the-money counterparty. The collateral receiver pays overnight interest at rate \(r_c(t)\). Any cash invested in the hedging strategy earns or costs \(r_c(t)\). By no-arbitrage dynamic replication, the drift of \(V(t)\) under the pricing measure equals \(r_c(t) V(t)\). Hence, discounted asset prices \(V(t)/B_D(t)\) are \(\mathbb{Q}^D\)-martingales. <span class="claim" data-grade="A" data-cite="brigo2007interest" data-locator="Section 1.3">A formal derivation of collateral-adjusted discounting</span> confirms that unsecured borrowing rates cannot serve as discount numeraires.</p>
+        </div>
+      </section>
+
+      <section id="dual-curve-mechanics">
+        <h2 id="s-dual-curve-mechanics">2. Dual-Curve Bootstrapping &amp; Forward Projection</h2>
+        <p>Under multi-curve discounting, market pricing distinguishes two distinct curves:</p>
+        <ul>
+          <li><strong>The Discount Curve \(P_D(0, T)\):</strong> Bootstrapped from liquid OIS contracts (SOFR swaps in USD, \(\text{ESTR}\) swaps in EUR).</li>
+          <li><strong>The Projection Curves \(P_F^x(0, T)\):</strong> Bootstrapped for each floating index tenor \(x \in \{1\text{M}, 3\text{M}, 6\text{M}\}\) using basis swaps and standard fixed-for-floating swaps.</li>
+        </ul>
+
+        <div class="block definition" id="def-forwarding-curve">
+          <p><strong>Definition 1.2 (Tenor Forward Rate).</strong> For an accrual period \([T_{k-1}, T_k]\) with day-count fraction \(\tau_k\), the forward floating rate \(F_k(t) = F(t; T_{k-1}, T_k)\) is projected from the fictitious zero curve \(P_F(t, T)\) as:</p>
+          \[
+          \begin{aligned}
+          F_k(t) &= \frac{1}{\tau_k}
+          \left( \frac{P_F(t, T_{k-1})}{P_F(t, T_k)} - 1 \right)
+          \end{aligned}
+          \]
+        </div>
+
+        <p>The forward rate \(F_k(t)\) is a martingale under the forward measure \(\mathbb{Q}^{T_k}\) associated with the collateral discount bond \(P_D(t, T_k)\):</p>
+        \[
+        \begin{aligned}
+        F_k(t) &= \mathbb{E}^{\mathbb{Q}^{T_k}}
+        \left[ F_k(T_{k-1}) \;\middle|\; \mathcal{F}_t \right]
+        \end{aligned}
+        \]
+
+        <div class="block theorem" id="thm-multicurve-swap">
+          <p><span class="block-title claim" data-grade="T">Theorem 1.2 (Multi-Curve Swap Par Rate).</span> In a fixed-for-floating interest rate swap paying fixed coupon \(S\) on dates \(T_1, \dots, T_n\) and receiving floating rate \(F_k\) resetting at \(T_{k-1}\), the par swap rate under multi-curve discounting is:</p>
+          \[
+          \begin{aligned}
+          S(t) &= \frac{\sum_{k=1}^n \tau_k P_D(t, T_k) F_k(t)}
+          {\sum_{k=1}^n \tau_k P_D(t, T_k)}
+          = \frac{V_{\text{flt}}(t)}{A(t)}
+          \end{aligned}
+          \]
+          <p>where \(A(t) = \sum_{k=1}^n \tau_k P_D(t, T_k)\) is the swap annuity under OIS discounting.</p>
+        </div>
+        <div class="block proof">
+          <p><em>Proof.</em> The present value of the floating leg is the sum of discounted floating payments:</p>
+          \[
+          \begin{aligned}
+          V_{\text{flt}}(t) &= \sum_{k=1}^n \tau_k
+          P_D(t, T_k) F_k(t)
+          \end{aligned}
+          \]
+          <p>The present value of the fixed leg paying coupon \(S\) is:</p>
+          \[
+          \begin{aligned}
+          V_{\text{fix}}(t) &= S \sum_{k=1}^n \tau_k
+          P_D(t, T_k) = S A(t)
+          \end{aligned}
+          \]
+          <p>Equating \(V_{\text{flt}}(t) = V_{\text{fix}}(t)\) yields the unique par swap rate \(S(t)\). In contrast to single-curve theory, \(V_{\text{flt}}(t)\) does not telescope to \(P_D(t, T_0) - P_D(t, T_n)\) because \(F_k(t)\) is generated by \(P_F\) rather than \(P_D\).</p>
+        </div>
+
+        <section class="lab" id="lab-FI6-L01-1" data-runtime="python">
+          <h3>Lab 1 · Multi-Curve Bootstrapping and Swap Pricing</h3>
+          <p class="hypothesis">Evaluating a 3-year receiver swap under multi-curve discounting will reveal a systematic valuation discrepancy compared to naive single-curve discounting proportional to the tenor basis spread.</p>
+          <pre><code class="language-python" data-run>"""Lab FI6-L01-1: Multi-Curve Bootstrapping and Swap Pricing.
+
+Demonstrates dual-curve pricing: OIS discount curve vs. floating projection curve.
+Compares multi-curve swap valuation with naive single-curve discounting,
+quantifying the pricing discrepancy introduced by basis spreads.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def discount_factor(zero_rate: float, tenor: float) -&gt; float:
+    """Continuous compounding discount factor P(0, T) = exp(-r * T)."""
+    return math.exp(-zero_rate * tenor)
+
+
+def forward_rate_from_factors(df_start: float, df_end: float, tau: float) -&gt; float:
+    """Simple forward rate F(0; T_start, T_end) = (P(0, T_start)/P(0, T_end) - 1) / tau."""
+    return (df_start / df_end - 1.0) / tau
+
+
+def run_lab() -&gt; None:
+    print("=== Multi-Curve Discounting &amp; Swap Valuation ===")
+
+    # Market curves: OIS (SOFR) discounting curve vs. Forwarding curve (Term reference)
+    # Tenors: 0.5y, 1.0y, 1.5y, 2.0y, 2.5y, 3.0y (semi-annual fixed leg, quarterly or semi float)
+    tenors = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+    tau = 0.5  # semi-annual accrual
+
+    # OIS zero rates (discount curve) and Reference zero rates (projection curve)
+    # Basis spread is ~25-35 bps across tenors
+    ois_rates = [0.0380, 0.0395, 0.0405, 0.0415, 0.0422, 0.0428]
+    proj_rates = [0.0410, 0.0428, 0.0440, 0.0450, 0.0457, 0.0463]
+
+    p_ois = [discount_factor(r, t) for r, t in zip(ois_rates, tenors, strict=False)]
+    p_proj = [discount_factor(r, t) for r, t in zip(proj_rates, tenors, strict=False)]
+
+    print(
+        f"{'Tenor (y)':&lt;10} {'OIS Zero':&lt;10} {'P_OIS(0,T)':&lt;12} "
+        f"{'Proj Zero':&lt;10} {'P_Proj(0,T)':&lt;12} {'Basis (bps)':&lt;12}"
+    )
+    for t, ro, do, rp, dp in zip(tenors, ois_rates, p_ois, proj_rates, p_proj, strict=False):
+        basis_bps = (rp - ro) * 10000.0
+        print(f"{t:&lt;10.1f} {ro:&lt;10.4f} {do:&lt;12.5f} {rp:&lt;10.4f} {dp:&lt;12.5f} {basis_bps:&lt;12.1f}")
+
+    # Compute forward rates on projection curve
+    fwd_rates = []
+    for i in range(len(tenors)):
+        df_start = 1.0 if i == 0 else p_proj[i - 1]
+        df_end = p_proj[i]
+        f = forward_rate_from_factors(df_start, df_end, tau)
+        fwd_rates.append(f)
+
+    # Swap Annuity under OIS discounting: A(0) = sum(tau * P_OIS(0, T_k))
+    annuity_multicurve = sum(tau * do for do in p_ois)
+
+    # Floating leg PV under multi-curve: sum(tau * P_OIS(0, T_k) * F_k)
+    pv_float_multicurve = sum(tau * do * f for do, f in zip(p_ois, fwd_rates, strict=False))
+
+    # Multi-curve par swap rate: S_multi = pv_float / annuity
+    s_multi = pv_float_multicurve / annuity_multicurve
+
+    # Naive single-curve calculation (using projection curve for both discounting and forwarding)
+    annuity_single = sum(tau * dp for dp in p_proj)
+    # In single curve, floating leg telescopes to 1 - P(0, T_n)
+    pv_float_single = 1.0 - p_proj[-1]
+    s_single = pv_float_single / annuity_single
+
+    # Also compute single curve when using OIS for both:
+    annuity_ois_single = sum(tau * do for do in p_ois)
+    pv_float_ois_single = 1.0 - p_ois[-1]
+    s_ois_single = pv_float_ois_single / annuity_ois_single
+
+    print("\n--- 3-Year Par Swap Rate Analysis ---")
+    print(f"Multi-Curve Par Swap Rate  : {s_multi * 100.0:.4f}% ({s_multi * 10000.0:.1f} bps)")
+    print(f"Single-Curve (Proj only)   : {s_single * 100.0:.4f}% ({s_single * 10000.0:.1f} bps)")
+    print(f"Single-Curve (OIS only)    : {s_ois_single * 100.0:.4f}% ({s_ois_single * 10000.0:.1f} bps)")
+    print(f"Dual-Curve Annuity A(0)    : {annuity_multicurve:.5f}")
+
+    # Valuation of fixed-rate receiver swap with fixed coupon K = 4.50% on $100M notional
+    notional = 100_000_000.0
+    k_fixed = 0.0450
+    pv_swap_multicurve = notional * (k_fixed * annuity_multicurve - pv_float_multicurve)
+    pv_swap_single = notional * (k_fixed * annuity_single - pv_float_single)
+
+    pricing_diff = pv_swap_multicurve - pv_swap_single
+    print("\nReceiver Swap PV (Fixed = 4.50%, Notional = $100M):")
+    print(f"Multi-Curve PV             : ${pv_swap_multicurve:,.2f}")
+    print(f"Single-Curve PV            : ${pv_swap_single:,.2f}")
+    print(
+        f"Pricing Error (Naive - Dual): ${-pricing_diff:,.2f} "
+        f"({(-pricing_diff / notional) * 10000.0:.2f} bps of notional)"
+    )
+
+
+run_lab()</code></pre>
+        <pre class="expected" data-tolerance="0.001">=== Multi-Curve Discounting &amp; Swap Valuation ===
+Tenor (y)  OIS Zero   P_OIS(0,T)   Proj Zero  P_Proj(0,T)  Basis (bps) 
+0.5        0.0380     0.98118      0.0410     0.97971      30.0        
+1.0        0.0395     0.96127      0.0428     0.95810      33.0        
+1.5        0.0405     0.94106      0.0440     0.93613      35.0        
+2.0        0.0415     0.92035      0.0450     0.91393      35.0        
+2.5        0.0422     0.89987      0.0457     0.89203      35.0        
+3.0        0.0428     0.87950      0.0463     0.87032      35.0        
+
+--- 3-Year Par Swap Rate Analysis ---
+Multi-Curve Par Swap Rate  : 4.6740% (467.4 bps)
+Single-Curve (Proj only)   : 4.6731% (467.3 bps)
+Single-Curve (OIS only)    : 4.3164% (431.6 bps)
+Dual-Curve Annuity A(0)    : 2.79162
+
+Receiver Swap PV (Fixed = 4.50%, Notional = $100M):
+Multi-Curve PV             : $-485,732.81
+Single-Curve PV            : $-480,491.09
+Pricing Error (Naive - Dual): $5,241.72 (0.52 bps of notional)</pre>
+          <p class="interpretation">The multi-curve par swap rate is 4.6740%, diverging from single-curve OIS discounting (4.3164%) by 35.8 bps. For a \$100M receiver swap, naive single-curve valuation creates an unhedged pricing error of \$5,241.72.</p>
+        </section>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s-canon-breaks">Where the Canon Breaks</h2>
+        <p>The multi-curve framework assumes that cash collateral is fixed in a single domestic currency without embedded options. In institutional cross-border trading, this assumption breaks down:</p>
+        <ul>
+          <li><strong>Cheapest-to-Deliver (CTD) Collateral Options:</strong> Multi-currency CSAs permit the posting party to choose between USD, EUR, GBP, or JPY cash. The effective discount rate becomes the minimum across collateral yield options, introducing non-linear optionality into linear discounting <span class="claim" data-grade="A" data-cite="hull2021options" data-locator="Chapter 9">documented across OTC derivatives clearing</span>.</li>
+          <li><strong>Cross-Currency Basis Spreads:</strong> The presence of non-zero cross-currency basis spreads violates covered interest parity for funding currencies, requiring currency-adjusted discounting curves <span class="claim" data-grade="A" data-cite="du2018deviations" data-locator="Table 1">establishing persistent post-crisis CIP deviations</span>.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s-misconceptions"><span class="section-number">4</span>Common Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong"><strong>Misconception:</strong> Overnight index swaps (OIS) carry zero credit risk and represent the theoretical risk-free rate of economic textbook models.</p>
+            <p><strong>Correction:</strong> While OIS rates represent daily compounded overnight transactions between major creditworthy financial institutions, they reflect secured or near-risk-free interbank liquidity. They are not pure default-free sovereign yields; however, because ISDA Credit Support Annexes mandate daily cash collateralization with interest remunerated at the OIS rate, OIS is the exact economic discounting rate for fully collateralized derivative cash flows.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Misconception:</strong> Forward floating reference rates can still be extracted directly from ratios of discount factors as \(F(t; T_{k-1}, T_k) = \frac{1}{\tau_k}\left(\frac{P^D(t, T_{k-1})}{P^D(t, T_k)} - 1 \right)\).</p>
+            <p><strong>Correction:</strong> This relationship holds if and only if the underlying loan or floating rate can be funded and borrowed at the discount rate. For term reference rates with credit and term liquidity premia, forward rates must be projected using a tenor-specific forwarding curve \(P^F(t, T)\), while discounting occurs along \(P^D(t, T)\). The single-curve formula yields severe mispricings under dual-curve reality.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong"><strong>Misconception:</strong> Bootstrapping dual curves requires joint simultaneous non-linear optimization across all OIS and floating swap quotes.</p>
+            <p><strong>Correction:</strong> Dual curve bootstrapping is strictly hierarchical and sequential. First, the discount curve \(P^D(t, T)\) is bootstrapped entirely independently using OIS instruments (fed funds or SOFR swaps). Second, given the frozen discount curve, each floating forwarding curve (e.g. 1M, 3M, 6M) is bootstrapped sequentially from standard interest rate swaps or basis swaps referencing that specific tenor.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2>Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3 id="p-mechanics">Tier 1 · Mechanics</h3>
+          <div class="problem">
+            <p><strong>Problem 1.1.</strong> Given 1-year and 2-year OIS discount factors \(P_D(0, 1) = 0.9600\) and \(P_D(0, 2) = 0.9180\), and 1-year into 1-year forward projection factor \(P_F(0, 1) = 0.9550, P_F(0, 2) = 0.9100\), calculate the multi-curve 2-year annual par swap rate.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Step 1: Calculate forward rates on the projection curve:</p>
+              \[
+              \begin{aligned}
+              F_1 &= \frac{1.0}{0.9550} - 1 = 0.04712 \\
+              F_2 &= \frac{0.9550}{0.9100} - 1 = 0.04945
+              \end{aligned}
+              \]
+              <p>Step 2: Compute floating leg PV using OIS discounting:</p>
+              \[
+              \begin{aligned}
+              V_{\text{flt}} &= 0.9600 \times 0.04712
+              + 0.9180 \times 0.04945 \\
+              &= 0.04524 + 0.04540 = 0.09064
+              \end{aligned}
+              \]
+              <p>Step 3: Compute swap annuity:</p>
+              \[
+              \begin{aligned}
+              A(0) &= P_D(0, 1) + P_D(0, 2)
+              = 0.9600 + 0.9180 = 1.8780
+              \end{aligned}
+              \]
+              <p>Step 4: Par swap rate \(S = \frac{0.09064}{1.8780} = 0.04826\) (4.826%).</p>
+            </details>
+          </div>
+          <div class="problem">
+            <p><strong>Problem 1.2.</strong> A financial institution enters a \$50M notional 1-year FRA paying fixed rate \(4.50\%\) and receiving floating rate \(F(0; 0.5, 1.0)\). If \(P_D(0, 1.0) = 0.9580\) and projected forward rate is \(4.90\%\), determine the market value of the FRA.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The FRA payoff at \(T_2 = 1.0\) is \(\tau \cdot (F - K)\) with \(\tau = 0.5\). Discounted present value:</p>
+              \[
+              \begin{aligned}
+              V_{\text{FRA}} &= 50{,}000{,}000 \times 0.9580
+              \times 0.5 \times (0.0490 - 0.0450) \\
+              &= 50{,}000{,}000 \times 0.9580 \times 0.0020
+              = \$95{,}800.00
+              \end{aligned}
+              \]
+            </details>
+          </div>
+          <div class="problem">
+            <p><strong>Problem 1.3.</strong> Compute the basis spread in basis points between 6-month projected forward rate and 6-month OIS implied forward rate if \(P_D(0, 0.5) = 0.9800, P_D(0, 1.0) = 0.9600\) and \(P_F(0, 0.5) = 0.9780, P_F(0, 1.0) = 0.9560\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              \[
+              \begin{aligned}
+              F_{\text{OIS}} &= \frac{1}{0.5}\left(\frac{0.9800}{0.9600} - 1\right) = 4.167\% \\
+              F_{\text{Proj}} &= \frac{1}{0.5}\left(\frac{0.9780}{0.9560} - 1\right) = 4.603\% \\
+              \text{Spread} &= (0.04603 - 0.04167) \times 10^4 = 43.6 \text{ bps}
+              \end{aligned}
+              \]
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3 id="p-proof">Tier 2 · Proof</h3>
+          <div class="problem">
+            <p><strong>Problem 1.4.</strong> Prove that under single-curve discounting (\(P_F \equiv P_D\)), the floating leg of a spot-starting interest rate swap telescopes to \(1 - P(0, T_n)\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Expanding the floating leg cash flows under \(P_F \equiv P_D\):</p>
+              \[
+              \begin{aligned}
+              V_{\text{flt}} &= \sum_{k=1}^n \tau_k P(0, T_k)
+              \left[ \frac{1}{\tau_k}\left(\frac{P(0, T_{k-1})}{P(0, T_k)} - 1\right) \right] \\
+              &= \sum_{k=1}^n [P(0, T_{k-1}) - P(0, T_k)]
+              \end{aligned}
+              \]
+              <p>The sum telescopes: \([P(0, T_0) - P(0, T_1)] + [P(0, T_1) - P(0, T_2)] + \dots + [P(0, T_{n-1}) - P(0, T_n)]\). For spot-starting swaps, \(P(0, T_0) = P(0, 0) = 1.0\), leaving \(1 - P(0, T_n)\).</p>
+            </details>
+          </div>
+          <div class="problem">
+            <p><strong>Problem 1.5.</strong> Prove that the weights \(w_k = \frac{\tau_k P_D(0, T_k)}{A(0)}\) in the multi-curve swap rate representation sum to 1.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By definition of the swap annuity \(A(0) = \sum_{k=1}^n \tau_k P_D(0, T_k)\). Summing the weights:</p>
+              \[
+              \begin{aligned}
+              \sum_{k=1}^n w_k &= \frac{\sum_{k=1}^n \tau_k P_D(0, T_k)}{A(0)}
+              = \frac{A(0)}{A(0)} = 1.0
+              \end{aligned}
+              \]
+              <p>Because \(P_D(0, T_k) > 0\) and \(\tau_k > 0\), every \(w_k \in (0, 1)\), establishing that the swap rate is a strict convex combination of forward rates.</p>
+            </details>
+          </div>
+          <div class="problem">
+            <p><strong>Problem 1.6.</strong> Prove that the Radon-Nikodym derivative between the risk-neutral measure \(\mathbb{Q}^D\) and forward measure \(\mathbb{Q}^T\) is \(\frac{d\mathbb{Q}^T}{d\mathbb{Q}^D} = \frac{P_D(T, T) B_D(0)}{P_D(0, T) B_D(T)} = \frac{1}{P_D(0, T) B_D(T)}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By change of numeraire, for two numeraires \(N_1(t) = P_D(t, T)\) and \(N_2(t) = B_D(t)\), the Radon-Nikodym derivative on \(\mathcal{F}_t\) is \(\frac{d\mathbb{Q}^T}{d\mathbb{Q}^D}\Big|_{\mathcal{F}_t} = \frac{P_D(t, T) B_D(0)}{P_D(0, T) B_D(t)}\). Setting \(t = T\) with \(P_D(T, T) = 1\) and \(B_D(0) = 1\) yields the result.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3 id="p-empirical">Tier 3 · Empirical</h3>
+          <div class="problem">
+            <p><strong>Problem 1.7.</strong> In post-2008 USD markets, the 3M vs 6M tenor basis swap spread traded at a median of 18 bps. Explain the economic risk factors that generate a positive basis spread for longer tenors.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A 6-month interbank loan entails 6 months of continuous counterparty credit risk and locks up bank balance sheet liquidity twice as long as a 3-month loan. To induce lenders to offer 6-month funds, borrowers must pay a liquidity term premium and higher default compensation, creating a persistent positive basis spread.</p>
+            </details>
+          </div>
+          <div class="problem">
+            <p><strong>Problem 1.8.</strong> Examine the impact on swap DV01 when discounting is switched from 3-month LIBOR discounting to SOFR discounting in a rising rate environment where SOFR is 30 bps below LIBOR.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Because SOFR is lower than LIBOR, SOFR discount factors \(P_D(0, T) = \exp(-r_{\text{sofr}} T)\) are higher than legacy discount factors. Consequently, the swap annuity \(A(0)\) is larger, increasing the dollar DV01 of the swap by 2–4% across intermediate and long tenors.</p>
+            </details>
+          </div>
+          <div class="problem">
+            <p><strong>Problem 1.9.</strong> Quantify the mark-to-market error incurred by a bank pricing a 10-year \$100M fixed-receiver swap (annuity = 7.80) if the forwarding curve shifts upward by 25 basis points while the discount curve remains constant.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The floating leg present value increases by approximately \(\Delta V_{\text{flt}} = \text{Notional} \times A(0) \times \Delta F = 100{,}000{,}000 \times 7.80 \times 0.0025 = \$1{,}950{,}000\). For a fixed receiver, the swap value decreases by \$1.95M.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3 id="p-research">Tier 4 · Research</h3>
+          <div class="problem">
+            <p><strong>Problem 1.10.</strong> Formulate the bootstrapping linear programming problem to simultaneously extract smooth zero curves from overlapping OIS and basis swap quotes while penalizing curve curvature.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Minimize \(\int_0^{T_{\max}} [r''(t)]^2 dt + \lambda \sum_{i} \epsilon_i^2\) subject to linear repricing constraints \(\sum \tau_k P(0, T_k) (F_k - S_i) = \epsilon_i\). The cubic spline parameterization converts this into a quadratic program with linear equality constraints.</p>
+            </details>
+          </div>
+          <div class="problem">
+            <p><strong>Problem 1.11.</strong> Under Basel III capital rules, banks must hold regulatory capital against credit valuation adjustment (CVA). How does collateralized OIS discounting interact with bilateral CVA calculations?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Perfect zero-threshold daily variation margining reduces bilateral net exposure to the 10-day margin period of risk (MPOR). Consequently, CVA is reduced by over 90% relative to uncollateralized trades, isolating the residual risk to gap jumps during liquidation.</p>
+            </details>
+          </div>
+          <div class="problem">
+            <p><strong>Problem 1.12.</strong> Contrast multi-curve pricing under physical collateral delivery with negative interest rates: what happens when the collateral rate \(r_c(t) < 0\)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When \(r_c(t) < 0\), the collateral receiver must pay negative interest (i.e. receives a fee from the poster). The discount factor \(P_D(0, T) = \exp(-\int_0^T r_c dt) > 1.0\), meaning future sure cash flows have a present value greater than par.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s-key-results">Key Results</h2>
+        <table class="key-results">
+          <thead>
+            <tr>
+              <th scope="col">Result / Concept</th>
+              <th scope="col">Grade</th>
+              <th scope="col">Citation / Basis</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Multi-curve discounting separation</td>
+              <td><span class="badge" data-grade="A">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="brigo2007interest" data-locator="Section 1.3">Brigo &amp; Mercurio (2006)</span></td>
+            </tr>
+            <tr>
+              <td>Collateralized CSA discounting numeraire</td>
+              <td><span class="badge" data-grade="T">T</span></td>
+              <td><span class="claim" data-grade="T" data-cite="hull2021options" data-locator="Chapter 9">Hull (2021)</span></td>
+            </tr>
+            <tr>
+              <td>Multi-curve par swap rate formula</td>
+              <td><span class="badge" data-grade="T">T</span></td>
+              <td><span class="claim" data-grade="T" data-cite="brigo2007interest" data-locator="Section 1.3">Brigo &amp; Mercurio (2006)</span></td>
+            </tr>
+            <tr>
+              <td>Cross-currency basis spreads CIP breakdown</td>
+              <td><span class="badge" data-grade="A">A</span></td>
+              <td><span class="claim" data-grade="A" data-cite="du2018deviations" data-locator="Table 1">Du, Tepper &amp; Verdelhan (2018)</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="FI6" data-page="L01" data-cards="cards.json">
+        <h2 id="s-quiz"><span class="section-number">7</span>Retrieval Practice</h2>
+        <ol class="quiz-items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why did single-curve interest rate pricing collapse after August 2007?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q1"> <span>Unsecured interbank credit and term liquidity risk widened basis spreads between OIS and term lending</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>Central banks prohibited all floating rate loans</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>Zero-coupon bonds ceased trading in secondary markets</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>Exchange-traded futures replaced all over-the-counter swaps</span></label>
+            </fieldset>
+            <div class="explain"><p>Substantial counterparty risk and liquidity hoarding widened interbank basis spreads, making single-curve discounting obsolete.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What determines the discount curve for a fully collateralized interest rate swap under a daily cash CSA?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q2"> <span>The overnight index swap (OIS) rate paid on posted cash collateral</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>The unsecured borrowing rate of the lower-rated counterparty</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>The 10-year constant maturity Treasury yield</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>The floating reference rate index being swapped</span></label>
+            </fieldset>
+            <div class="explain"><p>The contractual interest paid on cash variation margin represents the effective funding cost of the position, requiring OIS discounting.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under multi-curve discounting, what is the swap annuity \(A(0)\)?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q3"> <span>The sum of accrual fractions times OIS discount factors \(\sum \tau_k P_D(0, T_k)\)</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>The sum of floating forward rates \(\sum F_k\)</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>The difference between initial and final discount factors \(1 - P_D(0, T_n)\)</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>The product of all forward rates across the swap life</span></label>
+            </fieldset>
+            <div class="explain"><p>The swap annuity is the present value of receiving 1 basis point per period, discounted along the collateral curve.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does the floating leg present value fail to telescope under multi-curve discounting?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q4"> <span>Forward rates are projected from \(P_F\) while cash flows are discounted by \(P_D\)</span></label>
+              <label class="option"><input type="radio" name="L01q4"> <span>Accrual fractions vary between payment dates</span></label>
+              <label class="option"><input type="radio" name="L01q4"> <span>Interest rate swaps settle in cash rather than physical delivery</span></label>
+              <label class="option"><input type="radio" name="L01q4"> <span>Floating payments are made in advance rather than arrears</span></label>
+            </fieldset>
+            <div class="explain"><p>Telescoping requires \(P_F \equiv P_D\). Distinct curves prevent the algebraic cancellation of intermediate discount factors.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under which probability measure is the forward floating rate \(F(t; T_1, T_2)\) a martingale?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q5"> <span>The \(T_2\)-forward measure \(\mathbb{Q}^{T_2}\) with numeraire \(P_D(t, T_2)\)</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>The physical statistical measure \(\mathbb{P}\)</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>The risk-neutral measure \(\mathbb{Q}\) with money market numeraire</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>The swap annuity measure \(\mathbb{Q}^A\)</span></label>
+            </fieldset>
+            <div class="explain"><p>A forward rate is a martingale under the forward measure associated with the zero-coupon bond maturing on its payment date.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a tenor basis swap?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q6"> <span>An agreement exchanging floating payments of two different tenors in the same currency</span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span>A swap exchanging fixed interest in two different currencies</span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span>An option to enter into an interest rate swap</span></label>
+              <label class="option"><input type="radio" name="L01q6"> <span>A credit default swap on a financial institution</span></label>
+            </fieldset>
+            <div class="explain"><p>Tenor basis swaps exchange e.g. 3M LIBOR + spread for 6M LIBOR in the same currency, establishing the tenor basis curve.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">If the projection zero rate is strictly greater than the OIS zero rate across all maturities, which statement is true?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q7"> <span>The multi-curve par swap rate is higher than the single-curve OIS swap rate</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>The swap annuity is equal to zero</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>The multi-curve par swap rate is lower than the single-curve OIS swap rate</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>Floating leg cash flows are negative</span></label>
+            </fieldset>
+            <div class="explain"><p>Higher forward rates on the projection curve increase floating cash flows, driving the par swap rate above the pure OIS rate.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does a positive cross-currency basis spread in EUR/USD indicate?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q8"> <span>A premium paid by international market participants to borrow USD via FX swaps</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>Exact equality of interest rates between Europe and the United States</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>The complete absence of counterparty credit risk</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>Negative yield on domestic Treasury bills</span></label>
+            </fieldset>
+            <div class="explain"><p>A cross-currency basis spread reflects dollar funding scarcity and deviations from covered interest parity.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In a multi-curve bootstrap, which curve is stripped first?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q9"> <span>The collateral OIS discount curve, because it discounts all market instruments</span></label>
+              <label class="option"><input type="radio" name="L01q9"> <span>The 6-month projection curve</span></label>
+              <label class="option"><input type="radio" name="L01q9"> <span>The swaption implied volatility surface</span></label>
+              <label class="option"><input type="radio" name="L01q9"> <span>The Treasury inflation-protected securities curve</span></label>
+            </fieldset>
+            <div class="explain"><p>OIS swaps depend only on the discount curve. Once stripped, OIS discount factors discount the cash flows of tenor basis instruments.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the Cheapest-to-Deliver (CTD) collateral option in a bilateral CSA?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q10"> <span>The right of the collateral poster to deliver the currency with the lowest funding rate</span></label>
+              <label class="option"><input type="radio" name="L01q10"> <span>The obligation to post only physical gold bullion</span></label>
+              <label class="option"><input type="radio" name="L01q10"> <span>The right to cancel a derivative contract without penalty</span></label>
+              <label class="option"><input type="radio" name="L01q10"> <span>The right of the clearinghouse to reject variation margin</span></label>
+            </fieldset>
+            <div class="explain"><p>If a CSA allows multiple collateral currencies, the poster posts the currency offering the highest interest relative to FX funding costs.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s-references"><span class="section-number">8</span>References</h2>
+        <p>Foundations of multi-curve pricing, collateralization theory, and post-crisis interest rate modeling follow Brigo and Mercurio (2006) and post-2008 banking market evidence.</p>
+        <ol data-references></ol>
+      </section>
+      <div class="lesson-actions">
+        <button type="button" class="button" data-complete>Mark complete</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
