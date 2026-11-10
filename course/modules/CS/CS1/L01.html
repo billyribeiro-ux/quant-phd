@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS1" data-page="L01" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01 · Functions, Control Flow, and Scope · CS1</title>
+  <meta name="description" content="Lesson 1 of CS1: function definitions, formal parameter binding, lexical environments, the LEGB scope resolution rule, variable shadowing, and closures. 10 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS1 Programming in Python from Zero</a><span class="sep">›</span>
+      <span>L01</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS1 · Lesson 1 of 9 · 10 study hours</p>
+        <h1>Functions, Control Flow, and Scope</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="prerequisite-dag" href="../../../concepts.html#prerequisite-dag">prerequisite DAG</a></li>
+          <li><strong>Introduces:</strong> function scope</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Quantitative code relies on deterministic state transitions. A financial calculation that accidentally reads or mutates an ambient global variable can produce corrupt valuations, catastrophic order sizing, or unreproducible backtest results. Understanding the exact lexical scope resolution rule (LEGB), parameter binding semantics, and closure capture guarantees that computational procedures remain pure, modular, and mathematically verifiable.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Functions, Environments, and Lexical Scope</h2>
+      <p><span class="claim" data-grade="T">A function in Python is a first-class object that bundles executable bytecode with a reference to its enclosing global environment.</span> When a function is called, the interpreter creates a new local execution frame containing its local namespace.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(Function Scope and Namespaces)</span></span>
+        <p>A namespace is a mapping from symbolic variable names (strings) to Python objects. The <dfn id="def-python-function-scope" data-concept="python-function-scope">function scope</dfn> refers to the textual region of a Python program where a namespace is directly accessible without explicit dot notation. Python evaluates variable references using the lexical LEGB rule: resolving names in the Local (L) scope first, then Enclosing (E) function scopes from inner to outer, then the Global (G) module scope, and finally the Built-in (B) namespace.</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 1.1 <span class="name">(Local Assignment Scope Invariant)</span></span>
+        <p>If a variable name is bound anywhere within a function body by an assignment statement \(=\), an augmented assignment \(\text{+=}\), or a formal parameter definition, without an explicit <code>global</code> or <code>nonlocal</code> declaration, the name is treated as belonging strictly to the local scope of that function throughout the entire function body. Referencing the name prior to its assignment within that local frame raises an <code>UnboundLocalError</code> rather than resolving to an outer scope.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By the Python language specification (<span class="claim" data-grade="A" data-cite="psfndpython" data-locator="Section 4.2 Naming and binding">PSF Language Reference, Section 4.2</span>), variable scope is resolved statically at code compilation time, not dynamically at runtime. When the compiler analyzes a code block, any name binding operation marks the name as a local variable for the entire code object. During execution, name resolution for marked local variables targets the local fast-access array (<code>LOAD_FAST</code> bytecode instruction). If the slot has not yet been populated by an assignment at the point of evaluation, execution halts and raises <code>UnboundLocalError</code>.</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 1.1 <span class="name">(LEGB Lookup and Closure State)</span></span>
+        <p>Consider a discounting factory that generates valuation functions for a fixed discount factor \(\beta = \frac{1}{1 + r}\):</p>
+        <pre><code class="language-pseudocode">def make_pricer(annual_rate: float):
+    discount_factor = 1.0 / (1.0 + annual_rate)
+    def pricer(cash_flow: float) -> float:
+        return cash_flow * discount_factor
+    return pricer</code></pre>
+        <p>The inner function <code>pricer</code> captures <code>discount_factor</code> from its enclosing scope. The returned function object retains this binding in its <code>__closure__</code> attribute even after <code>make_pricer</code> has returned.</p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 1.1 <span class="name">(Closures in Financial Engineering)</span></span>
+        <p><span class="claim" data-grade="A" data-cite="ramalho2021fluent" data-locator="Chapter 9 Decorators and Closures">Ramalho (2021)</span> emphasizes that a closure is a function that retains the bindings of the free variables that exist when the function is defined, so that they can be used later when the function is invoked and the defining scope is no longer available. In financial programming, closures allow parameterizing pricing kernels and risk models cleanly without resorting to mutable global state.</p>
+      </div>
+
+      <section class="lab" id="lab-CS1-L01-1" data-runtime="python">
+        <h3>Lab 1 · Variable Shadowing, Closures, and Parameter Binding</h3>
+        <p class="hypothesis">Verifies that variable assignment inside a local function frame creates a local binding that shadows outer variables without altering the global scope, and that inner functions capture enclosing state to form stateful closures.</p>
+        <pre><code class="language-python" data-run>"""CS1 lab L01: Function definitions, lexical scope, and closure bindings.
+
+Standard library only. Demonstrates the LEGB (Local, Enclosing, Global, Built-in) rule,
+variable shadowing, and closure capture.
+SIMULATED toy discount factors and multipliers.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+# Global scope
+DISCOUNT_RATE: float = 0.05
+
+
+def inspect_scope_shadowing(val: float) -&gt; tuple[float, float]:
+    """Demonstrate local variable shadowing of global scope."""
+    # Local variable shadows global DISCOUNT_RATE
+    DISCOUNT_RATE: float = val  # noqa: N806
+    local_val = DISCOUNT_RATE
+    return local_val, globals()["DISCOUNT_RATE"]
+
+
+def make_accumulator(initial_cash: float) -&gt; Callable[[float], float]:
+    """Return a closure holding enclosing state."""
+    balance: float = initial_cash
+
+    def transact(cash_flow: float) -&gt; float:
+        nonlocal balance
+        balance += cash_flow
+        return balance
+
+    return transact
+
+
+def compound_discount(cash: float, rate: float, periods: int) -&gt; float:
+    """Compute simple discrete discounting: cash / (1 + rate)^periods."""
+    if periods &lt; 0:
+        raise ValueError("periods must be non-negative")
+    factor = 1.0
+    for _ in range(periods):
+        factor *= 1.0 + rate
+    return cash / factor
+
+
+def main() -&gt; None:
+    # 1. Global vs local shadowing
+    local_rate, global_rate = inspect_scope_shadowing(0.12)
+    print(f"global before: {DISCOUNT_RATE:.4f}")
+    print(f"local inside: {local_rate:.4f}")
+    print(f"global read via globals(): {global_rate:.4f}")
+    print(f"shadowing does not mutate global: {DISCOUNT_RATE == 0.05}")
+
+    # 2. Closure enclosing scope
+    acc = make_accumulator(1000.0)
+    b1 = acc(250.0)
+    b2 = acc(-150.0)
+    b3 = acc(50.0)
+    print(f"closure step 1: balance = {b1:.1f}")
+    print(f"closure step 2: balance = {b2:.1f}")
+    print(f"closure step 3: balance = {b3:.1f}")
+
+    # 3. Parameter binding and compound discount calculation
+    pv = compound_discount(1102.5, 0.05, 2)
+    print(f"discounted cash flow: {pv:.2f}")
+    print(f"exact match to expected 1000.00: {abs(pv - 1000.0) &lt; 1e-9}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">global before: 0.0500
+local inside: 0.1200
+global read via globals(): 0.0500
+shadowing does not mutate global: True
+closure step 1: balance = 1250.0
+closure step 2: balance = 1100.0
+closure step 3: balance = 1150.0
+discounted cash flow: 1000.00
+exact match to expected 1000.00: True</pre>
+        <p class="interpretation">The lab confirms the LEGB rule: assigning to DISCOUNT_RATE locally leaves the module-level global variable untouched at 0.0500. Furthermore, the accumulator closure maintains private mutable state across invocations, correctly updating the balance from 1000.0 to 1150.0.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s2"><span class="section-number">2</span>Where the canon breaks</h2>
+        <p>In introductory computer science, programmers are frequently taught that variables resolve dynamically up the call stack, or that a function can read an ambient global configuration variable if it does not write to it. In institutional production systems, relying on global configuration variables breaks under concurrency and multiprocessing: worker threads or subprocesses either inherit stale copies or experience race conditions. Best practices in quantitative development require explicit dependency injection via function arguments or pure functional closures.</p>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s3"><span class="section-number">3</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“Python checks variable scope at runtime based on the most recent assignment executed.”</p>
+            <p>Python resolves variable scope statically at compile time. If a function contains an assignment to a variable anywhere in its body, that name is tagged as local throughout the function. Attempting to read it before the assignment raises <code>UnboundLocalError</code>, even if an identically named global variable exists.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Default argument values are re-evaluated each time a function is called.”</p>
+            <p>Default parameter expressions are evaluated exactly once when the function definition statement is executed. If a mutable object (such as a <code>list</code> or <code>dict</code>) is used as a default parameter, all invocations share the identical instance, leading to state leakage across unrelated calls.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Modifying a parameter inside a function cannot affect the caller.”</p>
+            <p>Python uses call-by-object-sharing. Rebinding a parameter name inside a function does not affect the caller, but calling mutating methods on a mutable passed object (such as <code>list.append()</code>) mutates the underlying object in place, directly modifying the caller's data.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s4"><span class="section-number">4</span>Problem set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Tracing LEGB Scope</span>
+            <p>Given the code below, determine the exact value printed when <code>outer()</code> is executed:</p>
+            <pre><code class="language-pseudocode">x = 10
+def outer():
+    x = 20
+    def inner():
+        nonlocal x
+        x += 5
+        return x
+    return inner() + x</code></pre>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Inside <code>outer()</code>, <code>x</code> is initialized to 20. The <code>inner()</code> function declares <code>nonlocal x</code>, binding it to <code>outer</code>'s local variable. Executing <code>x += 5</code> mutates this variable from 20 to 25 and returns 25. Then <code>inner() + x</code> evaluates to \(25 + 25 = 50\). The global variable <code>x = 10</code> remains unaffected.</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · Default Parameter Binding</span>
+            <p>A developer writes <code>def record_trade(trade_id: str, log: list[str] = []) -> list[str]: log.append(trade_id); return log</code>. What is returned after calling <code>record_trade("T1")</code> followed by <code>record_trade("T2")</code>?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Because default arguments are evaluated once at definition time, both calls share the same list instance. The first call appends <code>"T1"</code> and returns <code>["T1"]</code>. The second call appends <code>"T2"</code> to the same list and returns <code>["T1", "T2"]</code>. To prevent this, the default should be <code>None</code> with an explicit <code>if log is None: log = []</code> guard.</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · Scope Resolution with Shadowing</span>
+            <p>Explain why the following function raises an <code>UnboundLocalError</code> when called:</p>
+            <pre><code class="language-pseudocode">rate = 0.05
+def adjust():
+    print(rate)
+    rate = 0.06</code></pre>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Because <code>rate = 0.06</code> assigns to <code>rate</code> in the function body, the Python compiler marks <code>rate</code> as a local variable for the entire scope of <code>adjust()</code>. When <code>print(rate)</code> executes on line 2, the local variable has not yet been assigned a value, causing the runtime to raise <code>UnboundLocalError: local variable 'rate' referenced before assignment</code>.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Invariance of Caller Bindings under Local Rebinding</span>
+            <p>Prove that rebinding a local parameter name \(x\) inside a function \(f(x)\) cannot alter the caller's binding in the calling frame.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let frame \(F_c\) be the caller frame containing namespace mapping \(\sigma_c: \text{id} \to \text{Obj}\). When \(f\) is called with argument \(a\), a new activation frame \(F_f\) is created with namespace \(\sigma_f\), initializing \(\sigma_f(x) = \sigma_c(a)\). An assignment statement \(x = v\) within \(f\) updates the mapping \(\sigma_f(x) \leftarrow v\). Because \(\sigma_c\) and \(\sigma_f\) are disjoint symbol tables residing in distinct execution frames, \(\sigma_c(a)\) remains unchanged.</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Closure Cell Lifetime</span>
+            <p>Prove that an inner function referencing an enclosing variable maintains a valid reference even after the outer function's execution frame has terminated.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When the compiler detects a variable in an enclosing scope referenced by an inner function, it allocates a cell object on the heap rather than a stack-allocated frame slot. Both the outer function's local frame and the inner function's code object hold references to this cell object. When the outer frame exits and is deallocated, the cell object's reference count remains positive because it is referenced in the inner function's <code>__closure__</code> tuple. Thus the binding persists.</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · Termination of Linear Tail Recursion</span>
+            <p>Prove by mathematical induction that a recursive counting function \(f(n)\) defined by \(f(0) = 0\) and \(f(n) = 1 + f(n - 1)\) for \(n \in \mathbb{N}\) terminates in exactly \(n + 1\) frame allocations and returns \(n\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Base case: For \(n = 0\), the condition \(n == 0\) matches immediately, returning 0 after 1 frame allocation. Inductive step: Assume the property holds for \(k \ge 0\). For \(n = k + 1\), the function invokes \(f(k)\), which by hypothesis makes \(k + 1\) allocations and returns \(k\). Adding the initial call gives \((k + 1) + 1\) allocations, and the returned value is \(1 + k = k + 1\). By induction, the proposition holds for all \(n \in \mathbb{N}\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Measuring Closure State Integrity</span>
+            <p>Write a simulation that instantiates 1,000 independent closure accumulators, executes 10 random deposits on each, and verifies that no cross-talk occurs between closure instances.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Construct a factory function returning an accumulator closure. Loop 1,000 times, creating closures with distinct seed balances. For each closure, record its transaction history and assert that the final balance matches the sum of the initial balance and its specific deposits. Running this test confirms that each closure maintains an isolated heap cell with zero cross-instance pollution.</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Disassembly Inspection of Name Resolution</span>
+            <p>Inspect the Python bytecode generated for local versus global variable access using the <code>dis</code> module and explain the operational difference.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Disassembling a function that reads a local variable reveals the <code>LOAD_FAST</code> opcode, which indexes directly into a pre-allocated array of pointers on the execution frame with \(O(1)\) memory access. Disassembling global access reveals <code>LOAD_GLOBAL</code>, which performs a hash table lookup in the global module dictionary followed by the built-in dictionary. Local access is significantly faster.</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · Recursion Depth Limit</span>
+            <p>Determine empirically the default Python recursion limit via <code>sys.getrecursionlimit()</code> and describe the exception raised when exceeded.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Calling <code>sys.getrecursionlimit()</code> in CPython returns 1,000 by default. Defining a recursive function with no base case and invoking it causes the interpreter to allocate frames until the recursion depth limit is reached, at which point CPython raises <code>RecursionError: maximum recursion depth exceeded</code> to prevent an operating system stack overflow.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Pure Functional Architecture in Financial Pipelines</span>
+            <p>Analyze the software architecture tradeoffs of pure functions versus stateful closures when constructing real-time risk calculation pipelines.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Pure functions take all inputs explicitly and return new outputs without side effects, providing trivial testability, safe concurrency across CPU threads, and straightforward memoization. However, when streaming tick data arrives at high frequency, allocating new data structures on every tick incurs garbage collection overhead. Closures or specialized accumulators encapsulate rolling state efficiently while preserving clean interface boundaries.</p>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Global Interpreter Lock and Shared State</span>
+            <p>Evaluate how Python's module-level global variables interact with multithreading under CPython's Global Interpreter Lock (GIL).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Although the GIL prevents simultaneous execution of Python bytecode across multiple OS threads, it does not guarantee atomic multi-step operations. If multiple threads read, modify, and write to a global dictionary or counter, bytecode instructions can be preempted between the read and write steps, resulting in race conditions and lost updates. Synchronization primitives (locks) or thread-local storage are required.</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Compilation Optimizations for Local Namespaces</span>
+            <p>Explain how modern Python JIT and bytecode compilers exploit static lexical scoping to optimize arithmetic performance.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Because lexical scoping guarantees that local names cannot be intercepted or modified by external modules, compilers can safely eliminate dead stores, unroll static loops, and register-allocate variables. In contrast, global variables can be modified dynamically at any time by imported code, forcing compilers to emit deoptimization guards and re-fetch pointers from dictionaries.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s5"><span class="section-number">5</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>LEGB scope resolution rule (Local, Enclosing, Global, Built-in)</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="psfndpython" data-locator="Section 4.2 Naming and binding">PSF Language Reference, §4.2</span></td>
+              </tr>
+              <tr>
+                <td>Local assignment scope invariant (compile-time local tagging)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 1.1</td>
+              </tr>
+              <tr>
+                <td>Closure state capture in <code>__closure__</code> cell objects</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="ramalho2021fluent" data-locator="Chapter 9 Decorators and Closures">Ramalho (2021), Ch. 9</span></td>
+              </tr>
+              <tr>
+                <td>Default arguments evaluated exactly once at definition time</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="psfndpython" data-locator="Section 8.7 Function definitions">PSF Language Reference, §8.7</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS1" data-page="L01" data-cards="cards.json">
+        <h2 id="s6"><span class="section-number">6</span>Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does LEGB stand for in Python name resolution?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q1"> <span>Local, Enclosing, Global, Built-in</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>Lexical, Execution, General, Base</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>Literal, Environment, Global, Bytecode</span></label>
+              <label class="option"><input type="radio" name="L01q1"> <span>Linear, External, Group, Binary</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>LEGB describes the strict lookup order: Local scope first, then Enclosing functions, then Global module, then Built-in.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens when a variable is assigned inside a function without a <code>global</code> or <code>nonlocal</code> keyword?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q2"> <span>It is treated as a local variable throughout the entire function</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>It overwrites the global variable of the same name</span></label>
+              <label class="option"><input type="radio" name="L01q2"> <span>It dynamically resolves to the enclosing scope if read before assignment</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Python marks the variable as local for the entire function at compile time (Theorem 1.1).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which keyword explicitly allows an inner function to rebind a variable in an outer enclosing function?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q3"> <span>global</span></label>
+              <label class="option" data-correct><input type="radio" name="L01q3"> <span>nonlocal</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>outer</span></label>
+              <label class="option"><input type="radio" name="L01q3"> <span>enclosing</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The <code>nonlocal</code> statement causes the listed identifiers to refer to previously bound variables in the nearest enclosing scope excluding globals.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">When are default parameter expressions evaluated in Python?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q4"> <span>Once, when the function definition is executed</span></label>
+              <label class="option"><input type="radio" name="L01q4"> <span>Every time the function is invoked</span></label>
+              <label class="option"><input type="radio" name="L01q4"> <span>Only when the parameter is omitted by the caller</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Default parameter values are evaluated once at function definition time, which is why mutable defaults retain state across calls.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What exception is raised when reading a local variable before its assignment statement inside a function?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q5"> <span>UnboundLocalError</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>NameError</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>AttributeError</span></label>
+              <label class="option"><input type="radio" name="L01q5"> <span>ValueError</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>UnboundLocalError is a subclass of NameError raised specifically when a local variable is referenced before being bound.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1000" data-tolerance="0">
+            <p class="prompt">What is the default CPython recursion depth limit reported by <code>sys.getrecursionlimit()</code>?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>CPython sets the default maximum recursion limit to 1000.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Where are free variables captured by a closure stored on a function object?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L01q7"> <span>In cell objects within the __closure__ attribute</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>In the global module __dict__</span></label>
+              <label class="option"><input type="radio" name="L01q7"> <span>In the call stack frame</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Closures store references to outer scope variables in cell objects within the function's <code>__closure__</code> tuple.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Does rebinding a parameter variable name inside a function mutate the object passed by the caller?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L01q8"> <span>Yes, because Python uses pass-by-reference</span></label>
+              <label class="option" data-correct><input type="radio" name="L01q8"> <span>No, rebinding assigns the name to a new object in the local frame</span></label>
+              <label class="option"><input type="radio" name="L01q8"> <span>Yes, if the object is mutable</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Rebinding a parameter name simply points the local symbol to a new object, leaving the caller's binding and original object unchanged.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s7"><span class="section-number">7</span>References</h2>
+        <ol data-references>
+          <li data-cite="psfndpython"></li>
+          <li data-cite="ramalho2021fluent"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="index.html"><span class="dir">Previous</span>Module Hub</a>
+        <a class="next" href="L02.html"><span class="dir">Next</span>L02 Built-In Data Structures</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS1 · Programming in Python from Zero · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

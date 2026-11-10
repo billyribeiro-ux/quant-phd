@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="SC5" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SC5 Project · Lévy Model Calibration</title>
+  <meta name="description" content="Calibrate Merton and Variance Gamma models to an embedded option surface, and compare fit, stability and parameter identification. 24 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">SC5 Jumps &amp; Lévy Processes</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="24">
+      <header class="page-head">
+        <p class="eyebrow">SC5 project · 24 hours · Graded by autograder and rubric (both)</p>
+        <h1>Lévy Model Calibration</h1>
+        <p class="lede">Quantitative trading desks and risk management units price exotic contingent claims and hedge jump risk by calibrating continuous-time jump models to liquid European vanilla option surfaces. Continuous diffusion models fail to fit the steep short-tenor volatility smiles observed in equity and index derivatives. This project implements characteristic-function option pricing via Carr–Madan Fourier inversion, calibrates Merton's jump-diffusion and the Variance Gamma models against an embedded option surface, evaluates parameter stability and identification, and produces a professional quantitative calibration report.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>A fully solved implementation and calibration of Merton's jump-diffusion model on the seed 0 SIMULATED option surface, annotated with mathematical and algorithmic justifications at every step.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Complete the missing Variance Gamma characteristic function drift correction and calibration engine in <code>lab-SC5-project-2</code>, graded instantly in the browser.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Calibrate Merton and Variance Gamma models to your workspace's unique per-seed option surface, compare pricing root-mean-squared error, evaluate parameter identification and stability, and deliver the production code and calibration report. Graded by the autograder and rubric (both).</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extend the calibration architecture to the four-parameter CGMY model, optimizing the activity parameter \(Y\) to identify whether market prices reflect finite activity (\(Y &lt; 0\)), infinite activity with finite variation (\(0 \le Y &lt; 1\)), or infinite variation (\(1 \le Y &lt; 2\)).</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <p>Rung 1 solves the calibration of Merton's jump-diffusion model completely on the seed 0 instance. Rung 2 provides the Variance Gamma calibration with the martingale drift correction and convergence tolerance blanked with <code>___</code>.</p>
+
+        <section class="lab" id="lab-SC5-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: calibrating Merton jump-diffusion on seed 0</h3>
+          <p class="hypothesis">Merton's jump-diffusion model calibrated to the seed 0 SIMULATED option surface via Carr–Madan damped Fourier inversion and SciPy nonlinear least squares converges to root-mean-squared pricing error below 1e-3, accurately recovering the underlying parameters.</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: calibrating Merton jump-diffusion on seed 0 instance.
+
+Demonstrates calibration of Merton's (1976) jump-diffusion model on the seed 0 SIMULATED option surface.
+Evaluates the Carr-Madan (1999) damped Fourier transform pricer, sets up the nonlinear least-squares residual
+vector across strikes and tenors, optimizes parameters (sigma, lambda, mu_j, sigma_j) using SciPy least_squares,
+and verifies that the calibration achieves RMSE below 1e-3 on simulated quotes.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+import numpy as np
+import scipy.optimize as opt  # type: ignore[import-untyped]
+
+
+def merton_cf(
+    u: complex | np.ndarray,
+    tau: float,
+    spot: float,
+    r: float,
+    sigma: float,
+    lam: float,
+    mu_j: float,
+    sigma_j: float,
+) -&gt; complex | np.ndarray:
+    kappa = math.exp(mu_j + 0.5 * sigma_j**2) - 1.0
+    drift = r - 0.5 * sigma**2 - lam * kappa
+    jump_part = lam * (np.exp(1j * u * mu_j - 0.5 * (sigma_j**2) * (u**2)) - 1.0)
+    psi = 1j * u * drift - 0.5 * (sigma**2) * (u**2) + jump_part
+    return np.exp(1j * u * math.log(spot)) * np.exp(tau * psi)
+
+
+def carr_madan_vector_prices(
+    spot: float,
+    strikes: np.ndarray,
+    tau: float,
+    r: float,
+    cf_func: Any,
+    alpha: float = 1.5,
+    n_pts: int = 256,
+    v_max: float = 100.0,
+) -&gt; np.ndarray:
+    k = np.log(strikes)
+    v = np.linspace(0.0, v_max, n_pts + 1)
+    dv = v_max / n_pts
+    weights = np.ones(n_pts + 1)
+    weights[1:-1:2] = 4.0
+    weights[2:-2:2] = 2.0
+    weights = weights * (dv / 3.0)
+
+    u = v - (alpha + 1.0) * 1j
+    phi = cf_func(u)
+    denom = (alpha**2 + alpha - v**2) + 1j * (2.0 * alpha + 1.0) * v
+    psi = np.exp(-r * tau) * phi / denom
+    exp_term = np.exp(-1j * np.outer(k, v))
+    integrand = (exp_term * psi).real
+    integral = np.sum(integrand * weights, axis=1)
+    res: np.ndarray = np.asarray(np.maximum(0.0, np.exp(-alpha * k) / math.pi * integral), dtype=float)
+    return res
+
+
+def main() -&gt; None:
+    # Seed 0 parameters (SIMULATED)
+    spot = 100.0
+    r = 0.039
+    true_merton = {"sigma": 0.123, "lam": 0.438, "mu_j": -0.128, "sigma_j": 0.159}
+
+    tenors = [0.25, 0.50]
+    strikes = np.array([90.0, 95.0, 100.0, 105.0, 110.0])
+
+    # Construct synthetic market surface quotes from true parameters
+    market_data: list[dict[str, Any]] = []
+    for tau in tenors:
+
+        def cf_at_tau(u: complex | np.ndarray, t_val: float = tau) -&gt; complex | np.ndarray:
+            return merton_cf(
+                u,
+                t_val,
+                spot,
+                r,
+                true_merton["sigma"],
+                true_merton["lam"],
+                true_merton["mu_j"],
+                true_merton["sigma_j"],
+            )
+
+        p_vec = carr_madan_vector_prices(spot, strikes, tau, r, cf_at_tau)
+        for k, p in zip(strikes, p_vec, strict=True):
+            market_data.append({"tenor": tau, "strike": k, "price": float(p)})
+
+    # Calibration via nonlinear least-squares
+    strikes_by_tenor = {
+        tau: np.array([d["strike"] for d in market_data if d["tenor"] == tau], dtype=float) for tau in tenors
+    }
+    prices_by_tenor = {
+        tau: np.array([d["price"] for d in market_data if d["tenor"] == tau], dtype=float) for tau in tenors
+    }
+
+    def residuals(params: np.ndarray) -&gt; np.ndarray:
+        sigma, lam, mu_j, sigma_j = params
+        res: list[float] = []
+        for tau in tenors:
+
+            def cf_model(u: complex | np.ndarray, t_val: float = tau) -&gt; complex | np.ndarray:
+                return merton_cf(u, t_val, spot, r, sigma, lam, mu_j, sigma_j)
+
+            model_p = carr_madan_vector_prices(spot, strikes_by_tenor[tau], tau, r, cf_model)
+            diff = model_p - prices_by_tenor[tau]
+            res.extend(diff.tolist())
+        return np.array(res, dtype=float)
+
+    init_guess = [0.15, 0.50, -0.10, 0.12]
+    bounds = ([0.05, 0.05, -0.40, 0.02], [0.45, 2.50, 0.10, 0.40])
+    sol = opt.least_squares(residuals, init_guess, bounds=bounds, ftol=1e-6, xtol=1e-6)
+
+    calib_sigma, calib_lam, calib_mu_j, calib_sigma_j = sol.x
+    rmse = math.sqrt(2.0 * sol.cost / len(market_data))
+
+    print("seed 0 Merton jump-diffusion calibration (SIMULATED):")
+    p_true_str = (
+        f"sigma={true_merton['sigma']:.3f}, lambda={true_merton['lam']:.3f}, "
+        f"mu_j={true_merton['mu_j']:.3f}, sigma_j={true_merton['sigma_j']:.3f}"
+    )
+    p_calib_str = f"sigma={calib_sigma:.3f}, lambda={calib_lam:.3f}, mu_j={calib_mu_j:.3f}, sigma_j={calib_sigma_j:.3f}"
+    print(f"  true parameters:       {p_true_str}")
+    print(f"  calibrated parameters: {p_calib_str}")
+    print(f"  calibration RMSE: {rmse:.2e}")
+    print("calibration converges with RMSE &lt; 1e-3:", rmse &lt; 1e-3)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">seed 0 Merton jump-diffusion calibration (SIMULATED):
+  true parameters:       sigma=0.123, lambda=0.438, mu_j=-0.128, sigma_j=0.159
+  calibrated parameters: sigma=0.123, lambda=0.438, mu_j=-0.128, sigma_j=0.159
+  calibration RMSE: 1.57e-10
+calibration converges with RMSE &lt; 1e-3: True</pre>
+          <p class="interpretation">Step 1 formulates the analytical characteristic function \(\phi_{\ln S_t}(u)\) accounting for the compensated jump drift \(-\lambda \kappa\). Step 2 evaluates European call prices across the strike grid via Carr–Madan damped Fourier inversion with \(\alpha = 1.5\). Step 3 optimizes the parameter vector \((\sigma, \lambda, \mu_j, \sigma_j)\) using bounded Levenberg–Marquardt / Trust Region Reflective least squares. The residual vanishes with RMSE on the order of 1e-10, demonstrating exact parameter identification on noise-free synthetic surfaces.</p>
+        </section>
+
+        <section class="lab completion" id="lab-SC5-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: completing the Variance Gamma calibration engine</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the correct mathematical and code expressions: the first blank is the Variance Gamma martingale drift correction \(\omega = \frac{1}{\nu}\ln(1 - \theta \nu - \frac{1}{2}\sigma^2 \nu)\), and the second blank is the convergence tolerance threshold <code>1e-3</code>.</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completion problem: completing the Variance Gamma calibration engine.
+
+Completes the Variance Gamma characteristic function pricing and calibration engine on seed 0 (SIMULATED).
+Verifies the martingale drift correction omega = (1/nu)*ln(1 - theta*nu - 0.5*sigma^2*nu), calibrates
+(sigma, nu, theta) to the simulated option surface, and checks that calibration RMSE is below 1e-3.
+"""
+
+from __future__ import annotations
+
+import math
+from typing import Any
+
+import numpy as np
+import scipy.optimize as opt  # type: ignore[import-untyped]
+
+
+def vg_cf(
+    u: complex | np.ndarray,
+    tau: float,
+    spot: float,
+    r: float,
+    sigma: float,
+    nu: float,
+    theta: float,
+) -> complex | np.ndarray:
+    arg = 1.0 - theta * nu - 0.5 * (sigma**2) * nu
+    if arg &lt;= 0.0:
+        raise ValueError("VG admissibility condition violated")
+    omega = ___
+    drift = (r + omega) * tau
+    denom = 1.0 - 1j * u * theta * nu + 0.5 * (sigma**2) * nu * (u**2)
+    return np.exp(1j * u * math.log(spot)) * np.exp(1j * u * drift) * (denom ** (-tau / nu))
+
+
+def carr_madan_vector_prices(
+    spot: float,
+    strikes: np.ndarray,
+    tau: float,
+    r: float,
+    cf_func: Any,
+    alpha: float = 1.5,
+    n_pts: int = 256,
+    v_max: float = 100.0,
+) -> np.ndarray:
+    k = np.log(strikes)
+    v = np.linspace(0.0, v_max, n_pts + 1)
+    dv = v_max / n_pts
+    weights = np.ones(n_pts + 1)
+    weights[1:-1:2] = 4.0
+    weights[2:-2:2] = 2.0
+    weights = weights * (dv / 3.0)
+
+    u = v - (alpha + 1.0) * 1j
+    phi = cf_func(u)
+    denom = (alpha**2 + alpha - v**2) + 1j * (2.0 * alpha + 1.0) * v
+    psi = np.exp(-r * tau) * phi / denom
+    exp_term = np.exp(-1j * np.outer(k, v))
+    integrand = (exp_term * psi).real
+    integral = np.sum(integrand * weights, axis=1)
+    res: np.ndarray = np.asarray(np.maximum(0.0, np.exp(-alpha * k) / math.pi * integral), dtype=float)
+    return res
+
+
+def main() -> None:
+    # Seed 0 parameters (SIMULATED)
+    spot = 100.0
+    r = 0.039
+    true_vg = {"sigma": 0.238, "nu": 0.328, "theta": -0.187}
+
+    tenors = [0.25, 0.50]
+    strikes = np.array([90.0, 95.0, 100.0, 105.0, 110.0])
+
+    market_data: list[dict[str, Any]] = []
+    for tau in tenors:
+
+        def cf_at_tau(u: complex | np.ndarray, t_val: float = tau) -> complex | np.ndarray:
+            return vg_cf(
+                u,
+                t_val,
+                spot,
+                r,
+                true_vg["sigma"],
+                true_vg["nu"],
+                true_vg["theta"],
+            )
+
+        p_vec = carr_madan_vector_prices(spot, strikes, tau, r, cf_at_tau)
+        for k, p in zip(strikes, p_vec, strict=True):
+            market_data.append({"tenor": tau, "strike": k, "price": float(p)})
+
+    strikes_by_tenor = {
+        tau: np.array([d["strike"] for d in market_data if d["tenor"] == tau], dtype=float) for tau in tenors
+    }
+    prices_by_tenor = {
+        tau: np.array([d["price"] for d in market_data if d["tenor"] == tau], dtype=float) for tau in tenors
+    }
+
+    def residuals(params: np.ndarray) -> np.ndarray:
+        sigma, nu, theta = params
+        arg = 1.0 - theta * nu - 0.5 * (sigma**2) * nu
+        if arg &lt;= 1e-4:
+            return np.full(len(market_data), 1e2)
+        res: list[float] = []
+        for tau in tenors:
+
+            def cf_model(u: complex | np.ndarray, t_val: float = tau) -> complex | np.ndarray:
+                return vg_cf(u, t_val, spot, r, sigma, nu, theta)
+
+            model_p = carr_madan_vector_prices(spot, strikes_by_tenor[tau], tau, r, cf_model)
+            diff = model_p - prices_by_tenor[tau]
+            res.extend(diff.tolist())
+        return np.array(res, dtype=float)
+
+    init_guess = [0.20, 0.25, -0.12]
+    bounds = ([0.05, 0.02, -0.45], [0.45, 0.80, 0.10])
+    sol = opt.least_squares(residuals, init_guess, bounds=bounds, ftol=1e-6, xtol=1e-6)
+
+    calib_sigma, calib_nu, calib_theta = sol.x
+    rmse = math.sqrt(2.0 * sol.cost / len(market_data))
+
+    print("seed 0 Variance Gamma calibration (SIMULATED):")
+    p_true_str = f"sigma={true_vg['sigma']:.3f}, nu={true_vg['nu']:.3f}, theta={true_vg['theta']:.3f}"
+    p_calib_str = f"sigma={calib_sigma:.3f}, nu={calib_nu:.3f}, theta={calib_theta:.3f}"
+    print(f"  true parameters:       {p_true_str}")
+    print(f"  calibrated parameters: {p_calib_str}")
+    print(f"  calibration RMSE: {rmse:.2e}")
+    print("calibration converges with RMSE &lt; 1e-3:", ___)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">seed 0 Variance Gamma calibration (SIMULATED):
+  true parameters:       sigma=0.238, nu=0.328, theta=-0.187
+  calibrated parameters: sigma=0.238, nu=0.328, theta=-0.187
+  calibration RMSE: 1.51e-12
+calibration converges with RMSE &lt; 1e-3: True</pre>
+          <p class="interpretation">The completed Variance Gamma calibration verifies that the analytical drift adjustment \(\omega\) restores the risk-neutral martingale condition \(\E_{\mathbb{Q}}[e^{-rt} S_t] = S_0\). Nonlinear least-squares optimization converges with residual RMSE on the order of 1e-12, confirming exact parameter recovery.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A quantitative derivatives pricing desk models index options where market quotes display pronounced implied volatility smiles at short tenors (tau &lt; 0.25 years). Continuous Black–Scholes diffusions cannot reproduce these skews without unphysical, extreme parameter shifts across strikes. You must build a calibration and validation engine implementing Merton jump-diffusion and Variance Gamma models to price options, recover implied volatilities, and analyze parameter identification across tenors.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A deterministic per-learner SIMULATED option surface generated by <code>grader/instance.py</code> exposing <code>make_instance(seed)</code>, containing spot price \(S_0 = 100\), risk-free rate \(r\), strike grids \(K \in \{90, 95, 100, 105, 110\}\), tenors \(\tau \in \{0.25, 0.50\}\), and precomputed call option prices and implied volatilities for Merton and Variance Gamma models.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            <ol>
+              <li><code>levy_calibration.py</code> implementing:
+                <ul>
+                  <li><code>merton_characteristic_function(u, t, spot, r, sigma, lam, mu_j, sigma_j)</code></li>
+                  <li><code>vg_characteristic_function(u, t, spot, r, sigma, nu, theta)</code></li>
+                  <li><code>price_european_option(spot, strike, tenor, r, model, params, is_call)</code></li>
+                  <li><code>implied_volatility(price, spot, strike, tenor, r, is_call)</code></li>
+                  <li><code>calibrate_model(market_surface, model, spot, r, initial_guess)</code></li>
+                </ul>
+              </li>
+              <li>A written calibration report (PDF or markdown) analyzing:
+                <ul>
+                  <li>Quality of fit: RMSE across strikes and tenors for Merton versus Variance Gamma;</li>
+                  <li>Parameter identification: stability of calibrated parameters under perturbed initial guesses;</li>
+                  <li>Comparative smile dynamics: finite-activity jump-diffusion versus infinite-activity subordination;</li>
+                  <li>Hedging implications of jump risk versus continuous diffusion.</li>
+                </ul>
+              </li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Pure Python 3.14 with NumPy and SciPy only; no external network requests; all characteristic functions must satisfy \(\phi(0) = 1.0\) and the martingale condition \(\phi(-i) = S_0 e^{rt}\) within 1e-4; option pricing must satisfy put-call parity within 1e-3; autograder tests must finish under 5 seconds per seed in Pyodide.</dd>
+
+          <dt>Grading mode</dt>
+          <dd>both (autograder and rubric)</dd>
+        </dl>
+      </section>
+
+      <section id="time-budget">
+        <h2 id="h-time-budget">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr><th>Component</th><th>Hours</th><th>Rationale</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Characteristic functions &amp; martingale verification</td>
+                <td>4</td>
+                <td>Analytical formulation of Merton and VG characteristic exponents, verification of u=0 and u=-i martingale conditions.</td>
+              </tr>
+              <tr>
+                <td>Carr–Madan Fourier pricer &amp; Black–Scholes IV solver</td>
+                <td>6</td>
+                <td>Vectorized damped Fourier transform inversion, Simpson quadrature, Brent root-finder with arbitrage bounds.</td>
+              </tr>
+              <tr>
+                <td>Nonlinear least-squares calibration engine</td>
+                <td>6</td>
+                <td>Setting up SciPy least_squares optimization, boundary constraints, multi-tenor residual vectorization, and recovery checks.</td>
+              </tr>
+              <tr>
+                <td>Calibration report &amp; identification analysis</td>
+                <td>8</td>
+                <td>Comprehensive quantitative analysis comparing Merton vs. VG fits, initial-guess sensitivity, and delta hedging jump risk.</td>
+              </tr>
+              <tr>
+                <td>Total</td>
+                <td>24</td>
+                <td>Full practical implementation and formal research deliverable.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grader-panel" id="grader" data-unit="SC5" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="levy_calibration.py" data-starter="starter.py" data-packages="numpy scipy">
+        <h2 id="h-grader">Autograder suite</h2>
+        <p>The acceptance suite <code>grader/test_project.py</code> verifies mathematical invariants, characteristic function properties, option pricing no-arbitrage bounds, and parameter calibration recovery across 50 seeds.</p>
+      </section>
+
+      <section id="rubric">
+        <h2 id="h-rubric">Evaluation rubric</h2>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>Lévy Model Calibration Rubric: 5 criteria, 4 observable performance levels.</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">4 · Exemplary</th>
+                <th scope="col">3 · Proficient</th>
+                <th scope="col">2 · Developing</th>
+                <th scope="col">1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Mathematical Rigor &amp; Martingale Invariants</th>
+                <td>Mathematical proofs of drift compensation \(\kappa\) and \(\omega\) are fully articulated; regularity strips and parameter admissibility domains are rigorously delineated; characteristic functions satisfy \(\phi(0)=1\) and \(\phi(-i)=S_0 e^{rt}\) within 1e-12.</td>
+                <td>Characteristic functions strictly satisfy \(\phi(0)=1\) and \(\phi(-i)=S_0 e^{rt}\) within 1e-6; admissibility conditions are validated with descriptive error handling.</td>
+                <td>Martingale condition holds numerically on standard inputs but fails on edge cases or violates VG parameter admissibility.</td>
+                <td>Characteristic functions omit drift compensation or fail the risk-neutral martingale condition \(\phi(-i) = S_0 e^{rt}\).</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Pricing Accuracy &amp; Inversion Stability</th>
+                <td>Quadrature error, truncation bounds \(v_{\max}\), and optimal choice of damping parameter \(\alpha\) are analyzed and benchmarked against closed forms; put-call parity holds to 1e-6.</td>
+                <td>Vectorized Carr–Madan Fourier inversion satisfies put-call parity within 1e-4 and preserves strict monotonicity across all strikes.</td>
+                <td>Pricing converges for ATM options but displays boundary instability or violates put-call parity at deep OTM/ITM strikes.</td>
+                <td>Fourier pricing fails or diverges across strikes due to improper damping \(\alpha\) or coarse grid truncation.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Calibration Robustness &amp; Optimization</th>
+                <td>Global parameter identification is rigorously evaluated; trade-offs between diffusion volatility and jump parameters are quantified via residual surface profiling; converges with RMSE &lt; 1e-4.</td>
+                <td>Bounded least-squares optimization converges consistently from arbitrary interior guesses with RMSE &lt; 0.02 across all 50 seeds.</td>
+                <td>Calibration converges only with fine-tuned initial guesses; unstable across tenors or perturbed starting points.</td>
+                <td>Nonlinear solver diverges, produces negative variances, or terminates in trivial local minima.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Empirical Fit &amp; Comparative Smile Analysis</th>
+                <td>Thoroughly evaluates why infinite activity fits short-tenor skew more parsimoniously than compound Poisson jumps, referencing Cont &amp; Tankov (2004) and Madan et al. (1998).</td>
+                <td>Accurately contrasts finite-activity Merton jump-diffusion with infinite-activity Variance Gamma, documenting short-tenor smile steepness.</td>
+                <td>Reports RMSE values but provides superficial narrative without connecting error patterns to jump activity regimes.</td>
+                <td>Report provides no quantitative comparison of Merton versus Variance Gamma model performance.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Hedging &amp; Market Risk Implications</th>
+                <td>Formulates optimal quadratic hedging strategies and articulates how vanilla options must be used to hedge jump exposure alongside the underlying asset.</td>
+                <td>Derives the discrete jump shortfall in delta-neutral portfolios and explains why markets are incomplete under discontinuous paths.</td>
+                <td>Acknowledges that jump risk causes hedging errors but provides no formal derivation of the jump-risk premium.</td>
+                <td>No discussion of delta hedging under jump processes or market incompleteness.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="exemplars">
+        <h2 id="h-exemplars">Annotated exemplars</h2>
+
+        <div class="exemplar" data-level="4">
+          <h3>Exemplar 1 · Level 4 (Exemplary): Comparative Calibration &amp; Parameter Identification</h3>
+          <p><em>Excerpt from student calibration report:</em></p>
+          <blockquote>
+            <p><strong>1. Analytical Drift Compensation and Invariant Preservation:</strong> To ensure that the discounted stock price \(e^{-rt} S_t\) is a \(\mathbb{Q}\)-martingale, Merton's (1976) model requires compensating the lognormal jump expectation \(\kappa = \E[e^Y - 1] = \exp(\mu_j + \tfrac{1}{2}\sigma_j^2) - 1\), resulting in drift \(\mu = r - \tfrac{1}{2}\sigma^2 - \lambda \kappa\). In the Variance Gamma model (Madan, Carr &amp; Chang 1998), the Gamma subordinator \(G_t \sim \text{Gamma}(t/\nu, \nu)\) introduces convex time warping, requiring \(\omega = \frac{1}{\nu}\ln(1 - \theta \nu - \frac{1}{2}\sigma^2 \nu)\) with admissibility condition \(1 - \theta \nu - \frac{1}{2}\sigma^2 \nu &gt; 0\). In our implementation, both characteristic functions satisfy \(\phi(0) = 1.000000 + 0.000000j\) and \(|\phi(-i) - S_0 e^{rt}| &lt; 10^{-14}\) across all tested parameter sets.</p>
+            <p><strong>2. Empirical Fit and Smile Curvature Across Tenors:</strong> On the seed 0 SIMULATED surface, the Merton model achieved a calibration RMSE of \(1.57 \times 10^{-10}\) with recovered parameters \(\sigma = 0.123\), \(\lambda = 0.438\), \(\mu_j = -0.128\), and \(\sigma_j = 0.159\). The Variance Gamma model calibrated with RMSE of \(1.51 \times 10^{-12}\), recovering \(\sigma = 0.238\), \(\nu = 0.328\), and \(\theta = -0.187\). When fitted to short tenors (\(\tau = 0.05\)), Variance Gamma accurately captures the pronounced steepness of the smile without requiring the diffusion component \(\sigma\) to collapse to zero, because its infinite jump activity generates an abundance of small price adjustments. Merton's model, by contrast, relies on a Poisson counter with finite intensity \(\lambda = 0.438\), meaning the probability of a jump over 18 days is only \(\approx 2.1\%\); to fit steep out-of-the-money put prices at short tenors, the optimization forces \(\mu_j\) into deep negative territory, causing parameter instability across maturity slices.</p>
+          </blockquote>
+          <p class="annotation"><strong>Rubric mapping:</strong> Meets Level 4 on Mathematical Rigor (exact formulas, verified to 1e-14), Pricing Accuracy (Fourier inversion satisfies martingale invariants), Calibration Robustness (machine precision RMSE), Empirical Fit (connects finite vs. infinite activity to short-tenor smile mechanics), and Hedging Implications.</p>
+        </div>
+
+        <div class="exemplar" data-level="2">
+          <h3>Exemplar 2 · Level 2 (Developing): Basic Calibration without Regularization or Identification Analysis</h3>
+          <p><em>Excerpt from student calibration report:</em></p>
+          <blockquote>
+            <p>We calibrated the Merton model and Variance Gamma model using SciPy. For Merton, we got sigma = 0.14, lambda = 0.5, mu = -0.1, sigma_j = 0.15. The error was low (RMSE = 0.004). For Variance Gamma, sigma was 0.22, nu was 0.30, and theta was -0.15. The VG model runs slightly faster than Merton because it does not have a factorial in the formula. Both models fit the options well. Jump models are good because stocks can jump when news comes out.</p>
+          </blockquote>
+          <p class="annotation"><strong>Rubric mapping:</strong> Meets Level 2. The code ran and achieved an acceptable RMSE, but the report offers only superficial commentary, fails to explain the martingale drift compensation, provides no analysis of parameter identification across initial guesses, and omits hedging and market incompleteness implications entirely.</p>
+        </div>
+      </section>
+
+      <section id="reading-list">
+        <h2 id="h-reading-list">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="merton1976option"></li>
+          <li data-cite="madan1998variance"></li>
+          <li data-cite="cont2003financial"></li>
+          <li data-cite="carr1999option"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">SC5 · Jumps &amp; Lévy Processes · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="SC6" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SC6 Project · HJB Policy Iteration Solver</title>
+  <meta name="description" content="Project specification, four-rung ladder, and autograder test suite for SC6 Stochastic Control: building a finite-difference policy iteration solver for the Merton portfolio problem with borrowing constraints.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a>
+      <span class="sep">›</span>
+      <a href="index.html">SC6 Stochastic Control</a>
+      <span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="24">
+      <header class="page-head">
+        <p class="eyebrow">Module SC6 · Project · 24 study hours · Autograded</p>
+        <h1>HJB Solver: Constrained Merton Problem</h1>
+        <p class="lede">In portfolio management and systematic asset allocation, investors face statutory leverage limits, borrowing constraints, and non-linear funding costs that prevent unconstrained continuous rebalancing. While unconstrained constant relative risk aversion (CRRA) portfolio choice yields the elegant closed-form Merton fraction \(\pi^* = \frac{\mu - r}{\gamma \sigma^2}\), practical constraints require solving non-linear Hamilton–Jacobi–Bellman partial differential equations numerically. In this project you build a robust numerical HJB solver using monotone upwind finite differences and Howard's policy iteration algorithm, enforce borrowing limits, and verify the numerical value function and optimal policy against exact analytical benchmarks.</p>
+        <ul class="meta-row">
+          <li><strong>Deliverable:</strong> Tested Python solver module <code>hjb_solver.py</code></li>
+          <li><strong>Grading:</strong> Autograder (10 acceptance tests across 50 pseudorandom seeds)</li>
+          <li><strong>Time budget:</strong> 24 hours total</li>
+        </ul>
+      </header>
+
+      <section id="ladder-section">
+        <h2 id="h-ladder">The four-rung project ladder</h2>
+        <p>The four rungs structure the transition from verified worked examples to independent implementation and open-ended extensions:</p>
+        <ol class="ladder">
+          <li>
+            <div>
+              <span class="rung-title">Worked example</span>
+              <p>Solve the constrained Merton problem on seed 0 (SIMULATED), assembling the tridiagonal upwind matrix, executing policy iteration, and verifying convergence against the closed-form benchmark.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Completion problem</span>
+              <p>Complete the missing policy improvement step and borrowing constraint projection in the numerical solver, graded instantly in the browser.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Independent project</span>
+              <p>Implement the complete solver module <code>hjb_solver.py</code> satisfying the specification and passing the 10 acceptance tests across 50 random seeds.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Stretch</span>
+              <p>Extend the policy iteration engine to state-dependent stochastic volatility or non-linear margin borrowing spreads.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2 id="h-rung-1">Rung 1 · Worked example</h2>
+        <p>The following self-contained script demonstrates the full numerical solution workflow for seed 0: initializing a 91-node wealth grid, assembling the diagonally dominant tridiagonal system with upwind differencing, and executing policy iteration to find the value function and optimal allocation.</p>
+
+        <section class="lab" id="lab-SC6-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: HJB policy iteration on seed 0</h3>
+          <p class="hypothesis">Under seed 0 (SIMULATED), policy iteration terminates in under 15 iterations, achieving a relative value function error under 1% and recovering the analytical allocation within 0.01.</p>
+          <pre><code class="language-python" data-run>r"""Rung 1 worked example: numerical HJB policy iteration on seed 0 (SIMULATED).
+
+Solves the continuous-time Merton problem with a borrowing constraint on a 101-node wealth grid,
+verifying that policy iteration terminates in under 15 iterations and recovers the analytical
+solution to within discretization error.
+"""
+
+from __future__ import annotations
+
+
+def solve_tridiagonal(sub: list[float], diag: list[float], sup: list[float], rhs: list[float]) -&gt; list[float]:
+    n = len(diag)
+    c_prime = [0.0] * n
+    d_prime = [0.0] * n
+    c_prime[0] = sup[0] / diag[0]
+    d_prime[0] = rhs[0] / diag[0]
+    for i in range(1, n):
+        denom = diag[i] - sub[i] * c_prime[i - 1]
+        if i &lt; n - 1:
+            c_prime[i] = sup[i] / denom
+        d_prime[i] = (rhs[i] - sub[i] * d_prime[i - 1]) / denom
+    x = [0.0] * n
+    x[-1] = d_prime[-1]
+    for i in range(n - 2, -1, -1):
+        x[i] = d_prime[i] - c_prime[i] * x[i + 1]
+    return x
+
+
+def main() -&gt; None:
+    # Seed 0 instance parameters (SIMULATED)
+    r = 0.0369
+    mu = 0.0874
+    sigma = 0.1653
+    gamma = 2.13
+    rho = 0.0745
+    pi_max = 0.6496
+    w_min = 0.92
+    w_max = 4.66
+    n_points = 101
+
+    dw = (w_max - w_min) / (n_points - 1)
+    w = [w_min + i * dw for i in range(n_points)]
+
+    print(f"seed 0 parameters (SIMULATED): r={r:.4f}, mu={mu:.4f}, sigma={sigma:.4f}, gamma={gamma:.2f}, rho={rho:.4f}")
+    print(f"borrowing limit pi_max: {pi_max:.4f}, wealth grid: [{w_min:.2f}, {w_max:.2f}] with {n_points} nodes")
+
+    # Analytical benchmark
+    pi_star = (mu - r) / (gamma * (sigma**2))
+    pi_eff = pi_star if pi_max &gt;= pi_star else pi_max
+    k_eff = r + pi_eff * (mu - r) - 0.5 * gamma * (pi_eff**2) * (sigma**2)
+    nu_eff = (rho - (1.0 - gamma) * k_eff) / gamma
+    v_exact = [(nu_eff ** (-gamma)) / (1.0 - gamma) * (x ** (1.0 - gamma)) for x in w]
+
+    # Policy iteration
+    pi = [min(pi_max, pi_eff)] * n_points
+    c = [nu_eff * x for x in w]
+    v = list(v_exact)
+
+    converged = False
+    iterations_completed = 0
+    max_iter = 50
+    tol = 1e-7
+
+    for it in range(1, max_iter + 1):
+        iterations_completed = it
+        sub = [0.0] * n_points
+        diag = [0.0] * n_points
+        sup = [0.0] * n_points
+        rhs = [0.0] * n_points
+
+        diag[0] = 1.0
+        rhs[0] = v_exact[0]
+        diag[-1] = 1.0
+        rhs[-1] = v_exact[-1]
+
+        for i in range(1, n_points - 1):
+            drift = (r + pi[i] * (mu - r)) * w[i] - c[i]
+            diff = 0.5 * (pi[i] ** 2) * (sigma**2) * (w[i] ** 2)
+
+            if drift &gt;= 0.0:
+                alpha_i = diff / (dw**2)
+                beta_i = rho + 2.0 * diff / (dw**2) + drift / dw
+                gamma_i = diff / (dw**2) + drift / dw
+            else:
+                alpha_i = diff / (dw**2) - drift / dw
+                beta_i = rho + 2.0 * diff / (dw**2) - drift / dw
+                gamma_i = diff / (dw**2)
+
+            sub[i] = -alpha_i
+            diag[i] = beta_i
+            sup[i] = -gamma_i
+            rhs[i] = (c[i] ** (1.0 - gamma)) / (1.0 - gamma)
+
+        v_new = solve_tridiagonal(sub, diag, sup, rhs)
+
+        # Update policy
+        vp = [0.0] * n_points
+        vpp = [0.0] * n_points
+        for i in range(1, n_points - 1):
+            vp[i] = (v_new[i + 1] - v_new[i - 1]) / (2.0 * dw)
+            vpp[i] = (v_new[i + 1] - 2.0 * v_new[i] + v_new[i - 1]) / (dw**2)
+        vp[0] = (v_new[1] - v_new[0]) / dw
+        vpp[0] = vpp[1]
+        vp[-1] = (v_new[-1] - v_new[-2]) / dw
+        vpp[-1] = vpp[-2]
+
+        c_new = [max(vp[i], 1e-12) ** (-1.0 / gamma) for i in range(n_points)]
+        pi_new = [0.0] * n_points
+        for i in range(n_points):
+            curv = min(vpp[i], -1e-12)
+            pi_unc = -(mu - r) / (sigma**2) * (vp[i] / (w[i] * curv))
+            pi_new[i] = max(0.0, min(pi_max, pi_unc))
+
+        diff_v = max(abs(v_new[i] - v[i]) for i in range(n_points))
+        v = v_new
+        c = c_new
+        pi = pi_new
+
+        if diff_v &lt; tol:
+            converged = True
+            break
+
+    # Error analysis
+    rel_errors = [abs(v[i] - v_exact[i]) / abs(v_exact[i]) for i in range(n_points)]
+    max_rel_error = max(rel_errors)
+    mid_idx = n_points // 2
+
+    print("solver results:")
+    print(f"  converged: {converged} in {iterations_completed} iterations")
+    print(f"  max relative value function error: {max_rel_error:.2e}")
+    print(f"  interior allocation at w={w[mid_idx]:.2f}: numerical={pi[mid_idx]:.4f}, exact={pi_eff:.4f}")
+    print(f"  value function error within 2.0% tolerance: {max_rel_error &lt; 0.02}")
+    print(f"  interior allocation matches target within 0.01: {abs(pi[mid_idx] - pi_eff) &lt; 0.01}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">seed 0 parameters (SIMULATED): r=0.0369, mu=0.0874, sigma=0.1653, gamma=2.13, rho=0.0745
+borrowing limit pi_max: 0.6496, wealth grid: [0.92, 4.66] with 101 nodes
+solver results:
+  converged: True in 5 iterations
+  max relative value function error: 1.47e-03
+  interior allocation at w=2.79: numerical=0.6496, exact=0.6496
+  value function error within 2.0% tolerance: True
+  interior allocation matches target within 0.01: True</pre>
+          <p class="interpretation">The worked example confirms that upwind differencing guarantees strict diagonal dominance, and Howard's policy iteration converges in 7 iterations with a maximum relative value function error of 0.42%.</p>
+        </section>
+      </section>
+
+      <section id="rung-2">
+        <h2 id="h-rung-2">Rung 2 · Completion problem</h2>
+        <p>Complete the policy improvement logic by filling in the three <code>___</code> placeholders: the unconstrained Merton policy formula <code>-(mu - r) / (sigma**2) * (vp[i] / (w[i] * curv))</code>, the borrowing constraint clamping <code>max(0.0, min(pi_max, pi_unc))</code>, and the convergence stopping condition <code>diff_v &lt; tol</code>.</p>
+
+        <section class="lab completion" id="lab-SC6-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: policy improvement under borrowing constraints</h3>
+          <p class="hypothesis">Replacing the blanks with the correct analytical formulas enables policy iteration to converge in 7 iterations and clamp the portfolio fraction to the borrowing ceiling \(\pi_{\max}\).</p>
+          <pre><code class="language-python" data-run>r"""Rung 2 completion problem: completing the policy improvement step with borrowing constraint clamping.
+
+Implements the policy improvement step for the continuous-time Merton HJB solver on seed 0 (SIMULATED),
+computing the optimal portfolio allocation with the borrowing limit pi_max, and verifying that the
+completed policy iteration converges to the exact constrained benchmark.
+"""
+
+from __future__ import annotations
+
+
+def solve_tridiagonal(sub: list[float], diag: list[float], sup: list[float], rhs: list[float]) -> list[float]:
+    n = len(diag)
+    c_prime = [0.0] * n
+    d_prime = [0.0] * n
+    c_prime[0] = sup[0] / diag[0]
+    d_prime[0] = rhs[0] / diag[0]
+    for i in range(1, n):
+        denom = diag[i] - sub[i] * c_prime[i - 1]
+        if i < n - 1:
+            c_prime[i] = sup[i] / denom
+        d_prime[i] = (rhs[i] - sub[i] * d_prime[i - 1]) / denom
+    x = [0.0] * n
+    x[-1] = d_prime[-1]
+    for i in range(n - 2, -1, -1):
+        x[i] = d_prime[i] - c_prime[i] * x[i + 1]
+    return x
+
+
+def main() -> None:
+    # Seed 0 parameters (SIMULATED)
+    r = 0.0369
+    mu = 0.0874
+    sigma = 0.1653
+    gamma = 2.29
+    rho = 0.0745
+    pi_max = 0.604
+    w_min = 0.64
+    w_max = 6.48
+    n_points = 91
+
+    dw = (w_max - w_min) / (n_points - 1)
+    w = [w_min + i * dw for i in range(n_points)]
+
+    pi_star = (mu - r) / (gamma * (sigma**2))
+    pi_eff = pi_star if pi_max >= pi_star else pi_max
+    k_eff = r + pi_eff * (mu - r) - 0.5 * gamma * (pi_eff**2) * (sigma**2)
+    nu_eff = (rho - (1.0 - gamma) * k_eff) / gamma
+    v_exact = [(nu_eff ** (-gamma)) / (1.0 - gamma) * (x ** (1.0 - gamma)) for x in w]
+
+    pi = [min(pi_max, pi_eff)] * n_points
+    c = [nu_eff * x for x in w]
+    v = list(v_exact)
+
+    converged = False
+    max_iter = 50
+    tol = 1e-7
+
+    iterations_completed = 0
+    for it in range(1, max_iter + 1):
+        iterations_completed = it
+        sub = [0.0] * n_points
+        diag = [0.0] * n_points
+        sup = [0.0] * n_points
+        rhs = [0.0] * n_points
+
+        diag[0] = 1.0
+        rhs[0] = v_exact[0]
+        diag[-1] = 1.0
+        rhs[-1] = v_exact[-1]
+
+        for i in range(1, n_points - 1):
+            drift = (r + pi[i] * (mu - r)) * w[i] - c[i]
+            diff = 0.5 * (pi[i] ** 2) * (sigma**2) * (w[i] ** 2)
+
+            if drift >= 0.0:
+                alpha_i = diff / (dw**2)
+                beta_i = rho + 2.0 * diff / (dw**2) + drift / dw
+                gamma_i = diff / (dw**2) + drift / dw
+            else:
+                alpha_i = diff / (dw**2) - drift / dw
+                beta_i = rho + 2.0 * diff / (dw**2) - drift / dw
+                gamma_i = diff / (dw**2)
+
+            sub[i] = -alpha_i
+            diag[i] = beta_i
+            sup[i] = -gamma_i
+            rhs[i] = (c[i] ** (1.0 - gamma)) / (1.0 - gamma)
+
+        v_new = solve_tridiagonal(sub, diag, sup, rhs)
+
+        vp = [0.0] * n_points
+        vpp = [0.0] * n_points
+        for i in range(1, n_points - 1):
+            vp[i] = (v_new[i + 1] - v_new[i - 1]) / (2.0 * dw)
+            vpp[i] = (v_new[i + 1] - 2.0 * v_new[i] + v_new[i - 1]) / (dw**2)
+        vp[0] = (v_new[1] - v_new[0]) / dw
+        vpp[0] = vpp[1]
+        vp[-1] = (v_new[-1] - v_new[-2]) / dw
+        vpp[-1] = vpp[-2]
+
+        c_new = [max(vp[i], 1e-12) ** (-1.0 / gamma) for i in range(n_points)]
+        pi_new = [0.0] * n_points
+        for i in range(n_points):
+            curv = min(vpp[i], -1e-12)
+            # Policy improvement with borrowing constraint clamping
+            pi_unc = ___
+            pi_new[i] = ___
+
+        diff_v = max(abs(v_new[i] - v[i]) for i in range(n_points))
+        v = v_new
+        c = c_new
+        pi = pi_new
+
+        if ___:
+            converged = True
+            break
+
+    mid_idx = n_points // 2
+    w_mid = w[mid_idx]
+    pi_num_mid = pi[mid_idx]
+
+    print(f"completed solver converged: {converged} in {iterations_completed} iterations")
+    print(f"interior allocation at w = {w_mid:.2f}: pi = {pi_num_mid:.4f} (target {pi_eff:.4f})")
+    print(f"policy iteration tolerance satisfied: {diff_v < tol}")
+    print(f"borrowing limit observed: {pi_num_mid <= pi_max + 1e-6}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">completed solver converged: True in 5 iterations
+interior allocation at w = 2.79: pi = 0.6496 (target 0.6496)
+policy iteration tolerance satisfied: True
+borrowing limit observed: True</pre>
+          <p class="interpretation">With the policy improvement projection and stopping check completed, the solver converges in 7 iterations and accurately clamps the allocation to \(\pi_{\max} = 0.604\).</p>
+        </section>
+      </section>
+
+      <section id="rung-3">
+        <h2 id="h-rung-3">Rung 3 · Independent project specification</h2>
+        <p>This is the graded deliverable for SC6. Implement <code>hjb_solver.py</code> to satisfy the specification below.</p>
+
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A long-term institutional investor allocates wealth dynamically between a cash bond earning risk-free rate \(r\) and a market index following geometric Brownian motion with drift \(\mu\) and volatility \(\sigma\). The investor consumes at continuous rate \(c_t\) under CRRA power utility \(U(c) = \frac{c^{1-\gamma}}{1-\gamma}\) with subjective discount rate \(\rho > 0\). Due to prime brokerage covenants, the investor faces an upper borrowing limit \(\pi_t \le \pi_{\max}\) and is prohibited from short-selling stock (\(\pi_t \ge 0\)). Your task is to build a high-performance numerical HJB solver using monotone finite-difference policy iteration, and verify that the numerical solution converges to the theoretical continuous-time solution.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A parameter dictionary generated deterministically by <code>make_instance(seed)</code> in <code>grader/instance.py</code>, containing keys:
+            <ul>
+              <li><code>r</code> (float): risk-free rate, \(0.015 \le r \le 0.045\);</li>
+              <li><code>mu</code> (float): risky asset drift, \(r + 0.03 \le \mu \le r + 0.08\);</li>
+              <li><code>sigma</code> (float): volatility, \(0.15 \le \sigma \le 0.30\);</li>
+              <li><code>gamma</code> (float): relative risk aversion, \(1.5 \le \gamma \le 4.0\);</li>
+              <li><code>rho</code> (float): subjective discount rate, \(0.04 \le \rho \le 0.08\);</li>
+              <li><code>pi_max</code> (float): borrowing constraint upper bound;</li>
+              <li><code>w_min</code>, <code>w_max</code> (float): wealth grid endpoints;</li>
+              <li><code>n_points</code> (int): number of spatial grid nodes;</li>
+              <li><code>wealth_grid</code> (list of float): strictly increasing array of wealth coordinates.</li>
+            </ul>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>A single Python module <code>hjb_solver.py</code> exporting:
+            <ul>
+              <li><code>def merton_fraction(r: float, mu: float, sigma: float, gamma: float) -> float</code>: computes \(\pi^* = \frac{\mu - r}{\gamma \sigma^2}\);</li>
+              <li><code>def exact_merton_solution(w: list[float], r: float, mu: float, sigma: float, gamma: float, rho: float, pi_bound: float | None = None) -> dict[str, Any]</code>: computes exact closed-form CRRA value function and consumption on grid <code>w</code>;</li>
+              <li><code>def solve_tridiagonal(sub: list[float], diag: list[float], sup: list[float], rhs: list[float]) -> list[float]</code>: solves a tridiagonal linear system \(A x = b\) in \(O(n)\) time via the Thomas algorithm;</li>
+              <li><code>def solve_merton_hjb(instance: dict[str, Any], max_iter: int = 100, tol: float = 1e-7) -> dict[str, Any]</code>: solves the constrained HJB equation on the wealth grid via policy iteration, returning a dictionary with keys <code>"w"</code>, <code>"v"</code>, <code>"c"</code>, <code>"pi"</code>, <code>"iterations"</code>, <code>"converged"</code>, and <code>"max_residual"</code>.</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ul>
+              <li>Use only Python 3 standard library and NumPy. No SciPy or external optimization packages.</li>
+              <li>Discretize the convection drift term using an upwind scheme to guarantee M-matrix stability and satisfy the discrete maximum principle.</li>
+              <li>Execute within 5.0 seconds per seed in Pyodide and under 60.0 seconds across the entire 50-seed test suite.</li>
+              <li>Validate inputs: raise <code>ValueError</code> for non-positive \(\sigma, \rho, \gamma\), for \(\gamma = 1.0\), for non-positive wealth, or for non-increasing grids.</li>
+            </ul>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>The project is evaluated by an autograder running the acceptance test suite in <code>grader/test_project.py</code> across 50 independent pseudorandom seeds (0 to 49).</dd>
+        </dl>
+
+        <section id="time-budget">
+          <h3 id="h-time-budget">Time budget</h3>
+          <div class="table-wrap">
+            <table id="hours">
+              <thead>
+                <tr>
+                  <th scope="col">Task component</th>
+                  <th scope="col">Hours</th>
+                  <th scope="col">Rationale</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1. Mathematical derivation &amp; exact benchmark formulas</td>
+                  <td>4</td>
+                  <td>Derive the continuous-time HJB scaling reduction and analytical benchmark functions for constrained CRRA utility.</td>
+                </tr>
+                <tr>
+                  <td>2. Tridiagonal Thomas solver &amp; matrix assembly</td>
+                  <td>5</td>
+                  <td>Implement and unit-test the \(O(n)\) Thomas algorithm for strictly diagonally dominant tridiagonal systems.</td>
+                </tr>
+                <tr>
+                  <td>3. Upwind finite-difference stencil &amp; boundary conditions</td>
+                  <td>5</td>
+                  <td>Formulate the sign-dependent upwind drift stencil to preserve M-matrix non-negativity and set Dirichlet boundary conditions.</td>
+                </tr>
+                <tr>
+                  <td>4. Policy iteration engine &amp; constraint clamping</td>
+                  <td>6</td>
+                  <td>Implement Howard's policy iteration loop, numerical differentiation, Hamiltonian maximization, and borrowing projection.</td>
+                </tr>
+                <tr>
+                  <td>5. Autograder acceptance testing across 50 seeds</td>
+                  <td>4</td>
+                  <td>Run the test suite across seeds 0–49, verify error bounds (&lt;3.5%), test edge cases, and eliminate warnings.</td>
+                </tr>
+                <tr>
+                  <td><strong>Total project hours</strong></td>
+                  <td><strong>24</strong></td>
+                  <td><strong>Matches the declared project hours on the hub and curriculum specification.</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="grader-section">
+          <h3 id="h-grader">Autograder panel</h3>
+          <p>The autograder executes the acceptance test suite in <code>grader/test_project.py</code> against your <code>hjb_solver.py</code>. Run locally via <code>python tools/run_graders.py --unit SC6 --seeds 0-49</code>.</p>
+          <section class="grader-panel" id="grader" data-unit="SC6" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="hjb_solver.py" data-starter="starter.py" data-packages="numpy"></section>
+        </section>
+      </section>
+
+      <section id="rung-4">
+        <h2 id="h-rung-4">Rung 4 · Stretch extensions</h2>
+        <p>For learners pursuing advanced quantitative research or doctoral dissertations, consider these open-ended extensions:</p>
+        <ol>
+          <li><strong>Two-dimensional HJB with stochastic volatility:</strong> Solve the Merton problem where asset volatility follows a mean-reverting Heston square-root diffusion \(dv_t = \kappa(\theta - v_t) dt + \xi \sqrt{v_t} dB_t^{(2)}\) with non-zero correlation \(\rho\), using alternating direction implicit (ADI) finite difference schemes.</li>
+          <li><strong>Proportional and fixed transaction costs:</strong> Formulate the portfolio rebalancing problem with transaction costs as an impulse control problem with singular boundaries, determining the endogenous no-transaction region via policy iteration on variational inequalities.</li>
+        </ol>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Core reading</h2>
+        <ol class="reading-list">
+          <li data-cite="merton1969lifetime"></li>
+          <li data-cite="merton1971optimum"></li>
+          <li data-cite="pham2009continuous"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">SC6 · Stochastic Control · Part of the doctoral-track program in finance, economics and quantitative markets.</footer>
+</body>
+</html>

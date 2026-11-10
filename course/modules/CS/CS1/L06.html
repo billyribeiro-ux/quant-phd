@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS1" data-page="L06" data-hours="9">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L06 · Unit Testing with pytest · CS1</title>
+  <meta name="description" content="Lesson 6 of CS1: automated unit testing, pytest test discovery, assertion rewriting, parameterized testing, invariant verification, and exception assertion with pytest.raises. 9 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS1 Programming in Python from Zero</a><span class="sep">›</span>
+      <span>L06</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS1 · Lesson 6 of 9 · 9 study hours</p>
+        <h1>Unit Testing with pytest</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="python-function-scope" href="L01.html#def-python-function-scope">function scope</a>, <a class="concept" data-concept="python-data-structures" href="L02.html#def-python-data-structures">built-in data structures</a>, <a class="concept" data-concept="python-class" href="L03.html#def-python-class">classes and objects</a>, <a class="concept" data-concept="structural-protocol" href="L03.html#def-structural-protocol">structural protocols</a>, <a class="concept" data-concept="python-modules-packages" href="L04.html#def-python-modules-packages">modules and packages</a>, <a class="concept" data-concept="python-exceptions" href="L04.html#def-python-exceptions">exceptions</a>, <a class="concept" data-concept="type-hints" href="L05.html#def-type-hints">type hints</a></li>
+          <li><strong>Introduces:</strong> unit tests</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Quantitative code directly manages capital. A subtle calculation bug—such as an off-by-one index error in return lags or inverted signs in yield discounting—can destroy a fund's performance before it is detected in live trading. Unit tests provide automated, repeatable mathematical verification: holding every function to its formal contract, asserting numerical invariants, and ensuring regressions are caught at the development gate before deployment.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Automated Testing, Invariants, and Test Harnesses</h2>
+      <p><span class="claim" data-grade="T">Automated test frameworks execute isolated test functions to verify that software components conform to their formal specifications.</span> In modern Python, pytest is the standard testing framework.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(Unit Test)</span></span>
+        <p>A <dfn id="def-unit-test" data-concept="unit-test">unit test</dfn> is an automated procedure that invokes an isolated, individual unit of software (such as a function or class method) under controlled inputs and asserts that its observed outputs, state changes, or exception behaviors strictly match expected values. In pytest, unit tests are plain functions prefixed with <code>test_</code> residing in files named <code>test_*.py</code>, using plain Python <code>assert</code> statements.</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 1.1 <span class="name">(Assertion Invalidation Invariant)</span></span>
+        <p>An assertion <code>assert condition, message</code> succeeds quietly if <code>bool(condition)</code> evaluates to <code>True</code>. If <code>bool(condition)</code> evaluates to <code>False</code>, the runtime immediately raises an <code>AssertionError</code> containing the evaluated expression details. A test function passes if and only if it terminates normally without raising an unhandled exception or <code>AssertionError</code>.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By the Python assert statement specification (<span class="claim" data-grade="A" data-cite="psfndpython" data-locator="Section 7.3 The assert statement">PSF Language Reference, Section 7.3</span>), executing <code>assert expr, msg</code> is bytecode-equivalent to:
+        \[
+        \text{if not (expr): raise AssertionError(msg)}
+        \]
+        The pytest test runner wraps each collected test execution in a protective try-except block. If an <code>AssertionError</code> is caught, pytest records a test failure and inspects the abstract syntax tree (AST) via assertion rewriting to report exact operand sub-values. If any other unhandled exception is caught, it records an error. If execution exits without an exception, the test is marked as passed.</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 1.1 <span class="name">(Testing Floating-Point Invariants and Exceptions)</span></span>
+        <p>In quantitative finance, comparing floating-point numbers requires tolerances rather than exact equality. In pytest:</p>
+        <pre><code class="language-pseudocode">import math
+import pytest
+
+def test_return_compounding():
+    prices = [100.0, 105.0, 110.25]
+    r = simple_return(prices)
+    # Check multi-period compounding identity
+    compounded = (1.0 + r[0]) * (1.0 + r[1])
+    assert math.isclose(compounded, 1.1025, rel_tol=1e-12)
+
+def test_negative_price_raises():
+    with pytest.raises(ValueError, match="strictly positive"):
+        simple_return([100.0, -50.0])</code></pre>
+        <p>The <code>pytest.raises</code> context manager verifies that the expected exception is raised, failing the test if the function succeeds silently.</p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 1.1 <span class="name">(Testing Catching Regressions)</span></span>
+        <p><span class="claim" data-grade="A" data-cite="ramalho2021fluent" data-locator="Chapter 13 Interfaces, Protocols, and ABCs">Ramalho (2021) emphasizes that a comprehensive test suite catches regressions early when libraries are refactored or updated.</span> In Atlas milestones, every milestone's test suite remains active in continuous integration to verify that subsequent milestones never break prior delivered functionality.</p>
+      </div>
+
+      <section class="lab" id="lab-CS1-L06-1" data-runtime="python">
+        <h3>Lab 1 · Automated Unit Testing with pytest and Assertions</h3>
+        <p class="hypothesis">Verifies that unit test functions evaluate mathematical equality using math.isclose, catch expected domain exceptions using pytest.raises, and report assertion failures when an invariant is violated.</p>
+        <pre><code class="language-python" data-run>"""CS1 lab L06: Unit testing with pytest assertions and exception checks.
+
+Uses pytest to demonstrate test fixtures, invariant assertions, and pytest.raises.
+SIMULATED financial instruments.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Callable
+
+import pytest
+
+
+def calculate_yield(face: float, price: float, maturity: float) -&gt; float:
+    """Calculate annualized zero-coupon yield: (face / price)**(1/maturity) - 1."""
+    if price &lt;= 0.0 or face &lt;= 0.0:
+        raise ValueError("Price and face value must be strictly positive")
+    if maturity &lt;= 0.0:
+        raise ValueError("Maturity must be strictly positive")
+    return float((face / price) ** (1.0 / maturity) - 1.0)
+
+
+# --- Unit Tests ---
+
+
+def test_calculate_yield_positive() -&gt; None:
+    """Check standard yield value on annual zero."""
+    y = calculate_yield(100.0, 95.0, 1.0)
+    expected = 100.0 / 95.0 - 1.0
+    assert math.isclose(y, expected, rel_tol=1e-12)
+
+
+def test_calculate_yield_multiyear() -&gt; None:
+    """Check compounding over multiyear maturity."""
+    y = calculate_yield(100.0, 80.0, 2.0)
+    expected = (100.0 / 80.0) ** 0.5 - 1.0
+    assert math.isclose(y, expected, rel_tol=1e-12)
+
+
+def test_calculate_yield_invalid_price() -&gt; None:
+    """Check that nonpositive price raises ValueError with pytest.raises."""
+    with pytest.raises(ValueError, match="strictly positive"):
+        calculate_yield(100.0, -95.0, 1.0)
+
+
+def test_calculate_yield_invalid_maturity() -&gt; None:
+    """Check that nonpositive maturity raises ValueError with pytest.raises."""
+    with pytest.raises(ValueError, match="strictly positive"):
+        calculate_yield(100.0, 95.0, 0.0)
+
+
+def test_deliberate_assertion_failure() -&gt; None:
+    """Deliberately failing assertion to inspect failure reporting."""
+    assert 2 + 2 == 5, "deliberate math mismatch"
+
+
+def main() -&gt; None:
+    # Run test suite programmatically
+    suite: list[tuple[str, Callable[[], None]]] = [
+        ("test_calculate_yield_positive", test_calculate_yield_positive),
+        ("test_calculate_yield_multiyear", test_calculate_yield_multiyear),
+        ("test_calculate_yield_invalid_price", test_calculate_yield_invalid_price),
+        ("test_calculate_yield_invalid_maturity", test_calculate_yield_invalid_maturity),
+    ]
+
+    passed = 0
+    for name, test_func in suite:
+        try:
+            test_func()
+            passed += 1
+            print(f"RUN {name}: PASS")
+        except Exception as exc:
+            print(f"RUN {name}: FAIL ({exc})")
+
+    print(f"passed: {passed} of {len(suite)}")
+
+    # Verify that the failing test raises AssertionError
+    caught_assertion = False
+    try:
+        test_deliberate_assertion_failure()
+    except AssertionError as exc:
+        caught_assertion = True
+        print(f"caught expected AssertionError: '{exc}'")
+
+    print(f"deliberate failure caught: {caught_assertion}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">RUN test_calculate_yield_positive: PASS
+RUN test_calculate_yield_multiyear: PASS
+RUN test_calculate_yield_invalid_price: PASS
+RUN test_calculate_yield_invalid_maturity: PASS
+passed: 4 of 4
+caught expected AssertionError: 'deliberate math mismatch'
+deliberate failure caught: True</pre>
+        <p class="interpretation">The lab confirms Theorem 1.1: all four passing test functions execute cleanly without raising exceptions, while the deliberate failure function triggers an AssertionError with its designated error message, demonstrating how pytest isolates and reports test failures.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s2"><span class="section-number">2</span>Where the canon breaks</h2>
+        <p>In basic tutorials, developers often test code manually by calling print statements and eyeballing terminal output. In quantitative asset management, manual testing provides zero regression protection: a subtle formula error in a 1,000-line module will never be spotted visually across hundreds of assets. Automated test runners running in continuous integration gates are required to guarantee that every commit satisfies all mathematical and operational invariants.</p>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s3"><span class="section-number">3</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“Floating-point numbers can be tested for exact equality using assert a == b.”</p>
+            <p>Binary floating-point arithmetic (IEEE 754) introduces minor rounding errors in least significant bits (e.g. <code>0.1 + 0.2 != 0.3</code>). Numerical tests must use <code>math.isclose(a, b, rel_tol=1e-12)</code> or <code>pytest.approx(a)</code> with explicit tolerances.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Writing unit tests requires subclassing unittest.TestCase.”</p>
+            <p>Modern pytest allows writing plain Python functions starting with <code>test_</code> and standard <code>assert</code> statements. It uses AST assertion rewriting to report rich diffs without requiring boilerplate test case classes.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Passing tests prove that code is completely free of bugs.”</p>
+            <p>Tests only prove the absence of defects for the specific inputs and invariants tested. Comprehensive test suites combine boundary edge cases, invariant testing, and property-based seed sweeps to maximize defect detection.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s4"><span class="section-number">4</span>Problem set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Writing a Parameterized Test</span>
+            <p>Show how to write a parameterized test in pytest that verifies <code>is_positive(x)</code> across inputs 1.0, 5.5, and 100.0.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Using the <code>@pytest.mark.parametrize</code> decorator:</p>
+              <pre><code class="language-pseudocode">import pytest
+
+@pytest.mark.parametrize("val", [1.0, 5.5, 100.0])
+def test_is_positive(val: float):
+    assert val > 0.0</code></pre>
+              <p>pytest executes the test function once for each value in the list, reporting individual pass/fail results.</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · Testing Multiple Exception Types</span>
+            <p>Write a test function that asserts that passing <code>None</code> to <code>simple_return()</code> raises <code>TypeError</code>, and passing a list of length 1 raises <code>ValueError</code>.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Using separate <code>pytest.raises</code> context blocks:</p>
+              <pre><code class="language-pseudocode">import pytest
+
+def test_invalid_return_inputs():
+    with pytest.raises(TypeError):
+        simple_return(None)
+    with pytest.raises(ValueError):
+        simple_return([100.0])</code></pre>
+              <p>Both exception checks must be satisfied for the test to pass.</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · Tolerance Selection in Price Ratios</span>
+            <p>Why is a relative tolerance of <code>1e-12</code> appropriate for checking return invariants in 64-bit IEEE floating-point arithmetic?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>IEEE 754 double-precision floats provide 53 bits of mantissa, corresponding to approximately 15 to 17 significant decimal digits of precision (machine epsilon \(\epsilon \approx 2.22 \times 10^{-16}\)). A tolerance of <code>1e-12</code> accommodates up to a few thousand cumulative rounding operations while still catching any substantive algebraic error.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Test Independence Invariant</span>
+            <p>Prove that running test functions in arbitrary order produces identical pass/fail outcomes if and only if no test modifies global mutable state.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\sigma_0\) be the initial global system state. Let test \(T_i\) be a state transition \(\sigma \to \sigma'\) followed by an assertion check. If each \(T_i\) is pure (meaning \(\sigma' = \sigma\)), then for any permutation \(\pi\) of tests, the state before test \(\pi(k)\) is identically \(\sigma_0\). If any test mutates global state such that \(\sigma' \neq \sigma\), the input state for subsequent tests depends on \(\pi\), violating test independence and order-invariance.</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Non-False-Positive Guarantee of Exception Assertions</span>
+            <p>Prove that <code>with pytest.raises(E): block</code> cannot pass if <code>block</code> terminates without raising an exception.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The context manager enters with <code>__enter__</code>. If the guarded body finishes without an exception, <code>__exit__(None, None, None)</code> is called. In this exit handler, because the received exception argument is <code>None</code>, the context manager explicitly raises <code>Failed: DID NOT RAISE &lt;class E&gt;</code>, failing the test. Hence, zero unraised executions can pass.</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · AST Assertion Rewriting Transparency</span>
+            <p>Prove that pytest's assertion rewriting preserves the original boolean evaluation semantics of the assertion expression.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>During test module import, pytest's import hook intercepts the AST. For any <code>Assert(test, msg)</code> node, it replaces the node with an expression that evaluates each sub-expression of <code>test</code> into temporary variables, evaluates the boolean condition, and constructs an explanatory string only if the condition evaluates to falsy. Because sub-expressions are evaluated in standard left-to-right short-circuiting order, side-effects and boolean results remain identical to un-rewritten execution.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Measuring Test Suite Execution Time</span>
+            <p>Execute pytest with the <code>--durations=5</code> flag on a numerical test suite to identify the five slowest test cases.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Running <code>pytest --durations=5</code> profiles each test execution, printing a breakdown of the slowest setup, call, and teardown durations. In fast quantitative unit test suites, individual unit tests should finish in under 10 milliseconds, keeping total suite execution under a few seconds.</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Seed-Based Deterministic Test Generation</span>
+            <p>Construct a test generator that runs a returns invariant test across 50 consecutive seeds (0 to 49) and confirm all 50 seeds pass.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Use a loop or parameterized fixture over <code>range(50)</code>. For each seed, invoke <code>make_instance(seed)</code> to obtain a reproducible price series, compute simple and log returns, and assert the invariant <code>math.isclose(ell[t], math.log(1 + r[t]), rel_tol=1e-12)</code>. All 50 runs pass with zero failures.</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · Mutation Testing Concepts</span>
+            <p>Deliberately introduce an off-by-one bug into a return calculation function (computing <code>P[t] / P[t] - 1</code>) and observe which unit test detects it.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The mutated function returns all zeros (since \(P_t / P_t - 1 = 0\)). The unit test checking return values against expected reference prices immediately catches the defect, raising <code>AssertionError: simple_return mismatch at index 0: got 0.0, expected 0.025</code>, killing the mutant.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Test-Driven Development (TDD) in Quantitative Research</span>
+            <p>Analyze how writing unit tests before implementation impacts mathematical correctness and algorithmic clarity in financial modeling.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>TDD forces the researcher to define exact mathematical specifications, domain boundaries, error behaviors, and precision requirements before writing production code. This prevents ambiguous function contracts, clarifies edge cases (empty data, zero prices), and creates an instant regression harness that supports confident refactoring and optimization.</p>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Property-Based Testing vs. Example-Based Testing</span>
+            <p>Compare traditional example-based unit testing with property-based testing (using libraries like Hypothesis) for pricing engines.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Example-based testing asserts known answers on hand-crafted price paths (e.g. 100 to 105). Property-based testing generates thousands of pseudo-random price paths across extreme values (huge magnitudes, tiny fractions, infinite precision), asserting invariant laws (such as put-call parity or return additivity). Property-based testing excels at uncovering corner-case numeric underflow or division-by-zero vulnerabilities.</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Mocking and Isolation in Execution Venues</span>
+            <p>Evaluate the risks of over-mocking exchange APIs during quantitative integration testing.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Mocking external order gateways isolates units from network dependencies during unit testing. However, if mock behavior diverges from real exchange matching engines (e.g. failing to model order rejection latency, partial fills, or race conditions), the unit test suite can pass completely while the live strategy fails catastrophic execution checks. End-to-end integration tests on recorded market feeds are essential.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s5"><span class="section-number">5</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Unit test definition and pytest test execution</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="psfndpython" data-locator="Section 7.3 The assert statement">PSF Language Reference, §7.3</span></td>
+              </tr>
+              <tr>
+                <td>Assertion invalidation invariant</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 1.1</td>
+              </tr>
+              <tr>
+                <td>Test independence invariant across execution permutations</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Problem P1</td>
+              </tr>
+              <tr>
+                <td>Unit tests catch regressions during refactoring</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td><span class="claim" data-grade="A" data-cite="ramalho2021fluent" data-locator="Chapter 13 Interfaces, Protocols, and ABCs">Ramalho (2021), Ch. 13</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS1" data-page="L06" data-cards="cards.json">
+        <h2 id="s6"><span class="section-number">6</span>Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What prefix must test functions have for pytest to automatically discover and run them?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q1"> <span>test_</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>check_</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>assert_</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>run_</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>By default, pytest discovers all functions with the <code>test_</code> prefix in files matching <code>test_*.py</code>.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does pytest verify that an expression evaluates to True inside a test function?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q2"> <span>Using standard Python assert statements</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>Using self.assertTrue() only</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>By checking the function's return boolean</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>pytest rewrites plain <code>assert</code> statements at import time to provide rich failure diffs without boilerplate methods.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which context manager is used in pytest to assert that a block of code raises a specific exception?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q3"> <span>pytest.raises</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>pytest.catches</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>pytest.expect_error</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>pytest.trap</span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>pytest.raises(ExceptionClass)</code> asserts that the enclosed block raises the specified exception type.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why should financial float equality assertions use math.isclose rather than ==?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q4"> <span>Floating-point rounding errors in least significant bits can cause mathematically equal values to differ slightly</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>== is deprecated for floats in Python 3.14</span></label>
+              <label class="option"><input type="radio" name="L06q4"> <span>math.isclose runs in compiled C and is 100x faster</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>IEEE 754 floating point arithmetic introduces minor binary rounding differences, necessitating tolerance-based comparisons.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What decorator enables running a single test function across multiple test input sets in pytest?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q5"> <span>@pytest.mark.parametrize</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>@pytest.fixture</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>@pytest.repeat</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>@pytest.sweep</span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>@pytest.mark.parametrize</code> executes the decorated test once for each item in the provided collection.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens if a test wrapped in <code>with pytest.raises(ValueError):</code> executes without raising any exception?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q6"> <span>The test fails immediately with a Failed exception</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>The test passes silently</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>A warning is printed to stderr</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>If the expected exception is not raised, <code>pytest.raises</code> raises a failure exception because the expected error was not observed.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0" data-tolerance="0">
+            <p class="prompt">If a test function executes five assertions and all five evaluate to True, how many unhandled exceptions are raised?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>A successful assertion evaluates quietly without raising an exception, so exactly 0 exceptions are raised.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What pytest command-line flag stops test execution immediately upon the first failure?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q8"> <span>-x</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>-q</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>-s</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>-v</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The <code>-x</code> flag tells pytest to exit immediately on first test failure.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s7"><span class="section-number">7</span>References</h2>
+        <ol data-references>
+          <li data-cite="psfndpython"></li>
+          <li data-cite="ramalho2021fluent"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L05.html"><span class="dir">Previous</span>L05 Type Hints and Static Checking</a>
+        <a class="next" href="L07.html"><span class="dir">Next</span>L07 NumPy Arrays and Vectorization</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS1 · Programming in Python from Zero · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

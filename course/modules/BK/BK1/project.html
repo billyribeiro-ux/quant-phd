@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="BK1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · ALM Engine · BK1 Banking &amp; Asset-Liability Management</title>
+  <meta name="description" content="Independent project for BK1: Model a bank's repricing gaps, Economic Value of Equity (EVE), and Net Interest Income (NII) sensitivity under parallel and twist rate shocks, with deposit-beta assumptions made explicit and stress-tested. Deliverable: Tested model (alm.py) plus ALCO risk memo. 26 hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">BK1 Banking &amp; Asset-Liability Management</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="26">
+      <header class="page-head">
+        <p class="eyebrow">BK1 · Capstone Project · 26 study hours</p>
+        <h1>Asset-Liability Management (ALM) Engine</h1>
+        <p class="lede">Bank treasury and asset-liability management (ALM) committees require quantitative models to manage the dual risks of maturity transformation: short-term Net Interest Income (NII) volatility and long-term Economic Value of Equity (EVE) impairment. In this capstone project, you will build an enterprise ALM simulation engine (<code class="file">alm.py</code>) that computes multi-bucket repricing gaps, evaluates 12-month NII sensitivity, and values equity under parallel shifts and non-parallel yield curve twists, with retail deposit betas modeled explicitly. You will then author an executive Asset-Liability Committee (ALCO) risk memo (<code class="file">memo.md</code>) analyzing your balance sheet's vulnerability under monetary tightening.</p>
+        <ul class="meta-row">
+          <li><strong>Deliverables:</strong> <code class="file">alm.py</code> (evaluated by autograder across 50 seeds) and <code class="file">memo.md</code> (evaluated by 5-criterion rubric)</li>
+          <li><strong>Grading:</strong> Both (autograder and rubric)</li>
+          <li><strong>Allocation:</strong> 26 study hours (28.9% of module hours)</li>
+        </ul>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The Four-Rung Ladder</h2>
+        <ol class="ladder">
+          <li>
+            <span class="rung-title">Rung 1 · Worked example</span>
+            <p>A fully solved instance of the ALM engine on a 5-position SIMULATED banking book, calculating repricing gaps, 12-month NII sensitivity under +100 bp, and EVE change under parallel and twist shocks in exact integer cents.</p>
+          </li>
+          <li>
+            <span class="rung-title">Rung 2 · Completion problem</span>
+            <p>Complete the core NII tenor weighting arithmetic and deposit pass-through calculations in an interactive lab graded instantly in the browser.</p>
+          </li>
+          <li>
+            <span class="rung-title">Rung 3 · Independent project</span>
+            <p>Implement the full specification in <code class="file">alm.py</code>, passing all invariants across 50 random seeds, and draft the executive ALCO risk memo <code class="file">memo.md</code>.</p>
+          </li>
+          <li>
+            <span class="rung-title">Rung 4 · Stretch extensions</span>
+            <p>Optionally extend your model to value non-maturity core deposits dynamically as interest rate swaptions, incorporating interest rate path simulation and non-linear deposit run-off models.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2>Rung 1 · Worked Example</h2>
+        <p>Consider a SIMULATED commercial bank with $270,000 in assets funded by $200,000 in liabilities and $70,000 in equity. The book comprises cash (non-rate-sensitive), floating loans repricing in 2 months, 5-year fixed loans, 6-month term CDs, 3-year term notes, and $100,000 in non-maturity core deposits with a deposit beta of 0.40 (4000 bp). All amounts are computed in integer cents without float rounding.</p>
+
+        <section class="lab" id="lab-BK1-project-1" data-runtime="python">
+          <h3>Lab Project-1 · Solved ALM Engine Instance</h3>
+          <p class="hypothesis">Computing the 5-bucket repricing gaps, 12-month NII sensitivity under a +100 bp parallel shock, and EVE impacts under parallel (+100 bp) and twist (+150/+50 bp) shocks on the 5-position SIMULATED book using exact fraction arithmetic.</p>
+          <pre><code class="language-python" data-run>"""Lab BK1-project-1: Rung 1 worked example — Asset-Liability Management (ALM) Engine.
+
+Demonstrates a fully solved, annotated evaluation of:
+1. Repricing gap analysis across 5 time buckets.
+2. 12-month Net Interest Income (NII) sensitivity to a +100 bp parallel shock.
+3. Economic Value of Equity (EVE) and Delta EVE under parallel (+100 bp) and twist (+150/+50 bp) shocks.
+
+Conventions:
+- All money amounts are integer cents.
+- Calculations use exact fractions and round half away from zero once at the end.
+- Positions with months=None are non-rate-sensitive, omitted from gap analysis and carried at face in EVE.
+- Core deposits are carried at face value in EVE and reprice with pass-through beta in NII.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from fractions import Fraction
+
+
+@dataclass(frozen=True)
+class Position:
+    cents: int
+    months: int | None
+    side: str
+
+
+@dataclass(frozen=True)
+class DepositBook:
+    cents: int
+    beta_bp: int
+
+
+@dataclass(frozen=True)
+class ParallelShift:
+    bp: int
+
+
+@dataclass(frozen=True)
+class TwistShift:
+    short_bp: int
+    long_bp: int
+
+
+def round_cents(f: Fraction) -&gt; int:
+    if f &gt;= 0:
+        return (f.numerator * 2 + f.denominator) // (f.denominator * 2)
+    else:
+        return -((-f.numerator * 2 + f.denominator) // (f.denominator * 2))
+
+
+def bucket_index(months: int) -&gt; int:
+    if months &lt;= 0:
+        raise ValueError("months must be positive")
+    if months &lt;= 3:
+        return 0
+    elif months &lt;= 6:
+        return 1
+    elif months &lt;= 12:
+        return 2
+    elif months &lt;= 60:
+        return 3
+    else:
+        return 4
+
+
+def repricing_gap(positions: list[Position]) -&gt; list[int]:
+    gaps_frac = [Fraction(0, 1) for _ in range(5)]
+    for p in positions:
+        if p.months is None:
+            continue
+        b = bucket_index(p.months)
+        if p.side == "asset":
+            gaps_frac[b] += Fraction(p.cents, 1)
+        else:
+            gaps_frac[b] -= Fraction(p.cents, 1)
+    return [round_cents(g) for g in gaps_frac]
+
+
+def nii_change_cents(positions: list[Position], deposits: DepositBook, shock_bp: int) -&gt; int:
+    delta_nii_frac = Fraction(0, 1)
+    shock_frac = Fraction(shock_bp, 10_000)
+
+    for p in positions:
+        if p.months is not None and 1 &lt;= p.months &lt;= 12:
+            weight = Fraction(12 - p.months, 12)
+            term = Fraction(p.cents, 1) * shock_frac * weight
+            if p.side == "asset":
+                delta_nii_frac += term
+            else:
+                delta_nii_frac -= term
+
+    beta_frac = Fraction(deposits.beta_bp, 10_000)
+    dep_expense = Fraction(deposits.cents, 1) * beta_frac * shock_frac
+    delta_nii_frac -= dep_expense
+    return round_cents(delta_nii_frac)
+
+
+def shift_at_month(m: int, shift: ParallelShift | TwistShift | None) -&gt; Fraction:
+    if shift is None:
+        return Fraction(0, 1)
+    if isinstance(shift, ParallelShift):
+        return Fraction(shift.bp, 1)
+    if isinstance(shift, TwistShift):
+        if m &lt;= 3:
+            return Fraction(shift.short_bp, 1)
+        if m &gt;= 120:
+            return Fraction(shift.long_bp, 1)
+        return Fraction(shift.short_bp, 1) + Fraction((shift.long_bp - shift.short_bp) * (m - 3), 117)
+    raise TypeError(f"Unknown shift: {shift}")
+
+
+def eve_cents(
+    positions: list[Position],
+    deposits: DepositBook,
+    base_rate_bp: int,
+    shift: ParallelShift | TwistShift | None = None,
+) -&gt; int:
+    eve_frac = Fraction(0, 1)
+    for p in positions:
+        if p.months is None:
+            pv = Fraction(p.cents, 1)
+        else:
+            s_bp = shift_at_month(p.months, shift)
+            effective_bp = Fraction(base_rate_bp, 1) + s_bp
+            denom = Fraction(120_000, 1) + effective_bp
+            df = (Fraction(120_000, 1) / denom) ** p.months
+            pv = Fraction(p.cents, 1) * df
+
+        if p.side == "asset":
+            eve_frac += pv
+        else:
+            eve_frac -= pv
+
+    eve_frac -= Fraction(deposits.cents, 1)
+    return round_cents(eve_frac)
+
+
+def delta_eve_cents(
+    positions: list[Position],
+    deposits: DepositBook,
+    base_rate_bp: int,
+    shift: ParallelShift | TwistShift,
+) -&gt; int:
+    return eve_cents(positions, deposits, base_rate_bp, shift) - eve_cents(
+        positions, deposits, base_rate_bp, ParallelShift(0)
+    )
+
+
+def main() -&gt; None:
+    # 5-position SIMULATED banking book (cents)
+    positions = [
+        Position(2_000_000, None, "asset"),  # $20,000 cash (face)
+        Position(5_000_000, 2, "asset"),  # $50,000 loan (2m, bucket 0)
+        Position(15_000_000, 60, "asset"),  # $150,000 loan (60m, bucket 3)
+        Position(4_000_000, 6, "liability"),  # $40,000 CD (6m, bucket 1)
+        Position(6_000_000, 36, "liability"),  # $60,000 note (36m, bucket 3)
+    ]
+    deposits = DepositBook(cents=10_000_000, beta_bp=4000)  # $100,000 deposits, beta=0.40
+    base_rate_bp = 300  # 3.00%
+    shock_bp = 100  # +100 bp parallel shock
+    twist = TwistShift(short_bp=150, long_bp=50)
+
+    print("A. Repricing Gap by Bucket (SIMULATED, in cents)")
+    gaps = repricing_gap(positions)
+    labels = ["0-3m", "3-6m", "6-12m", "1-5y", "&gt;5y"]
+    for idx, (label, g) in enumerate(zip(labels, gaps, strict=False)):
+        print(f"Bucket {idx} ({label:5s}): {g:+10d} cents")
+
+    print()
+    print("B. 12-Month Net Interest Income Sensitivity")
+    nii_delta = nii_change_cents(positions, deposits, shock_bp)
+    print(f"12-Month NII Change for +{shock_bp} bp shock: {nii_delta:+8d} cents")
+
+    print()
+    print("C. Economic Value of Equity (EVE)")
+    base_eve = eve_cents(positions, deposits, base_rate_bp, None)
+    par_delta = delta_eve_cents(positions, deposits, base_rate_bp, ParallelShift(shock_bp))
+    twist_delta = delta_eve_cents(positions, deposits, base_rate_bp, twist)
+
+    print(f"Base EVE (300 bp rate):             {base_eve:10d} cents")
+    print(f"Delta EVE Parallel (+100 bp):       {par_delta:+10d} cents")
+    print(f"Delta EVE Twist (+150/+50 bp):      {twist_delta:+10d} cents")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">A. Repricing Gap by Bucket (SIMULATED, in cents)
+Bucket 0 (0-3m ):   +5000000 cents
+Bucket 1 (3-6m ):   -4000000 cents
+Bucket 2 (6-12m):         +0 cents
+Bucket 3 (1-5y ):   +9000000 cents
+Bucket 4 (&gt;5y  ):         +0 cents
+
+B. 12-Month Net Interest Income Sensitivity
+12-Month NII Change for +100 bp shock:   -18333 cents
+
+C. Economic Value of Equity (EVE)
+Base EVE (300 bp rate):                 463405 cents
+Delta EVE Parallel (+100 bp):          -455036 cents
+Delta EVE Twist (+150/+50 bp):         -423179 cents</pre>
+          <p class="interpretation">The engine determines that the bank holds a positive short-term repricing gap in Bucket 0 (+5,000,000 cents) and a negative gap in Bucket 1 (-4,000,000 cents). Over the 12-month horizon, the +100 bp parallel shock reduces NII by 18,333 cents due to deposit rate pass-through outstripping net asset repricing. EVE decreases by 455,036 cents under the parallel shock and by 423,179 cents under the twist shock, illustrating that long-duration fixed assets suffer capital losses when discount rates rise.</p>
+        </section>
+      </section>
+
+      <section id="rung-2">
+        <h2>Rung 2 · Completion Problem</h2>
+        <p>In this exercise, implement the core NII sensitivity formula. For each rate-sensitive position repricing at month \(m \le 12\), the interest rate change applies for the fraction of the year remaining: \(\frac{12 - m}{12}\). Non-maturity deposits reprice immediately according to their deposit beta: \(\Delta \mathrm{IE}_{\text{dep}} = \text{deposits} \times \beta \times \Delta r\). Complete the missing lines marked <code>___</code> below.</p>
+
+        <section class="lab completion" id="lab-BK1-project-2" data-runtime="python">
+          <h3>Lab Project-2 · NII Sensitivity Implementation</h3>
+          <p class="hypothesis">Completing the time-weighted repricing formula and deposit pass-through expense yields an exact NII change of +5,000 cents on the test instance.</p>
+          <pre><code class="language-python" data-run>"""Lab BK1-project-2: Rung 2 completion problem — NII weighting and deposit pass-through.
+
+Complete the implementation of 12-month Net Interest Income sensitivity:
+1. Weight each position repricing at month m <= 12 by (12 - m) / 12.
+2. Incorporate deposit beta pass-through into deposit interest expense.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from fractions import Fraction
+
+
+@dataclass(frozen=True)
+class Position:
+    cents: int
+    months: int | None
+    side: str
+
+
+@dataclass(frozen=True)
+class DepositBook:
+    cents: int
+    beta_bp: int
+
+
+def round_cents(f: Fraction) -> int:
+    if f >= 0:
+        return (f.numerator * 2 + f.denominator) // (f.denominator * 2)
+    else:
+        return -((-f.numerator * 2 + f.denominator) // (f.denominator * 2))
+
+
+def nii_change_cents(positions: list[Position], deposits: DepositBook, shock_bp: int) -> int:
+    delta_nii_frac = Fraction(0, 1)
+    shock_frac = Fraction(shock_bp, 10_000)
+
+    for p in positions:
+        if p.months is not None and 1 <= p.months <= 12:
+            weight = Fraction(12 - p.months, ___)
+            term = Fraction(p.cents, 1) * shock_frac * weight
+            if p.side == "asset":
+                delta_nii_frac += term
+            else:
+                delta_nii_frac -= term
+
+    beta_frac = Fraction(deposits.beta_bp, 10_000)
+    dep_expense = Fraction(deposits.cents, 1) * ___ * shock_frac
+    delta_nii_frac -= dep_expense
+    return round_cents(delta_nii_frac)
+
+
+def main() -> None:
+    # 3-position test instance (cents)
+    positions = [
+        Position(10_000_000, 3, "asset"),  # Reprices at m=3, weight (12-3)/12 = 9/12
+        Position(6_000_000, 6, "liability"),  # Reprices at m=6, weight (12-6)/12 = 6/12
+    ]
+    deposits = DepositBook(cents=8_000_000, beta_bp=5000)  # beta = 0.50
+    shock_bp = 100  # +100 bp (0.01)
+
+    # Asset gain: 10,000,000 * 0.01 * (9/12) = +75,000
+    # Liability expense: 6,000,000 * 0.01 * (6/12) = +30,000
+    # Deposit expense: 8,000,000 * 0.5 * 0.01 = +40,000
+    # Net NII change: +75,000 - 30,000 - 40,000 = +5,000 cents
+    result = nii_change_cents(positions, deposits, shock_bp)
+    print("A. Completion Check: 12-Month Net Interest Income Sensitivity")
+    print(f"Computed NII change: {result:+6d} cents")
+    print(f"Matches theoretical closed-form (+5000 cents): {result == 5000}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">A. Completion Check: 12-Month Net Interest Income Sensitivity
+Computed NII change:  +5000 cents
+Matches theoretical closed-form (+5000 cents): True</pre>
+          <p class="interpretation">With the horizon denominator 12 and deposit beta fraction correctly inserted, the completion solution matches the hand-calculated NII change of +5,000 cents exactly.</p>
+        </section>
+      </section>
+
+      <section id="rung-3">
+        <h2>Rung 3 · Independent Project Specification</h2>
+
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>The Asset-Liability Committee (ALCO) of a commercial bank requires an institutional-grade risk engine to model the balance sheet's vulnerability to rate shifts. Your deliverable informs executive decisions on liquidity buffers, wholesale debt issuance, and interest rate hedging.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A deterministic SIMULATED balance sheet generated by <code>grader/instance.py::make_instance(seed)</code>, containing:
+            <ul>
+              <li><code>positions</code>: list of dicts with keys <code>cents</code> (int &ge; 0), <code>months</code> (int &ge; 1 or None), and <code>side</code> ("asset" or "liability").</li>
+              <li><code>deposits_cents</code>: integer cents &ge; 0 of core non-maturity deposits.</li>
+              <li><code>beta_bp</code>: deposit pass-through beta in basis points [0, 10000].</li>
+              <li><code>base_rate_bp</code>: base market interest rate in basis points &ge; 0.</li>
+              <li><code>shock_bp</code>: parallel shock size in basis points.</li>
+              <li><code>twist_short_bp</code> and <code>twist_long_bp</code>: short (m &le; 3) and long (m &ge; 120) rate shifts in basis points.</li>
+            </ul>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            Two deliverables:
+            <ol>
+              <li><code class="file">alm.py</code>: Fully tested Python module exposing frozen dataclasses <code>Position</code>, <code>DepositBook</code>, <code>ParallelShift</code>, <code>TwistShift</code>, and functions <code>bucket_index(months)</code>, <code>repricing_gap(positions)</code>, <code>nii_change_cents(positions, deposits, shock_bp)</code>, <code>eve_cents(positions, deposits, base_rate_bp, shift)</code>, and <code>delta_eve_cents(positions, deposits, base_rate_bp, shift)</code>.</li>
+              <li><code class="file">memo.md</code>: Executive ALCO risk memo covering (1) Repricing Gap Diagnosis, (2) NII Sensitivity Analysis, (3) EVE Valuation under Stress, (4) Deposit Beta Sensitivity, and (5) Model Limitations &amp; Hedging Recommendations.</li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ul>
+              <li>All money calculations must be exact in <code>fractions.Fraction</code> and rounded once half away from zero to integer cents.</li>
+              <li>Time buckets are strictly bounded: 0: 0 &lt; m &le; 3; 1: 3 &lt; m &le; 6; 2: 6 &lt; m &le; 12; 3: 12 &lt; m &le; 60; 4: m &gt; 60.</li>
+              <li>Discount factor convention: monthly compounding \(DF(m) = (1 + r(m)/12)^{-m}\) where \(r(m) = \frac{\text{base\_rate\_bp} + \text{shift}(m)}{10000}\).</li>
+              <li>Standard library only: no external packages (NumPy, pandas) permitted.</li>
+            </ul>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>This project is graded by both an autograder (evaluating <code class="file">alm.py</code> against algebraic invariants across 50 random seeds) and a rubric (evaluating <code class="file">memo.md</code> across 5 observable criteria at 4 performance levels).</dd>
+
+          <dt>Reading list</dt>
+          <dd>
+            <ol class="reading-list">
+              <li data-cite="diamond1984financial">Diamond (1984), "Financial Intermediation and Delegated Monitoring", Review of Economic Studies.</li>
+              <li data-cite="drechsler2017deposits">Drechsler, Savov &amp; Schnabl (2017), "The Deposits Channel of Monetary Policy", Quarterly Journal of Economics.</li>
+              <li data-cite="drechsler2021banking">Drechsler, Savov &amp; Schnabl (2021), "Banking on Deposits: Maturity Transformation without Interest Rate Risk", Journal of Finance.</li>
+              <li data-cite="jiang2024monetary">Jiang, Matvos, Piskorski &amp; Seru (2024), "Monetary Tightening and U.S. Bank Fragility in 2023: Mark-to-Market Losses and Uninsured Depositor Runs?", Journal of Financial Economics.</li>
+              <li data-cite="bisndbasel">Basel Committee on Banking Supervision, "Basel III: International Regulatory Framework for Banks", Bank for International Settlements.</li>
+            </ol>
+          </dd>
+        </dl>
+
+        <section class="grader-panel" id="grader" data-unit="BK1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="alm.py" data-starter="starter.py" data-packages="">
+          <h3>Automated Test Suite</h3>
+          <p>The test suite <code class="file">test_project.py</code> verifies algebraic invariants, bucket edge boundaries, zero-shock identities, monotonicity of EVE losses under duration mismatch, and deposit-beta sensitivity bounds across 50 random seeds.</p>
+        </section>
+
+        <section class="lab" id="lab-BK1-project-3" data-runtime="python">
+          <h3>Lab Project-3 · Reference Output on Seed 0</h3>
+          <p class="hypothesis">Running the reference ALM engine on the deterministic seed 0 SIMULATED balance sheet verifies repricing gaps, NII sensitivity, and EVE changes.</p>
+          <pre><code class="language-python" data-run>"""Lab BK1-project-3: Rung 3 independent project check — ALM Engine on Seed 0.
+
+Evaluates the deterministic SIMULATED bank balance sheet generated for seed 0:
+- Repricing gaps across 5 buckets
+- 12-month NII sensitivity under a parallel shock
+- Economic Value of Equity (EVE) and Delta EVE under parallel and twist shocks
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from fractions import Fraction
+
+
+@dataclass(frozen=True)
+class Position:
+    cents: int
+    months: int | None
+    side: str
+
+
+@dataclass(frozen=True)
+class DepositBook:
+    cents: int
+    beta_bp: int
+
+
+@dataclass(frozen=True)
+class ParallelShift:
+    bp: int
+
+
+@dataclass(frozen=True)
+class TwistShift:
+    short_bp: int
+    long_bp: int
+
+
+def round_cents(f: Fraction) -&gt; int:
+    if f &gt;= 0:
+        return (f.numerator * 2 + f.denominator) // (f.denominator * 2)
+    else:
+        return -((-f.numerator * 2 + f.denominator) // (f.denominator * 2))
+
+
+def bucket_index(months: int) -&gt; int:
+    if months &lt;= 0:
+        raise ValueError("months must be positive")
+    if months &lt;= 3:
+        return 0
+    elif months &lt;= 6:
+        return 1
+    elif months &lt;= 12:
+        return 2
+    elif months &lt;= 60:
+        return 3
+    else:
+        return 4
+
+
+def repricing_gap(positions: list[Position]) -&gt; list[int]:
+    gaps_frac = [Fraction(0, 1) for _ in range(5)]
+    for p in positions:
+        if p.months is None:
+            continue
+        b = bucket_index(p.months)
+        if p.side == "asset":
+            gaps_frac[b] += Fraction(p.cents, 1)
+        else:
+            gaps_frac[b] -= Fraction(p.cents, 1)
+    return [round_cents(g) for g in gaps_frac]
+
+
+def nii_change_cents(positions: list[Position], deposits: DepositBook, shock_bp: int) -&gt; int:
+    delta_nii_frac = Fraction(0, 1)
+    shock_frac = Fraction(shock_bp, 10_000)
+
+    for p in positions:
+        if p.months is not None and 1 &lt;= p.months &lt;= 12:
+            weight = Fraction(12 - p.months, 12)
+            term = Fraction(p.cents, 1) * shock_frac * weight
+            if p.side == "asset":
+                delta_nii_frac += term
+            else:
+                delta_nii_frac -= term
+
+    beta_frac = Fraction(deposits.beta_bp, 10_000)
+    dep_expense = Fraction(deposits.cents, 1) * beta_frac * shock_frac
+    delta_nii_frac -= dep_expense
+    return round_cents(delta_nii_frac)
+
+
+def shift_at_month(m: int, shift: ParallelShift | TwistShift | None) -&gt; Fraction:
+    if shift is None:
+        return Fraction(0, 1)
+    if isinstance(shift, ParallelShift):
+        return Fraction(shift.bp, 1)
+    if isinstance(shift, TwistShift):
+        if m &lt;= 3:
+            return Fraction(shift.short_bp, 1)
+        if m &gt;= 120:
+            return Fraction(shift.long_bp, 1)
+        return Fraction(shift.short_bp, 1) + Fraction(
+            (shift.long_bp - shift.short_bp) * (m - 3), 117
+        )
+    raise TypeError(f"Unknown shift: {shift}")
+
+
+def eve_cents(
+    positions: list[Position],
+    deposits: DepositBook,
+    base_rate_bp: int,
+    shift: ParallelShift | TwistShift | None = None,
+) -&gt; int:
+    eve_frac = Fraction(0, 1)
+    for p in positions:
+        if p.months is None:
+            pv = Fraction(p.cents, 1)
+        else:
+            s_bp = shift_at_month(p.months, shift)
+            effective_bp = Fraction(base_rate_bp, 1) + s_bp
+            denom = Fraction(120_000, 1) + effective_bp
+            df = (Fraction(120_000, 1) / denom) ** p.months
+            pv = Fraction(p.cents, 1) * df
+
+        if p.side == "asset":
+            eve_frac += pv
+        else:
+            eve_frac -= pv
+
+    eve_frac -= Fraction(deposits.cents, 1)
+    return round_cents(eve_frac)
+
+
+def delta_eve_cents(
+    positions: list[Position],
+    deposits: DepositBook,
+    base_rate_bp: int,
+    shift: ParallelShift | TwistShift,
+) -&gt; int:
+    return eve_cents(positions, deposits, base_rate_bp, shift) - eve_cents(
+        positions, deposits, base_rate_bp, ParallelShift(0)
+    )
+
+
+def main() -&gt; None:
+    # Seed 0 generated instance parameters
+    positions = [
+        Position(5_685_921, None, "asset"),
+        Position(16_390_521, 2, "asset"),
+        Position(30_117_888, 8, "asset"),
+        Position(75_968_631, 60, "asset"),
+        Position(16_326_909, 4, "liability"),
+        Position(11_017_530, 18, "liability"),
+    ]
+    deposits = DepositBook(cents=80_347_599, beta_bp=3500)
+    base_rate_bp = 517
+    shock_bp = 150
+    twist = TwistShift(short_bp=227, long_bp=52)
+
+    print("A. Seed 0 ALM Simulation Outputs (SIMULATED, in cents)")
+    gaps = repricing_gap(positions)
+    print(f"Bucket Gaps [0..4]: {gaps}")
+
+    nii_delta = nii_change_cents(positions, deposits, shock_bp)
+    print(f"12-Month NII Change (+{shock_bp} bp): {nii_delta:+10d} cents")
+
+    eve_base = eve_cents(positions, deposits, base_rate_bp, None)
+    par_delta = delta_eve_cents(positions, deposits, base_rate_bp, ParallelShift(shock_bp))
+    twist_delta = delta_eve_cents(positions, deposits, base_rate_bp, twist)
+
+    print(f"Base EVE:                          {eve_base:10d} cents")
+    print(f"Delta EVE (Parallel +{shock_bp} bp):       {par_delta:+10d} cents")
+    print(f"Delta EVE (Twist +227/+52 bp):      {twist_delta:+10d} cents")
+
+    # Invariants
+    total_rs = sum(p.cents for p in positions if p.months is not None and p.side == "asset") - sum(
+        p.cents for p in positions if p.months is not None and p.side == "liability"
+    )
+    print(f"Gap identity holds for seed 0: {sum(gaps) == total_rs}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">A. Seed 0 ALM Simulation Outputs (SIMULATED, in cents)
+Bucket Gaps [0..4]: [16390521, -16326909, 30117888, 64951101, 0]
+12-Month NII Change (+150 bp):    -229623 cents
+Base EVE:                             3138774 cents
+Delta EVE (Parallel +150 bp):         -4244220 cents
+Delta EVE (Twist +227/+52 bp):        -4052512 cents
+Gap identity holds for seed 0: True</pre>
+          <p class="interpretation">The reference implementation produces consistent integer cents outputs across all metrics on seed 0, satisfying the repricing gap summation identity.</p>
+        </section>
+      </section>
+
+      <section id="time-budget">
+        <h2>Time Budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr><th>Component</th><th>Hours</th><th>Rationale</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Rung 1 worked example analysis</td><td>2</td><td>Walk through 5-position SIMULATED book and verify unrounded Fraction steps</td></tr>
+              <tr><td>Rung 2 completion problem</td><td>2</td><td>Implement NII weighting formula and verify instant completion checks</td></tr>
+              <tr><td>Repricing gap module</td><td>4</td><td>Implement bucket_index and repricing_gap with boundary tests and summation invariant</td></tr>
+              <tr><td>Net Interest Income sensitivity</td><td>4</td><td>Implement nii_change_cents and verify deposit beta pass-through monotonicity</td></tr>
+              <tr><td>Economic Value of Equity engine</td><td>5</td><td>Implement monthly compounding discounting, ParallelShift, and TwistShift interpolation</td></tr>
+              <tr><td>Test suite validation across seeds</td><td>3</td><td>Run pytest suite locally across 50 seeds, checking determinism and exception handling</td></tr>
+              <tr><td>Executive ALCO memo authoring</td><td>4</td><td>Draft 5-section memo with quantitative tables, beta sensitivity, and model limitations</td></tr>
+              <tr><td>Rubric self-assessment and calibration</td><td>2</td><td>Score memo against rubric criteria and calibrate against annotated exemplars</td></tr>
+              <tr><td>Total</td><td>26</td><td>Sums to declared 26 project hours</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="rubric-section">
+        <h2>Rubric for Executive ALCO Memo</h2>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <thead>
+              <tr>
+                <th>Criterion</th>
+                <th>Level 4 · Exemplary</th>
+                <th>Level 3 · Proficient</th>
+                <th>Level 2 · Developing</th>
+                <th>Level 1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>Repricing Gap Schedule</th>
+                <td>Reports all 5 bucket gaps in exact cents from the engine, explicitly identifies the boundary rule (e.g., m=3, m=6, m=12), and proves that the periodic gaps sum to total RSA minus RSL.</td>
+                <td>Reports the 5 bucket gaps in dollars with minor rounding notes and calculates the cumulative gap correctly.</td>
+                <td>Presents a partial gap schedule with missing bucket boundaries or unverified totals.</td>
+                <td>Discusses gap concepts qualitatively without reporting specific bucket amounts from the model.</td>
+              </tr>
+              <tr>
+                <th>NII Sensitivity &amp; Deposit Beta</th>
+                <td>Quantifies 12-month NII change across at least three deposit betas (e.g. 0.20, 0.50, 0.80), proves exact linearity in beta, and identifies the break-even beta where NII sensitivity flips sign.</td>
+                <td>Calculates NII sensitivity for two deposit betas and notes that higher beta increases liability interest expense.</td>
+                <td>Computes NII change for only a single deposit beta without sensitivity analysis.</td>
+                <td>Discusses deposit costs qualitatively without reporting computed NII dollar changes.</td>
+              </tr>
+              <tr>
+                <th>EVE Valuation &amp; Shocks</th>
+                <td>Reports base EVE and delta EVE in exact cents for both parallel (+100, +200 bp) and twist shocks, explains why TwistShift(s, s) equals ParallelShift(s), and analyzes duration mismatch.</td>
+                <td>Reports EVE change for parallel and twist shocks in dollars and identifies that asset duration exceeds liability duration.</td>
+                <td>Calculates EVE change for only a parallel shock or omits the twist scenario.</td>
+                <td>Mentions equity market value changes without reporting quantitative EVE outputs.</td>
+              </tr>
+              <tr>
+                <th>Conventions &amp; Precision</th>
+                <td>Documents all modeling conventions explicitly: monthly compounding discounting, bullet cash flows, face valuation of deposits, and unrounded Fraction arithmetic rounded once to cents.</td>
+                <td>Notes monthly compounding and cent rounding with minor ambiguities in intermediate precision.</td>
+                <td>Uses floating-point dollar amounts with rounding discrepancies across tables.</td>
+                <td>Reports rounded figures without stating discounting or rounding conventions.</td>
+              </tr>
+              <tr>
+                <th>Limitations &amp; Counter-Evidence</th>
+                <td>Critiques model limitations (static book, constant beta, absence of loan prepayment/deposit runs) and contrasts the deposit franchise hedge (Drechsler et al. 2017, 2021) with run fragility (Jiang et al. 2024).</td>
+                <td>Names two model limitations and mentions that uninsured deposit runs can erode the deposit franchise.</td>
+                <td>Mentions general caveats without citing empirical banking literature or SVB-style run risks.</td>
+                <td>Presents model outputs as unconstrained forecasts without noting assumptions or limitations.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="exemplar" data-level="4" id="exemplar-a">
+          <h3>Exemplar A · Level 4 (Exemplary Performance)</h3>
+          <div class="memo-content">
+            <h4>MEMORANDUM</h4>
+            <p><strong>TO:</strong> Asset-Liability Committee (ALCO)<br>
+            <strong>FROM:</strong> Senior Balance Sheet Risk Analyst<br>
+            <strong>DATE:</strong> October 24, 2026<br>
+            <strong>SUBJECT:</strong> Comprehensive Asset-Liability Risk Diagnosis: Seed 0 Balance Sheet</p>
+
+            <h5>1. Repricing Gap Schedule &amp; Structural Mismatch</h5>
+            <p>Analysis of our bank balance sheet (Seed 0, total assets of $128,162,961 cents) reveals a classic maturity transformation structure. Rate-sensitive assets and liabilities are distributed across the five standard regulatory repricing buckets:</p>
+            <ul>
+              <li><strong>Bucket 0 (0 &lt; m &le; 3 months):</strong> RSA = 16,390,521 cents; RSL = 0 cents; Periodic Gap \(G_0 = +16,390,521\) cents.</li>
+              <li><strong>Bucket 1 (3 &lt; m &le; 6 months):</strong> RSA = 0 cents; RSL = 16,326,909 cents; Periodic Gap \(G_1 = -16,326,909\) cents.</li>
+              <li><strong>Bucket 2 (6 &lt; m &le; 12 months):</strong> RSA = 30,117,888 cents; RSL = 0 cents; Periodic Gap \(G_2 = +30,117,888\) cents.</li>
+              <li><strong>Bucket 3 (12 &lt; m &le; 60 months):</strong> RSA = 75,968,631 cents; RSL = 11,017,530 cents; Periodic Gap \(G_3 = +64,951,101\) cents.</li>
+              <li><strong>Bucket 4 (m &gt; 60 months):</strong> RSA = 0 cents; RSL = 0 cents; Periodic Gap \(G_4 = 0\) cents.</li>
+            </ul>
+            <p>Summing periodic gaps across all buckets yields \(\sum_{b=0}^4 G_b = +95,132,601\) cents, which identically equals total RSA (122,477,040 cents) minus total RSL (27,344,439 cents), satisfying the repricing summation invariant. Cash (5,685,921 cents) carries <code>months=None</code> and is appropriately excluded from repricing gaps. The 1-year cumulative gap is \(CG_2 = G_0 + G_1 + G_2 = +30,181,500\) cents, indicating asset sensitivity over a 12-month horizon prior to deposit expense.</p>
+
+            <h5>2. Net Interest Income Sensitivity &amp; Deposit Beta Pass-Through</h5>
+            <p>Over a 12-month horizon, a parallel shock of +150 bp (+0.015) impacts asset income, liability expense, and deposit expense. Non-maturity core deposits total 80,347,599 cents. We stress-test 12-month NII sensitivity across deposit pass-through assumptions:</p>
+            <ul>
+              <li><strong>\(\beta = 0.00\) (0 bp):</strong> \(\Delta \mathrm{NII} = +192,202\) cents</li>
+              <li><strong>\(\beta = 0.35\) (3500 bp, Base Case):</strong> \(\Delta \mathrm{NII} = -229,623\) cents</li>
+              <li><strong>\(\beta = 0.50\) (5000 bp):</strong> \(\Delta \mathrm{NII} = -410,405\) cents</li>
+              <li><strong>\(\beta = 1.00\) (10000 bp):</strong> \(\Delta \mathrm{NII} = -1,013,012\) cents</li>
+            </ul>
+            <p>This confirms exact mathematical linearity: higher deposit beta increases interest expense proportionally. When deposit beta exceeds the break-even threshold of approximately 0.16, net interest income sensitivity turns negative because deposit repricing outstrips net earning asset repricing.</p>
+
+            <h5>3. Economic Value of Equity (EVE) Valuation under Rate Shocks</h5>
+            <p>Base EVE under monthly compounding at 5.17% (517 bp) is \(3,138,774\) cents. Subjecting the balance sheet to parallel and twist shocks reveals significant economic capital sensitivity:</p>
+            <ul>
+              <li><strong>Parallel +150 bp Shock:</strong> EVE = -1,105,446 cents (\(\Delta \mathrm{EVE} = -4,244,220\) cents)</li>
+              <li><strong>Twist Shock (+227 bp short / +52 bp long):</strong> EVE = -913,738 cents (\(\Delta \mathrm{EVE} = -4,052,512\) cents)</li>
+            </ul>
+            <p>Because the bank holds 75,968,631 cents of 5-year fixed loans with substantial duration, long-term asset value falls much more than short-term liabilities. Notice that <code>TwistShift(150, 150)</code> generates \(\Delta \mathrm{EVE} = -4,244,220\) cents, identical to <code>ParallelShift(150)</code>.</p>
+
+            <h5>4. Modeling Conventions &amp; Calculation Standards</h5>
+            <p>All values are evaluated in exact arithmetic using Python's <code>fractions.Fraction</code>. Intermediate figures are unrounded; final values are rounded once half away from zero to integer cents. Discount factors follow monthly compounding: \(DF(m) = (120,000 / (120,000 + r_m))^m\). Non-maturity deposits are carried at face value in EVE and reprice immediately in NII.</p>
+
+            <h5>5. Limitations, Literature Evidence &amp; Hedging Recommendations</h5>
+            <p>Our model assumes a static balance sheet without new originations or borrower prepayments. Drechsler, Savov &amp; Schnabl (2017, 2021) document that retail deposit market power typically limits beta to 0.30–0.50, partially insulating bank earnings. However, Jiang, Matvos, Piskorski &amp; Seru (2024) demonstrate that during severe tightening, uninsured depositors run when mark-to-market EVE losses threaten solvency, driving effective beta to 1.0. We recommend hedging 50% of the 5-year asset exposure using receive-floating interest rate swaps to stabilize EVE.</p>
+          </div>
+        </section>
+
+        <section class="exemplar" data-level="2" id="exemplar-b">
+          <h3>Exemplar B · Level 2 (Developing Performance)</h3>
+          <div class="memo-content">
+            <h4>MEMORANDUM</h4>
+            <p><strong>TO:</strong> ALCO<br>
+            <strong>FROM:</strong> Junior Analyst<br>
+            <strong>DATE:</strong> October 24, 2026<br>
+            <strong>SUBJECT:</strong> Bank ALM Report</p>
+
+            <h5>1. Repricing Gaps</h5>
+            <p>Our bank has assets and liabilities in different buckets. In the first bucket we have -$22,960. In the second bucket we have $0. In the third bucket we have $337,092. In the fourth bucket we have $489,048. The total gap is positive so we have more rate-sensitive assets than liabilities overall.</p>
+
+            <h5>2. NII Sensitivity</h5>
+            <p>For a +300 bp rate rise, Net Interest Income changes by -$14,322.86. Deposits cost us more money because the deposit beta is 75%, so when rates rise the interest expense goes up faster than our loans reprice. If beta were lower, the loss would be less.</p>
+
+            <h5>3. EVE Valuation</h5>
+            <p>Base EVE is $154,278.00. Under a +300 bp parallel shock, EVE falls by $71,080.32. Under the twist shock, EVE falls by $34,910.41. Equity loses value because long-term loans drop in value when discount rates increase.</p>
+
+            <h5>4. Conventions</h5>
+            <p>The numbers were rounded to the nearest dollar or cent from the Python model.</p>
+
+            <h5>5. Caveats</h5>
+            <p>The model assumes that loans do not prepay and that depositors do not leave the bank. In reality, depositors might withdraw their money if competitors offer higher rates.</p>
+          </div>
+        </section>
+      </section>
+
+      <section id="rung-4">
+        <h2>Rung 4 · Stretch Extensions</h2>
+        <p>In professional banking books, non-maturity deposits are not carried at face value in economic capital calculations; they possess a distinct <dfn>deposit franchise value</dfn> modeled as a portfolio of embedded swaptions. To extend your project:</p>
+        <ol>
+          <li><strong>Deposit Value Extension:</strong> Model deposit franchise value \(V_{\text{dep}} = \sum_{t=1}^H \frac{(1 - \beta) r_t D_t}{(1 + r_t)^t}\) across simulated rate paths, comparing total economic net worth with and without franchise capital.</li>
+          <li><strong>Dynamic Beta &amp; Run-Off:</strong> Implement a state-dependent beta function \(\beta(r) = \min(1.0, \beta_0 + \gamma \max(0, r - r^*))\) that accelerates pass-through as market rates exceed a threshold \(r^*\), simulating the depositor flight documented by Jiang et al. (2024).</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">BK1 · Banking &amp; Asset-Liability Management · Part of the doctoral-track program in finance, economics and quantitative markets.</footer>
+</body>
+</html>
