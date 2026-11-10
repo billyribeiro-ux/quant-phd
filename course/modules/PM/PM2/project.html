@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="PM2" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PM2 Project · Term-sheet economics</title>
+  <meta name="description" content="Model venture capital capitalization tables through three investment rounds with liquidation preferences, option pool shuffle mechanics, anti-dilution adjustments, and multi-tier exit waterfalls.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">PM2 Venture Capital</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="18">
+      <header class="page-head">
+        <p class="eyebrow">PM2 project · 18 hours · autograded</p>
+        <h1>Term-sheet economics</h1>
+        <p class="lede">Venture capital contracts allocate cash flow and control rights across sequential financing rounds using complex contractual mechanisms: pre-money option pool requirements, convertible preferred liquidation preferences, seniority structures, and down-round anti-dilution adjustments. In this capstone project, you construct a complete capitalization table progression through Series A, Series B, and Series C rounds, solve down-round conversion price revisions, and execute an equilibrium multi-tier exit waterfall across arbitrary liquidity exit valuations.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 introduce the option pool dilution algebra and down-round conversion price adjustments. Passing the hub placement diagnostic allows direct entry to Rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below executes a complete 3-round venture capital capitalization table, tracking founder dilution, option pool sizing, Series C down-round Broad-Based Weighted Average anti-dilution, and exit waterfall distributions across multiple liquidation valuations.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2 below provides a partial implementation where you complete the Broad-Based Weighted Average anti-dilution formula and the pro-rata residual proceeds sharing condition.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Implement the complete term-sheet modeling engine in <code>reference.py</code>, conforming to <a href="#spec">the specification</a>, and pass all 50 pseudo-random instance tests in <a href="#grader-section">the autograder suite</a>.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Extend the engine to price multi-round liquidation preferences as compound Black–Scholes option spreads and simulate secondary share sales with pay-to-play conversion penalties.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+
+        <section class="lab" id="lab-PM2-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: modeling cap table evolution and exit waterfalls</h3>
+          <p class="hypothesis">A SIMULATED venture progresses through three rounds: Series A ($5M on $15M pre, 15% post-closing option pool), Series B ($10M on $30M pre, 5% pool top-up), and Series C down-round ($15M on $25M pre, Broad-Based Weighted Average anti-dilution). Predicted values before running: Series A and B conversion prices drop below original issue prices, boosting conversion ratios, while total fully diluted shares exceed 38 million.</p>
+          <pre><code class="language-python" data-run>"""PM2 project lab 1 (rung 1, worked example): Term-sheet economics.
+
+SIMULATED: A complete 3-round capitalization table and exit waterfall calculation.
+Rounds:
+- Founding: 10,000,000 common shares held by founders.
+- Series A: $5.0M invested at $15.0M pre-money; 15% unallocated option pool created post-money.
+- Series B: $10.0M invested at $30.0M pre-money; 5% option pool top-up.
+- Series C (Down-Round): $15.0M invested at $25.0M pre-money; Broad-Based Weighted Average anti-dilution.
+
+Evaluates cap table share counts, conversion ratios, and exit waterfall payoffs at
+exit valuations of $10.0M (partial preference recovery), $30.0M (full preference recovery),
+and $100.0M (common conversion upside).
+Standard library and NumPy only; fully deterministic.
+"""
+
+from __future__ import annotations
+
+
+def main() -&gt; None:
+    founders_sh = 10_000_000.0
+
+    # 1. Series A Round ($5M on $15M pre -&gt; $20M post; 15% pool post-money)
+    pre_a = 15_000_000.0
+    inv_a = 5_000_000.0
+    post_a = pre_a + inv_a
+    pool_a_pct = 0.15
+
+    # Post-A shares = founders / (1 - inv/post - pool_pct)
+    tot_a = founders_sh / (1.0 - (inv_a / post_a) - pool_a_pct)
+    pool_a = pool_a_pct * tot_a
+    price_a = pre_a / (founders_sh + pool_a)
+    sh_a = inv_a / price_a
+    cp_a = price_a
+    cr_a = 1.0
+
+    # 2. Series B Round ($10M on $30M pre -&gt; $40M post; 5% pool top-up)
+    pre_b = 30_000_000.0
+    inv_b = 10_000_000.0
+    post_b = pre_b + inv_b
+    pool_b_pct = 0.05
+    prior_b = founders_sh + pool_a + sh_a
+    tot_b = prior_b / (1.0 - (inv_b / post_b) - pool_b_pct)
+    delta_pool_b = pool_b_pct * tot_b
+    pool_b = pool_a + delta_pool_b
+    price_b = pre_b / (prior_b + delta_pool_b)
+    sh_b = inv_b / price_b
+    cp_b = price_b
+    cr_b = 1.0
+
+    # 3. Series C Down-Round ($15M on $25M pre -&gt; $40M post; 0% pool top-up)
+    pre_c = 25_000_000.0
+    inv_c = 15_000_000.0
+    prior_c = founders_sh + pool_b + sh_a + sh_b
+    price_c = pre_c / prior_c
+    sh_c = inv_c / price_c
+
+    # Anti-dilution adjustment for Series A and Series B (price_c &lt; price_a and price_c &lt; price_b)
+    # Broad-based weighted average formula
+    # Series A:
+    hypo_a = inv_c / cp_a
+    cp_a = cp_a * (prior_c + hypo_a) / (prior_c + sh_c)
+    cr_a = price_a / cp_a
+
+    # Series B:
+    hypo_b = inv_c / cp_b
+    cp_b = cp_b * (prior_c + hypo_b) / (prior_c + sh_c)
+    cr_b = price_b / cp_b
+
+    tot_final = founders_sh + pool_b + sh_a + sh_b + sh_c
+
+    print("--- Capitalization Table Post-Series C ---")
+    print(f"Founders: {founders_sh:,.0f} shares ({founders_sh / tot_final * 100:.1f}%)")
+    print(f"Option Pool: {pool_b:,.0f} shares ({pool_b / tot_final * 100:.1f}%)")
+    print(f"Series A: {sh_a:,.0f} shares (Issue: ${price_a:.2f}, CR: {cr_a:.3f})")
+    print(f"Series B: {sh_b:,.0f} shares (Issue: ${price_b:.2f}, CR: {cr_b:.3f})")
+    print(f"Series C: {sh_c:,.0f} shares (Issue: ${price_c:.2f}, CR: 1.000)")
+    print(f"Total Fully Diluted Shares: {tot_final:,.0f}")
+
+    # 4. Exit Waterfall Payoffs (Standard Seniority: C &gt; B &gt; A &gt; Common)
+    # Liquidation preferences: C=$15M, B=$10M, A=$5M (Total pref = $30M)
+    print("\n--- Exit Waterfall Allocation (Standard Seniority: C &gt; B &gt; A &gt; Common) ---")
+    for ev in [10_000_000.0, 30_000_000.0, 100_000_000.0]:
+        # At $10M: C gets $10M, B=0, A=0, Common=0
+        # At $30M: C gets $15M, B gets $10M, A gets $5M, Common=0
+        # At $100M: Preferred holders convert to common since pro-rata shares exceed preferences
+        if ev &lt;= 15_000_000.0:
+            c_pay = ev
+            b_pay, a_pay, f_pay, opt_pay = 0.0, 0.0, 0.0, 0.0
+        elif ev &lt;= 25_000_000.0:
+            c_pay = 15_000_000.0
+            b_pay = ev - 15_000_000.0
+            a_pay, f_pay, opt_pay = 0.0, 0.0, 0.0
+        elif ev &lt;= 30_000_000.0:
+            c_pay = 15_000_000.0
+            b_pay = 10_000_000.0
+            a_pay = ev - 25_000_000.0
+            f_pay, opt_pay = 0.0, 0.0
+        else:
+            # At $100M: all convert to common at their adjusted conversion ratios
+            as_conv_sh = founders_sh + pool_b + (sh_a * cr_a) + (sh_b * cr_b) + sh_c
+            f_pay = ev * (founders_sh / as_conv_sh)
+            opt_pay = ev * (pool_b / as_conv_sh)
+            a_pay = ev * ((sh_a * cr_a) / as_conv_sh)
+            b_pay = ev * ((sh_b * cr_b) / as_conv_sh)
+            c_pay = ev * (sh_c / as_conv_sh)
+
+        print(
+            f"Exit ${ev / 1e6:.0f}M: C=${c_pay / 1e6:.2f}M | "
+            f"B=${b_pay / 1e6:.2f}M | A=${a_pay / 1e6:.2f}M | "
+            f"Founders=${f_pay / 1e6:.2f}M | Options=${opt_pay / 1e6:.2f}M"
+        )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">--- Capitalization Table Post-Series C ---
+Founders: 10,000,000 shares (26.2%)
+Option Pool: 3,690,476 shares (9.7%)
+Series A: 4,166,667 shares (Issue: $1.20, CR: 1.049)
+Series B: 5,952,381 shares (Issue: $1.68, CR: 1.164)
+Series C: 14,285,714 shares (Issue: $1.05, CR: 1.000)
+Total Fully Diluted Shares: 38,095,238
+
+--- Exit Waterfall Allocation (Standard Seniority: C &gt; B &gt; A &gt; Common) ---
+Exit $10M: C=$10.00M | B=$0.00M | A=$0.00M | Founders=$0.00M | Options=$0.00M
+Exit $30M: C=$15.00M | B=$10.00M | A=$5.00M | Founders=$0.00M | Options=$0.00M
+Exit $100M: C=$36.37M | B=$17.64M | A=$11.13M | Founders=$25.46M | Options=$9.40M</pre>
+          <p class="interpretation">The output demonstrates the protective power of Broad-Based Weighted Average anti-dilution: when Series C prices at a down-round ($1.05 versus $1.20 Series A and $1.68 Series B), Series A conversion ratio adjusts to 1.049 and Series B to 1.164. In the exit waterfall, standard seniority guarantees Series C full $15M preference before Series B receives capital, while at $100M exit, all preferred series convert to common equity to capture equity upside.</p>
+        </section>
+
+        <section class="lab completion" id="lab-PM2-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: down-round anti-dilution and residual waterfall allocation</h3>
+          <p class="hypothesis">Complete the four missing expressions: (1) hypothetical shares issuable at old conversion price, (2) adjusted conversion price under Broad-Based Weighted Average anti-dilution, (3) common founders payout from residual proceeds, and (4) converted preferred payout. When completed correctly, output matches the analytical benchmark below.</p>
+          <pre><code class="language-python" data-run>"""PM2 project lab 2 (rung 2, completion): Anti-dilution formula and residual allocation.
+
+SIMULATED: A Series B down-round anti-dilution calculation and residual waterfall allocation.
+Standard library, NumPy, and SciPy only; fully deterministic.
+"""
+
+from __future__ import annotations
+
+
+def main() -> None:
+    # 1. Broad-Based Weighted Average Anti-Dilution
+    old_conv_price = 2.00
+    down_issue_price = 1.00
+    investment_b = 6_000_000.0
+    fd_pre = 12_000_000.0  # Common + options + Series A pre-round
+
+    new_shares = investment_b / down_issue_price
+    hypothetical_shares = ___
+    adjusted_conv_price = ___
+    conversion_ratio = old_conv_price / adjusted_conv_price
+
+    print(f"Adjusted Conversion Price: ${adjusted_conv_price:.4f}")
+    print(f"Adjusted Conversion Ratio: {conversion_ratio:.4f}")
+
+    # 2. Exit Waterfall Residual Allocation
+    # Exit value = $60.0M. Total liquidation preference paid = $20.0M. Residual = $40.0M.
+    # Series A converts to common; Series B is non-participating and takes $10.0M preference.
+    residual_proceeds = 40_000_000.0
+    founders_shares = 8_000_000.0
+    options_shares = 2_000_000.0
+    series_a_shares = 2_500_000.0 * conversion_ratio
+
+    total_common_pool = founders_shares + options_shares + series_a_shares
+    payout_founders = ___
+    payout_series_a = ___
+
+    print(f"Founders Payout: ${payout_founders / 1e6:.2f}M")
+    print(f"Series A Payout (Converted): ${payout_series_a / 1e6:.2f}M")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Adjusted Conversion Price: $1.6667
+Adjusted Conversion Ratio: 1.2000
+Founders Payout: $24.62M
+Series A Payout (Converted): $9.23M</pre>
+          <p class="interpretation">The completed solution recovers the exact $1.6667 adjusted conversion price (CR = 1.2000) and executes the pro-rata residual division where $40M is shared among 13M common-equivalent shares.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec" style="overflow-wrap: anywhere; word-break: break-word;">
+          <dt>Context</dt>
+          <dd>A venture capital partnership leads a series of investments across three successive financing rounds (Series A, B, and C). The partnership must evaluate cap table dilution under option pool shuffle requirements, compute adjusted conversion prices under Broad-Based Weighted Average, Narrow-Based Weighted Average, or Full Ratchet anti-dilution, and model terminal proceeds across all stakeholder classes under standard and pari passu liquidation waterfalls.</dd>
+
+          <dt>Inputs</dt>
+          <dd>The instance generator <code>instance.make_instance(seed: int) -> dict[str, Any]</code> returns:
+            <ul>
+              <li><code>seed</code> (int): Pseudo-random generation seed.</li>
+              <li><code>founders_shares</code> (int): Initial common share count held by founders (e.g. 10,000,000).</li>
+              <li><code>seniority</code> (str): <code>"standard"</code> (chronological LIFO: C &gt; B &gt; A) or <code>"pari_passu"</code> (pro-rata sharing of preferences).</li>
+              <li><code>rounds</code> (list[dict[str, Any]]): 3 sequential round definitions (Series A, B, C) containing <code>pre_money</code>, <code>investment</code>, <code>pool_target</code>, <code>liquidation_multiple</code>, <code>participation</code> (<code>"non_participating"</code>, <code>"participating"</code>, or <code>"capped"</code>), <code>cap_multiple</code>, and <code>anti_dilution</code> (<code>"broad_based"</code>, <code>"narrow_based"</code>, or <code>"full_ratchet"</code>).</li>
+              <li><code>test_exit_values</code> (list[float]): Grid of company exit valuations from $0.0 to hundreds of millions.</li>
+            </ul>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>In <code>course/modules/PM/PM2/grader/reference.py</code>:
+            <ul>
+              <li><code>compute_anti_dilution_price(old_conv_price, new_issue_price, investment, fully_diluted_pre, common_preferred_pre, method) -> float</code>: Solves conversion price adjustments in down-rounds.</li>
+              <li><code>build_cap_table(instance: dict[str, Any]) -> dict[str, Any]</code>: Sizing option pools, issued shares, share prices, conversion prices, conversion ratios, and total fully diluted shares.</li>
+              <li><code>calculate_exit_waterfall(exit_value: float, cap_table: dict[str, Any], seniority: str) -> dict[str, float]</code>: Computes equilibrium cash distribution mapping <code>"founders"</code>, <code>"options"</code>, <code>"series_a"</code>, <code>"series_b"</code>, and <code>"series_c"</code>.</li>
+              <li><code>evaluate_term_sheet(instance: dict[str, Any]) -> dict[str, Any]</code>: Returns complete cap table dictionary and list of waterfall results across all test exit valuations.</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            Strict mathematical properties must hold for every instance:
+            <ul>
+              <li><strong>Conservation of Value:</strong> \(\sum_{k} \text{payoff}[k] = \text{exit\_value}\) for all exit values.</li>
+              <li><strong>Monotonicity:</strong> For every claimant \(k\), \(\text{payoff}_k(W_1) \le \text{payoff}_k(W_2)\) whenever \(W_1 \le W_2\).</li>
+              <li><strong>Non-negativity:</strong> \(\text{payoff}_k(W) \ge 0.0\) for all \(k\) and all \(W \ge 0\).</li>
+              <li><strong>Scale Invariance:</strong> Conversion prices and ratios are invariant to uniform scaling of share counts.</li>
+              <li><strong>Asymptotic Convergence:</strong> As \(W \to \infty\), all non-participating and capped preferred equity convert to common equity, earning strictly pro-rata proceeds.</li>
+            </ul>
+          </dd>
+
+          <dt>Grading mode</dt>
+          <dd>Autograded by test suite across 50 pseudo-random instance seeds, validating mathematical invariants, scale invariance, option pool shuffle identities, down-round anti-dilution adjustments, and multi-tier liquidation waterfall allocation.</dd>
+        </dl>
+      </section>
+
+      <section id="rubric">
+        <h2 id="h-rubric">Rubric criteria</h2>
+        <div class="table-wrap">
+          <table class="rubric">
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">Level 1 (Unacceptable)</th>
+                <th scope="col">Level 2 (Marginal)</th>
+                <th scope="col">Level 3 (Competent)</th>
+                <th scope="col">Level 4 (Exemplary)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>C1: Option pool shuffle</strong></td>
+                <td>Sizes option pool from pre-money common shares, violating the post-money dilution target.</td>
+                <td>Calculates option pool correctly for Series A but fails to compound unallocated top-ups in Series B/C.</td>
+                <td>Correctly solves post-money option pool shares and pre-money share price across all rounds.</td>
+                <td>Derives closed-form post-money share denominator, proving exact founder dilution and preserving share articulation.</td>
+              </tr>
+              <tr>
+                <td><strong>C2: Anti-dilution mechanics</strong></td>
+                <td>Fails to distinguish Broad-Based Weighted Average from Full Ratchet anti-dilution.</td>
+                <td>Adjusts conversion price on up-rounds or miscalculates hypothetical shares in weighted average formula.</td>
+                <td>Implements Broad-Based, Narrow-Based, and Full Ratchet anti-dilution satisfying the ordering hierarchy.</td>
+                <td>Implements exact anti-dilution conversion ratios, proving that Full Ratchet maximizes founder dilution while BBWA preserves common upside.</td>
+              </tr>
+              <tr>
+                <td><strong>C3: Waterfall seniority</strong></td>
+                <td>Allocates liquidation preferences in chronological order (FIFO) instead of LIFO seniority.</td>
+                <td>Implements LIFO seniority but fails to handle pari passu pro-rata scaling during capital deficits.</td>
+                <td>Correctly handles standard LIFO (Series C &gt; B &gt; A) and pari passu preference distributions.</td>
+                <td>Fully articulates seniority ordering across both regimes, proving zero leakage to junior claimants before senior claims clear.</td>
+              </tr>
+              <tr>
+                <td><strong>C4: Participation &amp; caps</strong></td>
+                <td>Treats all preferred equity as non-participating convertible preferred.</td>
+                <td>Fails to deduct initial liquidation preference when testing capped participation thresholds.</td>
+                <td>Correctly enforces participation caps and cascades unallocated residual funds to uncapped common claimants.</td>
+                <td>Implements exact iterative residual cap absorption, proving that capped preferred converts to pure common when pro-rata proceeds exceed the cap.</td>
+              </tr>
+              <tr>
+                <td><strong>C5: Equilibrium conversion</strong></td>
+                <td>Fails to evaluate rational conversion decisions, leaving preferred holders in fixed preference states.</td>
+                <td>Evaluates conversion sequentially rather than solving simultaneous game-theoretic equilibrium.</td>
+                <td>Evaluates all conversion configurations and identifies the stable Nash equilibrium allocation.</td>
+                <td>Proves supermodularity of the conversion game and implements Pareto-dominant equilibrium selection across all exit values.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="exemplars">
+        <h2 id="h-exemplars">Exemplars</h2>
+
+        <div class="exemplar" data-level="4">
+          <h3>Level 4 Exemplar · Robust Option Pool Shuffle &amp; Equilibrium Waterfall</h3>
+          <p>The implementation below demonstrates exemplary term-sheet economics, implementing exact closed-form option pool sizing, broad-based anti-dilution adjustment, and simultaneous Nash equilibrium conversion choices:</p>
+          <pre><code class="language-pseudocode"># Exact pre-money option pool shuffle formula:
+# N_post = N_founders / (1 - I / V_post - pool_target_pct)
+denom = 1.0 - (investment / post_money) - pool_target_pct
+total_post_shares = founders_shares / denom
+pool_shares = pool_target_pct * total_post_shares
+share_price = pre_money / (founders_shares + pool_shares)
+investor_shares = investment / share_price
+
+# Invariant: total_post_shares == founders_shares + pool_shares + investor_shares
+assert abs(total_post_shares - (founders_shares + pool_shares + investor_shares)) &lt; 1e-6</code></pre>
+          <p>This formulation guarantees that the option pool represents exactly the targeted percentage of fully diluted shares post-closing, shifting all dilution to the pre-existing shareholders before investor cash arrives.</p>
+        </div>
+
+        <div class="exemplar" data-level="2">
+          <h3>Level 2 Exemplar · Flawed Pre-Money Pool Sizing</h3>
+          <p>The passage below illustrates a classic Level 2 defect: sizing the option pool as a percentage of pre-money shares:</p>
+          <pre><code class="language-pseudocode"># FLAWED: Sizing pool from pre-money shares instead of post-money capitalization
+pool_shares = pool_target_pct * founders_shares
+pre_shares = founders_shares + pool_shares
+share_price = pre_money / pre_shares
+investor_shares = investment / share_price
+# Defect: Post-closing, pool represents pool_shares / (pre_shares + investor_shares) &lt; pool_target_pct!</code></pre>
+          <p>Because the investor's new shares dilute the pool post-closing, this formula fails the term-sheet covenant requiring a full 15% unallocated pool post-financing.</p>
+        </div>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Component</th>
+                <th scope="col" class="num">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Rungs 1 and 2</td>
+                <td class="num">3</td>
+                <td>Worked example analysis and completing the anti-dilution and waterfall equations.</td>
+              </tr>
+              <tr>
+                <td>Cap table progression and option pool algebra</td>
+                <td class="num">4</td>
+                <td>Implementing exact option pool shuffle sizing and share conservation across 3 rounds.</td>
+              </tr>
+              <tr>
+                <td>Down-round anti-dilution models</td>
+                <td class="num">4</td>
+                <td>Implementing Broad-Based Weighted Average, Narrow-Based, and Full Ratchet adjustment formulas.</td>
+              </tr>
+              <tr>
+                <td>Multi-tier liquidation waterfall engine</td>
+                <td class="num">5</td>
+                <td>Implementing standard LIFO and pari passu seniority with capped participation and equilibrium conversion.</td>
+              </tr>
+              <tr>
+                <td>Audit and suite profiling</td>
+                <td class="num">2</td>
+                <td>Executing the 50-seed autograder suite, verifying zero-error Pyodide execution, and confirming mutant kills.</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td class="num"><strong>18</strong></td>
+                <td>36% of the 50-hour module hours.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>The autograder executes <code>grader/test_project.py</code> across 50 pseudo-random instance seeds. It validates share count articulation, option pool shuffle identities, down-round conversion price revisions, conservation of exit value, payoff monotonicity, and asymptotic conversion to common equity.</p>
+        <section class="grader-panel" id="grader" data-unit="PM2" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="reference.py" data-starter="starter.py" data-packages="numpy scipy">
+          <div class="grader-actions">
+            <button type="button" class="button" data-grade-action="run">Run autograder suite</button>
+          </div>
+          <div class="grader-output" data-grade-output aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <p>For research and portfolio presentation, consider three advanced extensions to the term-sheet modeling engine:</p>
+        <ul>
+          <li><strong>Option-Theoretic Preferred Valuation:</strong> Decompose the multi-tier preferred equity capital structure into a portfolio of European call options on firm enterprise value using the Black–Scholes / Merton framework (Metrick &amp; Yasuda 2010), pricing the marginal value of liquidation preferences and anti-dilution covenants.</li>
+          <li><strong>Pay-to-Play Down-Round Restructuring:</strong> Model a punitive "pay-to-play" covenant where existing preferred investors who fail to participate pro-rata in a down-round have their preferred shares forcefully converted to common stock or subordinated to junior preferred series.</li>
+          <li><strong>Secondary Share Repurchases &amp; Carve-Outs:</strong> Implement management carve-out plans and secondary share liquidity discounts, quantifying the wedge between headline exit valuations and net founder realization.</li>
+        </ul>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="kaplan2003financial"></li>
+          <li data-cite="korteweg2010risk"></li>
+          <li data-cite="gompers2004venture"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references></ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">PM2 project · Term-sheet economics</footer>
+</body>
+</html>
