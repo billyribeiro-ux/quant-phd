@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CF6" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CF6 Project · IPO Pricing &amp; Syndicate Allocation Case</title>
+  <meta name="description" content="Build the CF6 capital raising underwriting engine (ipo_pricing.py) and write an executive investment banking syndicate memorandum (memo.md). Dual-mode grading via autograder and rubric.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CF6 Raising Capital &amp; Investment Banking</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="20">
+      <header class="page-head">
+        <p class="eyebrow">CF6 project · 20 hours · autograded engine and rubric-graded memo</p>
+        <h1>IPO Pricing &amp; Syndicate Allocation Case</h1>
+        <p class="lede">An investment banking equity capital markets syndicate committee requires a rigorous analytical pricing engine (<code>ipo_pricing.py</code>) and an executive underwriting memorandum (<code>memo.md</code>). You implement the algorithmic models that determine the Rock (1986) winner's curse zero-profit equilibrium offer price, execute institutional bookbuilding allocations prioritizing information disclosure under Benveniste and Spindt (1989) with Hamilton-Hare pro-rata integer rounding, evaluate Myers and Majluf (1984) seasoned equity offering adverse selection and financial slack thresholds, compute Loughran and Ritter (1995) 36-month Buy-and-Hold Abnormal Returns (BHAR), and decompose the 7% gross underwriting spread across syndicate tiers down to the exact individual cent. The project uses dual-mode grading: the autograder verifies your engine across 50 pseudo-random instance seeds, while the rubric evaluates your case memorandum.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Follow the four rungs in sequence. If you demonstrated mastery on the module hub placement quiz and answered both skill checks, you may proceed directly to rung 3.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1 below: end-to-end IPO pricing, bookbuilding allocation, and syndicate fee waterfall on a benchmark offering.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion</span><p>Lab 2 below: complete the missing Rock underpricing bisection and discretionary allocation logic.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>Write <code>ipo_pricing.py</code> and <code>memo.md</code> following the formal specification. Verified against the automated test suite across 50 seeds.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Explore greenshoe overallotment options, price stabilization mechanics, and lockup expiration price drift.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+
+        <section class="lab" id="lab-CF6-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: End-to-end IPO underwriting pipeline</h3>
+          <p class="hypothesis">Executes the complete capital raising pipeline: determines Rock equilibrium price, executes discretionary bookbuilding allocations, and articulates syndicate compensation with exact cent conservation.</p>
+          <pre><code class="language-python" data-run>"""CF6 Project Lab 1 (Rung 1 Worked Example): Full IPO Pricing and Syndicate Model.
+
+Holdings to BUILDER_RULES §6: deterministic, self-contained, standard library.
+Demonstrates end-to-end execution of the investment banking capital raising model.
+"""
+
+from __future__ import annotations
+
+import math
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
+
+
+def rock_equilibrium_price(
+    v_low: float,
+    v_high: float,
+    prob_high: float,
+    s_shares: int,
+    informed_demand: int,
+    uninformed_budget: float,
+) -&gt; tuple[float, float, float]:
+    e_v = (1.0 - prob_high) * v_low + prob_high * v_high
+
+    def expected_profit(p: float) -&gt; float:
+        d_u = uninformed_budget / p
+        alloc_l = min(d_u, float(s_shares))
+        tot_high_dem = d_u + float(informed_demand)
+        alloc_h = float(s_shares) / tot_high_dem * d_u if tot_high_dem &gt; float(s_shares) else d_u
+        return (1.0 - prob_high) * alloc_l * (v_low - p) + prob_high * alloc_h * (v_high - p)
+
+    lo, hi = v_low, e_v
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if expected_profit(mid) &gt; 0.0:
+            lo = mid
+        else:
+            hi = mid
+
+    p_star = 0.5 * (lo + hi)
+    d_u_star = uninformed_budget / p_star
+    total_demand_high = d_u_star + float(informed_demand)
+    alpha_h = min(1.0, float(s_shares) / total_demand_high)
+    underpricing = (e_v - p_star) / p_star
+    return p_star, alpha_h, underpricing
+
+
+def bookbuilding_allocation(
+    bids: list[dict[str, Any]],
+    total_shares: int,
+    clearing_price: float,
+    rule: str = "discretionary",
+) -&gt; dict[str, Any]:
+    alloc: dict[str, int] = {b["bidder_id"]: 0 for b in bids}
+    qualifying = [b for b in bids if b["bid_price"] &gt;= clearing_price]
+    total_qualifying_demand = sum(b["bid_shares"] for b in qualifying)
+
+    if total_qualifying_demand &lt;= total_shares:
+        for b in qualifying:
+            alloc[b["bidder_id"]] = b["bid_shares"]
+    elif rule == "pro_rata":
+        ratio = total_shares / total_qualifying_demand
+        raw = {b["bidder_id"]: b["bid_shares"] * ratio for b in qualifying}
+        base = {b["bidder_id"]: math.floor(raw[b["bidder_id"]]) for b in qualifying}
+        rem = total_shares - sum(base.values())
+        sorted_by_frac = sorted(
+            qualifying,
+            key=lambda b: raw[b["bidder_id"]] - base[b["bidder_id"]],
+            reverse=True,
+        )
+        for i in range(rem):
+            base[sorted_by_frac[i]["bidder_id"]] += 1
+        alloc.update(base)
+    elif rule == "discretionary":
+        pos_bids = [b for b in qualifying if b.get("revealed_info") == "positive"]
+        pos_demand = sum(b["bid_shares"] for b in pos_bids)
+        if pos_demand &lt;= total_shares:
+            for b in pos_bids:
+                alloc[b["bidder_id"]] = b["bid_shares"]
+            rem_shares = total_shares - pos_demand
+            other_bids = [b for b in qualifying if b.get("revealed_info") != "positive"]
+            other_demand = sum(b["bid_shares"] for b in other_bids)
+            if other_demand &gt; 0 and rem_shares &gt; 0:
+                ratio = rem_shares / other_demand
+                raw = {b["bidder_id"]: b["bid_shares"] * ratio for b in other_bids}
+                base = {b["bidder_id"]: math.floor(raw[b["bidder_id"]]) for b in other_bids}
+                rem = rem_shares - sum(base.values())
+                sorted_others = sorted(
+                    other_bids,
+                    key=lambda b: raw[b["bidder_id"]] - base[b["bidder_id"]],
+                    reverse=True,
+                )
+                for i in range(rem):
+                    base[sorted_others[i]["bidder_id"]] += 1
+                alloc.update(base)
+        else:
+            ratio = total_shares / pos_demand
+            raw = {b["bidder_id"]: b["bid_shares"] * ratio for b in pos_bids}
+            base = {b["bidder_id"]: math.floor(raw[b["bidder_id"]]) for b in pos_bids}
+            rem = total_shares - sum(base.values())
+            sorted_pos = sorted(
+                pos_bids,
+                key=lambda b: raw[b["bidder_id"]] - base[b["bidder_id"]],
+                reverse=True,
+            )
+            for i in range(rem):
+                base[sorted_pos[i]["bidder_id"]] += 1
+            alloc.update(base)
+
+    tot_alloc = sum(alloc.values())
+    inst_shares = sum(alloc[b["bidder_id"]] for b in bids if b.get("investor_type") == "institutional")
+    inst_frac = inst_shares / tot_alloc if tot_alloc &gt; 0 else 0.0
+    fulfill = {b["bidder_id"]: alloc[b["bidder_id"]] / b["bid_shares"] if b["bid_shares"] &gt; 0 else 0.0 for b in bids}
+    price_dec = Decimal(str(clearing_price))
+    rev_cents = int((Decimal(tot_alloc) * price_dec * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+    return {
+        "allocations": alloc,
+        "total_allocated": tot_alloc,
+        "total_revenue_cents": rev_cents,
+        "institutional_share_fraction": inst_frac,
+        "fulfillment_rates": fulfill,
+    }
+
+
+def syndicate_economics(
+    gross_proceeds_cents: int,
+    spread_bps: int = 700,
+    lead_manager_share: float = 0.60,
+    co_manager_share: float = 0.30,
+    selling_group_share: float = 0.10,
+) -&gt; dict[str, int]:
+    spread_dec = Decimal(spread_bps) / Decimal(10000)
+    total_spread = int((Decimal(gross_proceeds_cents) * spread_dec).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    net_proceeds = gross_proceeds_cents - total_spread
+
+    lead_dec = Decimal(str(lead_manager_share))
+    co_dec = Decimal(str(co_manager_share))
+    lead_cents = int((Decimal(total_spread) * lead_dec).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    co_cents = int((Decimal(total_spread) * co_dec).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    selling_cents = total_spread - lead_cents - co_cents
+
+    mgmt_fee = int((Decimal(total_spread) * Decimal("0.20")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    uw_fee = int((Decimal(total_spread) * Decimal("0.20")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    selling_concession = total_spread - mgmt_fee - uw_fee
+
+    return {
+        "gross_proceeds_cents": gross_proceeds_cents,
+        "total_spread_cents": total_spread,
+        "net_proceeds_cents": net_proceeds,
+        "lead_manager_cents": lead_cents,
+        "co_manager_cents": co_cents,
+        "selling_group_cents": selling_cents,
+        "management_fee_cents": mgmt_fee,
+        "underwriting_fee_cents": uw_fee,
+        "selling_concession_cents": selling_concession,
+    }
+
+
+def main() -&gt; None:
+    print("=== CF6 Project Rung 1: Benchmark IPO Pricing and Allocation ===")
+
+    # 1. Rock Winner's Curse Pricing
+    v_l, v_h, prob_h = 13.50, 31.20, 0.58
+    s_shares, i_dem, b_u = 2_000_000, 2_400_000, 48_000_000.0
+    p_star, alpha_h, up = rock_equilibrium_price(v_l, v_h, prob_h, s_shares, i_dem, b_u)
+
+    print(f"Rock Equilibrium Offer Price:   ${p_star:.2f}")
+    print(f"Equilibrium Expected Underpricing:{up * 100:.2f}%")
+    print(f"High State Rationing alpha_H:   {alpha_h:.4f}\n")
+
+    # 2. Bookbuilding Allocation
+    bids: list[dict[str, Any]] = [
+        {
+            "bidder_id": "Inst_Alpha",
+            "bid_price": 25.0,
+            "bid_shares": 800_000,
+            "revealed_info": "positive",
+            "investor_type": "institutional",
+        },
+        {
+            "bidder_id": "Inst_Beta",
+            "bid_price": 24.0,
+            "bid_shares": 600_000,
+            "revealed_info": "positive",
+            "investor_type": "institutional",
+        },
+        {
+            "bidder_id": "Inst_Gamma",
+            "bid_price": 23.5,
+            "bid_shares": 900_000,
+            "revealed_info": "neutral",
+            "investor_type": "institutional",
+        },
+        {
+            "bidder_id": "Retail_Synd",
+            "bid_price": 23.5,
+            "bid_shares": 500_000,
+            "revealed_info": "neutral",
+            "investor_type": "retail",
+        },
+    ]
+    res_bb = bookbuilding_allocation(bids, total_shares=2_000_000, clearing_price=23.50, rule="discretionary")
+    print(f"Total Shares Allocated:         {res_bb['total_allocated']:,.0f}")
+    print(f"Total Offering Proceeds:        ${res_bb['total_revenue_cents'] / 100:,.2f}")
+    print(f"Institutional Allocation Share: {res_bb['institutional_share_fraction'] * 100:.1f}%\n")
+
+    # 3. Syndicate Economics (7% gross spread)
+    gross_cents = res_bb["total_revenue_cents"]
+    res_syn = syndicate_economics(gross_cents, spread_bps=700)
+    print("--- Syndicate Proceeds Breakdown (700 bps Spread) ---")
+    print(f"Gross Offering Proceeds:        ${res_syn['gross_proceeds_cents'] / 100:,.2f}")
+    print(f"Total Syndicate Spread (7.0%):  ${res_syn['total_spread_cents'] / 100:,.2f}")
+    print(f"Net Proceeds to Issuing Firm:   ${res_syn['net_proceeds_cents'] / 100:,.2f}")
+    print(f"Lead Manager Compensation:      ${res_syn['lead_manager_cents'] / 100:,.2f}")
+    print(f"Co-Managers Compensation:       ${res_syn['co_manager_cents'] / 100:,.2f}")
+    print(f"Selling Group Compensation:     ${res_syn['selling_group_cents'] / 100:,.2f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">=== CF6 Project Rung 1: Benchmark IPO Pricing and Allocation ===
+Rock Equilibrium Offer Price:   $20.66
+Equilibrium Expected Underpricing:15.04%
+High State Rationing alpha_H:   0.4234
+
+Total Shares Allocated:         2,000,000
+Total Offering Proceeds:        $47,000,000.00
+Institutional Allocation Share: 89.3%
+
+--- Syndicate Proceeds Breakdown (700 bps Spread) ---
+Gross Offering Proceeds:        $47,000,000.00
+Total Syndicate Spread (7.0%):  $3,290,000.00
+Net Proceeds to Issuing Firm:   $43,710,000.00
+Lead Manager Compensation:      $1,974,000.00
+Co-Managers Compensation:       $987,000.00
+Selling Group Compensation:     $329,000.00</pre>
+          <p class="interpretation">The worked pipeline demonstrates the interplay between information asymmetry, order book prioritization, and syndicate fee decomposition. Rock equilibrium underpricing emerges at 15.04% to compensate uninformed retail investors for adverse selection rationing.</p>
+        </section>
+
+        <section class="lab completion" id="lab-CF6-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion: Core Rock pricing and discretionary allocation</h3>
+          <p class="hypothesis">Fills the blanks for Rock underpricing calculation, rationing allocation in the high state, and discretionary allocation ratio computation.</p>
+          <pre><code data-run="python">"""CF6 Project Lab 2 (Rung 2 Completion Problem): Solved Twin.
+
+Holdings to BUILDER_RULES §6: deterministic, self-contained, standard library.
+Completion problem: fill in Rock underpricing calculation and discretionary bookbuilding allocation.
+"""
+
+from __future__ import annotations
+
+import math
+from decimal import ROUND_HALF_UP, Decimal
+
+
+def complete_rock_pricing(
+    v_l: float,
+    v_h: float,
+    p: float,
+    s_shares: int,
+    informed_dem: int,
+    uninformed_b: float,
+) -> tuple[float, float, float]:
+    e_v = (1.0 - p) * v_l + p * v_h
+
+    def expected_profit(p_test: float) -> float:
+        d_u = uninformed_b / p_test
+        alloc_l = min(d_u, float(s_shares))
+        tot_dem_h = d_u + float(informed_dem)
+        alloc_h = float(s_shares) / tot_dem_h * d_u if tot_dem_h > float(s_shares) else d_u
+        return (1.0 - p) * alloc_l * (v_l - p_test) + p * alloc_h * (v_h - p_test)
+
+    lo, hi = v_l, e_v
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if expected_profit(mid) > 0.0:
+            lo = mid
+        else:
+            hi = mid
+
+    p_star = 0.5 * (lo + hi)
+    d_u_star = uninformed_b / p_star
+    alpha_h = ___
+    underpricing = ___
+    return p_star, alpha_h, underpricing
+
+
+def complete_discretionary_allocation(
+    bids: list[dict[str, object]],
+    total_shares: int,
+    clearing_price: float,
+) -> dict[str, int]:
+    alloc: dict[str, int] = {str(b["bidder_id"]): 0 for b in bids}
+    qualifying = [b for b in bids if float(str(b["bid_price"])) >= clearing_price]
+
+    pos_bids = [b for b in qualifying if str(b.get("revealed_info")) == "positive"]
+    pos_demand = ___
+
+    if pos_demand <= total_shares:
+        for b in pos_bids:
+            alloc[str(b["bidder_id"])] = int(str(b["bid_shares"]))
+        rem_shares = total_shares - pos_demand
+        other_bids = [b for b in qualifying if str(b.get("revealed_info")) != "positive"]
+        other_demand = sum(int(str(b["bid_shares"])) for b in other_bids)
+        if other_demand > 0 and rem_shares > 0:
+            ratio = rem_shares / other_demand
+            raw = {str(b["bidder_id"]): int(str(b["bid_shares"])) * ratio for b in other_bids}
+            base = {str(b["bidder_id"]): math.floor(raw[str(b["bidder_id"])]) for b in other_bids}
+            rem = rem_shares - sum(base.values())
+            sorted_others = sorted(
+                other_bids,
+                key=lambda b: raw[str(b["bidder_id"])] - base[str(b["bidder_id"])],
+                reverse=True,
+            )
+            for i in range(rem):
+                base[str(sorted_others[i]["bidder_id"])] += 1
+            alloc.update(base)
+    else:
+        ratio = ___
+        raw = {str(b["bidder_id"]): int(str(b["bid_shares"])) * ratio for b in pos_bids}
+        base = {str(b["bidder_id"]): math.floor(raw[str(b["bidder_id"])]) for b in pos_bids}
+        rem = ___
+        sorted_pos = sorted(
+            pos_bids,
+            key=lambda b: raw[str(b["bidder_id"])] - base[str(b["bidder_id"])],
+            reverse=True,
+        )
+        for i in range(rem):
+            base[str(sorted_pos[i]["bidder_id"])] += 1
+        alloc.update(base)
+
+    return alloc
+
+
+def main() -> None:
+    print("=== CF6 Project Rung 2: Completion Verification ===")
+
+    # Test Rock pricing completion
+    p_star, alpha_h, up = complete_rock_pricing(
+        v_l=11.0, v_h=25.0, p=0.60, s_shares=1_500_000, informed_dem=1_800_000, uninformed_b=36_000_000.0
+    )
+    print(f"Calculated Offer Price:       ${p_star:.2f}")
+    print(f"Calculated Underpricing:       {up * 100:.2f}%")
+    print(f"High-State Allocation alpha_H: {alpha_h:.4f}")
+
+    # Test Discretionary Allocation completion
+    bids: list[dict[str, object]] = [
+        {"bidder_id": "Inst_1", "bid_price": 20.0, "bid_shares": 600_000, "revealed_info": "positive"},
+        {"bidder_id": "Inst_2", "bid_price": 19.5, "bid_shares": 500_000, "revealed_info": "neutral"},
+        {"bidder_id": "Ret_1", "bid_price": 19.5, "bid_shares": 400_000, "revealed_info": "neutral"},
+    ]
+    allocs = complete_discretionary_allocation(bids, total_shares=1_000_000, clearing_price=19.5)
+    print("Allocations:")
+    for k in sorted(allocs):
+        print(f"  {k}: {allocs[k]:,d} shares")
+
+    # Articulation check
+    tot_sh = sum(allocs.values())
+    tot_rev = ___
+    print(f"Total Shares Allocated: {tot_sh:,d} (Conserved: {tot_sh == 1_000_000})")
+    print(f"Total Gross Revenue:   ${tot_rev / 100:,.2f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">=== CF6 Project Rung 2: Completion Verification ===
+Calculated Offer Price:       $17.25
+Calculated Underpricing:       12.49%
+High-State Allocation alpha_H: 0.3859
+Allocations:
+  Inst_1: 600,000 shares
+  Inst_2: 222,222 shares
+  Ret_1: 177,778 shares
+Total Shares Allocated: 1,000,000 (Conserved: True)
+Total Gross Revenue:   $19,500,000.00</pre>
+          <p class="interpretation">The completion lab verifies exact implementation of Rock equilibrium rationing and Benveniste-Spindt information prioritization with Hamilton-Hare largest-remainder rounding.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>An investment banking equity underwriting committee requires an algorithmic pricing and syndicate allocation engine (<code>ipo_pricing.py</code>) and an executive transaction memorandum (<code>memo.md</code>) advising an issuing client on their initial public offering and seasoned financing strategy. The engine solves the Rock (1986) winner's curse equilibrium, allocates shares across an institutional order book, evaluates Myers and Majluf (1984) adverse selection for follow-on offerings, measures long-run 36-month BHAR performance against matched benchmarks, and calculates exact underwriting fee waterfalls.</dd>
+
+          <dt>Inputs</dt>
+          <dd>The estimation engine ingests a parameter dictionary generated deterministically by <code>make_instance(seed: int)</code>:
+            <ol>
+              <li><strong>Rock parameters:</strong> Low-state value <code>rock_v_low</code>, high-state value <code>rock_v_high</code>, high-state probability <code>rock_prob_high</code>, total shares <code>rock_shares</code>, informed demand <code>rock_informed_demand</code>, and uninformed budget <code>rock_uninformed_budget</code>.</li>
+              <li><strong>Bookbuilding order book:</strong> List of bid dictionaries <code>bookbuilding_bids</code> containing <code>bidder_id</code>, <code>bid_price</code>, <code>bid_shares</code>, and <code>revealed_info</code>, along with <code>total_shares_offered</code> and <code>clearing_price</code>.</li>
+              <li><strong>Myers-Majluf SEO parameters:</strong> Good asset value <code>seo_v_good</code>, bad asset value <code>seo_v_bad</code>, prior probability <code>seo_prob_good</code>, project outlay <code>seo_project_cost</code>, project NPV <code>seo_project_npv</code>, and internal cash slack <code>seo_slack_cash</code>.</li>
+              <li><strong>Long-run return streams:</strong> Monthly return lists for issuer (<code>monthly_issuer_returns</code>) and matched peer benchmark (<code>monthly_benchmark_returns</code>) across 36 months.</li>
+              <li><strong>Syndicate parameters:</strong> Gross offering proceeds in integer cents (<code>gross_proceeds_cents</code>), gross spread in basis points (<code>spread_bps</code>), and syndicate participant shares (<code>lead_manager_share</code>, <code>co_manager_share</code>, <code>selling_group_share</code>).</li>
+            </ol>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>Two core deliverables:
+            <ul>
+              <li><code>ipo_pricing.py</code>: Standard-library Python module implementing the five required functions: <code>rock_equilibrium_price</code>, <code>bookbuilding_allocation</code>, <code>seo_announcement_impact</code>, <code>long_run_bhar</code>, and <code>syndicate_economics</code>.</li>
+              <li><code>memo.md</code>: Executive syndicate case memorandum (1–2 pages) presenting optimal offer pricing, allocation justifications, adverse selection mitigation, long-run abnormal return caveats, and exact syndicate compensation.</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ul>
+              <li>Standard library only: no external dependencies (<code>numpy</code>, <code>scipy</code>). Use <code>math</code> and <code>decimal.Decimal</code>.</li>
+              <li>Monetary fee amounts and dollar balances must be calculated in integer cents with <code>ROUND_HALF_UP</code> precision, strictly conserving gross proceeds and total spread.</li>
+              <li>Share allocations must be non-negative integers summing exactly to total shares offered, using Hamilton-Hare largest-remainder rounding for pro-rata rationing.</li>
+              <li>All invalid inputs (e.g. non-positive share counts, budgets, outlays, out-of-bound probabilities, negative spreads, or unequal return series lengths) must raise <code>ValueError</code>.</li>
+            </ul>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>Grading: both autograder and rubric. The autograder runs <code>test_project.py</code> across 50 pseudo-random instance seeds to verify mathematical convergence, share conservation, and corner case handling. The rubric evaluates the executive syndicate case memo across five analytical criteria.</dd>
+        </dl>
+      </section>
+
+      <section id="time-budget">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th scope="col">Component</th>
+                <th scope="col">Hours</th>
+                <th scope="col">Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Configure workspace, review specification, and run starter against suite</td>
+                <td>1.0</td>
+                <td>Confirms function signatures and initial test suite failure messages</td>
+              </tr>
+              <tr>
+                <td>Complete Rungs 1 and 2 labs (worked example, completion)</td>
+                <td>2.0</td>
+                <td>Validates Rock pricing root-finding and discretionary allocation</td>
+              </tr>
+              <tr>
+                <td>Implement Rock winner's curse equilibrium solver (rock_equilibrium_price)</td>
+                <td>3.0</td>
+                <td>Bisection search on uninformed zero-profit condition with allocation rationing</td>
+              </tr>
+              <tr>
+                <td>Implement bookbuilding allocation engine (bookbuilding_allocation)</td>
+                <td>4.0</td>
+                <td>Discretionary Benveniste-Spindt prioritization and Hamilton-Hare pro-rata integer rounding</td>
+              </tr>
+              <tr>
+                <td>Implement Myers-Majluf SEO dilution &amp; slack engine (seo_announcement_impact)</td>
+                <td>2.5</td>
+                <td>Solves pooling vs underinvestment thresholds and announcement return delta</td>
+              </tr>
+              <tr>
+                <td>Implement long-run BHAR &amp; wealth relative metrics (long_run_bhar)</td>
+                <td>2.5</td>
+                <td>Computes compounded geometric wealth, benchmark differences, and annualization</td>
+              </tr>
+              <tr>
+                <td>Implement syndicate fee waterfall &amp; balance articulation (syndicate_economics)</td>
+                <td>2.0</td>
+                <td>700 bps gross spread decomposition across tiers and functional fee types down to the cent</td>
+              </tr>
+              <tr>
+                <td>Draft executive syndicate memorandum (memo.md)</td>
+                <td>3.0</td>
+                <td>Synthesizes pricing, order book allocations, and market timing risk analysis</td>
+              </tr>
+              <tr>
+                <td>Total</td>
+                <td>20.0</td>
+                <td>Equals data-hours-project on the module hub</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grader-panel" id="grader" data-unit="CF6" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="ipo_pricing.py" data-starter="starter.py" data-packages="">
+        <h2 id="h-grader">Autograder suite</h2>
+        <p>The autograder executes <code>grader/test_project.py</code> across 50 pseudo-random instance seeds. It validates Rock equilibrium bisection bounds, uninformed zero-profit tolerance, discretionary vs pro-rata share conservation, Myers-Majluf pooling boundaries, BHAR compounding geometry, and cent-level fee balance articulation.</p>
+        <div class="grader-actions">
+          <button type="button" class="button" data-grade-action="run">Run autograder suite</button>
+        </div>
+        <div class="grader-output" data-grade-output hidden></div>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Evaluation rubric</h2>
+        <p>The executive syndicate memorandum (<code>memo.md</code>) is evaluated across five criteria with four observable performance levels:</p>
+
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <caption>Assessment rubric for investment banking syndicate case memo (memo.md).</caption>
+            <thead>
+              <tr>
+                <th scope="col">Criterion</th>
+                <th scope="col">Level 4 · Exemplary</th>
+                <th scope="col">Level 3 · Proficient</th>
+                <th scope="col">Level 2 · Developing</th>
+                <th scope="col">Level 1 · Beginning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row">C1 · Rock winner's curse &amp; offer pricing</th>
+                <td>Derives the exact Rock zero-profit equilibrium offer price, articulates the rationing wedge between low and high states, and explains why underpricing is an equilibrium necessity rather than money left on the table.</td>
+                <td>Computes Rock equilibrium price correctly; discussion of the rationing mechanism between informed and uninformed investors is incomplete.</td>
+                <td>States offer price without formal zero-profit derivation or confuses underpricing with underwriter negligence.</td>
+                <td>Quotes arbitrary offer prices with no formal mathematical pricing model.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row">C2 · Bookbuilding allocation &amp; information extraction</th>
+                <td>Executes both discretionary and pro-rata allocations, proves share conservation down to the single integer share using Hamilton-Hare rounding, and explains how Benveniste-Spindt allocation discretion extracts private institutional information.</td>
+                <td>Computes allocations accurately and achieves share conservation; fails to link discretionary allocation to institutional truth-telling incentives.</td>
+                <td>Calculates allocations with rounding discrepancies or violates share conservation.</td>
+                <td>Vague allocation description without individual bidder share breakdowns.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row">C3 · Myers-Majluf adverse selection &amp; slack</th>
+                <td>Formulates the Myers-Majluf underinvestment boundary, calculates old shareholder dilution vs project NPV, and demonstrates how internal cash slack eliminates the adverse selection discount for seasoned offerings.</td>
+                <td>Calculates dilution penalty and announcement return; omits detailed discussion of the underinvestment condition.</td>
+                <td>Mentions SEO price drop but attributes it entirely to supply dilution rather than information asymmetry.</td>
+                <td>Asserts that firms should always issue equity whenever a project has positive NPV.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row">C4 · Long-run performance &amp; wealth relative</th>
+                <td>Computes 36-month BHAR, CAR, and Ritter wealth relatives, articulates compounding and rebalancing biases, and explains the joint-hypothesis / bad-model caveat in multi-year capital market anomalies.</td>
+                <td>Reports BHAR and wealth relative accurately; explanation of CAR vs BHAR rebalancing differences is omitted.</td>
+                <td>Reports abnormal returns without benchmark matching or confuses arithmetic sums with compounded returns.</td>
+                <td>Asserts that post-IPO stock price drops prove aggregate market irrationality without benchmark controls.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row">C5 · Syndicate economics &amp; fee articulation</th>
+                <td>Decomposes the 7% gross spread into participant allocations and functional fees, proves exact cent-level balance articulation, and analyzes the gross spread clustering puzzle across US investment banking league tables.</td>
+                <td>Decomposes syndicate spread across participants and fees; cent-level balance articulation has minor rounding discrepancies.</td>
+                <td>Reports aggregate fee without functional or participant breakdown.</td>
+                <td>Miscalculates basis-point fee conversions or quotes incorrect fee percentages.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="exemplars">Exemplars and scoring calibration</h3>
+        <p>Two memoranda on the benchmark transaction (Seed 42), illustrating Level 4 and Level 2 performance:</p>
+
+        <article class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar A" aria-labelledby="exemplar-a-title">
+          <h4 id="exemplar-a-title">Exemplar A (Level 4 · Exemplary)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 4 · C2 4 · C3 4 · C4 4 · C5 4.</p>
+          <h5>1 Rock Winner's Curse &amp; Equilibrium Pricing</h5>
+          <p>Under a SIMULATED offering regime (Seed 42), the issuer faces asset outcomes \(V_L = \$12.50\) and \(V_H = \$26.00\) with prior \(\mathbb{P}(V_H) = 0.55\), offering \(S = 2,000,000\) shares. Informed investors demand 2,200,000 shares when \(V = V_H\), while uninformed retail investors commit a fixed budget of $45,000,000. In the low state, informed investors withdraw, allocating uninformed investors \(\min(D_U, S) = S\) shares. In the high state, total demand is \(D_U + 2,200,000\), rationing uninformed buyers to fraction \(\alpha_H = S / (D_U + 2,200,000) \approx 0.442\). Solving the zero-profit condition via bisection yields equilibrium offer price \(P^* = \$21.28\), implying an expected underpricing of 15.1% relative to unconditional expected value \(\bar{V} = \$20.23\). Underpricing is not an underwriting failure but an equilibrium necessity required to induce uninformed capital participation (<span class="claim" data-grade="T" data-cite="rock1986new" data-locator="pp. 187-212">rock1986new</span>).</p>
+          <p class="annotation" data-reveal>C1, Level 4: Explicit bisection solver, derivation of rationing fraction alpha_H, zero-profit condition, and reference to Rock (1986).</p>
+
+          <h5>2 Bookbuilding Allocation &amp; Information Extraction</h5>
+          <p>We evaluate an institutional book of 8 qualifying bids totaling 3,250,000 shares against 2,000,000 shares offered at a clearing price of $21.50. Under Benveniste and Spindt (1989, reviewed in <span class="claim" data-grade="A" data-cite="ljungqvist2007ipo" data-locator="pp. 385-392">ljungqvist2007ipo</span>), the bookrunner allocates 100% of demand to institutional investors revealing positive valuation signals (1,400,000 shares), rationing remaining bids (1,850,000 shares) across the 600,000 residual share pool. Using Hamilton-Hare largest-remainder integer rounding, all fractional shares are allocated deterministically to the highest decimal remainders, ensuring that \(\sum \text{allocated}_i \equiv 2,000,000\) exactly. This discretionary favoritism rewards information discovery, deterring institutional bid shading.</p>
+          <p class="annotation" data-reveal>C2, Level 4: Clear application of Benveniste-Spindt discretionary rule, Hamilton-Hare largest remainder algorithm, and exact share conservation.</p>
+
+          <h5>3 Myers-Majluf SEO Adverse Selection &amp; Slack</h5>
+          <p>For the firm's planned seasoned offering, existing assets-in-place are \(A_H = \$180\text{M}\) or \(A_L = \$95\text{M}\) (\(p = 0.50\)), requiring \(I = \$35\text{M}\) for an expansion project with NPV \(B = \$5.0\text{M}\). With zero internal cash slack (\(S = 0\)), the adverse selection dilution penalty is \(\Delta_{\text{dilution}} = \frac{35 \times 0.50 \times 85}{137.5 + 35 + 5} = \frac{1487.5}{177.5} \approx \$8.38\text{M}\). Because \(B = \$5.0\text{M} < \$8.38\text{M}\), management rejects the positive-NPV project (<span class="claim" data-grade="T" data-cite="myers1984corporate" data-locator="pp. 195-201">myers1984corporate</span>). Holding internal cash slack of \(S \ge \$14.1\text{M}\) reduces required external equity to \(E \le \$20.9\text{M}\), lowering dilution below \$5.0M and eliminating underinvestment.</p>
+          <p class="annotation" data-reveal>C3, Level 4: Rigorous Myers-Majluf dilution formula, proof of underinvestment breakdown, and explicit threshold calculation for financial slack.</p>
+
+          <h5>4 Long-Run Performance &amp; Wealth Relative</h5>
+          <p>Across 36 post-issue months, the issuer compounded to +12.4%, while its size-and-book-to-market matched non-issuing peer benchmark compounded to +48.6%. The Buy-and-Hold Abnormal Return is \(\text{BHAR} = 12.4\% - 48.6\% = -36.2\%\), and the Ritter wealth relative is \(WR = 1.124 / 1.486 = 0.7564\) (<span class="claim" data-grade="A" data-cite="ritter1991longrun" data-locator="Table 2, p. 9">ritter1991longrun</span>; <span class="claim" data-grade="A" data-cite="loughran1995new" data-locator="Table 2, pp. 28-29">loughran1995new</span>). Cumulative abnormal return (CAR) measured \(-24.8\%\), diverging from BHAR due to monthly portfolio rebalancing bias and variance drag. We note Fama's (1998) joint-hypothesis caveat: long-horizon abnormal underperformance may reflect misestimated factor loadings on small-growth risk rather than market inefficiency.</p>
+          <p class="annotation" data-reveal>C4, Level 4: Full reporting of BHAR, WR, and CAR, explanation of rebalancing divergence, and articulation of the joint-hypothesis bad-model problem.</p>
+
+          <h5>5 Syndicate Economics &amp; Fee Articulation</h5>
+          <p>Total offering gross proceeds are \(\$43,000,000.00\) (\(2,000,000 \times \$21.50\)). At the standard 700 bps underwriting spread, total syndicate compensation is exactly \(\$3,010,000.00\) (301,000,000 cents), yielding net issuer proceeds of \(\$39,990,000.00\). The syndicate waterfall allocates 60% (\(\$1,806,000.00\)) to the lead bookrunner, 30% (\(\$903,000.00\)) to co-managers, and 10% (\(\$301,000.00\)) to the selling group. Functionally, fees decompose into management fee 20% (\(\$602,000.00\)), underwriting risk fee 20% (\(\$602,000.00\)), and selling concession 60% (\(\$1,806,000.00\)). Sum of components equals the gross spread down to the exact cent, maintaining perfect accounting conservation.</p>
+          <p class="annotation" data-reveal>C5, Level 4: Complete syndicate waterfall with participant and functional decompositions, exact cent conservation, and discussion of the 7% spread convention.</p>
+        </article>
+
+        <article class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar B" aria-labelledby="exemplar-b-title">
+          <h4 id="exemplar-b-title">Exemplar B (Level 2 · Developing)</h4>
+          <p class="exemplar-verdict" data-reveal>Official scoring: C1 2 · C2 2 · C3 2 · C4 2 · C5 2.</p>
+          <h5>1 Rock Winner's Curse &amp; Equilibrium Pricing</h5>
+          <p>The offer price was set at $21.28. The stock is underpriced by about 15% because retail investors lose money when informed investors buy the stock.</p>
+          <p class="annotation" data-reveal>C1, Level 2: States offer price and underpricing percentage but lacks mathematical derivation, rationing formula, or reference to Rock (1986).</p>
+
+          <h5>2 Bookbuilding Allocation &amp; Information Extraction</h5>
+          <p>We allocated 2,000,000 shares to various institutional bidders, giving more shares to institutions that liked the deal.</p>
+          <p class="annotation" data-reveal>C2, Level 2: Mentions institutional favoritism but omits Hamilton-Hare rounding mechanics, individual bid allocations, or share conservation verification.</p>
+
+          <h5>3 Myers-Majluf SEO Adverse Selection &amp; Slack</h5>
+          <p>The company will experience a stock price drop if it does a seasoned equity offering because selling shares signals the stock is overvalued.</p>
+          <p class="annotation" data-reveal>C3, Level 2: Vague qualitative summary of adverse selection without dilution formulas, underinvestment proof, or cash slack requirements.</p>
+
+          <h5>4 Long-Run Performance &amp; Wealth Relative</h5>
+          <p>After 3 years, the company underperformed the market index by about 36%, showing that IPOs are bad long-term investments.</p>
+          <p class="annotation" data-reveal>C4, Level 2: Reports BHAR point estimate but omits wealth relative, CAR rebalancing comparison, or the bad-model joint-hypothesis problem.</p>
+
+          <h5>5 Syndicate Economics &amp; Fee Articulation</h5>
+          <p>The banks charged a standard 7% fee on the IPO proceeds of $43M, earning about $3M in underwriting fees.</p>
+          <p class="annotation" data-reveal>C5, Level 2: Rough dollar approximation without participant breakdown, functional fee decomposition, or cent-level balance articulation.</p>
+        </article>
+
+        <section class="rubric-self" id="self-assessment" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b" data-store-key="CF6/project/memo">
+          <h3 id="h-self">Self-assessment and calibration</h3>
+          <p>Score your draft syndicate memorandum against the five criteria before submitting. Calibrate your self-assessment against Exemplars A and B to ensure consistency.</p>
+          <div data-rubric-form><p class="notice">Interactive self-assessment requires JavaScript.</p></div>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <p>In modern equity capital markets underwriting, investment banks manage aftermarket price volatility through the <strong>Greenshoe overallotment option</strong> (typically 15% of the base offering size). Under Rule 104 of SEC Regulation M, the lead bookrunner oversells the offering by 15%, establishing a syndicate short position. If the stock trades below the offer price in the immediate aftermarket, the bookrunner stabilizes the price by buying shares on the open exchange, covering the short at a profit while supporting the market. If the stock trades above the offer price, the bookrunner exercises the Greenshoe option at the fixed offer price, delivering primary shares without price risk. Extend your model to evaluate the underwriter's expected stabilization payoff and examine post-lockup price drops at the 180-day milestone.</p>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="rock1986new"></li>
+          <li data-cite="ritter1991longrun"></li>
+          <li data-cite="loughran1995new"></li>
+          <li data-cite="ljungqvist2007ipo"></li>
+          <li data-cite="myers1984corporate"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">CF6 · Raising Capital &amp; Investment Banking</footer>
+</body>
+</html>
