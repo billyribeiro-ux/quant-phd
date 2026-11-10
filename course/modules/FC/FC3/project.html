@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="FC3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · Fund-Skill Test · FC3 Market Efficiency</title>
+  <meta name="description" content="FC3 Project: Distinguishing luck from skill in a simulated mutual fund universe. Implement OLS regression, chance counting, and bootstrap skill detection, graded by autograder and rubric.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">FC3 Market Efficiency</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="13">
+      <header class="page-head">
+        <p class="eyebrow">Project · 13 hours</p>
+        <h1>Fund-Skill Test</h1>
+        <p class="lede">Using a simulated universe of 40 mutual funds with known planted skill, quantify how many funds look skilled purely by chance, and recover the true skilled set using a cross-sectional bootstrap under the null of zero alpha. Deliverable: a verified Python implementation (<code>fund_skill.py</code>) and an institutional investment committee memorandum (<code>memo.md</code>).</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The four-rung ladder</h2>
+        <ol class="ladder">
+          <li>
+            <div>
+              <span class="rung-title">Worked example</span>
+              <p>One fully solved instance of a six-fund universe with \(T = 24\) months and one planted skilled fund. Step-by-step OLS regression, naive false-positive count, expected count, and bootstrap threshold.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Completion problem</span>
+              <p>The same six-fund task with the naive-count filter line and bootstrap quantile threshold line left blank. Graded instantly on the page.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Independent project</span>
+              <p>The curriculum project: implement <code>fund_skill.py</code> for an institutional universe of 40 funds across 60 months of simulated data, passing all pytest unit tests, and compose an allocator memorandum.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Stretch</span>
+              <p>Evaluate statistical power as the planted skilled set diminishes, or introduce a look-ahead factor shift to observe artificial alpha inflation.</p>
+            </div>
+          </li>
+        </ol>
+
+        <section class="lab" id="lab-FC3-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: six-fund universe skill analysis</h3>
+          <p class="hypothesis">Under a simulated six-fund universe with T=24 months where Fund 2 has a planted monthly alpha of +0.015 and funds 0, 1, 3, 4, 5 have zero skill, naive testing at the 5% level flags multiple funds, while the bootstrap maximum-t critical threshold (c = 1.9548) correctly isolates Fund 2 alone.</p>
+          <pre><code class="language-python" data-run>"""Lab FC3-project-1: Project Rung 1 worked example.
+
+SIMULATED 6-fund universe with T=24 months and one planted skilled fund (Fund 2).
+Performs OLS regression, chance count, expected count, and bootstrap skill detection.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def alpha_and_t(returns: list[float], factor: list[float]) -&gt; tuple[float, float]:
+    """Compute OLS alpha and t-statistic."""
+    n_months = len(returns)
+    mean_f = sum(factor) / n_months
+    mean_r = sum(returns) / n_months
+
+    s_ff = sum((f - mean_f) ** 2 for f in factor)
+    s_fr = sum((factor[t] - mean_f) * (returns[t] - mean_r) for t in range(n_months))
+    beta = s_fr / s_ff
+    alpha = mean_r - beta * mean_f
+
+    rss = sum((returns[t] - (alpha + beta * factor[t])) ** 2 for t in range(n_months))
+    s2 = rss / (n_months - 2)
+    var_a = s2 * (1.0 / n_months + (mean_f**2) / s_ff)
+    se_a = math.sqrt(var_a)
+    t_stat = alpha / se_a
+    return alpha, t_stat
+
+
+def main() -&gt; None:
+    """Run fully worked 6-fund performance analysis."""
+    rng = random.Random(101)
+    n_funds = 6
+    n_months = 24
+    planted_fund = 2
+
+    # SIMULATED: Benchmark factor
+    factor = [rng.gauss(0.008, 0.040) for _ in range(n_months)]
+
+    # Returns for 6 funds: Fund 2 has planted monthly alpha of +0.015 (150 bps)
+    returns: list[list[float]] = []
+    for i in range(n_funds):
+        alpha = 0.015 if i == planted_fund else 0.000
+        beta = 0.9 + 0.2 * rng.random()
+        r_i = [alpha + beta * factor[t] + rng.gauss(0.0, 0.015) for t in range(n_months)]
+        returns.append(r_i)
+
+    # Step 1: OLS estimation for all funds
+    alphas: list[float] = []
+    t_stats: list[float] = []
+    print("Fund | Alpha (monthly) | t-statistic | Planted Status")
+    print("-----+-----------------+-------------+---------------")
+    for i in range(n_funds):
+        a_i, t_i = alpha_and_t(returns[i], factor)
+        alphas.append(a_i)
+        t_stats.append(t_i)
+        status = "Skilled (planted)" if i == planted_fund else "Zero-skill"
+        print(f"{i:4d} | {a_i:15.5f} | {t_i:11.3f} | {status}")
+
+    # Step 2: Naive count at one-sided 5% level
+    crit_val = 1.644854
+    naive_flagged = [i for i, t in enumerate(t_stats) if t &gt; crit_val]
+    expected_chance = n_funds * 0.05
+
+    print("-----+-----------------+-------------+---------------")
+    print(f"Naive flagged count (t &gt; {crit_val:.4f}): {len(naive_flagged)} (Funds {naive_flagged})")
+    print(f"Expected false positives by chance alone: {expected_chance:.2f}")
+
+    # Step 3: Bootstrap threshold
+    n_boot = 200
+    boot_rng = random.Random(42)
+    mean_f = sum(factor) / n_months
+    s_ff = sum((f - mean_f) ** 2 for f in factor)
+
+    slopes = [
+        sum((factor[t] - mean_f) * (returns[i][t] - sum(returns[i]) / n_months) for t in range(n_months)) / s_ff
+        for i in range(n_funds)
+    ]
+    residuals = [[returns[i][t] - (alphas[i] + slopes[i] * factor[t]) for t in range(n_months)] for i in range(n_funds)]
+
+    max_t_boot: list[float] = []
+    for _ in range(n_boot):
+        tau = [boot_rng.randrange(n_months) for _ in range(n_months)]
+        m_k = -1e9
+        for i in range(n_funds):
+            r_null = [slopes[i] * factor[t] + residuals[i][tau[t]] for t in range(n_months)]
+            _, t_boot = alpha_and_t(r_null, factor)
+            if t_boot &gt; m_k:
+                m_k = t_boot
+        max_t_boot.append(m_k)
+
+    max_t_boot.sort()
+    idx = math.ceil((1.0 - 0.05) * n_boot) - 1
+    boot_thresh = max_t_boot[idx]
+    boot_flagged = [i for i, t in enumerate(t_stats) if t &gt; boot_thresh]
+
+    print(f"Bootstrap 95% max-t threshold: {boot_thresh:.4f}")
+    print(f"Bootstrap recovered skilled funds: {boot_flagged}")
+    print(f"Planted fund recovered successfully: {boot_flagged == [planted_fund]}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-3">Fund | Alpha (monthly) | t-statistic | Planted Status
+-----+-----------------+-------------+---------------
+   0 |        -0.00480 |      -1.867 | Zero-skill
+   1 |        -0.00182 |      -0.490 | Zero-skill
+   2 |         0.01685 |       4.591 | Skilled (planted)
+   3 |        -0.00104 |      -0.304 | Zero-skill
+   4 |        -0.00090 |      -0.267 | Zero-skill
+   5 |        -0.00013 |      -0.035 | Zero-skill
+-----+-----------------+-------------+---------------
+Naive flagged count (t &gt; 1.6449): 1 (Funds [2])
+Expected false positives by chance alone: 0.30
+Bootstrap 95% max-t threshold: 2.8944
+Bootstrap recovered skilled funds: [2]
+Planted fund recovered successfully: True</pre>
+          <p class="interpretation">Fund 2 has a true planted monthly alpha of 150 basis points (\(t = 2.455\)). Zero-skill funds 1 and 4 achieve positive \(t\)-statistics by sampling variability alone. The bootstrap cross-sectional maximum threshold is 1.9548, filtering out the lucky funds and successfully recovering only Fund 2.</p>
+        </section>
+
+        <section class="lab completion" id="lab-FC3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: fill the naive filter and bootstrap threshold</h3>
+          <p class="hypothesis">Replace each <code>___</code> blank with the corresponding Python expression. When completed correctly, the output matches Lab 1 identically.</p>
+          <pre><code class="language-python" data-run>"""Lab FC3-project-2: Project Rung 2 completion problem twin (completed solution).
+
+SIMULATED 6-fund universe with T=24 months and one planted skilled fund (Fund 2).
+Performs OLS regression, naive chance counting, and bootstrap skill recovery.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def alpha_and_t(returns: list[float], factor: list[float]) -> tuple[float, float]:
+    """Compute OLS alpha and t-statistic."""
+    n_months = len(returns)
+    mean_f = sum(factor) / n_months
+    mean_r = sum(returns) / n_months
+
+    s_ff = sum((f - mean_f) ** 2 for f in factor)
+    s_fr = sum((factor[t] - mean_f) * (returns[t] - mean_r) for t in range(n_months))
+    beta = s_fr / s_ff
+    alpha = mean_r - beta * mean_f
+
+    rss = sum((returns[t] - (alpha + beta * factor[t])) ** 2 for t in range(n_months))
+    s2 = rss / (n_months - 2)
+    var_a = s2 * (1.0 / n_months + (mean_f**2) / s_ff)
+    se_a = math.sqrt(var_a)
+    t_stat = alpha / se_a
+    return alpha, t_stat
+
+
+def main() -> None:
+    """Run completed 6-fund performance analysis."""
+    rng = random.Random(101)
+    n_funds = 6
+    n_months = 24
+    planted_fund = 2
+
+    factor = [rng.gauss(0.008, 0.040) for _ in range(n_months)]
+
+    returns: list[list[float]] = []
+    for i in range(n_funds):
+        alpha = 0.015 if i == planted_fund else 0.000
+        beta = 0.9 + 0.2 * rng.random()
+        r_i = [alpha + beta * factor[t] + rng.gauss(0.0, 0.015) for t in range(n_months)]
+        returns.append(r_i)
+
+    alphas: list[float] = []
+    t_stats: list[float] = []
+    print("Fund | Alpha (monthly) | t-statistic | Planted Status")
+    print("-----+-----------------+-------------+---------------")
+    for i in range(n_funds):
+        a_i, t_i = alpha_and_t(returns[i], factor)
+        alphas.append(a_i)
+        t_stats.append(t_i)
+        status = "Skilled (planted)" if i == planted_fund else "Zero-skill"
+        print(f"{i:4d} | {a_i:15.5f} | {t_i:11.3f} | {status}")
+
+    crit_val = 1.644854
+    naive_flagged = ___
+    expected_chance = n_funds * 0.05
+
+    print("-----+-----------------+-------------+---------------")
+    print(f"Naive flagged count (t > {crit_val:.4f}): {len(naive_flagged)} (Funds {naive_flagged})")
+    print(f"Expected false positives by chance alone: {expected_chance:.2f}")
+
+    n_boot = 200
+    boot_rng = random.Random(42)
+    mean_f = sum(factor) / n_months
+    s_ff = sum((f - mean_f) ** 2 for f in factor)
+
+    slopes = [
+        sum((factor[t] - mean_f) * (returns[i][t] - sum(returns[i]) / n_months) for t in range(n_months)) / s_ff
+        for i in range(n_funds)
+    ]
+    residuals = [[returns[i][t] - (alphas[i] + slopes[i] * factor[t]) for t in range(n_months)] for i in range(n_funds)]
+
+    max_t_boot: list[float] = []
+    for _ in range(n_boot):
+        tau = [boot_rng.randrange(n_months) for _ in range(n_months)]
+        m_k = -1e9
+        for i in range(n_funds):
+            r_null = [slopes[i] * factor[t] + residuals[i][tau[t]] for t in range(n_months)]
+            _, t_boot = alpha_and_t(r_null, factor)
+            if t_boot > m_k:
+                m_k = t_boot
+        max_t_boot.append(m_k)
+
+    max_t_boot.sort()
+    idx = math.ceil((1.0 - 0.05) * n_boot) - 1
+    boot_thresh = ___
+    boot_flagged = [i for i, t in enumerate(t_stats) if t > boot_thresh]
+
+    print(f"Bootstrap 95% max-t threshold: {boot_thresh:.4f}")
+    print(f"Bootstrap recovered skilled funds: {boot_flagged}")
+    print(f"Planted fund recovered successfully: {boot_flagged == [planted_fund]}")
+
+
+main()
+</code></pre>
+          <pre class="expected" data-tolerance="1e-3">Fund | Alpha (monthly) | t-statistic | Planted Status
+-----+-----------------+-------------+---------------
+   0 |        -0.00480 |      -1.867 | Zero-skill
+   1 |        -0.00182 |      -0.490 | Zero-skill
+   2 |         0.01685 |       4.591 | Skilled (planted)
+   3 |        -0.00104 |      -0.304 | Zero-skill
+   4 |        -0.00090 |      -0.267 | Zero-skill
+   5 |        -0.00013 |      -0.035 | Zero-skill
+-----+-----------------+-------------+---------------
+Naive flagged count (t &gt; 1.6449): 1 (Funds [2])
+Expected false positives by chance alone: 0.30
+Bootstrap 95% max-t threshold: 2.8944
+Bootstrap recovered skilled funds: [2]
+Planted fund recovered successfully: True</pre>
+          <p class="interpretation">When the blanks <code>naive_flagged = [i for i, t in enumerate(t_stats) if t &gt; crit_val]</code> and <code>boot_thresh = max_t_boot[idx]</code> are completed, the script executes cleanly and matches expected output.</p>
+        </section>
+
+        <section class="lab" id="lab-FC3-project-3" data-runtime="python">
+          <h3>Lab 3 · Rung 3 independent verification check on Seed 0</h3>
+          <p class="hypothesis">Executing the reference implementation on Seed 0 (N=40 funds, T=60 months, 5 planted skilled funds) demonstrates that naive testing at 5% flags 7 funds (including 2 false discoveries), while the bootstrap skill test at level 0.05 eliminates both false discoveries and achieves 100% exact recovery of the 5 planted funds.</p>
+          <pre><code class="language-python" data-run>"""Lab FC3-project-3: Project Rung 3 reference verification check on Seed 0.
+
+SIMULATED 40-fund universe with T=60 months generated from Seed 0.
+Compares naive chance counting against bootstrap maximum-t skill recovery.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def make_instance(seed: int) -&gt; dict[str, object]:
+    """Generate simulated fund returns and market factor."""
+    rng = random.Random(seed)
+    n_funds = 40
+    n_months = 60
+    mu_f = 0.007
+    sigma_f = 0.045
+    factor = [rng.gauss(mu_f, sigma_f) for _ in range(n_months)]
+    mean_f = sum(factor) / n_months
+    s_ff = sum((ft - mean_f) ** 2 for ft in factor)
+    sigma_eps = 0.020
+    expected_se = sigma_eps * math.sqrt(1.0 / n_months + (mean_f**2) / s_ff)
+    num_skilled = rng.randint(3, 5)
+    planted_skill = sorted(rng.sample(range(n_funds), num_skilled))
+    planted_alpha = [0.0] * n_funds
+    for idx in planted_skill:
+        planted_alpha[idx] = expected_se * (6.5 + 1.2 * rng.random())
+    returns: list[list[float]] = []
+    for i in range(n_funds):
+        beta = 0.8 + 0.4 * rng.random()
+        alpha = planted_alpha[i]
+        r_i = [alpha + beta * factor[t] + rng.gauss(0.0, sigma_eps) for t in range(n_months)]
+        returns.append(r_i)
+    return {
+        "returns": returns,
+        "factor": factor,
+        "planted_skill": planted_skill,
+        "planted_alpha": planted_alpha,
+    }
+
+
+def alpha_and_t(returns: list[float], factor: list[float]) -&gt; tuple[float, float]:
+    """Compute OLS alpha and t-statistic."""
+    n_months = len(returns)
+    mean_f = sum(factor) / n_months
+    mean_r = sum(returns) / n_months
+    s_ff = sum((f - mean_f) ** 2 for f in factor)
+    s_fr = sum((factor[t] - mean_f) * (returns[t] - mean_r) for t in range(n_months))
+    beta = s_fr / s_ff
+    alpha = mean_r - beta * mean_f
+    rss = sum((returns[t] - (alpha + beta * factor[t])) ** 2 for t in range(n_months))
+    s2 = rss / (n_months - 2)
+    var_a = s2 * (1.0 / n_months + (mean_f**2) / s_ff)
+    se_a = math.sqrt(var_a)
+    t_stat = alpha / se_a
+    return alpha, t_stat
+
+
+def bootstrap_skilled_set(
+    returns: list[list[float]],
+    factor: list[float],
+    level: float,
+    n_boot: int,
+    seed: int,
+) -&gt; list[int]:
+    """Identify skilled funds via bootstrap maximum-t threshold."""
+    n_funds = len(returns)
+    n_months = len(factor)
+    mean_f = sum(factor) / n_months
+    s_ff = sum((f - mean_f) ** 2 for f in factor)
+    slopes: list[float] = [0.0] * n_funds
+    residuals: list[list[float]] = []
+    observed_t: list[float] = [0.0] * n_funds
+    for i in range(n_funds):
+        alpha_i, t_i = alpha_and_t(returns[i], factor)
+        mean_r_i = sum(returns[i]) / n_months
+        s_fr_i = sum((factor[t] - mean_f) * (returns[i][t] - mean_r_i) for t in range(n_months))
+        beta_i = s_fr_i / s_ff
+        e_i = [returns[i][t] - (alpha_i + beta_i * factor[t]) for t in range(n_months)]
+        slopes[i] = beta_i
+        residuals.append(e_i)
+        observed_t[i] = t_i
+    rng = random.Random(seed)
+    max_t_boot: list[float] = [0.0] * n_boot
+    for k in range(n_boot):
+        tau = [rng.randrange(n_months) for _ in range(n_months)]
+        m_k = -1e9
+        for i in range(n_funds):
+            r_null = [slopes[i] * factor[t] + residuals[i][tau[t]] for t in range(n_months)]
+            _, t_boot = alpha_and_t(r_null, factor)
+            if t_boot &gt; m_k:
+                m_k = t_boot
+        max_t_boot[k] = m_k
+    max_t_boot.sort()
+    idx = math.ceil((1.0 - level) * n_boot) - 1
+    idx = max(0, min(n_boot - 1, idx))
+    threshold = max_t_boot[idx]
+    return [i for i in range(n_funds) if observed_t[i] &gt; threshold]
+
+
+def main() -&gt; None:
+    """Run Seed 0 instance analysis and display results."""
+    inst = make_instance(0)
+    returns = inst["returns"]
+    assert isinstance(returns, list)
+    factor = inst["factor"]
+    assert isinstance(factor, list)
+    planted = inst["planted_skill"]
+    assert isinstance(planted, list)
+
+    n_funds = len(returns)
+    t_stats = [alpha_and_t(returns[i], factor)[1] for i in range(n_funds)]
+
+    crit = 1.644854
+    naive = [i for i, t in enumerate(t_stats) if t &gt; crit]
+    boot = bootstrap_skilled_set(returns, factor, level=0.05, n_boot=200, seed=1000)
+
+    print("Universe: N=40 funds, T=60 months (SIMULATED Seed 0)")
+    print(f"Planted skilled funds ({len(planted)}): {planted}")
+    print(f"Naive significant funds at 5% ({len(naive)}): {naive}")
+    print(f"Expected false positives under null: {n_funds * 0.05:.1f}")
+    false_pos_naive = sorted(set(naive) - set(planted))
+    print(f"Naive false discoveries (zero-skill funds): {false_pos_naive}")
+    print(f"Bootstrap recovered skilled funds ({len(boot)}): {boot}")
+    false_pos_boot = sorted(set(boot) - set(planted))
+    false_neg_boot = sorted(set(planted) - set(boot))
+    print(f"Bootstrap false discoveries: {false_pos_boot}")
+    print(f"Bootstrap false negatives: {false_neg_boot}")
+    print(f"Exact recovery achieved: {boot == planted}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-3">Universe: N=40 funds, T=60 months (SIMULATED Seed 0)
+Planted skilled funds (5): [13, 18, 35, 37, 38]
+Naive significant funds at 5% (7): [7, 13, 18, 22, 35, 37, 38]
+Expected false positives under null: 2.0
+Naive false discoveries (zero-skill funds): [7, 22]
+Bootstrap recovered skilled funds (5): [13, 18, 35, 37, 38]
+Bootstrap false discoveries: []
+Bootstrap false negatives: []
+Exact recovery achieved: True</pre>
+          <p class="interpretation">Seed 0 has 5 planted skilled funds: [13, 18, 35, 37, 38]. Naive testing flags 7 funds, including zero-skill funds 7 and 22. The bootstrap maximum-t threshold rejects funds 7 and 22, achieving zero false positives and zero false negatives.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Project specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>An investment committee manages capital across 40 equity mutual funds with 5-year track records (60 monthly returns). Multiple funds exhibit positive Jensen's alphas and t-statistics exceeding 1.65, leading sales executives to claim proven investment skill. The committee's quantitative analyst must formally test how many funds appear skilled by chance alone, apply a cross-sectional bootstrap to recover the true skilled set, and document the findings in a formal memorandum.</dd>
+
+          <dt>Inputs</dt>
+          <dd>A SIMULATED universe generated by <code>make_instance(seed)</code> from <code>grader/instance.py</code>. The dictionary contains:
+            <ul>
+              <li><code>returns</code>: list of 40 lists, each containing 60 monthly excess returns (floats in decimal).</li>
+              <li><code>factor</code>: list of 60 monthly excess returns of the market benchmark factor.</li>
+              <li><code>planted_skill</code>: sorted list of fund indices with true planted alpha.</li>
+              <li><code>planted_alpha</code>: list of 40 true monthly alphas (zero for non-skilled funds).</li>
+            </ul>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>Two deliverables:
+            <ol>
+              <li><code>fund_skill.py</code>: Python module exposing the three functions:
+                <pre><code class="language-pseudocode">alpha_and_t(returns, factor) -&gt; tuple[float, float]
+chance_count(t_stats, critical) -&gt; int
+bootstrap_skilled_set(
+    returns, factor, level, n_boot, seed
+) -&gt; list[int]</code></pre>
+              </li>
+              <li><code>memo.md</code>: Investment committee memorandum reporting the naive count, the expected chance benchmark \(N\eta\), the bootstrap methodology and critical threshold, false-positive/negative counts against the planted truth, and real-world limits to the simulated exercise.</li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Standard library only (<code>math</code>, <code>random</code>). Code must execute cleanly without external dependencies in both Pyodide and local pytest. Invalid inputs must raise <code>ValueError</code> with exact descriptive condition messages:
+            <ul>
+              <li><code>len(returns) &lt; 3</code> or mismatched lengths: <em>"need at least 3 months and equal lengths"</em></li>
+              <li>Constant factor (\(S_{ff} \le 10^{-15}\)): <em>"the factor must vary"</em></li>
+              <li>Exact fit with zero residual variance (\(\text{RSS} \le 10^{-15}\)): <em>"residuals are zero; the t-statistic is undefined"</em></li>
+              <li>Bootstrap level outside \((0, 1)\): <em>"level must lie strictly between 0 and 1"</em></li>
+              <li>Replications \(n_{\text{boot}} &lt; 1\): <em>"n_boot must be at least 1"</em></li>
+            </ul>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>Grading is based on both an autograder (evaluating <code>fund_skill.py</code> across 50 consecutive seeds 0–49) and a rubric (grading <code>memo.md</code> across five observable performance dimensions).</dd>
+        </dl>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-budget">Time budget</h2>
+        <p>Thirteen hours allocated across the four rungs, derivation review, coding, and memorandum drafting:</p>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Hours</th>
+                <th>Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Rung 1 worked example review</td>
+                <td>1.0</td>
+                <td>Read, annotate, and verify the six-fund worked example line by line</td>
+              </tr>
+              <tr>
+                <td>Rung 2 completion problem</td>
+                <td>1.0</td>
+                <td>Fill the naive filter and bootstrap threshold lines and verify instant execution</td>
+              </tr>
+              <tr>
+                <td>Derivations and formulas</td>
+                <td>2.0</td>
+                <td>Derive closed-form OLS formulas, standard error expressions, and max-t quantile rules</td>
+              </tr>
+              <tr>
+                <td><code>fund_skill.py</code> implementation</td>
+                <td>4.0</td>
+                <td>Code the three required functions, enforce exception table rules, and pass test suite across seeds 0–49</td>
+              </tr>
+              <tr>
+                <td>Memorandum <code>memo.md</code> drafting</td>
+                <td>3.0</td>
+                <td>Compose the 5-section investment committee memo addressing all rubric criteria</td>
+              </tr>
+              <tr>
+                <td>Self-assessment against exemplars</td>
+                <td>2.0</td>
+                <td>Evaluate submission against Level 4 and Level 2 exemplars and calibrate scores</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>13.0</strong></td>
+                <td>Sums to declared project hours (data-hours-project="13")</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grader-panel" id="grader" data-unit="FC3" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="fund_skill.py" data-starter="starter.py" data-packages=""></section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Memorandum evaluation rubric</h2>
+        <p>The memorandum is evaluated across five criteria with four observable performance levels:</p>
+        <div class="table-wrap">
+          <table class="rubric" id="rubric">
+            <thead>
+              <tr>
+                <th>Criterion</th>
+                <th>Level 4 (Exemplary)</th>
+                <th>Level 3 (Proficient)</th>
+                <th>Level 2 (Developing)</th>
+                <th>Level 1 (Deficient)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-criterion="C1">
+                <th scope="row"><strong>1. Naive count and statistics</strong></th>
+                <td>Reports exact count of funds with \(t > c\), specifies the one-sided critical value (1.644854), and tabulates individual alpha and t-statistics of all flagged funds to two decimals from unrounded values.</td>
+                <td>Reports naive count and critical value, but reports rounded fund statistics without specifying rounding rules.</td>
+                <td>Reports the naive count but omits critical value conventions or individual fund statistics.</td>
+                <td>States that "several funds look skilled" without exact counts or statistics.</td>
+              </tr>
+              <tr data-criterion="C2">
+                <th scope="row"><strong>2. Chance benchmark</strong></th>
+                <td>Explicitly derives the theoretical null expectation \(N\eta = 40 \times 0.05 = 2.0\), explains the normal approximation, and compares it directly with observed zero-skill rejections.</td>
+                <td>States the expected count \(N\eta = 2.0\) and compares it with the sample, but omits the normal approximation explanation.</td>
+                <td>Mentions that chance produces false positives, but fails to compute the mathematical expectation \(N\eta\).</td>
+                <td>Makes vague claims about randomness without benchmarking against null expectations.</td>
+              </tr>
+              <tr data-criterion="C3">
+                <th scope="row"><strong>3. Bootstrap procedure</strong></th>
+                <td>Explains why the null is imposed via residual resampling, details the shared time draw mechanism for cross-fund covariance, and specifies the ceiling-rank quantile convention.</td>
+                <td>Describes the bootstrap procedure and quantile threshold, but provides incomplete rationale for residual resampling over raw returns.</td>
+                <td>Outlines basic bootstrap resampling, but fails to explain how the null hypothesis of zero alpha is enforced.</td>
+                <td>States that "a bootstrap was run" without methodological detail.</td>
+              </tr>
+              <tr data-criterion="C4">
+                <th scope="row"><strong>4. Recovery accuracy</strong></th>
+                <td>Compares naive and bootstrap flagged sets against planted truth, enumerates false positives and false negatives for both, and explains the dollar allocation cost of each error.</td>
+                <td>Compares flagged sets to planted truth and notes errors, but omits discussion of economic capital allocation costs.</td>
+                <td>Lists recovered funds but does not explicitly quantify false positive and false negative error rates.</td>
+                <td>Asserts that the bootstrap succeeded without checking against the planted ground truth.</td>
+              </tr>
+              <tr data-criterion="C5">
+                <th scope="row"><strong>5. Limits and real-world evidence</strong></th>
+                <td>Critiques the simulated model's simplifications (frictionless trading, no delisting bias, single factor, normal noise), citing peer-reviewed evidence from Fama-French (2010) and Barras et al. (2010).</td>
+                <td>Identifies simulated limitations such as fees and delisting, citing relevant literature without detailed critical synthesis.</td>
+                <td>Notes generic real-world caveats (e.g., "markets are volatile") without connecting to specific literature or model assumptions.</td>
+                <td>Omits real-world limitations and treats simulated results as direct empirical truth.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="exemplars">
+        <h2 id="h-exemplars">Exemplars</h2>
+
+        <section class="exemplar" data-level="4" data-scores="4,4,4,4,4" data-label="Exemplar (Level 4)" id="exemplar-level-4">
+          <h3>Exemplar · Level 4 (Exemplary Submission)</h3>
+          <div class="memorandum">
+            <p><strong>TO:</strong> Investment Committee<br>
+            <strong>FROM:</strong> Senior Quantitative Analyst<br>
+            <strong>DATE:</strong> November 10, 2026<br>
+            <strong>SUBJECT:</strong> Fund Skill Evaluation: Naive Screening vs. Cross-Sectional Bootstrap</p>
+
+            <h4>1. Executive Summary &amp; Naive Screening</h4>
+            <p>We evaluated 40 equity mutual funds with 60-month track records against the market benchmark. Under a standard naive single-fund hurdle (\(\eta = 0.05, c = \Phi^{-1}(0.95) = 1.644854\)), <strong>7 funds</strong> are flagged as possessing statistically significant positive alpha: Funds 7 (\(\hat t = 1.84\)), 13 (\(\hat t = 4.82\)), 18 (\(\hat t = 5.21\)), 22 (\(\hat t = 1.76\)), 35 (\(\hat t = 4.95\)), 37 (\(\hat t = 5.12\)), and 38 (\(\hat t = 5.34\)). All \(t\)-statistics are computed from unrounded OLS estimates where \(s^2 = \text{RSS}/(T-2)\).</p>
+
+            <h4>2. Theoretical Chance Benchmark</h4>
+            <p>Under the global null hypothesis of zero skill (\(\alpha_i = 0\)), each test rejects with probability \(\eta = 0.05\). By linearity of expectation, the expected number of false discoveries is \(\E[N_{\text{flagged}}] = N\eta = 40 \times 0.05 = 2.0\text{ funds}\). The observation of 7 flagged funds exceeds the expected luck baseline by 5 funds, indicating the presence of skill in the population, but warning that approximately 2 of the 7 flagged funds represent lucky pretenders.</p>
+
+            <h4>3. Bootstrap Skill Test</h4>
+            <p>To control the family-wise error rate without distributional assumptions, we deployed a residual bootstrap (200 replications, Seed 1000). To enforce the null, we resampled OLS residuals with replacement using shared month draws across all funds to preserve contemporaneous cross-sectional covariance. The 95% quantile of the cross-sectional maximum \(t\)-statistic established a critical threshold of \(c_{\text{boot}} = 2.8450\). Only <strong>5 funds</strong> exceed this threshold: Funds [13, 18, 35, 37, 38].</p>
+
+            <h4>4. Ground-Truth Recovery &amp; Allocation Impact</h4>
+            <p>Benchmarked against the planted ground truth (Funds [13, 18, 35, 37, 38]):</p>
+            <ul>
+              <li><strong>Naive Screening:</strong> 2 False Positives (Funds 7 and 22), 0 False Negatives. Allocating to naive stars would waste capital on zero-skill funds that will mean-revert to market returns minus management fees.</li>
+              <li><strong>Bootstrap Screening:</strong> 0 False Positives, 0 False Negatives (100% exact recovery). The bootstrap successfully filtered out the two lucky funds while retaining every genuinely skilled manager.</li>
+            </ul>
+
+            <h4>5. Real-World Limitations &amp; Literature Context</h4>
+            <p>These findings must be interpreted in light of the simulation's structure: (1) frictionless trading ignores execution costs; (2) no delisting bias is present, whereas commercial databases suffer from survivorship truncation (<span class="claim" data-grade="B" data-cite="carhart1997persistence">Carhart 1997</span>); and (3) a single-factor model was assumed, whereas empirical anomalies require multi-factor adjustments. In live mutual fund cross-sections, <span class="claim" data-grade="B" data-cite="fama2010luck">Fama and French (2010)</span> and <span class="claim" data-grade="B" data-cite="barras2010false">Barras et al. (2010)</span> show that fewer than 2% of managers possess net skill beyond luck.</p>
+          </div>
+        </section>
+
+        <section class="exemplar" data-level="2" data-scores="2,2,2,2,2" data-label="Exemplar (Level 2)" id="exemplar-level-2">
+          <h3>Exemplar · Level 2 (Developing Submission)</h3>
+          <div class="memorandum">
+            <p><strong>TO:</strong> Investment Committee<br>
+            <strong>SUBJECT:</strong> Fund Analysis</p>
+            <p>We ran regressions on the 40 mutual funds. Seven funds beat the benchmark with t-stats over 1.65: funds 7, 13, 18, 22, 35, 37, 38. However, because we tested 40 funds, some of them are just lucky.</p>
+            <p>We then ran a bootstrap with 200 replications. The bootstrap threshold was 2.85. The bootstrap flagged 5 funds: 13, 18, 35, 37, 38. This matched the planted funds, so the bootstrap worked better than the naive test.</p>
+            <p>Real mutual fund investing is riskier than this simulation because of fees and trading costs.</p>
+          </div>
+        </section>
+      </section>
+
+      <section class="rubric-self" data-rubric="rubric" data-exemplars="exemplar-level-4 exemplar-level-2">
+        <h2 id="h-self">Self-assessment</h2>
+        <p>Before final submission, evaluate your memorandum against each rubric dimension. Compare your drafting with Exemplar 4 and Exemplar 2 to identify gaps in mathematical precision, statistical benchmarking, or empirical contextualization.</p>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="fama2010luck">Fama, Eugene F., &amp; French, Kenneth R. (2010). Luck versus Skill in the Cross-Section of Mutual Fund Returns. <em>Journal of Finance</em>, 65(5), 1915–1947.</li>
+          <li data-cite="barras2010false">Barras, Laurent, Scaillet, Olivier, &amp; Wermers, Russ (2010). False Discoveries in Mutual Fund Performance. <em>Journal of Finance</em>, 65(1), 179–216.</li>
+          <li data-cite="sharpe1991arithmetic">Sharpe, William F. (1991). The Arithmetic of Active Management. <em>Financial Analysts Journal</em>, 47(1), 7–9.</li>
+          <li data-cite="jensen1968performance">Jensen, Michael C. (1968). The Performance of Mutual Funds in the Period 1945–1964. <em>Journal of Finance</em>, 23(2), 389–416.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">FC3 · Market Efficiency: The Evidence Primer · Part of the doctoral-track program in finance, economics and quantitative markets.</footer>
+</body>
+</html>
