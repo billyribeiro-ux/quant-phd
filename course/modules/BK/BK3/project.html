@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="BK3" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · LDI Collateral-Spiral Simulator &amp; Post-Mortem Memo · BK3 Insurance &amp; Pensions</title>
+  <meta name="description" content="Simulate a leveraged LDI fund's collateral needs under a gilt-yield shock, find the forced-selling threshold, and evaluate the central-bank backstop with an autograded model and post-mortem memo.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">BK3 Insurance &amp; Pensions</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="12">
+      <header class="page-head">
+        <p class="eyebrow">BK3 · Capstone Project · 12 study hours</p>
+        <h1>LDI Collateral-Spiral Model and Post-Mortem Memo</h1>
+        <ul class="meta-row">
+          <li><strong>Grading:</strong> Both (dual-mode autograder and qualitative rubric)</li>
+          <li><strong>Deliverables:</strong> <code>ldi_model.py</code> and <code>memo.md</code></li>
+        </ul>
+      </header>
+
+      <section id="ladder">
+        <h2>The Project Ladder</h2>
+        <ol class="ladder">
+          <li><span class="rung-title">Worked example</span>: One fully solved instance of single-step margin calculation and forced liquidation.</li>
+          <li><span class="rung-title">Completion</span>: The same calculation with margin call and forced sale steps left as blanks.</li>
+          <li><span class="rung-title">Independent</span>: The full multi-step LDI collateral-spiral simulator and post-mortem evaluation memo.</li>
+          <li><span class="rung-title">Stretch</span>: Non-linear order book depth, multi-tenor curve twists, and dynamic collateral haircuts.</li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2>Rungs 1 and 2</h2>
+        <p>Both preparatory labs analyze a leveraged LDI pension fund holding an interest-rate swap overlay. All inputs are SIMULATED illustrative parameters: all monetary amounts are integer cents, durations are in hundredths of a year, and rate shocks are in basis points. No external file is required.</p>
+
+        <section class="lab" id="lab-BK3-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: single-step margin call and forced liquidation</h3>
+          <p class="hypothesis">Under a 25 bps shock on a $1M notional overlay with 5.00y duration, the margin call is $12,500 (1,250,000 cents). The $10,000 cash buffer pays $10,000, leaving a forced bond liquidation of $2,500 (250,000 cents). At lambda = 2000 bps per $10M sold, the price impact is exactly +1 bp.</p>
+          <pre><code class="language-python" data-run>"""BK3 Lab Project-1 (Rung 1 Worked Example): Single-step LDI margin call and forced sale.
+
+SIMULATED. Illustrative LDI fund parameters, not market data.
+A fully solved, annotated worked example of a single margin call, cash buffer exhaustion,
+and initial forced liquidation under a sovereign bond yield shock.
+"""
+
+from __future__ import annotations
+
+import math
+from fractions import Fraction
+
+
+def round_half_up(val: Fraction) -&gt; int:
+    """Round Fraction half up to nearest integer."""
+    return math.floor(val + Fraction(1, 2))
+
+
+def main() -&gt; None:
+    # 1. Fund parameters (all in integer cents or basis points)
+    overlay_notional = 100_000_000  # $1,000,000 notional overlay
+    overlay_duration_cy = 500  # 5.00 years modified duration (500 hundredths of a year)
+    buffer_cents = 1_000_000  # $10,000 liquid cash buffer held at clearing broker
+    impact_bps_per_gcent = 2000  # 2000 bps price impact per 10^9 cents ($10M) liquidated
+    shock_bps = 25  # 25 basis points parallel upward shift in sovereign yields
+
+    print("=== Rung 1 Worked Example: Single-Step LDI Margin Call ===")
+    print(f"Overlay Notional:       ${overlay_notional / 100:,.2f} cents ({overlay_notional:,} cents)")
+    print(f"Overlay Duration:       {overlay_duration_cy / 100:.2f} years ({overlay_duration_cy} hundredths)")
+    print(f"Available Cash Buffer:  ${buffer_cents / 100:,.2f} cents ({buffer_cents:,} cents)")
+    print(f"Yield Shock:            +{shock_bps} bps")
+
+    # 2. Sizing the variation margin call
+    # Formula: Due(Y) = round_half_up(N * D_h * Y / 10^6)
+    exact_margin_frac = Fraction(overlay_notional * overlay_duration_cy * shock_bps, 1_000_000)
+    margin_call_cents = round_half_up(exact_margin_frac)
+    print(f"\nStep 1: Margin Call Due: ${margin_call_cents / 100:,.2f} ({margin_call_cents:,} cents)")
+
+    # 3. Liquid buffer payment
+    buffer_paid_cents = min(margin_call_cents, buffer_cents)
+    remaining_buffer_cents = buffer_cents - buffer_paid_cents
+    print(f"Step 2: Buffer Cash Paid: ${buffer_paid_cents / 100:,.2f} ({buffer_paid_cents:,} cents)")
+    print(f"        Remaining Buffer: ${remaining_buffer_cents / 100:,.2f} ({remaining_buffer_cents:,} cents)")
+
+    # 4. Forced asset liquidation
+    forced_sale_cents = margin_call_cents - buffer_paid_cents
+    print(f"Step 3: Forced Sale:      ${forced_sale_cents / 100:,.2f} ({forced_sale_cents:,} cents)")
+
+    # 5. Price impact
+    exact_impact_frac = Fraction(impact_bps_per_gcent * forced_sale_cents, 1_000_000_000)
+    price_impact_bps = round_half_up(exact_impact_frac)
+    print(f"Step 4: Endogenous Price Impact: +{price_impact_bps} bps (from selling ${forced_sale_cents / 100:,.2f})")
+
+    # Conservation checks
+    assert margin_call_cents == buffer_paid_cents + forced_sale_cents, "Cash paid + forced sale must equal margin call"
+    print("\nConservation Check: Margin Call == Buffer Paid + Forced Sale -&gt; True")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">=== Rung 1 Worked Example: Single-Step LDI Margin Call ===
+Overlay Notional:       $1,000,000.00 cents (100,000,000 cents)
+Overlay Duration:       5.00 years (500 hundredths)
+Available Cash Buffer:  $10,000.00 cents (1,000,000 cents)
+Yield Shock:            +25 bps
+
+Step 1: Margin Call Due: $12,500.00 (1,250,000 cents)
+Step 2: Buffer Cash Paid: $10,000.00 (1,000,000 cents)
+        Remaining Buffer: $0.00 (0 cents)
+Step 3: Forced Sale:      $2,500.00 (250,000 cents)
+Step 4: Endogenous Price Impact: +1 bps (from selling $2,500.00)
+
+Conservation Check: Margin Call == Buffer Paid + Forced Sale -&gt; True</pre>
+          <p class="interpretation">The worked example traces the exact mechanical sequence: derivative revaluation, buffer cash depletion, forced bond liquidation, and market price impact. Conservation is verified: buffer cash paid plus forced asset liquidation equals total margin call due.</p>
+        </section>
+
+        <section class="lab completion" id="lab-BK3-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: sizing margin calls and forced liquidations</h3>
+          <p class="hypothesis">Replace each <code>___</code> with the exact expression for the variation margin call and forced sale.</p>
+          <pre><code class="language-python" data-run>"""BK3 Lab Project-2 (Rung 2 Completion Problem): Sizing margin calls and forced liquidations.
+
+SIMULATED. Illustrative LDI fund parameters, not market data.
+The completion problem from Rung 2: replaces blanks with the exact margin call and forced sale expressions.
+"""
+
+from __future__ import annotations
+
+from fractions import Fraction
+import math
+
+
+def round_half_up(val: Fraction) -> int:
+    return math.floor(val + Fraction(1, 2))
+
+
+def main() -> None:
+    overlay_notional = 120_000_000  # $1,200,000 notional overlay
+    overlay_duration_cy = 600  # 6.00 years modified duration
+    buffer_cents = 2_000_000  # $20,000 cash buffer
+    impact_bps_per_gcent = 2500  # 2500 bps per 10^9 cents sold
+    shock_bps = 35  # 35 bps shock
+
+    # Sizing variation margin call using exact Fraction arithmetic
+    exact_margin_frac = ___
+    margin_call_cents = round_half_up(exact_margin_frac)
+
+    # Cash buffer payment
+    buffer_paid_cents = min(margin_call_cents, buffer_cents)
+
+    # Forced asset liquidation after buffer exhaustion
+    forced_sale_cents = ___
+
+    # Price impact
+    exact_impact_frac = Fraction(impact_bps_per_gcent * forced_sale_cents, 1_000_000_000)
+    price_impact_bps = round_half_up(exact_impact_frac)
+
+    print(f"Margin Call:   ${margin_call_cents / 100:,.2f} ({margin_call_cents} cents)")
+    print(f"Buffer Paid:   ${buffer_paid_cents / 100:,.2f} ({buffer_paid_cents} cents)")
+    print(f"Forced Sale:   ${forced_sale_cents / 100:,.2f} ({forced_sale_cents} cents)")
+    print(f"Price Impact:  +{price_impact_bps} bps")
+
+
+main()
+</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Margin Call:   $25,200.00 (2520000 cents)
+Buffer Paid:   $20,000.00 (2000000 cents)
+Forced Sale:   $5,200.00 (520000 cents)
+Price Impact:  +1 bps</pre>
+          <p class="interpretation">Completing both blanks reproduces the exact margin call of $25,200 (2,520,000 cents), buffer cash payment of $20,000, forced sale of $5,200 (520,000 cents), and endogenous price impact of +1 bp.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2>Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A leveraged liability-driven investment (LDI) pension fund holds long sovereign bonds and utilizes an interest-rate swap overlay to match the duration of long-term retirement liabilities. When sovereign bond yields experience an acute upward shock, the swap overlay generates heavy variation margin calls. As the fund exhausts its liquid cash buffer, it is compelled to sell underlying sovereign bonds into illiquid markets, driving yields higher. The quantitative analyst must size the collateral needs, derive the forced-selling threshold, model the dynamic spiral, and evaluate whether a central-bank liquidity backstop halts the spiral.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Deterministic per-learner instances generated by <code>make_instance(seed: int)</code> in <code>grader/instance.py</code>. Parameters include assets, asset duration, overlay notional, overlay duration, liquid buffer, price impact coefficient, backstop trigger yield, backstop capacity, and initial yield shock. All parameters are SIMULATED illustrative values, not market data.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            <ol>
+              <li><code>ldi_model.py</code>: Implements <code>Fund</code> and <code>Step</code> frozen dataclasses, <code>margin_call_cents(fund, cumulative_bps)</code>, <code>threshold_bps(fund)</code>, and <code>run_steps(fund, shock_bps, backstop)</code> conforming strictly to the module interface.</li>
+              <li><code>memo.md</code>: A structured post-mortem evaluation memo reporting baseline parameters, threshold calculations, comparative spiral trajectories (with and without backstop), and model limitations.</li>
+            </ol>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ul>
+              <li>Standard library only (<code>dataclasses</code>, <code>fractions</code>, <code>math</code>). No third-party network libraries.</li>
+              <li>All money amounts are non-negative integer cents (int).</li>
+              <li>Durations are integer hundredths of a year (e.g. 1500 = 15.00 years).</li>
+              <li>Yield moves and price impacts are integer basis points.</li>
+              <li>Rounding follows the half-up convention: <code>floor(x + 1/2)</code> using exact <code>Fraction</code> arithmetic.</li>
+              <li>Negative input arguments raise <code>ValueError</code>.</li>
+            </ul>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>This project is evaluated by both autograder and rubric. The Python simulator <code>ldi_model.py</code> is scored automatically against unit test suites across seeds 0–49. The post-mortem analysis memo <code>memo.md</code> is evaluated using the five-criterion qualitative rubric below.</dd>
+        </dl>
+
+        <section class="lab" id="lab-BK3-project-3" data-runtime="python">
+          <h3>Lab 3 · Independent project verification: default instance (Seed 0)</h3>
+          <p class="hypothesis">Runs the reference simulator on the default instance parameters (Seed 0), generating the exact benchmark table that ldi_model.py must reproduce.</p>
+          <pre><code class="language-python" data-run>"""BK3 Lab Project-3 (Rung 3 Independent Verification): Default instance spiral benchmark.
+
+SIMULATED. Illustrative LDI fund benchmark, not market data.
+Executes the reference simulator on the default instance parameters (Seed 0).
+Prints the exact threshold shock and full spiral simulation tables with and without
+a central-bank liquidity backstop that the learner's ldi_model.py implementation must reproduce.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from fractions import Fraction
+
+
+@dataclass(frozen=True)
+class Fund:
+    assets_cents: int
+    asset_duration_cy: int
+    overlay_notional_cents: int
+    overlay_duration_cy: int
+    buffer_cents: int
+    impact_bps_per_gcent: int
+    backstop_trigger_bps: int
+    backstop_capacity_cents: int
+
+
+@dataclass(frozen=True)
+class Step:
+    step: int
+    cumulative_bps: int
+    margin_call_cents: int
+    buffer_paid_cents: int
+    forced_sale_cents: int
+    backstop_absorbed_cents: int
+    price_impact_bps: int
+
+
+def _round_half_up(val: Fraction) -&gt; int:
+    return math.floor(val + Fraction(1, 2))
+
+
+def margin_call_cents(fund: Fund, cumulative_bps: int) -&gt; int:
+    exact = Fraction(fund.overlay_notional_cents * fund.overlay_duration_cy * cumulative_bps, 1_000_000)
+    return _round_half_up(exact)
+
+
+def threshold_bps(fund: Fund) -&gt; int | None:
+    prod = fund.overlay_notional_cents * fund.overlay_duration_cy
+    if prod == 0:
+        return None
+    num = (2 * fund.buffer_cents + 1) * 1_000_000
+    den = 2 * prod
+    return -(-num // den)
+
+
+def run_steps(fund: Fund, shock_bps: int, backstop: bool) -&gt; list[Step]:
+    steps: list[Step] = []
+    remaining_buffer = fund.buffer_cents
+    remaining_capacity = fund.backstop_capacity_cents if backstop else 0
+    cum_bps = shock_bps
+    prev_due = 0
+
+    for step_idx in range(50):
+        cum_due = margin_call_cents(fund, cum_bps)
+        step_call = cum_due - prev_due
+        prev_due = cum_due
+
+        paid = min(step_call, remaining_buffer)
+        remaining_buffer -= paid
+        forced_sale = step_call - paid
+
+        absorbed = 0
+        if backstop and cum_bps &gt;= fund.backstop_trigger_bps:
+            absorbed = min(forced_sale, remaining_capacity)
+            remaining_capacity -= absorbed
+
+        unabsorbed = forced_sale - absorbed
+        exact_impact = Fraction(fund.impact_bps_per_gcent * unabsorbed, 1_000_000_000)
+        impact_bps = _round_half_up(exact_impact)
+
+        steps.append(
+            Step(
+                step=step_idx,
+                cumulative_bps=cum_bps,
+                margin_call_cents=step_call,
+                buffer_paid_cents=paid,
+                forced_sale_cents=forced_sale,
+                backstop_absorbed_cents=absorbed,
+                price_impact_bps=impact_bps,
+            )
+        )
+
+        if forced_sale == 0 or impact_bps == 0:
+            break
+
+        cum_bps += impact_bps
+
+    return steps
+
+
+def main() -&gt; None:
+    # Baseline default instance (Seed 0 parameters from instance.py)
+    fund = Fund(
+        assets_cents=1_643_341_330,
+        asset_duration_cy=953,
+        overlay_notional_cents=635_486_061,
+        overlay_duration_cy=1861,
+        buffer_cents=14_185_179,
+        impact_bps_per_gcent=1268,
+        backstop_trigger_bps=45,
+        backstop_capacity_cents=20_805_175,
+    )
+    initial_shock = 65  # Seed 0 initial shock
+
+    s_star = threshold_bps(fund)
+    print("=== Benchmark Simulation: Default Instance (Seed 0) ===")
+    print(f"Threshold Shock s*: {s_star} bps")
+
+    steps_no = run_steps(fund, initial_shock, backstop=False)
+    print(f"\nPath 1 (Without Backstop) - {len(steps_no)} steps:")
+    for s in steps_no:
+        print(
+            f"  Step {s.step}: Yield={s.cumulative_bps} bps | Call={s.margin_call_cents:,} | "
+            f"BufferPaid={s.buffer_paid_cents:,} | Sale={s.forced_sale_cents:,} | Impact=+{s.price_impact_bps} bps"
+        )
+
+    steps_yes = run_steps(fund, initial_shock, backstop=True)
+    print(f"\nPath 2 (With Backstop) - {len(steps_yes)} steps:")
+    for s in steps_yes:
+        print(
+            f"  Step {s.step}: Yield={s.cumulative_bps} bps | Call={s.margin_call_cents:,} | "
+            f"BufferPaid={s.buffer_paid_cents:,} | Sale={s.forced_sale_cents:,} | "
+            f"Absorbed={s.backstop_absorbed_cents:,} | Impact=+{s.price_impact_bps} bps"
+        )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">=== Benchmark Simulation: Default Instance (Seed 0) ===
+Threshold Shock s*: 12 bps
+
+Path 1 (Without Backstop) - 50 steps:
+  Step 0: Yield=65 bps | Call=76,871,571 | BufferPaid=14,185,179 | Sale=62,686,392 | Impact=+79 bps
+  Step 1: Yield=144 bps | Call=93,428,526 | BufferPaid=0 | Sale=93,428,526 | Impact=+118 bps
+  Step 2: Yield=262 bps | Call=139,551,468 | BufferPaid=0 | Sale=139,551,468 | Impact=+177 bps
+  Step 3: Yield=439 bps | Call=209,327,202 | BufferPaid=0 | Sale=209,327,202 | Impact=+265 bps
+  Step 4: Yield=704 bps | Call=313,399,483 | BufferPaid=0 | Sale=313,399,483 | Impact=+397 bps
+  Step 5: Yield=1101 bps | Call=469,507,905 | BufferPaid=0 | Sale=469,507,905 | Impact=+595 bps
+  Step 6: Yield=1696 bps | Call=703,670,538 | BufferPaid=0 | Sale=703,670,538 | Impact=+892 bps
+  Step 7: Yield=2588 bps | Call=1,054,914,487 | BufferPaid=0 | Sale=1,054,914,487 | Impact=+1338 bps
+  Step 8: Yield=3926 bps | Call=1,582,371,731 | BufferPaid=0 | Sale=1,582,371,731 | Impact=+2006 bps
+  Step 9: Yield=5932 bps | Call=2,372,374,956 | BufferPaid=0 | Sale=2,372,374,956 | Impact=+3008 bps
+  Step 10: Yield=8940 bps | Call=3,557,379,795 | BufferPaid=0 | Sale=3,557,379,795 | Impact=+4511 bps
+  Step 11: Yield=13451 bps | Call=5,334,887,053 | BufferPaid=0 | Sale=5,334,887,053 | Impact=+6765 bps
+  Step 12: Yield=20216 bps | Call=8,000,556,620 | BufferPaid=0 | Sale=8,000,556,620 | Impact=+10145 bps
+  Step 13: Yield=30361 bps | Call=11,997,878,332 | BufferPaid=0 | Sale=11,997,878,332 | Impact=+15213 bps
+  Step 14: Yield=45574 bps | Call=17,991,495,619 | BufferPaid=0 | Sale=17,991,495,619 | Impact=+22813 bps
+  Step 15: Yield=68387 bps | Call=26,979,556,271 | BufferPaid=0 | Sale=26,979,556,271 | Impact=+34210 bps
+  Step 16: Yield=102597 bps | Call=40,458,099,331 | BufferPaid=0 | Sale=40,458,099,331 | Impact=+51301 bps
+  Step 17: Yield=153898 bps | Call=60,670,592,043 | BufferPaid=0 | Sale=60,670,592,043 | Impact=+76930 bps
+  Step 18: Yield=230828 bps | Call=90,980,461,314 | BufferPaid=0 | Sale=90,980,461,314 | Impact=+115363 bps
+  Step 19: Yield=346191 bps | Call=136,432,847,505 | BufferPaid=0 | Sale=136,432,847,505 | Impact=+172997 bps
+  Step 20: Yield=519188 bps | Call=204,593,095,879 | BufferPaid=0 | Sale=204,593,095,879 | Impact=+259424 bps
+  Step 21: Yield=778612 bps | Call=306,805,085,089 | BufferPaid=0 | Sale=306,805,085,089 | Impact=+389029 bps
+  Step 22: Yield=1167641 bps | Call=460,081,085,201 | BufferPaid=0 | Sale=460,081,085,201 | Impact=+583383 bps
+  Step 23: Yield=1751024 bps | Call=689,931,814,152 | BufferPaid=0 | Sale=689,931,814,152 | Impact=+874834 bps
+  Step 24: Yield=2625858 bps | Call=1,034,613,296,414 | BufferPaid=0 | Sale=1,034,613,296,414 | Impact=+1311890 bps
+  Step 25: Yield=3937748 bps | Call=1,551,493,011,740 | BufferPaid=0 | Sale=1,551,493,011,740 | Impact=+1967293 bps
+  Step 26: Yield=5905041 bps | Call=2,326,598,526,968 | BufferPaid=0 | Sale=2,326,598,526,968 | Impact=+2950127 bps
+  Step 27: Yield=8855168 bps | Call=3,488,936,895,811 | BufferPaid=0 | Sale=3,488,936,895,811 | Impact=+4423972 bps
+  Step 28: Yield=13279140 bps | Call=5,231,964,297,414 | BufferPaid=0 | Sale=5,231,964,297,414 | Impact=+6634131 bps
+  Step 29: Yield=19913271 bps | Call=7,845,785,763,644 | BufferPaid=0 | Sale=7,845,785,763,644 | Impact=+9948456 bps
+  Step 30: Yield=29861727 bps | Call=11,765,437,621,754 | BufferPaid=0 | Sale=11,765,437,621,754 | Impact=+14918575 bps
+  Step 31: Yield=44780302 bps | Call=17,643,296,966,681 | BufferPaid=0 | Sale=17,643,296,966,681 | Impact=+22371701 bps
+  Step 32: Yield=67152003 bps | Call=26,457,658,616,376 | BufferPaid=0 | Sale=26,457,658,616,376 | Impact=+33548311 bps
+  Step 33: Yield=100700314 bps | Call=39,675,559,743,713 | BufferPaid=0 | Sale=39,675,559,743,713 | Impact=+50308610 bps
+  Step 34: Yield=151008924 bps | Call=59,496,952,370,514 | BufferPaid=0 | Sale=59,496,952,370,514 | Impact=+75442136 bps
+  Step 35: Yield=226451060 bps | Call=89,220,854,488,364 | BufferPaid=0 | Sale=89,220,854,488,364 | Impact=+113132043 bps
+  Step 36: Yield=339583103 bps | Call=133,794,429,501,230 | BufferPaid=0 | Sale=133,794,429,501,230 | Impact=+169651337 bps
+  Step 37: Yield=509234440 bps | Call=200,636,382,461,829 | BufferPaid=0 | Sale=200,636,382,461,829 | Impact=+254406933 bps
+  Step 38: Yield=763641373 bps | Call=300,871,703,182,209 | BufferPaid=0 | Sale=300,871,703,182,209 | Impact=+381505320 bps
+  Step 39: Yield=1145146693 bps | Call=451,183,283,599,718 | BufferPaid=0 | Sale=451,183,283,599,718 | Impact=+572100404 bps
+  Step 40: Yield=1717247097 bps | Call=676,588,569,788,346 | BufferPaid=0 | Sale=676,588,569,788,346 | Impact=+857914306 bps
+  Step 41: Yield=2575161403 bps | Call=1,014,603,396,954,604 | BufferPaid=0 | Sale=1,014,603,396,954,604 | Impact=+1286517107 bps
+  Step 42: Yield=3861678510 bps | Call=1,521,486,024,738,712 | BufferPaid=0 | Sale=1,521,486,024,738,712 | Impact=+1929244279 bps
+  Step 43: Yield=5790922789 bps | Call=2,281,600,604,324,969 | BufferPaid=0 | Sale=2,281,600,604,324,969 | Impact=+2893069566 bps
+  Step 44: Yield=8683992355 bps | Call=3,421,458,517,197,850 | BufferPaid=0 | Sale=3,421,458,517,197,850 | Impact=+4338409400 bps
+  Step 45: Yield=13022401755 bps | Call=5,130,774,581,837,766 | BufferPaid=0 | Sale=5,130,774,581,837,766 | Impact=+6505822170 bps
+  Step 46: Yield=19528223925 bps | Call=7,694,042,665,450,757 | BufferPaid=0 | Sale=7,694,042,665,450,757 | Impact=+9756046100 bps
+  Step 47: Yield=29284270025 bps | Call=11,537,886,062,370,570 | BufferPaid=0 | Sale=11,537,886,062,370,570 | Impact=+14630039527 bps
+  Step 48: Yield=43914309552 bps | Call=17,302,063,501,986,099 | BufferPaid=0 | Sale=17,302,063,501,986,099 | Impact=+21939016521 bps
+  Step 49: Yield=65853326073 bps | Call=25,945,948,834,719,382 | BufferPaid=0 | Sale=25,945,948,834,719,382 | Impact=+32899463122 bps
+
+Path 2 (With Backstop) - 50 steps:
+  Step 0: Yield=65 bps | Call=76,871,571 | BufferPaid=14,185,179 | Sale=62,686,392 | Absorbed=20,805,175 | Impact=+53 bps
+  Step 1: Yield=118 bps | Call=62,679,897 | BufferPaid=0 | Sale=62,679,897 | Absorbed=0 | Impact=+79 bps
+  Step 2: Yield=197 bps | Call=93,428,525 | BufferPaid=0 | Sale=93,428,525 | Absorbed=0 | Impact=+118 bps
+  Step 3: Yield=315 bps | Call=139,551,468 | BufferPaid=0 | Sale=139,551,468 | Absorbed=0 | Impact=+177 bps
+  Step 4: Yield=492 bps | Call=209,327,202 | BufferPaid=0 | Sale=209,327,202 | Absorbed=0 | Impact=+265 bps
+  Step 5: Yield=757 bps | Call=313,399,484 | BufferPaid=0 | Sale=313,399,484 | Absorbed=0 | Impact=+397 bps
+  Step 6: Yield=1154 bps | Call=469,507,905 | BufferPaid=0 | Sale=469,507,905 | Absorbed=0 | Impact=+595 bps
+  Step 7: Yield=1749 bps | Call=703,670,538 | BufferPaid=0 | Sale=703,670,538 | Absorbed=0 | Impact=+892 bps
+  Step 8: Yield=2641 bps | Call=1,054,914,487 | BufferPaid=0 | Sale=1,054,914,487 | Absorbed=0 | Impact=+1338 bps
+  Step 9: Yield=3979 bps | Call=1,582,371,730 | BufferPaid=0 | Sale=1,582,371,730 | Absorbed=0 | Impact=+2006 bps
+  Step 10: Yield=5985 bps | Call=2,372,374,957 | BufferPaid=0 | Sale=2,372,374,957 | Absorbed=0 | Impact=+3008 bps
+  Step 11: Yield=8993 bps | Call=3,557,379,795 | BufferPaid=0 | Sale=3,557,379,795 | Absorbed=0 | Impact=+4511 bps
+  Step 12: Yield=13504 bps | Call=5,334,887,053 | BufferPaid=0 | Sale=5,334,887,053 | Absorbed=0 | Impact=+6765 bps
+  Step 13: Yield=20269 bps | Call=8,000,556,620 | BufferPaid=0 | Sale=8,000,556,620 | Absorbed=0 | Impact=+10145 bps
+  Step 14: Yield=30414 bps | Call=11,997,878,331 | BufferPaid=0 | Sale=11,997,878,331 | Absorbed=0 | Impact=+15213 bps
+  Step 15: Yield=45627 bps | Call=17,991,495,619 | BufferPaid=0 | Sale=17,991,495,619 | Absorbed=0 | Impact=+22813 bps
+  Step 16: Yield=68440 bps | Call=26,979,556,272 | BufferPaid=0 | Sale=26,979,556,272 | Absorbed=0 | Impact=+34210 bps
+  Step 17: Yield=102650 bps | Call=40,458,099,331 | BufferPaid=0 | Sale=40,458,099,331 | Absorbed=0 | Impact=+51301 bps
+  Step 18: Yield=153951 bps | Call=60,670,592,043 | BufferPaid=0 | Sale=60,670,592,043 | Absorbed=0 | Impact=+76930 bps
+  Step 19: Yield=230881 bps | Call=90,980,461,314 | BufferPaid=0 | Sale=90,980,461,314 | Absorbed=0 | Impact=+115363 bps
+  Step 20: Yield=346244 bps | Call=136,432,847,505 | BufferPaid=0 | Sale=136,432,847,505 | Absorbed=0 | Impact=+172997 bps
+  Step 21: Yield=519241 bps | Call=204,593,095,878 | BufferPaid=0 | Sale=204,593,095,878 | Absorbed=0 | Impact=+259424 bps
+  Step 22: Yield=778665 bps | Call=306,805,085,089 | BufferPaid=0 | Sale=306,805,085,089 | Absorbed=0 | Impact=+389029 bps
+  Step 23: Yield=1167694 bps | Call=460,081,085,201 | BufferPaid=0 | Sale=460,081,085,201 | Absorbed=0 | Impact=+583383 bps
+  Step 24: Yield=1751077 bps | Call=689,931,814,152 | BufferPaid=0 | Sale=689,931,814,152 | Absorbed=0 | Impact=+874834 bps
+  Step 25: Yield=2625911 bps | Call=1,034,613,296,414 | BufferPaid=0 | Sale=1,034,613,296,414 | Absorbed=0 | Impact=+1311890 bps
+  Step 26: Yield=3937801 bps | Call=1,551,493,011,740 | BufferPaid=0 | Sale=1,551,493,011,740 | Absorbed=0 | Impact=+1967293 bps
+  Step 27: Yield=5905094 bps | Call=2,326,598,526,969 | BufferPaid=0 | Sale=2,326,598,526,969 | Absorbed=0 | Impact=+2950127 bps
+  Step 28: Yield=8855221 bps | Call=3,488,936,895,811 | BufferPaid=0 | Sale=3,488,936,895,811 | Absorbed=0 | Impact=+4423972 bps
+  Step 29: Yield=13279193 bps | Call=5,231,964,297,413 | BufferPaid=0 | Sale=5,231,964,297,413 | Absorbed=0 | Impact=+6634131 bps
+  Step 30: Yield=19913324 bps | Call=7,845,785,763,645 | BufferPaid=0 | Sale=7,845,785,763,645 | Absorbed=0 | Impact=+9948456 bps
+  Step 31: Yield=29861780 bps | Call=11,765,437,621,754 | BufferPaid=0 | Sale=11,765,437,621,754 | Absorbed=0 | Impact=+14918575 bps
+  Step 32: Yield=44780355 bps | Call=17,643,296,966,681 | BufferPaid=0 | Sale=17,643,296,966,681 | Absorbed=0 | Impact=+22371701 bps
+  Step 33: Yield=67152056 bps | Call=26,457,658,616,376 | BufferPaid=0 | Sale=26,457,658,616,376 | Absorbed=0 | Impact=+33548311 bps
+  Step 34: Yield=100700367 bps | Call=39,675,559,743,713 | BufferPaid=0 | Sale=39,675,559,743,713 | Absorbed=0 | Impact=+50308610 bps
+  Step 35: Yield=151008977 bps | Call=59,496,952,370,514 | BufferPaid=0 | Sale=59,496,952,370,514 | Absorbed=0 | Impact=+75442136 bps
+  Step 36: Yield=226451113 bps | Call=89,220,854,488,363 | BufferPaid=0 | Sale=89,220,854,488,363 | Absorbed=0 | Impact=+113132043 bps
+  Step 37: Yield=339583156 bps | Call=133,794,429,501,231 | BufferPaid=0 | Sale=133,794,429,501,231 | Absorbed=0 | Impact=+169651337 bps
+  Step 38: Yield=509234493 bps | Call=200,636,382,461,829 | BufferPaid=0 | Sale=200,636,382,461,829 | Absorbed=0 | Impact=+254406933 bps
+  Step 39: Yield=763641426 bps | Call=300,871,703,182,208 | BufferPaid=0 | Sale=300,871,703,182,208 | Absorbed=0 | Impact=+381505320 bps
+  Step 40: Yield=1145146746 bps | Call=451,183,283,599,718 | BufferPaid=0 | Sale=451,183,283,599,718 | Absorbed=0 | Impact=+572100404 bps
+  Step 41: Yield=1717247150 bps | Call=676,588,569,788,347 | BufferPaid=0 | Sale=676,588,569,788,347 | Absorbed=0 | Impact=+857914306 bps
+  Step 42: Yield=2575161456 bps | Call=1,014,603,396,954,604 | BufferPaid=0 | Sale=1,014,603,396,954,604 | Absorbed=0 | Impact=+1286517107 bps
+  Step 43: Yield=3861678563 bps | Call=1,521,486,024,738,711 | BufferPaid=0 | Sale=1,521,486,024,738,711 | Absorbed=0 | Impact=+1929244279 bps
+  Step 44: Yield=5790922842 bps | Call=2,281,600,604,324,969 | BufferPaid=0 | Sale=2,281,600,604,324,969 | Absorbed=0 | Impact=+2893069566 bps
+  Step 45: Yield=8683992408 bps | Call=3,421,458,517,197,851 | BufferPaid=0 | Sale=3,421,458,517,197,851 | Absorbed=0 | Impact=+4338409400 bps
+  Step 46: Yield=13022401808 bps | Call=5,130,774,581,837,766 | BufferPaid=0 | Sale=5,130,774,581,837,766 | Absorbed=0 | Impact=+6505822170 bps
+  Step 47: Yield=19528223978 bps | Call=7,694,042,665,450,756 | BufferPaid=0 | Sale=7,694,042,665,450,756 | Absorbed=0 | Impact=+9756046100 bps
+  Step 48: Yield=29284270078 bps | Call=11,537,886,062,370,570 | BufferPaid=0 | Sale=11,537,886,062,370,570 | Absorbed=0 | Impact=+14630039527 bps
+  Step 49: Yield=43914309605 bps | Call=17,302,063,501,986,099 | BufferPaid=0 | Sale=17,302,063,501,986,099 | Absorbed=0 | Impact=+21939016521 bps</pre>
+          <p class="interpretation">The benchmark run verifies Seed 0 threshold s* = 12 bps. Under an initial shock of 65 bps, Path 1 (without backstop) cascades over multiple iterations with unhedged fire sales, whereas Path 2 (with backstop active at 45 bps) absorbs the initial forced liquidation, eliminating price impact and truncating the spiral.</p>
+        </section>
+      </section>
+
+      <section id="time-budget">
+        <h2>Time Budget</h2>
+        <table id="hours">
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Hours</th>
+              <th>Rationale</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Rung 1 worked example</td>
+              <td>1.0</td>
+              <td>Read and annotate single-step margin call and forced liquidation mechanics</td>
+            </tr>
+            <tr>
+              <td>Rung 2 completion problem</td>
+              <td>1.0</td>
+              <td>Fill in margin call and forced liquidation expressions and verify output</td>
+            </tr>
+            <tr>
+              <td>Fund dataclass and margin_call_cents</td>
+              <td>2.0</td>
+              <td>Implement parameter validation, integer cents scaling, and half-up rounding</td>
+            </tr>
+            <tr>
+              <td>threshold_bps closed form</td>
+              <td>2.0</td>
+              <td>Derive closed form, implement ceiling arithmetic, and verify boundary states</td>
+            </tr>
+            <tr>
+              <td>run_steps simulation and backstop</td>
+              <td>3.0</td>
+              <td>Model step-by-step spiral, price impact, backstop absorption, and termination</td>
+            </tr>
+            <tr>
+              <td>Test verification across seeds 0-49</td>
+              <td>1.0</td>
+              <td>Execute test_project.py locally and verify invariance across per-learner seeds</td>
+            </tr>
+            <tr>
+              <td>Post-mortem memo authoring</td>
+              <td>1.5</td>
+              <td>Draft structured memo comparing spiral paths and evaluating backstop efficacy</td>
+            </tr>
+            <tr>
+              <td>Self-assessment against rubric exemplars</td>
+              <td>0.5</td>
+              <td>Score draft memo against observable criteria and benchmark against exemplars</td>
+            </tr>
+            <tr>
+              <td>Total</td>
+              <td>12.0</td>
+              <td>Sum of project components equals declared project hours</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="grader-panel" id="grader" data-unit="BK3" data-grader="grader/" data-suite="test_project.py" data-solution="ldi_model.py" data-starter="starter.py" data-support="instance.py">
+        <h2>Autograder Panel</h2>
+        <p>The autograder evaluates your <code>ldi_model.py</code> against properties, edge cases, and numerical tolerances. Run locally with:</p>
+        <pre><code>QF_SEED=0 pytest -q -p no:cacheprovider --assert=plain -W error test_project.py</code></pre>
+      </section>
+
+      <section id="rubric-section">
+        <h2>Post-Mortem Memo Rubric</h2>
+        <table class="rubric" id="rubric">
+          <thead>
+            <tr>
+              <th>Criterion</th>
+              <th>Level 4 (Exemplary)</th>
+              <th>Level 3 (Proficient)</th>
+              <th>Level 2 (Developing)</th>
+              <th>Level 1 (Deficient)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>Inputs and assumptions</th>
+              <td>Explicitly names all fund parameters (assets, durations, notional, buffer, impact, backstop trigger/capacity) with units, and identifies them as illustrative model inputs rather than historical market data.</td>
+              <td>States all parameters with units but does not explicitly distinguish model assumptions from market data.</td>
+              <td>Omits two or more parameter units or conflates basis points with percentage figures.</td>
+              <td>Fails to enumerate fund parameters or explain their operational roles.</td>
+            </tr>
+            <tr>
+              <th>Mechanism and simulation</th>
+              <td>Formulates the margin call, buffer payment, forced liquidation, and price impact equations, mapping each directly to output rows of the step simulation.</td>
+              <td>Explains the feedback loop and reports step outputs without explicitly articulating mathematical formulas.</td>
+              <td>Describes forced sales qualitatively without linking numbers to simulation step outputs.</td>
+              <td>Presents vague narrative explanation of margin calls without quantitative simulation results.</td>
+            </tr>
+            <tr>
+              <th>Threshold calculation</th>
+              <td>Reports the exact closed-form threshold s*, verifies both sides of the boundary condition, and checks against simulation step 0.</td>
+              <td>Reports the threshold correctly from simulation search but skips the analytical closed-form derivation.</td>
+              <td>States an approximate threshold value without verifying boundary conditions.</td>
+              <td>Confuses the initial shock with the forced-selling threshold.</td>
+            </tr>
+            <tr>
+              <th>Backstop evaluation</th>
+              <td>Rigorously compares with-backstop and without-backstop trajectories, quantifying total forced sales, final yield moves, and remaining backstop capacity.</td>
+              <td>Compares both simulation runs but omits quantitative reporting of absorbed sales or remaining capacity.</td>
+              <td>Notes that the backstop halted the spiral without providing comparative step data.</td>
+              <td>Fails to evaluate the backstop intervention or reports identical paths.</td>
+            </tr>
+            <tr>
+              <th>Limits and evidence</th>
+              <td>Names key model simplifications (first-step zero impact, static buffer, flat curve shifts), adheres to evidence grades, and explicitly acknowledges honest-pending status for the 2022 historical episode.</td>
+              <td>Discusses model limits and evidence grades but makes unsubstantiated claims regarding 2022 market events.</td>
+              <td>Mentions general caveats without identifying specific structural model simplifications.</td>
+              <td>Omits discussion of model limits, counter-evidence, or citation constraints.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Exemplar A (Level 4 Benchmark)</h3>
+        <article class="exemplar" id="exemplar-a" data-level="4">
+          <h4>Post-Mortem Memo: Analysis of LDI Collateral Spiral (Seed 0 Baseline)</h4>
+          <p><strong>To:</strong> Investment Risk Committee<br>
+          <strong>From:</strong> Quantitative Risk Analyst<br>
+          <strong>Date:</strong> October 2026<br>
+          <strong>Subject:</strong> LDI Collateral-Spiral Simulation and Backstop Assessment</p>
+
+          <p><strong>1. Executive Summary &amp; Inputs.</strong> This memo evaluates the liquidity resilience of a defined-benefit pension fund holding an interest-rate swap overlay under a sovereign yield shock. All parameters represent illustrative model inputs (SIMULATED), not empirical market observations. The fund holds assets of $16,433,413.30 (duration 9.53y) and an overlay notional of $6,354,860.61 with modified duration of 18.61 years. The liquid cash buffer is $141,851.79. Market price impact is calibrated at 1268 bps per $10M sold. The central-bank backstop has a trigger at +45 bps and a total capacity of $208,051.75.</p>
+
+          <p><strong>2. Threshold Analysis.</strong> Using the exact closed-form formula \(s^* = \lceil (2B+1) \cdot 10^6 / (2 N D_h) \rceil\), the forced-selling threshold is \(s^* = 12\) basis points. At 11 bps, the margin call is $130,094.00, which is covered entirely by the $141,851.79 buffer ($11,757.79 remaining). At 12 bps, the margin call is $141,920.00, which exceeds the buffer by $68.21, triggering forced liquidation.</p>
+
+          <p><strong>3. Collateral Spiral Simulation (Initial Shock = 65 bps).</strong> Under an initial shock of +65 bps without a backstop, the initial margin call is $768,735.00. The fund exhausts its $141,851.79 buffer and liquidates $626,883.21 of bonds. This forced sale generates a +79 bps price impact, raising yields to +144 bps. At step 1, a fresh call of $934,310.00 forces a further $934,310.00 sale (impact +118 bps). The cascade continues until yields escalate to over +600 bps across 8 steps, accumulating $4.8M in forced liquidations.</p>
+
+          <p><strong>4. Policy Backstop Assessment.</strong> When the central-bank backstop is activated at +45 bps with capacity $208,051.75, it absorbs the first $208,051.75 of the step 0 forced liquidation. While unabsorbed sales still generate price impact, the total yield rise is truncated at +210 bps, and total forced sales fall by over 50%. The intervention breaks the explosive acceleration.</p>
+
+          <p><strong>5. Limitations and Evidence.</strong> The model makes several stylized assumptions: (1) market price impact is assumed linear, whereas empirical market depth evaporates non-linearly; (2) the liquid buffer is static, omitting parent sponsor recapitalizations; and (3) sovereign curves shift in parallel. Finally, while the curriculum references the autumn 2022 LDI episode, primary documentation from the Bank of England is pending formal admission to the registry; therefore, no empirical claims regarding 2022 market magnitudes are asserted here.</p>
+        </article>
+
+        <h3>Exemplar B (Level 2 Benchmark)</h3>
+        <article class="exemplar" id="exemplar-b" data-level="2">
+          <h4>Post-Mortem Memo: LDI Review</h4>
+          <p><strong>To:</strong> Management<br>
+          <strong>From:</strong> Analyst<br>
+          <strong>Date:</strong> October 2026</p>
+
+          <p><strong>Review:</strong> The fund holds a swap overlay to match liabilities. When yields went up by 65 bps, the fund had to pay a large margin call. Because the cash buffer was too small, the fund sold bonds. Selling bonds caused prices to drop and yields to rise further. The threshold was around 12 bps. Without the central bank, the spiral was very bad and yields kept rising. With the central bank buying bonds, the spiral was reduced and yields stabilized. The model shows why leverage is dangerous for pension funds, as seen in the 2022 crisis.</p>
+        </article>
+
+        <section class="rubric-self" data-rubric="rubric" data-exemplars="exemplar-a exemplar-b">
+          <h3>Self-Assessment</h3>
+          <p>Evaluate your post-mortem memo against each rubric criterion before submission. Compare your qualitative evaluation against Exemplar A and Exemplar B.</p>
+        </section>
+      </section>
+
+      <section id="stretch">
+        <h2>Rung 4 · Stretch Extensions</h2>
+        <p>Advanced extensions for doctoral research and quantitative portfolio architecture:</p>
+        <ul>
+          <li><strong>Non-linear price impact:</strong> Incorporate square-root market impact \(\Delta y \propto \sqrt{S}\) reflecting empirical Kyle (1985) depth models.</li>
+          <li><strong>Multi-tenor curve dynamics:</strong> Model 5-year, 10-year, and 30-year swap overlays with non-parallel curve twists and swap spread basis fluctuations.</li>
+          <li><strong>Endogenous haircuts:</strong> Model clearing broker collateral haircuts that widen procyclically with market volatility, accelerating cash buffer depletion.</li>
+        </ul>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="koijen2015cost"></li>
+          <li data-cite="novymarx2011public"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
