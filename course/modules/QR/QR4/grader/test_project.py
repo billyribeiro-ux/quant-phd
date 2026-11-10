@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import os
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -37,7 +37,7 @@ except ImportError:
 def inst() -> dict[str, Any]:
     seed_str = os.environ.get("QF_SEED", os.environ.get("ATLAS_SEED", "0"))
     seed = int(seed_str)
-    return make_instance(seed)
+    return cast(dict[str, Any], make_instance(seed))
 
 
 # ---------------------------------------------------------------------------

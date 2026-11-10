@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -18,7 +18,7 @@ from instance import make_instance
 @pytest.fixture
 def sample_instance() -> dict[str, Any]:
     """Return a standard test instance (seed 42)."""
-    return make_instance(42)
+    return cast(dict[str, Any], make_instance(42))
 
 
 def test_cholesky_factorization() -> None:

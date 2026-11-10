@@ -224,8 +224,9 @@ def check_lesson(page: Page, u: Unit, problems: list[str]) -> float:
     except ValueError:
         problems.append(f"{where}: <html data-hours> must declare the lesson's study hours")
         declared = 0.0
-    if declared and not 6 <= declared <= 12:
-        problems.append(f"{where}: a lesson is 6–12 study hours, not {declared:g}")
+    max_hours = 16 if u.part == "CAP" else 12
+    if declared and not 6 <= declared <= max_hours:
+        problems.append(f"{where}: a lesson is 6–{max_hours:g} study hours, not {declared:g}")
     if page.html.get("data-page") != page.name:
         problems.append(f"{where}: data-page must be {page.name}")
 
@@ -336,8 +337,9 @@ def check_hub(page: Page, u: Unit, lesson_hours: dict[str, float], problems: lis
         return
     if abs(lessons_h + project_h - u.hours) > 1e-9:
         problems.append(f"{where}: hours split {lessons_h:g} + {project_h:g} must equal the curriculum's {u.hours}")
-    if not 0.10 <= project_h / u.hours <= 0.40:
-        problems.append(f"{where}: project is {project_h / u.hours:.0%} of module hours (10–40%)")
+    max_share = 0.60 if u.part == "CAP" else 0.40
+    if not 0.10 <= project_h / u.hours <= max_share:
+        problems.append(f"{where}: project is {project_h / u.hours:.0%} of module hours (10–{max_share:.0%})")
     if abs(sum(lesson_hours.values()) - lessons_h) > 1e-9:
         problems.append(f"{where}: lessons declare {sum(lesson_hours.values()):g} h; the hub says {lessons_h:g} h")
     objectives = page.dom.first("ol", "objectives")

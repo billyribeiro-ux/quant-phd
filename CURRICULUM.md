@@ -1165,7 +1165,7 @@ Present one finished research result or trade idea to a hostile investment commi
   - *Sources:* none of its own
   - *Reading scope:* All debate-tagged module sources; freshness pass for 2025–2026 work
   - *Lab:* Evidence-map builder per resolution.
-  - *Project — Debate tournament* (`rubric`): For four drawn resolutions, write both sides blind, then argue the side assigned at random against the program's model brief, scored on the rubric. *Deliverable:* Eight briefs plus rebuttals.
+  - *Project — Debate tournament* (`both`): For four drawn resolutions, write both sides blind, then argue the side assigned at random against the program's model brief, scored on the rubric. *Deliverable:* Eight briefs plus rebuttals.
 - **CAP3 · Qualifying Examination** · D · 200 h · ← AP4, AP6, S5, E7, SC6
   - *Core:* Timed written exams in asset pricing, econometrics and macro/monetary, modeled on PhD prelims, with full solutions released after submission.
   - *Introduces:* Qualifying examination; Timed field examination
