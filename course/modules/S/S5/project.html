@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../../../" data-unit="S5" data-page="project">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Capstone project for S5 GMM &amp; Cross-Sectional Econometrics: Implement Fama–MacBeth with Shanken-corrected standard errors and GMM equivalents, showing when the correction changes the conclusion.">
+    <title>Project · Two-Pass Estimator with Errors-in-Variables Correction · S5 · Quant PhD</title>
+    <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+    <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="../../../assets/css/course.css">
+    <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+    <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+    <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+    <script type="module" src="../../../assets/js/site.js"></script>
+  </head>
+  <body>
+    <header class="course-header">
+      <nav class="course-nav">
+        <a href="../../../index.html" class="nav-link">Home</a>
+        <a href="../../index.html" class="nav-link">Curriculum</a>
+        <a href="index.html" class="nav-link">S5: GMM &amp; Cross-Sectional Econometrics</a>
+        <span class="nav-current">Capstone Project</span>
+      </nav>
+      <h1 class="course-title">Two-Pass Estimator with Errors-in-Variables Correction</h1>
+      <p class="course-subtitle">Fama–MacBeth Cross-Sectional Regressions, Shanken Asymptotic Standard Errors, and GMM Equivalence (30 Hours · Tier M)</p>
+    </header>
+
+    <main class="course-main" data-hours-project="30">
+      <section id="project-ladder">
+        <h2>Project Progression Ladder</h2>
+        <ol class="ladder">
+          <li>
+            <h3 class="rung-title">Rung 1 · Worked Example</h3>
+            <p>Study a complete end-to-end implementation of the two-pass Fama–MacBeth cross-sectional estimation pipeline on synthetic test asset returns, tracing factor loading estimation, monthly slope extraction, and Shanken variance correction.</p>
+          </li>
+          <li>
+            <h3 class="rung-title">Rung 2 · Completion Challenge</h3>
+            <p>Implement the second-pass slope averaging and the quadratic form calculation for the Shanken multiplier \(c = 1 + \hat{\lambda}_f^\top \hat{\Sigma}_f^{-1} \hat{\lambda}_f\), verifying that corrected standard errors remain bounded below by naive standard errors.</p>
+          </li>
+          <li>
+            <h3 class="rung-title">Rung 3 · Independent Project</h3>
+            <p>Construct the production-grade module <code>fm_shanken.py</code> adhering to the specified API, verified by the automated test suite across 50 pseudo-random seeds, and compose a replication research note evaluated by the scoring rubric.</p>
+          </li>
+          <li>
+            <h3 class="rung-title">Rung 4 · Research Stretch</h3>
+            <p>Evaluate errors-in-variables corrections on empirical foreign exchange spot return series, examining whether adjusting for factor loading uncertainty overturns currency carry or momentum factor premia.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rung-1">
+        <h2>Rung 1 · Worked Example</h2>
+        <p>In this solved example, we simulate a monthly panel of \(N = 15\) test assets over \(T = 140\) months with \(K = 1\) factor. The first \(T_1 = 80\) months serve as the in-sample training window for estimating factor loadings \(\hat{\beta}_i\). The remaining \(T_2 = 60\) months serve as the out-of-sample test window for running monthly cross-sectional regressions.</p>
+
+        <section class="lab" id="lab-S5-project-1" data-runtime="python">
+          <h3>Lab 1 · Solved Two-Pass Pipeline Execution</h3>
+          <p class="hypothesis">Executing the two-pass regression yields monthly slope estimates whose time-series average equals the estimated risk premium, and the Shanken multiplier c is strictly greater than 1.</p>
+          <pre><code class="language-python" data-run>"""Lab S5-project-1: Rung 1 worked example of two-pass asset pricing with Shanken correction.
+
+SIMULATED: runs a fully solved, annotated execution of the two-pass Fama-MacBeth pipeline
+on a seeded synthetic panel, printing factor loadings, monthly premia slopes, naive standard errors,
+the Shanken errors-in-variables multiplier, and corrected inference.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def main() -&gt; None:
+    seed = 42
+    rng = np.random.default_rng(seed)
+    t_months = 140
+    n_assets = 15
+    k_factors = 1
+    train = 80
+    t2 = t_months - train
+
+    # Generate synthetic factors and returns
+    f_mean = 0.008
+    f_sd = 0.040
+    factors = rng.normal(f_mean, f_sd, size=(t_months, k_factors))
+    betas_true = rng.uniform(0.6, 1.4, size=(n_assets, k_factors))
+    resid_sd = rng.uniform(0.02, 0.05, size=n_assets)
+
+    excess = np.empty((t_months, n_assets))
+    for t in range(t_months):
+        e_t = rng.normal(0.0, resid_sd, size=n_assets)
+        excess[t] = (betas_true @ factors[t]).ravel() + e_t
+
+    # Step 1: First-pass time-series regression on first train months
+    x_ts = np.column_stack([np.ones(train), factors[:train]])
+    betas_est = np.empty((n_assets, k_factors + 1))
+    for i in range(n_assets):
+        betas_est[i] = np.linalg.solve(x_ts.T @ x_ts, x_ts.T @ excess[:train, i])
+
+    # Step 2: Second-pass cross-sectional regressions on test months
+    z_cs = np.column_stack([np.ones(n_assets), betas_est[:, 1:]])
+    slopes = np.empty((t2, k_factors + 1))
+    for i in range(t2):
+        month = train + i
+        slopes[i] = np.linalg.solve(z_cs.T @ z_cs, z_cs.T @ excess[month])
+
+    premia = np.mean(slopes, axis=0)
+    naive_se = np.std(slopes, axis=0, ddof=1) / np.sqrt(t2)
+
+    # Step 3: Shanken errors-in-variables correction
+    factor_cov = np.cov(factors[train:], rowvar=False, ddof=1).reshape((k_factors, k_factors))
+    lambda_f = premia[1:].reshape((k_factors, 1))
+    q = float((lambda_f.T @ np.linalg.solve(factor_cov, lambda_f)).item())
+    c = 1.0 + q
+    shanken_se = naive_se * np.sqrt(c)
+
+    t_naive = premia[1] / naive_se[1]
+    t_shanken = premia[1] / shanken_se[1]
+
+    print("Rung 1 Worked Example: Two-Pass Asset Pricing")
+    print(f"  Sample size T: {t_months}, Assets N: {n_assets}, Training T1: {train}, Test T2: {t2} (seed {seed})")
+    print(f"  First-pass mean factor loading beta: {np.mean(betas_est[:, 1]):.4f}")
+    print(f"  Estimated factor risk premium: {premia[1]:.6f}")
+    print(f"  Shanken correction factor c: {c:.4f} (Multiplier sqrt(c): {np.sqrt(c):.4f})")
+    print(f"  Naive Fama-MacBeth SE: {naive_se[1]:.6f} (t-statistic: {t_naive:.3f})")
+    print(f"  Shanken-corrected SE:  {shanken_se[1]:.6f} (t-statistic: {t_shanken:.3f})")
+    print(f"  Standard error inflation: {((np.sqrt(c) - 1.0) * 100.0):.2f}%")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Rung 1 Worked Example: Two-Pass Asset Pricing
+  Sample size T: 140, Assets N: 15, Training T1: 80, Test T2: 60 (seed 42)
+  First-pass mean factor loading beta: 0.9875
+  Estimated factor risk premium: -0.000711
+  Shanken correction factor c: 1.0004 (Multiplier sqrt(c): 1.0002)
+  Naive Fama-MacBeth SE: 0.006047 (t-statistic: -0.118)
+  Shanken-corrected SE:  0.006048 (t-statistic: -0.118)
+  Standard error inflation: 0.02%</pre>
+          <p class="interpretation">The worked example confirms that the Fama–MacBeth factor premium is the time-series mean of monthly slopes, and the Shanken factor c slightly exceeds 1 due to the positive factor Sharpe ratio.</p>
+        </section>
+      </section>
+
+      <section id="rung-2">
+        <h2>Rung 2 · Completion Challenge</h2>
+        <p>Complete the missing expressions below to calculate the time-series mean of monthly slopes, the naive standard error, and the Shanken correction factor. The test verifies that Shanken standard errors are never smaller than naive standard errors.</p>
+
+        <section class="lab completion" id="lab-S5-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion Challenge: Slope Averaging and Shanken Multiplier</h3>
+          <p class="hypothesis">Correctly completing the slope averaging and Shanken factor quadratic form produces valid standard errors satisfying the Shanken lower bound.</p>
+          <pre><code class="language-python" data-run>"""Lab S5-project-2: Rung 2 completion challenge for two-pass asset pricing.
+
+SIMULATED: interactive completion problem implementing the second-pass slope averaging
+and the Shanken correction factor calculation.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def main() -> None:
+    seed = 84
+    rng = np.random.default_rng(seed)
+    t_months = 150
+    n_assets = 16
+    k_factors = 1
+    train = 90
+    t2 = t_months - train
+
+    factors = rng.normal(0.007, 0.042, size=(t_months, k_factors))
+    betas_true = rng.uniform(0.7, 1.3, size=(n_assets, k_factors))
+    resid_sd = rng.uniform(0.02, 0.05, size=n_assets)
+
+    excess = np.empty((t_months, n_assets))
+    for t in range(t_months):
+        e_t = rng.normal(0.0, resid_sd, size=n_assets)
+        excess[t] = (betas_true @ factors[t]).ravel() + e_t
+
+    # Step 1: First pass
+    x_ts = np.column_stack([np.ones(train), factors[:train]])
+    betas_est = np.empty((n_assets, k_factors + 1))
+    for i in range(n_assets):
+        betas_est[i] = np.linalg.solve(x_ts.T @ x_ts, x_ts.T @ excess[:train, i])
+
+    # Step 2: Second pass
+    z_cs = np.column_stack([np.ones(n_assets), betas_est[:, 1:]])
+    slopes = np.empty((t2, k_factors + 1))
+    for i in range(t2):
+        month = train + i
+        slopes[i] = np.linalg.solve(z_cs.T @ z_cs, z_cs.T @ excess[month])
+
+    # Blank 1 to complete on page: premia = np.mean(slopes, axis=0)
+    premia = ___
+
+    # Blank 2 to complete on page: naive_se = np.std(slopes, axis=0, ddof=1) / np.sqrt(t2)
+    naive_se = ___
+
+    # Blank 3 to complete on page: c = 1.0 + q
+    factor_cov = np.cov(factors[train:], rowvar=False, ddof=1).reshape((k_factors, k_factors))
+    lambda_f = premia[1:].reshape((k_factors, 1))
+    q = float((lambda_f.T @ np.linalg.solve(factor_cov, lambda_f)).item())
+    c = ___
+
+    shanken_se = naive_se * np.sqrt(c)
+
+    print("Rung 2 Completion Challenge Check:")
+    print(f"  Processed months: {t_months}, Assets: {n_assets} (seed {seed})")
+    print(f"  Factor risk premium: {premia[1]:.6f}")
+    print(f"  Naive standard error: {naive_se[1]:.6f}")
+    print(f"  Shanken multiplier c: {c:.4f}")
+    print(f"  Shanken standard error: {shanken_se[1]:.6f}")
+    print(f"  Invariant verified (shanken_se >= naive_se): {shanken_se[1] >= naive_se[1]}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Rung 2 Completion Challenge Check:
+  Processed months: 150, Assets: 16 (seed 84)
+  Factor risk premium: -0.001191
+  Naive standard error: 0.007462
+  Shanken multiplier c: 1.0007
+  Shanken standard error: 0.007464
+  Invariant verified (shanken_se >= naive_se): True</pre>
+          <p class="interpretation">The completion challenge confirms that your implementation matches the exact sample statistics and satisfies the theoretical Shanken inequality.</p>
+        </section>
+      </section>
+
+      <section id="rung-3">
+        <h2>Rung 3 · Independent Project</h2>
+
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Empirical asset pricing research relies on two-pass regressions to test whether candidate risk factors carry non-zero market risk premia. Naive Fama–MacBeth standard errors treat estimated loadings as fixed, understating sampling uncertainty and generating spurious discoveries. You will engineer a production Python module <code>fm_shanken.py</code> implementing Fama–MacBeth estimation, Shanken errors-in-variables corrections, and GMM equivalents, and produce a replication research note detailing when adjusting for measurement error alters conclusions.</dd>
+
+          <dt>Inputs</dt>
+          <dd>
+            <p>1. Synthetic asset excess return matrices \((T \times N)\) and factor return matrices \((T \times K)\) generated deterministically across 50 pseudo-random seeds by <code>grader/instance.py</code>.</p>
+            <p>2. Training length parameter <code>train</code> designating the first-pass estimation window.</p>
+          </dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            <p>1. Python module <code>fm_shanken.py</code> exposing <code>loadings</code>, <code>monthly_slopes</code>, <code>fama_macbeth</code>, <code>shanken_factor</code>, and <code>conclusion_changes</code> with exact parameter signatures and types.</p>
+            <p>2. Container class <code>FMResult(NamedTuple)</code> packaging premia, naive standard errors, Shanken standard errors, and GMM standard errors.</p>
+            <p>3. Replication research note evaluated against the 5-criterion project rubric.</p>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>All array operations must use standard library Python and NumPy. Input arrays must be validated for finite numerical values, dimension compatibility, positive-definite factor covariances, and minimum sample sizes (\(N &gt; K + 1\), \(T_1 \ge K + 2\), \(T_2 \ge 2\)). Any violation must raise a <code>ValueError</code>.</dd>
+
+          <dt>Grading</dt>
+          <dd>Graded by both an automated test suite (autograder) verifying 16 test invariants across 50 seeds and a structured rubric scoring the replication note across five criteria.</dd>
+        </dl>
+
+        <section id="independent-verification">
+          <h3>Independent Tool Verification Execution</h3>
+          <p>The lab twin below executes the full two-pass Fama–MacBeth and Shanken correction pipeline on the public demonstration instance (seed 0) to verify mathematical invariants and provide the baseline values your module must reproduce.</p>
+
+          <section class="lab" id="lab-S5-project-3" data-runtime="python">
+            <h3>Lab 3 · Independent Invariant Verification on Demonstration Instance</h3>
+            <p class="hypothesis">The demonstration instance satisfies all mathematical invariants: premia length matches K+1, Shanken multiplier c >= 1.0, and Shanken standard errors are strictly greater than or equal to naive standard errors.</p>
+            <pre><code class="language-python" data-run>"""Lab S5-project-3: Rung 3 independent verification check.
+
+SIMULATED: runs the two-pass Fama-MacBeth pipeline with Shanken correction
+on the public demonstration instance (seed 0), printing the replication table
+and verifying mathematical invariants.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def main() -&gt; None:
+    # Public demonstration parameters (seed 0)
+    seed = 0
+    rng = np.random.default_rng(seed)
+    t_months = 130
+    n_assets = 14
+    k_factors = 1
+    train = int(t_months * 0.60)  # 78
+    t2 = t_months - train  # 52
+
+    # Factor dynamics
+    sigma_f = np.array([[0.0025]])
+    mu_f = np.array([0.008])
+    factors = rng.multivariate_normal(mu_f, sigma_f, size=t_months)
+
+    true_loadings = rng.uniform(0.5, 1.5, size=(n_assets, k_factors))
+    true_alphas = rng.normal(0.0, 0.001, size=n_assets)
+    resid_sd = rng.uniform(0.02, 0.05, size=n_assets)
+
+    excess = np.empty((t_months, n_assets), dtype=np.float64)
+    for t in range(t_months):
+        e_t = rng.normal(0.0, resid_sd, size=n_assets)
+        excess[t] = true_alphas + true_loadings @ factors[t] + e_t
+
+    # Step 1: First-pass OLS
+    x_ts = np.column_stack([np.ones(train), factors[:train]])
+    x_inv = np.linalg.inv(x_ts.T @ x_ts)
+    betas = np.empty((n_assets, k_factors + 1))
+    for i in range(n_assets):
+        betas[i] = x_inv @ (x_ts.T @ excess[:train, i])
+
+    # Step 2: Second-pass cross-sectional OLS
+    z_cs = np.column_stack([np.ones(n_assets), betas[:, 1:]])
+    z_inv = np.linalg.inv(z_cs.T @ z_cs)
+    slopes = np.empty((t2, k_factors + 1))
+    for i in range(t2):
+        slopes[i] = z_inv @ (z_cs.T @ excess[train + i])
+
+    premia = np.mean(slopes, axis=0)
+    naive_se = np.std(slopes, axis=0, ddof=1) / np.sqrt(t2)
+
+    # Shanken correction
+    factor_cov = np.cov(factors[train:], rowvar=False, ddof=1).reshape((k_factors, k_factors))
+    lambda_f = premia[1:].reshape((k_factors, 1))
+    q = float((lambda_f.T @ np.linalg.solve(factor_cov, lambda_f)).item())
+    c = 1.0 + q
+    shanken_se = naive_se * np.sqrt(c)
+
+    # Invariant checks
+    assert premia.shape == (k_factors + 1,), "premia dimension mismatch"
+    assert np.all(shanken_se &gt;= naive_se), "Shanken SE must be &gt;= naive SE"
+    assert c &gt;= 1.0, "Shanken correction multiplier c must be &gt;= 1.0"
+
+    print("Rung 3 Independent Verification Table (Seed 0)")
+    print(f"  Configuration: T={t_months}, N={n_assets}, K={k_factors}, T1={train}, T2={t2}")
+    print("  Parameter | Estimated Premium | Naive SE    | Shanken SE  | Ratio Shanken/Naive")
+    print("  " + "-" * 75)
+    names = ["Zero-Beta Intercept", "Factor 1 Premium"]
+    for idx, name in enumerate(names):
+        ratio = shanken_se[idx] / naive_se[idx]
+        p_str = f"{premia[idx]:+.6f}"
+        nse_str = f"{naive_se[idx]:.6f}"
+        sse_str = f"{shanken_se[idx]:.6f}"
+        print(f"  {name:&lt;20} | {p_str}        | {nse_str}   | {sse_str}   | {ratio:.4f}")
+    print(f"  Shanken multiplier c: {c:.6f}")
+    print("  Status: All mathematical invariants satisfied.")
+
+
+main()</code></pre>
+            <pre class="expected" data-tolerance="1e-4">Rung 3 Independent Verification Table (Seed 0)
+  Configuration: T=130, N=14, K=1, T1=78, T2=52
+  Parameter | Estimated Premium | Naive SE    | Shanken SE  | Ratio Shanken/Naive
+  ---------------------------------------------------------------------------
+  Zero-Beta Intercept  | -0.000581        | 0.006085   | 0.006136   | 1.0085
+  Factor 1 Premium     | +0.006226        | 0.006910   | 0.006969   | 1.0085
+  Shanken multiplier c: 1.017112
+  Status: All mathematical invariants satisfied.</pre>
+            <p class="interpretation">The independent verification check confirms that loading estimation and cross-sectional slope aggregation satisfy all theoretical bounds.</p>
+          </section>
+        </section>
+
+        <section id="budget">
+          <h3>Time Budget (30 Hours)</h3>
+          <div class="table-wrap">
+            <table id="hours">
+              <thead>
+                <tr>
+                  <th>Component</th>
+                  <th>Hours</th>
+                  <th>Rationale</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Rung 1 Worked Example</td>
+                  <td>2</td>
+                  <td>Tracing the solved two-pass estimation pipeline and inspecting loading and slope calculations.</td>
+                </tr>
+                <tr>
+                  <td>Rung 2 Completion Challenge</td>
+                  <td>3</td>
+                  <td>Implementing the slope averaging recursion and Shanken multiplier formula in the completion problem.</td>
+                </tr>
+                <tr>
+                  <td>Module Architecture &amp; First Pass</td>
+                  <td>6</td>
+                  <td>Engineering <code>loadings</code> and input validation routines for time-series regressions.</td>
+                </tr>
+                <tr>
+                  <td>Second Pass &amp; Shanken Correction</td>
+                  <td>6</td>
+                  <td>Developing <code>monthly_slopes</code>, <code>shanken_factor</code>, and <code>fama_macbeth</code> with full covariance handling.</td>
+                </tr>
+                <tr>
+                  <td>GMM Equivalence &amp; Test Suite Calibration</td>
+                  <td>5</td>
+                  <td>Validating stacked moment GMM standard error equivalence and passing all 16 test suite invariants across seeds 0-49.</td>
+                </tr>
+                <tr>
+                  <td>Replication Research Note</td>
+                  <td>5</td>
+                  <td>Drafting the comprehensive replication note analyzing errors-in-variables effects on statistical conclusions.</td>
+                </tr>
+                <tr>
+                  <td>Rubric Self-Assessment &amp; Exemplar Review</td>
+                  <td>3</td>
+                  <td>Benchmarking the replication note against exemplar reports and verifying evidence grades.</td>
+                </tr>
+                <tr>
+                  <td>Total</td>
+                  <td>30</td>
+                  <td>Total capstone project hours matching data-hours-project.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="grader-panel" id="grader" data-unit="S5" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="fm_shanken.py" data-starter="starter.py" data-packages="numpy scipy">
+          <h3>Autograder Panel</h3>
+          <p>The autograder executes 16 pytest checks against your <code>fm_shanken.py</code> engine across 50 pseudo-random seeds, verifying OLS loading consistency, monthly slope averaging, naive standard error scaling, Shanken lower bounds, quadratic form derivations, look-ahead isolation, and input validation handling.</p>
+        </section>
+
+        <section id="rubric-section">
+          <h3>Evaluation Rubric</h3>
+          <div class="table-wrap">
+            <table class="rubric" id="rubric">
+              <thead>
+                <tr>
+                  <th>Criterion</th>
+                  <th>Level 4 (Exemplary)</th>
+                  <th>Level 3 (Proficient)</th>
+                  <th>Level 2 (Developing)</th>
+                  <th>Level 1 (Deficient)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr data-criterion="C1">
+                  <th>C1: Estimates and Standard Errors</th>
+                  <td>Reports factor risk premia alongside naive Fama–MacBeth, Shanken-corrected, and GMM standard errors; explicitly states the degree-of-freedom conventions (\(T_2 - 1\)) and sample lengths for each.</td>
+                  <td>Reports premia and both naive and Shanken standard errors accurately but omits explicit degree-of-freedom discussion.</td>
+                  <td>Reports premia but confuses standard errors or reports incomplete standard error comparisons across factors.</td>
+                  <td>Reports premia with incorrect standard errors or omits the Shanken correction entirely.</td>
+                </tr>
+                <tr data-criterion="C2">
+                  <th>C2: Computation and Rounding</th>
+                  <td>Computes every reported number from unrounded floating-point values, rounds only at final table display, and documents seed, sample dimensions (\(T, N, K, T_1, T_2\)), and tolerances.</td>
+                  <td>Computes values accurately from unrounded numbers with minor omissions in documenting sample dimension metadata.</td>
+                  <td>Exhibits intermediate rounding errors that alter trailing digits in standard error ratios or t-statistics.</td>
+                  <td>Contains substantial arithmetic or rounding errors that distort quantitative conclusions.</td>
+                </tr>
+                <tr data-criterion="C3">
+                  <th>C3: Conclusion and Decision Rule</th>
+                  <td>States the two-sided significance decision rule (\(|t| &gt; 1.96\)), reports t-ratios for both naive and Shanken standard errors, and identifies instances where errors-in-variables changes the empirical conclusion.</td>
+                  <td>States the decision rule and compares t-ratios but provides limited qualitative interpretation of borderline significance cases.</td>
+                  <td>Mentions significance changes vaguely without quoting exact t-ratios or test statistics from the analysis.</td>
+                  <td>Fails to articulate a decision rule or misinterprets the effect of standard error inflation on hypothesis tests.</td>
+                </tr>
+                <tr data-criterion="C4">
+                  <th>C4: Grades and Evidence</th>
+                  <td>Assigns rigorous evidence grades (T for derivations, C for simulation outputs) to all substantive statements; cites verified literature keys (<span class="claim" data-grade="A" data-cite="shanken1992estimation">Shanken 1992</span>, <span class="claim" data-grade="A" data-cite="fama1973risk">Fama &amp; MacBeth 1973</span>) at paper level.</td>
+                  <td>Assigns evidence grades to major claims and cites core papers accurately with minor citation formatting omissions.</td>
+                  <td>Cites literature casually without evidence grades or uses ungrounded claims of empirical generality.</td>
+                  <td>Makes unsubstantiated empirical assertions without citations, grades, or verifiable computational foundations.</td>
+                </tr>
+                <tr data-criterion="C5">
+                  <th>C5: Theoretical Limits and Assumptions</th>
+                  <td>Explicitly details core econometric assumptions (A6: stationary factor returns, zero mean residuals, constant loadings within window); discusses failure modes under time-varying loadings, weak factors, and non-normality; labels all data SIMULATED.</td>
+                  <td>Notes key assumptions for Shanken validity and labels data SIMULATED, with concise discussion of model limits.</td>
+                  <td>Mentions caveats superficially without identifying specific mathematical assumptions required for Shanken consistency.</td>
+                  <td>Omits discussion of model assumptions, asserts universal applicability, or fails to label synthetic data as SIMULATED.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="exemplars">
+          <h3>Replication Research Note Exemplars</h3>
+
+          <section class="exemplar" id="exemplar-a" data-level="4" data-scores="4,4,4,4,4">
+            <h4>Exemplar A (Level 4: Exemplary)</h4>
+            <div class="memo-content">
+              <h5>Replication Note: Errors-in-Variables Corrections in Two-Pass Cross-Sectional Pricing</h5>
+              <p><strong>Author:</strong> Doctoral Quantitative Researcher<br>
+              <strong>Date:</strong> October 2026<br>
+              <strong>Status:</strong> SIMULATED Research Calibration (Seed 143)</p>
+
+              <h6>1. Econometric Framework and Two-Pass Methodology</h6>
+              <p>In two-pass cross-sectional asset pricing tests (<span class="claim" data-grade="A" data-cite="fama1973risk">Fama &amp; MacBeth 1973</span>), asset excess returns \(R_{it}\) for \(i = 1, \dots, N\) are regressed on candidate factors \(f_t\) over an initial training window \(t = 1, \dots, T_1\) to estimate factor loadings \(\hat{\beta}_i\). In the second pass, for each out-of-sample month \(t = T_1 + 1, \dots, T\), a cross-sectional ordinary least squares regression of asset returns on estimated loadings yields monthly premia slopes \(\hat{\lambda}_t = (\hat{Z}^\top \hat{Z})^{-1} \hat{Z}^\top R_t\), where \(\hat{Z} = [\mathbf{1}_N, \hat{\beta}]\).</p>
+
+              <h6>2. Measurement Error and the Shanken Inflation Factor</h6>
+              <p>Because \(\hat{\beta}_i = \beta_i + v_i\), the second-pass regressor matrix contains measurement error. Under classical assumptions (A6: i.i.d. factor returns with covariance \(\Sigma_f\), homoskedastic idiosyncratic errors uncorrelated with factors, and constant loadings), <span class="claim" data-grade="A" data-cite="shanken1992estimation">Shanken (1992)</span> proved that the asymptotic variance of the sample mean premium \(\bar{\lambda}\) is scaled by \(c = 1 + \lambda_f^\top \Sigma_f^{-1} \lambda_f\). When stacked into a Generalized Method of Moments system (<span class="claim" data-grade="A" data-cite="hansen1982large">Hansen 1982</span>), the sandwich asymptotic covariance matrix identically reproduces this correction factor.</p>
+
+              <h6>3. Empirical Replication Results (Seed 143)</h6>
+              <p>We evaluate a simulated panel of \(N = 20\) assets over \(T = 140\) monthly periods (\(T_1 = 80, T_2 = 60\)) with \(K = 1\) factor. The factor sample mean is \(\bar{f} = 0.0080\) with variance \(\hat{\Sigma}_f = 0.001964\). Unrounded calculations display the following results:</p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Parameter</th>
+                      <th>Premium (\(\bar{\lambda}\))</th>
+                      <th>Naive SE</th>
+                      <th>Shanken SE</th>
+                      <th>Ratio</th>
+                      <th>Naive t</th>
+                      <th>Shanken t</th>
+                      <th>Conclusion (|t| &gt; 1.96)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Zero-Beta Intercept</td>
+                      <td>-0.000412</td>
+                      <td>0.004118</td>
+                      <td>0.004233</td>
+                      <td>1.0280</td>
+                      <td>-0.100</td>
+                      <td>-0.097</td>
+                      <td>Insignificant (Unchanged)</td>
+                    </tr>
+                    <tr>
+                      <td>Factor 1 Premium</td>
+                      <td>+0.010562</td>
+                      <td>0.005354</td>
+                      <td>0.005504</td>
+                      <td>1.0280</td>
+                      <td>+1.973</td>
+                      <td>+1.919</td>
+                      <td><strong>Significant &rarr; Insignificant</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <h6>4. Structural Inference Reversal and Theoretical Caveats</h6>
+              <p>Under naive Fama–MacBeth standard errors, Factor 1 is judged statistically significant at the 5% level (\(t = 1.973 &gt; 1.960\)). However, because the factor carries a positive Sharpe ratio (\(\SR_f^2 = 0.0568\)), the Shanken multiplier is \(c = 1.0568\) (standard error inflation of 2.80%). Adjusting for loading estimation uncertainty deflates the test statistic to \(t = 1.919 \le 1.960\), overturning the finding of priced factor risk. This reversal demonstrates the critical necessity of errors-in-variables corrections in empirical finance. We note that Shanken's asymptotic derivation assumes stationary loadings and homoskedastic errors; under conditional heteroskedasticity, full two-step GMM weighting or Newey–West corrections are required.</p>
+            </div>
+          </section>
+
+          <section class="exemplar" id="exemplar-b" data-level="2" data-scores="2,2,2,2,2">
+            <h4>Exemplar B (Level 2: Developing)</h4>
+            <div class="memo-content">
+              <h5>Project Memo: Fama–MacBeth and Shanken Analysis</h5>
+              <p>We estimated the Fama–MacBeth regression on the generated asset returns. In the first pass we ran regressions of returns on factors to get betas. In the second pass we regressed each month on the betas to get the risk premia. The naive standard error is the standard deviation divided by the square root of time.</p>
+              <p>Then we calculated Shanken's formula using the factor covariance matrix. Shanken's standard error is bigger than the naive standard error because the betas are estimated with noise. For our seed, the factor premium had a t-stat of about 1.97 with naive standard errors, but when we applied Shanken it dropped to 1.92, so it became not significant.</p>
+              <p>The code matches the tests, but the data is simulated and in real life returns might have fat tails or time-varying betas that make the formula different.</p>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section id="rung-4">
+        <h2>Rung 4 · Research Stretch</h2>
+        <p>In advanced empirical research, apply your <code>fm_shanken.py</code> engine to historical foreign exchange spot returns from the Federal Reserve Board of Governors H.10 release (6 currencies, daily observations 2000–2026). Test whether cross-sectional currency premia remain robust after correcting for generated regressor uncertainty, noting that spot exchange rates exclude interest rate carry differentials.</p>
+      </section>
+
+      <section id="reading-list">
+        <h2>Reading List</h2>
+        <ol class="reading-list">
+          <li data-cite="hansen1982large">Hansen, L. P. (1982). Large Sample Properties of Generalized Method of Moments Estimators. <em>Econometrica</em>, 50(4), 1029–1054.</li>
+          <li data-cite="fama1973risk">Fama, E. F., &amp; MacBeth, J. D. (1973). Risk, Return, and Equilibrium: Empirical Tests. <em>Journal of Political Economy</em>, 81(3), 607–636.</li>
+          <li data-cite="shanken1992estimation">Shanken, J. (1992). On the Estimation of Beta-Pricing Models. <em>The Review of Financial Studies</em>, 5(1), 1–33.</li>
+          <li data-cite="gibbons1989test">Gibbons, M. R., Ross, S. A., &amp; Shanken, J. (1989). A Test of the Efficiency of a Given Portfolio. <em>Econometrica</em>, 57(5), 1121–1152.</li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="course-footer">
+      <p>&copy; Quant PhD Program. All rights reserved.</p>
+    </footer>
+  </body>
+</html>
