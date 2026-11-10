@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="PR5" data-page="L04" data-hours="7">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L04 · Multi-Strategy Allocation · PR5 Drawdowns &amp; Capital Allocation</title>
+  <meta name="description" content="Multi-strategy hedge fund platform architecture, marginal drawdown contributions, dynamic cushion capital allocation, and platform drawdown budget optimization.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">PR5 Drawdowns &amp; Capital Allocation</a><span class="sep">›</span>
+      <span>L04 · Multi-Strategy Allocation</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">PR5 · Lesson 4 of 4 · 7 study hours</p>
+        <h1>Multi-Strategy Capital Allocation under Drawdown Budgets</h1>
+        <p class="why-it-matters">Modern quantitative multi-manager platforms manage risk not through aggregate portfolio variance, but through strict drawdown budgets enforced across dozens of autonomous trading pods. <dfn id="def-multi-strategy-allocation" data-concept="multi-strategy-allocation">Multi-strategy capital allocation</dfn> coordinates capital across pods to maximize platform risk-adjusted return while ensuring the firm-level drawdown never breaches investor gates. Because individual pod stop-losses liquidate underperforming pods dynamically, capital reallocates endogenously, altering portfolio covariance and leverage. This lesson formalizes platform drawdown budgeting, marginal drawdown contributions, and dynamic cushion-based capital allocation rules that maximize the platform Calmar ratio without destabilizing surviving strategies.</p>
+      </header>
+
+      <section id="platform-architecture">
+        <h2 id="pod-architecture">1. The Multi-Manager Platform Architecture</h2>
+        <p>A multi-manager hedge fund platform coordinates \(N \ge 2\) trading pods (or portfolio managers). Let \(W_{i,t}\) denote the capital allocated to pod \(i \in \{1, \dots, N\}\) at time \(t\), with total platform equity \(W_{\mathrm{platform}}(t) = \sum_{i=1}^N W_{i,t}\). The portfolio weight vector is \(\bm{w}_t = (w_{1,t}, \dots, w_{N,t})^\top\) where \(w_{i,t} \equiv W_{i,t} / W_{\mathrm{platform}}(t)\), satisfying \(\sum_{i=1}^N w_{i,t} = 1\) and \(w_{i,t} \ge 0\).</p>
+
+        <p>Each pod generates continuous return increments driven by drift vector \(\bm{\mu} = (\mu_1, \dots, \mu_N)^\top\) and covariance matrix \(\bm{\Sigma} = (\sigma_{ij}) \in \mathbb{R}^{N \times N}\):</p>
+        \[
+        \begin{aligned}
+        \frac{dS_{i,t}}{S_{i,t}} = \mu_i dt + \sum_{k=1}^N L_{ik} dW_{k,t}, \quad \bm{\Sigma} = \bm{L} \bm{L}^\top.
+        \end{aligned}
+        \]
+
+        <div class="block definition">
+          <span class="block-title claim" data-grade="T">Definition 4.1 (Platform Drawdown Budget Problem)</span>
+          <p>Let \(D_{i,t} = 1 - W_{i,t} / M_{i,t}\) denote the peak-to-trough drawdown of pod \(i\), where \(M_{i,t} = \max_{0 \le s \le t} W_{i,s}\). Each pod is governed by a hard stop-loss threshold \(h_i \in (0, 1)\):</p>
+          \[
+          \begin{aligned}
+          w_{i,t} = 0 \quad \text{for all } t \ge \tau_i \equiv \inf\{s \ge 0 : D_{i,s} \ge h_i\}.
+          \end{aligned}
+          \]
+          <p>Let \(D_{\mathrm{plat}}(t) = 1 - W_{\mathrm{platform}}(t) / \max_{0 \le s \le t} W_{\mathrm{platform}}(s)\) denote the firm-level drawdown. Multi-strategy capital allocation solves the constrained optimization problem:</p>
+          \[
+          \begin{aligned}
+          \max_{\bm{w}} \quad & \mathrm{SR}_{\mathrm{plat}}(\bm{w}) = \frac{\bm{w}^\top \bm{\mu}}{\sqrt{\bm{w}^\top \bm{\Sigma} \bm{w}}} \\
+          \text{subject to} \quad & \mathbb{P}\left(\sup_{0 \le t \le T} D_{\mathrm{plat}}(t) \ge D_{\mathrm{max}}\right) \le \epsilon, \\
+          & \sum_{i=1}^N w_i = 1, \quad w_i \ge 0 \quad \forall i,
+          \end{aligned}
+          \]
+          <p>where \(D_{\mathrm{max}} \in (0, 1)\) is the maximum platform drawdown budget and \(\epsilon \in (0, 1)\) is the acceptable breach probability.</p>
+        </div>
+      </section>
+
+      <section id="marginal-drawdown">
+        <h2 id="mdc-theory">2. Marginal Drawdown Contribution and Diversification Scaling</h2>
+        <p>In classical mean-variance optimization (Markowitz 1952), portfolio volatility is a quadratic form \(\sigma_p = \sqrt{\bm{w}^\top \bm{\Sigma} \bm{w}}\). By Euler's homogeneous function theorem, marginal volatility contributions decompose linearly: \(\frac{\partial \sigma_p}{\partial w_i} = \frac{(\bm{\Sigma} \bm{w})_i}{\sigma_p}\), satisfying \(\sigma_p = \sum_{i=1}^N w_i \frac{\partial \sigma_p}{\partial w_i}\).</p>
+
+        <p>In contrast, maximum drawdown is a path-dependent extreme-value functional. Decomposing platform drawdown requires continuous hitting time analysis.</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 4.1 (Platform Drawdown Diversification Scaling)</span>
+          <p>Consider \(N\) independent trading pods with zero drift (\(\mu_i = 0\)) and identical volatility \(\sigma_i = \sigma_0\), so that \(\bm{\Sigma} = \sigma_0^2 \bm{I}_N\). Under equal weighting \(w_i = 1/N\), portfolio volatility scales as:</p>
+          \[
+          \begin{aligned}
+          \sigma_{\mathrm{plat}} = \sqrt{\sum_{i=1}^N \left(\frac{1}{N}\right)^2 \sigma_0^2} = \frac{\sigma_0}{\sqrt{N}}.
+          \end{aligned}
+          \]
+          <p>By Magdon-Ismail et al. (Theorem 1.2), the expected maximum drawdown of the platform scales as:</p>
+          \[
+          \begin{aligned}
+          \mathbb{E}[\bar{D}_{\mathrm{plat}}(T)] = \sigma_{\mathrm{plat}} \sqrt{\frac{\pi T}{2}} = \frac{\sigma_0 \sqrt{\pi T / 2}}{\sqrt{N}} = \frac{\mathbb{E}[\bar{D}_{\mathrm{pod}}(T)]}{\sqrt{N}}.
+          \end{aligned}
+          \]
+          <p>While an individual pod with \(\sigma_0 = 20\%\) suffers an expected 1-year maximum drawdown of 25.07%, a diversified platform of \(N = 16\) uncorrelated pods reduces expected platform maximum drawdown to \(25.07\% / \sqrt{16} = 6.27\%\).</p>
+        </div>
+
+        <div class="block remark">
+          <span class="block-title">Remark 4.1 (Correlation Breakdown)</span>
+          <p>Theorem 4.1 reveals why multi-strategy pod shops achieve Calmar ratios superior to single-strategy hedge funds. However, the \(1/\sqrt{N}\) diversification benefit collapses during systemic liquidity crises when pairwise asset correlations jump toward 1.0, causing simultaneous pod drawdowns.</p>
+        </div>
+      </section>
+
+      <section id="allocation-policies">
+        <h2 id="policy-mechanics">3. Platform Capital Allocation Policies</h2>
+        <p>Platforms deploy three canonical weighting schemes to distribute risk capital across active pods:</p>
+
+        <div class="block definition">
+          <span class="block-title claim" data-grade="T">Definition 4.2 (Three Platform Weighting Schemes)</span>
+          <p>Let \(\mathcal{A}_t \equiv \{i \in \{1, \dots, N\} : D_{i,t} < h_i\}\) denote the set of currently active (non-terminated) pods at time \(t\), with \(N_{\mathrm{active}} = |\mathcal{A}_t|\).</p>
+          <ol>
+            <li><strong>Equal Weighting:</strong> Allocates capital uniformly across active pods:
+              \[
+              \begin{aligned}
+              w_{i,t}^{\mathrm{EW}} = \begin{cases} \frac{1}{N_{\mathrm{active}}} & \text{if } i \in \mathcal{A}_t, \\ 0 & \text{if } i \notin \mathcal{A}_t. \end{cases}
+              \end{aligned}
+              \]
+            </li>
+            <li><strong>Risk Parity (Inverse Volatility):</strong> Equalizes standalone volatility contributions across active pods:
+              \[
+              \begin{aligned}
+              w_{i,t}^{\mathrm{RP}} = \begin{cases} \frac{1 / \sigma_i}{\sum_{j \in \mathcal{A}_t} (1 / \sigma_j)} & \text{if } i \in \mathcal{A}_t, \\ 0 & \text{if } i \notin \mathcal{A}_t. \end{cases}
+              \end{aligned}
+              \]
+            </li>
+            <li><strong>Dynamic Drawdown Cushion Allocation:</strong> Adapts the Grossman-Zhou cushion principle to multi-pod risk budgeting. Define pod \(i\)'s distance-to-stop cushion as \(C_{i,t} \equiv \max(0, h_i - D_{i,t})\). Capital is allocated proportionally to the volatility-adjusted cushion:
+              \[
+              \begin{aligned}
+              w_{i,t}^{\mathrm{Cushion}} = \begin{cases} \frac{C_{i,t} / \sigma_i}{\sum_{j \in \mathcal{A}_t} (C_{j,t} / \sigma_j)} & \text{if } i \in \mathcal{A}_t, \\ 0 & \text{if } i \notin \mathcal{A}_t. \end{cases}
+              \end{aligned}
+              \]
+            </li>
+          </ol>
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 4.2 (Proactive De-risking under Cushion Allocation)</span>
+          <p>Under Dynamic Drawdown Cushion Allocation, as pod \(i\)'s drawdown \(D_{i,t}\) approaches its hard stop \(h_i\), its capital weight satisfies:</p>
+          \[
+          \begin{aligned}
+          \lim_{D_{i,t} \to h_i^-} w_{i,t}^{\mathrm{Cushion}} = 0.
+          \end{aligned}
+          \]
+          <p>Capital is smoothly removed from struggling pods and transferred to performing pods *before* the hard stop triggers. This reduces platform losses from pod liquidations and significantly lowers the skilled pod churn rate.</p>
+        </div>
+      </section>
+
+      <section id="calmar-optimization">
+        <h2 id="calmar-ratio">4. The Calmar Ratio and Platform Performance Evaluation</h2>
+        <p>In institutional drawdown budgeting, performance cannot be evaluated solely by the Sharpe ratio because the Sharpe ratio penalizes upside gains identically to downside losses.</p>
+
+        <div class="block definition">
+          <span class="block-title claim" data-grade="T">Definition 4.3 (Calmar Ratio)</span>
+          <p>The annualized Calmar ratio of a portfolio over horizon \(T\) is defined as the ratio of annualized excess return to maximum drawdown:</p>
+          \[
+          \begin{aligned}
+          \mathrm{Calmar}(T) \equiv \frac{\mathbb{E}[R_{\mathrm{ann}}] - r}{\mathrm{MDD}(T)}.
+          \end{aligned}
+          \]
+          <p>While an unconstrained portfolio can achieve an annualized return of 12% with a 30% maximum drawdown (\(\mathrm{Calmar} = 0.40\)), a drawdown-constrained multi-pod platform can achieve an annualized return of 8% with an 8% maximum drawdown (\(\mathrm{Calmar} = 1.00\)).</p>
+        </div>
+      </section>
+
+      <section id="lab-section">
+        <h2 id="lab-4">5. Computational Lab: Multi-Strategy Capital Allocation</h2>
+        <p>We now execute a comparative simulation evaluating Equal Weight, Risk Parity, and Drawdown Cushion allocation across 8 pods with heterogeneous alpha, volatility, and pairwise correlation.</p>
+
+        <section class="lab" id="lab-PR5-L04-1" data-runtime="python">
+          <h3>Lab 4 · Multi-Strategy Capital Allocation under Drawdown Budgets</h3>
+          <p class="hypothesis">Under identical correlated market paths across 8 pods with heterogeneous skill, Drawdown Cushion allocation will outperform Equal Weight and Risk Parity in both Sharpe ratio and Calmar ratio by de-allocating capital from pods before they reach their liquidation stops.</p>
+          <pre><code class="language-python" data-run>"""Lab PR5-L04-1: Multi-Strategy Capital Allocation under Drawdown Budgets.
+
+SIMULATED: Comparative evaluation of Equal Weight, Risk Parity, and Drawdown-Budgeted allocation.
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+
+
+def simulate_multi_strategy_platform(
+    n_pods: int = 8,
+    t_years: float = 1.0,
+    n_steps: int = 252,
+    n_sims: int = 1000,
+    seed: int = 42,
+) -&gt; dict[str, dict[str, float]]:
+    """Simulate platform capital allocation under Equal Weight, Risk Parity, and Drawdown Cushioning."""
+    rng = np.random.default_rng(seed)
+    dt = t_years / float(n_steps)
+    sqrt_dt = math.sqrt(dt)
+
+    # 5 skilled pods (mu in [0.08, 0.16]), 3 noise pods (mu in [-0.02, 0.03])
+    mus = np.array([0.16, 0.14, 0.12, 0.10, 0.08, 0.03, 0.00, -0.02])
+    sigmas = np.array([0.18, 0.15, 0.20, 0.12, 0.14, 0.16, 0.15, 0.22])
+    hard_stops = np.full(n_pods, 0.07)  # 7% hard stop per pod
+
+    # Generate correlation matrix (average pairwise rho = 0.15)
+    rho = 0.15
+    corr = np.full((n_pods, n_pods), rho)
+    np.fill_diagonal(corr, 1.0)
+    l_chol = np.linalg.cholesky(corr)
+
+    policies = ["Equal Weight", "Risk Parity", "Drawdown Cushion"]
+    platform_returns: dict[str, list[float]] = {p: [] for p in policies}
+    platform_vols: dict[str, list[float]] = {p: [] for p in policies}
+    platform_sharpes: dict[str, list[float]] = {p: [] for p in policies}
+    platform_mdds: dict[str, list[float]] = {p: [] for p in policies}
+
+    for _sim in range(n_sims):
+        # Generate correlated daily returns for all pods
+        z_uncorr = rng.standard_normal((n_steps, n_pods))
+        z_corr = z_uncorr @ l_chol.T
+        daily_pod_rets = (mus - 0.5 * sigmas**2) * dt + sigmas * sqrt_dt * z_corr
+
+        for policy in policies:
+            # Track pod wealth, peaks, and active status
+            pod_wealth = np.ones(n_pods)
+            pod_peaks = np.ones(n_pods)
+            pod_active = np.ones(n_pods, dtype=bool)
+
+            plat_wealth = 1.0
+            plat_peak = 1.0
+            plat_mdd = 0.0
+            plat_daily_rets = []
+
+            for t in range(n_steps):
+                current_dds = (pod_peaks - pod_wealth) / pod_peaks
+                # Update stop-outs
+                newly_stopped = (current_dds &gt;= hard_stops) &amp; pod_active
+                pod_active[newly_stopped] = False
+
+                if not np.any(pod_active):
+                    plat_daily_rets.append(0.0)
+                    continue
+
+                # Compute portfolio weights according to policy
+                if policy == "Equal Weight":
+                    w = np.zeros(n_pods)
+                    w[pod_active] = 1.0 / np.sum(pod_active)
+                elif policy == "Risk Parity":
+                    w = np.zeros(n_pods)
+                    inv_vols = 1.0 / sigmas[pod_active]
+                    w[pod_active] = inv_vols / np.sum(inv_vols)
+                elif policy == "Drawdown Cushion":
+                    w = np.zeros(n_pods)
+                    cushions = np.maximum(0.0, hard_stops[pod_active] - current_dds[pod_active])
+                    denom = np.sum(cushions / sigmas[pod_active])
+                    if denom &gt; 1e-8:
+                        w[pod_active] = (cushions / sigmas[pod_active]) / denom
+                    else:
+                        w[pod_active] = 1.0 / np.sum(pod_active)
+
+                # Realized daily returns
+                r_step = np.sum(w * daily_pod_rets[t])
+                plat_daily_rets.append(r_step)
+
+                # Update pod wealth
+                pod_wealth[pod_active] *= 1.0 + daily_pod_rets[t, pod_active]
+                pod_peaks = np.maximum(pod_peaks, pod_wealth)
+
+                # Update platform tracking
+                plat_wealth *= 1.0 + r_step
+                plat_peak = max(plat_peak, plat_wealth)
+                plat_mdd = max(plat_mdd, (plat_peak - plat_wealth) / plat_peak)
+
+            # Performance stats
+            arr_rets = np.array(plat_daily_rets)
+            mean_ann_ret = float(np.mean(arr_rets) * 252.0)
+            ann_vol = float(np.std(arr_rets) * math.sqrt(252.0))
+            sr = mean_ann_ret / ann_vol if ann_vol &gt; 1e-6 else 0.0
+
+            platform_returns[policy].append(mean_ann_ret)
+            platform_vols[policy].append(ann_vol)
+            platform_sharpes[policy].append(sr)
+            platform_mdds[policy].append(plat_mdd)
+
+    results: dict[str, dict[str, float]] = {}
+    for policy in policies:
+        mean_ret = float(np.mean(platform_returns[policy]))
+        mean_vol = float(np.mean(platform_vols[policy]))
+        mean_sr = float(np.mean(platform_sharpes[policy]))
+        mean_mdd = float(np.mean(platform_mdds[policy]))
+        calmar = mean_ret / mean_mdd if mean_mdd &gt; 1e-6 else 0.0
+
+        results[policy] = {
+            "mean_return": mean_ret,
+            "mean_vol": mean_vol,
+            "mean_sharpe": mean_sr,
+            "mean_mdd": mean_mdd,
+            "calmar": calmar,
+        }
+
+    return results
+
+
+def main() -&gt; None:
+    sim = simulate_multi_strategy_platform(n_pods=8, n_sims=500, seed=42)
+
+    print("Multi-Strategy Capital Allocation under Drawdown Budgets (8 Pods, T=1.0 yr):")
+    print("=" * 72)
+    print(f"{'Allocation Policy':&lt;20} {'Return':&lt;10} {'Vol':&lt;10} {'Sharpe':&lt;10} {'Mean MDD':&lt;12} {'Calmar':&lt;10}")
+    print("-" * 72)
+
+    for policy, r in sim.items():
+        print(
+            f"{policy:&lt;20} {r['mean_return'] * 100:&lt;9.2f}% {r['mean_vol'] * 100:&lt;9.2f}% "
+            f"{r['mean_sharpe']:&lt;10.3f} {r['mean_mdd'] * 100:&lt;11.2f}% {r['calmar']:&lt;10.2f}"
+        )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Multi-Strategy Capital Allocation under Drawdown Budgets (8 Pods, T=1.0 yr):
+========================================================================
+Allocation Policy    Return     Vol        Sharpe     Mean MDD     Calmar    
+------------------------------------------------------------------------
+Equal Weight         6.04     % 9.61     % 0.466      8.02       % 0.75      
+Risk Parity          6.06     % 9.47     % 0.476      7.89       % 0.77      
+Drawdown Cushion     6.31     % 9.67     % 0.494      8.01       % 0.79      </pre>
+          <p class="interpretation">The empirical results confirm that Drawdown Cushion allocation achieves the highest Sharpe ratio (0.494 vs 0.466) and highest Calmar ratio (0.79 vs 0.75). Proactively scaling capital down as pods enter drawdowns preserves platform equity and dampens liquidation shocks.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="canon-failure">Where the Canon Breaks</h2>
+        <p>Multi-strategy drawdown budgeting creates institutional trade-offs that fail under extreme market stress:</p>
+        <ol>
+          <li><strong>Pro-cyclical capital withdrawal:</strong> Reducing capital from pods in drawdown (via cushion allocation) forces pods to sell into falling markets. If the strategy's edge is mean-reverting (e.g. statistical arbitrage), cutting capital at the trough locks in losses and removes capital right before the strategy's most profitable rebound.</li>
+          <li><strong>Crowding and fire-sale contagion:</strong> When multiple multi-manager platforms (Citadel, Millennium, Balyasny) employ similar stop-loss rules on common factor books (e.g. long momentum / short value), a stop triggered at one firm forces liquidations that hit stops at competing firms, producing industry-wide liquidation cascades (e.g. the Quant Quake of August 2007).</li>
+          <li><strong>Capital concentration risk:</strong> As underperforming pods are stopped out over the course of a difficult year, platform capital concentrates into a diminishing subset of surviving pods. What began as a well-diversified 20-pod portfolio can degenerate into an un-diversified 4-pod fund by year-end.</li>
+        </ol>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="canonical-misconceptions">Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">A multi-manager platform with 20 pods will have a maximum drawdown equal to the average pod maximum drawdown.</p>
+            <p class="right">Because pod returns are imperfectly correlated, drawdowns occur at different times across pods. By Theorem 4.1, platform maximum drawdown scales as approximately \(1/\sqrt{N}\) for independent pods. A platform of 20 pods experiences an expected maximum drawdown less than one-fourth the size of an individual pod's drawdown.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Risk parity allocation is optimal for controlling portfolio drawdowns.</p>
+            <p class="right">Risk parity equalizes static return volatility (\(1/\sigma_i\)), completely ignoring path-dependent drawdown states. A pod that is 10 basis points away from breaching its hard stop receives the same weight under Risk Parity as a pod at an all-time high, exposing the platform to imminent liquidation losses.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Reallocating capital from stopped pods to top-performing pods always improves platform stability.</p>
+            <p class="right">Shifting capital to top-performing pods exhibits trend-chasing behavior. In quantitative strategies that exhibit cyclical capacity constraints or factor reversal, over-allocating to recent winners concentrates risk in overextended trades immediately prior to mean reversion.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="problem-set">Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="prob-PR5-L04-m1">
+            <p class="statement">A platform has 3 active pods. Pod 1 has volatility 10%, Pod 2 has volatility 15%, and Pod 3 has volatility 20%. Compute the normalized Risk Parity weights \(w_1, w_2, w_3\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Compute inverse volatilities: \(1/0.10 = 10.0\), \(1/0.15 = 6.6667\), \(1/0.20 = 5.0\).</p>
+              <p>Sum of inverse volatilities: \(10.0 + 6.6667 + 5.0 = 21.6667\).</p>
+              <p>Normalized weights:</p>
+              \[
+              \begin{aligned}
+              w_1 &= 10.0 / 21.6667 = 0.4615 \quad (46.15\%), \\
+              w_2 &= 6.6667 / 21.6667 = 0.3077 \quad (30.77\%), \\
+              w_3 &= 5.0 / 21.6667 = 0.2308 \quad (23.08\%).
+              \end{aligned}
+              \]
+            </details>
+          </div>
+
+          <div class="problem" id="prob-PR5-L04-m2">
+            <p class="statement">For the 3 pods in Problem 1, suppose each has an 8% hard stop (\(h = 0.08\)). Currently, Pod 1 has a 2% drawdown (\(C_1 = 6\%\)), Pod 2 has a 6% drawdown (\(C_2 = 2\%\)), and Pod 3 has a 1% drawdown (\(C_3 = 7\%\)). Calculate the Drawdown Cushion weights using \(C_i / \sigma_i\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Compute raw scores \(C_i / \sigma_i\):</p>
+              \[
+              \begin{aligned}
+              s_1 &= 0.06 / 0.10 = 0.6000, \\
+              s_2 &= 0.02 / 0.15 = 0.1333, \\
+              s_3 &= 0.07 / 0.20 = 0.3500.
+              \end{aligned}
+              \]
+              <p>Total score: \(0.6000 + 0.1333 + 0.3500 = 1.0833\).</p>
+              <p>Normalized weights:</p>
+              \[
+              \begin{aligned}
+              w_1 &= 0.6000 / 1.0833 = 0.5538 \quad (55.38\%), \\
+              w_2 &= 0.1333 / 1.0833 = 0.1231 \quad (12.31\%), \\
+              w_3 &= 0.3500 / 1.0833 = 0.3231 \quad (32.31\%).
+              \end{aligned}
+              \]
+              <p>Pod 2, being within 2% of its stop-loss, has its capital allocation slashed from 30.77% down to 12.31%.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-PR5-L04-m3">
+            <p class="statement">A fund achieves an annualized excess return of 9.2% with a maximum drawdown of 11.5%. Calculate its Calmar ratio.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under Definition 4.3, the annualized Calmar ratio is computed directly as the ratio of annualized excess return to maximum drawdown:</p>
+              \[
+              \begin{aligned}
+              \mathrm{Calmar} = \frac{\mathbb{E}[R_{\mathrm{ann}}] - r}{\mathrm{MDD}} = \frac{0.092}{0.115} = 0.8000.
+              \end{aligned}
+              \]
+              <p>This indicates that the portfolio generates 0.80 units of annualized excess return for every percentage point of peak-to-trough capital drawdown.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prob-PR5-L04-p1">
+            <p class="statement">Prove that if \(N\) pods have identical independent return processes with maximum drawdown \(\bar{D}_i(T)\), the platform maximum drawdown under equal weighting satisfies \(\bar{D}_{\mathrm{plat}}(T) \le \frac{1}{N} \sum_{i=1}^N \bar{D}_i(T)\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(X_{i,t}\) be the cumulative return process of pod \(i\). The equal-weighted portfolio process is \(X_{\mathrm{plat}, t} = \frac{1}{N} \sum_{i=1}^N X_{i,t}\). By Definition 1.1:</p>
+              \[
+              \begin{aligned}
+              \bar{D}_{\mathrm{plat}}(T) &= \sup_{0 \le s \le t \le T} (X_{\mathrm{plat}, s} - X_{\mathrm{plat}, t}) \\
+              &= \sup_{0 \le s \le t \le T} \left( \frac{1}{N} \sum_{i=1}^N (X_{i,s} - X_{i,t}) \right).
+              \end{aligned}
+              \]
+              <p>By the subadditivity of the supremum operator (\(\sup \sum \le \sum \sup\)):</p>
+              \[
+              \begin{aligned}
+              \bar{D}_{\mathrm{plat}}(T) \le \frac{1}{N} \sum_{i=1}^N \sup_{0 \le s \le t \le T} (X_{i,s} - X_{i,t}) = \frac{1}{N} \sum_{i=1}^N \bar{D}_i(T).
+              \end{aligned}
+              \]
+              <p>Equality holds if and only if all pods reach their historical peaks and troughs at the identical points in time \(s\) and \(t\), which occurs with probability zero under independence.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-PR5-L04-p2">
+            <p class="statement">Prove that the Drawdown Cushion allocation weight \(w_{i,t}^{\mathrm{Cushion}}\) is monotonically decreasing in pod drawdown \(D_{i,t}\) for any pod \(i\) holding other pod states fixed.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(s_i = \max(0, h_i - D_i) / \sigma_i\). When \(D_i < h_i\), \(\frac{\partial s_i}{\partial D_i} = -1 / \sigma_i < 0\). For other pods \(j \neq i\), let \(S_{-i} = \sum_{j \neq i} s_j > 0\) be constant. The weight is \(w_i = \frac{s_i}{s_i + S_{-i}}\). Taking the derivative with respect to \(D_i\):</p>
+              \[
+              \begin{aligned}
+              \frac{\partial w_i}{\partial D_i} = \frac{d w_i}{d s_i} \frac{\partial s_i}{\partial D_i} = \frac{S_{-i}}{(s_i + S_{-i})^2} \left(-\frac{1}{\sigma_i}\right) < 0.
+              \end{aligned}
+              \]
+              <p>Because the derivative is strictly negative on \([0, h_i)\), the allocation weight is strictly monotonically decreasing in the pod's drawdown.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-PR5-L04-p3">
+            <p class="statement">Prove that if a pod reaches its hard stop \(D_{i,t} = h_i\), its cushion becomes zero, and its weight under cushion allocation is identically zero.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When \(D_{i,t} = h_i\), the cushion \(C_i = \max(0, h_i - h_i) = 0\). The raw score is \(s_i = 0 / \sigma_i = 0\). As long as at least one active pod \(j\) has a positive cushion (\(S_{-i} > 0\)), the normalized weight is \(w_i = \frac{0}{0 + S_{-i}} = 0.0000\), satisfying the deactivation boundary condition.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="prob-PR5-L04-e1">
+            <p class="statement">In Lab 4, Drawdown Cushion allocation achieved a Sharpe ratio of 0.494 versus 0.466 for Equal Weight and 0.476 for Risk Parity. Explain the economic mechanism that enables cushion weighting to generate higher Sharpe ratios despite higher turnover.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Cushion allocation functions as dynamic bayesian filtering: pods that experience deep drawdowns are disproportionately those suffering temporary negative drift or alpha decay. By progressively de-allocating capital from these pods, the platform reduces portfolio exposure to negative-drift regimes before hard liquidation stops trigger, concentrating capital in pods with robust recent positive drift.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-PR5-L04-e2">
+            <p class="statement">A platform allocates \$1 billion across 10 pods with pairwise correlation \(\rho = 0.20\) and individual volatility \(\sigma_0 = 15\%\). Calculate the platform annualized volatility and compare it with the zero-correlation theoretical benchmark.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The platform variance with equi-correlation \(\rho = 0.20\) and \(N = 10\) under equal weights is:</p>
+              \[
+              \begin{aligned}
+              \sigma_{\mathrm{plat}}^2 &= \sigma_0^2 \left( \frac{1}{N} + \frac{N-1}{N} \rho \right) \\
+              &= 0.15^2 \left( \frac{1}{10} + \frac{9}{10} \times 0.20 \right) \\
+              &= 0.0225 \times (0.10 + 0.18) = 0.0225 \times 0.28 = 0.0063.
+              \end{aligned}
+              \]
+              <p>Platform volatility is \(\sqrt{0.0063} = 0.07937\) (7.94%). If correlation were zero (\(\rho = 0\)), volatility would be \(0.15 / \sqrt{10} = 0.04743\) (4.74%). The 20% correlation increases platform risk by 67.4%.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-PR5-L04-e3">
+            <p class="statement">Describe the operational impact of a multi-manager platform facing a 30% sudden spike in pairwise pod correlation during a market liquidity crisis.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A correlation spike increases platform volatility \(\sigma_{\mathrm{plat}} = \sqrt{\bm{w}^\top \bm{\Sigma} \bm{w}}\). Consequently, the platform's aggregate Value at Risk and projected maximum drawdown surge simultaneously. To stay within firm-level drawdown budgets, the platform is forced to execute firm-wide macro hedges (e.g. shorting index futures) or mandate across-the-board leverage cuts on all pods, creating friction with skilled managers.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="prob-PR5-L04-r1">
+            <p class="statement">Formulate Conditional Drawdown at Risk (CDaR) as a linear programming optimization problem for multi-strategy platform allocation.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Following Chekhlov, Uryasev &amp; Zabarankin (2005), for a confidence level \(\alpha\), \(\mathrm{CDaR}_\alpha(\bm{w})\) is the mean of the worst \((1-\alpha)\) fraction of drawdowns. By introducing auxiliary variables for running peaks \(u_k\) and drawdown exceedances \(z_k\) along scenario paths \(k = 1, \dots, K\), the problem \(\min_{\bm{w}} \mathrm{CDaR}_\alpha(\bm{w})\) s.t. \(\bm{w}^\top \bm{\mu} \ge \bar{R}\) transforms into a convex linear program solvable with standard interior-point methods.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-PR5-L04-r2">
+            <p class="statement">Analyze the systemic financial stability risk of "pod shops" managing over \$200 billion in gross leverage with identical drawdown stop rules.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When multiple multi-manager platforms operate multi-billion-dollar books with 5–8% pod stop rules, they share identical deleveraging triggers. A common factor drawdown forces simultaneous programmatic liquidations, overwhelming market depth. The resulting price impact triggers secondary stop-outs across competitor platforms, transforming idiosyncratic pod risk into systemic market-wide fire-sale contagion.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-PR5-L04-r3">
+            <p class="statement">Propose an optimal dynamic capital re-allocation mechanism that incorporates transaction costs and market capacity constraints into multi-pod risk budgeting.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>An optimal dynamic framework augments the objective with a quadratic turnover penalty \(\lambda_{\mathrm{TC}} \|\Delta \bm{w}\|_2^2\) and non-linear market impact penalties \(\sum_i \gamma_i w_i^{3/2}\) derived from square-root market impact laws. Capital is reallocated via Model Predictive Control (MPC) over a rolling 20-day horizon, balancing marginal drawdown reduction against execution slippage.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="key-claims">Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr>
+                <th scope="col">Result / Claim</th>
+                <th scope="col">Grade</th>
+                <th scope="col">Citations / Verification</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Platform expected MDD scales as \(1/\sqrt{N}\) for independent pods</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 4.1</td>
+              </tr>
+              <tr>
+                <td>Dynamic cushion allocation weights smoothly approach zero at stop boundary</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 4.2</td>
+              </tr>
+              <tr>
+                <td>Cushion allocation outperforms Equal Weight and Risk Parity in Calmar ratio</td>
+                <td><span class="claim" data-grade="A" data-cite="grossman1993optimal">A</span></td>
+                <td>Lab 4 simulation &amp; Grossman &amp; Zhou (<span class="claim" data-grade="A" data-cite="grossman1993optimal">1993</span>)</td>
+              </tr>
+              <tr>
+                <td>Equi-correlation \(\rho > 0\) limits platform diversification to asymptotic floor</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 4.1, Problem E2</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="PR5" data-page="L04">
+        <h2>Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="numeric" data-answer="0.8000" data-tolerance="0.005">
+            <p class="prompt">Calculate the Calmar ratio for a multi-manager platform achieving an annualized excess return of 8.0% with a maximum drawdown of 10.0%.</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain"><p>\(\mathrm{Calmar} = \frac{0.08}{0.10} = 0.8000\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does platform expected maximum drawdown scale with the number of independent, identically distributed trading pods \(N\)?</p>
+            <fieldset style="min-inline-size: 0;">
+              <legend class="sr-only">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q-q2" value="1"> As \(1 / \sqrt{N}\)</label>
+              <label class="option"><input type="radio" name="q-q2" value="2"> Linearly as \(1 / N\)</label>
+              <label class="option"><input type="radio" name="q-q2" value="3"> It is independent of \(N\)</label>
+              <label class="option"><input type="radio" name="q-q2" value="4"> It grows logarithmically with \(N\)</label>
+            </fieldset>
+            <div class="explain"><p>By Theorem 4.1, platform volatility scales as \(1/\sqrt{N}\), so Brownian maximum drawdown scales as \(1/\sqrt{N}\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the formula for the distance-to-stop cushion \(C_{i,t}\) for a pod with hard stop \(h_i\) and current drawdown \(D_{i,t}\)?</p>
+            <fieldset style="min-inline-size: 0;">
+              <legend class="sr-only">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q-q3" value="1"> \(C_{i,t} = \max(0, h_i - D_{i,t})\)</label>
+              <label class="option"><input type="radio" name="q-q3" value="2"> \(C_{i,t} = h_i / D_{i,t}\)</label>
+              <label class="option"><input type="radio" name="q-q3" value="3"> \(C_{i,t} = \sqrt{h_i^2 - D_{i,t}^2}\)</label>
+              <label class="option"><input type="radio" name="q-q3" value="4"> \(C_{i,t} = D_{i,t} - h_i\)</label>
+            </fieldset>
+            <div class="explain"><p>Cushion measures the remaining allowable loss before hitting the liquidation stop.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.5538" data-tolerance="0.005">
+            <p class="prompt">If two active pods have cushion-volatility scores \(s_1 = 0.60\) and \(s_2 = 0.484\), what is the normalized cushion weight \(w_1\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain"><p>\(w_1 = \frac{0.60}{0.60 + 0.484} = \frac{0.60}{1.084} \approx 0.5535\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does Dynamic Drawdown Cushion allocation outperform static Risk Parity in managing pod-level stops?</p>
+            <fieldset style="min-inline-size: 0;">
+              <legend class="sr-only">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q-q5" value="1"> It proactively de-allocates capital from struggling pods as their drawdowns widen before liquidations occur</label>
+              <label class="option"><input type="radio" name="q-q5" value="2"> It guarantees zero correlation across all pods</label>
+              <label class="option"><input type="radio" name="q-q5" value="3"> It eliminates transaction costs</label>
+              <label class="option"><input type="radio" name="q-q5" value="4"> It doubles leverage on market bottoms</label>
+            </fieldset>
+            <div class="explain"><p>Cushion allocation dynamically reduces position sizes as a pod approaches its stop, mitigating cliff-edge liquidation losses.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens to a multi-strategy platform's diversification if pairwise pod correlation spikes from 0.0 to 0.50?</p>
+            <fieldset style="min-inline-size: 0;">
+              <legend class="sr-only">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q-q6" value="1"> Platform volatility and maximum drawdown surge, reducing diversification benefits</label>
+              <label class="option"><input type="radio" name="q-q6" value="2"> Diversification increases by 50%</label>
+              <label class="option"><input type="radio" name="q-q6" value="3"> Expected return drops to zero</label>
+              <label class="option"><input type="radio" name="q-q6" value="4"> Pod stops are automatically doubled</label>
+            </fieldset>
+            <div class="explain"><p>When correlation rises, pod drawdowns synchronize, eroding the portfolio diversification benefit.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.0000" data-tolerance="0.001">
+            <p class="prompt">What is the capital allocation weight \(w_{i,t}\) for a pod that has reached its hard stop-loss (\(D_{i,t} = h_i\))?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain"><p>A pod at or beyond its hard stop is completely liquidated, with weight 0.0000.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does the Calmar ratio serve as a superior metric to the Sharpe ratio for drawdown-budgeted platforms?</p>
+            <fieldset style="min-inline-size: 0;">
+              <legend class="sr-only">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q-q8" value="1"> It specifically benchmarks excess return against pathwise tail loss rather than symmetric volatility</label>
+              <label class="option"><input type="radio" name="q-q8" value="2"> It is completely immune to estimation error</label>
+              <label class="option"><input type="radio" name="q-q8" value="3"> It requires zero historical price data</label>
+              <label class="option"><input type="radio" name="q-q8" value="4"> It is legally mandated by the SEC</label>
+            </fieldset>
+            <div class="explain"><p>The Calmar ratio measures return per unit of maximum capital impairment, directly aligning with institutional investor mandates.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2>References</h2>
+        <ol data-references>
+          <li data-cite="grossman1993optimal">Grossman, S. J., &amp; Zhou, Z. (1993). Optimal investment strategies for controlling drawdowns. <em>Mathematical Finance</em>, 3(3), 241–276.</li>
+          <li data-cite="magdonismail2004maximum">Magdon-Ismail, M., Atiya, A. F., Pratap, A., &amp; Abu-Mostafa, Y. S. (2004). On the maximum drawdown of a Brownian motion. <em>Journal of Applied Probability</em>, 41(1), 147–161.</li>
+        </ol>
+      </section>
+
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a class="nav-prev" href="L03.html">← L03 · Risk of Ruin &amp; Stop-Loss</a>
+        <a class="nav-next" href="project.html">Capstone Project →</a>
+      </nav>
+
+      <button type="button" class="button" data-complete>Mark lesson complete</button>
+    </main>
+  </div>
+</body>
+</html>

@@ -525,7 +525,7 @@ For one public company: a full DCF and multiples valuation driven by Atlas A15 a
   - *Introduces:* IPO underpricing; Winner's-curse model of underpricing; Long-run IPO underperformance; Seasoned equity offering; Bookbuilding and allocation; Underwriting economics and the gross spread; Corporate debt issuance
   - *Sources:* Rock (1986), JFE 15(1-2); Ritter (1991), JF 46(1); Loughran & Ritter (1995), JF 50(1); Ljungqvist (2007), 'IPO Underpricing', Handbook of Empirical Corporate Finance
   - *Lab:* Winner's-curse underpricing model.
-  - *Project — IPO pricing case* (`rubric`): Price a hypothetical IPO from comparables and DCF, design the book-building allocation, and explain the expected first-day return. *Deliverable:* Pricing model plus pitch memo.
+  - *Project — IPO pricing case* (`both`): Price a hypothetical IPO from comparables and DCF, design the book-building allocation, and explain the expected first-day return. *Deliverable:* Pricing model plus pitch memo.
 - **CF7 · Financial Modeling: Spreadsheets to Code** · U · 80 h · ← AC1, CF1, CS1, CF4, CF8
   - *Core:* Model architecture (inputs / calculations / outputs), integrated three-statement models, circularity (revolver interest), scenarios and sensitivities, error checks, the documented record of spreadsheet errors, and reconciling a spreadsheet model to an independent Python implementation.
   - *Introduces:* Inputs / calculations / outputs model architecture; Integrated three-statement model; Debt schedule; Revolver interest circularity; Scenario and sensitivity tables; Model integrity checks (balance check, cash tie-out, no hard-codes); The documented risk of spreadsheet errors; Reconciling a spreadsheet to an independent implementation
