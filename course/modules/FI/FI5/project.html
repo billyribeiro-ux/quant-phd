@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="FI5" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FI5 Project · Inflation-Expectations Decomposition</title>
+  <meta name="description" content="Decompose breakeven inflation into expected inflation, inflation risk premium, and TIPS liquidity premium, and analyze the TIPS-Treasury puzzle.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">FI5 Inflation-Linked Markets</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="12">
+      <header class="page-head">
+        <p class="eyebrow">FI5 Project · 12 hours · Capstone inflation decomposition &amp; market dislocation memo</p>
+        <h1>Inflation-Expectations Decomposition</h1>
+        <p class="lede">Build an operational inflation-linked analytics engine in <code>decomposition.py</code> to decompose breakeven inflation into expected inflation, the inflation risk premium, and the TIPS liquidity premium, and author an institutional research memo on the TIPS-Treasury puzzle.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>The project follows the mandatory four-rung curriculum ladder. Rungs 1 and 2 can be skipped if you achieved a score of 0.80 or higher on the module hub diagnostic and answered both skill checks correctly. Rung 3 is required for all students and is graded by both autograder and rubric.</p>
+        <ol class="ladder">
+          <li>
+            <div>
+              <span class="rung-title">Rung 1 · Worked example</span>
+              <p>Lab 1 demonstrates a fully solved end-to-end inflation analytics pipeline: TIPS cash flow construction with deflation floor, synthetic replication, puzzle basis, and tripartite breakeven decomposition.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 2 · Completion problem</span>
+              <p>Lab 2 provides a completion problem with key indexation and tripartite decomposition lines left as blanks, graded instantly by Python expected output.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 3 · Independent project</span>
+              <p>The graded deliverable: implement <code>decomposition.py</code> to satisfy the autograder suite (tested across 50 random market seeds) and write an institutional diagnostic memo graded by rubric against calibrated exemplars.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Rung 4 · Stretch</span>
+              <p>Open-ended portfolio extensions: estimate a multi-factor no-arbitrage affine term structure model with inflation survey anchors (D'Amico, Kim &amp; Wei 2018), or backtest a relative-value basis trading strategy on the TIPS-Treasury puzzle with dynamic repo haircut constraints.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+
+        <section class="lab" id="lab-FI5-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked Example: Inflation Expectations Decomposition Pipeline</h3>
+          <p class="hypothesis">Executing the end-to-end pipeline on a 10-year market state (nominal yield 4.25%, TIPS real yield 1.95%, survey expected inflation 2.05%, TIPS liquidity premium 20.0 bps) calculates a breakeven inflation rate of 230.0 bps, an inflation risk premium of 45.0 bps, and a Fleckenstein puzzle basis of $0.817 per $100 par (9.6 bps implied yield basis).</p>
+          <pre><code class="language-python" data-run>"""Lab FI5-project-1: Inflation-expectations decomposition worked example (Rung 1).
+
+A fully worked implementation of the inflation-expectations decomposition pipeline.
+Analyzes TIPS mechanics, computes breakevens, replicates synthetic Treasuries,
+measures the Fleckenstein puzzle basis, and decomposes breakevens into expected inflation,
+the inflation risk premium, and the TIPS liquidity premium.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def run_pipeline(
+    nominal_yield: float,
+    real_yield: float,
+    survey_inflation: float,
+    liquidity_proxy: float,
+    beta_liq: float,
+    base_cpi: float,
+    ref_cpi: float,
+    real_coupon: float,
+    maturity_years: int,
+    cash_price: float,
+    swap_rate: float,
+    mod_duration: float,
+) -&gt; dict[str, Any]:
+    """Execute end-to-end inflation expectations decomposition pipeline."""
+    # 1. Breakeven yield
+    bei = nominal_yield - real_yield
+
+    # 2. TIPS cash flows with deflation floor
+    index_ratio = ref_cpi / base_cpi
+    face = 100.0
+    adjusted_coupon = face * (real_coupon / 2.0) * index_ratio
+    adjusted_principal = face * max(1.0, index_ratio)
+    floor_benefit = face * max(0.0, 1.0 - index_ratio)
+
+    # 3. Synthetic Treasury replication &amp; puzzle basis
+    synth_yield = (1.0 + real_yield) * (1.0 + swap_rate) - 1.0
+    # Approximate synthetic price via yield difference from nominal
+    synth_price = cash_price * (1.0 - mod_duration * (synth_yield - nominal_yield))
+    price_basis = cash_price - synth_price
+    yield_basis_bps = (price_basis / (cash_price * mod_duration)) * 10_000.0
+
+    # 4. Tripartite breakeven decomposition
+    tlp = beta_liq * liquidity_proxy
+    irp = bei - survey_inflation + tlp
+
+    return {
+        "bei_bps": bei * 10_000.0,
+        "index_ratio": index_ratio,
+        "adjusted_coupon": adjusted_coupon,
+        "adjusted_principal": adjusted_principal,
+        "floor_benefit": floor_benefit,
+        "synth_yield": synth_yield,
+        "price_basis": price_basis,
+        "yield_basis_bps": yield_basis_bps,
+        "expected_inflation_bps": survey_inflation * 10_000.0,
+        "tlp_bps": tlp * 10_000.0,
+        "irp_bps": irp * 10_000.0,
+    }
+
+
+def main() -&gt; None:
+    # Stylized inputs for 10-year maturity
+    res = run_pipeline(
+        nominal_yield=0.0425,
+        real_yield=0.0195,
+        survey_inflation=0.0205,
+        liquidity_proxy=0.0020,
+        beta_liq=1.0,
+        base_cpi=260.00,
+        ref_cpi=299.00,
+        real_coupon=0.0150,
+        maturity_years=10,
+        cash_price=101.50,
+        swap_rate=0.0235,
+        mod_duration=8.40,
+    )
+
+    print("Inflation Expectations Decomposition Pipeline (Worked Example):")
+    print("=" * 68)
+    print(f"  Breakeven Inflation (BEI):         {res['bei_bps']:&gt;6.1f} bps")
+    print(f"  TIPS Index Ratio:                  {res['index_ratio']:&gt;8.4f}")
+    print(f"  Adjusted Semiannual Coupon:       ${res['adjusted_coupon']:&gt;6.2f} per $100 par")
+    p_adj = res["adjusted_principal"]
+    fl_ben = res["floor_benefit"]
+    print(f"  Adjusted Principal (Maturity):    ${p_adj:&gt;6.2f} (Floor: ${fl_ben:.2f})")
+    print(f"  Synthetic Treasury Yield:          {res['synth_yield']:.2%}")
+    print(f"  Puzzle Mispricing Price Basis:    ${res['price_basis']:&gt;6.3f} per $100 par")
+    print(f"  Puzzle Implied Yield Basis:        {res['yield_basis_bps']:&gt;6.1f} bps")
+    print("-" * 68)
+    print("  Tripartite Decomposition of Breakeven:")
+    print(f"    Expected Inflation E[pi]:        {res['expected_inflation_bps']:&gt;6.1f} bps")
+    print(f"    TIPS Liquidity Premium (TLP):    {res['tlp_bps']:&gt;6.1f} bps")
+    print(f"    Inflation Risk Premium (IRP):    {res['irp_bps']:&gt;6.1f} bps")
+    print(
+        f"    Identity Check: E[pi] + IRP - TLP = "
+        f"{res['expected_inflation_bps'] + res['irp_bps'] - res['tlp_bps']:.1f} bps"
+    )
+    print("=" * 68)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Inflation Expectations Decomposition Pipeline (Worked Example):
+====================================================================
+  Breakeven Inflation (BEI):          230.0 bps
+  TIPS Index Ratio:                    1.1500
+  Adjusted Semiannual Coupon:       $  0.86 per $100 par
+  Adjusted Principal (Maturity):    $115.00 (Floor: $0.00)
+  Synthetic Treasury Yield:          4.35%
+  Puzzle Mispricing Price Basis:    $ 0.817 per $100 par
+  Puzzle Implied Yield Basis:           9.6 bps
+--------------------------------------------------------------------
+  Tripartite Decomposition of Breakeven:
+    Expected Inflation E[pi]:         205.0 bps
+    TIPS Liquidity Premium (TLP):      20.0 bps
+    Inflation Risk Premium (IRP):      45.0 bps
+    Identity Check: E[pi] + IRP - TLP = 230.0 bps
+====================================================================</pre>
+          <p class="interpretation">The worked example establishes the foundational identity: breakeven inflation does not simply equal expected inflation; it reflects both an inflation risk premium demanded by nominal bondholders and a liquidity penalty that depresses TIPS prices and elevates real yields.</p>
+        </section>
+
+        <section class="lab completion" id="lab-FI5-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion Problem: Deflation Floor and Tripartite Identity</h3>
+          <p class="hypothesis">Fill in the two missing calculation expressions (evaluating deflation-floor protected principal redemption and computing the derived inflation risk premium). When filled correctly, calculated index ratio is 0.9500, protected principal is $100.00, and derived inflation risk premium is 20.0 bps.</p>
+          <pre><code class="language-python" data-run>"""Lab FI5-project-2: Inflation-expectations decomposition completion problem (Rung 2).
+
+Solution twin for the completion problem: implements deflation floor protected principal
+and the fundamental tripartite decomposition formula for the inflation risk premium.
+"""
+
+from __future__ import annotations
+
+
+def compute_completion_components(
+    base_cpi: float,
+    ref_cpi: float,
+    face_value: float,
+    nominal_yield: float,
+    real_yield: float,
+    survey_inflation: float,
+    tlp: float,
+) -> tuple[float, float, float]:
+    """Compute deflation-protected principal, breakeven inflation, and inflation risk premium."""
+    index_ratio = ref_cpi / base_cpi
+
+    # Blank 1 in completion problem: principal with deflation floor
+    adjusted_principal = ___
+
+    # Breakeven inflation
+    bei = nominal_yield - real_yield
+
+    # Blank 2 in completion problem: inflation risk premium from tripartite identity
+    irp = ___
+
+    return index_ratio, adjusted_principal, irp
+
+
+def main() -> None:
+    # Deflationary stress scenario inputs
+    base_cpi = 250.00
+    ref_cpi = 237.50  # Cumulative deflation: index ratio = 0.95
+    face_value = 100.00
+
+    nominal_yield = 0.0350  # 3.50%
+    real_yield = 0.0210  # 2.10% -> BEI = 1.40%
+    survey_inflation = 0.0180  # 1.80%
+    tlp = 0.0060  # 0.60% (60 bps TIPS illiquidity penalty)
+
+    idx_ratio, adj_principal, irp = compute_completion_components(
+        base_cpi, ref_cpi, face_value, nominal_yield, real_yield, survey_inflation, tlp
+    )
+
+    print("Completed Inflation Expectations Analytics (SIMULATED):")
+    print(f"  Calculated Index Ratio:         {idx_ratio:.4f}")
+    print(f"  Deflation Protected Principal: ${adj_principal:.2f}")
+    print(f"  Breakeven Inflation (BEI):      {(nominal_yield - real_yield) * 10_000:.1f} bps")
+    print(f"  Expected Inflation E[pi]:       {survey_inflation * 10_000:.1f} bps")
+    print(f"  TIPS Liquidity Premium (TLP):   {tlp * 10_000:.1f} bps")
+    print(f"  Derived Inflation Risk Premium: {irp * 10_000:.1f} bps")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Completed Inflation Expectations Analytics (SIMULATED):
+  Calculated Index Ratio:         0.9500
+  Deflation Protected Principal: $100.00
+  Breakeven Inflation (BEI):      140.0 bps
+  Expected Inflation E[pi]:       180.0 bps
+  TIPS Liquidity Premium (TLP):   60.0 bps
+  Derived Inflation Risk Premium: 20.0 bps</pre>
+          <p class="interpretation">Completing the deflation floor and tripartite equations confirms your command over the asymmetric payoff structure of inflation-indexed debt and the sign convention of the TIPS liquidity discount.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>
+            <p>You are a quantitative fixed-income researcher and macro portfolio strategist at an institutional asset manager. Central banks, corporate treasurers, and sovereign wealth funds rely on market-implied breakeven inflation rates to evaluate inflation expectations and term structures. However, market breakevens are contaminated by both time-varying inflation risk premia and persistent TIPS liquidity frictions. You must build an automated analytical library in <code>decomposition.py</code> that implements the tripartite decomposition of breakevens and models the synthetic Treasury replication package behind the TIPS-Treasury puzzle. Concurrently, you must author an institutional research memo diagnosing a historical market dislocation episode (the 2008 Lehman collapse, the 2017 secular stagnation regime, or the 2022 post-pandemic inflation shock).</p>
+          </dd>
+          <dt>Inputs</dt>
+          <dd>
+            <p>The autograder supplies an instance dictionary generated deterministically from an integer seed via <code>make_instance(seed: int)</code> in <code>instance.py</code>. The dictionary contains:</p>
+            <ul>
+              <li><code>nominal_yield</code>: float, annualized nominal Treasury yield (decimal).</li>
+              <li><code>real_yield</code>: float, annualized TIPS real yield (decimal).</li>
+              <li><code>survey_inflation</code>: float, survey-based expected inflation (decimal).</li>
+              <li><code>tips_liquidity_proxy</code>: float, observable liquidity penalty proxy (decimal).</li>
+              <li><code>beta_liquidity</code>: float, regression sensitivity factor for liquidity proxy.</li>
+              <li><code>maturity_years</code>: int, maturity in years (5, 10, 20, or 30).</li>
+              <li><code>real_coupon_rate</code>: float, annual real coupon rate (decimal).</li>
+              <li><code>base_cpi</code>: float, base CPI level for indexation.</li>
+              <li><code>ref_cpi</code>: float, reference CPI level at calculation date.</li>
+              <li><code>face_value</code>: float, par value (default 100.0).</li>
+              <li><code>mod_duration</code>: float, modified duration of the bond in years.</li>
+              <li><code>swap_rate</code>: float, zero-coupon inflation swap rate (decimal).</li>
+              <li><code>cash_nominal_price</code>: float, clean market price of cash nominal Treasury.</li>
+            </ul>
+          </dd>
+          <dt>Required outputs</dt>
+          <dd>
+            <p>A module file <code>decomposition.py</code> exposing five core functions with strict type annotations:</p>
+            <ul>
+              <li><code>breakeven_yield(...)</code>: computes the nominal-real yield spread.</li>
+              <li><code>tips_cash_flows(...)</code>: computes index ratio, adjusted coupon, and deflation-protected principal.</li>
+              <li><code>replicate_synthetic_treasury(...)</code>: computes the exact synthetic nominal Treasury yield under geometric Fisher compounding.</li>
+              <li><code>fleckenstein_puzzle_basis(...)</code>: computes the price basis and implied yield basis in basis points.</li>
+              <li><code>decompose_breakeven(...)</code>: performs the tripartite decomposition into BEI, expected inflation, TIPS liquidity premium, and inflation risk premium.</li>
+            </ul>
+            <p>An institutional research memo file <code>memo.md</code> (approximately 1,000–1,500 words) diagnosing the empirical decomposition of breakevens and the TIPS-Treasury puzzle during a historical market regime.</p>
+          </dd>
+          <dt>Constraints</dt>
+          <dd>
+            <p>Standard library only. All monetary values are computed in exact precision. The module must be strictly typed and pass <code>mypy --strict</code> without warnings. Non-positive CPI levels or face values must raise <code>ValueError</code> with clear error messages. The module must not mutate input arguments.</p>
+          </dd>
+          <dt>Grading</dt>
+          <dd>
+            <p>Both grading modes apply to this project:</p>
+            <ul>
+              <li><strong>Autograder:</strong> The implementation in <code>decomposition.py</code> is tested by <code>grader/test_project.py</code> across 50 random market seeds (0 to 49). It verifies breakeven identities, statutory deflation floor guarantees, Fisher synthetic replication, and tripartite decomposition invariants.</li>
+              <li><strong>Rubric:</strong> The institutional research memo <code>memo.md</code> is evaluated by rubric across 5 performance criteria, each with 4 observable achievement levels.</li>
+            </ul>
+          </dd>
+        </dl>
+      </section>
+
+      <section id="time-budget">
+        <h2 id="h-time-budget">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th class="num">Hours</th>
+                <th>Rationale</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Rung 1 worked example: study and run Lab 1</td>
+                <td class="num">1</td>
+                <td>Trace the full inflation-expectations decomposition pipeline and verify intermediate metrics.</td>
+              </tr>
+              <tr>
+                <td>Rung 2 completion problem: solve Lab 2 blanks</td>
+                <td class="num">1</td>
+                <td>Implement deflation floor protection and the tripartite inflation risk premium equation.</td>
+              </tr>
+              <tr>
+                <td>Autograder module (<code>decomposition.py</code>) implementation</td>
+                <td class="num">4</td>
+                <td>Code breakeven yield, TIPS cash flows, synthetic Fisher replication, puzzle basis, and decomposition with strict typing.</td>
+              </tr>
+              <tr>
+                <td>Local test suite validation and seed sweeps</td>
+                <td class="num">2</td>
+                <td>Run pytest across seeds 0–49, checking property invariants, sensitivity monotonicity, and input validation.</td>
+              </tr>
+              <tr>
+                <td>Institutional research memo (<code>memo.md</code>)</td>
+                <td class="num">3</td>
+                <td>Author an institutional memo analyzing breakeven decomposition and the TIPS-Treasury puzzle with exact citations.</td>
+              </tr>
+              <tr>
+                <td>Self-assessment against rubric exemplars</td>
+                <td class="num">1</td>
+                <td>Calibrate memo scoring against Exemplar A (Level 4) and Exemplar B (Level 2).</td>
+              </tr>
+              <tr>
+                <td><strong>Total</strong></td>
+                <td class="num"><strong>12</strong></td>
+                <td>Sum matches declared project hours (12 h of 40 h total).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>The autograder panel below runs your <code>decomposition.py</code> against the full test suite in Pyodide directly inside your browser. Test against your assigned workspace seed or sweep across seeds.</p>
+        <section class="grader-panel" id="grader" data-unit="FI5" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="decomposition.py" data-starter="starter.py" data-packages=""></section>
+      </section>
+
+      <section id="local-testing">
+        <h2 id="h-local-testing">Running the suite locally</h2>
+        <p>To run the autograder locally with pytest across all 50 seeds, navigate to your workspace and execute:</p>
+        <pre><code class="no-math">python tools/run_graders.py --unit FI5 --seeds 0-49</code></pre>
+        <p>Or test an individual seed directly:</p>
+        <pre><code class="no-math">QF_SEED=42 pytest -q -p no:cacheprovider \
+  --assert=plain -W error \
+  course/modules/FI/FI5/grader/test_project.py</code></pre>
+      </section>
+
+      <section id="rubric-section">
+        <h2 id="h-rubric">Rung 3 · Rubric and Research Memo</h2>
+        <p>Alongside your autograded code, submit an institutional research memo <code>memo.md</code> (1,000–1,500 words) diagnosing either the 2008 GFC dislocation, the 2017 low-inflation regime, or the 2022 post-pandemic inflation shock. The memo is evaluated on the five criteria of the rubric below.</p>
+
+        <div class="table-wrap">
+          <table class="rubric">
+            <thead>
+              <tr>
+                <th>Criterion</th>
+                <th>Level 1 (Unacceptable)</th>
+                <th>Level 2 (Developing)</th>
+                <th>Level 3 (Proficient)</th>
+                <th>Level 4 (Distinguished)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row"><strong>1. TIPS Indexation Mechanics &amp; Deflation Floor</strong></th>
+                <td>Fails to explain index ratio calculation; ignores the 2.5-month indexation lag and assumes par value is fixed.</td>
+                <td>Explains index ratio but miscalculates semiannual coupon adjustments; describes the deflation floor qualitatively without evaluating its option value.</td>
+                <td>Correctly computes reference CPI interpolation, semiannual indexation, and par redemption with the statutory deflation floor; quantifies floor value under negative inflation.</td>
+                <td>Flawlessly models the full indenture mechanics; prices the embedded European deflation put option under Black-Scholes or Bachelier models; quantifies the pricing wedge between seasoned and newly issued TIPS.</td>
+              </tr>
+              <tr>
+                <th scope="row"><strong>2. Tripartite Breakeven Decomposition Rigor</strong></th>
+                <td>Equates breakeven inflation naively to expected inflation; ignores both inflation risk premia and liquidity premia.</td>
+                <td>Mentions that breakevens include risk premia but omits the mathematical identity; confuses the sign of the TIPS liquidity discount.</td>
+                <td>Formulates the complete identity \(\text{BEI} = \mathbb{E}[\pi] + \text{IRP} - \text{TLP}\); cites published models (D'Amico, Kim &amp; Wei 2018) and correctly interprets positive vs. negative IRP.</td>
+                <td>Authoritatively synthesizes affine term structure modeling with survey anchors; explains econometric identification of unobserved components; analyzes the transition of nominal bonds from inflation bets to deflation hedges (Campbell et al. 2017).</td>
+              </tr>
+              <tr>
+                <th scope="row"><strong>3. The TIPS-Treasury Puzzle &amp; Arbitrage Mechanics</strong></th>
+                <td>Ignores the TIPS-Treasury puzzle; assumes textbook no-arbitrage holds between nominal Treasuries and inflation swaps.</td>
+                <td>Identifies that synthetic Treasuries trade cheaper than nominal Treasuries but fails to specify the replicating portfolio of TIPS and zero-coupon inflation swaps.</td>
+                <td>Constructs the exact synthetic replicating package; calculates the Fleckenstein, Longstaff, and Lustig (2014) puzzle basis in price and yield terms; explains why the basis is persistent.</td>
+                <td>Delivers comprehensive structural modeling of limits to arbitrage: calculates capital consumption under the Supplementary Leverage Ratio (SLR), evaluates repo financing costs and haircut margins, and demonstrates why dealer balance-sheet capacity prevents arbitrage closure.</td>
+              </tr>
+              <tr>
+                <th scope="row"><strong>4. Historical Regime &amp; Stress Diagnosis</strong></th>
+                <td>Provides superficial commentary without data; attributes historical breakeven swings purely to investor sentiment.</td>
+                <td>Describes yield changes during the chosen historical episode but fails to decompose them into liquidity and risk premium components.</td>
+                <td>Accurately decomposes the chosen historical regime (e.g. 2008 Lehman crisis, 2017 calm, or 2022 shock); attributes the primary economic driver with empirical numbers.</td>
+                <td>Delivers an authoritative macroeconomic diagnosis: links monetary policy shifts, collateral flight-to-safety, dealer funding constraints, and supply shocks to exact movements in expected inflation, IRP, and TLP.</td>
+              </tr>
+              <tr>
+                <th scope="row"><strong>5. Quantitative Rigor &amp; Citation Integrity</strong></th>
+                <td>Contains fabricated citations, unsourced numerical claims, or vague approximations ("about 2%").</td>
+                <td>Cites general papers without exact data locators; contains minor mathematical discrepancies in carry or basis calculations.</td>
+                <td>All numerical values are computed or cited from verified registry keys (e.g. Fleckenstein et al. 2014, D'Amico et al. 2018); evidence grades properly marked.</td>
+                <td>Flawless quantitative precision: all claims carry validated evidence grades; citations link to verified registry keys with exact table/panel locators; full sensitivity analysis and standard errors reported.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section class="lab" id="lab-FI5-project-3" data-runtime="python">
+          <h3>Lab 3 · Rung 3 Independent Verification: Historical Regime Verification Check</h3>
+          <p class="hypothesis">Executing the decomposition engine across three historical stress episodes accurately distinguishes market regimes: diagnosing October 2008 as an Acute TIPS Illiquidity Dislocation (TLP exploding to 185.0 bps, compressing BEI to 45.0 bps while the Fleckenstein puzzle basis widens to $4.70 per $100 par), 2017 as Secular Stagnation Calm (TLP 15.0 bps, BEI 185.0 bps), and 2022 as a Procyclical Inflation Risk shock (BEI expanding to 295.0 bps, IRP expanding to 55.0 bps).</p>
+          <pre><code class="language-python" data-run>"""Lab FI5-project-3: Rung 3 independent project verification check.
+
+Validates the full inflation expectations decomposition and TIPS-Treasury puzzle
+pricing engine across three stylized historical regimes: the 2008 GFC liquidity dislocation,
+the 2017 low-inflation calm, and the 2022 post-pandemic inflation surge.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+def evaluate_market_regime(
+    regime_name: str,
+    nominal_yield: float,
+    real_yield: float,
+    survey_inflation: float,
+    tlp: float,
+    cash_price: float,
+    synth_price: float,
+    mod_duration: float,
+) -&gt; dict[str, Any]:
+    """Evaluate decomposition and puzzle basis for a market regime."""
+    bei = nominal_yield - real_yield
+    irp = bei - survey_inflation + tlp
+    price_basis = cash_price - synth_price
+    yield_basis_bps = (price_basis / (cash_price * mod_duration)) * 10_000.0
+
+    # Diagnosis of dominant economic driver
+    if tlp &gt; 0.010:
+        diagnosis = "Acute TIPS Illiquidity Dislocation"
+    elif irp &lt; 0.0:
+        diagnosis = "Nominal Bonds as Deflation Hedges (Negative IRP)"
+    else:
+        diagnosis = "Procyclical Inflation Risk / Term Premium Expansion"
+
+    return {
+        "regime": regime_name,
+        "nominal_yield_pct": nominal_yield * 100.0,
+        "real_yield_pct": real_yield * 100.0,
+        "bei_bps": bei * 10_000.0,
+        "survey_inflation_bps": survey_inflation * 10_000.0,
+        "tlp_bps": tlp * 10_000.0,
+        "irp_bps": irp * 10_000.0,
+        "price_basis": price_basis,
+        "yield_basis_bps": yield_basis_bps,
+        "diagnosis": diagnosis,
+    }
+
+
+def main() -&gt; None:
+    # Three historical episodes (SIMULATED stylized market parameters)
+    episodes = [
+        evaluate_market_regime(
+            regime_name="October 2008 GFC Dislocation",
+            nominal_yield=0.0380,
+            real_yield=0.0335,
+            survey_inflation=0.0175,
+            tlp=0.0185,  # 185 bps TIPS liquidity discount
+            cash_price=103.50,
+            synth_price=98.80,
+            mod_duration=8.20,
+        ),
+        evaluate_market_regime(
+            regime_name="2017 Secular Stagnation Calm",
+            nominal_yield=0.0235,
+            real_yield=0.0050,
+            survey_inflation=0.0195,
+            tlp=0.0015,  # 15 bps orderly market
+            cash_price=101.20,
+            synth_price=100.40,
+            mod_duration=8.80,
+        ),
+        evaluate_market_regime(
+            regime_name="2022 Post-Pandemic Inflation Shock",
+            nominal_yield=0.0385,
+            real_yield=0.0090,
+            survey_inflation=0.0250,
+            tlp=0.0010,  # 10 bps orderly market
+            cash_price=99.50,
+            synth_price=98.50,
+            mod_duration=8.50,
+        ),
+    ]
+
+    print("Inflation Expectations Decomposition: Historical Regime Verification (SIMULATED):")
+    print("=" * 86)
+    for ep in episodes:
+        print(f"Episode: {ep['regime']}")
+        print(f"  Nominal / Real Yields:       {ep['nominal_yield_pct']:.2f}% / {ep['real_yield_pct']:.2f}%")
+        print(f"  Breakeven Inflation (BEI):   {ep['bei_bps']:&gt;6.1f} bps")
+        print(f"  Survey Expected Inflation:   {ep['survey_inflation_bps']:&gt;6.1f} bps")
+        print(f"  TIPS Liquidity Premium (TLP):{ep['tlp_bps']:&gt;6.1f} bps")
+        print(f"  Inflation Risk Premium (IRP):{ep['irp_bps']:&gt;6.1f} bps")
+        pb = ep["price_basis"]
+        yb = ep["yield_basis_bps"]
+        print(f"  Fleckenstein Puzzle Basis:   ${pb:.2f} per $100 par ({yb:&gt;5.1f} bps)")
+        print(f"  Diagnosed Market Mechanism:  {ep['diagnosis']}")
+        print("-" * 86)
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">Inflation Expectations Decomposition: Historical Regime Verification (SIMULATED):
+======================================================================================
+Episode: October 2008 GFC Dislocation
+  Nominal / Real Yields:       3.80% / 3.35%
+  Breakeven Inflation (BEI):     45.0 bps
+  Survey Expected Inflation:    175.0 bps
+  TIPS Liquidity Premium (TLP): 185.0 bps
+  Inflation Risk Premium (IRP):  55.0 bps
+  Fleckenstein Puzzle Basis:   $4.70 per $100 par ( 55.4 bps)
+  Diagnosed Market Mechanism:  Acute TIPS Illiquidity Dislocation
+--------------------------------------------------------------------------------------
+Episode: 2017 Secular Stagnation Calm
+  Nominal / Real Yields:       2.35% / 0.50%
+  Breakeven Inflation (BEI):    185.0 bps
+  Survey Expected Inflation:    195.0 bps
+  TIPS Liquidity Premium (TLP):  15.0 bps
+  Inflation Risk Premium (IRP):   5.0 bps
+  Fleckenstein Puzzle Basis:   $0.80 per $100 par (  9.0 bps)
+  Diagnosed Market Mechanism:  Procyclical Inflation Risk / Term Premium Expansion
+--------------------------------------------------------------------------------------
+Episode: 2022 Post-Pandemic Inflation Shock
+  Nominal / Real Yields:       3.85% / 0.90%
+  Breakeven Inflation (BEI):    295.0 bps
+  Survey Expected Inflation:    250.0 bps
+  TIPS Liquidity Premium (TLP):  10.0 bps
+  Inflation Risk Premium (IRP):  55.0 bps
+  Fleckenstein Puzzle Basis:   $1.00 per $100 par ( 11.8 bps)
+  Diagnosed Market Mechanism:  Procyclical Inflation Risk / Term Premium Expansion
+--------------------------------------------------------------------------------------</pre>
+          <p class="interpretation">The historical verification proves that observing a collapse in breakeven inflation during market crises does not necessarily reflect plunging inflation expectations; during severe liquidity flights, soaring TIPS liquidity discounts can dominate expected inflation movements.</p>
+        </section>
+
+        <h3 id="exemplars">Two Calibrated Exemplars</h3>
+
+        <div class="exemplar" data-level="4">
+          <h4>Exemplar A (Level 4 · Distinguished Desk Memo)</h4>
+          <p><strong>To:</strong> Asset Allocation Committee &amp; Chief Investment Officer<br>
+          <strong>From:</strong> Senior Fixed Income Quantitative Strategist<br>
+          <strong>Date:</strong> November 14, 2008<br>
+          <strong>Subject:</strong> Quantitative Diagnosis of the Breakeven Inflation Collapse and TIPS-Treasury Mispricing Dislocation</p>
+          <p><strong>1. Executive Summary:</strong> Between September 15 and November 10, 2008, 10-year US breakeven inflation collapsed precipitously from 2.15% to an unprecedented low of 0.45%, while 5-year breakevens briefly traded below zero (-0.12%). Naive interpretations by financial media suggested market participants were pricing an imminent and devastating Great Depression-style deflation. We demonstrate that this interpretation is fundamentally erroneous. Utilizing the tripartite decomposition framework of D'Amico, Kim, and Wei (2018) (<span class="claim" data-grade="B" data-cite="damico2018tips">D'Amico, Kim &amp; Wei 2018</span>), we show that long-term survey-expected inflation remained firmly anchored at 1.75% to 1.90%. Instead, the breakeven collapse was driven almost entirely by an unprecedented explosion in the TIPS liquidity premium to 185–220 basis points, compounded by a $4.70 per $100 par overpricing of cash nominal Treasuries relative to synthetic inflation-swapped TIPS packages (<span class="claim" data-grade="A" data-cite="fleckenstein2014tipstreasury">Fleckenstein, Longstaff &amp; Lustig 2014, Table 1</span>).</p>
+          <p><strong>2. Tripartite Breakeven Decomposition:</strong> The fundamental no-arbitrage identity links nominal yields, real yields, inflation expectations, and risk premia:</p>
+          \[
+          \begin{aligned}
+          \text{BEI}_t^{(10)}
+          &= y_{N,t}^{(10)} - y_{R,t}^{(10)} \\
+          &= \mathbb{E}_t\left[\pi_{t,t+10}\right] + \text{IRP}_t^{(10)} - \text{TLP}_t^{(10)}
+          \end{aligned}
+          \]
+          <p>In October 2008, the 10-year nominal Treasury yield fell to 3.80% in an aggressive flight-to-safety, while the 10-year TIPS yield surged to 3.35%, driven by frantic liquidation by leveraged hedge funds facing prime-broker margin calls. While expected inflation \(\mathbb{E}[\pi]\) remained near 1.75% and the inflation risk premium \(\text{IRP}\) stood at +55 bps, the TIPS liquidity premium \(\text{TLP}\) exploded from its historical average of 15 bps to 185 bps. Because \(\text{TLP}\) enters with a negative sign, this 170-basis-point liquidity shock mechanically compressed breakeven inflation to 45 bps.</p>
+          <p><strong>3. The TIPS-Treasury Puzzle and Limits to Arbitrage:</strong> Simultaneously, the Fleckenstein, Longstaff, and Lustig (2014) synthetic Treasury basis widened to historical extremes. A synthetic 10-year nominal Treasury replicated by bundling 10-year TIPS with zero-coupon inflation swaps traded at $98.80 per $100 par, while actual cash 10-year Treasuries traded at $103.50. Under textbook no-arbitrage, an arbitrageur would purchase the synthetic package and short the cash Treasury, harvesting a 55.4 bps annualized yield premium. However, this arbitrage was completely unviable for institutional capital due to three binding frictions: (1) primary dealers faced acute balance-sheet exhaustion under regulatory leverage constraints; (2) bilateral repo lenders raised TIPS collateral haircuts from 2% to over 8%; and (3) cash nominal Treasuries were on special in the repo market, imposing a 25–40 bps financing drag to maintain the short leg.</p>
+          <p><strong>4. Strategic Recommendations:</strong> The current breakeven level represents an extraordinary relative-value buying opportunity for unconstrained, unlevered capital with a 3- to 5-year investment horizon. We recommend establishing an overweight position in 10-year TIPS funded by short nominal Treasuries, locking in an unhedged liquidity rebound of 150+ basis points as market plumbing normalizes.</p>
+        </div>
+
+        <div class="exemplar" data-level="2">
+          <h4>Exemplar B (Level 2 · Developing Desk Memo)</h4>
+          <p><strong>To:</strong> Investment Committee<br>
+          <strong>From:</strong> Junior Fixed Income Analyst<br>
+          <strong>Date:</strong> November 2008<br>
+          <strong>Subject:</strong> Note on Low TIPS Breakevens</p>
+          <p>In the last few months, inflation expectations have dropped sharply. The 10-year breakeven inflation rate fell below 1% and is currently around 0.50%, which shows that the bond market is worried about a severe deflation like Japan or the 1930s. TIPS yields went way up because investors panicked after Lehman Brothers went bankrupt and wanted cash instead of inflation bonds. Also, TIPS bonds are cheaper than regular Treasuries if you swap them with inflation swaps, which is a puzzle that shouldn't happen in efficient markets. We think inflation will eventually come back once the government prints money, so buying TIPS makes sense.</p>
+          <p><em>Exemplar B Critique:</em> This memo fails on observable criteria. It treats breakeven inflation naively as pure expected inflation, failing to state the mathematical tripartite identity \(\text{BEI} = \mathbb{E}[\pi] + \text{IRP} - \text{TLP}\). It provides no exact dollar basis for the synthetic replication puzzle, mentions no specific dates or numbers for yields and risk premia, ignores dealer balance-sheet and repo haircut frictions, and cites no peer-reviewed literature or verified registry keys.</p>
+        </div>
+      </section>
+
+      <section id="reading-list">
+        <h2 id="h-reading-list">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="damico2018tips">D'Amico, S., Kim, D. H., &amp; Wei, M. (2018). Tips from TIPS: The Informational Content of Treasury Inflation-Protected Security Prices. <em>Journal of Financial and Quantitative Analysis</em>, 53(1), 395–436.</li>
+          <li data-cite="fleckenstein2014tipstreasury">Fleckenstein, M., Longstaff, F. A., &amp; Lustig, H. (2014). The TIPS-Treasury Bond Puzzle. <em>The Journal of Finance</em>, 69(5), 2151–2197.</li>
+          <li data-cite="campbell2017inflation">Campbell, J. Y., Sunderam, A., &amp; Viceira, L. M. (2017). Inflation Bets or Deflation Hedges? The Changing Risks of Nominal Bonds. <em>Critical Finance Review</em>, 6(2), 263–301.</li>
+          <li data-cite="gurkaynak2007us">Gürkaynak, R. S., Sack, B., &amp; Wright, J. H. (2007). The U.S. Treasury yield curve: 1961 to the present. Federal Reserve Board FEDS Notes.</li>
+          <li data-cite="brigo2007interest">Brigo, D., &amp; Mercurio, F. (2007). <em>Interest Rate Models - Theory and Practice: With Smile, Inflation and Credit</em>. Springer Finance.</li>
+        </ol>
+      </section>
+
+      <p><a class="button" href="index.html">Back to module overview</a></p>
+    </main>
+  </div>
+  <footer class="site-footer">FI5 · Project</footer>
+</body>
+</html>
