@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="PM4" data-page="L01" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01: Prepayment Modeling &amp; Hazard Rate Dynamics · PM4 · Quant PhD</title>
+  <meta name="description" content="Mortgage amortization math, SMM and CPR compounding, the PSA benchmark, Schwartz &amp; Torous (1989) proportional hazard models, and Stanton (1995) rational prepayment under transaction costs.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">PM4 Real Estate Finance</a><span class="sep">›</span>
+      <span>L01 Prepayment Modeling</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 01 · 8 hours · Prepayment Models &amp; Hazard Rates</p>
+        <h1>Prepayment Modeling &amp; Hazard Rate Dynamics</h1>
+        <p class="why-it-matters">Residential mortgages embed an unhedged borrower option to prepay outstanding principal at par at any time. Because homeowners exercise this option when prevailing interest rates decline, mortgage cash flows contract during rallies and extend during selloffs, exposing investors to severe reinvestment risk. Quantifying mortgage value requires replacing static bond math with econometric and rational prepayment models that capture interest rate spreads, pool seasoning, media awareness, and path-dependent burnout.</p>
+      </header>
+
+      <section id="amortization-math">
+        <h2 id="h-amortization-math">1. Mortgage Amortization &amp; Cash Flow Recurrences</h2>
+        <p>A standard fixed-rate mortgage (FRM) is a fully amortizing loan with initial principal \(B_0\), fixed annual note rate \(r_m\), monthly interest rate \(i = r_m / 12\), and contractual maturity of \(N\) months (typically \(N = 360\) for a 30-year loan). The contract specifies a constant monthly payment \(PMT\) that fully extinguishes the balance by month \(N\).</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 1.1 · Constant Monthly Amortization Payment</span>
+          <p>Under a fixed-rate mortgage with initial balance \(B_0\), monthly rate \(i = r_m / 12\), and maturity \(N\), the unique level monthly payment \(PMT\) satisfying the terminal boundary condition \(B_N = 0\) is:</p>
+          \[
+          PMT = B_0 \frac{i}{1 - (1 + i)^{-N}}
+          \]
+        </div>
+
+        <div class="block proof">
+          <span class="block-title">Proof</span>
+          <p>The outstanding balance evolves according to the first-order linear difference equation:</p>
+          \[
+          B_t = B_{t-1}(1 + i) - PMT, \quad t = 1, 2, \dots, N
+          \]
+          <p>Iterating backwards from \(t = N\) to \(t = 0\):</p>
+          \[
+          B_N = B_0 (1 + i)^N - PMT \sum_{k=0}^{N-1} (1 + i)^k
+          \]
+          <p>Applying the finite geometric series identity \(\sum_{k=0}^{N-1} (1 + i)^k = \frac{(1 + i)^N - 1}{i}\) and setting the terminal balance \(B_N = 0\):</p>
+          \[
+          B_0 (1 + i)^N = PMT \frac{(1 + i)^N - 1}{i} \implies PMT = B_0 \frac{i(1 + i)^N}{(1 + i)^N - 1} = B_0 \frac{i}{1 - (1 + i)^{-N}}
+          \]
+          <p>This establishes the unique constant payment.</p>
+        </div>
+
+        <p>In any month \(t\), the payment partitions into scheduled interest \(I_t\) and scheduled principal \(SP_t\):</p>
+        \[
+        I_t = B_{t-1} \cdot i, \quad SP_t = PMT - I_t = PMT - B_{t-1} \cdot i
+        \]
+        <p>Because \(B_{t-1}\) declines monotonically over time, \(I_t\) decreases while \(SP_t\) increases monotonically throughout the loan life.</p>
+      </section>
+
+      <section id="prepayment-measures">
+        <h2 id="h-prepayment-measures">2. Prepayment Measures: SMM and CPR</h2>
+        <p>Borrowers prepay principal either voluntarily (refinancing at lower market rates, moving, or curtailing principal) or involuntarily (default resolved through foreclosure where agency guarantees prepay par). A <dfn id="def-prepayment-model" data-concept="prepayment-model">prepayment model</dfn> provides a dynamic probabilistic rule mapping interest rates, mortgage age, and borrower characteristics to the unscheduled principal cash flow \(PR_t\).</p>
+
+        <p>Prepayment velocity is quantified at monthly and annualized horizons using two linked conventions:</p>
+        <ul>
+          <li><strong>Single Monthly Mortality (SMM):</strong> The percentage of remaining balance (after scheduled principal) prepaid in month \(t\):</li>
+        </ul>
+        \[
+        PR_t = (B_{t-1} - SP_t) \times \text{SMM}_t
+        \]
+        <ul>
+          <li><strong>Conditional Prepayment Rate (CPR):</strong> The annualized compound rate of prepayment corresponding to a constant monthly SMM.</li>
+        </ul>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 1.2 · Exact SMM–CPR Compounding Relation</span>
+          <p>The exact compound equivalence between annualized Conditional Prepayment Rate (\(\text{CPR}\)) and monthly Single Monthly Mortality (\(\text{SMM}\)) is:</p>
+          \[
+          \text{CPR} = 1 - (1 - \text{SMM})^{12} \iff \text{SMM} = 1 - (1 - \text{CPR})^{1/12}
+          \]
+        </div>
+
+        <div class="block proof">
+          <span class="block-title">Proof</span>
+          <p>Consider a non-amortizing pool of balance \(B\) subject only to constant monthly prepayment rate \(\text{SMM}\). At the end of one month, the surviving fraction of balance is \((1 - \text{SMM})\). By independence across months, the surviving balance fraction after 12 months is \((1 - \text{SMM})^{12}\). By definition of annualized prepayment \(\text{CPR}\), the surviving fraction after one year is \(1 - \text{CPR}\). Equating survival probabilities:</p>
+          \[
+          1 - \text{CPR} = (1 - \text{SMM})^{12} \implies \text{SMM} = 1 - (1 - \text{CPR})^{1/12}
+          \]
+          <p>Expanding via Taylor series demonstrates that linear division \(\text{SMM} \approx \text{CPR} / 12\) is an upper-bound approximation that overstates monthly prepayments for large CPR.</p>
+        </div>
+      </section>
+
+      <section id="psa-benchmark">
+        <h2 id="h-psa-benchmark">3. The PSA Benchmark Prepayment Curve</h2>
+        <p>In 1985, the Public Securities Association (now SIFMA) established the standard market benchmark curve for mortgage collateral aging, termed 100% PSA. The benchmark reflects the empirical empirical reality that newly originated mortgage pools experience very few prepayments during their first months (due to moving costs and closing lockouts), but prepayment accelerates as loans season.</p>
+
+        <div class="block definition">
+          <span class="block-title">Definition 1.1 · The 100% PSA Benchmark</span>
+          <p>The 100% PSA benchmark specifies that annualized CPR rises linearly by 0.2 percentage points (20 bps) per month for the first 30 months of mortgage age, reaching 6.0% CPR at month 30, and remains constant at 6.0% CPR for all subsequent months \(t \ge 30\):</p>
+          \[
+          \text{CPR}_t^{\text{100\% PSA}} = \begin{cases}
+          0.002 \times t, &amp; 1 \le t \le 30 \\
+          0.060, &amp; t > 30
+          \end{cases}
+          \]
+          <p>For an arbitrary speed of \(P\%\) PSA, the annualized prepayment rate scales proportionally: \(\text{CPR}_t^{P\%\text{ PSA}} = \text{CPR}_t^{\text{100\% PSA}} \times \frac{P}{100}\).</p>
+        </div>
+      </section>
+
+      <section id="hazard-models">
+        <h2 id="h-hazard-models">4. Econometric Hazard Rate Models: Schwartz &amp; Torous (1989)</h2>
+        <p><span class="claim" data-grade="A" data-cite="schwartz1989prepayment" data-locator="p. 378">Schwartz &amp; Torous (1989) pioneered the continuous-time proportional hazard framework for empirical MBS valuation.</span> Instead of treating prepayment as an exogenous curve like PSA, they model prepayment as a stochastic stopping time governed by an intensity (hazard rate) \(\pi(t | x_t)\) conditional on prevailing macroeconomic state variables.</p>
+
+        <div class="block definition">
+          <span class="block-title">Definition 1.2 · Schwartz-Torous Proportional Hazard Rate</span>
+          <p>The conditional probability of prepayment in interval \([t, t + dt)\) given survival to \(t\) is parameterized as:</p>
+          \[
+          \pi(t | x_t) = \pi_0(t) \exp\left( \beta' x_t \right)
+          \]
+          <p>where the baseline hazard \(\pi_0(t)\) follows a two-parameter log-logistic distribution:</p>
+          \[
+          \pi_0(t) = \frac{\gamma p (\gamma t)^{p-1}}{1 + (\gamma t)^p}
+          \]
+          <p>with scale parameter \(\gamma > 0\) and shape parameter \(p > 1\) governing the seasoning hump, and \(x_t\) denotes a vector of time-varying explanatory covariates.</p>
+        </div>
+
+        <p><span class="claim" data-grade="A" data-cite="schwartz1989prepayment" data-locator="Table 1">The covariate vector \(x_t\) in Schwartz &amp; Torous captures three dominant economic phenomena:</span></p>
+        <ol>
+          <li><strong>Refinancing Incentive:</strong> The spread between the mortgage note rate and the current prevailing refinancing rate, \((r_m - r_t)\). As rates fall, \((r_m - r_t)\) increases, driving exponential prepayment acceleration.</li>
+          <li><strong>Burnout Dynamics:</strong> Prior opportunities to refinance. A pool that has experienced sustained low interest rates will gradually exhaust its rate-sensitive borrowers. The remaining mortgagors are financially inattentive or credit-constrained, reducing prepayment speeds on subsequent rate dips.</li>
+          <li><strong>Seasonality:</strong> Calendar month indicators reflecting elevated relocation and home-buying activity during spring and summer months relative to winter.</li>
+        </ol>
+      </section>
+
+      <section id="rational-prepayment">
+        <h2 id="h-rational-prepayment">5. Rational Prepayment with Frictions: Stanton (1995)</h2>
+        <p><span class="claim" data-grade="A" data-cite="stanton1995rational" data-locator="p. 678">Stanton (1995) resolved the conflict between purely empirical hazard models and neoclassical option theory by formulating a structural model of rational mortgage prepayment under heterogeneous transaction costs and decision-making frictions.</span></p>
+
+        <p>In frictionless financial markets, a borrower holding an embedded American call option on debt would prepay immediately whenever the market value of the mortgage exceeds par plus transaction costs. However, empirical MBS prices consistently trade above par without triggering 100% instantaneous prepayment. Stanton explains this through two microfoundations:</p>
+        <ul>
+          <li><strong>Heterogeneous Transaction Costs:</strong> Refinancing entails monetary closing costs (points, appraisal, title insurance) and non-monetary effort costs. Borrowers possess heterogeneous cost thresholds \(F \sim \text{Beta}(\alpha, \beta)\) or log-normal distributions.</li>
+          <li><strong>Inattention &amp; Decision Lags:</strong> Borrowers do not continuously monitor mortgage markets. Instead, opportunities to make an optimal refinancing decision arrive according to an exogenous Poisson process with intensity parameter \(\lambda\).</li>
+        </ul>
+
+        <p><span class="claim" data-grade="A" data-cite="stanton1995rational" data-locator="Eq. 12">Under this structural formulation, the mortgage value \(V(r, F, t)\) satisfies a parabolic partial differential equation subject to boundary conditions determined by the borrower's optimal surrender strategy:</span></p>
+        \[
+        \frac{1}{2}\sigma^2 r \frac{\partial^2 V}{\partial r^2} + \kappa(\theta - r)\frac{\partial V}{\partial r} + \frac{\partial V}{\partial t} - (r + \lambda) V + PMT + \lambda \min\left(V, B_t + F\right) = 0
+        \]
+        <p>This structural foundation justifies why prepayment S-curves exhibit smooth, sigmoidal responses to interest rate declines rather than step-function thresholds.</p>
+      </section>
+
+      <section class="lab" id="lab-PM4-L01-1" data-runtime="python">
+        <h3>Lab 1 · Prepayment Modeling: PSA vs. Schwartz-Torous Hazard</h3>
+        <p class="hypothesis">Simulating the Schwartz-Torous hazard model across interest rate spreads will demonstrate exponential S-curve sensitivity to refinancing incentives and verify the burnout dampening effect relative to static PSA benchmarks.</p>
+        <pre><code class="language-python" data-run>"""Lab PM4-L01-1: Prepayment Modeling — PSA Benchmark vs. Schwartz-Torous Hazard Model.
+
+SIMULATED: Evaluates the PSA benchmark prepayment schedule against the Schwartz &amp; Torous (1989)
+log-logistic proportional hazard model under interest rate incentive shifts.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def psa_cpr(month: int, speed: float = 100.0) -&gt; float:
+    """Compute annualized Conditional Prepayment Rate (CPR) under the PSA benchmark.
+
+    Parameters
+    ----------
+    month : int
+        Loan age in months (1-indexed).
+    speed : float
+        PSA speed percentage (e.g. 100.0 = 100% PSA).
+
+    Returns
+    -------
+    float
+        Annualized CPR as a decimal.
+    """
+    if month &lt;= 0:
+        raise ValueError("Month must be strictly positive")
+    base_cpr = 0.06 if month &gt;= 30 else 0.002 * month
+    return float(base_cpr * (speed / 100.0))
+
+
+def cpr_to_smm(cpr: float) -&gt; float:
+    """Convert annualized CPR to Single Monthly Mortality (SMM)."""
+    return float(1.0 - (1.0 - cpr) ** (1.0 / 12.0))
+
+
+def schwartz_torous_hazard(
+    month: int,
+    refi_incentive: float,
+    burnout_factor: float = 1.0,
+    gamma: float = 0.015,
+    p: float = 2.5,
+    beta: float = 40.0,
+) -&gt; float:
+    """Compute monthly prepayment probability under Schwartz-Torous proportional hazard.
+
+    Parameters
+    ----------
+    month : int
+        Mortgage age in months.
+    refi_incentive : float
+        Spread between note rate and current refinancing rate (r_m - r).
+    burnout_factor : float
+        Fraction of sensitive pool remaining (between 0.0 and 1.0).
+    gamma : float
+        Scale parameter for log-logistic baseline hazard.
+    p : float
+        Shape parameter for log-logistic baseline hazard.
+    beta : float
+        Sensitivity parameter for refinancing incentive.
+
+    Returns
+    -------
+    float
+        Monthly hazard rate (SMM equivalent).
+    """
+    gt = gamma * month
+    baseline = (gamma * p * (gt ** (p - 1.0))) / (1.0 + (gt**p))
+    covariate_effect = float(np.exp(beta * refi_incentive))
+    hazard = baseline * covariate_effect * burnout_factor
+    return float(min(0.25, max(0.001, hazard)))
+
+
+def main() -&gt; None:
+    test_months = [6, 12, 24, 30, 60, 120]
+
+    print("PSA Benchmark Prepayment Rates (CPR and SMM):")
+    print("Month | 100% PSA CPR | 100% PSA SMM | 150% PSA CPR | 200% PSA CPR")
+    for m in test_months:
+        cpr_100 = psa_cpr(m, 100.0)
+        smm_100 = cpr_to_smm(cpr_100)
+        cpr_150 = psa_cpr(m, 150.0)
+        cpr_200 = psa_cpr(m, 200.0)
+        print(f"{m:5d} | {cpr_100:12.4f} | {smm_100:12.5f} | {cpr_150:12.4f} | {cpr_200:12.4f}")
+
+    print("\nSchwartz-Torous Hazard vs Refinancing Incentive (Month 60):")
+    print("Refi Incentive (bps) | Fresh Pool SMM | Burned-Out Pool SMM (50%)")
+    incentives_bps = [-200.0, -100.0, 0.0, 50.0, 100.0, 150.0, 200.0]
+    for inc_bp in incentives_bps:
+        inc = inc_bp / 10000.0
+        smm_fresh = schwartz_torous_hazard(60, inc, burnout_factor=1.0)
+        smm_burned = schwartz_torous_hazard(60, inc, burnout_factor=0.5)
+        print(f"{inc_bp:20.1f} | {smm_fresh:14.5f} | {smm_burned:26.5f}")
+
+    # Verify key qualitative properties
+    cpr_30 = psa_cpr(30, 100.0)
+    cpr_60 = psa_cpr(60, 100.0)
+    assert abs(cpr_30 - 0.06) &lt; 1e-6
+    assert abs(cpr_60 - 0.06) &lt; 1e-6
+
+    smm_in_the_money = schwartz_torous_hazard(60, 0.015, burnout_factor=1.0)
+    smm_out_of_money = schwartz_torous_hazard(60, -0.015, burnout_factor=1.0)
+    assert smm_in_the_money &gt; smm_out_of_money * 3.0
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-4">PSA Benchmark Prepayment Rates (CPR and SMM):
+Month | 100% PSA CPR | 100% PSA SMM | 150% PSA CPR | 200% PSA CPR
+    6 |       0.0120 |      0.00101 |       0.0180 |       0.0240
+   12 |       0.0240 |      0.00202 |       0.0360 |       0.0480
+   24 |       0.0480 |      0.00409 |       0.0720 |       0.0960
+   30 |       0.0600 |      0.00514 |       0.0900 |       0.1200
+   60 |       0.0600 |      0.00514 |       0.0900 |       0.1200
+  120 |       0.0600 |      0.00514 |       0.0900 |       0.1200
+
+Schwartz-Torous Hazard vs Refinancing Incentive (Month 60):
+Refi Incentive (bps) | Fresh Pool SMM | Burned-Out Pool SMM (50%)
+              -200.0 |        0.00814 |                    0.00407
+              -100.0 |        0.01214 |                    0.00607
+                 0.0 |        0.01811 |                    0.00905
+                50.0 |        0.02211 |                    0.01106
+               100.0 |        0.02701 |                    0.01350
+               150.0 |        0.03299 |                    0.01650
+               200.0 |        0.04029 |                    0.02015</pre>
+        <p class="interpretation">The simulation confirms that while 100% PSA reaches a static 6.0% CPR plateau by month 30, the Schwartz-Torous hazard model endogenously scales SMM from 0.0081 under out-of-the-money rates to 0.0403 when refinancing incentive reaches +200 bps. A 50% burned-out pool reduces prepayment hazard by exactly half across all spread regimes.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the Canon Breaks</h2>
+        <p>Traditional prepayment models calibrated on historical GNMA and Fannie Mae pools broke down in several modern market regimes:</p>
+        <ul>
+          <li><strong>The Zero Lower Bound (ZLB):</strong> Historical hazard models calibrated when Treasury yields fluctuated between 4% and 10% severely underestimated prepayment speeds when mortgage rates dropped below 3% in 2020–2021. The sheer dollar incentive of refinancing large loan balances triggered nationwide capacity bottlenecks among originators.</li>
+          <li><strong>Burnout Hysteresis &amp; Credit Traps:</strong> After the 2008 crash, millions of mortgagors with negative home equity (\(LTV > 100\%\)) were legally barred from refinancing despite record-low mortgage rates, creating artificial burnout that empirical models failed to anticipate.</li>
+          <li><strong>Fintech Disruption:</strong> Automated mortgage comparison apps and direct-to-consumer digital originators substantially increased the Poisson decision arrival rate \(\lambda\) (<span class="claim" data-grade="B" data-cite="stanton1995rational">Stanton 1995</span>), compressing borrower inertia and steepening the refinancing S-curve.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">A 200% PSA prepayment speed means monthly dollar principal cash flows are twice as high in all 360 months of the mortgage term.</p>
+            <p class="right">Although the monthly prepayment rate (SMM) is approximately twice as high under 200% PSA, faster prepayments accelerate pool balance depletion in early years. Consequently, by years 10–15, the remaining balance is so small that monthly dollar cash flows under 200% PSA fall far below those of a 100% PSA pool.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Early prepayment always benefits the MBS investor because principal is returned ahead of contractual maturity.</p>
+            <p class="right">Borrowers prepay when market interest rates decline. The investor receives par capital back exactly when prevailing reinvestment yields are depressed, forcing the reinvestment of cash flows into lower-yielding assets and truncating potential bond capital gains.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Single Monthly Mortality is simply the annualized CPR divided by 12.</p>
+            <p class="right">CPR is an annually compounded rate, whereas SMM is an exact monthly compound fraction satisfying \(1 - \text{CPR} = (1 - \text{SMM})^{12}\). Arithmetic division \(\text{CPR}/12\) ignores compound interest, overstating true monthly prepayments by an increasing margin as CPR increases.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="prob-L01-M1">
+            <div class="statement">A borrower takes out a 30-year fixed-rate mortgage for $400,000 at a 6.00% annual note rate. Compute the monthly payment \(PMT\), the interest paid in month 1, and the scheduled principal paid in month 1.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The monthly rate is \(i = 0.06 / 12 = 0.0050\), and the number of periods is \(N = 360\). Applying Theorem 1.1:</p>
+              \[
+              PMT = 400000 \times \frac{0.005}{1 - (1 + 0.005)^{-360}} = 400000 \times \frac{0.005}{1 - 0.166041} = 400000 \times 0.0059955 = \$2398.20
+              \]
+              <p>In month 1, interest is \(I_1 = B_0 \times i = 400000 \times 0.005 = \$2000.00\). Scheduled principal is \(SP_1 = PMT - I_1 = 2398.20 - 2000.00 = \$398.20\). The ending balance is \(B_1 = 400000 - 398.20 = \$399601.80\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L01-M2">
+            <div class="statement">A mortgage pool exhibits an annualized Conditional Prepayment Rate of \(\text{CPR} = 15.00\%\). Calculate the exact monthly Single Monthly Mortality (\(\text{SMM}\)) to five decimal places, and compare it with the linear approximation \(\text{CPR}/12\).</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Applying the compound equivalence formula from Theorem 1.2:</p>
+              \[
+              \text{SMM} = 1 - (1 - 0.15)^{1/12} = 1 - (0.85)^{0.083333} = 1 - 0.986518 = 0.01348
+              \]
+              <p>The linear approximation is \(\text{CPR}/12 = 0.15 / 12 = 0.01250\). Linear division underestimates monthly mortality by \(0.01348 - 0.01250 = 0.00098\) (9.8 basis points per month), demonstrating the importance of compound formulation.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L01-M3">
+            <div class="statement">For a mortgage pool seasoned to month 20, calculate the annualized CPR and the corresponding SMM under a 175% PSA prepayment assumption.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under 100% PSA at month 20, the annualized rate is \(\text{CPR}_{20}^{100\%} = 0.002 \times 20 = 0.040\) (4.00%). Under 175% PSA:</p>
+              \[
+              \text{CPR}_{20}^{175\%} = 0.040 \times 1.75 = 0.070 \quad (7.00\%)
+              \]
+              <p>The corresponding SMM is:</p>
+              \[
+              \text{SMM}_{20} = 1 - (1 - 0.070)^{1/12} = 1 - (0.930)^{1/12} = 1 - 0.993939 = 0.00606
+              \]
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="prob-L01-P1">
+            <div class="statement">Prove that the outstanding loan balance at any month \(t\) of an amortizing mortgage can be expressed as the present value of all remaining scheduled payments discounted at the loan note rate.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>From Theorem 1.1, the loan balance evolves as \(B_t = B_{t-1}(1 + i) - PMT\). Dividing by \((1 + i)^t\):</p>
+              \[
+              \frac{B_t}{(1 + i)^t} - \frac{B_{t-1}}{(1 + i)^{t-1}} = -\frac{PMT}{(1 + i)^t}
+              \]
+              <p>Summing from \(t + 1\) to \(N\):</p>
+              \[
+              \frac{B_N}{(1 + i)^N} - \frac{B_t}{(1 + i)^t} = - \sum_{k=t+1}^N \frac{PMT}{(1 + i)^k}
+              \]
+              <p>Since the mortgage fully amortizes by maturity, \(B_N = 0\). Multiplying by \(-(1 + i)^t\):</p>
+              \[
+              B_t = \sum_{k=t+1}^N \frac{PMT}{(1 + i)^{k - t}} = \sum_{m=1}^{N - t} \frac{PMT}{(1 + i)^m}
+              \]
+              <p>This proves that the outstanding balance at month \(t\) is identical to the present value of an annuity of \(N - t\) payments of \(PMT\) discounted at the contractual monthly rate \(i\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L01-P2">
+            <div class="statement">Prove that the function \(f(\text{CPR}) = 1 - (1 - \text{CPR})^{1/12}\) is strictly convex on the interval \([0, 1)\), and show that its linear approximation around 0 satisfies \(f(\text{CPR}) \ge \frac{\text{CPR}}{12}\).</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Compute the first and second derivatives of \(f(\text{CPR})\) with respect to \(x = \text{CPR}\):</p>
+              \[
+              f'(x) = \frac{1}{12} (1 - x)^{-11/12} > 0
+              \]
+              \[
+              f''(x) = \frac{1}{12} \left(-\frac{11}{12}\right) (1 - x)^{-23/12} (-1) = \frac{11}{144} (1 - x)^{-23/12}
+              \]
+              <p>For all \(x \in [0, 1)\), \((1 - x) > 0\), so \(f''(x) > 0\) strictly. Since the second derivative is strictly positive, \(f(x)\) is strictly convex on \([0, 1)\). By the first-order condition of convex functions, any tangent line lies on or below the function. The tangent line at \(x = 0\) is \(y = f(0) + f'(0)x = 0 + \frac{x}{12} = \frac{\text{CPR}}{12}\). Therefore, \(f(\text{CPR}) \ge \frac{\text{CPR}}{12}\) for all \(\text{CPR} \in [0, 1)\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L01-P3">
+            <div class="statement">In the Schwartz &amp; Torous (1989) model, the baseline hazard is log-logistic: \(\pi_0(t) = \frac{\gamma p (\gamma t)^{p-1}}{1 + (\gamma t)^p}\). Derive the closed-form cumulative baseline survival function \(S_0(t) = \exp\left(-\int_0^t \pi_0(u) du\right)\).</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Consider the cumulative hazard integral \(\Lambda_0(t) = \int_0^t \pi_0(u) du\):</p>
+              \[
+              \Lambda_0(t) = \int_0^t \frac{\gamma p (\gamma u)^{p-1}}{1 + (\gamma u)^p} du
+              \]
+              <p>Let \(v = 1 + (\gamma u)^p\). Then \(dv = p \gamma (\gamma u)^{p-1} du\). When \(u = 0\), \(v = 1\); when \(u = t\), \(v = 1 + (\gamma t)^p\). Substituting:</p>
+              \[
+              \Lambda_0(t) = \int_1^{1 + (\gamma t)^p} \frac{1}{v} dv = \ln\left(1 + (\gamma t)^p\right)
+              \]
+              <p>The baseline survival probability is the exponential of the negative cumulative hazard:</p>
+              \[
+              S_0(t) = \exp\left(-\Lambda_0(t)\right) = \exp\left(-\ln\left(1 + (\gamma t)^p\right)\right) = \frac{1}{1 + (\gamma t)^p}
+              \]
+              <p>This establishes the exact closed-form survival function of the log-logistic hazard distribution.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="prob-L01-E1">
+            <div class="statement">In an empirical sample of Fannie Mae 30-year fixed-rate mortgage pools, a researcher estimates the Schwartz-Torous hazard model and finds \(\hat{\beta}_{\text{refi}} = 38.5\) on the refinancing spread \((r_m - r_t)\). If mortgage rates drop by 75 bps (\(0.0075\)), compute the multiplicative increase in prepayment intensity.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under the proportional hazard specification, the refinancing incentive enters exponentially as \(\exp(\beta \Delta s)\). With \(\Delta s = 0.0075\) and \(\hat{\beta} = 38.5\):</p>
+              \[
+              \text{Multiplier} = \exp(38.5 \times 0.0075) = \exp(0.28875) \approx 1.3348
+              \]
+              <p>The conditional hazard rate increases by 33.48% relative to baseline. If rates drop by 150 bps (\(0.0150\)), the multiplier becomes \(\exp(38.5 \times 0.015) = \exp(0.5775) \approx 1.7816\), an increase of 78.16%.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L01-E2">
+            <div class="statement">A mortgage desk tracks two otherwise identical 6.00% pass-through pools. Pool A has experienced no prior refinancing opportunities. Pool B has accumulated 36 months of low mortgage rates with burnout parameter \(\gamma = 0.04\) and cumulative spread exposure \(\int (r_m - r_t)^+ dt = 15.0\) percentage-point-months (0.15). Calculate the burnout multiplier for Pool B relative to Pool A.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The burnout factor is formulated as \(\text{Burnout} = \exp(-\gamma \times \text{Cumulative Incentive})\). For Pool B:</p>
+              \[
+              \text{Burnout}_B = \exp(-0.04 \times 15.0) = \exp(-0.60) \approx 0.5488
+              \]
+              <p>Pool B will prepay at only 54.88% of the speed of fresh Pool A when subject to identical market interest rates, explaining why burned-out pools trade at higher yields and display less negative convexity.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L01-E3">
+            <div class="statement">Using the Stanton (1995) model, suppose the Poisson review intensity increases from \(\lambda_1 = 0.25\) (average decision review every 4 years) to \(\lambda_2 = 1.00\) (annual decision review) due to automated refinancing applications. Explain the impact on the slope of the empirical prepayment S-curve.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In Stanton (1995), the aggregate prepayment rate is the product of the fraction of in-the-money borrowers and the decision review rate \(\lambda\). An increase in \(\lambda\) from 0.25 to 1.00 reduces borrower inertia. When rates cross the refinancing threshold, the fraction of eligible borrowers who execute prepayment within the year increases from \(1 - e^{-0.25} \approx 22.1\%\) to \(1 - e^{-1.0} \approx 63.2\%\). This quadruples the slope of the refinancing S-curve near the threshold spread, making prepayments sharper and amplifying negative convexity for mortgage investors.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="prob-L01-R1">
+            <div class="statement">Examine how algorithmic digital mortgage underwriting (e.g. automated income verification, digital title searches) alters the distribution of borrower transaction costs \(F\) in Stanton (1995) and assess its systemic impact on agency MBS duration.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Digital underwriting compresses both out-of-pocket fees (appraisal waivers, automated title insurance) and non-monetary hassle costs (instant bank account verification). In the Stanton (1995) framework, this shifts the distribution \(F \sim \text{Beta}(\alpha, \beta)\) toward zero and compresses its variance. Consequently, the minimum interest rate spread required to trigger rational refinancing drops from ~100–150 bps historically to ~30–50 bps today. For agency MBS investors, this structural shift shortens effective duration in falling rate regimes and steepens price compression near par, reducing the premium investors are willing to pay for newly issued pass-throughs.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L01-R2">
+            <div class="statement">Analyze the interaction between macroprudential Loan-to-Value (LTV) limits and interest-rate-driven prepayment models during housing market downturns. Why did prepayment speeds collapse during 2008–2010 despite record-low mortgage rates?</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Standard interest rate prepayment models assume that refinancing eligibility depends solely on the interest rate spread \((r_m - r_t)\). However, conforming mortgage refinancing requires \(LTV \le 80\%\) (or private mortgage insurance). When nationwide house prices declined by 30% from 2006 to 2009, millions of borrowers experienced negative equity (\(LTV > 100\%\)). Even though market rates fell by over 200 bps, these underwater borrowers could not qualify for refinancing. This created severe "credit burnout" that was endogenous to home prices rather than prior rate opportunities, leading to the creation of the Home Affordable Refinance Program (HARP) to waive LTV caps.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L01-R3">
+            <div class="statement">In jurisdictions with negative benchmark interest rates (e.g. Denmark and Switzerland), evaluate how mortgage prepayment behaves when mortgage note rates approach zero. Does rational call exercise remain optimal?</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under negative interest rate regimes, mortgage coupon rates can decline to near zero or even negative values (as observed with Danish covered bonds). Rational prepayment remains optimal as long as the present value of future interest savings exceeds transaction costs. However, institutional frictions emerge: banks impose administrative floors on lending margins, fixed closing fees become a dominant percentage of remaining loan principal, and borrowers face potential tax penalties on negative interest income. Empirical evidence from the Danish mortgage market shows that refinancing activity plateaued once rates reached 0.50%, as fixed transaction costs overwhelmed incremental rate savings.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Concept / Claim</th><th>Grade</th><th>Registry Key</th><th>Summary</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Level amortization payment formula</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 1.1</td>
+                <td>\(PMT = B_0 \frac{i}{1 - (1 + i)^{-N}}\) satisfying terminal boundary \(B_N = 0\).</td>
+              </tr>
+              <tr>
+                <td>Exact SMM–CPR compound conversion</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 1.2</td>
+                <td>\(\text{SMM} = 1 - (1 - \text{CPR})^{1/12}\); linear division \(\text{CPR}/12\) overstates prepayment.</td>
+              </tr>
+              <tr>
+                <td>PSA benchmark prepayment schedule</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 1.1</td>
+                <td>0.2% CPR/month up to 6.0% CPR at month 30, remaining flat thereafter.</td>
+              </tr>
+              <tr>
+                <td>Empirical proportional hazard prepayment</td>
+                <td><span class="claim" data-grade="A" data-cite="schwartz1989prepayment">A</span></td>
+                <td>schwartz1989prepayment</td>
+                <td>Prepayment modeled as log-logistic baseline hazard scaled by refinancing spread and burnout.</td>
+              </tr>
+              <tr>
+                <td>Rational prepayment with frictions</td>
+                <td><span class="claim" data-grade="A" data-cite="stanton1995rational">A</span></td>
+                <td>stanton1995rational</td>
+                <td>Borrower heterogeneous transaction costs and Poisson decision lags produce smooth prepayment S-curves.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="PM4" data-page="L01">
+        <h2 id="h-quiz">Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="numeric" data-answer="0.00514" data-tolerance="0.0001">
+            <div class="prompt">Calculate the monthly Single Monthly Mortality (\(\text{SMM}\)) corresponding to a 6.00% annualized CPR, unrounded to five decimal places.</div>
+            <div class="explain">\(\text{SMM} = 1 - (1 - 0.06)^{1/12} \approx 0.00514\).</div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.060" data-tolerance="0.001">
+            <div class="prompt">What is the annualized CPR under the 100% PSA benchmark for a mortgage at age 60 months?</div>
+            <div class="explain">Under 100% PSA, CPR caps at 6.00% (0.060) at month 30 and remains constant for all \(t \ge 30\).</div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.090" data-tolerance="0.001">
+            <div class="prompt">What is the annualized CPR under the 150% PSA benchmark for a mortgage at age 30 months?</div>
+            <div class="explain">At month 30, 100% PSA is 6.00%. Scaling by 150%: \(0.060 \times 1.50 = 0.090\) (9.00%).</div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="stem">Why does the baseline hazard in Schwartz &amp; Torous (1989) employ a log-logistic specification rather than an exponential distribution?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q4"> <span style="min-width: 0;">The log-logistic hazard allows non-monotonic seasoning humps where prepayment intensity rises initially with loan age and then declines, whereas exponential hazard enforces constant intensity.</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">The exponential distribution cannot incorporate interest rate covariates.</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">The log-logistic distribution guarantees that loan defaults equal zero.</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">The exponential hazard cannot be integrated in closed form.</span></label>
+            </fieldset>
+            <div class="explain">Mortgage pools exhibit seasoning humps: prepayments are near zero initially, peak after 2-5 years as mobility and lockouts expire, and then decline as unrefinanced loans burn out. Log-logistic hazard models this non-monotonic hump.</div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="stem">What is the primary mechanism causing "burnout" in a mortgage pool that has experienced sustained low interest rates?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q5"> <span style="min-width: 0;">Rate-sensitive borrowers have already refinanced out of the pool, leaving a remaining pool concentrated with financially inattentive or credit-constrained borrowers.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">The servicer caps the maximum allowable prepayment volume after three years.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">The GSE guarantee expires after consecutive interest rate declines.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">Mortgage payments automatically convert to negative amortization after 36 months.</span></label>
+            </fieldset>
+            <div class="explain">Burnout is pool composition heterogeneity: fast refinancers leave the collateral pool during early rate rallies, leaving behind inert, low-balance, or credit-impaired borrowers who do not respond to subsequent rate drops.</div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="stem">In Stanton (1995), what role does the parameter \(\lambda\) play?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q6"> <span style="min-width: 0;">It represents the Poisson arrival rate of decision-making opportunities where a borrower evaluates whether to refinance.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">It represents the default probability of subprime borrowers.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">It is the mean reversion speed of the short interest rate.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">It is the GSE guarantee fee deducted from the collateral coupon.</span></label>
+            </fieldset>
+            <div class="explain">Stanton introduces Poisson attention arrivals \(\lambda\) to capture borrower inattention and transaction friction, explaining why in-the-money options are not exercised immediately.</div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="stem">If a loan note rate is 6.50% and prevailing market refinancing rates drop from 6.00% to 4.50%, what happens to the prepayment call option embedded in the mortgage?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q7"> <span style="min-width: 0;">The option moves deep into the money, increasing prepayment hazard and compressing the market price of the mortgage pass-through near par.</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0;">The option expires worthless because market yields are lower than the note rate.</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0;">The option converts into a mandatory put option held by the lender.</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0;">The option increases the modified duration of the pass-through security.</span></label>
+            </fieldset>
+            <div class="explain">The refinancing incentive \((r_m - r_t)\) expands to +200 bps, driving the borrower's call option deep in-the-money and causing prepayments to accelerate.</div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="2398.20" data-tolerance="2.0">
+            <div class="prompt">Calculate the monthly payment \(PMT\) on a $400,000 30-year fixed mortgage at a 6.00% annual interest rate ($).</div>
+            <div class="explain">\(i = 0.060 / 12 = 0.0050\). \(PMT = 400000 \times \frac{0.0050}{1 - (1 + 0.0050)^{-360}} \approx \$2398.20\).</div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li data-cite="schwartz1989prepayment">Schwartz, E. S., &amp; Torous, W. N. (1989). Prepayment and the Valuation of Mortgage-Backed Securities. <em>Journal of Finance</em>, 44(2), 375–392.</li>
+          <li data-cite="stanton1995rational">Stanton, R. (1995). Rational Prepayment and the Valuation of Mortgage-Backed Securities. <em>Review of Financial Studies</em>, 8(3), 677–708.</li>
+          <li data-cite="campbell2006household">Campbell, J. Y. (2006). Household Finance. <em>Journal of Finance</em>, 61(4), 1553–1604.</li>
+        </ol>
+      </section>
+
+      <div class="action-bar">
+        <button type="button" class="button" data-complete>Mark Lesson Complete</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

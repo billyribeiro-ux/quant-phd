@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="PM4" data-page="L04" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L04: Option-Adjusted Spread &amp; Effective Risk Metrics · PM4 · Quant PhD</title>
+  <meta name="description" content="Monte Carlo short-rate simulation, path-dependent prepayment cash flows, Option-Adjusted Spread (OAS) bisection calibration, option cost decomposition, and effective Greeks under common random numbers.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">PM4 Real Estate Finance</a><span class="sep">›</span>
+      <span>L04 Option-Adjusted Spread</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 04 · 8 hours · Valuation &amp; Risk Measurement</p>
+        <h1>Option-Adjusted Spread &amp; Effective Risk Metrics</h1>
+        <p class="why-it-matters">Because mortgage cash flows depend on the historical path of interest rates, static yield-to-maturity and zero-volatility spreads fail to isolate true credit and liquidity premia. The Option-Adjusted Spread (OAS) strips out the embedded prepayment option via risk-neutral Monte Carlo simulation, providing an unencumbered compensation metric and enabling effective duration and convexity measurement under common random numbers.</p>
+      </header>
+
+      <section id="short-rate-simulation">
+        <h2 id="h-short-rate-simulation">1. Risk-Neutral Short Rate Path Simulation</h2>
+        <p>Valuing mortgage-backed securities under stochastic interest rates requires generating interest rate paths under the risk-neutral pricing measure \(\mathbb{Q}\). Consider the continuous-time 1-factor short-rate model introduced by Vasicek (1977):</p>
+        \[
+        d r_t = \kappa (\theta - r_t) d t + \sigma d W_t^{\mathbb{Q}}
+        \]
+        <p>where \(\kappa > 0\) is the speed of mean reversion, \(\theta > 0\) is the long-term risk-neutral mean short rate, \(\sigma > 0\) is instantaneous volatility, and \(W_t^{\mathbb{Q}}\) is a standard Brownian motion.</p>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 4.1 · Exact Discrete Vasicek Transition Law</span>
+          <p>For a discrete simulation step \(\Delta t\), the conditional distribution of \(r_{t+\Delta t}\) given \(r_t\) is Gaussian with conditional mean and conditional variance:</p>
+          \[
+          \E^{\mathbb{Q}}[r_{t+\Delta t} \mid r_t] = r_t e^{-\kappa \Delta t} + \theta (1 - e^{-\kappa \Delta t})
+          \]
+          \[
+          \Var^{\mathbb{Q}}(r_{t+\Delta t} \mid r_t) = \frac{\sigma^2}{2\kappa} (1 - e^{-2\kappa \Delta t})
+          \]
+        </div>
+
+        <div class="block proof">
+          <span class="block-title">Proof</span>
+          <p>Applying Itô's lemma to \(e^{\kappa t} r_t\):</p>
+          \[
+          d (e^{\kappa t} r_t) = \kappa e^{\kappa t} r_t d t + e^{\kappa t} d r_t = \kappa e^{\kappa t} r_t d t + e^{\kappa t} [ \kappa (\theta - r_t) d t + \sigma d W_t ] = \kappa \theta e^{\kappa t} d t + \sigma e^{\kappa t} d W_t
+          \]
+          <p>Integrating from \(t\) to \(t + \Delta t\):</p>
+          \[
+          e^{\kappa (t + \Delta t)} r_{t + \Delta t} - e^{\kappa t} r_t = \theta (e^{\kappa (t + \Delta t)} - e^{\kappa t}) + \sigma \int_t^{t+\Delta t} e^{\kappa s} d W_s
+          \]
+          <p>Multiplying across by \(e^{-\kappa(t+\Delta t)}\):</p>
+          \[
+          r_{t+\Delta t} = r_t e^{-\kappa \Delta t} + \theta (1 - e^{-\kappa \Delta t}) + \sigma \int_t^{t+\Delta t} e^{-\kappa(t+\Delta t - s)} d W_s
+          \]
+          <p>The stochastic integral has mean zero, yielding the conditional expectation. Using Itô's isometry:</p>
+          \[
+          \Var\left( \sigma \int_t^{t+\Delta t} e^{-\kappa(t+\Delta t - s)} d W_s \right) = \sigma^2 \int_t^{t+\Delta t} e^{-2\kappa(t+\Delta t - s)} d s = \frac{\sigma^2}{2\kappa} (1 - e^{-2\kappa \Delta t})
+          \]
+          <p>Since the integrand is deterministic, the transition distribution is strictly normal.</p>
+        </div>
+      </section>
+
+      <section id="path-dependent-cash-flows">
+        <h2 id="h-path-dependent-cash-flows">2. Path-Dependent Cash Flows &amp; Burnout</h2>
+        <p>Unlike European interest rate swaptions, mortgage prepayments exhibit severe path dependence. A low-rate path that occurs after a long period of high rates induces massive refinancing. However, if the same low rates occur after an extended rally, the pool exhibits <em class="term">burnout</em>: the rate-sensitive borrowers have already exited.</p>
+        <p>Along path \(m \in \{1, \dots, M\}\) at month \(t\), the prevailing refinancing rate is modeled as \(R_t^{(m)} = r_t^{(m)} + m_{\text{orig}}\), where \(m_{\text{orig}}\) is the primary-secondary origination markup. The refinancing incentive is \(\xi_t^{(m)} = \max(0, \text{WAC} - R_t^{(m)})\). Cumulative incentive history tracks pool exhaustion:</p>
+        \[
+        \Omega_t^{(m)} = \sum_{s=1}^t \xi_s^{(m)}, \quad B_t^{(m)} = \exp(-\gamma_{\text{burn}} \Omega_t^{(m)})
+        \]
+        <p>The conditional prepayment rate is governed by a logistic S-curve scaled by the burnout multiplier:</p>
+        \[
+        \text{CPR}_t^{(m)} = \left[ \text{CPR}_{\text{base}} + \frac{\text{CPR}_{\max} - \text{CPR}_{\text{base}}}{1 + \exp\left(-\beta (\text{WAC} - R_t^{(m)} - \mu)\right)} \right] \cdot B_t^{(m)}
+        \]
+        <p>The single monthly mortality \(\text{SMM}_t^{(m)} = 1 - (1 - \text{CPR}_t^{(m)})^{1/12}\) determines unscheduled principal \(PR_t^{(m)}\), giving total monthly cash flow \(CF_t^{(m)} = I_t^{(m)} + SP_t^{(m)} + PR_t^{(m)}\).</p>
+      </section>
+
+      <section id="oas-calibration">
+        <h2 id="h-oas-calibration">3. Option-Adjusted Spread Calibration via Bisection</h2>
+        <p>The static zero-volatility spread (Z-spread) discounts cash flows along a single deterministic zero curve, penalizing MBS for prepayment options that have not been simulated. In contrast, the Option-Adjusted Spread evaluates expected discounted cash flows across the entire risk-neutral probability space.</p>
+
+        <div class="block definition">
+          <span class="block-title">Definition 4.1 · Option-Adjusted Spread (OAS)</span>
+          <p>The <dfn id="def-option-adjusted-spread" data-concept="option-adjusted-spread">Option-Adjusted Spread</dfn> (OAS) is the constant continuous spread \(s\) added to the simulated short rate path \(\{r_t^{(m)}\}\) that equates the risk-neutral expected present value of pathwise cash flows to the observed market price \(P_{\text{mkt}}\):</p>
+          \[
+          P_{\text{mkt}} = \frac{1}{M} \sum_{m=1}^M \sum_{t=1}^N CF_t^{(m)} \exp\left( -\sum_{k=1}^t (r_k^{(m)} + s) \Delta t - (r_t^{(m)} + s) \frac{d_{\text{delay}}}{365} \right)
+          \]
+        </div>
+
+        <div class="block theorem">
+          <span class="block-title claim" data-grade="T">Theorem 4.2 · Monotonicity and Existence of Unique OAS</span>
+          <p>For any positive cash flow stream \(CF_t^{(m)} > 0\), the model price function \(P_{\text{model}}(s)\) is strictly decreasing in \(s\):</p>
+          \[
+          \frac{\partial P_{\text{model}}(s)}{\partial s} < 0 \quad \forall s \in \R
+          \]
+          <p>Consequently, if \(\lim_{s \to -\infty} P_{\text{model}}(s) > P_{\text{mkt}} > \lim_{s \to \infty} P_{\text{model}}(s) = 0\), there exists a unique root \(s^* = \text{OAS}\) solvable via bisection.</p>
+        </div>
+
+        <div class="block proof">
+          <span class="block-title">Proof</span>
+          <p>Differentiating the discounted cash flow representation with respect to \(s\):</p>
+          \[
+          \frac{\partial P_{\text{model}}}{\partial s} = -\frac{1}{M} \sum_{m=1}^M \sum_{t=1}^N \left( t \Delta t + \frac{d_{\text{delay}}}{365} \right) CF_t^{(m)} \exp\left( -\sum_{k=1}^t (r_k^{(m)} + s) \Delta t - (r_t^{(m)} + s) \frac{d_{\text{delay}}}{365} \right)
+          \]
+          <p>Since \(t \Delta t + \frac{d_{\text{delay}}}{365} > 0\), \(CF_t^{(m)} > 0\), and the exponential discount factor is strictly positive everywhere, every term in the double summation is strictly positive. The leading negative sign guarantees \(\frac{\partial P_{\text{model}}}{\partial s} < 0\). Strict monotonicity and continuity imply a unique solution by the intermediate value theorem.</p>
+        </div>
+
+        <div class="block definition">
+          <span class="block-title">Definition 4.2 · Option Cost Decomposition</span>
+          <p>The total yield premium demanded by investors over the Treasury curve decomposes into option compensation and unencumbered spread:</p>
+          \[
+          \text{Option Cost} = \text{Z-spread} - \text{OAS}
+          \]
+          <p>Because the investor is short the borrower's prepayment call option, \(\text{Z-spread} \ge \text{OAS}\), meaning \(\text{Option Cost} \ge 0\). A wider option cost indicates greater prepayment volatility exposure.</p>
+        </div>
+      </section>
+
+      <section id="effective-greeks">
+        <h2 id="h-effective-greeks">4. Effective Duration and Convexity under Common Random Numbers</h2>
+        <p>Standard analytical duration formulas (e.g., Macaulay duration) assume deterministic cash flows and fail completely for MBS because cash flows shift dynamically when discount rates move.</p>
+
+        <div class="block definition">
+          <span class="block-title">Definition 4.3 · Effective Duration and Effective Convexity</span>
+          <p>Let \(P(y)\) be the stochastic Monte Carlo price of an MBS security under calibrated spread \(s^*\). The <dfn id="def-effective-duration" data-concept="effective-duration">effective duration and effective convexity</dfn> under a symmetric yield shift \(\Delta y\) are defined by finite difference quotients:</p>
+          \[
+          D_{\text{eff}} = \frac{P(y - \Delta y) - P(y + \Delta y)}{2 P(y) \Delta y}
+          \]
+          \[
+          C_{\text{eff}} = \frac{P(y + \Delta y) + P(y - \Delta y) - 2P(y)}{P(y) (\Delta y)^2}
+          \]
+        </div>
+
+        <div class="block remark">
+          <span class="block-title">Remark 4.1 · Common Random Numbers (CRN) Variance Reduction</span>
+          <p>When computing \(P(y + \Delta y)\) and \(P(y - \Delta y)\), independent Monte Carlo draws introduce simulation noise that swamps the small finite difference \(\Delta y\). Setting identical random seeds across base, up, and down simulations (Common Random Numbers) ensures that rate path perturbations \(\Delta W_t\) are identical across scenarios, isolating the pure derivative signal and drastically shrinking finite-difference variance.</p>
+        </div>
+      </section>
+
+      <section class="lab" id="lab-PM4-L04-1" data-runtime="python">
+        <h3>Lab 1 · Option-Adjusted Spread Calibration &amp; Stochastic Greeks</h3>
+        <p class="hypothesis">Simulating 500 Vasicek short rate paths with logistic prepayment and pathwise burnout will calibrate OAS for a $102.00 target price to within 0.01 tolerance, yielding a positive duration and confirming negative effective convexity ($C_{\text{eff}} < 0$).</p>
+        <pre><code class="language-python" data-run>"""Lab PM4-L04-1: Option-Adjusted Spread (OAS) and Effective Duration/Convexity.
+
+SIMULATED: Solves for the Option-Adjusted Spread (OAS) of an agency MBS pass-through via Monte Carlo
+risk-neutral simulation and computes effective duration and convexity under stochastic prepayment.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+
+
+def simulate_vasicek_paths(
+    r0: float,
+    kappa: float,
+    theta: float,
+    sigma: float,
+    n_months: int = 360,
+    n_paths: int = 500,
+    seed: int = 42,
+) -&gt; np.ndarray:
+    """Simulate exact Gaussian discrete transitions for 1-factor Vasicek short rate."""
+    rng = np.random.default_rng(seed)
+    dt = 1.0 / 12.0
+    exp_k = float(np.exp(-kappa * dt))
+    std_step = float(np.sqrt((sigma**2) / (2.0 * kappa) * (1.0 - exp_k**2)))
+
+    rates = np.zeros((n_paths, n_months))
+    rates[:, 0] = r0
+
+    for t in range(1, n_months):
+        z = rng.normal(size=n_paths)
+        rates[:, t] = rates[:, t - 1] * exp_k + theta * (1.0 - exp_k) + std_step * z
+
+    return rates
+
+
+def generate_path_cash_flows(
+    rates: np.ndarray,
+    notional: float = 100.0,
+    wac: float = 0.065,
+    pass_through_rate: float = 0.060,
+    base_cpr: float = 0.06,
+    max_cpr: float = 0.40,
+    beta: float = 60.0,
+    mu: float = 0.010,
+    margin: float = 0.012,
+    gamma_burnout: float = 0.05,
+) -&gt; np.ndarray:
+    """Generate path-dependent monthly cash flows under state-dependent prepayment and burnout."""
+    n_paths, n_months = rates.shape
+    wac_m = wac / 12.0
+    net_m = pass_through_rate / 12.0
+
+    balances = np.full(n_paths, notional)
+    cumulative_incentive = np.zeros(n_paths)
+    cash_flows = np.zeros((n_paths, n_months))
+
+    for t in range(n_months):
+        rem_m = n_months - t
+        refi_rate = rates[:, t] + margin
+        incentive = np.maximum(0.0, wac - refi_rate)
+        cumulative_incentive += incentive
+        burnout = np.exp(-gamma_burnout * cumulative_incentive)
+
+        # Logistic refinancing incentive multiplied by burnout
+        refi_spread = wac - refi_rate - mu
+        cpr = (base_cpr + (max_cpr - base_cpr) / (1.0 + np.exp(-beta * refi_spread))) * burnout
+        smm_t = 1.0 - (1.0 - cpr) ** (1.0 / 12.0)
+
+        denom = 1.0 - (1.0 + wac_m) ** (-rem_m)
+        pmt = balances * (wac_m / denom)
+        gross_int = balances * wac_m
+        sched_prin = pmt - gross_int
+        prepay = (balances - sched_prin) * smm_t
+        tot_prin = sched_prin + prepay
+
+        net_int = balances * net_m
+        cash_flows[:, t] = net_int + tot_prin
+        balances -= tot_prin
+
+    return cash_flows
+
+
+def price_mc_spread(
+    rates: np.ndarray,
+    cash_flows: np.ndarray,
+    spread: float,
+    delay_days: int = 24,
+) -&gt; float:
+    """Discount pathwise cash flows at path short rates plus spread."""
+    dt = 1.0 / 12.0
+    cum_r = np.cumsum((rates + spread) * dt, axis=1)
+    delay_adj = (rates + spread) * (delay_days / 365.0)
+    disc = np.exp(-(cum_r + delay_adj))
+    return float(np.mean(np.sum(cash_flows * disc, axis=1)))
+
+
+def calibrate_oas(
+    market_price: float,
+    rates: np.ndarray,
+    cash_flows: np.ndarray,
+    delay_days: int = 24,
+) -&gt; float:
+    """Solve for OAS equating model expectation to market price via bisection."""
+    low_s = -0.05
+    high_s = 0.05
+    for _ in range(50):
+        mid_s = 0.5 * (low_s + high_s)
+        p_mid = price_mc_spread(rates, cash_flows, mid_s, delay_days)
+        if abs(p_mid - market_price) &lt; 1e-4:
+            break
+        if p_mid &gt; market_price:
+            low_s = mid_s
+        else:
+            high_s = mid_s
+    return float(mid_s * 10000.0)
+
+
+def main() -&gt; None:
+    r0 = 0.045
+    kappa = 0.15
+    theta = 0.050
+    sigma = 0.015
+    notional = 100.0
+    wac = 0.065
+    net_c = 0.060
+    delay_days = 24
+
+    # Baseline simulation
+    rates = simulate_vasicek_paths(r0, kappa, theta, sigma, n_months=360, n_paths=500, seed=42)
+    cash_flows = generate_path_cash_flows(rates, notional, wac, net_c)
+
+    p_zero_spread = price_mc_spread(rates, cash_flows, spread=0.0, delay_days=delay_days)
+    print("MBS Monte Carlo Simulation Results:")
+    print(f"Zero-Spread Model Price:     {p_zero_spread:8.4f}")
+
+    # Market price observation
+    target_market_price = 102.00
+    oas_bps = calibrate_oas(target_market_price, rates, cash_flows, delay_days=delay_days)
+    print(f"Target Market Price:         {target_market_price:8.4f}")
+    print(f"Calibrated OAS:              {oas_bps:8.2f} bps")
+
+    # Re-verify price at OAS
+    p_at_oas = price_mc_spread(rates, cash_flows, spread=oas_bps / 10000.0, delay_days=delay_days)
+    print(f"Price at Calibrated OAS:     {p_at_oas:8.4f}")
+    assert abs(p_at_oas - target_market_price) &lt; 0.01
+
+    # Effective Greeks with common random numbers
+    dy = 0.0025  # 25 bps
+    spread_dec = oas_bps / 10000.0
+
+    rates_up = simulate_vasicek_paths(r0 + dy, kappa, theta + dy, sigma, n_months=360, n_paths=500, seed=42)
+    cf_up = generate_path_cash_flows(rates_up, notional, wac, net_c)
+    p_up = price_mc_spread(rates_up, cf_up, spread=spread_dec, delay_days=delay_days)
+
+    rates_down = simulate_vasicek_paths(r0 - dy, kappa, theta - dy, sigma, n_months=360, n_paths=500, seed=42)
+    cf_down = generate_path_cash_flows(rates_down, notional, wac, net_c)
+    p_down = price_mc_spread(rates_down, cf_down, spread=spread_dec, delay_days=delay_days)
+
+    eff_duration = (p_down - p_up) / (2.0 * target_market_price * dy)
+    eff_convexity = (p_up + p_down - 2.0 * target_market_price) / (target_market_price * (dy**2))
+
+    print("\nStochastic Effective Risk Metrics:")
+    print(f"Price (+25 bps shift):       {p_up:8.4f}")
+    print(f"Price (-25 bps shift):       {p_down:8.4f}")
+    print(f"Effective Duration:          {eff_duration:8.4f} years")
+    print(f"Effective Convexity:         {eff_convexity:8.4f}")
+
+    assert eff_duration &gt; 0.0
+    assert eff_convexity &lt; 0.0  # Confirms negative convexity in Monte Carlo OAS model!
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-2">MBS Monte Carlo Simulation Results:
+Zero-Spread Model Price:     103.3226
+Target Market Price:         102.0000
+Calibrated OAS:                 37.29 bps
+Price at Calibrated OAS:     102.0000
+
+Stochastic Effective Risk Metrics:
+Price (+25 bps shift):       101.1690
+Price (-25 bps shift):       102.7869
+Effective Duration:            3.1724 years
+Effective Convexity:         -69.1167</pre>
+        <p class="interpretation">The Monte Carlo simulation determines that an agency pass-through trading at $102.00 implies an Option-Adjusted Spread of 37.29 basis points. By perturbing the yield curve under common random numbers, the effective duration is measured at 3.17 years, and the effective convexity is verified to be deeply negative at -69.12.</p>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">Where the Canon Breaks</h2>
+        <p>While OAS is the universal Wall Street benchmark for mortgage relative value, several foundational structural assumptions frequently fail:</p>
+        <ul>
+          <li><strong>Yield Curve Non-Parallel Shifts (Key Rate Risk):</strong> OAS duration assumes uniform parallel shifts across all maturities. In reality, yield curve steepening and twisting shocks alter short-term financing costs independently of 10-year mortgage rates, causing parallel OAS hedges to experience severe basis slippage (<span class="claim" data-grade="B" data-cite="gurkaynak2007us">Gürkaynak et al. 2007</span>).</li>
+          <li><strong>Model Dependency and OAS Dispersion:</strong> Because OAS is a model-derived residual rather than a directly traded market price, different dealer models (e.g., Black-Derman-Toy vs Hull-White vs 2-factor Cheyette) calibrated to the exact same market price produce OAS estimates that differ by 20 to 50 basis points on the same pool.</li>
+          <li><strong>Gaussian Negative Rate Drift in Vasicek:</strong> The standard 1-factor Vasicek model permits interest rates to go negative with positive probability \(\Phi\left( -\frac{\theta}{\sqrt{\sigma^2 / (2\kappa)}} \right)\). In low-rate environments, unconstrained Gaussian models overestimate prepayment speeds by generating unrealistically negative mortgage borrowing rates.</li>
+        </ul>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">A wider OAS always indicates that an agency MBS pass-through is fundamentally cheap and undervalued.</p>
+            <p class="right">A wide OAS can reflect unmodeled risks rather than market mispricing. If the prepayment model underestimates prepayment speeds, underestimates interest rate volatility, or ignores liquidity risk, the model will compute an artificially high OAS to reconcile the lower market price.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">The Option-Adjusted Spread can be directly observed on trade reporting feeds like TRACE.</p>
+            <p class="right">OAS is not a traded price or observable quotation. It is a model-dependent calculated metric derived by inverting a risk-neutral term structure model and an econometric prepayment engine against the traded market price.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">Effective duration and modified duration yield identical risk sensitivities for mortgage securities.</p>
+            <p class="right">Modified duration assumes cash flows are fixed and independent of interest rates. Because mortgage cash flows contract in rallies and extend in sell-offs, effective duration is significantly shorter in rallies and longer in sell-offs than static modified duration.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+          <div class="problem" id="prob-L04-M1">
+            <div class="statement">An agency pass-through with par balance $100 has a static Zero-Volatility Spread (Z-spread) of 115 bps and an Option-Adjusted Spread (OAS) of 45 bps. Calculate the monetary value of the embedded option cost in basis points, and explain what this spread compensates for.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Applying Definition 4.2:
+              \[
+              \text{Option Cost} = \text{Z-spread} - \text{OAS} = 115\text{ bps} - 45\text{ bps} = 70\text{ bps}
+              \]
+              The 70 bps option cost represents the annual yield premium required by the investor to compensate for the borrower's par prepayment option (negative convexity and reinvestment risk). The remaining 45 bps OAS reflects unencumbered compensation for liquidity risk and servicer operational frictions.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-M2">
+            <div class="statement">In a 1-factor Vasicek model with \(\kappa = 0.20\), \(\theta = 0.05\), and \(\sigma = 0.02\), if the current short rate is \(r_0 = 0.03\), compute the expected short rate \(\E[r_1]\) and the conditional standard deviation \(\sqrt{\Var(r_1)}\) after one year (\(\Delta t = 1.0\)).</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Applying Theorem 4.1 with \(\Delta t = 1.0\):
+              \[
+              e^{-\kappa \Delta t} = e^{-0.20 \times 1.0} = e^{-0.20} \approx 0.81873
+              \]
+              The expected short rate after one year is:
+              \[
+              \E[r_1] = 0.03 \times 0.81873 + 0.05 \times (1 - 0.81873) = 0.02456 + 0.00906 = 0.03362\text{ (3.36\%)}
+              \]
+              The conditional variance is:
+              \[
+              \Var(r_1) = \frac{0.02^2}{2 \times 0.20} (1 - e^{-2 \times 0.20}) = \frac{0.0004}{0.40} (1 - e^{-0.40}) = 0.0010 \times (1 - 0.67032) = 0.00032968
+              \]
+              The standard deviation is \(\sqrt{\Var(r_1)} = \sqrt{0.00032968} \approx 0.01816\text{ (1.82\%)}\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-M3">
+            <div class="statement">A Monte Carlo OAS engine values an MBS at base price \(P_0 = 102.00\). Shifting the short rate paths by \(\Delta y = \pm 25\text{ bps}\) under common random numbers produces \(P_+ = 101.1690\) and \(P_- = 102.7869\). Calculate the effective duration and effective convexity.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Effective duration is:
+              \[
+              D_{\text{eff}} = \frac{P_- - P_+}{2 P_0 \Delta y} = \frac{102.7869 - 101.1690}{2 \times 102.00 \times 0.0025} = \frac{1.6179}{0.5100} \approx 3.1724\text{ years}
+              \]
+              Effective convexity is:
+              \[
+              C_{\text{eff}} = \frac{P_+ + P_- - 2P_0}{P_0 (\Delta y)^2} = \frac{101.1690 + 102.7869 - 2(102.00)}{102.00 \times (0.0025)^2} = \frac{-0.0441}{102.00 \times 0.00000625} \approx -69.18
+              \]
+              Negative convexity indicates the security suffers from upside price compression.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+          <div class="problem" id="prob-L04-P1">
+            <div class="statement">Prove that if simulated cash flows \(CF_t^{(m)} > 0\) for all \(t, m\), the Monte Carlo model price \(P_{\text{model}}(s)\) is strictly decreasing and strictly convex in spread \(s\).</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let discount factor along path \(m\) be \(D_t^{(m)}(s) = \exp\left( -\sum_{k=1}^t (r_k^{(m)} + s)\Delta t - (r_t^{(m)} + s) \frac{d}{365} \right)\). Let \(T_t = t \Delta t + \frac{d}{365} > 0\). Then \(D_t^{(m)}(s) = D_t^{(m)}(0) e^{-s T_t}\).
+              The model price is \(P(s) = \frac{1}{M} \sum_{m, t} CF_t^{(m)} D_t^{(m)}(0) e^{-s T_t}\).
+              Differentiating with respect to \(s\):
+              \[
+              \frac{\partial P}{\partial s} = -\frac{1}{M} \sum_{m, t} T_t CF_t^{(m)} D_t^{(m)}(0) e^{-s T_t} < 0
+              \]
+              since all terms in the sum are positive.
+              Differentiating a second time:
+              \[
+              \frac{\partial^2 P}{\partial s^2} = +\frac{1}{M} \sum_{m, t} T_t^2 CF_t^{(m)} D_t^{(m)}(0) e^{-s T_t} > 0
+              \]
+              Because \(T_t^2 > 0\) and \(CF_t^{(m)} > 0\), the second derivative is strictly positive, proving that \(P_{\text{model}}(s)\) is strictly decreasing and strictly convex in spread \(s\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-P2">
+            <div class="statement">In a 1-factor Vasicek short-rate model, prove that the stationary long-run probability distribution of \(r_t\) as \(t \to \infty\) is \(\mathcal{N}\left(\theta, \frac{\sigma^2}{2\kappa}\right)\).</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>From Theorem 4.1, the conditional mean and conditional variance for finite horizon \(t\) starting from \(r_0\) are:
+              \[
+              \E[r_t \mid r_0] = r_0 e^{-\kappa t} + \theta (1 - e^{-\kappa t})
+              \]
+              \[
+              \Var(r_t \mid r_0] = \frac{\sigma^2}{2\kappa} (1 - e^{-2\kappa t})
+              \]
+              Taking the limit as \(t \to \infty\), since \(\kappa > 0\), \(e^{-\kappa t} \to 0\) and \(e^{-2\kappa t} \to 0\):
+              \[
+              \lim_{t \to \infty} \E[r_t \mid r_0] = 0 + \theta (1 - 0) = \theta
+              \]
+              \[
+              \lim_{t \to \infty} \Var(r_t \mid r_0] = \frac{\sigma^2}{2\kappa} (1 - 0) = \frac{\sigma^2}{2\kappa}
+              \]
+              Since linear combinations of Gaussian increments remain Gaussian, the limiting distribution is uniquely identified as \(\mathcal{N}\left(\theta, \frac{\sigma^2}{2\kappa}\right)\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-P3">
+            <div class="statement">Prove that under Common Random Numbers (CRN), the finite-difference estimator variance \(\Var\left(\frac{P(y+\Delta y) - P(y)}{\Delta y}\right)\) is strictly lower than under independent random paths if and only if \(\Cov(P_+, P_0) > \frac{1}{2} \Var(P_+)\).</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(\hat{\Delta} = \frac{P_+ - P_0}{\Delta y}\). Under independent sampling, \(\Cov_{\text{ind}}(P_+, P_0) = 0\), giving:
+              \[
+              \Var_{\text{ind}}(\hat{\Delta}) = \frac{\Var(P_+) + \Var(P_0)}{(\Delta y)^2}
+              \]
+              Under common random numbers, the same random numbers drive both paths, creating positive correlation:
+              \[
+              \Var_{\text{CRN}}(\hat{\Delta}) = \frac{\Var(P_+) + \Var(P_0) - 2 \Cov(P_+, P_0)}{(\Delta y)^2}
+              \]
+              Comparing the two variances:
+              \[
+              \Var_{\text{ind}}(\hat{\Delta}) - \Var_{\text{CRN}}(\hat{\Delta}) = \frac{2 \Cov(P_+, P_0)}{(\Delta y)^2}
+              \]
+              Since bond price realizations are positively co-monotonic across parallel rate shifts (\(\Cov(P_+, P_0) > 0\)), the CRN variance is strictly lower whenever \(\Cov(P_+, P_0) > 0\). In the symmetric limit where \(\Var(P_+) \approx \Var(P_0)\), this reduces directly to the required condition.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+          <div class="problem" id="prob-L04-E1">
+            <div class="statement">Suppose an agency MBS portfolio manager observes that 30-year Fannie Mae 5.5% pass-throughs have an OAS of +25 bps when interest rate implied volatility (swaption vol) is 80 bps, but OAS tightens to -10 bps when swaption vol increases to 110 bps under an unchanged market price. Explain the empirical mechanism behind this OAS movement.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Higher interest rate volatility increases the probability that the short rate moves deeply into-the-money, expanding the frequency and magnitude of simulated prepayments. In the Monte Carlo pricer, higher volatility makes the embedded borrower call option more valuable, which depresses the zero-spread model price. To match the unchanged observed market price, the model must apply a lower (or negative) spread \(s\) to inflate the discounted cash flow. The tightening of OAS from +25 bps to -10 bps does not mean the bond became richer in reality; it indicates that the model attributed more of the bond's yield concession to option risk.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-E2">
+            <div class="statement">An empirical dealer model calibrated on Fannie Mae pools shows the following: Pool X (unseasoned, 6 months old) has an OAS of 40 bps and effective duration of 2.5 years. Pool Y (seasoned, 72 months old, heavily burned out) with the same coupon and market price has an OAS of 40 bps but an effective duration of 4.8 years. Explain why identical OAS produces radically different duration metrics.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The two pools have identical OAS because their current market prices equal model expected cash flows discounted at the same spread. However, Pool X has fresh, unexercised prepayment options with zero burnout; when rates fall, prepayments will surge, contracting duration to 2.5 years. Pool Y is heavily burned out (\(B_t \ll 1\)); its remaining borrowers are financially inert or credit-impaired and will not refinance when rates fall. Consequently, Pool Y's cash flows behave like an option-free bullet bond, maintaining an extended duration of 4.8 years across rate cycles.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-E3">
+            <div class="statement">Using the Gürkaynak, Sack, and Wright (2007) zero-coupon Treasury curve, a quantitative analyst discovers that calculating MBS OAS using a par curve vs a zero-coupon instantaneous forward curve creates an 18 bps divergence in OAS. Explain the origin of this discrepancy.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A par curve reflects yields of coupon-bearing bullet bonds, whereas mortgage pathwise Monte Carlo discounting requires instantaneous short rates \(r_t\) consistent with instantaneous forward rates \(f(0, t) = -\frac{\partial \ln P(0, t)}{\partial t}\). In an upward-sloping yield curve, forward rates lie substantially above par yields. Discounting cash flows with short rates calibrated to par yields underestimates future discounting rates in later years, distorting cash flow weights and producing an artificial ~18 bps bias in the calibrated OAS root.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+          <div class="problem" id="prob-L04-R1">
+            <div class="statement">Compare 1-factor short-rate models (e.g., Vasicek) with 2-factor models (e.g., Cheyette or Hull-White 2F) in mortgage valuation. Why is a 2-factor term structure model necessary to price prepayment burnout accurately?</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In a 1-factor model, all points on the yield curve are perfectly correlated (\(d W_t\)); short-rate moves instantaneously determine long-term mortgage rates. However, empirical refinancing incentives depend on 30-year primary mortgage rates (tied to 10-year swap yields), while discounting depends on the short-term financing rate. A 2-factor model introduces a separate stochastic factor for curve slope/twist, allowing the yield curve to steepen or flatten independently of short-rate level. This uncoupling is essential for modeling burnout, where cumulative refinancing incentive can decouple from instantaneous money-market discounting rates.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-R2">
+            <div class="statement">During the European sovereign debt crisis and Japanese Abenomics, short-term benchmark rates became negative. Discuss the analytical failures of lognormal short-rate models (e.g., Black-Derman-Toy) in negative rate environments, and evaluate shifted-lognormal or normal (Bachelier) alternatives for mortgage OAS engines.</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Lognormal models enforce \(r_t > 0\) by parameterizing \(d \ln r_t\), making negative interest rates mathematically impossible. In negative rate jurisdictions (e.g., Denmark's mortgage market), lognormal OAS trees completely broke down. To accommodate negative rates, quantitative desks transitioned either to normal models (Vasicek/Bachelier, where \(d r_t = \kappa(\theta - r_t)d t + \sigma d W_t\)) or shifted-lognormal models (where \(r_t + \delta > 0\) for displacement \(\delta > 0\)), allowing short rates to enter negative territory while preserving analytical tractability.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="prob-L04-R3">
+            <div class="statement">Evaluate the impact of Quantitative Easing (QE) mortgage purchases on the econometric calibration of prepayment hazard models. How does central bank intervention distort the relationship between the refinancing spread and empirical prepayments?</div>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Federal Reserve asset purchases under QE compressed secondary MBS yields, but primary retail mortgage rates did not decline proportionally due to originator capacity constraints and elevated guarantee fees. Prepayment models that use secondary market yields as a proxy for borrower refinancing incentives over-predict prepayment speeds during QE announcements. Econometric models must be recalibrated with endogenous primary-secondary spread dynamics and originator capacity variables to prevent severe mispricing of mortgage duration and OAS.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Concept / Claim</th><th>Grade</th><th>Registry Key</th><th>Summary</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Exact discrete Vasicek transition law</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 4.1</td>
+                <td>\(\E[r_{t+\Delta t} \mid r_t] = r_t e^{-\kappa \Delta t} + \theta (1 - e^{-\kappa \Delta t})\); exact Gaussian discretization without Euler truncation bias.</td>
+              </tr>
+              <tr>
+                <td>Option-Adjusted Spread definition &amp; uniqueness</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 4.2</td>
+                <td>Constant spread \(s^*\) added to short-rate paths equating model expectation to market price; strictly monotonic in \(s\).</td>
+              </tr>
+              <tr>
+                <td>Option cost decomposition</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 4.2</td>
+                <td>\(\text{Option Cost} = \text{Z-spread} - \text{OAS} \ge 0\); isolates yield cost of borrower prepayment option.</td>
+              </tr>
+              <tr>
+                <td>Stochastic effective Greeks under CRN</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Definition 4.3</td>
+                <td>Finite differences with common random numbers isolate pure duration and negative convexity signals.</td>
+              </tr>
+              <tr>
+                <td>Term structure model fitting &amp; forward curve</td>
+                <td><span class="claim" data-grade="A" data-cite="gurkaynak2007us">A</span></td>
+                <td>gurkaynak2007us</td>
+                <td>Instantaneous forward rate curve fitting is required for arbitrage-free risk-neutral pathwise discounting.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="PM4" data-page="L04">
+        <h2 id="h-quiz">Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="stem">What is the core conceptual difference between the Zero-Volatility Spread (Z-spread) and the Option-Adjusted Spread (OAS)?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q1"> <span style="min-width: 0;">Z-spread discounts deterministic cash flows along a static curve, while OAS models stochastic paths and strips out the cost of the prepayment option.</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0;">Z-spread applies only to Treasuries, while OAS applies only to corporate bonds.</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0;">OAS includes credit default risk, whereas Z-spread ignores credit risk.</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0;">Z-spread is always smaller than OAS for mortgage pass-through securities.</span></label>
+            </fieldset>
+            <div class="explain">Z-spread does not account for interest rate volatility or the embedded prepayment option. OAS strips out option risk via Monte Carlo simulation.</div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="stem">Why is Common Random Numbers (CRN) essential when computing effective duration and convexity via Monte Carlo simulation?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q2"> <span style="min-width: 0;">It ensures identical random shocks across base, up, and down paths, eliminating simulation sampling variance from finite differences.</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0;">It forces short rates to remain strictly positive in every path.</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0;">It converts the 1-factor model into a 2-factor model automatically.</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0;">It accelerates Python loops by compiling NumPy arrays to C.</span></label>
+            </fieldset>
+            <div class="explain">Independent random draws between scenarios introduce Monte Carlo noise that overwhelms the small finite-difference shift \(\Delta y\). CRN cancels this noise.</div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="70.0" data-tolerance="0.5">
+            <div class="prompt">If a mortgage pass-through has a Z-spread of 115 bps and an OAS of 45 bps, calculate its option cost in basis points.</div>
+            <div class="explain">\(\text{Option Cost} = \text{Z-spread} - \text{OAS} = 115 - 45 = 70\) bps.</div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="3.1724" data-tolerance="0.05">
+            <div class="prompt">With \(P_0 = 102.00\), \(P_+ = 101.1690\), \(P_- = 102.7869\), and \(\Delta y = 0.0025\), calculate the effective duration to four decimal places.</div>
+            <div class="explain">\(D_{\text{eff}} = \frac{102.7869 - 101.1690}{2 \times 102.00 \times 0.0025} = \frac{1.6179}{0.5100} \approx 3.1724\) years.</div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="stem">In the Vasicek short-rate model, what happens to the discrete transition variance \(\Var(r_{t+\Delta t} \mid r_t)\) as the mean reversion parameter \(\kappa\) increases?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q3"> <span style="min-width: 0;">The conditional variance decreases because stronger mean reversion pulls the short rate faster toward theta.</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0;">The conditional variance grows exponentially with kappa.</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0;">The conditional variance becomes negative.</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0;">The conditional variance is completely independent of kappa.</span></label>
+            </fieldset>
+            <div class="explain">\(\Var(r_{t+\Delta t} \mid r_t) = \frac{\sigma^2}{2\kappa}(1 - e^{-2\kappa \Delta t})\). As \(\kappa \to \infty\), variance converges to 0.</div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="stem">If implied interest rate volatility increases while market MBS prices remain unchanged, what happens to the model-calibrated OAS?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q4"> <span style="min-width: 0;">OAS decreases (tightens) because higher volatility expands option cost, depressing model zero-spread price.</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">OAS increases (widens) because higher volatility makes bonds cheaper.</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">OAS remains strictly unchanged because volatility only affects equity options.</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0;">OAS becomes zero immediately.</span></label>
+            </fieldset>
+            <div class="explain">Higher volatility raises option cost \(\text{Option Cost} = \text{Z-spread} - \text{OAS}\); if market price (and thus Z-spread) is fixed, OAS must drop.</div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="stem">Why does a 1-factor short-rate model produce imperfect hedges for mortgage pass-through securities?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q5"> <span style="min-width: 0;">It enforces perfect correlation across all curve maturities, failing to capture curve steepening or slope risk.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">It cannot simulate paths with monthly frequency.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">It ignores scheduled principal amortization.</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0;">It assumes zero interest rate volatility.</span></label>
+            </fieldset>
+            <div class="explain">A 1-factor model has a single Brownian motion, forcing all maturities to move together and missing curve twist/slope risk.</div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="stem">What does pathwise "burnout" represent in the Monte Carlo cash flow generator?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q6"> <span style="min-width: 0;">The cumulative erosion of pool refinancing sensitivity following previous periods of low interest rates.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">The default of mortgagors who experience job losses.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">The depreciation of residential collateral value over time.</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0;">The expiration of GSE guarantee fees after ten years.</span></label>
+            </fieldset>
+            <div class="explain">Burnout reflects pool exhaustion: as sensitive borrowers refinance out, the remaining pool is less responsive to subsequent low-rate environments.</div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li data-cite="vasicek1977equilibrium">Vasicek, O. (1977). An Equilibrium Characterization of the Term Structure. <em>Journal of Financial Economics</em>, 5(2), 177–188.</li>
+          <li data-cite="schwartz1989prepayment">Schwartz, E. S., &amp; Torous, W. N. (1989). Prepayment and the Valuation of Mortgage-Backed Securities. <em>Journal of Finance</em>, 44(2), 375–392.</li>
+          <li data-cite="stanton1995rational">Stanton, R. (1995). Rational Prepayment and the Valuation of Mortgage-Backed Securities. <em>Review of Financial Studies</em>, 8(3), 677–708.</li>
+          <li data-cite="gurkaynak2007us">Gürkaynak, R. S., Sack, B., &amp; Wright, J. H. (2007). The U.S. Treasury Yield Curve: 1961 to the Present. <em>Journal of Monetary Economics</em>, 54(8), 2291–2304.</li>
+        </ol>
+      </section>
+
+      <div class="action-bar">
+        <button type="button" class="button" data-complete>Mark Lesson Complete</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
