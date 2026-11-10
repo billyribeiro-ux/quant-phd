@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CR1" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CR1 Project · Atlas A14: credit module</title>
+  <meta name="description" content="Add Merton, Black–Cox and reduced-form pricers, distance to default, and spread decomposition to Atlas, delivering milestone A14.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CR1 Structural &amp; Reduced-Form Credit Models</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="24">
+      <header class="page-head">
+        <p class="eyebrow">CR1 project · 24 hours · autograder</p>
+        <h1>Atlas A14: credit module</h1>
+        <p class="lede">Implement production structural credit pricers (Merton 1974, Black–Cox 1976), reduced-form intensity bond pricing (Duffie–Singleton 1999), simultaneous KMV and Bharath–Shumway distance-to-default estimators, and credit spread decomposition analytics for Atlas.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Worked example</span><p>Lab 1 below: a complete credit valuation workflow computing Merton equity/debt, Black–Cox early default covenants, Duffie–Singleton RMV spreads, naive distance to default, and spread decomposition.</p></div></li>
+          <li><div><span class="rung-title">Completion problem</span><p>Lab 2 below: fill the missing structural option pricing, intensity spread, naive volatility weighting, and spread residual expressions, graded instantly against expected outputs.</p></div></li>
+          <li><div><span class="rung-title">Independent project</span><p>The core specification below: build <code>atlas/credit.py</code> implementing the Atlas A14 contract, autograded across seeds 0 through 49.</p></div></li>
+          <li><div><span class="rung-title">Stretch</span><p>Open-ended credit derivatives extensions in <a href="#stretch">the stretch section</a>, including stochastic volatility jump-diffusion models, multi-factor Cox processes, and continuous-time liquidation fire-sale feedback.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+        <section class="lab" id="lab-CR1-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: complete credit valuation pipeline</h3>
+          <p class="hypothesis">Evaluates a stylized firm to compute Merton equity and debt values, Black-Cox early covenant default probabilities, Duffie-Singleton reduced-form discount prices, Bharath-Shumway naive distance to default, and Huang-Huang spread components.</p>
+          <pre><code class="language-python" data-run>"""Lab CR1-project-1 (Rung 1, Worked Example): Fully solved credit valuation and analytics workflow.
+
+SIMULATED: complete end-to-end demonstration of the Atlas A14 credit engine:
+Merton pricing, Black-Cox first passage, reduced-form intensity pricing,
+distance-to-default estimation, and credit spread decomposition.
+Standard library only; no network.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def norm_cdf(x: float) -&gt; float:
+    """Standard normal cumulative distribution function."""
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def main() -&gt; None:
+    # Stylized firm parameters
+    v = 100.0
+    d = 70.0
+    t = 2.0
+    r = 0.04
+    sigma_v = 0.25
+
+    print("Step 1 · Merton (1974) Structural Model Pricing:")
+    vol_sqrt = sigma_v * math.sqrt(t)
+    d1 = (math.log(v / d) + (r + 0.5 * sigma_v * sigma_v) * t) / vol_sqrt
+    d2 = d1 - vol_sqrt
+    equity = v * norm_cdf(d1) - d * math.exp(-r * t) * norm_cdf(d2)
+    debt = v - equity
+    merton_yield = -math.log(debt / d) / t
+    merton_spread_bps = (merton_yield - r) * 10000.0
+    print(f"  Asset Value V = ${v:.2f}, Debt Face D = ${d:.2f}")
+    print(f"  Equity E = ${equity:.2f}, Risky Debt B = ${debt:.2f}")
+    print(f"  Yield = {merton_yield * 100:.2f}%, Credit Spread = {merton_spread_bps:.1f} bp")
+    assert abs(equity + debt - v) &lt; 1e-11
+
+    print("\nStep 2 · Black-Cox (1976) First-Passage Model Pricing:")
+    barrier = 60.0
+    rec = 0.40
+    b = math.log(barrier / v)
+    mu = r - 0.5 * sigma_v**2
+    lam = r + 0.5 * sigma_v**2
+    d_minus = (b - mu * t) / vol_sqrt
+    d_plus = (b + mu * t) / vol_sqrt
+    pd_bc = norm_cdf(d_minus) + math.exp(2.0 * mu * b / (sigma_v**2)) * norm_cdf(d_plus)
+    g1 = math.exp(2.0 * r * b / (sigma_v**2)) * norm_cdf((b + lam * t) / vol_sqrt)
+    g2 = math.exp(-b) * norm_cdf((b - lam * t) / vol_sqrt)
+    bc_debt = d * math.exp(-r * t) * (1.0 - pd_bc) + rec * d * (g1 + g2)
+    bc_spread_bps = (-math.log(bc_debt / d) / t - r) * 10000.0
+    print(f"  Safety Covenant Barrier K = ${barrier:.2f}, Recovery R = {rec:.0%}")
+    print(f"  First-Passage Default Prob = {pd_bc:.4f}, Debt = ${bc_debt:.2f}, Spread = {bc_spread_bps:.1f} bp")
+
+    print("\nStep 3 · Reduced-Form Duffie-Singleton (1999) Intensity Pricing:")
+    hazard_rate = 0.0150
+    p_rmv = math.exp(-(r + hazard_rate * (1.0 - rec)) * t)
+    s_rmv_bps = hazard_rate * (1.0 - rec) * 10000.0
+    print(f"  Default Intensity lambda = {hazard_rate * 10000:.0f} bp")
+    print(f"  RMV Bond Price = {p_rmv:.4f}, RMV Spread = {s_rmv_bps:.1f} bp")
+
+    print("\nStep 4 · Distance-to-Default and Bharath-Shumway Naive Proxy:")
+    obs_e = equity
+    obs_sigma_e = 0.32
+    v_naive = obs_e + d
+    sigma_d = 0.05 + 0.25 * obs_sigma_e
+    sigma_v_naive = (obs_e / v_naive) * obs_sigma_e + (d / v_naive) * sigma_d
+    dd_naive = (math.log(v_naive / d) + (r - 0.5 * sigma_v_naive**2) * t) / (sigma_v_naive * math.sqrt(t))
+    print(f"  Observed Equity = ${obs_e:.2f}, Equity Vol = {obs_sigma_e * 100:.1f}%")
+    print(f"  Naive Asset Value V = ${v_naive:.2f}, Naive Vol = {sigma_v_naive * 100:.2f}%")
+    print(f"  Bharath-Shumway Naive DD = {dd_naive:.2f}, Implied PD = {norm_cdf(-dd_naive):.4f}")
+
+    print("\nStep 5 · Huang &amp; Huang (2012) Spread Decomposition:")
+    market_spread_bps = 140.0
+    pd_10y = 0.0060
+    s_el_bps = -math.log(1.0 - pd_10y * (1.0 - rec)) / t * 10000.0
+    s_crp_bps = s_el_bps * 0.80
+    s_credit_bps = s_el_bps + s_crp_bps
+    s_residual_bps = max(0.0, market_spread_bps - s_credit_bps)
+    print(f"  Market Spread = {market_spread_bps:.1f} bp")
+    print(f"  Expected Loss = {s_el_bps:.1f} bp, Risk Premium = {s_crp_bps:.1f} bp")
+    print(
+        f"  Non-Credit Residual = {s_residual_bps:.1f} bp ({(s_residual_bps / market_spread_bps) * 100:.1f}% of total)"
+    )
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Step 1 · Merton (1974) Structural Model Pricing:
+  Asset Value V = $100.00, Debt Face D = $70.00
+  Equity E = $36.85, Risky Debt B = $63.15
+  Yield = 5.15%, Credit Spread = 114.8 bp
+
+Step 2 · Black-Cox (1976) First-Passage Model Pricing:
+  Safety Covenant Barrier K = $60.00, Recovery R = 40%
+  First-Passage Default Prob = 0.1381, Debt = $59.37, Spread = 423.9 bp
+
+Step 3 · Reduced-Form Duffie-Singleton (1999) Intensity Pricing:
+  Default Intensity lambda = 150 bp
+  RMV Bond Price = 0.9066, RMV Spread = 90.0 bp
+
+Step 4 · Distance-to-Default and Bharath-Shumway Naive Proxy:
+  Observed Equity = $36.85, Equity Vol = 32.0%
+  Naive Asset Value V = $106.85, Naive Vol = 19.55%
+  Bharath-Shumway Naive DD = 1.68, Implied PD = 0.0464
+
+Step 5 · Huang &amp; Huang (2012) Spread Decomposition:
+  Market Spread = 140.0 bp
+  Expected Loss = 18.0 bp, Risk Premium = 14.4 bp
+  Non-Credit Residual = 107.5 bp (76.8% of total)</pre>
+          <p class="interpretation">The worked example confirms exact balance-sheet articulation \(E + B = V\) in Merton pricing, non-zero first-passage default probabilities in Black-Cox, constant intensity spreads under Duffie-Singleton RMV, and that non-credit residuals account for over 75% of investment-grade spreads.</p>
+        </section>
+
+        <section class="lab completion" id="lab-CR1-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: credit pricing and spread decomposition</h3>
+          <p class="hypothesis">Complete the missing analytical expressions for option volatility scaling, call option discounting, RMV spread scaling, naive volatility weighting, and non-credit spread residual.</p>
+          <pre><code class="language-python" data-run>"""Lab CR1-project-2 (Rung 2, Completion): Credit valuation, naive distance to default, and spread decomposition.
+
+SIMULATED: complete solution for the Rung 2 completion problem.
+Calculates Merton debt and equity values, Duffie-Singleton reduced-form spread,
+Bharath-Shumway naive distance to default, and credit spread decomposition.
+Standard library only; no network.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def norm_cdf(x: float) -> float:
+    """Standard normal cumulative distribution function."""
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+
+def main() -> None:
+    # Stylized inputs
+    v = 100.0
+    d = 70.0
+    t = 2.0
+    r = 0.04
+    sigma_v = 0.25
+
+    # Step 1: Merton (1974) option pricing components
+    vol_sqrt = ___
+    d1 = (math.log(v / d) + (r + 0.5 * sigma_v * sigma_v) * t) / vol_sqrt
+    d2 = d1 - vol_sqrt
+    equity = ___
+    debt = v - equity
+    merton_spread = (-math.log(debt / d) / t - r) * 10000.0
+
+    # Step 2: Duffie-Singleton (1999) RMV spread
+    hazard_rate = 0.0150
+    recovery_rate = 0.40
+    rmv_spread = ___
+
+    # Step 3: Bharath-Shumway (2008) naive distance to default
+    obs_e = equity
+    obs_sigma_e = 0.32
+    v_naive = obs_e + d
+    sigma_d = 0.05 + 0.25 * obs_sigma_e
+    sigma_v_naive = ___
+    dd_naive = (math.log(v_naive / d) + (r - 0.5 * sigma_v_naive**2) * t) / (sigma_v_naive * math.sqrt(t))
+
+    # Step 4: Credit spread decomposition (Huang & Huang 2012)
+    market_spread_bps = 140.0
+    pd = 0.0060
+    s_el = -math.log(1.0 - pd * (1.0 - recovery_rate)) / t * 10000.0
+    s_crp = s_el * 0.80
+    s_credit = s_el + s_crp
+    s_residual = ___
+
+    print(f"Merton equity: ${equity:.2f}, debt: ${debt:.2f}, spread: {merton_spread:.1f} bp")
+    print(f"Duffie-Singleton RMV credit spread: {rmv_spread:.1f} bp")
+    print(f"Bharath-Shumway naive DD: {dd_naive:.2f}")
+    print(f"Spread decomposition: EL={s_el:.1f} bp, CRP={s_crp:.1f} bp, Residual={s_residual:.1f} bp")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Merton equity: $36.85, debt: $63.15, spread: 114.8 bp
+Duffie-Singleton RMV credit spread: 90.0 bp
+Bharath-Shumway naive DD: 1.68
+Spread decomposition: EL=18.0 bp, CRP=14.4 bp, Residual=107.5 bp</pre>
+          <p class="interpretation">Solving the completion problem validates the exact formulas for Black-Scholes call option equity pricing, Duffie-Singleton RMV intensity discounting, Bharath-Shumway naive volatility aggregation, and Huang-Huang spread residual decomposition.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec" style="overflow-wrap: anywhere; word-break: break-word;">
+          <dt>Context</dt>
+          <dd>A quantitative credit trading desk requires an institutional-grade pricing and analytics engine for corporate debt, default forecasting, and credit spread relative-value strategies. The engine must value zero-coupon debt under terminal default (Merton 1974) and continuous covenant first-passage (Black–Cox 1976), price defaultable discount bonds under reduced-form jump intensities (Duffie–Singleton 1999), estimate physical distances to default via simultaneous KMV root-finding and the Bharath–Shumway (2008) closed-form naive predictor, and decompose observed corporate spreads into expected loss, risk premium, and non-credit residual components (Huang &amp; Huang 2012).</dd>
+
+          <dt>Inputs</dt>
+          <dd>Simulated and market parameters passed to module functions in <code>atlas/credit.py</code>: firm asset values \(V > 0\), debt face values \(D > 0\), debt maturities \(T > 0\), risk-free interest rates \(r\), asset volatilities \(\sigma_V > 0\), covenant barriers \(0 &lt; K \le V\), default intensities \(\lambda \ge 0\), recovery fractions \(R \in [0, 1]\), observed equity capitalizations \(E > 0\), equity return volatilities \(\sigma_E > 0\), physical expected asset returns \(\mu\), and market yield spreads \(s \ge 0\).</dd>
+
+          <dt>Required outputs</dt>
+          <dd>Implement exactly the six functions specified in <a href="../../../atlas/A14.contract.html">atlas/A14.contract.md</a> inside <code>atlas/credit.py</code>:
+            <ul>
+              <li><code>merton_price(asset_value, debt_face, maturity, risk_free_rate, asset_volatility) -&gt; dict[str, float]</code></li>
+              <li><code>black_cox_price(asset_value, debt_face, maturity, risk_free_rate, asset_volatility, barrier, recovery_rate) -&gt; dict[str, float]</code></li>
+              <li><code>reduced_form_price(maturity, risk_free_rate, hazard_rate, recovery_rate, convention) -&gt; dict[str, float]</code></li>
+              <li><code>merton_distance_to_default(equity_value, debt_face, maturity, risk_free_rate, equity_volatility, expected_return) -&gt; dict[str, float]</code></li>
+              <li><code>bharath_shumway_naive_dd(equity_value, debt_face, maturity, risk_free_rate, equity_volatility, expected_return) -&gt; dict[str, float]</code></li>
+              <li><code>credit_spread_decomposition(market_spread, default_prob, recovery_rate, maturity, risk_premium_ratio) -&gt; dict[str, float]</code></li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>Pure Python and NumPy only (no SciPy, no scikit-learn, no network access, no disk I/O outside tests). All calculations must be fully deterministic. Every function must validate input domains, types, and dimensions, raising <code>ValueError</code> with descriptive messages when constraints are violated and <code>TypeError</code> on incompatible input types. Functions must never print, log, or mutate input arguments.</dd>
+
+          <dt>Grading</dt>
+          <dd>Graded by autograder: the automated test suite <code>test_project.py</code> exercises all mathematical identities, comparative statics, boundary conditions, numerical inversion tolerances, and input validation across 50 random seeds (0 to 49).</dd>
+        </dl>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>The project autograder runs locally and in the browser via Pyodide. Your submission is tested against 50 independent seeds generated by <code>instance.py</code>.</p>
+        <section class="grader-panel" id="grader" data-unit="CR1" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="atlas/credit.py" data-starter="starter.py" data-packages="numpy"></section>
+      </section>
+
+      <section id="budget">
+        <h2 id="h-budget">Time budget</h2>
+        <div class="table-wrap"><table id="hours">
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Hours</th>
+              <th>Rationale</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Structural models implementation (Merton 1974, Black-Cox 1976)</td>
+              <td>6.0</td>
+              <td>Implement equity call option valuation, balance sheet articulation, first-passage density integration, and early covenant default pricing.</td>
+            </tr>
+            <tr>
+              <td>Reduced-form intensity bond pricer (Duffie-Singleton 1999)</td>
+              <td>4.0</td>
+              <td>Implement RMV and RFV defaultable zero-coupon bond pricing formulas, hazard discounting, and credit spread curves.</td>
+            </tr>
+            <tr>
+              <td>Distance-to-default KMV inversion &amp; Bharath-Shumway naive proxy</td>
+              <td>6.0</td>
+              <td>Implement 2D root-finding inversion of simultaneous Merton system and closed-form naive distance-to-default estimator.</td>
+            </tr>
+            <tr>
+              <td>Credit spread decomposition (Huang &amp; Huang 2012)</td>
+              <td>4.0</td>
+              <td>Implement decomposition into expected loss, credit risk premium, and non-credit residual across rating classes.</td>
+            </tr>
+            <tr>
+              <td>Test suite verification &amp; seed robustness</td>
+              <td>4.0</td>
+              <td>Verify strict pytest pass across 50 consecutive seeds, kill all 5 mutants, and ensure clean static typing.</td>
+            </tr>
+            <tr>
+              <td><strong>Total</strong></td>
+              <td><strong>24.0</strong></td>
+              <td>Sum of all components equals declared project study hours.</td>
+            </tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Stretch extensions</h2>
+        <p>After completing milestone A14, consider these doctoral-level extensions for quantitative credit portfolio management:</p>
+        <ol>
+          <li><strong>Endogenous coupon restructuring:</strong> Extend Leland (1994) to dynamic capital structure models with debt renegotiation, junior mezzanine debt layers, and strategic default games between debtholders and equityholders.</li>
+          <li><strong>Multivariate default correlation:</strong> Implement copula-based joint first-passage models (Li 2000) and correlated Cox intensity models to price credit default swap (CDS) tranches and first-to-default basket options.</li>
+          <li><strong>Microstructure liquidity filtering:</strong> Combine high-frequency corporate bond trade prints (TRACE) with structural model valuations to filter transitory microstructure noise from permanent credit deterioration shocks.</li>
+        </ol>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="merton1974pricing">Merton, R. C. (1974). On the Pricing of Corporate Debt: The Risk Structure of Interest Rates. <em>The Journal of Finance</em>, 29(2), 449–470.</li>
+          <li data-cite="black1976valuing">Black, F., &amp; Cox, J. C. (1976). Valuing Corporate Securities: Some Effects of Bond Indenture Provisions. <em>The Journal of Finance</em>, 31(2), 351–367.</li>
+          <li data-cite="leland1994corporate">Leland, H. E. (1994). Corporate Debt Value, Bond Covenants, and Optimal Capital Structure. <em>The Journal of Finance</em>, 49(4), 1213–1252.</li>
+          <li data-cite="jarrow1995pricing">Jarrow, R. A., &amp; Turnbull, S. M. (1995). Pricing Derivatives on Financial Securities Subject to Credit Risk. <em>The Journal of Finance</em>, 50(1), 53–85.</li>
+          <li data-cite="duffie1999modeling">Duffie, D., &amp; Singleton, K. J. (1999). Modeling Term Structures of Defaultable Bonds. <em>The Review of Financial Studies</em>, 12(4), 687–720.</li>
+          <li data-cite="bharath2008forecasting">Bharath, S. T., &amp; Shumway, T. (2008). Forecasting Default with the Merton Distance to Default Model. <em>The Review of Financial Studies</em>, 21(3), 1339–1369.</li>
+          <li data-cite="collindufresne2001determinants">Collin-Dufresne, P., Goldstein, R. S., &amp; Martin, J. S. (2001). The Determinants of Credit Spread Changes. <em>The Journal of Finance</em>, 56(6), 2177–2207.</li>
+          <li data-cite="huang2012much">Huang, J.-Z., &amp; Huang, M. (2012). How Much of the Corporate-Treasury Yield Spread Is Due to Credit Risk? <em>Review of Asset Pricing Studies</em>, 2(2), 153–202.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
