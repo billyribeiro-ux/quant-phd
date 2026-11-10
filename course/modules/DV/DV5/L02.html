@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="DV5" data-page="L02" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DV5.L02 · Model-Free Implied Volatility &amp; VIX Construction</title>
+  <meta name="description" content="Model-free implied volatility, official Cboe VIX construction methodology, discrete option strike selection, zero-bid truncation rules, and 30-day interpolation. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">DV5 Variance Risk Premium</a><span class="sep">›</span>
+      <span>L02 VIX Construction</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">Lesson 02 · 8 study hours · Introduces vix-construction</p>
+        <h1>Model-Free Implied Volatility &amp; VIX Construction</h1>
+        <p class="why-it-matters">Before 2003, the benchmark volatility index (VXO) inverted the Black–Scholes formula on at-the-money options, baking in the false assumption of constant volatility. Modern VIX constructs model-free implied volatility directly from market prices across the entire strike curve via discretized static replication. Understanding this index construction reveals how market makers aggregate out-of-the-money option quotes, handle discrete strike intervals, enforce zero-bid cutoff rules, and interpolate across expirations to price 30-day forward risk-neutral variance.</p>
+        <ul class="meta-row">
+          <li><strong>Introduces:</strong> <a class="concept" data-concept="vix-construction" href="#def-vix-construction">vix-construction</a></li>
+          <li><strong>Prerequisites:</strong> <a class="concept" data-concept="variance-swap" href="L01.html#def-variance-swap">variance-swap</a>, <a class="concept" data-concept="variance-static-replication" href="L01.html#def-variance-static-replication">variance-static-replication</a>, <a class="concept" data-concept="volatility-smile" href="../DV2/L01.html#def-volatility-smile">volatility-smile</a></li>
+        </ul>
+      </header>
+
+      <section id="vix-evolution">
+        <h2 id="h-vix-evolution">1. From Black–Scholes Inversion to Model-Free Variance</h2>
+        <p>In 1993, the Chicago Board Options Exchange (Cboe) introduced the original Volatility Index (ticker VXO), designed by Robert Whaley. VXO inverted the Black–Scholes formula from eight at-the-money S&amp;P 100 (OEX) put and call options. As documented by <span class="claim" data-grade="A" data-cite="carr2008variance" data-locator="Sec. 1">Carr &amp; Wu (2009)</span>, this approach suffered from two fatal theoretical flaws: (1) it assumed the lognormal diffusion of Black–Scholes while attempting to quantify the very smile deviations that disprove it, and (2) it completely ignored the pricing of out-of-the-money tail crash risk.</p>
+
+        <p>In September 2003, Cboe overhauled the index in collaboration with Goldman Sachs, moving to the S&amp;P 500 (SPX) index and implementing the continuous <a class="concept" data-concept="variance-static-replication" href="L01.html#def-variance-static-replication">static replication of variance</a> derived in Lesson 1.</p>
+
+        <div class="block definition">
+          <p><strong>Definition 2.1 (VIX Construction).</strong> The <dfn id="def-vix-construction" data-concept="vix-construction">VIX construction</dfn> is the Cboe methodology that calculates 30-day model-free implied volatility by discretizing the continuous log-contract static replication integral over out-of-the-money S&amp;P 500 option prices across two consecutive expiration terms, interpolating linearly in variance to a constant 30-day maturity.</p>
+        </div>
+      </section>
+
+      <section id="discretization-formula">
+        <h2 id="h-discretization-formula">2. The Single-Term Discretization Formula</h2>
+        <p>For a single option expiration with time to maturity \(T\), continuous risk-neutral expected variance is approximated by a discrete sum over listed option strikes:</p>
+
+        <div class="block theorem">
+          <p><span class="block-title claim" data-grade="T">Theorem 2.1 (Cboe Model-Free Implied Variance Formula).</span> The annualized model-free implied variance \(\sigma^2\) for a single maturity \(T\) is given by the exact operational Cboe formula:</p>
+          \[
+          \sigma^2 = \frac{2}{T} e^{r T} \sum_{i} \frac{\Delta K_i}{K_i^2} Q(K_i) - \frac{1}{T}\left(\frac{F}{K_0} - 1\right)^2
+          \]
+          <p>where \(F\) is the forward index price, \(K_0\) is the first strike below \(F\), \(K_i\) is the strike of the \(i\)-th out-of-the-money option, \(\Delta K_i\) is the strike interval, and \(Q(K_i)\) is the midpoint quote for the option at strike \(K_i\).</p>
+        </div>
+
+        <div class="block proof">
+          <p><em>Proof sketch.</em> Recall from Theorem 1.2 the continuous static replication identity with reference cutoff \(S_* = K_0\):</p>
+          \[
+          \mathbb{E}^{\mathbb{Q}}\left[ -2 \ln\left(\frac{S_T}{K_0}\right) \right] = -2\left(\frac{F - K_0}{K_0}\right) + 2 e^{r T} \left[ \int_0^{K_0} \frac{P(K)}{K^2} dK + \int_{K_0}^\infty \frac{C(K)}{K^2} dK \right]
+          \]
+          <p>Applying a second-order Taylor expansion to the forward log drift around \(F = K_0\):</p>
+          \[
+          -2\ln\left(\frac{F}{K_0}\right) = -2\ln\left(1 + \frac{F - K_0}{K_0}\right) = -2\left[\frac{F - K_0}{K_0} - \frac{1}{2}\left(\frac{F - K_0}{K_0}\right)^2 + \mathcal{O}\left(\left(\frac{F - K_0}{K_0}\right)^3\right)\right]
+          \]
+          <p>Subtracting \(-2\ln(F / K_0)\) from both sides and dividing by \(T\) eliminates the linear term, isolating the second-order adjustment \(-\frac{1}{T}(F/K_0 - 1)^2\). Discretizing the continuous strike integrals via the trapezoidal midpoint rule \(\int f(K) dK \approx \sum_i \Delta K_i f(K_i)\) yields the exact Cboe formula. \(\blacksquare\)</p>
+        </div>
+
+        <h3>Operational Strike Selection and Filtering Rules</h3>
+        <p>The Cboe white paper establishes four strict procedural steps to compute \(\sigma^2\):</p>
+        <ol>
+          <li><strong>Forward Price Determination:</strong> Identify the strike \(K\) where the absolute difference between call and put mid-quotes \(|C(K) - P(K)|\) is minimized. The forward price is computed via put-call parity:
+            \[
+            F = K + e^{r T}\left(C(K) - P(K)\right)
+            \]
+          </li>
+          <li><strong>Selection of Cutoff Strike \(K_0\):</strong> Select \(K_0\) as the highest listed strike less than or equal to forward price \(F\). At \(K_0\), the contract is evaluated using the average of the call and put mid-quotes: \(Q(K_0) = \frac{1}{2}\left(C(K_0) + P(K_0)\right)\).</li>
+          <li><strong>Option Chain Truncation (Zero-Bid Rule):</strong>
+            <ul>
+              <li>Below \(K_0\): select out-of-the-money puts (\(K_i &lt; K_0\)). Proceed downwards towards lower strikes. Once <em>two consecutive strikes</em> exhibit a bid price of zero, terminate the put chain; all deeper out-of-the-money puts are discarded.</li>
+              <li>Above \(K_0\): select out-of-the-money calls (\(K_i &gt; K_0\)). Proceed upwards towards higher strikes. Once two consecutive strikes exhibit a bid price of zero, terminate the call chain.</li>
+            </ul>
+          </li>
+          <li><strong>Strike Interval \(\Delta K_i\):</strong> Defined via the midpoint trapezoidal rule:
+            \[
+            \Delta K_i = \begin{cases}
+            K_2 - K_1 &amp; i = 1 \text{ (lowest strike)} \\
+            \frac{K_{i+1} - K_{i-1}}{2} &amp; 1 &lt; i &lt; m \text{ (intermediate strikes)} \\
+            K_m - K_{m-1} &amp; i = m \text{ (highest strike)}
+            \end{cases}
+            \]
+          </li>
+        </ol>
+      </section>
+
+      <section id="constant-maturity-interpolation">
+        <h2 id="h-constant-maturity-interpolation">3. 30-Day Constant Maturity Interpolation</h2>
+        <p>Standard SPX options expire only on specific dates (historically the third Friday of each month, now supplemented by daily and weekly expirations). Because the time to expiration fluctuates continuously, the VIX index interpolates between a <em>near-term</em> expiration \(T_1\) and a <em>next-term</em> expiration \(T_2\) to target an exact constant maturity of 30 days (\(N_{30} = 43{,}200\) minutes):</p>
+        \[
+        VIX = 100 \times \sqrt{\left\{ T_1 \sigma_1^2 \left[\frac{N_{T_2} - N_{30}}{N_{T_2} - N_{T_1}}\right] + T_2 \sigma_2^2 \left[\frac{N_{30} - N_{T_1}}{N_{T_2} - N_{T_1}}\right] \right\} \times \frac{N_{365}}{N_{30}}}
+        \]
+        <p>where \(N_{T_1}\) and \(N_{T_2}\) are the exact number of minutes to expiration for terms 1 and 2, and \(N_{365} = 525{,}600\) minutes. If the near-term contract has less than 8 days to expiration, Cboe rolls to the subsequent expiration to avoid extreme microstructure noise and pin risk in expiring options.</p>
+      </section>
+
+      <section id="vix-replication-lab">
+        <h2 id="h-vix-replication-lab">4. Inline Lab: Replicating VIX from an Option Chain</h2>
+        <p>In this lab, we execute the exact Cboe VIX replication algorithm on an embedded simulated two-term option chain.</p>
+
+        <section class="lab" id="lab-DV5-L02-1" data-runtime="python">
+          <h3>Lab 2 · Model-free implied volatility &amp; VIX replication</h3>
+          <p class="hypothesis">Executing Cboe VIX replication on an embedded two-term SPX option chain (T1=24 days, T2=31 days, SIMULATED) yields term implied volatilities of 11.2053% and 11.3058%, interpolating to an annualized 30-day constant-maturity VIX Index value of 11.2943.</p>
+          <pre><code class="language-python" data-run>"""Lab 2 · Model-Free Implied Volatility &amp; VIX Replication.
+
+This lab implements the official Cboe VIX methodology on an embedded
+two-term SPX option chain (SIMULATED), computes forward index levels F1 and F2,
+strike intervals Delta K, near-term and next-term implied variances, and
+interpolates to the 30-day constant-maturity VIX Index value.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def calculate_term_variance(
+    options: list[tuple[float, str, float, float]],  # (strike, type, bid, ask)
+    forward: float,
+    rate: float,
+    maturity: float,
+) -&gt; tuple[float, float, int]:
+    """Compute annualized model-free implied variance for a single expiry term."""
+    # Organize quotes by strike
+    strikes_data: dict[float, dict[str, float]] = {}
+    for k, opt_type, bid, ask in options:
+        if k not in strikes_data:
+            strikes_data[k] = {}
+        mid = 0.5 * (bid + ask)
+        strikes_data[k][f"{opt_type}_bid"] = bid
+        strikes_data[k][f"{opt_type}_ask"] = ask
+        strikes_data[k][f"{opt_type}_mid"] = mid
+
+    sorted_strikes = sorted(strikes_data.keys())
+    strikes_below = [k for k in sorted_strikes if k &lt;= forward]
+    k0 = max(strikes_below)
+
+    selected_quotes: dict[float, float] = {}
+
+    # ATM strike K0: average of put and call mid quotes
+    call_mid = strikes_data[k0].get("call_mid", 0.0)
+    put_mid = strikes_data[k0].get("put_mid", 0.0)
+    if call_mid &gt; 0.0 and put_mid &gt; 0.0:
+        selected_quotes[k0] = 0.5 * (call_mid + put_mid)
+    else:
+        selected_quotes[k0] = max(call_mid, put_mid)
+
+    # OTM Puts below K0
+    for k in reversed([k for k in sorted_strikes if k &lt; k0]):
+        bid = strikes_data[k].get("put_bid", 0.0)
+        mid = strikes_data[k].get("put_mid", 0.0)
+        if bid &lt;= 0.0:
+            break
+        if mid &gt; 0.0:
+            selected_quotes[k] = mid
+
+    # OTM Calls above K0
+    for k in [k for k in sorted_strikes if k &gt; k0]:
+        bid = strikes_data[k].get("call_bid", 0.0)
+        mid = strikes_data[k].get("call_mid", 0.0)
+        if bid &lt;= 0.0:
+            break
+        if mid &gt; 0.0:
+            selected_quotes[k] = mid
+
+    valid_k = sorted(selected_quotes.keys())
+    m = len(valid_k)
+
+    # Calculate Delta K
+    integral_sum = 0.0
+    exp_rt = math.exp(rate * maturity)
+    for i in range(m):
+        k = valid_k[i]
+        if i == 0:
+            dk = valid_k[1] - valid_k[0]
+        elif i == m - 1:
+            dk = valid_k[m - 1] - valid_k[m - 2]
+        else:
+            dk = 0.5 * (valid_k[i + 1] - valid_k[i - 1])
+        q_mid = selected_quotes[k]
+        integral_sum += (dk / (k * k)) * exp_rt * q_mid
+
+    sigma_sq = (2.0 / maturity) * integral_sum - (1.0 / maturity) * ((forward / k0 - 1.0) ** 2)
+    return sigma_sq, k0, m
+
+
+def main() -&gt; None:
+    print("=== Cboe Model-Free Implied Volatility (VIX) Replication ===")
+    r = 0.025  # 2.5% risk-free rate
+
+    # Embedded Near-Term Chain: T1 = 24 days (SIMULATED)
+    t1 = 24.0 / 365.0
+    f1 = 4503.20
+    near_chain: list[tuple[float, str, float, float]] = [
+        (4350.0, "put", 12.10, 12.50),
+        (4400.0, "put", 20.40, 20.90),
+        (4450.0, "put", 33.20, 33.80),
+        (4500.0, "put", 52.10, 52.80),
+        (4500.0, "call", 54.30, 55.00),
+        (4550.0, "call", 28.40, 28.90),
+        (4600.0, "call", 12.60, 13.00),
+        (4650.0, "call", 4.30, 4.60),
+    ]
+
+    # Embedded Next-Term Chain: T2 = 31 days (SIMULATED)
+    t2 = 31.0 / 365.0
+    f2 = 4505.40
+    next_chain: list[tuple[float, str, float, float]] = [
+        (4350.0, "put", 18.20, 18.70),
+        (4400.0, "put", 27.60, 28.20),
+        (4450.0, "put", 41.50, 42.20),
+        (4500.0, "put", 60.80, 61.60),
+        (4500.0, "call", 65.10, 65.90),
+        (4550.0, "call", 37.40, 38.00),
+        (4600.0, "call", 19.80, 20.30),
+        (4650.0, "call", 8.90, 9.30),
+    ]
+
+    sigma1_sq, k0_1, n1 = calculate_term_variance(near_chain, f1, r, t1)
+    sigma2_sq, k0_2, n2 = calculate_term_variance(next_chain, f2, r, t2)
+
+    vol1 = 100.0 * math.sqrt(max(0.0, sigma1_sq))
+    vol2 = 100.0 * math.sqrt(max(0.0, sigma2_sq))
+
+    print(f"Near-Term Expiry (T1={t1 * 365:.1f} days):")
+    print(f"  Forward F1={f1:.2f}, K0={k0_1:.1f}, Strikes Used={n1}")
+    print(f"  Sigma1^2={sigma1_sq:.6f}, Term Vol={vol1:.4f}%")
+
+    print(f"\nNext-Term Expiry (T2={t2 * 365:.1f} days):")
+    print(f"  Forward F2={f2:.2f}, K0={k0_2:.1f}, Strikes Used={n2}")
+    print(f"  Sigma2^2={sigma2_sq:.6f}, Term Vol={vol2:.4f}%")
+
+    # 30-Day Constant Maturity Interpolation
+    n_t1 = 24.0 * 1440.0
+    n_t2 = 31.0 * 1440.0
+    n_30 = 30.0 * 1440.0
+    n_365 = 365.0 * 1440.0
+
+    w1 = (n_t2 - n_30) / (n_t2 - n_t1)
+    w2 = (n_30 - n_t1) / (n_t2 - n_t1)
+
+    interpolated_var = (t1 * sigma1_sq * w1 + t2 * sigma2_sq * w2) * (n_365 / n_30)
+    vix = 100.0 * math.sqrt(max(0.0, interpolated_var))
+
+    print("\n30-Day Interpolation:")
+    print(f"  Weight T1 (w1)={w1:.4f}, Weight T2 (w2)={w2:.4f}")
+    print(f"  30-Day Annualized Variance={interpolated_var:.6f}")
+    print(f"  Replicated VIX Index={vix:.4f}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">=== Cboe Model-Free Implied Volatility (VIX) Replication ===
+Near-Term Expiry (T1=24.0 days):
+  Forward F1=4503.20, K0=4500.0, Strikes Used=7
+  Sigma1^2=0.012556, Term Vol=11.2053%
+
+Next-Term Expiry (T2=31.0 days):
+  Forward F2=4505.40, K0=4500.0, Strikes Used=7
+  Sigma2^2=0.012782, Term Vol=11.3058%
+
+30-Day Interpolation:
+  Weight T1 (w1)=0.1429, Weight T2 (w2)=0.8571
+  30-Day Annualized Variance=0.012756
+  Replicated VIX Index=11.2943</pre>
+          <p class="interpretation">The output confirms the exact operational mechanics of the VIX Index: the near-term term receives weight w1 = 0.1429 while the next-term receives weight w2 = 0.8571, synthesizing an exact 30-day forward risk-neutral volatility benchmark free of Black–Scholes modeling assumptions.</p>
+        </section>
+      </section>
+
+      <section id="canon-breaks">
+        <h2 id="h-canon-breaks">5. Where the Canon Breaks: Truncation Bias &amp; Settlement Distortions</h2>
+        <p>While elegant in theory, model-free implied volatility implementation encounters critical microstructural distortions in real market environments.</p>
+
+        <div class="block remark">
+          <p><strong>Remark 2.1 (The Zero-Bid Truncation Wedge).</strong> The Cboe rule terminating the option chain after two consecutive zero bids creates an asymmetric truncation bias. In calm markets, deep OTM put bids are positive, allowing inclusion of strikes down to 50% moneyness. In fast-moving selloffs or overnight sessions, market maker quotes widen and far OTM put bids collapse to zero. Truncating these strikes abruptly removes high-weight \(1/K^2\) terms, causing the calculated VIX index to <em>understate</em> true expected variance during severe distress.</p>
+        </div>
+
+        <div class="block remark">
+          <p><strong>Remark 2.2 (Special Opening Quotation Manipulation Concerns).</strong> Monthly VIX futures and options settle against a Special Opening Quotation (SOQ, ticker VIXS) calculated from the opening auction prices of constituent SPX options on the third Friday morning. Because constituent out-of-the-money options have low liquidity, researchers and regulators have scrutinized whether trading firms execute aggressive one-way auction orders at out-of-the-money strikes to distort the SOQ settlement print without moving the underlying S&amp;P 500 cash index.</p>
+        </div>
+      </section>
+
+      <section id="misconceptions">
+        <h2 id="h-misconceptions">6. Misconceptions</h2>
+        <ul class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">The VIX Index represents an expectation of future stock market direction.</p>
+            <p><strong>Why it is wrong:</strong> The VIX Index is purely a measure of risk-neutral expected variance \(\mathbb{E}^{\mathbb{Q}}\left[\frac{1}{T}\int_0^T \sigma_t^2 dt\right]\). While empirically correlated with market drops due to the leverage effect and risk aversion, VIX itself is directionally symmetric: a market that is expected to explode upwards by 10% daily would generate high VIX prints identical to a market crashing by 10% daily.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">VIX is computed by averaging the Black–Scholes implied volatilities of near-the-money options.</p>
+            <p><strong>Why it is wrong:</strong> Modern VIX completely dispenses with the Black–Scholes model. It is a model-free Riemann sum over out-of-the-money option prices weighted by \(1/K^2\). Black–Scholes implied volatility appears nowhere in the VIX calculation.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">You can buy and hold the VIX Index as a spot asset.</p>
+            <p><strong>Why it is wrong:</strong> The VIX Index is an uninvestable mathematical statistic, not a traded asset. To obtain exposure, investors must trade VIX futures or options, which trade at forward prices reflecting futures roll carry (contango or backwardation), often resulting in severe negative roll yields for static long-volatility holders.</p>
+          </li>
+        </ul>
+      </section>
+
+      <section id="problems">
+        <h2 id="h-problems">7. Problem Set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="prob-m1">
+            <p class="prompt">An option chain for \(T = 30 / 365\) has forward level \(F = 4015.20\). Available strikes are listed at increments of 25. Identify \(K_0\), and calculate the second-order forward drift adjustment term \(-\frac{1}{T}\left(\frac{F}{K_0} - 1\right)^2\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The highest listed strike less than or equal to \(F = 4015.20\) is \(K_0 = 4000.00\). The forward ratio is \(\frac{F}{K_0} = \frac{4015.20}{4000.00} = 1.0038\). The difference is \(\frac{F}{K_0} - 1 = 0.0038\). Squaring yields \((0.0038)^2 = 0.00001444\). Dividing by \(T = 30 / 365 \approx 0.082192\) gives the drift adjustment: \(-\frac{0.00001444}{0.082192} \approx -0.0001757\) (or \(-1.76\) variance points).</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-m2">
+            <p class="prompt">Suppose two expiration terms have times to maturity of \(N_{T_1} = 25\) days (\(36{,}000\) minutes) and \(N_{T_2} = 34\) days (\(48{,}960\) minutes). The calculated single-term variances are \(\sigma_1^2 = 0.0350\) and \(\sigma_2^2 = 0.0380\). Calculate the 30-day interpolated VIX index value.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The 30-day target is \(N_{30} = 43{,}200\) minutes. The interpolation weights are \(w_1 = \frac{48960 - 43200}{48960 - 36000} = \frac{5760}{12960} \approx 0.4444\) and \(w_2 = \frac{43200 - 36000}{12960} = \frac{7200}{12960} \approx 0.5556\). The term maturities in years are \(T_1 = 25 / 365 \approx 0.068493\) and \(T_2 = 34 / 365 \approx 0.093151\). The interpolated variance is \(\sigma_{30}^2 = \left(T_1 \sigma_1^2 w_1 + T_2 \sigma_2^2 w_2\right) \times \frac{365}{30} = (0.068493 \times 0.0350 \times 0.4444 + 0.093151 \times 0.0380 \times 0.5556) \times 12.1667 = (0.001065 + 0.001967) \times 12.1667 = 0.003032 \times 12.1667 \approx 0.03689\). The VIX index is \(100 \times \sqrt{0.03689} \approx 19.21\).</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-m3">
+            <p class="prompt">Calculate the strike interval \(\Delta K_i\) for a strike grid consisting of listed strikes \([3800, 3850, 3900, 3950, 4000, 4025, 4050]\). Identify where the grid spacing changes and report \(\Delta K\) for \(K = 3800\), \(K = 3950\), and \(K = 4000\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For the lowest strike \(K = 3800\), \(\Delta K_1 = 3850 - 3800 = 50.0\). For intermediate strike \(K = 3950\), \(\Delta K = \frac{4000 - 3900}{2} = \frac{100}{2} = 50.0\). At \(K = 4000\), the upper strike is 4025 while the lower is 3950, so \(\Delta K = \frac{4025 - 3950}{2} = \frac{75}{2} = 37.5\). The midpoint rule smoothly accommodates changing strike increments.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="prob-p1">
+            <p class="prompt">Prove that the Cboe midpoint weighting formula \(\Delta K_i = \frac{K_{i+1} - K_{i-1}}{2}\) corresponds exactly to the composite trapezoidal integration rule for arbitrary non-uniform strike partitions.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under composite trapezoidal integration, the integral over \([K_1, K_m]\) is \(\int_{K_1}^{K_m} f(K) dK \approx \sum_{i=1}^{m-1} \frac{f(K_i) + f(K_{i+1})}{2}(K_{i+1} - K_i)\). Regrouping terms by the evaluated function values \(f(K_i)\): the term \(f(K_1)\) receives coefficient \(\frac{K_2 - K_1}{2}\); the highest term \(f(K_m)\) receives coefficient \(\frac{K_m - K_{m-1}}{2}\); and each intermediate term \(f(K_i)\) for \(1 &lt; i &lt; m\) receives coefficient \(\frac{K_i - K_{i-1}}{2} + \frac{K_{i+1} - K_i}{2} = \frac{K_{i+1} - K_{i-1}}{2}\). This exactly matches the Cboe definition of \(\Delta K_i\).</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-p2">
+            <p class="prompt">Prove that in the limit as strike spacing \(\Delta K \to 0\) and strike bounds extend to \((0, \infty)\), the single-term Cboe implied variance converges to the risk-neutral expectation of continuous realized variance \(\frac{1}{T}\mathbb{E}^{\mathbb{Q}}\left[\int_0^T \sigma_t^2 dt\right]\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>As the partition mesh size \(\max \Delta K_i \to 0\), the discrete sum \(\sum_i \frac{\Delta K_i}{K_i^2} e^{r T} Q(K_i)\) converges to the Riemann integral \(e^{r T}\left[\int_0^{K_0} \frac{P(K)}{K^2} dK + \int_{K_0}^\infty \frac{C(K)}{K^2} dK\right]\). By Theorem 1.2, this integral replicates \(\mathbb{E}[-\ln(S_T / K_0) + (S_T - K_0)/K_0]\). Adding the second-order forward drift term \(-\frac{1}{T}(F/K_0 - 1)^2\) cancels the forward expansion error up to \(\mathcal{O}((F - K_0)^3)\). When \(K_0 \to F\), this exactly recovers \(\frac{2}{T}\mathbb{E}^{\mathbb{Q}}\left[\int_0^T \frac{dS_t}{S_t} - \ln\frac{S_T}{S_0}\right] = \frac{1}{T}\mathbb{E}^{\mathbb{Q}}\left[\int_0^T \sigma_t^2 dt\right]\) by Theorem 1.1.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-p3">
+            <p class="prompt">Prove that omitting an out-of-the-money call option with strike \(K_{\text{call}} = 2 F_0\) introduces an absolute truncation error in implied variance that is bounded by \(\frac{2 e^{r T}}{T K_{\text{call}}}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For any call option, the price is strictly upper-bounded by the forward price discounted: \(C(K) \le e^{-r T} F_0\). The omitted upper tail integral is \(\int_{K_{\text{call}}}^\infty \frac{C(K)}{K^2} dK \le e^{-r T} F_0 \int_{K_{\text{call}}}^\infty \frac{1}{K^2} dK = e^{-r T} \frac{F_0}{K_{\text{call}}}\). Scaling by the Cboe multiplier \(\frac{2}{T} e^{r T}\), the maximum truncation error from strikes above \(K_{\text{call}}\) is \(\frac{2}{T} \frac{F_0}{K_{\text{call}}}\). For \(K_{\text{call}} = 2 F_0\), this bound is \(\frac{1}{T}\), which decays rapidly as strikes extend further into the wings.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="prob-e1">
+            <p class="prompt">During the market open on an expiration morning, an anomalous wide quote appears for strike \(K = 3000\) on the S&amp;P 500 (\(F = 4000\)): bid = \(\$0.00\), ask = \(\$5.00\). Explain whether this option is included in the VIX calculation and quantify the impact on replicated variance if the option was included at mid \(\$2.50\) with \(\Delta K = 50\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under the Cboe zero-bid rule, if the bid is \(\$0.00\), the option's mid-quote is not included. If two consecutive zero bids occur, the entire lower wing is truncated. If this option were incorrectly included with mid \(\$2.50\), its contribution to the variance sum would be \(\frac{\Delta K}{K^2} Q(K) = \frac{50}{(3000)^2} \times 2.50 = \frac{125}{9{,}000{,}000} \approx 1.389 \times 10^{-5}\). Multiplied by \(\frac{2}{0.0822} \approx 24.33\), this single phantom quote would inflate annualized variance by \(0.000338\) (\(3.38\) variance points, or \(\sim 0.38\) VIX index points), illustrating why zero-bid filtering is essential.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-e2">
+            <p class="prompt">Carr &amp; Wu (2009) document that the term structure of VIX futures is in contango (upward sloping) approximately 80% of the time. Explain the economic mechanism driving this contango and its consequences for long-volatility exchange-traded products.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>As analyzed by Carr &amp; Wu (2009, p. 1315), VIX futures reflect the risk-neutral expectation of future 30-day implied variance plus a negative variance risk premium. Because investors pay a premium for forward crash protection, forward VIX futures trade at a premium to spot VIX (\(F_{\text{VIX}} &gt; \text{VIX}_{\text{spot}}\)), creating contango. Exchange-traded products that maintain constant 30-day long VIX futures exposure (such as VXX) must constantly roll from cheaper near-month to more expensive next-month contracts, suffering devastating 'negative roll yield' that typically erodes 50% to 80% of capital annually during calm markets.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-e3">
+            <p class="prompt">Compare the VIX index level computed using S&amp;P 500 standard monthly options (SPX) versus end-of-day weekly options (SPXW). What causes systematic pricing discrepancies between Wednesday and Friday expirations?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Standard SPX options settle on the Friday morning open (AM settlement) via the Special Opening Quotation, reflecting overnight gap risk and auction order flow. Weekly options (SPXW) settle on the Friday afternoon close (PM settlement) directly against the closing cash index. Because AM-settled options embed weekend and overnight gap risk, they historically traded at a slight volatility premium over PM-settled options. Today, Cboe uses PM-settled SPXW options for daily maturities, aligning pricing with continuous cash trading.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="prob-r1">
+            <p class="prompt">Analyze the 'VIX manipulation' debate (Griffin &amp; Shams 2018). How could an institutional market participant execute a profitable settlement manipulation using out-of-the-money option auction orders, and what structural changes did Cboe implement to mitigate this risk?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Griffin &amp; Shams (2018) argued that because VIX futures settle at the Special Opening Quotation (SOQ), a trader holding a large expiring long VIX futures position could submit aggressive market-on-open buy orders for deep out-of-the-money SPX options during the Friday morning auction. Due to illiquidity and the \(1/K^2\) weighting kernel, small capital outlays in OTM options could artificially inflate the SOQ, generating profits on the larger VIX futures position. In response, Cboe implemented an enhanced auction mechanism (the VIX Settlement Auction) that aggregates liquidity, applies price collars, and matches auction orders with rigorous trade surveillance.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-r2">
+            <p class="prompt">How does the corridor implied volatility index (such as Cboe Cvx) differ from standard VIX? What mathematical advantages does truncation at a fixed corridor provide in terms of estimator variance?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Corridor implied volatility truncates the strike integration to a bounded interval around the forward (e.g., strikes with Black–Scholes delta between 0.10 and 0.90). This eliminates the unstable deep out-of-the-money wings where quotes are noisy, bid-ask spreads are wide, and zero-bid truncation introduces jump discontinuities. While corridor volatility is slightly lower than full model-free volatility, it exhibits significantly lower sample variance and is virtually immune to wing quote manipulation.</p>
+            </details>
+          </div>
+          <div class="problem" id="prob-r3">
+            <p class="prompt">Formulate a model-free implied skewness and kurtosis index using higher-order powers of the log contract. Cite Bakshi, Kapadia &amp; Madan (2003) and state the required option strike weighting kernels.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Bakshi, Kapadia &amp; Madan (2003) generalized static replication to higher moments of the terminal log price \(R = \ln(S_T / S_0)\). Quadratic contract: \(R^2\) has kernel \(g''(K) = \frac{2(1 - \ln(K/S_0))}{K^2}\). Cubic contract (skewness): \(R^3\) has kernel \(g''(K) = \frac{6\ln(K/S_0) - 3(\ln(K/S_0))^2}{K^2}\). Quartic contract (kurtosis): \(R^4\) has kernel \(g''(K) = \frac{12(\ln(K/S_0))^2 - 4(\ln(K/S_0))^3}{K^2}\). Cboe uses these exact kernels to construct the Cboe SKEW Index, measuring perceived tail risk in the U.S. equity market.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="h-key-results">Key Results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr>
+                <th>Result / Claim</th>
+                <th>Grade</th>
+                <th>Key Citation / Basis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Model-free implied variance discretization formula \(\sigma^2 = \frac{2}{T}\sum \frac{\Delta K_i}{K_i^2} e^{r T} Q(K_i) - \frac{1}{T}(F/K_0 - 1)^2\)</td>
+                <td><span class="claim" data-grade="A" data-cite="carr2008variance" data-locator="Sec. 1">A</span></td>
+                <td>Cboe VIX whitepaper; Carr &amp; Wu (2009)</td>
+              </tr>
+              <tr>
+                <td>Convergence of discrete Cboe formula to risk-neutral expected variance</td>
+                <td><span class="claim" data-grade="T">T</span></td>
+                <td>Theorem 2.1; Problem P2</td>
+              </tr>
+              <tr>
+                <td>30-day constant-maturity minute interpolation formula</td>
+                <td><span class="claim" data-grade="A" data-cite="carr2008variance" data-locator="p. 1314">A</span></td>
+                <td>Cboe VIX methodology</td>
+              </tr>
+              <tr>
+                <td>Zero-bid truncation rule creates downward volatility bias in illiquid selloffs</td>
+                <td><span class="claim" data-grade="A" data-cite="carr2008variance" data-locator="Sec. 1">A</span></td>
+                <td>Carr &amp; Wu (2009); Remark 2.1</td>
+              </tr>
+              <tr>
+                <td>VIX futures contango structure and negative roll yield for long-volatility ETPs</td>
+                <td><span class="claim" data-grade="A" data-cite="carr2008variance" data-locator="p. 1315">A</span></td>
+                <td>Carr &amp; Wu (2009); Problem E2</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="DV5" data-page="L02">
+        <h2 id="h-quiz">Retrieval Quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">How is the forward price \(F\) determined in the official Cboe VIX calculation?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q1"> <span style="min-width: 0; word-break: break-word;">From put-call parity at the strike where \(|C(K) - P(K)|\) is minimized</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0; word-break: break-word;">From the closing price of the active front-month futures contract</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0; word-break: break-word;">By compounding spot cash index at the risk-free rate \(S_0 e^{r T}\)</span></label>
+              <label class="option"><input type="radio" name="q1"> <span style="min-width: 0; word-break: break-word;">By taking the volume-weighted average price of all strikes</span></label>
+            </fieldset>
+            <div class="explain"><p>Cboe finds the strike with minimal call-put price difference and computes \(F = K + e^{r T}(C - P)\) via put-call parity to reflect actual option implied forward levels.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What option quote is evaluated at the reference strike \(K_0\) in the VIX formula?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q2"> <span style="min-width: 0; word-break: break-word;">The average of the call mid-quote and the put mid-quote</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0; word-break: break-word;">Only the call mid-quote</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0; word-break: break-word;">Only the put mid-quote</span></label>
+              <label class="option"><input type="radio" name="q2"> <span style="min-width: 0; word-break: break-word;">The minimum of the call and put ask quotes</span></label>
+            </fieldset>
+            <div class="explain"><p>At \(K_0\), the option is split evenly between put and call, using \(Q(K_0) = \frac{1}{2}(C(K_0) + P(K_0))\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is Cboe's rule for truncating the option chain when moving into the out-of-the-money wings?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q3"> <span style="min-width: 0; word-break: break-word;">Terminate the chain after two consecutive strikes with a bid price of zero</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0; word-break: break-word;">Terminate when the ask price falls below \(\$0.05\)</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0; word-break: break-word;">Cut off strikes beyond \(\pm 20\%\) moneyness</span></label>
+              <label class="option"><input type="radio" name="q3"> <span style="min-width: 0; word-break: break-word;">Include all listed strikes regardless of bid size</span></label>
+            </fieldset>
+            <div class="explain"><p>Cboe truncates out-of-the-money puts and calls once two consecutive strikes have a bid of zero, preventing illiquid phantom quotes from distorting the index.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">For an intermediate strike \(K_i\), how is the strike interval \(\Delta K_i\) computed?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q4"> <span style="min-width: 0; word-break: break-word;">\(\Delta K_i = \frac{K_{i+1} - K_{i-1}}{2}\)</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0; word-break: break-word;">\(\Delta K_i = K_{i+1} - K_i\)</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0; word-break: break-word;">\(\Delta K_i = K_i - K_{i-1}\)</span></label>
+              <label class="option"><input type="radio" name="q4"> <span style="min-width: 0; word-break: break-word;">\(\Delta K_i = \frac{K_{i+1} + K_{i-1}}{2}\)</span></label>
+            </fieldset>
+            <div class="explain"><p>The composite trapezoidal midpoint rule requires \(\Delta K_i = \frac{K_{i+1} - K_{i-1}}{2}\) for all intermediate strikes.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What target constant maturity does the VIX index target?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q5"> <span style="min-width: 0; word-break: break-word;">30 calendar days (\(43{,}200\) minutes)</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0; word-break: break-word;">21 trading days (\(30{,}240\) minutes)</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0; word-break: break-word;">90 calendar days (\(129{,}600\) minutes)</span></label>
+              <label class="option"><input type="radio" name="q5"> <span style="min-width: 0; word-break: break-word;">1 year (\(525{,}600\) minutes)</span></label>
+            </fieldset>
+            <div class="explain"><p>VIX standardizes volatility to an exact 30-day horizon (\(30 \times 1440 = 43{,}200\) minutes).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">If the near-term contract has fewer than 8 days to expiration, how does Cboe adjust the calculation?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q6"> <span style="min-width: 0; word-break: break-word;">It rolls to the subsequent contract to avoid pinning effects and near-expiry noise</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0; word-break: break-word;">It switches to Black–Scholes at-the-money implied volatility</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0; word-break: break-word;">It halts VIX calculation until the contract expires</span></label>
+              <label class="option"><input type="radio" name="q6"> <span style="min-width: 0; word-break: break-word;">It extrapolates backwards from next-term variance</span></label>
+            </fieldset>
+            <div class="explain"><p>To minimize expiry pin risk and extreme vega gamma shifts in the final week, Cboe rolls when near-term days to expiry falls below 8.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why did the old VXO index fail to accurately reflect market tail risk?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q7"> <span style="min-width: 0; word-break: break-word;">It sampled only at-the-money options, ignoring the steep implied volatility skew in out-of-the-money puts</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0; word-break: break-word;">It used uncentered realized returns instead of implied volatility</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0; word-break: break-word;">It was calculated only once per week</span></label>
+              <label class="option"><input type="radio" name="q7"> <span style="min-width: 0; word-break: break-word;">It sampled interest rates rather than equity options</span></label>
+            </fieldset>
+            <div class="explain"><p>VXO inverted Black–Scholes on ATM options alone, ignoring out-of-the-money options where crash risk and skewness are priced.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does maintaining a static long position in VIX futures typically generate severe negative returns over multi-month horizons?</p>
+            <fieldset style="min-inline-size: 0;"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="q8"> <span style="min-width: 0; word-break: break-word;">The futures curve is in persistent contango, creating a negative roll yield as futures decay toward spot</span></label>
+              <label class="option"><input type="radio" name="q8"> <span style="min-width: 0; word-break: break-word;">Futures contracts require daily cash delivery of physical stock baskets</span></label>
+              <label class="option"><input type="radio" name="q8"> <span style="min-width: 0; word-break: break-word;">The exchange charges a 5% monthly holding penalty</span></label>
+              <label class="option"><input type="radio" name="q8"> <span style="min-width: 0; word-break: break-word;">VIX futures trade in backwardation, forcing negative convexity</span></label>
+            </fieldset>
+            <div class="explain"><p>Contango in VIX futures causes front-month futures to trade above spot and decay over time toward settlement, eroding long ETP capital.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="references">
+        <h2 id="h-references">References</h2>
+        <ol data-references>
+          <li data-cite="carr2008variance">Carr, P., &amp; Wu, L. (2009). <em>Variance Risk Premiums</em>. Review of Financial Studies, 22(3), 1311–1341.</li>
+          <li data-cite="demeterfi1999guide">Demeterfi, K., Derman, E., Kamal, M., &amp; Zou, J. (1999). <em>A Guide to Volatility and Variance Swaps</em>. The Journal of Derivatives, 6(4), 9–32.</li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark Lesson Complete</button></p>
+    </main>
+  </div>
+</body>
+</html>
