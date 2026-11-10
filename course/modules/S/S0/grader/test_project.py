@@ -22,7 +22,7 @@ import pytest  # noqa: E402
 try:
     from atlas.dataquality import profile  # type: ignore[import-not-found]
 except ImportError:
-    from reference import profile  # type: ignore[import-not-found,no-redef]
+    from reference import profile  # type: ignore[import-not-found]
 
 from instance import make_instance  # type: ignore[import-not-found]  # noqa: E402
 

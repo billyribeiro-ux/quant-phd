@@ -22,9 +22,7 @@ def main() -> None:
         prices: list[float] = [float(row["EUR"]) for row in reader if row.get("EUR")]
 
     # Compute daily log returns: r_t = ln(P_t / P_{t-1})
-    rets: list[float] = [
-        math.log(prices[t] / prices[t - 1]) for t in range(1, len(prices))
-    ]
+    rets: list[float] = [math.log(prices[t] / prices[t - 1]) for t in range(1, len(prices))]
     n = len(rets)
 
     # Clean summary statistics

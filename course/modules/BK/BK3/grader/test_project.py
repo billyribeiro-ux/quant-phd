@@ -21,7 +21,10 @@ import os
 from fractions import Fraction
 from typing import Any
 
-import ldi_model as sol  # type: ignore[import-not-found]
+try:
+    import ldi_model as sol  # type: ignore[import-not-found]
+except ImportError:
+    import reference as sol  # type: ignore[import-not-found]
 import pytest
 from instance import make_instance  # type: ignore[import-not-found]
 

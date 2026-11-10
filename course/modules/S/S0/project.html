@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="S0" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project · Atlas A3: Data-Quality Reports · S0 EDA &amp; Visualization</title>
+  <meta name="description" content="Atlas milestone A3 project: building an automated, typed data-quality profiler that audits financial time series for gaps, stale prints, corporate-action breaks, and statistical outliers.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">S0 EDA &amp; Visualization</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="15">
+      <header class="page-head">
+        <p class="eyebrow">Module S0 · Project · 15 hours</p>
+        <h1>Atlas A3: Data-Quality Reports</h1>
+        <p class="lede">Add automated profiling to the Atlas platform, flagging gaps, stale prints, corporate-action breaks, and statistical outliers on any dataset in the store. Deliverable: Atlas at milestone A3 strictly adhering to <code>atlas/A3.contract.md</code>.</p>
+        <ul class="meta-row">
+          <li><strong>Deliverable:</strong> Atlas milestone A3 (<code>src/atlas/dataquality.py</code>)</li>
+          <li><strong>Grading mode:</strong> autograder (deterministic per-seed property suite)</li>
+          <li><strong>Time budget:</strong> 15 hours</li>
+        </ul>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The project ladder</h2>
+        <ol class="ladder">
+          <li>
+            <div>
+              <span class="rung-title">Worked example</span>
+              <p>Step through an annotated implementation of the core profiling engine on a small SIMULATED price trajectory, observing gap tracking, run intervals, split adjustments, and MAD scaling step by step.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Completion problem</span>
+              <p>Complete the core validation, stale run identification, and split-adjusted return routines with inline instant testing.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Independent project</span>
+              <p>Implement the full Atlas milestone A3 specification (<code>profile(dataset, ...)</code>), supporting sequence input validation, ISO calendar sorting, maximal stale runs, corporate action breaks, and MAD outlier detection.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <span class="rung-title">Stretch</span>
+              <p>Apply your profiler to real historical market data (Federal Reserve H.10 FX rates and H.15 Treasury yields), diagnosing COVID March 2020 rate jumps and calendar limitations.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+
+        <section class="lab" id="lab-S0-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked Example: End-to-End Profiler Pipeline</h3>
+          <p class="hypothesis">Walks through full profiling of a toy SIMULATED dataset with planted gaps, a 6-day stale run, an unadjusted corporate break, and a statistical outlier.</p>
+          <pre><code class="language-python" data-run>"""Lab S0-project-1: Rung 1 worked example of Atlas A3 data-quality profiler.
+
+Walks through full end-to-end profiling of a SIMULATED financial series, verifying
+gap detection, stale run identification, corporate-action breaks, and MAD outlier detection.
+All price series are SIMULATED synthetic trajectories.
+"""
+
+from __future__ import annotations
+
+import datetime
+import math
+import statistics
+from collections.abc import Mapping
+from typing import Any
+
+Dataset = Mapping[str, Any]
+
+
+def profile_series(
+    dataset: Dataset,
+    *,
+    stale_run: int = 5,
+    outlier_k: float = 5.0,
+    break_log: float = 0.25,
+) -&gt; dict[str, Any]:
+    """Profile an in-memory dataset mapping adhering to Atlas A3 contract."""
+    name = str(dataset["name"])
+    date_seq = list(dataset["date"])
+    price_seq = list(dataset["price"])
+    n_rows = len(date_seq)
+
+    split_seq = list(dataset.get("split_ratio", [1.0] * n_rows))
+
+    # Gaps and cleaned price values
+    gaps: list[int] = []
+    clean_prices: list[float | None] = []
+    for idx, p in enumerate(price_seq):
+        if p is None or (isinstance(p, float) and math.isnan(p)):
+            gaps.append(idx)
+            clean_prices.append(None)
+        else:
+            clean_prices.append(float(p))
+
+    # Stale runs: maximal runs of length &gt;= stale_run (a gap ends a run)
+    stale_runs: list[tuple[int, int]] = []
+    curr_price: float | None = None
+    curr_start: int | None = None
+    curr_len = 0
+    for idx, p in enumerate(clean_prices):
+        if p is None:
+            if curr_start is not None and curr_len &gt;= stale_run:
+                stale_runs.append((curr_start, idx - 1))
+            curr_price = None
+            curr_start = None
+            curr_len = 0
+        else:
+            if curr_price is not None and p == curr_price:
+                curr_len += 1
+            else:
+                if curr_start is not None and curr_len &gt;= stale_run:
+                    stale_runs.append((curr_start, idx - 1))
+                curr_price = p
+                curr_start = idx
+                curr_len = 1
+    if curr_start is not None and curr_len &gt;= stale_run:
+        stale_runs.append((curr_start, n_rows - 1))
+
+    # Split-adjusted returns: r_t = ln(P_t / P_{t-1}) + ln(split_ratio_t)
+    valid_returns: list[tuple[int, float]] = []
+    for t in range(1, n_rows):
+        p_prev = clean_prices[t - 1]
+        p_curr = clean_prices[t]
+        if p_prev is not None and p_curr is not None:
+            r_t = math.log(p_curr / p_prev) + math.log(float(split_seq[t]))
+            valid_returns.append((t, r_t))
+
+    # Corporate-action breaks vs non-break returns
+    breaks: list[int] = []
+    non_break_returns: list[tuple[int, float]] = []
+    for t, r_t in valid_returns:
+        if abs(r_t) &gt; break_log:
+            breaks.append(t)
+        else:
+            non_break_returns.append((t, r_t))
+
+    # Outliers via median and MAD of non-break returns
+    outliers: list[int] = []
+    if non_break_returns:
+        r_vals = [r for _, r in non_break_returns]
+        m = statistics.median(r_vals)
+        d = statistics.median([abs(r - m) for r in r_vals])
+        threshold = outlier_k * d
+        for t, r_t in non_break_returns:
+            if abs(r_t - m) &gt; threshold:
+                outliers.append(t)
+
+    return {
+        "name": name,
+        "rows": n_rows,
+        "gaps": sorted(gaps),
+        "stale_runs": sorted(stale_runs),
+        "corporate_action_breaks": sorted(breaks),
+        "outliers": sorted(outliers),
+    }
+
+
+def main() -&gt; None:
+    # SIMULATED toy dataset with planted data-quality defects
+    dates = [(datetime.date(2023, 1, 2) + datetime.timedelta(days=i)).isoformat() for i in range(12)]
+    # Row 2 is a gap (None). Rows 4-9 are a stale run of price 50.0 (length 6 &gt;= 5).
+    # Row 10 is an unadjusted corporate break: price drops from 50.0 to 25.0 with split_ratio 1.0 (r_t ~ -0.693).
+    # Row 11 has price 28.0 (an outlier return ~ +0.113 vs normal variation).
+    prices: list[float | None] = [100.0, 101.0, None, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 25.0, 28.0]
+    splits = [1.0] * 12
+
+    dataset: dict[str, Any] = {
+        "name": "SIMULATED_WORKED_EXAMPLE",
+        "date": dates,
+        "price": prices,
+        "split_ratio": splits,
+    }
+
+    report = profile_series(dataset, stale_run=5, outlier_k=4.0, break_log=0.25)
+
+    print(f"Dataset name: {report['name']}")
+    print(f"Total rows: {report['rows']}")
+    print(f"Flagged gaps: {report['gaps']}")
+    print(f"Flagged stale runs: {report['stale_runs']}")
+    print(f"Flagged corporate breaks: {report['corporate_action_breaks']}")
+    print(f"Flagged outliers: {report['outliers']}")
+    print(f"Gap detected at index 2: {report['gaps'] == [2]}")
+    print(f"Stale run detected at (3, 9): {report['stale_runs'] == [(3, 9)]}")
+    print(f"Corporate break at row 10: {report['corporate_action_breaks'] == [10]}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Dataset name: SIMULATED_WORKED_EXAMPLE
+Total rows: 12
+Flagged gaps: [2]
+Flagged stale runs: [(3, 9)]
+Flagged corporate breaks: [10]
+Flagged outliers: [1, 11]
+Gap detected at index 2: True
+Stale run detected at (3, 9): True
+Corporate break at row 10: True</pre>
+          <p class="interpretation">The worked example illustrates the full report schema: gaps are zero-based row indices, stale runs are inclusive (start, end) tuples, and breaks are completely disjoint from statistical outliers.</p>
+        </section>
+
+        <section class="lab completion" id="lab-S0-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion Problem: Core Detection Logic</h3>
+          <p class="hypothesis">Complete the missing expressions marked with <code>___</code> to implement gap identification, maximal stale run length tracking, and split-adjusted return calculation on SIMULATED price quotes.</p>
+          <pre><code class="language-python" data-run>"""Lab S0-project-2: Completion problem solution for core Atlas A3 data-quality algorithms.
+
+Tests core detection logic for gaps, stale runs, split-adjusted log returns,
+and corporate-action breaks on SIMULATED price quotes.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Sequence
+
+
+def flag_gaps(prices: Sequence[float | None]) -> list[int]:
+    """Identify row indices where price is missing (None or NaN)."""
+    gaps: list[int] = []
+    for idx, p in enumerate(prices):
+        if p is None or (isinstance(p, float) and math.isnan(___)):
+            gaps.append(idx)
+    return gaps
+
+
+def flag_stale_runs(prices: Sequence[float | None], stale_run: int = 5) -> list[tuple[int, int]]:
+    """Identify maximal runs of identical non-gap prices of length >= stale_run."""
+    runs: list[tuple[int, int]] = []
+    curr_price: float | None = None
+    curr_start: int | None = None
+    curr_len = 0
+    for idx, p in enumerate(prices):
+        if p is None or (isinstance(p, float) and math.isnan(p)):
+            if curr_start is not None and curr_len >= ___:
+                runs.append((curr_start, idx - 1))
+            curr_price = None
+            curr_start = None
+            curr_len = 0
+        else:
+            val = float(p)
+            if curr_price is not None and val == curr_price:
+                curr_len += 1
+            else:
+                if curr_start is not None and curr_len >= ___:
+                    runs.append((curr_start, idx - 1))
+                curr_price = val
+                curr_start = idx
+                curr_len = 1
+    if curr_start is not None and curr_len >= stale_run:
+        runs.append((curr_start, len(prices) - ___))
+    return runs
+
+
+def compute_split_adjusted_return(
+    p_prev: float,
+    p_curr: float,
+    split_ratio: float = 1.0,
+) -> float:
+    """Compute split-adjusted log return: r_t = ln(P_t / P_{t-1}) + ln(split_ratio_t)."""
+    return math.log(p_curr / p_prev) + math.log(___)
+
+
+def is_corporate_break(r_t: float, break_log: float = 0.25) -> bool:
+    """Return True if absolute split-adjusted log return exceeds break threshold."""
+    return abs(r_t) > ___
+
+
+def main() -> None:
+    # SIMULATED price trajectory
+    quotes: list[float | None] = [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, None, 45.0, 45.0]
+
+    # 1. Identify gaps
+    gaps = flag_gaps(quotes)
+    print(f"Total quotes: {len(quotes)}")
+    print(f"Gaps found: {gaps}")
+
+    # 2. Identify stale runs
+    stale_runs = flag_stale_runs(quotes, stale_run=5)
+    print(f"Stale runs found: {stale_runs}")
+
+    # 3. Check corporate action break on unadjusted price jump
+    r_unadj = compute_split_adjusted_return(100.0, 50.0, 1.0)
+    is_break_unadj = is_corporate_break(r_unadj, break_log=0.25)
+    print(f"Unadjusted return: {r_unadj:.5f}, is_break: {is_break_unadj}")
+
+    # 4. Check explained split
+    r_adj = compute_split_adjusted_return(100.0, 50.0, 2.0)
+    is_break_adj = is_corporate_break(r_adj, break_log=0.25)
+    print(f"Split-adjusted return: {r_adj:.5f}, is_break: {is_break_adj}")
+
+    print(f"Gaps match index 6: {gaps == [6]}")
+    print(f"Stale run covers indices (0, 5): {stale_runs == [(0, 5)]}")
+    print(f"Unadjusted break detected: {is_break_unadj}")
+    print(f"Explained split not flagged: {not is_break_adj}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">Total quotes: 9
+Gaps found: [6]
+Stale runs found: [(0, 5)]
+Unadjusted return: -0.69315, is_break: True
+Split-adjusted return: 0.00000, is_break: False
+Gaps match index 6: True
+Stale run covers indices (0, 5): True
+Unadjusted break detected: True
+Explained split not flagged: True</pre>
+          <p class="interpretation">Filling in the blanks completes the core building blocks required for milestone A3: gap tracking, maximal run length boundaries, and continuous split adjustment.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Rung 3 · Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>Before loading price series into Atlas quantitative backtesting or factor modeling pipelines, data feeds must be automatically audited for corruptions. In milestone A3, you will build <code>atlas.dataquality</code>, an automated profiler that audits in-memory datasets for missing prints, non-trading stale runs, unadjusted corporate-action breaks, and statistical outliers.</dd>
+          <dt>Inputs</dt>
+          <dd>A dataset mapping <code>Dataset = Mapping[str, Any]</code> containing: <code>name</code> (str), <code>date</code> (Sequence[str] in ISO format YYYY-MM-DD, strictly increasing), <code>price</code> (Sequence[float | None], positive finite values, with None or NaN denoting gaps), and optional <code>split_ratio</code> (Sequence[float], positive finite multipliers, default 1.0). Optional keyword parameters: <code>stale_run</code> (int &gt;= 2, default 5), <code>outlier_k</code> (float &gt; 0, default 5.0), and <code>break_log</code> (float &gt; 0, default 0.25).</dd>
+          <dt>Required outputs</dt>
+          <dd>A Python function <code>profile(dataset: Dataset, *, stale_run: int = 5, outlier_k: float = 5.0, break_log: float = 0.25) -&gt; dict[str, Any]</code> exported from <code>src/atlas/dataquality.py</code> returning a dictionary with keys: <code>name</code> (str), <code>rows</code> (int), <code>gaps</code> (list[int]), <code>stale_runs</code> (list[tuple[int, int]]), <code>corporate_action_breaks</code> (list[int]), and <code>outliers</code> (list[int]). All index lists must be sorted ascending with no duplicates.</dd>
+          <dt>Constraints</dt>
+          <dd>Implemented purely using the Python standard library (<code>math</code>, <code>statistics</code>, <code>datetime</code>). Missing required keys, length mismatches, unparseable dates, non-increasing dates, non-positive or non-finite prices, invalid split ratios, invalid tuning parameters, or datasets with zero valid returns must raise <code>ValueError</code>. If the MAD of non-break returns is zero when an outlier test is needed, raise <code>ValueError</code> naming the zero scale. No printing, no warnings, no file I/O, and no in-place mutation of input sequences.</dd>
+          <dt>Grading mode</dt>
+          <dd>The curriculum grades this project by autograder. The solution is evaluated by pytest across 50 consecutive random seeds (0 through 49) checking input validation, gap detection, split adjustment, break classification, MAD scaling, and invariant properties.</dd>
+        </dl>
+      </section>
+
+      <section id="hours">
+        <h2 id="h-hours">Time budget</h2>
+        <div class="table-wrap"><table id="hours-table">
+          <thead>
+            <tr><th>Component</th><th class="num">Hours</th><th>Rationale</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Rung 1 worked example, annotated, read and run</td><td class="num">1.5</td><td>Walk through end-to-end profiling on toy SIMULATED data</td></tr>
+            <tr><td>Rung 2 completion problem, graded instantly</td><td class="num">1.5</td><td>Complete missing detection routines with inline check</td></tr>
+            <tr><td>Input validation: mapping keys, lengths, ISO dates, positive prices</td><td class="num">2.5</td><td>Implement strict validation rules and exception handling</td></tr>
+            <tr><td>Gap and stale-run detection engine</td><td class="num">3.5</td><td>Implement maximal run-length extraction respecting gap boundaries</td></tr>
+            <tr><td>Split-adjusted returns and corporate-action break classification</td><td class="num">3.0</td><td>Compute continuous split returns and filter discrete break steps</td></tr>
+            <tr><td>Median and MAD outlier detection on non-break returns</td><td class="num">3.0</td><td>Calculate non-parametric median and MAD scale with zero-scale check</td></tr>
+            <tr><td><strong>Total</strong></td><td class="num"><strong>15.0</strong></td><td>Sum of project components equals declared 15 study hours</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section id="grader-section">
+        <h2 id="h-grader">Autograder</h2>
+        <p>The autograder evaluates your solution against deterministic test cases generated from your workspace seed.</p>
+        <section class="grader-panel" id="grader" data-unit="S0" data-grader="grader/" data-suite="test_project.py" data-support="instance.py" data-solution="src/atlas/dataquality.py" data-starter="starter.py" data-packages="numpy"></section>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch</h2>
+        <p>Apply your profiler to real historical market data (Federal Reserve H.10 FX rates and H.15 Treasury constant-maturity yields). Notice that calendar dates absent from the table (such as New York bank holidays) do not appear as rows and are therefore not flagged as gaps. Notice also that during the March 2020 COVID shock, 10-year Treasury yields dropped to ~0.50%, causing relative log changes \(\ln(y_t / y_{t-1})\) to exceed the corporate-action break threshold.</p>
+        <section class="lab" id="lab-S0-project-3" data-runtime="python" data-files="fx_daily.csv ust_daily.csv">
+          <h3>Lab 3 · Real-World Profiling on FX and Treasury Data</h3>
+          <p class="hypothesis">Runs the profiling engine on real daily EUR/USD exchange rates and 10-year Treasury yields. Demonstrates detection of real stale prints (e.g. constant yields over 5 consecutive business days) and explains calendar row limitations.</p>
+          <pre><code class="language-python" data-run>"""Lab S0-project-3: Rung 4 stretch lab applying Atlas A3 profiler to real market data.
+
+Applies the profile engine to Federal Reserve H.10 daily FX rates (EUR/USD) and H.15 Treasury
+constant-maturity yields. Demonstrates real-world stale run detection, the calendar limitation
+(absent holiday rows are not flagged as gaps), and low-yield relative log step sensitivity.
+Data sources:
+- Board of Governors of the Federal Reserve System, G.5/H.10 Foreign Exchange Rates (2026-10-19)
+- Board of Governors of the Federal Reserve System, H.15 Selected Interest Rates (2026-10-20)
+"""
+
+from __future__ import annotations
+
+import csv
+import math
+import statistics
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+Dataset = Mapping[str, Any]
+
+
+def profile_market_series(
+    dataset: Dataset,
+    *,
+    stale_run: int = 5,
+    outlier_k: float = 5.0,
+    break_log: float = 0.25,
+) -&gt; dict[str, Any]:
+    """Pure implementation of Atlas A3 profile engine for project stretch evaluation."""
+    name = str(dataset["name"])
+    date_seq = list(dataset["date"])
+    price_seq = list(dataset["price"])
+    n_rows = len(date_seq)
+    split_seq = list(dataset.get("split_ratio", [1.0] * n_rows))
+
+    gaps: list[int] = []
+    clean_prices: list[float | None] = []
+    for idx, p in enumerate(price_seq):
+        if p is None or (isinstance(p, float) and math.isnan(p)):
+            gaps.append(idx)
+            clean_prices.append(None)
+        else:
+            clean_prices.append(float(p))
+
+    stale_runs: list[tuple[int, int]] = []
+    curr_price: float | None = None
+    curr_start: int | None = None
+    curr_len = 0
+    for idx, p in enumerate(clean_prices):
+        if p is None:
+            if curr_start is not None and curr_len &gt;= stale_run:
+                stale_runs.append((curr_start, idx - 1))
+            curr_price = None
+            curr_start = None
+            curr_len = 0
+        else:
+            if curr_price is not None and p == curr_price:
+                curr_len += 1
+            else:
+                if curr_start is not None and curr_len &gt;= stale_run:
+                    stale_runs.append((curr_start, idx - 1))
+                curr_price = p
+                curr_start = idx
+                curr_len = 1
+    if curr_start is not None and curr_len &gt;= stale_run:
+        stale_runs.append((curr_start, n_rows - 1))
+
+    valid_returns: list[tuple[int, float]] = []
+    for t in range(1, n_rows):
+        p_prev = clean_prices[t - 1]
+        p_curr = clean_prices[t]
+        if p_prev is not None and p_curr is not None:
+            r_t = math.log(p_curr / p_prev) + math.log(float(split_seq[t]))
+            valid_returns.append((t, r_t))
+
+    breaks: list[int] = []
+    non_break_returns: list[tuple[int, float]] = []
+    for t, r_t in valid_returns:
+        if abs(r_t) &gt; break_log:
+            breaks.append(t)
+        else:
+            non_break_returns.append((t, r_t))
+
+    outliers: list[int] = []
+    if non_break_returns:
+        r_vals = [r for _, r in non_break_returns]
+        m = statistics.median(r_vals)
+        d = statistics.median([abs(r - m) for r in r_vals])
+        threshold = outlier_k * d
+        for t, r_t in non_break_returns:
+            if abs(r_t - m) &gt; threshold:
+                outliers.append(t)
+
+    return {
+        "name": name,
+        "rows": n_rows,
+        "gaps": sorted(gaps),
+        "stale_runs": sorted(stale_runs),
+        "corporate_action_breaks": sorted(breaks),
+        "outliers": sorted(outliers),
+    }
+
+
+def main() -&gt; None:
+    # 1. Profile FX Daily (EUR/USD spot rate)
+    fx_path = Path("data") / "fx_daily.csv"
+    with fx_path.open(newline="", encoding="utf-8") as f:
+        fx_rows = [row for row in csv.DictReader(f) if row.get("EUR")]
+
+    fx_dataset: dict[str, Any] = {
+        "name": "FX_EUR_USD",
+        "date": [r["date"] for r in fx_rows],
+        "price": [float(r["EUR"]) for r in fx_rows],
+    }
+    fx_report = profile_market_series(fx_dataset, stale_run=5, outlier_k=5.0, break_log=0.25)
+
+    print(f"FX Daily rows: {fx_report['rows']}")
+    print(f"FX Daily gaps: {len(fx_report['gaps'])}")
+    print(f"FX Daily stale runs: {len(fx_report['stale_runs'])}")
+    print(f"FX Daily corporate breaks: {len(fx_report['corporate_action_breaks'])}")
+    print(f"FX Daily outliers: {len(fx_report['outliers'])}")
+
+    # 2. Profile UST Daily (10-Year CMT yield)
+    ust_path = Path("data") / "ust_daily.csv"
+    with ust_path.open(newline="", encoding="utf-8") as f:
+        ust_rows = [row for row in csv.DictReader(f) if row.get("cmt_10y")]
+
+    ust_dataset: dict[str, Any] = {
+        "name": "UST_10Y_YIELD",
+        "date": [r["date"] for r in ust_rows],
+        "price": [float(r["cmt_10y"]) for r in ust_rows],
+    }
+    ust_report = profile_market_series(ust_dataset, stale_run=5, outlier_k=5.0, break_log=0.25)
+
+    print(f"UST Daily rows: {ust_report['rows']}")
+    print(f"UST Daily gaps: {len(ust_report['gaps'])}")
+    print(f"UST Daily stale runs: {len(ust_report['stale_runs'])}")
+    print(f"UST Daily corporate breaks: {len(ust_report['corporate_action_breaks'])}")
+    print(f"UST Daily outliers: {len(ust_report['outliers'])}")
+
+    # Calendar limitation: no gaps detected because market holidays are omitted from the CSV table
+    print(f"Calendar limitation holds (holiday rows absent): {len(fx_report['gaps']) == 0}")
+    # Real stale prints detected in Treasury series
+    print(f"Stale prints detected in UST series: {len(ust_report['stale_runs']) &gt; 0}")
+    # COVID March 2020 low-yield jumps triggered breaks
+    print(f"Low-yield rate spikes triggered breaks: {len(ust_report['corporate_action_breaks']) &gt; 0}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-4">FX Daily rows: 6706
+FX Daily gaps: 0
+FX Daily stale runs: 0
+FX Daily corporate breaks: 0
+FX Daily outliers: 112
+UST Daily rows: 6690
+UST Daily gaps: 0
+UST Daily stale runs: 2
+UST Daily corporate breaks: 4
+UST Daily outliers: 179
+Calendar limitation holds (holiday rows absent): True
+Stale prints detected in UST series: True
+Low-yield rate spikes triggered breaks: True</pre>
+          <p class="interpretation">The stretch analysis verifies that real market feeds contain genuine stale prints, and illustrates the difference between asset prices (bounded away from zero) and interest rate levels where percentage log changes become volatile near zero.</p>
+        </section>
+      </section>
+
+      <section id="reading">
+        <h2 id="h-reading">Core reading</h2>
+        <ol class="reading-list">
+          <li data-cite="tukey1977exploratory"></li>
+          <li data-cite="anscombe1973graphs"></li>
+          <li data-cite="cleveland1984graphical"></li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s7"><span class="section-number">7</span>References</h2>
+        <ol data-references>
+          <li data-cite="tukey1977exploratory"></li>
+          <li data-cite="anscombe1973graphs"></li>
+          <li data-cite="cleveland1984graphical"></li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">S0 · Exploratory Data Analysis &amp; Visualization · Quant PhD Program</footer>
+</body>
+</html>

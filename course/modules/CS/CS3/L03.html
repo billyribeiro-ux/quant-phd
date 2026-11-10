@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS3" data-page="L03" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L03 · SQL Window Functions · CS3</title>
+  <meta name="description" content="Lesson 3 of CS3: SQL window functions, partition clauses, order specifications, row and range framing, rolling aggregates, and ranking without cardinality collapse. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS3 Data, Databases &amp; SQL</a><span class="sep">›</span>
+      <span>L03</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS3 · Lesson 3 of 8 · 8 study hours</p>
+        <h1>SQL Window Functions</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="relational-model" href="L01.html#def-relational-model">relational model</a>, <a class="concept" data-concept="sql-join" href="L02.html#def-sql-join">SQL joins</a></li>
+          <li><strong>Introduces:</strong> SQL window functions</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Financial time-series modeling requires rolling statistics: running cumulative returns, moving averages of volatility, drawdown peaks, and peer rankings within trading sectors. Classical SQL aggregation with <code>GROUP BY</code> collapses all rows in a group into a single summary row, destroying underlying event history and requiring expensive self-joins to re-attach original timestamps. Window functions perform calculations across a moving frame of related rows while preserving the complete cardinality and individual identity of every record in the relation.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Syntax and Framing Mechanics</h2>
+      <p>Building on the <a class="concept" data-concept="relational-model" href="L01.html#def-relational-model">relational model</a> and <a class="concept" data-concept="sql-join" href="L02.html#def-sql-join">SQL joins</a>, window functions extend relational query engines with ordered partition framing.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.1 <span class="name">(SQL Window Function)</span></span>
+        <p>A <dfn id="def-sql-window-function" data-concept="sql-window-function">SQL window function</dfn> is an operator that computes an aggregate or ranking value over a window partition of rows defined by the <code>OVER</code> clause:
+        \[
+        \text{func}(\text{expr}) \text{ OVER } (\text{PARTITION BY } P \text{ ORDER BY } O \text{ [FRAME]}),
+        \]
+        where:
+        <ul>
+          <li><strong>Partitioning (<code>PARTITION BY P</code>):</strong> Divides the input relation into disjoint partitions sharing identical values of attributes \(P\). If omitted, the entire table forms a single partition.</li>
+          <li><strong>Ordering (<code>ORDER BY O</code>):</strong> Establishes a total or weak ordering of rows within each partition according to expressions \(O\).</li>
+          <li><strong>Window Framing (<code>FRAME</code>):</strong> Specifies the sliding subset of rows within the partition evaluated for the current row (e.g. <code>ROWS BETWEEN k PRECEDING AND CURRENT ROW</code>).</li>
+        </ul></p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 3.1 <span class="name">(ROWS versus RANGE Framing)</span></span>
+        <p>The framing clause dictates how peer rows with identical ordering values are treated:
+        <ul>
+          <li><code>ROWS BETWEEN ...</code>: Defines window boundaries by strictly counting physical row offsets relative to the current row index.</li>
+          <li><code>RANGE BETWEEN ...</code>: Defines window boundaries by logical value offsets relative to the current row's <code>ORDER BY</code> value. Rows with identical ordering values (ties) are grouped together as peers.</li>
+        </ul>
+        In standard SQL, omitting the frame clause when <code>ORDER BY</code> is present defaults to <code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>, which aggregates all duplicate peer rows up to the current row.</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Frame Aggregation Equivalence</h2>
+      <p>Window functions provide dramatic computational speedups over correlated self-joins while expressing mathematically equivalent operations.</p>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 3.1 <span class="name">(Window Frame Self-Join Equivalence)</span></span>
+        <p>Let relation \(R\) have unique primary key \((\text{id})\), partition key \(P\), and monotonically increasing sequence index \(S \in \mathbb{Z}\). For any row \(t \in R\), the window aggregate:
+        \[
+        W(t) = \operatorname{SUM}(V) \text{ OVER } (\text{PARTITION BY } P \text{ ORDER BY } S \text{ ROWS BETWEEN } k \text{ PRECEDING AND CURRENT ROW})
+        \]
+        is mathematically identical to the correlated self-join aggregate:
+        \[
+        J(t) = \sum \{s.V : s \in R \land s.P = t.P \land s.S \in [t.S - k, t.S]\}.
+        \]</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Within any partition defined by \(P = p\), let rows be ordered by sequence index \(S\). The frame specification <code>ROWS BETWEEN k PRECEDING AND CURRENT ROW</code> defines the window for tuple \(t\) with index \(S_t\) as the set of rows \(\{s \in R : s.P = t.P \text{ and the offset between } s \text{ and } t \text{ is in } [0, k]\}\).
+        Because sequence index \(S\) is strictly increasing and dense across consecutive integer rows, the condition that \(s\) is between \(k\) preceding rows and the current row is equivalent to the integer interval \(s.S \in [t.S - k, t.S]\).
+        The window operator computes the sum over this set: \(W(t) = \sum_{s \in \operatorname{Frame}(t)} s.V\).
+        The correlated self-join explicitly joins relation \(R\) with itself on \(s.P = t.P \land s.S \in [t.S - k, t.S]\) and computes the grouped sum \(\sum s.V\).
+        Because the sets of joined rows are identical, their sums are equal for all \(t \in R\): \(W(t) \equiv J(t)\).</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 3.1 <span class="name">(Rolling 3-Day Desk PnL)</span></span>
+        <p>Consider daily trading desk records with daily PnL cents. A rolling 3-day window sum uses:
+        <pre><code class="language-pseudocode">SELECT desk, day_seq, pnl_cents,
+       SUM(pnl_cents) OVER (
+           PARTITION BY desk
+           ORDER BY day_seq
+           ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+       ) AS rolling_3d_pnl
+FROM daily_pnl;</code></pre>
+        For day 3, the window encompasses days 1, 2, and 3 (\(2 \text{ preceding} + \text{current}\)), yielding exactly the sum of PnL across those three days.</p>
+      </div>
+
+      <section class="lab" id="lab-CS3-L03-1" data-runtime="python">
+        <h3>Lab 1 · SQL Window Functions and Frame Aggregations</h3>
+        <p class="hypothesis">Verifies that the SQLite window function rolling sum over (PARTITION BY desk ORDER BY day_seq ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) matches an independent correlated self-join on all rows.</p>
+        <pre><code class="language-python" data-run>"""CS3 Lesson 3 Inline Lab 1: SQL window functions and frame aggregations.
+
+Demonstrates rolling window sum using SQLite OVER (PARTITION BY ... ORDER BY ... ROWS BETWEEN).
+Verifies the rolling aggregate values against an independent self-join reference.
+Data: SIMULATED daily desk PnL records.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+
+
+def main() -&gt; None:
+    conn = sqlite3.connect(":memory:")
+
+    with conn:
+        conn.execute(
+            """
+            CREATE TABLE daily_pnl (
+                desk TEXT NOT NULL,
+                day_seq INT NOT NULL,
+                pnl_cents INT NOT NULL
+            )
+            """
+        )
+
+        # SIMULATED PnL data for two desks over 5 days
+        pnl_records = [
+            ("RATES", 1, 100000),
+            ("RATES", 2, -25000),
+            ("RATES", 3, 50000),
+            ("RATES", 4, 80000),
+            ("RATES", 5, -10000),
+            ("EQUITY", 1, 40000),
+            ("EQUITY", 2, 60000),
+            ("EQUITY", 3, -15000),
+            ("EQUITY", 4, -30000),
+            ("EQUITY", 5, 95000),
+        ]
+        conn.executemany("INSERT INTO daily_pnl VALUES (?, ?, ?)", pnl_records)
+
+    cur = conn.cursor()
+
+    # 1. Compute rolling 3-day sum using SQL window function
+    cur.execute(
+        """
+        SELECT
+            desk,
+            day_seq,
+            pnl_cents,
+            SUM(pnl_cents) OVER (
+                PARTITION BY desk
+                ORDER BY day_seq
+                ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+            ) AS rolling_3d_pnl
+        FROM daily_pnl
+        ORDER BY desk, day_seq
+        """
+    )
+    window_results = cur.fetchall()
+
+    # 2. Compute rolling 3-day sum using independent self-join reference
+    cur.execute(
+        """
+        SELECT
+            a.desk,
+            a.day_seq,
+            a.pnl_cents,
+            SUM(b.pnl_cents) AS ref_rolling_3d_pnl
+        FROM daily_pnl a
+        JOIN daily_pnl b
+          ON a.desk = b.desk
+         AND b.day_seq BETWEEN a.day_seq - 2 AND a.day_seq
+        GROUP BY a.desk, a.day_seq, a.pnl_cents
+        ORDER BY a.desk, a.day_seq
+        """
+    )
+    self_join_results = cur.fetchall()
+
+    print(f"Total evaluated rows: {len(window_results)}")
+    all_matched = True
+    for w_row, s_row in zip(window_results, self_join_results, strict=True):
+        desk, day, pnl, win_sum = w_row
+        ref_desk, ref_day, ref_pnl, ref_sum = s_row
+        assert desk == ref_desk and day == ref_day and pnl == ref_pnl
+        match = win_sum == ref_sum
+        if not match:
+            all_matched = False
+        print(f"Desk {desk} Day {day}: PnL={pnl} -&gt; Rolling 3d Window={win_sum}, Self-join={ref_sum}")
+
+    print(f"Window function matches self-join reference on all rows: {all_matched}")
+    conn.close()
+
+
+if __name__ == "__main__":
+    main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Total evaluated rows: 10
+Desk EQUITY Day 1: PnL=40000 -&gt; Rolling 3d Window=40000, Self-join=40000
+Desk EQUITY Day 2: PnL=60000 -&gt; Rolling 3d Window=100000, Self-join=100000
+Desk EQUITY Day 3: PnL=-15000 -&gt; Rolling 3d Window=85000, Self-join=85000
+Desk EQUITY Day 4: PnL=-30000 -&gt; Rolling 3d Window=15000, Self-join=15000
+Desk EQUITY Day 5: PnL=95000 -&gt; Rolling 3d Window=50000, Self-join=50000
+Desk RATES Day 1: PnL=100000 -&gt; Rolling 3d Window=100000, Self-join=100000
+Desk RATES Day 2: PnL=-25000 -&gt; Rolling 3d Window=75000, Self-join=75000
+Desk RATES Day 3: PnL=50000 -&gt; Rolling 3d Window=125000, Self-join=125000
+Desk RATES Day 4: PnL=80000 -&gt; Rolling 3d Window=105000, Self-join=105000
+Desk RATES Day 5: PnL=-10000 -&gt; Rolling 3d Window=120000, Self-join=120000
+Window function matches self-join reference on all rows: True</pre>
+        <p class="interpretation">The execution demonstrates exact numerical identity between the \(O(N)\) single-pass window function execution and the \(O(N^2)\) self-join reference across all trading desks.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">3</span>Where the Canon Breaks</h2>
+      <p>Window functions present subtle traps in high-volume quantitative architectures:</p>
+      <ul>
+        <li><strong>Silent RANGE Peer Expansion:</strong> Writing <code>SUM(vol) OVER (ORDER BY timestamp)</code> without specifying <code>ROWS</code> defaults to <code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>. If multiple trades share the exact same timestamp millisecond, the window includes all peer rows up to the end of that timestamp group, returning identical inflated sums for all tied rows instead of incremental tick-by-tick progress.</li>
+        <li><strong>Memory Spills on Huge Partitions:</strong> While relational databases compute window functions in a single pass over sorted streams, ranking or framing over giant unpartitioned datasets (e.g. 500 million tick trades) requires global external disk sorting, resulting in massive I/O spills.</li>
+        <li><strong>Non-Filterability in WHERE:</strong> Window functions evaluate during the <code>SELECT</code> projection phase, strictly after the <code>WHERE</code>, <code>GROUP BY</code>, and <code>HAVING</code> clauses have executed. Writing <code>WHERE ROW_NUMBER() = 1</code> is a syntax error; filtering on window values requires wrapping the query in a Common Table Expression (CTE) or subquery.</li>
+      </ul>
+
+      <section id="misconceptions">
+        <h2 id="s4"><span class="section-number">4</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">A window function collapses input rows like a GROUP BY aggregation.</p>
+            <p>Window functions never collapse rows. Every input row in the source relation produces exactly one output row in the result, retaining all original row attributes and timestamps.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">ROWS BETWEEN 1 PRECEDING AND CURRENT ROW is identical to RANGE BETWEEN 1 PRECEDING AND CURRENT ROW.</p>
+            <p>ROWS specifies an offset of exactly 1 physical row in the ordered partition. RANGE specifies an offset of 1 in value space of the ORDER BY column (for instance, 1 day or 1 second), and aggregates all duplicate peer rows sharing the same value.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">You can filter on a window function directly in the WHERE clause of the same query.</p>
+            <p>In the SQL logical query processing pipeline, the <code>WHERE</code> clause executes before window functions are calculated. Filtering on a window function requires a subquery or Common Table Expression (CTE).</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s5"><span class="section-number">5</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+
+          <div class="problem" id="p3-1">
+            <p class="prompt">Given daily returns: Day 1: 0.02, Day 2: -0.01, Day 3: 0.03, Day 4: 0.01. Calculate the rolling 2-day sum using <code>ROWS BETWEEN 1 PRECEDING AND CURRENT ROW</code> for Day 1, 2, 3, and 4.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For Day 1: no preceding row exists, so sum is 0.02. For Day 2: Day 1 + Day 2 = 0.02 + (-0.01) = 0.01. For Day 3: Day 2 + Day 3 = (-0.01) + 0.03 = 0.02. For Day 4: Day 3 + Day 4 = 0.03 + 0.01 = 0.04. Sequence of rolling 2-day sums is: [0.02, 0.01, 0.02, 0.04].</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p3-2">
+            <p class="prompt">A table contains values [10, 20, 20, 30] ordered ascending. State the output sequences for: (a) <code>ROW_NUMBER()</code>; (b) <code>RANK()</code>; and (c) <code>DENSE_RANK()</code>.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>(a) <code>ROW_NUMBER()</code> assigns strictly sequential integers: [1, 2, 3, 4]. (b) <code>RANK()</code> assigns identical ranks to ties and skips subsequent ranks: [1, 2, 2, 4]. (c) <code>DENSE_RANK()</code> assigns identical ranks to ties without skipping: [1, 2, 2, 3].</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p3-3">
+            <p class="prompt">Explain the difference in result between <code>SUM(pnl) OVER (ORDER BY day)</code> and <code>SUM(pnl) OVER (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)</code> when duplicate <code>day</code> values exist.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The first query defaults to <code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>. When duplicate <code>day</code> values exist, all peer rows for that day are included in the sum, producing identical total sums for all peer rows. The second query uses <code>ROWS</code>, incrementally adding each physical row one by one.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+
+          <div class="problem" id="p3-4">
+            <p class="prompt">Prove that for any finite ordered partition of size \(N\), the sum of <code>ROW_NUMBER()</code> values across all rows equals \(\frac{N(N+1)}{2}\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By Definition 3.1, <code>ROW_NUMBER()</code> assigns a strictly bijective mapping from the ordered partition of size \(N\) to the set of integers \(\{1, 2, \dots, N\}\). The sum across all rows is \(\sum_{i=1}^N i\). By mathematical induction or Gauss's pairing argument, \(\sum_{i=1}^N i = \frac{N(N+1)}{2}\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p3-5">
+            <p class="prompt">Prove that for any ordering, <code>DENSE_RANK()</code> is less than or equal to <code>RANK()</code> for every row in a partition.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let rows be ordered \(t_1, \dots, t_N\). For row \(t_i\), <code>RANK()</code> equals \(1 + |\{j < i : t_j.O < t_i.O\}| + |\{j < i : t_j.O = t_i.O\}|\), which is the number of strictly preceding rows plus one. <code>DENSE_RANK()</code> equals \(1 + |\{v \in \operatorname{values}(O) : v < t_i.O\}|\), which counts distinct preceding values. Since the number of distinct values strictly preceding \(t_i.O\) cannot exceed the total number of preceding rows, \(\text{DENSE\_RANK}(t_i) \le \text{RANK}(t_i)\) for all \(i\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p3-6">
+            <p class="prompt">Prove that an incremental sliding window sum over <code>ROWS BETWEEN k PRECEDING AND CURRENT ROW</code> can be computed in \(O(1)\) amortized time per row using a running accumulator.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(S_i = \sum_{j=i-k}^i x_j\) denote the window sum at row \(i\). At step \(i+1\), the new window sum is \(S_{i+1} = \sum_{j=i+1-k}^{i+1} x_j = S_i + x_{i+1} - x_{i-k}\). This recurrence requires exactly one addition and one subtraction per row. Maintaining a circular buffer or pointer of length \(k\) allows retrieving the departing value \(x_{i-k}\) in \(O(1)\) time. Thus, each transition executes in \(O(1)\) time, bounding total runtime for \(N\) rows to \(O(N)\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+
+          <div class="problem" id="p3-7">
+            <p class="prompt">A trading firm queries a 20-day rolling moving average of prices over 10 million trade records. A naive implementation uses a self-join requiring \(10^7 \times 20 = 2 \times 10^8\) row evaluations. The database window function executes in a single streaming pass touching 10 million rows. Calculate the computational speedup factor.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The self-join approach touches \(2 \times 10^8\) rows across its join evaluation, whereas the streaming window function with accumulator touches each row exactly once (\(10^7\) row evaluations). The computational speedup factor is \((2 \times 10^8) / 10^7 = 20.0\)x, directly proportional to the window width.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p3-8">
+            <p class="prompt">A portfolio manager computes maximum drawdown by comparing current portfolio value \(V_t\) to the cumulative maximum \(\max_{s \le t} V_s\). Write the SQL window expression for cumulative peak value and calculate the peak value at Day 4 for values: Day 1: 100, Day 2: 105, Day 3: 102, Day 4: 98.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The SQL window expression is: <code>MAX(value) OVER (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)</code>. Evaluating through time: Day 1 peak = 100; Day 2 peak = \(\max(100, 105) = 105\); Day 3 peak = \(\max(105, 102) = 105\); Day 4 peak = \(\max(105, 98) = 105\). The peak value at Day 4 is 105.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p3-9">
+            <p class="prompt">An equity cross-sectional strategy ranks 3,000 stocks daily by momentum score using <code>DENSE_RANK() OVER (PARTITION BY date ORDER BY momentum_score DESC)</code>. If 50 stocks tie for rank 1, what rank is assigned to the next best performing stock?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Because <code>DENSE_RANK()</code> does not skip rank integers following duplicate ties, all 50 tied top-performing stocks receive rank 1, and the next best performing stock receives rank 2. (If <code>RANK()</code> had been used instead, the next stock would have received rank 51).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+
+          <div class="problem" id="p3-10">
+            <p class="prompt">Analyze the algorithmic complexity difference between offline relational window evaluation (requiring full sort) and online streaming window evaluation using monotonic deques for rolling min/max.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In offline relational engines, evaluating window functions requires a sort step on the partition and order keys taking \(O(N \log N)\) time and \(O(N)\) memory. In online event streaming (e.g., streaming algorithmic market feeds), sorting is impossible. Rolling min/max can be maintained in \(O(1)\) amortized time per incoming tick using a double-ended queue (monotonic deque) that stores index-value pairs in monotonic order, dropping dominated elements.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p3-11">
+            <p class="prompt">Evaluate how window frame boundaries must be defined to prevent look-ahead bias when computing rolling realized volatility for intraday signal generation.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In signal generation, an indicator computed at time \(t\) must depend strictly on information available at or before \(t\). The window frame must be explicitly bounded on the right by <code>CURRENT ROW</code> or <code>1 PRECEDING</code> (e.g., <code>ROWS BETWEEN k PRECEDING AND CURRENT ROW</code>). Centered window frames such as <code>ROWS BETWEEN k PRECEDING AND k FOLLOWING</code> incorporate future observations \(t+1, \dots, t+k\), creating fatal look-ahead bias that invalidates historical backtest realism.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p3-12">
+            <p class="prompt">Discuss why traditional relational query optimizers struggle to parallelize window functions across distributed nodes when queries lack a <code>PARTITION BY</code> clause.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When a query contains <code>PARTITION BY P</code>, independent partition keys can be hashed and routed to distinct worker nodes to evaluate windows in parallel with zero inter-node communication. When <code>PARTITION BY</code> is omitted, the ordering is global. All worker data must shuffle to a single coordinator node to construct the global total order, creating a severe network bandwidth bottleneck and eliminating horizontal scaling benefits.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s6"><span class="section-number">6</span>Key-Results Table</h2>
+        <table class="key-results">
+          <thead>
+            <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Window frame aggregation equivalence: window aggregation equals correlated self-join</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 3.1 (Frame self-join equivalence)</td>
+            </tr>
+            <tr>
+              <td>Incremental sliding window sum recurrence: O(1) amortized update per row</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Problem 3.6 (Running accumulator recurrence)</td>
+            </tr>
+            <tr>
+              <td>Ranking function monotonicity invariant: DENSE_RANK(t) &le; RANK(t) for all rows</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Problem 3.5 (Rank ordering bound)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS3" data-page="L03" data-cards="cards.json">
+        <h2 id="s7"><span class="section-number">7</span>Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does a SQL window function differ from a GROUP BY aggregation in terms of output row count?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q1"> <span>Window functions preserve the original row count; GROUP BY collapses rows</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>Window functions reduce rows to distinct partition keys</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>Window functions double the number of rows</span></label>
+              <label class="option"><input type="radio" name="L03q1"> <span>Window functions only return non-null rows</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Window functions compute aggregated values over a frame while retaining every individual row in the relation.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does the clause <code>ROWS BETWEEN 2 PRECEDING AND CURRENT ROW</code> specify?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q2"> <span>A frame of up to 3 physical rows: the current row and the two preceding rows</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>A frame of rows within 2 units of the numeric value in ORDER BY</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>A frame skipping the first 2 rows of the table</span></label>
+              <label class="option"><input type="radio" name="L03q2"> <span>A frame containing all rows in the partition</span></label>
+            </fieldset>
+            <div class="explain" hidden><p><code>ROWS</code> specifies physical row offsets, so 2 preceding plus current equals 3 rows.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which ranking function produces gapless rank numbers when duplicate ordering values exist?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q3"> <span>DENSE_RANK()</span></label>
+              <label class="option"><input type="radio" name="L03q3"> <span>RANK()</span></label>
+              <label class="option"><input type="radio" name="L03q3"> <span>ROW_NUMBER()</span></label>
+              <label class="option"><input type="radio" name="L03q3"> <span>NTILE()</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>DENSE_RANK() assigns identical ranks to ties without skipping subsequent integers.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="3" data-tolerance="0">
+            <p class="prompt">In a table with values [100, 200, 200, 300], what is the DENSE_RANK() value for 300?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Distinct values are 100 (rank 1), 200 (rank 2), and 300 (rank 3).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the default framing clause when ORDER BY is provided in an OVER clause without an explicit frame?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q5"> <span>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>ROWS BETWEEN 1 PRECEDING AND CURRENT ROW</span></label>
+              <label class="option"><input type="radio" name="L03q5"> <span>RANGE BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Standard SQL defaults to RANGE from UNBOUNDED PRECEDING to CURRENT ROW when ORDER BY is specified.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why can you not filter directly on a window function in the WHERE clause?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q6"> <span>The WHERE clause executes before the window functions are evaluated in query processing</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>Window functions cannot return boolean values</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>SQL prohibits window functions in subqueries</span></label>
+              <label class="option"><input type="radio" name="L03q6"> <span>Window functions only work in CREATE VIEW statements</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>In the logical query evaluation model, WHERE filters rows before the SELECT list (where window functions are computed) is executed.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which navigation function returns the attribute value from the previous row in the ordered partition?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q7"> <span>LAG()</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>LEAD()</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>FIRST_VALUE()</span></label>
+              <label class="option"><input type="radio" name="L03q7"> <span>NTH_VALUE()</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>LAG() accesses data from a preceding row at a specified physical offset without a self-join.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What computational complexity does an incremental sliding window sum achieve per row using an accumulator?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L03q8"> <span>O(1)</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>O(k) where k is the window length</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>O(log N)</span></label>
+              <label class="option"><input type="radio" name="L03q8"> <span>O(N)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>An accumulator adds the entering element and subtracts the departing element in constant O(1) time.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="codd1970relational"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L02.html"><span class="dir">Previous</span>L02 SQL Joins</a>
+        <a class="next" href="L04.html"><span class="dir">Next</span>L04 ASOF Joins</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS3 · Data, Databases &amp; SQL · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

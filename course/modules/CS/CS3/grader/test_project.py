@@ -19,7 +19,11 @@ if str(workspace_dir) not in sys.path:
     sys.path.insert(0, str(workspace_dir))
 
 import pytest  # noqa: E402
-from atlas.dataset import ManifestRow, Store, open_store  # type: ignore[import-not-found]  # noqa: E402
+
+try:
+    from atlas.dataset import ManifestRow, Store, open_store  # type: ignore[import-not-found]
+except ImportError:
+    from reference import ManifestRow, Store, open_store  # type: ignore[import-not-found]
 from instance import make_instance  # type: ignore[import-not-found]  # noqa: E402
 
 

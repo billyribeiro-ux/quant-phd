@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M8" data-page="L03" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L03 · Bracketing Root Finders and Newton's Method · M8 Numerical Methods</title>
+  <meta name="description" content="Root finding algorithms: the bisection method with interval invariants, Newton-Raphson quadratic convergence, failure modes, and Brent's safeguarded hybrid algorithm.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M8 Numerical Methods &amp; Scientific Computing</a><span class="sep">›</span>
+      <span>L03</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">M8 · Lesson 3 of 8 · 10 study hours</p>
+        <h1>Bracketing Root Finders and Newton's Method</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="derivative" href="../../../concepts.html#derivative">derivative</a> (M2), <a class="concept" data-concept="taylor-theorem" href="../../../concepts.html#taylor-theorem">Taylor's theorem</a> (M2), <a href="L02.html#def-condition-number">condition number</a> (L02), <a href="L02.html#def-numerical-stability">numerical stability</a> (L02)</li>
+          <li><strong>Introduces:</strong> <dfn id="def-bracketing-root-finder" data-concept="bracketing-root-finder">bracketing root finders</dfn>, <dfn id="def-newtons-method" data-concept="newtons-method">Newton's method</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or convention</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Solving nonlinear equations of the form \(f(x) = 0\) is the core computational task in quantitative finance: extracting implied volatilities from option prices, backing out yields to maturity from bond prices, and calibrating local volatility surfaces. Bracketing methods, such as bisection, guarantee global convergence by maintaining an invariant sign change, but converge linearly. Newton's method achieves rapid quadratic convergence near simple roots, but diverges or cycles when initialized far from the solution or near inflection points. Combining guaranteed bracketing with Newton acceleration produces robust hybrid algorithms that never fail in production.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Bracketing methods and the bisection invariant</h2>
+
+      <p>A root-finding problem for a continuous function \(f: [a, b] \to \R\) seeks \(x^* \in [a, b]\) such that \(f(x^*) = 0\).</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(bracketing root finder)</span></span>
+        <p>A <dfn id="def-bracketing-root-finder-term" data-concept="bracketing-root-finder">bracketing root finder</dfn> maintains an interval \([a_k, b_k]\) satisfying the bracket condition \(f(a_k) f(b_k) \le 0\). By the Intermediate Value Theorem, continuity guarantees that at least one root lies in \([a_k, b_k]\).</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Proposition 1.2 <span class="name">(bisection convergence and step count)</span></span>
+        <p>Let \(f \in C[a_0, b_0]\) with \(f(a_0) f(b_0) \le 0\). The bisection method generates a nested sequence of intervals \([a_k, b_k]\) with width \(W_k = b_k - a_k = 2^{-k} (b_0 - a_0)\) containing a root \(x^*\). To guarantee an absolute error bound \(|x_k - x^*| \le \text{tol}\), the required number of evaluations is:</p>
+        <p>\[ k = \left\lceil \log_2 \left(\frac{b_0 - a_0}{\text{tol}}\right) \right\rceil \]</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>At each step \(k \ge 0\), the midpoint is \(m_k = a_k + \frac{b_k - a_k}{2}\). If \(f(m_k) = 0\), \(m_k\) is an exact root. If \(f(a_k) f(m_k) &lt; 0\), the new bracket is \([a_{k+1}, b_{k+1}] = [a_k, m_k]\); otherwise \([a_{k+1}, b_{k+1}] = [m_k, b_k]\). In both cases, \(f(a_{k+1}) f(b_{k+1}) \le 0\) and \(W_{k+1} = \frac{1}{2} W_k\). By mathematical induction, \(W_k = 2^{-k} W_0\). Since \(x^* \in [a_k, b_k]\) and the approximation is the midpoint \(x_k = m_k\), the error satisfies \(|x_k - x^*| \le \frac{1}{2} W_k = 2^{-(k+1)} W_0 \le 2^{-k} W_0\). Enforcing \(2^{-k} W_0 \le \text{tol}\) gives \(2^k \ge W_0 / \text{tol}\), or \(k \ge \log_2(W_0 / \text{tol})\). Taking the ceiling gives the exact integer step count. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Newton's method and quadratic convergence</h2>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(Newton-Raphson iteration)</span></span>
+        <p>Given a differentiable function \(f: \R \to \R\), <dfn id="def-newtons-method-term" data-concept="newtons-method">Newton's method</dfn> constructs successive approximations from a starting guess \(x_0\) via the tangent line approximation:</p>
+        <p>\[ x_{k+1} = x_k - \frac{f(x_k)}{f'(x_k)} \]</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 2.2 <span class="name">(quadratic convergence of Newton's method)</span></span>
+        <p>Let \(f \in C^2[a, b]\) and let \(x^* \in (a, b)\) be a simple root, meaning \(f(x^*) = 0\) and \(f'(x^*) \ne 0\). If \(x_0\) is chosen sufficiently close to \(x^*\), the sequence \(x_k\) converges quadratically to \(x^*\):</p>
+        <p>\[ \lim_{k \to \infty} \frac{|x_{k+1} - x^*|}{|x_k - x^*|^2} = \frac{|f''(x^*)|}{2 |f'(x^*)|} \]</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Expand \(f(x^*)\) about \(x_k\) using Taylor's theorem with remainder:</p>
+        <p>\[ 0 = f(x^*) = f(x_k) + f'(x_k)(x^* - x_k) + \frac{1}{2} f''(\xi_k)(x^* - x_k)^2 \]</p>
+        <p>where \(\xi_k\) lies between \(x_k\) and \(x^*\). Dividing by \(f'(x_k) \ne 0\):</p>
+        <p>\[ 0 = \frac{f(x_k)}{f'(x_k)} + (x^* - x_k) + \frac{f''(\xi_k)}{2 f'(x_k)} (x^* - x_k)^2 \]</p>
+        <p>Rearranging using \(x_{k+1} = x_k - \frac{f(x_k)}{f'(x_k)}\):</p>
+        <p>\[ x_{k+1} - x^* = \frac{f''(\xi_k)}{2 f'(x_k)} (x_k - x^*)^2 \]</p>
+        <p>Writing \(e_k = |x_k - x^*|\):</p>
+        <p>\[ e_{k+1} = \frac{|f''(\xi_k)|}{2 |f'(x_k)|} e_k^2 \]</p>
+        <p>As \(x_k \to x^*\), \(\xi_k \to x^*\) and \(f'(x_k) \to f'(x^*)\), establishing the quadratic asymptotic error constant \(M = \frac{|f''(x^*)|}{2 |f'(x^*)|}\). \(\blacksquare\)</p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 2.3 <span class="name">(meaning of quadratic convergence)</span></span>
+        <p>Quadratic convergence implies that the number of correct significant digits roughly doubles at each iteration. If \(e_k \approx 10^{-2}\) and \(M \approx 1\), then \(e_{k+1} \approx 10^{-4}\), \(e_{k+2} \approx 10^{-8}\), and \(e_{k+3} \approx 10^{-16}\), reaching full double precision in 3 to 5 iterations.</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Failure modes and safeguarded root finding</h2>
+
+      <p>Newton's method fails when its underlying local Taylor approximation breaks down:</p>
+
+      <ul>
+        <li><strong>Stationary points (\(f'(x_k) \approx 0\)):</strong> Division by near-zero sends \(x_{k+1}\) to infinity. In option pricing, when vega \(\frac{\partial C}{\partial \sigma} \to 0\), the unconstrained Newton step explodes.</li>
+        <li><strong>Limit cycles:</strong> For functions with inflection points, such as \(f(x) = x^3 - 2x + 2\), the iteration can oscillate endlessly between fixed points without converging.</li>
+        <li><strong>Overshoot outside physical domain:</strong> For Black–Scholes inversion, a raw Newton step can produce a negative volatility \(\sigma &lt; 0\).</li>
+      </ul>
+
+      <p>A <em>safeguarded</em> root finder maintains a bracket \([a_k, b_k]\) containing the root. At each iteration, a Newton step is proposed. If the proposed step lies strictly inside the bracket and contracts the interval sufficiently, it is accepted; otherwise, the algorithm falls back to bisection. Brent's method combines this safeguard with inverse quadratic interpolation for rapid superlinear convergence.</p>
+
+      <h2 id="s4"><span class="section-number">4</span>Inline laboratory: bisection invariants and Newton convergence</h2>
+
+      <section class="lab" id="lab-M8-L03-1" data-runtime="python">
+        <h3>Lab 1 · Bisection step count invariant and Newton's quadratic convergence</h3>
+        <p class="hypothesis">For \(f(x) = x^2 - 2\) on \([1, 2]\), bisection requires exactly \(\lceil \log_2(1/\text{tol}) \rceil\) steps for tolerances from \(10^{-3}\) to \(10^{-12}\). Newton's method starting from \(x_0 = 1.0\) converges in 5 iterations to machine precision with error ratio \(e_{k+1}/e_k^2\) converging to \(M = \frac{1}{2\sqrt{2}} \approx 0.353553\).</p>
+        <pre><code class="language-python" data-run>"""Lab M8-L03-1: Bisection step count invariant and Newton's quadratic convergence.
+
+Standard library only. Demonstrates theoretical bisection step count bound
+and Newton-Raphson quadratic error recursion on f(x) = x^2 - 2.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def bisection(a: float, b: float, tol: float) -&gt; tuple[float, int]:
+    """Bisection root finder tracking iteration count."""
+    fa = a * a - 2.0
+    fb = b * b - 2.0
+    if fa * fb &gt; 0.0:
+        raise ValueError("Root not bracketed")
+
+    steps = 0
+    while (b - a) &gt; tol:
+        steps += 1
+        m = a + 0.5 * (b - a)
+        fm = m * m - 2.0
+        if fm == 0.0:
+            return m, steps
+        if fa * fm &lt; 0.0:
+            b = m
+            fb = fm
+        else:
+            a = m
+            fa = fm
+    return a + 0.5 * (b - a), steps
+
+
+def newton(x0: float, max_iter: int = 7) -&gt; list[tuple[int, float, float, float]]:
+    """Newton-Raphson iteration on f(x) = x^2 - 2 with error tracking."""
+    root = math.sqrt(2.0)
+    x = x0
+    history: list[tuple[int, float, float, float]] = []
+
+    for k in range(max_iter):
+        err = abs(x - root)
+        prev_err = history[-1][2] if history else 0.0
+        ratio = (err / (prev_err * prev_err)) if prev_err &gt; 1e-15 else 0.0
+        history.append((k, x, err, ratio))
+
+        # f'(x) = 2x
+        fx = x * x - 2.0
+        dfx = 2.0 * x
+        if abs(fx) &lt; 1e-16 or dfx == 0.0:
+            break
+        x = x - fx / dfx
+
+    return history
+
+
+def main() -&gt; None:
+    print("=== Part A: Bisection Step Count Invariant ===")
+    a, b = 1.0, 2.0
+    width = b - a
+
+    for tol in [1e-3, 1e-6, 1e-10, 1e-12]:
+        theoretical_steps = math.ceil(math.log2(width / tol))
+        approx_root, actual_steps = bisection(a, b, tol)
+        print(
+            f"tol={tol:.0e}: theoretical={theoretical_steps:2d}, "
+            f"actual={actual_steps:2d}, root={approx_root:.12f}, "
+            f"match={actual_steps == theoretical_steps}"
+        )
+
+    print("\n=== Part B: Newton's Quadratic Convergence on x^2 - 2 = 0 ===")
+    # f''(root) / (2 f'(root)) = 2 / (2 * 2 * sqrt(2)) = 1 / (2 sqrt(2)) ~ 0.353553
+    history = newton(x0=1.0)
+    print(f"Theoretical asymptotic error ratio M = f''(x*)/(2 f'(x*)) = {1.0 / (2.0 * math.sqrt(2.0)):.6f}")
+    print("Iter  Estimate x_k        Absolute Error e_k  Ratio e_k / (e_{k-1})^2")
+    for k, x, err, ratio in history:
+        ratio_str = f"{ratio:.6f}" if k &gt; 0 and ratio &gt; 0.0 else "      -"
+        print(f" {k:2d}   {x:.16f}  {err:.16e}    {ratio_str}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">=== Part A: Bisection Step Count Invariant ===
+tol=1e-03: theoretical=10, actual=10, root=1.414550781250, match=True
+tol=1e-06: theoretical=20, actual=20, root=1.414213657379, match=True
+tol=1e-10: theoretical=34, actual=34, root=1.414213562355, match=True
+tol=1e-12: theoretical=40, actual=40, root=1.414213562373, match=True
+
+=== Part B: Newton's Quadratic Convergence on x^2 - 2 = 0 ===
+Theoretical asymptotic error ratio M = f''(x*)/(2 f'(x*)) = 0.353553
+Iter  Estimate x_k        Absolute Error e_k  Ratio e_k / (e_{k-1})^2
+  0   1.0000000000000000  4.1421356237309515e-01          -
+  1   1.5000000000000000  8.5786437626904855e-02    0.500000
+  2   1.4166666666666667  2.4531042935715952e-03    0.333333
+  3   1.4142156862745099  2.1239014147411694e-06    0.352941
+  4   1.4142135623746899  1.5947243525715749e-12    0.353522
+  5   1.4142135623730951  0.0000000000000000e+00          -
+  6   1.4142135623730949  2.2204460492503131e-16          -</pre>
+        <p class="interpretation">The lab confirms the bisection step count invariant exactly. Newton's method exhibits quadratic error reduction: \(e_1 \approx 8.58 \times 10^{-2}\), \(e_2 \approx 2.45 \times 10^{-3}\), \(e_3 \approx 2.12 \times 10^{-6}\), and \(e_4 \approx 1.59 \times 10^{-12}\), matching the theoretical error constant \(M \approx 0.3535\).</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s5"><span class="section-number">5</span>Where the canon breaks</h2>
+        <ul>
+          <li><strong>Multiple roots degrade Newton to linear convergence.</strong> If \(x^*\) has multiplicity \(m &gt; 1\) (i.e. \(f(x^*) = f'(x^*) = 0\)), Taylor expansion shows that \(e_{k+1} \approx \frac{m-1}{m} e_k\). For a double root (\(m=2\)), error contracts only by a factor of 0.5 per iteration, slower than bisection with an evaluation cost twice as high.</li>
+          <li><strong>Discontinuous functions break bisection.</strong> Bisection requires \(f(a) f(b) \le 0\) and continuity. For discontinuous functions such as \(f(x) = 1/x\), bisection on \([-1, 1]\) converges to the vertical asymptote \(x = 0\) rather than a root.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s6"><span class="section-number">6</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“Newton's method is always faster than bisection.”</p>
+            <p>Newton's method is faster only in an asymptotic neighborhood of a simple root. Far from the root, Newton steps can overshoot wildly, enter infinite periodic orbits, or diverge. Bisection is unconditionally reliable and often reaches a rough bracket faster than an unconstrained Newton iteration.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“A root finder should terminate when \(|f(x_k)| &lt; \text{tol}\).”</p>
+            <p>A small residual \(|f(x_k)|\) does not imply a small error \(|x_k - x^*|\). By the mean value theorem, \(|x_k - x^*| \approx \frac{|f(x_k)|}{|f'(x^*)|}\). When the derivative is tiny (e.g. In option pricing when vega \(&lt; 0.01\)), \(|f(x_k)| \le 10^{-12}\) can easily coexist with an error \(|x_k - x^*| &gt; 10^{-2}\).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Secant method requires the root to be bracketed.”</p>
+            <p>Unlike bisection or false position (regula falsi), the standard secant method \(x_{k+1} = x_k - f(x_k) \frac{x_k - x_{k-1}}{f(x_k) - f(x_{k-1})}\) does not check signs and does not preserve a bracket. It can escape the initial interval and diverge.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s7"><span class="section-number">7</span>Problem set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Bisection step count calculation</span>
+            <p>How many bisection iterations are required to find a root on \([0, 10]\) with an absolute error bound less than \(10^{-8}\)?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The initial interval width is \(W_0 = 10 - 0 = 10\). By Proposition 1.2, \(k = \lceil \log_2(W_0 / \text{tol}) \rceil = \lceil \log_2(10 / 10^{-8}) \rceil = \lceil \log_2(10^9) \rceil = \lceil 29.897 \rceil = 30\) steps. Exactly 30 bisection steps guarantee the interval width is \(10 \times 2^{-30} \approx 9.31 \times 10^{-9} &lt; 10^{-8}\).</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · Newton iteration for cube root</span>
+            <p>Derive the Newton iteration formula for computing \(\sqrt[3]{R}\) by finding the root of \(f(x) = x^3 - R\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The derivative is \(f'(x) = 3x^2\). The Newton iteration is \(x_{k+1} = x_k - \frac{x_k^3 - R}{3x_k^2} = x_k - \frac{1}{3}x_k + \frac{R}{3x_k^2} = \frac{2 x_k + R / x_k^2}{3}\). This is Halley's/Hero's cube root formula, which converges quadratically without division by the root itself.</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · Cycle in Newton's method</span>
+            <p>Show that for \(f(x) = x^3 - 5x\), starting Newton's method at \(x_0 = 1\) results in a 2-cycle.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Compute \(f'(x) = 3x^2 - 5\). At \(x_0 = 1\), \(f(1) = 1 - 5 = -4\) and \(f'(1) = 3(1) - 5 = -2\). The next iterate is \(x_1 = 1 - \frac{-4}{-2} = 1 - 2 = -1\). At \(x_1 = -1\), \(f(-1) = -1 + 5 = 4\) and \(f'(-1) = 3(1) - 5 = -2\). The next iterate is \(x_2 = -1 - \frac{4}{-2} = -1 + 2 = 1 = x_0\). The sequence oscillates indefinitely between \(+1\) and \(-1\), never converging to any of the roots \(\{0, \pm\sqrt{5}\}\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Order of convergence for multiple roots</span>
+            <p>Let \(f(x) = (x - x^*)^m g(x)\) with \(g(x^*) \ne 0\) and \(m \ge 2\). Prove that Newton's method converges only linearly with asymptotic error constant \(1 - \frac{1}{m}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Compute \(f'(x) = m (x - x^*)^{m-1} g(x) + (x - x^*)^m g'(x)\). The Newton step is \(x_{k+1} - x^* = x_k - x^* - \frac{f(x_k)}{f'(x_k)} = (x_k - x^*) - \frac{(x_k - x^*)^m g(x_k)}{m(x_k - x^*)^{m-1} g(x_k) + (x_k - x^*)^m g'(x_k)}\). Factoring \((x_k - x^*)\): \(x_{k+1} - x^* = (x_k - x^*) \left[1 - \frac{g(x_k)}{m g(x_k) + (x_k - x^*) g'(x_k)}\right]\). Taking the limit as \(x_k \to x^*\): \(\lim_{k \to \infty} \frac{x_{k+1} - x^*}{x_k - x^*} = 1 - \frac{g(x^*)}{m g(x^*)} = 1 - \frac{1}{m}\). Since \(m \ge 2\), the limit is strictly between 0 and 1, proving linear convergence.</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Modified Newton for multiple roots</span>
+            <p>Prove that the modified Newton iteration \(x_{k+1} = x_k - m \frac{f(x_k)}{f'(x_k)}\) restores quadratic convergence when the multiplicity \(m\) is known.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>From the proof of P1, \(x_{k+1} - x^* = (x_k - x^*) \left[1 - m \frac{g(x_k)}{m g(x_k) + (x_k - x^*) g'(x_k)}\right]\). Writing \(\frac{m g}{m g + (x - x^*) g'} = \frac{1}{1 + \frac{(x - x^*) g'}{m g}} = 1 - \frac{(x - x^*) g'}{m g} + O((x - x^*)^2)\). Substituting back: \(x_{k+1} - x^* = (x_k - x^*) \left[1 - \left(1 - \frac{(x_k - x^*) g'}{m g} + O(e_k^2)\right)\right] = \frac{g'(x^*)}{m g(x^*)} (x_k - x^*)^2 + O(e_k^3)\). Thus \(\lim_{k \to \infty} \frac{|x_{k+1} - x^*|}{|x_k - x^*|^2} = \frac{|g'(x^*)|}{m |g(x^*)|}\), restoring quadratic convergence.</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · Secant method golden ratio convergence</span>
+            <p>Show that the secant method error recursion \(e_{k+1} \approx C e_k e_{k-1}\) implies an order of convergence equal to the golden ratio \(\phi = \frac{1 + \sqrt{5}}{2} \approx 1.618\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Assume an asymptotic relation \(e_{k+1} = A e_k^p\). Then \(e_k = A e_{k-1}^p\), so \(e_{k-1} = (e_k / A)^{1/p}\). Substituting into \(e_{k+1} = C e_k e_{k-1}\) gives \(A e_k^p = C e_k A^{-1/p} e_k^{1/p} = C A^{-1/p} e_k^{1 + 1/p}\). Matching the exponents of \(e_k\) requires \(p = 1 + \frac{1}{p}\), or \(p^2 - p - 1 = 0\). The positive root of this characteristic equation is \(p = \frac{1 + \sqrt{5}}{2} = \phi \approx 1.618\), proving superlinear convergence with order \(\phi\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Newton error sequence in Lab 1</span>
+            <p>In Lab 1, Part B, what are the exact absolute errors \(e_k\) for \(k = 0, 1, 2, 3, 4\) when computing \(\sqrt{2}\)?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>As printed in Lab 1: \(e_0 \approx 4.142136 \times 10^{-1}\), \(e_1 \approx 8.578644 \times 10^{-2}\), \(e_2 \approx 2.453104 \times 10^{-3}\), \(e_3 \approx 2.123901 \times 10^{-6}\), and \(e_4 \approx 1.594724 \times 10^{-12}\). At step 5, the error reaches \(0.0\) within IEEE 754 precision.</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Bisection step count verification</span>
+            <p>Verify whether the actual bisection step counts in Lab 1, Part A, match the theoretical formula \(\lceil \log_2(1/\text{tol}) \rceil\) for tolerances \(10^{-3}, 10^{-6}, 10^{-10}, 10^{-12}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Lab 1 prints: for \(10^{-3}\), theoretical = 10, actual = 10; for \(10^{-6}\), theoretical = 20, actual = 20; for \(10^{-10}\), theoretical = 34, actual = 34; for \(10^{-12}\), theoretical = 40, actual = 40. Every test case reports <code>match=True</code>, confirming the formula exactly.</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · Safeguarded step acceptance</span>
+            <p>In a bracket \([a, b] = [0.1, 1.0]\) with current iterate \(\sigma = 0.5\), suppose \(f(\sigma) = 0.05\) and vega \(v = 0.04\). Determine whether the Newton step is accepted under the safeguard rule \(a &lt; \sigma - f/v &lt; b\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The proposed Newton step is \(\sigma_{\text{new}} = \sigma - f/v = 0.5 - \frac{0.05}{0.04} = 0.5 - 1.25 = -0.75\). Since \(-0.75 &lt; a = 0.1\), the step falls outside the active bracket. The safeguard rejects \(\sigma_{\text{new}}\) and reverts to the bisection midpoint \(\frac{0.1 + 1.0}{2} = 0.55\), preventing negative volatility.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Brent's method and Dekker's algorithm</span>
+            <p>Explain how Brent's method improves upon Dekker's algorithm by enforcing safeguards against slow bisection degradation.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Dekker's algorithm alternates between the secant method and bisection. However, on contrived functions, the secant step can contract the bracket by an infinitesimal amount (e.g. \(1 - 10^{-6}\)) at each step, causing \(O(1/\varepsilon)\) steps. Brent introduced four strict safeguarding tests: if the previous step was bisection, the current interpolation step must reduce the bracket by at least half; if interpolation fails to contract the bracket sufficiently over two consecutive steps, bisection is forcibly invoked. This guarantees that Brent's method is asymptotically superlinear while having a worst-case performance no worse than bisection.</p>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · High-dimensional nonlinear systems and Broyden updates</span>
+            <p>Why is full Newton's method computationally prohibitive for large-scale financial calibration problems (\(F(x) = 0, x \in \R^N\)), and how does Broyden's quasi-Newton update address this?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Multidimensional Newton requires computing the \(N \times N\) Jacobian matrix \(J(x_k)\) and solving the linear system \(J(x_k) \Delta x_k = -F(x_k)\) at each iteration, requiring \(O(N^3)\) operations. Broyden's method replaces the Jacobian with an approximation \(B_k\) updated via a rank-one formula satisfying the secant equation \(B_{k+1}(x_{k+1} - x_k) = F(x_{k+1}) - F(x_k)\). Using the Sherman-Morrison formula, \(B_k^{-1}\) can be updated directly in \(O(N^2)\) operations, substantially accelerating calibration for large volatility surfaces.</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Halley's method for implied volatility</span>
+            <p>Derive Halley's third-order iteration for root finding and analyze its application to implied volatility using option Greeks (vega and vomma).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Halley's method uses a second-order Taylor expansion: \(x_{k+1} = x_k - \frac{2 f(x_k) f'(x_k)}{2 [f'(x_k)]^2 - f(x_k) f''(x_k)}\). In implied volatility inversion, \(f(\sigma) = C(\sigma) - P\), \(f'(\sigma) = \mathcal{V}\) (vega), and \(f''(\sigma) = \frac{\partial \mathcal{V}}{\partial \sigma} = \text{vomma}\). Halley's step becomes \(\Delta \sigma = -\frac{2 (C - P) \mathcal{V}}{2 \mathcal{V}^2 - (C - P) \text{vomma}}\). When vega is moderate, Halley's method exhibits cubic convergence (\(e_{k+1} = O(e_k^3)\)), reducing the required evaluations to 2 or 3 steps. However, near expiry where vomma can be large and vega small, the denominator can vanish, necessitating bracket safeguards.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s8"><span class="section-number">8</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>Bisection interval width contracts as \(W_k = 2^{-k} W_0\) requiring \(\lceil \log_2(W_0 / \text{tol}) \rceil\) evaluations (Proposition 1.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 1</td></tr>
+              <tr><td>Newton's method converges quadratically to simple roots with asymptotic constant \(\frac{|f''(x^*)|}{2 |f'(x^*)|}\) (Theorem 2.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 2</td></tr>
+              <tr><td>Multiple roots of multiplicity \(m \ge 2\) degrade Newton's convergence to linear with rate \(1 - 1/m\) (Problem P1)</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P1 proof</td></tr>
+              <tr><td>Newton's method on \(x^2 - 2\) converges to full machine precision in 5 iterations with ratio \(0.3535\) (Lab 1, Part B)</td><td><span class="grade" data-grade="T">T</span></td><td>Lab 1, Part B</td></tr>
+              <tr><td>Secant method achieves superlinear convergence with order \(\phi \approx 1.618\) (Problem P3)</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P3 proof</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="M8" data-page="L03" data-cards="cards.json">
+        <h2 id="s9"><span class="section-number">9</span>Retrieval quiz</h2>
+        <p>Answer from memory, then check your responses.</p>
+        <ol class="items">
+          <li class="item" data-kind="numeric" data-answer="34" data-tolerance="0.001">
+            <p class="prompt">How many bisection steps are theoretically required to find a root on \([1, 2]\) with tolerance \(10^{-10}\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(k = \lceil \log_2(1 / 10^{-10}) \rceil = \lceil 33.22 \rceil = 34\) steps.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the order of convergence of Newton's method for a simple root \(f'(x^*) \ne 0\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l3q2"> Linear (order 1)</label>
+              <label class="option" data-correct><input type="radio" name="l3q2"> Quadratic (order 2)</label>
+              <label class="option"><input type="radio" name="l3q2"> Cubic (order 3)</label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 2.2, Newton's method exhibits quadratic convergence with \(e_{k+1} \approx M e_k^2\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What happens to the convergence rate of Newton's method if the root has multiplicity \(m = 2\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l3q3"> It converges cubically</label>
+              <label class="option" data-correct><input type="radio" name="l3q3"> It slows down to linear convergence with error ratio \(1 - 1/2 = 0.5\)</label>
+              <label class="option"><input type="radio" name="l3q3"> It diverges immediately</label>
+            </fieldset>
+            <div class="explain" hidden><p>Multiple roots cause \(f'(x^*) = 0\), degrading the convergence to linear with rate \(1 - 1/m = 0.5\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.353553" data-tolerance="0.001">
+            <p class="prompt">For \(f(x) = x^2 - 2\) at root \(x^* = \sqrt{2}\), what is the asymptotic Newton error constant \(M = \frac{|f''(x^*)|}{2 |f'(x^*)|}\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(f'(x) = 2x, f''(x) = 2\). At \(\sqrt{2}\), \(M = \frac{2}{2 \cdot 2\sqrt{2}} = \frac{1}{2\sqrt{2}} \approx 0.353553\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In a safeguarded root finder, when is the Newton step accepted?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l3q5"> Always, because Newton steps are faster</label>
+              <label class="option" data-correct><input type="radio" name="l3q5"> Only when the step falls strictly inside the current bracketing interval</label>
+              <label class="option"><input type="radio" name="l3q5"> Only on even-numbered iterations</label>
+            </fieldset>
+            <div class="explain" hidden><p>Safeguarding requires the proposed Newton iterate to lie strictly within the active bracket to preserve guaranteed convergence.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1.618" data-tolerance="0.005">
+            <p class="prompt">What is the theoretical order of convergence \(p\) of the secant method (to 3 decimal places)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>The secant method converges with order equal to the golden ratio \(\phi = \frac{1 + \sqrt{5}}{2} \approx 1.618\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why can checking only the residual \(|f(x_k)| &lt; \text{tol}\) be misleading?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l3q7"> Because residual calculations are non-deterministic</label>
+              <label class="option" data-correct><input type="radio" name="l3q7"> Because if \(|f'(x^*)|\) is very small, the actual root error \(|x_k - x^*| \approx |f(x_k)|/|f'(x^*)|\) can be large</label>
+              <label class="option"><input type="radio" name="l3q7"> Because residuals are always negative</label>
+            </fieldset>
+            <div class="explain" hidden><p>Conditioning of root finding depends on \(1/|f'(x^*)|\); when derivative is tiny, a small residual does not guarantee a small root error.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Which method combines bisection, secant, and inverse quadratic interpolation with safeguards?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l3q8"> Halley's method</label>
+              <label class="option" data-correct><input type="radio" name="l3q8"> Brent's method</label>
+              <label class="option"><input type="radio" name="l3q8"> Broyden's method</label>
+            </fieldset>
+            <div class="explain" hidden><p>Brent's method is the standard library hybrid solver that combines inverse quadratic interpolation, secant steps, and bisection fallbacks.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s10"><span class="section-number">10</span>References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L02.html"><span class="dir">Prev</span>L02 · Conditioning and Stability</a>
+        <a href="index.html"><span class="dir">Module</span>M8 overview</a>
+        <a class="next" href="L04.html"><span class="dir">Next</span>L04 · Linear Solvers and Finite Differences</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M8 · Numerical Methods &amp; Scientific Computing</footer>
+</body>
+</html>

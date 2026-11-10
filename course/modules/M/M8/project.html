@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M8" data-page="project">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>M8 Project · Robust Implied-Volatility Solver</title>
+  <meta name="description" content="Build an implied-volatility solver that never fails on valid option quotes, using dynamic bracket expansion with safeguarded Newton-Raphson acceleration, evaluated on a seeded grid and stressed up to a million inputs.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M8 Numerical Methods &amp; Scientific Computing</a><span class="sep">›</span>
+      <span>Project</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose" data-hours-project="30">
+      <header class="page-head">
+        <p class="eyebrow">M8 project · 30 hours · autograded code and failure-region report, on a SIMULATED grid (defined under Inputs, below)</p>
+        <h1>Robust Implied-Volatility Solver</h1>
+        <p class="lede">A quantitative volatility desk requires an implied-volatility solver for European call and put options that never fails on any valid market quote, including deep in-the-money, deep out-of-the-money, and ultra-short expiry contracts. Fixed-bracket bisection solvers fail when extreme quotes require volatilities exceeding their arbitrary upper boundaries, while naive Newton-Raphson iterations diverge or encounter zero-division when vega underflows. In this project you author <code>solver.py</code> to implement dynamic bracket expansion coupled with safeguarded Newton-Raphson acceleration, verify it against an automated test suite across 50 independent seeds on a grid of \(N = 2{,}000\) options per seed, and generate a failure-region report classifying conditioning regimes. All market inputs are generated (SIMULATED); no live quotes are used.</p>
+      </header>
+
+      <section id="ladder">
+        <h2 id="h-ladder">The ladder</h2>
+        <p>Rungs 1 and 2 are presented below. Rung 3 is the graded deliverable and cannot be skipped. Rungs 1 and 2 are optional when you attain the mastery threshold on the hub placement diagnostic and pass both skill checks.</p>
+        <ol class="ladder">
+          <li><div><span class="rung-title">Rung 1 · Worked example</span><p>Lab 1: one representative SIMULATED option inversion solved step-by-step, detailing strict no-arbitrage boundary validation, dynamic bracket expansion, and safeguarded Newton acceleration.</p></div></li>
+          <li><div><span class="rung-title">Rung 2 · Completion problem</span><p>Lab 2: the safeguarding mechanism with three core iteration lines left blank. Expected output grades the missing logic instantly.</p></div></li>
+          <li><div><span class="rung-title">Rung 3 · Independent project</span><p>The full specification in <a href="#spec">the specification section</a>: <code>solver.py</code>, autograded in <a href="#grader-section">the autograder section</a> across 50 seeds, and the verified failure-region conditioning report in Lab 3.</p></div></li>
+          <li><div><span class="rung-title">Rung 4 · Stretch</span><p>Scaling the solver to a million-input generated stress grid with throughput profiling and local latency benchmarking.</p></div></li>
+        </ol>
+      </section>
+
+      <section id="rungs">
+        <h2 id="h-rungs">Rungs 1 and 2</h2>
+
+        <section class="lab" id="lab-M8-project-1" data-runtime="python">
+          <h3>Lab 1 · Worked example: step-by-step robust implied-volatility inversion</h3>
+          <p class="hypothesis">A valid European call quote with \(S = 120\), \(K = 115\), \(\tau = 0.5\), \(r = 0.03\), and true \(\sigma^* = 0.28\) generates a market price \(C \approx 12.938942\). The solver validates that \(C\) lies strictly within \((S - K e^{-r\tau}, S)\), verifies root bracketing, and achieves convergence within 4 safeguarded Newton iterations with price residual \(|C(\hat{\sigma}) - C| \le 10^{-12} S\) and forward error \(|\hat{\sigma} - \sigma^*| \le 10^{-7}\).</p>
+          <pre><code class="language-python" data-run>"""Rung 1 worked example: step-by-step robust implied-volatility inversion (SIMULATED).
+
+Standard library only. Inverts one European call option quote from the seeded test suite,
+showing the no-arbitrage boundary check, dynamic bracket expansion, and safeguarded Newton steps.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def bs_price(spot: float, strike: float, tau: float, rate: float, vol: float, kind: str) -&gt; float:
+    sqrt_t = math.sqrt(tau)
+    v_sqrt_t = vol * sqrt_t
+    d1 = (math.log(spot / strike) + (rate + 0.5 * vol * vol) * tau) / v_sqrt_t
+    d2 = d1 - v_sqrt_t
+    disc = math.exp(-rate * tau)
+    c1 = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+    c2 = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0)))
+    if kind == "call":
+        return spot * c1 - strike * disc * c2
+    else:
+        return strike * disc * (1.0 - c2) - spot * (1.0 - c1)
+
+
+def vega(spot: float, strike: float, tau: float, rate: float, vol: float) -&gt; float:
+    sqrt_t = math.sqrt(tau)
+    d1 = (math.log(spot / strike) + (rate + 0.5 * vol * vol) * tau) / (vol * sqrt_t)
+    return spot * sqrt_t * math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
+
+
+def main() -&gt; None:
+    # Representative instance from make_instance(0)
+    spot = 120.0
+    strike = 115.0
+    tau = 0.5
+    rate = 0.03
+    kind = "call"
+    true_vol = 0.28
+    price = bs_price(spot, strike, tau, rate, true_vol, kind)
+
+    print("=== Rung 1: Step-by-Step Robust Implied Volatility Inversion ===")
+    print(f"Option quote: S={spot}, K={strike}, tau={tau}, r={rate}, kind={kind}")
+    print(f"Target market price: {price:.10f}")
+
+    # Step 1: Strict no-arbitrage bounds check
+    disc = math.exp(-rate * tau)
+    lo = max(spot - strike * disc, 0.0)
+    hi = spot
+    print(f"\nStep 1: Bounds check. Lower={lo:.6f}, Upper={hi:.6f}")
+    assert lo &lt; price &lt; hi, "Price violates strict no-arbitrage bounds"
+    print("  Result: Valid interior quote strictly between theoretical bounds.")
+
+    # Step 2: Dynamic bracket expansion
+    a, b = 1e-4, 1.0
+    fa = bs_price(spot, strike, tau, rate, a, kind) - price
+    fb = bs_price(spot, strike, tau, rate, b, kind) - price
+    print(f"\nStep 2: Initial bracket [{a:.4f}, {b:.4f}], f(a)={fa:.6f}, f(b)={fb:.6f}")
+
+    while fa &gt; 0.0 and a &gt; 1e-15:
+        b = a
+        fb = fa
+        a /= 4.0
+        fa = bs_price(spot, strike, tau, rate, a, kind) - price
+
+    while fb &lt; 0.0 and b &lt; 1e6:
+        a = b
+        fa = fb
+        b *= 2.0
+        fb = bs_price(spot, strike, tau, rate, b, kind) - price
+
+    print(f"  Guaranteed root bracket: [{a:.6f}, {b:.6f}] with f(a)*f(b) &lt;= 0")
+
+    # Step 3: Safeguarded Newton-Raphson iteration
+    print("\nStep 3: Safeguarded Newton iteration")
+    sigma = 0.5 * (a + b)
+    tol = 1e-12 * spot
+
+    for step in range(1, 15):
+        f = bs_price(spot, strike, tau, rate, sigma, kind) - price
+        v = vega(spot, strike, tau, rate, sigma)
+        print(f"  Iter {step:2d}: sigma={sigma:.10f}, f(sigma)={f:.2e}, vega={v:.4f}")
+
+        if abs(f) &lt;= tol:
+            print(f"  Converged: residual |f| &lt;= {tol:.2e}")
+            break
+
+        if f &lt; 0.0:
+            a = sigma
+        else:
+            b = sigma
+
+        # Proposed Newton step
+        sigma = sigma - f / v if v &gt; 1e-14 and a &lt; sigma - f / v &lt; b else 0.5 * (a + b)
+
+    v_final = vega(spot, strike, tau, rate, sigma)
+    reg = "solved" if v_final &gt;= 0.01 else "ill_conditioned"
+    print("\nFinal Result:")
+    print(f"  Solved volatility sigma_hat: {sigma:.12f}")
+    print(f"  Generating true volatility:  {true_vol:.12f}")
+    print(f"  Forward error |sigma - true|: {abs(sigma - true_vol):.2e}")
+    print(f"  Final vega: {v_final:.4f} -&gt; Region: {reg}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">=== Rung 1: Step-by-Step Robust Implied Volatility Inversion ===
+Option quote: S=120.0, K=115.0, tau=0.5, r=0.03, kind=call
+Target market price: 12.9389419705
+
+Step 1: Bounds check. Lower=6.712127, Upper=120.000000
+  Result: Valid interior quote strictly between theoretical bounds.
+
+Step 2: Initial bracket [0.0001, 1.0000], f(a)=-6.226815, f(b)=22.751239
+  Guaranteed root bracket: [0.000100, 1.000000] with f(a)*f(b) &lt;= 0
+
+Step 3: Safeguarded Newton iteration
+  Iter  1: sigma=0.5000500000, f(sigma)=7.00e+00, vega=31.9548
+  Iter  2: sigma=0.2809948468, f(sigma)=3.12e-02, vega=31.3842
+  Iter  3: sigma=0.2800001309, f(sigma)=4.11e-06, vega=31.3759
+  Iter  4: sigma=0.2800000000, f(sigma)=8.53e-14, vega=31.3759
+  Converged: residual |f| &lt;= 1.20e-10
+
+Final Result:
+  Solved volatility sigma_hat: 0.280000000000
+  Generating true volatility:  0.280000000000
+  Forward error |sigma - true|: 1.89e-15
+  Final vega: 31.3759 -&gt; Region: solved</pre>
+          <p class="interpretation">The worked example establishes the three required stages: boundary validation, initial bracket verification, and safeguarded iteration where Newton steps are taken only when falling strictly inside the active bracket.</p>
+        </section>
+
+        <section class="lab completion" id="lab-M8-project-2" data-runtime="python">
+          <h3>Lab 2 · Completion problem: robust inversion safeguard</h3>
+          <p class="hypothesis">Complete the safeguarding loop by providing the lower bracket update when \(f(\sigma) &lt; 0\), the Newton-Raphson step update when inside the bracket, and the bisection fallback when outside. The solved volatility must reproduce the call price with error below \(10^{-12} \cdot S\).</p>
+          <pre><code class="language-python" data-run>"""Rung 2 completed solution: robust inversion safeguard (SIMULATED).
+
+Standard library only. Complete implementation of the bracket update and safeguarded
+Newton step for the completion problem.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def bs_price(spot: float, strike: float, tau: float, rate: float, vol: float, kind: str) -> float:
+    sqrt_t = math.sqrt(tau)
+    v_sqrt_t = vol * sqrt_t
+    d1 = (math.log(spot / strike) + (rate + 0.5 * vol * vol) * tau) / v_sqrt_t
+    d2 = d1 - v_sqrt_t
+    disc = math.exp(-rate * tau)
+    c1 = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+    c2 = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0)))
+    if kind == "call":
+        return spot * c1 - strike * disc * c2
+    else:
+        return strike * disc * (1.0 - c2) - spot * (1.0 - c1)
+
+
+def vega(spot: float, strike: float, tau: float, rate: float, vol: float) -> float:
+    sqrt_t = math.sqrt(tau)
+    d1 = (math.log(spot / strike) + (rate + 0.5 * vol * vol) * tau) / (vol * sqrt_t)
+    return spot * sqrt_t * math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
+
+
+def solve_implied_vol(price: float, spot: float, strike: float, tau: float, rate: float, kind: str) -> float:
+    a, b = 1e-4, 2.0
+    fa = bs_price(spot, strike, tau, rate, a, kind) - price
+    fb = bs_price(spot, strike, tau, rate, b, kind) - price
+
+    while fa > 0.0 and a > 1e-15:
+        b = a
+        fb = fa
+        a /= 4.0
+        fa = bs_price(spot, strike, tau, rate, a, kind) - price
+
+    while fb < 0.0 and b < 1e6:
+        a = b
+        fa = fb
+        b *= 2.0
+        fb = bs_price(spot, strike, tau, rate, b, kind) - price
+
+    sigma = 0.5 * (a + b)
+    tol = 1e-12 * spot
+
+    for _ in range(50):
+        f = bs_price(spot, strike, tau, rate, sigma, kind) - price
+        if abs(f) <= tol:
+            break
+
+        if f < 0.0:
+            a = ___
+        else:
+            b = sigma
+
+        v = vega(spot, strike, tau, rate, sigma)
+        sigma = ___ if v > 1e-14 and a < sigma - f / v < b else ___
+
+    return sigma
+
+
+def main() -> None:
+    spot, strike, tau, rate, kind = 100.0, 95.0, 0.25, 0.04, "call"
+    true_vol = 0.22
+    price = bs_price(spot, strike, tau, rate, true_vol, kind)
+
+    v_hat = solve_implied_vol(price, spot, strike, tau, rate, kind)
+    recalc = bs_price(spot, strike, tau, rate, v_hat, kind)
+    residual = abs(recalc - price)
+
+    print("=== Rung 2 Completion Problem Solution ===")
+    print(f"Option price: {price:.10f}")
+    print(f"Solved vol:   {v_hat:.10f}")
+    print(f"True vol:     {true_vol:.10f}")
+    print(f"Price error:  {residual:.2e}")
+    print(f"Solved successfully: {residual <= 1e-12 * spot}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">=== Rung 2 Completion Problem Solution ===
+Option price: 7.8716005198
+Solved vol:   0.2200000000
+True vol:     0.2200000000
+Price error:  0.00e+00
+Solved successfully: True</pre>
+          <p class="interpretation">When the blanks are replaced with <code>sigma</code>, <code>sigma - f / v</code>, and <code>0.5 * (a + b)</code>, the solver completes the safeguard and reaches the solution in exact accordance with the contract.</p>
+        </section>
+
+        <section class="lab" id="lab-M8-project-3" data-runtime="python">
+          <h3>Lab 3 · Reference verification on the seeded grid</h3>
+          <p class="hypothesis">Running the reference solver across the seed 0 grid of \(N = 2{,}000\) options confirms that every valid quote satisfies the residual bound \(|C(\hat{\sigma}) - P| \le 10^{-12} \cdot S\) and partitions inputs into well-conditioned solved cases (\(\text{vega} \ge 0.01\)) and ill-conditioned cases (\(\text{vega} &lt; 0.01\)).</p>
+          <pre><code class="language-python" data-run>"""Rung 3 independent project verification on seeded grid (SIMULATED).
+
+Standard library only. Runs the reference solver on the seed 0 generated grid (N = 2,000)
+and verifies accuracy bounds and prints failure-region report counts.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def bs_price(spot: float, strike: float, tau: float, rate: float, vol: float, kind: str) -&gt; float:
+    sqrt_t = math.sqrt(tau)
+    v_sqrt_t = vol * sqrt_t
+    d1 = (math.log(spot / strike) + (rate + 0.5 * vol * vol) * tau) / v_sqrt_t
+    d2 = d1 - v_sqrt_t
+    disc = math.exp(-rate * tau)
+    c1 = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+    c2 = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0)))
+    if kind == "call":
+        return spot * c1 - strike * disc * c2
+    else:
+        return strike * disc * (1.0 - c2) - spot * (1.0 - c1)
+
+
+def vega(spot: float, strike: float, tau: float, rate: float, vol: float) -&gt; float:
+    sqrt_t = math.sqrt(tau)
+    d1 = (math.log(spot / strike) + (rate + 0.5 * vol * vol) * tau) / (vol * sqrt_t)
+    return spot * sqrt_t * math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
+
+
+def solve_implied_vol(price: float, spot: float, strike: float, tau: float, rate: float, kind: str) -&gt; float:
+    a, b = 1e-4, 2.0
+    fa = bs_price(spot, strike, tau, rate, a, kind) - price
+    fb = bs_price(spot, strike, tau, rate, b, kind) - price
+
+    while fa &gt; 0.0 and a &gt; 1e-15:
+        b = a
+        fb = fa
+        a /= 4.0
+        fa = bs_price(spot, strike, tau, rate, a, kind) - price
+
+    while fb &lt; 0.0 and b &lt; 1e6:
+        a = b
+        fa = fb
+        b *= 2.0
+        fb = bs_price(spot, strike, tau, rate, b, kind) - price
+
+    sigma = 0.5 * (a + b)
+    tol = 1e-13 * spot
+
+    for _ in range(100):
+        f = bs_price(spot, strike, tau, rate, sigma, kind) - price
+        if abs(f) &lt;= tol or (b - a) &lt;= 1e-13 * max(1.0, sigma):
+            break
+
+        if f &lt; 0.0:
+            a = sigma
+        else:
+            b = sigma
+
+        v = vega(spot, strike, tau, rate, sigma)
+        sigma = sigma - f / v if v &gt; 1e-14 and a &lt; (sigma - f / v) &lt; b else 0.5 * (a + b)
+
+    return sigma
+
+
+def bounds(spot: float, strike: float, tau: float, rate: float, kind: str) -&gt; tuple[float, float]:
+    disc = math.exp(-rate * tau)
+    if kind == "call":
+        lower = max(spot - strike * disc, 0.0)
+        upper = spot
+    else:
+        lower = max(strike * disc - spot, 0.0)
+        upper = strike * disc
+    return lower, upper
+
+
+def main() -&gt; None:
+    # Seed 0 grid generator
+    rng = random.Random(1_000_003 * 0 + 42)
+    n_target = 2000
+
+    spots: list[float] = []
+    strikes: list[float] = []
+    taus: list[float] = []
+    rates: list[float] = []
+    kinds: list[str] = []
+    prices: list[float] = []
+    vols: list[float] = []
+    vegas_list: list[float] = []
+    while len(spots) &lt; n_target:
+        s = rng.uniform(40.0, 300.0)
+        scenario = rng.choice(["near_expiry", "deep_itm", "deep_otm", "standard", "standard"])
+        if scenario == "near_expiry":
+            tau = rng.choice([1.0 / 365.0, 2.0 / 365.0, 7.0 / 365.0, 1.0 / 52.0])
+            log_m = rng.uniform(-0.5, 0.5)
+            vol = rng.uniform(0.05, 1.5)
+        elif scenario == "deep_itm":
+            tau = rng.uniform(0.1, 2.0)
+            log_m = rng.uniform(1.0, 2.2)
+            vol = rng.uniform(0.1, 2.5)
+        elif scenario == "deep_otm":
+            tau = rng.uniform(0.05, 1.5)
+            log_m = rng.uniform(-2.2, -1.0)
+            vol = rng.uniform(0.1, 2.0)
+        else:
+            tau = rng.uniform(0.1, 2.0)
+            log_m = rng.uniform(-0.8, 0.8)
+            vol = rng.uniform(0.05, 3.5)
+
+        kind = rng.choice(["call", "put"])
+        k = s * math.exp(-log_m)
+        r = rng.uniform(0.01, 0.08)
+        lo, hi = bounds(s, k, tau, r, kind)
+        p = bs_price(s, k, tau, r, vol, kind)
+
+        if p &lt;= lo + 1e-8 * s or p &gt;= hi - 1e-8 * s:
+            continue
+
+        v = vega(s, k, tau, r, vol)
+        spots.append(s)
+        strikes.append(k)
+        taus.append(tau)
+        rates.append(r)
+        kinds.append(kind)
+        prices.append(p)
+        vols.append(vol)
+        vegas_list.append(v)
+
+    n_solved = 0
+    n_ill = 0
+    max_res = 0.0
+    max_fwd_well_conditioned = 0.0
+
+    for i in range(n_target):
+        v_hat = solve_implied_vol(prices[i], spots[i], strikes[i], taus[i], rates[i], kinds[i])
+        recalc = bs_price(spots[i], strikes[i], taus[i], rates[i], v_hat, kinds[i])
+        res = abs(recalc - prices[i]) / spots[i]
+        if res &gt; max_res:
+            max_res = res
+
+        v_calc = vega(spots[i], strikes[i], taus[i], rates[i], v_hat)
+        if v_calc &gt;= 0.01:
+            n_solved += 1
+            fwd = abs(v_hat - vols[i])
+            if fwd &gt; max_fwd_well_conditioned:
+                max_fwd_well_conditioned = fwd
+        else:
+            n_ill += 1
+
+    print("=== Rung 3 Verification on Seed 0 Grid (N = 2,000) ===")
+    print(f"Total processed instances: {n_target}")
+    print(f"Solved (well-conditioned, vega &gt;= 0.01): {n_solved}")
+    print(f"Ill-conditioned (vega &lt; 0.01):           {n_ill}")
+    print(f"Max relative price residual:             {max_res:.2e} (bound: 1.00e-12)")
+    print(f"Max forward error on solved instances:   {max_fwd_well_conditioned:.2e} (bound: 1.00e-07)")
+    print(f"All residual bounds satisfied:           {max_res &lt;= 1.0e-12}")
+
+
+main()</code></pre>
+          <pre class="expected" data-tolerance="1e-6">=== Rung 3 Verification on Seed 0 Grid (N = 2,000) ===
+Total processed instances: 2000
+Solved (well-conditioned, vega &gt;= 0.01): 1904
+Ill-conditioned (vega &lt; 0.01):           96
+Max relative price residual:             9.68e-14 (bound: 1.00e-12)
+Max forward error on solved instances:   6.29e-10 (bound: 1.00e-07)
+All residual bounds satisfied:           True</pre>
+          <p class="interpretation">The reference implementation processes all 2,000 contracts with zero convergence failures and generates the required failure-region classification counts.</p>
+        </section>
+      </section>
+
+      <section id="spec">
+        <h2 id="h-spec">Specification</h2>
+        <dl class="spec">
+          <dt>Context</dt>
+          <dd>A production volatility surface calibration pipeline requires an implied-volatility engine that evaluates millions of option quotes across multiple expiries and strikes. The solver must be unconditionally robust: it must never crash or enter an infinite loop on any input that satisfies theoretical no-arbitrage bounds, and it must detect and report ill-conditioned contracts where extreme moneyness or near-expiry conditions render vega too small for forward volatility accuracy.</dd>
+
+          <dt>Inputs</dt>
+          <dd>Each option inversion takes scalar inputs: <code>price</code> (float in currency units), <code>spot</code> \(S\) (positive finite float), <code>strike</code> \(K\) (positive finite float), <code>tau</code> \(\tau\) (positive finite float in years), <code>rate</code> \(r\) (finite float annualized continuously compounded risk-free rate), and <code>kind</code> (string <code>"call"</code> or <code>"put"</code>). All test cases are generated (SIMULATED) deterministically by <code>make_instance(seed)</code>.</dd>
+
+          <dt>Required outputs</dt>
+          <dd>
+            Deliver a single Python module <code>solver.py</code> exposing:
+            <ul>
+              <li><code>implied_vol(price: float, spot: float, strike: float, tau: float, rate: float, kind: str) -&gt; float</code>: returns the annualized implied volatility \(\hat{\sigma} &gt; 0\).</li>
+              <li><code>region(price: float, spot: float, strike: float, tau: float, rate: float, kind: str) -&gt; str</code>: returns <code>"solved"</code> if the input is valid and \(\text{vega}(\hat{\sigma}) \ge 0.01\); returns <code>"ill_conditioned"</code> if the input is valid and \(\text{vega}(\hat{\sigma}) &lt; 0.01\); raises <code>ValueError</code> on invalid inputs.</li>
+              <li><code>last_evaluations() -&gt; int</code>: returns the integer count of Black–Scholes pricing calls performed during the most recent invocation of <code>implied_vol</code>.</li>
+            </ul>
+          </dd>
+
+          <dt>Constraints</dt>
+          <dd>
+            <ol>
+              <li><strong>Input validation:</strong> <code>ValueError</code> must be raised if: <code>kind</code> is not <code>"call"</code> or <code>"put"</code>; <code>spot</code>, <code>strike</code>, or <code>tau</code> is not finite or \(\le 0\); <code>rate</code> is not finite; <code>price</code> is not finite; or <code>price</code> lies on or outside the strict theoretical no-arbitrage bounds:
+              \[
+              \begin{aligned}
+              \text{Call:}&amp;\quad \max(S - K e^{-r\tau}, 0) &lt; \text{price} &lt; S \\
+              \text{Put:}&amp;\quad \max(K e^{-r\tau} - S, 0) &lt; \text{price} &lt; K e^{-r\tau}
+              \end{aligned}
+              \]
+              </li>
+              <li><strong>Residual accuracy bound:</strong> For every valid input, the returned volatility \(\hat{\sigma}\) must satisfy the residual pricing error bound:
+              \[
+              |C_{\text{kind}}(\hat{\sigma}) - \text{price}| \le 10^{-12} \cdot S
+              \]
+              </li>
+              <li><strong>Forward accuracy bound:</strong> On well-conditioned inputs where \(\text{vega}(\sigma^*) \ge 0.01\), the forward error must satisfy:
+              \[
+              |\hat{\sigma} - \sigma^*| \le 10^{-7}
+              \]
+              </li>
+              <li><strong>Dynamic bracket expansion:</strong> The solver must dynamically expand its search interval when high-volatility quotes exceed fixed thresholds (e.g. \(\sigma^* &gt; 10\)).</li>
+              <li><strong>Evaluation budget:</strong> Inverting any quote on the seeded test grid must require at most \(B = 35\) Black–Scholes pricing calls.</li>
+              <li><strong>Determinism:</strong> Consecutive calls with identical arguments must yield bit-identical IEEE 754 floats. Standard library only; no external package dependencies.</li>
+            </ol>
+          </dd>
+
+          <dt>Grading</dt>
+          <dd>Autograder: The project is autograded by <code>test_project.py</code> in the Pyodide browser sandbox and locally via pytest across 50 consecutive seeds (0 to 49). All 18 isolated test checks must pass within the 60-second suite time limit.</dd>
+        </dl>
+      </section>
+
+      <section id="hours-budget">
+        <h2 id="h-hours-budget">Time budget</h2>
+        <div class="table-wrap">
+          <table id="hours">
+            <thead>
+              <tr><th>Component</th><th>Hours</th><th>Rationale</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Rung 1 worked example</td><td>2</td><td>Read and trace one solved seeded instance step by step</td></tr>
+              <tr><td>Rung 2 completion problem</td><td>2</td><td>Fill bracket-update and Newton-step lines and verify instant check</td></tr>
+              <tr><td>Solver: bracket expansion, bisection, safeguarded Newton</td><td>10</td><td>The core algorithm, bracket search, step rule and loop invariants</td></tr>
+              <tr><td>Input contract and no-arbitrage bounds</td><td>3</td><td>Strict bounds check, ValueError validations for non-positive or non-finite inputs</td></tr>
+              <tr><td>Accuracy and conditioning analysis</td><td>4</td><td>Residual bound 1e-12*S, forward bound 1e-7 where vega &gt;= 0.01</td></tr>
+              <tr><td>Failure-region report and counts</td><td>4</td><td>Implement region() classification and summary counts on the seeded grid</td></tr>
+              <tr><td>Local stress run on the grid and timing</td><td>3</td><td>Execution on N = 2000 instances per seed within the suite limit</td></tr>
+              <tr><td>Self-test against the suite and starter</td><td>2</td><td>Run test_project.py on reference and empty starter</td></tr>
+            </tbody>
+            <tfoot>
+              <tr><td>Total</td><td>30</td><td>Equals data-hours-project declared on the hub and page</td></tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section class="grader-panel" id="grader-section" data-unit="M8" data-grader="grader/" data-suite="test_project.py" data-support="instance.py pricing.py" data-solution="solver.py" data-starter="starter.py" data-packages="">
+        <div class="panel-header">
+          <h3>Autograder Panel</h3>
+          <p>Submit <code>solver.py</code> below to execute the 18-property test suite across seeded test instances.</p>
+        </div>
+      </section>
+
+      <section id="stretch">
+        <h2 id="h-stretch">Rung 4 · Stretch: 1M Input Stress Grid</h2>
+        <p>In production trading desks, implied volatility engines process entire market option chains comprising hundreds of thousands of strikes and expiries per second. For your quantitative portfolio, construct a local benchmarking harness that generates a vectorized or batch grid of \(1{,}000{,}000\) valid option contracts across varied moneyness and maturities. Benchmark execution throughput on your local CPU, profile cache efficiency and branch prediction, and generate a 2D density heatmap illustrating the boundary between the <code>solved</code> and <code>ill_conditioned</code> regions as a function of moneyness \(\ln(S/K)\) and maturity \(\tau\).</p>
+      </section>
+
+      <section class="reading-list-section" id="reading-list-section">
+        <h2 id="h-reading-list">Reading list</h2>
+        <ol class="reading-list">
+          <li data-cite="goldberg1991every"><span class="title">What every computer scientist should know about floating-point arithmetic</span>. Goldberg (1991). Foundation for IEEE 754 precision, rounding errors, and catastrophic cancellation in numerical algorithms.</li>
+          <li data-cite="glasserman2003monte"><span class="title">Monte Carlo Methods in Financial Engineering</span>. Glasserman (2003). Comprehensive treatise on root-finding methods, Black–Scholes inversion conditioning, and numerical simulation.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <footer class="site-footer">M8 · Numerical Methods &amp; Scientific Computing</footer>
+</body>
+</html>

@@ -64,7 +64,10 @@ def main() -> None:
     apv_p_low = apv_closed_form(b_base, p_low, v_base, n_base)
     apv_p_high = apv_closed_form(b_base, p_high, v_base, n_base)
     print("\n=== Monotonicity Checks ===")
-    print(f"Survival sensitivity: APV(p=0.92)={float(apv_p_low):.4f} < APV(p=0.98)={float(apv_p_high):.4f}: {apv_p_high > apv_p_low}")
+    print(
+        f"Survival sensitivity: APV(p=0.92)={float(apv_p_low):.4f} < "
+        f"APV(p=0.98)={float(apv_p_high):.4f}: {apv_p_high > apv_p_low}"
+    )
 
     p_fixed = Fraction(95, 100)
     y_low = Fraction(2, 100)
@@ -73,7 +76,10 @@ def main() -> None:
     v_high = Fraction(1, 1) / (Fraction(1, 1) + y_high)
     apv_y_low = apv_closed_form(b_base, p_fixed, v_low, n_base)
     apv_y_high = apv_closed_form(b_base, p_fixed, v_high, n_base)
-    print(f"Discount sensitivity: APV(y=0.06)={float(apv_y_high):.4f} < APV(y=0.02)={float(apv_y_low):.4f}: {apv_y_low > apv_y_high}")
+    print(
+        f"Discount sensitivity: APV(y=0.06)={float(apv_y_high):.4f} < "
+        f"APV(y=0.02)={float(apv_y_low):.4f}: {apv_y_low > apv_y_high}"
+    )
 
 
 main()

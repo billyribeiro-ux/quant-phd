@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="S0" data-page="L04" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L04 · Prices as Data: Stale Prices &amp; Corporate Breaks · S0 EDA &amp; Visualization</title>
+  <meta name="description" content="Non-synchronous trading, stale price runs, corporate action adjustments, stock splits, split-adjusted log returns, and distinguishing structural breaks from statistical outliers.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">S0 EDA &amp; Visualization</a><span class="sep">›</span>
+      <span>L04</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">S0 · Lesson 4 of 5 · 8 study hours</p>
+        <h1>Prices as Data: Stale Prices &amp; Corporate Breaks</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="empirical-distribution" href="L01.html#def-empirical-distribution">empirical distribution</a>, <a class="concept" data-concept="robust-statistics" href="L01.html#def-robust-statistics">robust statistics</a>, <a class="concept" data-concept="outlier-detection" href="L02.html#def-outlier-detection">outlier detection</a>, <a class="concept" data-concept="log-return" href="../../../concepts.html#log-return">log returns</a>, <a class="concept" data-concept="variance" href="../../../concepts.html#variance">variance</a></li>
+          <li><strong>Introduces:</strong> <dfn id="def-stale-price" data-concept="stale-price">stale-price</dfn>, <dfn id="def-corporate-action-break" data-concept="corporate-action-break">corporate-action-break</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Recorded market prices are the product of discrete market mechanisms. Illiquidity causes identical quotes to repeat across time, creating stale runs that artificially depress volatility. Corporate actions (such as stock splits) cause massive discrete price steps that create phantom crashes unless properly adjusted.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Non-Synchronous Trading and Stale Price Runs</h2>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(Stale Price)</span></span>
+        <p>A <a class="concept" data-concept="stale-price" href="#def-stale-price">stale price</a> is a recorded quote or trade price that repeats a previous period's print due to non-trading, exchange feed latency, illiquidity, or matrix pricing rather than the arrival of identical clearing economic valuations.</p>
+      </div>
+
+      <p>In low-volume securities (e.g. micro-caps, municipal bonds, exotic derivatives), trading may not occur during every calendar interval. If an exchange or data vendor fills the closing price with the last executed trade from days prior, the resulting time series contains runs of identical prices.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.2 <span class="name">(Maximal Stale Run)</span></span>
+        <p>In a discrete price sequence \((P_0, P_1, \dots, P_{n-1})\), a maximal stale run of threshold \(K \ge 2\) is an index interval \([s, e]\) with \(e - s + 1 \ge K\) such that:</p>
+        \[
+        \begin{aligned}
+        P_s = P_{s+1} = \dots = P_e &\quad \text{with} \quad (s = 0 \text{ or } P_{s-1} \ne P_s) \\
+        &\quad \text{and} \quad (e = n - 1 \text{ or } P_{e+1} \ne P_e)
+        \end{aligned}
+        \]
+        <p>Any intervening data gap (None or NaN) terminates a run.</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 1.1 <span class="name">(Volatility Understatement under Non-Synchronous Stale Prices)</span></span>
+        <p>Let the true continuous price process follow a geometric Brownian motion with diffusion variance \(\sigma^2\). If an asset trades with probability \(1 - \pi \in (0, 1)\) in each period and repeats its prior price with probability \(\pi\) (stale print), the expected sample variance of recorded single-period returns satisfies:</p>
+        \[
+        \E[s_{\text{recorded}}^2] = (1 - \pi) \sigma^2 < \sigma^2
+        \]
+        <p>Furthermore, recorded returns exhibit artificial first-order autocorrelation.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Let \(r_t^* \sim \Normal(0, \sigma^2)\) be the unobserved true return. Under the Bernoulli non-trading model, the recorded return is \(r_t = (1 - I_t) r_t^*\), where \(I_t \in \{0, 1\}\) indicates a stale repeat (\(\Prob(I_t = 1) = \pi\)). Assuming independence between \(I_t\) and \(r_t^*\):</p>
+        \[
+        \Var(r_t) = \E[r_t^2] - (\E[r_t])^2 = \E[(1 - I_t)^2] \E[(r_t^*)^2] - 0 = (1 - \pi) \sigma^2
+        \]
+        <p>Because \(\pi > 0\), \((1 - \pi) \sigma^2 < \sigma^2\). When a trade finally occurs after \(k\) stale periods, the recorded return absorbs the accumulated true innovations: \(\sum_{j=0}^k r_{t-j}^*\), inducing positive cross-autocorrelation with market factors (the Fisher effect).</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Corporate Actions and Structural Breaks</h2>
+
+      <p>Corporate actions represent discrete events initiated by an issuer that fundamentally alter share count, capital structure, or capital allocation without changing the underlying economic equity value. Key actions include:</p>
+      <ul>
+        <li><strong>Stock Splits:</strong> A company divides existing shares into multiple shares (e.g. 2-for-1 split). The share count doubles and nominal price halves overnight.</li>
+        <li><strong>Reverse Stock Splits:</strong> Consolidating shares (e.g. 1-for-10 reverse split) to raise nominal price above listing thresholds.</li>
+        <li><strong>Cash Dividends:</strong> Distribution of cash reserves to shareholders, reducing stock value by the dividend amount on the ex-dividend date.</li>
+        <li><strong>Spin-Offs:</strong> Carving out a subsidiary as an independent public entity and distributing shares to existing holders.</li>
+      </ul>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(Split-Adjusted Log Return)</span></span>
+        <p>Let \(P_t\) be the nominal unadjusted price at date \(t\), and let \(s_t > 0\) denote the corporate action split ratio at date \(t\) (e.g. \(s_t = 2.0\) for a 2-for-1 split, \(s_t = 1.0\) for no action). The split-adjusted continuous log return \(r_t\) is:</p>
+        \[
+        r_t = \ln\left( \frac{P_t}{P_{t-1}} \right) + \ln(s_t)
+        \]
+      </div>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.2 <span class="name">(Corporate-Action Break)</span></span>
+        <p>A <a class="concept" data-concept="corporate-action-break" href="#def-corporate-action-break">corporate-action break</a> is an unexplained step in a financial price series where the absolute split-adjusted log return exceeds a pre-defined threshold \(\tau > 0\):</p>
+        \[
+        |r_t| > \tau
+        \]
+        <p>Under Atlas A3 contract conventions, \(\tau = 0.25\) (\(\approx 25\%\) overnight jump). A legitimate corporate split reported in the dataset's split ratio explains the nominal step and is not flagged as a break. Unreported splits, dividend drops, or currency re-denominations trigger a corporate-action break.</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 2.1 <span class="name">(Disjointness of Breaks and Outliers)</span></span>
+        <p>Under the Atlas A3 profiling architecture, a corporate-action break represents a discrete structural step and is never classified as a statistical outlier. The set of flagged break indices \(\mathcal{B}\) and the set of flagged outlier indices \(\mathcal{O}\) are disjoint:</p>
+        \[
+        \mathcal{B} \cap \mathcal{O} = \emptyset
+        \]
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Let \(\mathcal{R}\) be the set of all valid returns. By construction, \(\mathcal{B} = \{t : |r_t| > \tau\}\). The subset of candidate returns evaluated for outlier status is \(\mathcal{R}_{\text{cand}} = \mathcal{R} \setminus \mathcal{B}\). Outliers are identified strictly within \(\mathcal{R}_{\text{cand}}\): \(\mathcal{O} = \{t \in \mathcal{R}_{\text{cand}} : |r_t - m| > k \cdot d\}\), where \(m\) is the median and \(d\) is the MAD of \(\mathcal{R}_{\text{cand}}\). Because \(\mathcal{O} \subseteq \mathcal{R}_{\text{cand}} = \mathcal{R} \setminus \mathcal{B}\), it follows immediately that \(\mathcal{B} \cap \mathcal{O} = \emptyset\).</p>
+      </div>
+
+      <section class="lab" id="lab-S0-L04-1" data-runtime="python">
+        <h3>Lab 1 · Spotting a Split-Adjustment Error</h3>
+        <p class="hypothesis">We simulate 100 trading days of stock prices containing a 6-day stale price run (days 25–30) and an unadjusted 2-for-1 stock split on day 60. We test whether the stale run detector isolates interval (25, 30), and whether the unadjusted nominal price drop of -50.3% generates an artificial annualized volatility exceeding 100%, which split adjustment restores to true market volatility (~7.5%). Data label: SIMULATED (cleared equity series with corporate actions pending).</p>
+        <pre><code class="language-python" data-run>"""Lab S0-L04-1: Stale-run detection and spotting a split-adjustment error.
+
+Demonstrates identifying maximal stale price runs and detecting unadjusted corporate-action
+splits in financial time series. Compares raw vs split-adjusted log returns and volatility.
+Data label: SIMULATED (no cleared equity dataset with corporate actions is currently embedded;
+pending cleared redistribution rights).
+"""
+
+from __future__ import annotations
+
+import math
+import random
+import statistics
+
+
+def detect_stale_runs(prices: list[float], min_run: int = 5) -&gt; list[tuple[int, int]]:
+    """Identify maximal runs of identical prices of length &gt;= min_run."""
+    runs: list[tuple[int, int]] = []
+    if not prices:
+        return runs
+    start = 0
+    curr_len = 1
+    for i in range(1, len(prices)):
+        if prices[i] == prices[i - 1]:
+            curr_len += 1
+        else:
+            if curr_len &gt;= min_run:
+                runs.append((start, i - 1))
+            start = i
+            curr_len = 1
+    if curr_len &gt;= min_run:
+        runs.append((start, len(prices) - 1))
+    return runs
+
+
+def main() -&gt; None:
+    # SIMULATED daily price path over 100 trading days
+    seed = 101
+    rng = random.Random(seed)
+    n = 100
+
+    prices: list[float] = [100.0]
+    split_ratios: list[float] = [1.0] * n
+
+    stale_start = 25
+    stale_len = 6
+    split_day = 60
+
+    # True split: 2-for-1 split on day 60
+    split_ratios[split_day] = 2.0
+
+    for t in range(1, n):
+        ret = rng.uniform(-0.008, 0.008)
+        if stale_start &lt; t &lt; stale_start + stale_len:
+            # Stale print: identical price
+            nxt = prices[-1]
+        elif t == split_day:
+            # Nominal price halves due to 2-for-1 split plus daily market movement
+            nxt = round(prices[-1] * 0.50 * math.exp(ret), 4)
+        else:
+            nxt = round(prices[-1] * math.exp(ret), 4)
+            if nxt == prices[-1]:
+                nxt = round(prices[-1] * 1.002, 4)
+        prices.append(nxt)
+
+    # 1. Detect stale runs
+    stale_runs = detect_stale_runs(prices, min_run=5)
+
+    # 2. Compute raw unadjusted returns vs split-adjusted returns
+    raw_returns: list[float] = [math.log(prices[t] / prices[t - 1]) for t in range(1, n)]
+    adj_returns: list[float] = [math.log(prices[t] / prices[t - 1]) + math.log(split_ratios[t]) for t in range(1, n)]
+
+    # Inspect returns at the split event (day 60 -&gt; index 59 in returns)
+    r_raw_split = raw_returns[split_day - 1]
+    r_adj_split = adj_returns[split_day - 1]
+
+    # Annualized volatility: std * sqrt(252)
+    vol_raw = statistics.stdev(raw_returns) * math.sqrt(252)
+    vol_adj = statistics.stdev(adj_returns) * math.sqrt(252)
+
+    print(f"Sample length: {n} trading days")
+    print(f"Detected stale runs: {stale_runs}")
+    print(f"Stale run covers expected range: {stale_runs == [(stale_start, stale_start + stale_len - 1)]}")
+    print(f"Day {split_day} unadjusted raw return: {r_raw_split:.5f} ({math.exp(r_raw_split) - 1.0:.2%})")
+    print(f"Day {split_day} split-adjusted return:  {r_adj_split:.5f} ({math.exp(r_adj_split) - 1.0:.2%})")
+    print(f"Annualized volatility (raw):      {vol_raw:.2%}")
+    print(f"Annualized volatility (adjusted): {vol_adj:.2%}")
+    print(f"Split-adjustment removes phantom crash: {r_raw_split &lt; -0.60 and abs(r_adj_split) &lt; 0.02}")
+    print(f"Volatility distortion factor: {vol_raw / vol_adj:.2f}x")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-4">Sample length: 100 trading days
+Detected stale runs: [(25, 30)]
+Stale run covers expected range: True
+Day 60 unadjusted raw return: -0.69980 (-50.33%)
+Day 60 split-adjusted return:  -0.00665 (-0.66%)
+Annualized volatility (raw):      111.83%
+Annualized volatility (adjusted): 7.57%
+Split-adjustment removes phantom crash: True
+Volatility distortion factor: 14.76x</pre>
+        <p class="interpretation">The experiment demonstrates that failure to adjust for corporate splits creates phantom crashes (-50.3%) that distort volatility estimates by almost 15x. Split-adjusted returns restore the true underlying economic trajectory.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s3"><span class="section-number">3</span>Where the Canon Breaks</h2>
+        <p>In standard data analysis, discrete price discontinuities are modeled with continuous diffusion equations. In production quantitative trading systems, this assumption fails:</p>
+        <ul>
+          <li><strong>Backward vs Forward Price Adjustment:</strong> Backward adjustment adjusts historical prices downward so that current price levels match exchange quotes. This preserves dollar PnL for current holdings, but creates artificial negative historical prices for stocks that experienced multiple large cash dividends or splits (e.g. cumulative adjustment factors causing \(P_0^* < 0\)). Forward adjustment inflates current prices, keeping past prices intact.</li>
+          <li><strong>Dividend Timing and Tax Withholding:</strong> Adjusting for cash dividends requires knowing the ex-dividend date, payment date, and tax jurisdiction. For foreign equities subject to cross-border dividend withholding taxes, the effective price drop on ex-date is strictly less than the gross dividend, creating artificial overnight jump residuals if gross dividends are subtracted naively.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s4"><span class="section-number">4</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“A stock split changes the market capitalization of the firm.”</p>
+            <p>A stock split is purely an accounting re-denomination. In a 2-for-1 split, the number of shares doubles and the price per share halves. Total market capitalization \(\text{Shares} \times \text{Price}\) is unchanged. Wealth is completely conserved.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“A run of identical prices in a daily feed indicates that the market valuation of the firm was perfectly constant.”</p>
+            <p>In illiquid or limit-order-constrained assets, a sequence of identical prices reflects non-trading or quote freezing. Information arrives continuously; the lack of recorded price movement reflects market microstructure friction, not constant fundamental value.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Large corporate action breaks should be filtered out by outlier detection algorithms.”</p>
+            <p>Treating corporate action breaks as statistical outliers distorts the outlier model. A split is a deterministic structural adjustment of the entire series baseline, not an isolated noisy draw. Including breaks in MAD estimation inflates the scale parameter \(d\), causing true statistical outliers to be missed.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s5"><span class="section-number">5</span>Problem set</h2>
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Split-Adjusted Log Return on Reverse Split</span>
+            <p>A distressed biotech stock executes a 1-for-10 reverse stock split. On the day before the split, the stock closes at \(P_{t-1} = \$0.40\). On the split date, it closes at \(P_t = \$3.60\). What is the split ratio \(s_t\), the raw log return, and the split-adjusted log return \(r_t\)?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For a 1-for-10 reverse split, 10 old shares become 1 new share, so the share-count multiplier is \(s_t = 0.10\) (or \(1/10\)). The raw unadjusted log return is \(r_t^{\text{raw}} = \ln(3.60 / 0.40) = \ln(9.0) \approx 2.1972\) (+800% nominal jump). The split-adjusted log return is \(r_t = \ln(3.60 / 0.40) + \ln(0.10) = \ln(3.60 / 4.00) = \ln(0.90) \approx -0.10536\) (-10.0% economic return).</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · Maximal Stale Run Extraction</span>
+            <p>Identify all maximal stale runs of threshold \(K = 4\) in the price vector (10, 10, 10, 10, 12, 14, 14, 14, 14, 14, NaN, 15, 15, 15, 15).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Examining contiguous runs of identical non-gap prints: indices 0–3 have price 10 (length 4 \(\ge 4\)); run is \((0, 3)\). Indices 5–9 have price 14 (length 5 \(\ge 4\)); run is \((5, 9)\). Index 10 is NaN, which ends all runs. Indices 11–14 have price 15 (length 4 \(\ge 4\)); run is \((11, 14)\). The maximal stale runs are \([(0, 3), (5, 9), (11, 14)]\).</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · Cash Dividend Price Adjustment</span>
+            <p>A stock closes at \$100.00 on the day prior to its ex-dividend date, and pays a \$2.50 cash dividend. If the stock closes at \$98.00 on the ex-dividend date, calculate the raw return versus the dividend-adjusted simple return.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The raw price return is \(98.00 / 100.00 - 1 = -2.0\%\). The total economic return accounts for the dividend: \(R_t^{\text{adj}} = \frac{P_t + D_t}{P_{t-1}} - 1 = \frac{98.00 + 2.50}{100.00} - 1 = \frac{100.50}{100.00} - 1 = +0.50\%\). Ignoring the dividend converts a profitable +0.5% return into an artificial -2.0% loss.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Cumulative Invariance of Split Adjustments</span>
+            <p>Prove that for a sequence of \(T\) periods with nominal prices \(P_0, \dots, P_T\) and split ratios \(s_1, \dots, s_T\), the multi-period split-adjusted return equals the sum of single-period split-adjusted log returns: \(\sum_{t=1}^T r_t = \ln(P_T / P_0) + \sum_{t=1}^T \ln(s_t)\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The sum of split-adjusted log returns is \(\sum_{t=1}^T r_t = \sum_{t=1}^T [\ln(P_t / P_{t-1}) + \ln(s_t)] = \sum_{t=1}^T [\ln P_t - \ln P_{t-1}] + \sum_{t=1}^T \ln(s_t)\). The first summation telescopes: \((\ln P_1 - \ln P_0) + (\ln P_2 - \ln P_1) + \dots + (\ln P_T - \ln P_{T-1}) = \ln P_T - \ln P_0 = \ln(P_T / P_0)\). Adding the cumulative split adjustments yields \(\ln(P_T / P_0) + \sum_{t=1}^T \ln(s_t)\), proving path-independent compounding.</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Non-Negative Factor Requirement</span>
+            <p>Prove that if an equity price series has positive split ratios \(s_t > 0\) and positive prices \(P_t > 0\), the backward-adjusted price series \(P_t^* = P_t \prod_{u=t+1}^T s_u\) is strictly positive for all \(t\), but that subtracting additive cash dividends can yield negative adjusted prices.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Since \(P_t > 0\) and \(s_u > 0\) for all \(u\), the product of positive real numbers is strictly positive: \(P_t^* = P_t \prod_{u=t+1}^T s_u > 0\). Conversely, under additive backward dividend adjustment, the adjusted price is \(P_t^{\text{add}} = P_t - \sum_{u=t+1}^T D_u\). If a stock trades at \$5.00 after paying cumulative historical dividends of \$8.00, \(P_t^{\text{add}} = 5.00 - 8.00 = -\$3.00 < 0\), proving that additive adjustments violate limited liability while multiplicative ratio adjustments preserve positive domains.</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · Autocorrelation Induced by Random Non-Trading</span>
+            <p>Let \(r_t^*\) be iid with mean 0 and variance \(\sigma^2\). Under the non-trading model where \(r_t = r_t^*\) with probability \(1 - \pi\) and \(r_t = 0\) with probability \(\pi\), followed by full realization on the next trade, prove that \(\Cov(r_t, r_{t-1}) < 0\) for individual assets.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Suppose a stock does not trade at \(t-1\) with probability \(\pi\), so \(r_{t-1} = 0\). At \(t\), if it trades, the recorded return is \(r_t = r_t^* + r_{t-1}^*\). The expectation \(\E[r_t r_{t-1}]\) evaluates across states. When \(t-1\) does not trade, \(r_{t-1} = 0\), giving product 0. When \(t-1\) trades and \(t\) does not trade, \(r_t = 0\), giving product 0. When both trade, \(r_t = r_t^*\) and \(r_{t-1} = r_{t-1}^*\); by independence, \(\E[r_t^* r_{t-1}^*] = 0\). However, in portfolio aggregation across \(N\) asynchronous stocks with common factor \(f_t\), index returns satisfy \(\Cov(R_t, R_{t-1}) = \pi(1 - \pi) \beta^2 \sigma_f^2 > 0\), proving the Fisher non-trading effect.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Volatility Distortion from Unreported Splits</span>
+            <p>Simulate 252 daily stock returns from \(\Normal(0, 0.015^2)\) starting at \(P_0 = \$100\). Plant an unadjusted 3-for-1 split on day 120. Measure the annualized volatility of the raw price series versus the split-adjusted series.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The clean annualized volatility is \(0.015 \times \sqrt{252} \approx 23.8\%\). On day 120, the unadjusted 3-for-1 split produces an overnight nominal drop from \(\approx \$100\) to \(\approx \$33.33\), yielding log return \(r_{120}^{\text{raw}} = \ln(1/3) \approx -1.0986\) (-66.7%). The sum of squared returns increases by \((-1.0986)^2 \approx 1.207\), adding \(1.207 / 252 \approx 0.00479\) to daily variance. The contaminated daily standard deviation rises to \(\sqrt{0.015^2 + 0.00479} \approx \sqrt{0.00501} \approx 0.0708\). Contaminated annualized volatility becomes \(0.0708 \times \sqrt{252} \approx 112.4\%\), a nearly 5x distortion.</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Stale Run Filtering on Corporate Bond Matrices</span>
+            <p>In OTC corporate bond datasets, illiquid bonds trade infrequently; evaluated pricing services repeat identical matrix prices for weeks. In a 500-day series, simulate 5 stale runs of lengths 8, 12, 15, 6, and 20 days. Implement a run-length detector and compute the fraction of observations that are stale prints.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Total stale days across the 5 runs is \(8 + 12 + 15 + 6 + 20 = 61\) days. The run detector scans contiguous equal prints, outputting the index intervals \([(s_1, e_1), \dots, (s_5, e_5)]\). The fraction of stale observations is \(61 / 500 = 12.2\%\). Flagging and removing these intervals prevents risk models from estimating false zero betas and artificially suppressed credit spread volatilities.</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · Distinguishing Outliers from Corporate Action Breaks</span>
+            <p>In a database of 1,000 asset return series, 15 series experience overnight jumps with \(|r_t| > 0.30\). Describe a diagnostic rule that queries company actions to classify each jump into a legitimate corporate break versus a data corruption.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The diagnostic algorithm queries the corporate actions database for date \(t\). If a stock split, stock dividend, or rights offering with ratio \(s_t\) is recorded such that \(|r_t - \ln(s_t)| \le 0.05\), the jump is classified as an explained corporate action. If no corporate action exists or the ratio does not account for the jump, the series is flagged as an unexplained corporate break. Statistical outlier tests (MAD) are evaluated strictly on the remaining returns to ensure that breaks do not contaminate outlier scale estimation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Corporate Action Alignment in Multi-Asset Backtesting Engines</span>
+            <p>In a quantitative portfolio running 3,000 equities, formulate how the execution engine maintains total return continuity when shares are spun off into a new ticker, deriving the cash-in-lieu and basket allocation equations.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When parent company \(A\) spins off subsidiary \(B\) at ratio \(\lambda\) (holding 1 share of \(A\) grants \(\lambda\) shares of \(B\)), the portfolio must account for both legs. On ex-date \(t\), the position value is \(V_t = Q_A P_{A,t} + \lambda Q_A P_{B,t}\). Fractional shares resulting in non-integer quantities are liquidated as cash-in-lieu: \(C = (Q_B - \lfloor Q_B \rfloor) P_{B,t}\). The effective corporate action return is \(R_t = \frac{P_{A,t} + \lambda P_{B,t}}{P_{A,t-1}} - 1\). This formula ensures that portfolio wealth and factor risk are perfectly articulated without recording an artificial price crash in ticker \(A\).</p>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Microstructure Foundations of Asymmetric Volatility in Stale Feeds</span>
+            <p>Analyze how price limits and trading curbs in international markets (e.g. \(\pm 10\%\) daily limits in China or Japan) truncate the empirical distribution and create multi-day stale runs at limit-up and limit-down prices.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When equilibrium price change exceeds the daily regulatory band, orders pool at the limit price without clearing. The recorded closing price truncates at the boundary \(\bar{P}_t = P_{t-1}(1 \pm L)\), and trading ceases, creating artificial runs of identical limit prints while unobserved shadow returns accumulate. Volatility is artificially suppressed during the limit run, followed by delayed volatility spikes when the limit is lifted. Econometric estimation requires modeling the latent price via a Tobit censored regression framework.</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Automated Corporate Break Scanners in Atlas Platform Architecture</span>
+            <p>Design an automated corporate action break scanner for the Atlas platform that cross-references price discontinuities against regulatory filing feeds, specifying the API contract, error tolerances, and quarantine queue.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The scanner implements the Atlas A3 contract: it ingests datasets containing dates, prices, and reported split ratios. If \(|r_t^{\text{adj}}| > 0.25\), the symbol is automatically routed to a quarantine queue, preventing backtests from consuming the contaminated series. The scanner dispatches an asynchronous audit task to SEC EDGAR 8-K filings. If an unrecorded split or re-capitalization is detected, the database generates an automated corporate action factor record; otherwise, the break is flagged for manual desk review.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s6"><span class="section-number">6</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead>
+              <tr><th>Result</th><th>Grade</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Stale price non-trading suppresses recorded volatility: \(\E[s^2] = (1 - \pi)\sigma^2\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 1.1</td>
+              </tr>
+              <tr>
+                <td>Split-adjusted continuous log return: \(r_t = \ln(P_t / P_{t-1}) + \ln(s_t)\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Definition 2.1</td>
+              </tr>
+              <tr>
+                <td>Disjointness of breaks and outliers in profiling architecture: \(\mathcal{B} \cap \mathcal{O} = \emptyset\)</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Theorem 2.1</td>
+              </tr>
+              <tr>
+                <td>Unadjusted stock splits inflate annualized volatility by an order of magnitude</td>
+                <td><span class="grade" data-grade="A">A</span></td>
+                <td>Lab 1 (SIMULATED equity series)</td>
+              </tr>
+              <tr>
+                <td>Telescoping multi-period compounding invariance of split-adjusted log returns</td>
+                <td><span class="grade" data-grade="T">T</span></td>
+                <td>Problem P1</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="S0" data-page="L04" data-cards="cards.json">
+        <h2 id="s7"><span class="section-number">7</span>Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the formula for the split-adjusted continuous log return \(r_t\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q1"> \(r_t = \ln(P_t / P_{t-1}) + \ln(s_t)\)</label>
+              <label class="option"><input type="radio" name="L04q1"> \(r_t = \ln(P_t / P_{t-1}) - \ln(s_t)\)</label>
+              <label class="option"><input type="radio" name="L04q1"> \(r_t = (P_t / P_{t-1}) \cdot s_t - 1\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>Because continuous compounding uses logarithms, the product \(P_t s_t / P_{t-1}\) expands to \(\ln(P_t / P_{t-1}) + \ln(s_t)\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="-0.6931" data-tolerance="0.005">
+            <p class="prompt">What is the unadjusted raw log return when a stock closes at \$100 before a 2-for-1 split and \$50 immediately after?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(r_t^{\text{raw}} = \ln(50 / 100) = \ln(0.5) \approx -0.69315\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="2.0" data-tolerance="0.01">
+            <p class="prompt">What split ratio \(s_t\) should be entered into the Atlas profiler for a standard 2-for-1 stock split?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>A 2-for-1 split doubles the share count, corresponding to a split multiplier of \(s_t = 2.0\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under the Atlas A3 contract, what happens to a stale run if a missing value (NaN) occurs?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q4"> The gap row strictly ends the stale run</label>
+              <label class="option"><input type="radio" name="L04q4"> The gap row is treated as repeating the stale price</label>
+              <label class="option"><input type="radio" name="L04q4"> The entire dataset is rejected</label>
+            </fieldset>
+            <div class="explain" hidden><p>Under contract rules, a gap row ends a run; if the accumulated run length was \(\ge K\), it is saved.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.25" data-tolerance="0.01">
+            <p class="prompt">What is the default threshold on absolute split-adjusted log return for classifying a corporate-action break in Atlas A3?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Under atlas/A3.contract.md, the default break threshold is \(\text{break\_log} = 0.25\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does the Atlas A3 contract mandate that a corporate action break is never reported as an outlier?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q6"> A break represents a discrete structural step; including it would contaminate the MAD scale for true statistical outliers</label>
+              <label class="option"><input type="radio" name="L04q6"> Breaks and outliers have identical mathematical definitions</label>
+              <label class="option"><input type="radio" name="L04q6"> Outliers only occur in bond datasets</label>
+            </fieldset>
+            <div class="explain" hidden><p>Breaks represent structural shifts. Excluding them from the non-break returns allows the MAD to measure the true noise distribution.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the effect of non-synchronous stale trading on measured portfolio volatility?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q7"> It artificially suppresses single-period return volatility</label>
+              <label class="option"><input type="radio" name="L04q7"> It inflates volatility by an order of magnitude</label>
+              <label class="option"><input type="radio" name="L04q7"> It converts leptokurtic distributions into Gaussians</label>
+            </fieldset>
+            <div class="explain" hidden><p>Zero returns from non-trading mechanically dampen the sample variance by a factor of \((1 - \pi)\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.10" data-tolerance="0.01">
+            <p class="prompt">For a 1-for-10 reverse stock split, what is the split ratio \(s_t\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>In a 1-for-10 consolidation, 10 shares become 1 share, so \(s_t = 1/10 = 0.10\).</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="tukey1977exploratory"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L03.html"><span class="dir">Previous</span>L03 · Missing Data Mechanisms</a>
+        <a class="next" href="L05.html"><span class="dir">Next</span>L05 · Graphical Perception &amp; Misleading Charts</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">S0 · Exploratory Data Analysis &amp; Visualization · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

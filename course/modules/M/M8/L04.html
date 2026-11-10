@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M8" data-page="L04" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L04 · Linear Solvers and Finite Differences · M8 Numerical Methods</title>
+  <meta name="description" content="Direct linear solvers: LU decomposition with partial pivoting, Cholesky factorization for symmetric positive-definite matrices, and the truncation-roundoff trade-off in finite difference stencils.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M8 Numerical Methods &amp; Scientific Computing</a><span class="sep">›</span>
+      <span>L04</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">M8 · Lesson 4 of 8 · 10 study hours</p>
+        <h1>Linear Solvers and Finite Differences</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="finite-difference-derivative" href="../../../concepts.html#finite-difference-derivative">finite-difference derivative</a> (M2), <a class="concept" data-concept="taylor-theorem" href="../../../concepts.html#taylor-theorem">Taylor's theorem</a> (M2), <a class="concept" data-concept="positive-semidefinite-matrix" href="../../../concepts.html#positive-semidefinite-matrix">positive semidefinite matrix</a> (M3), <a href="L01.html#def-catastrophic-cancellation">catastrophic cancellation</a> (L01), <a href="L02.html#def-condition-number">condition number</a> (L02)</li>
+          <li><strong>Introduces:</strong> <dfn id="def-cholesky-decomposition" data-concept="cholesky-decomposition">LU and Cholesky decompositions</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or convention</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Direct matrix factorizations form the computational engine of quantitative finance: simulating correlated asset returns, solving parabolic partial differential equations for American option pricing, and estimating regression betas. LU decomposition with partial pivoting solves general linear systems stably, while the Cholesky factorization exploits symmetry and positive definiteness to halve computation and storage requirements. Furthermore, numerically estimating sensitivities (option Greeks) via finite difference stencils introduces a fundamental tension between mathematical truncation error and floating-point roundoff error. Balancing this trade-off is critical for accurate risk management.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Gaussian elimination and LU decomposition</h2>
+
+      <p>Solving a general linear system \(A x = b\) where \(A \in \R^{n \times n}\) is non-singular can be achieved by factoring \(A\) into triangular components.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(LU decomposition with partial pivoting)</span></span>
+        <p>For any non-singular matrix \(A \in \R^{n \times n}\), there exists a permutation matrix \(P\), a unit lower-triangular matrix \(L\) (with \(L_{ii} = 1\) and \(|L_{ij}| \le 1\) for \(i &gt; j\)), and an upper-triangular matrix \(U\) such that:</p>
+        <p>\[ P A = L U \]</p>
+        <p>Solving \(A x = b\) decomposes into two triangular systems: forward substitution \(L y = P b\), followed by back substitution \(U x = y\), each requiring \(O(n^2)\) flops once the \(O(\frac{2}{3} n^3)\) factorization is computed.</p>
+      </div>
+
+      <p>Partial pivoting chooses the row with the largest absolute entry in the active column as the pivot element before each elimination step, guaranteeing that all multipliers satisfy \(|L_{ij}| \le 1\) and preventing roundoff explosion.</p>
+
+      <h2 id="s2"><span class="section-number">2</span>The Cholesky decomposition</h2>
+
+      <p>When the coefficient matrix \(A\) is symmetric positive-definite (SPD), Gaussian elimination can be performed symmetrically without pivoting.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(Cholesky factorization)</span></span>
+        <p>Let \(A \in \R^{n \times n}\) be a symmetric positive-definite matrix (\(A = A^\top\) and \(x^\top A x &gt; 0\) for all \(x \ne 0\)). The <dfn id="def-cholesky-decomposition-term" data-concept="cholesky-decomposition">Cholesky decomposition</dfn> is the unique factorization:</p>
+        <p>\[ A = L L^\top \]</p>
+        <p>where \(L\) is a lower-triangular matrix with strictly positive diagonal entries \(L_{ii} &gt; 0\).</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 2.2 <span class="name">(existence and uniqueness of Cholesky factorization)</span></span>
+        <p>A real symmetric matrix \(A \in \R^{n \times n}\) has a unique Cholesky factorization \(A = L L^\top\) with \(L_{ii} &gt; 0\) if and only if \(A\) is positive-definite.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>We proceed by induction on the matrix dimension \(n\). For \(n = 1\), \(A = [a_{11}] &gt; 0\). Choosing \(L = [\sqrt{a_{11}}]\) gives \(L L^\top = [a_{11}] = A\), with \(L_{11} &gt; 0\) uniquely determined. Assume the theorem holds for matrices of dimension \(n - 1\). Partition \(A \in \R^{n \times n}\) as:</p>
+        <p>\[ A = \begin{pmatrix} a_{11} &amp; v^\top \\ v &amp; B \end{pmatrix}, \quad a_{11} \in \R, \ v \in \R^{n-1}, \ B \in \R^{(n-1) \times (n-1)} \]</p>
+        <p>Since \(A\) is positive-definite, \(a_{11} = e_1^\top A e_1 &gt; 0\). We seek \(L\) partitioned as:</p>
+        <p>\[ L = \begin{pmatrix} l_{11} &amp; 0 \\ w &amp; L_1 \end{pmatrix} \implies L L^\top = \begin{pmatrix} l_{11}^2 &amp; l_{11} w^\top \\ l_{11} w &amp; w w^\top + L_1 L_1^\top \end{pmatrix} \]</p>
+        <p>Equating blocks requires: (1) \(l_{11} = \sqrt{a_{11}} &gt; 0\) (uniquely defined); (2) \(w = v / l_{11}\) (uniquely defined); and (3) \(L_1 L_1^\top = B - w w^\top = B - \frac{1}{a_{11}} v v^\top\). The matrix \(S = B - \frac{1}{a_{11}} v v^\top\) is the Schur complement of \(a_{11}\) in \(A\). For any non-zero \(z \in \R^{n-1}\), let \(y = \begin{pmatrix} -v^\top z / a_{11} \\ z \end{pmatrix} \ne 0\). Then \(y^\top A y = z^\top S z &gt; 0\), so \(S\) is symmetric positive-definite of dimension \(n - 1\). By the induction hypothesis, \(S\) has a unique Cholesky factorization \(S = L_1 L_1^\top\) with positive diagonal. Hence \(L\) exists and is unique. \(\blacksquare\)</p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 2.3 <span class="name">(computational cost and stability)</span></span>
+        <p>Cholesky requires \(\frac{1}{3} n^3\) flops and \(n(n+1)/2\) storage locations, exactly half the operations of general LU. Because \(A_{ii} = \sum_{j=1}^i L_{ij}^2\), every entry of \(L\) is strictly bounded: \(|L_{ij}| \le \sqrt{A_{ii}}\). This intrinsic bound prevents any element growth, rendering Cholesky unconditionally backward stable without pivoting.</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Finite-difference stencils and the step-size trade-off</h2>
+
+      <p>Finite differences approximate derivatives by replacing infinitesimal differentials with finite increments \(h &gt; 0\).</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.1 <span class="name">(finite difference stencils)</span></span>
+        <p>For a sufficiently smooth function \(f\), the standard finite difference stencils for the first derivative \(f'(x)\) are:</p>
+        <ul>
+          <li><strong>Forward difference:</strong> \(D_+ f(x) = \frac{f(x + h) - f(x)}{h}\) (first-order, \(O(h)\))</li>
+          <li><strong>Central difference:</strong> \(D_0 f(x) = \frac{f(x + h) - f(x - h)}{2h}\) (second-order, \(O(h^2)\))</li>
+        </ul>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Proposition 3.2 <span class="name">(truncation and roundoff trade-off in forward difference)</span></span>
+        <p>Assume \(f \in C^2[x, x + h]\) with \(|f''(t)| \le M_2\) and function evaluations satisfy \(\text{fl}(f(t)) = f(t)(1 + \delta)\) with \(|\delta| \le u\). The total computational error in the forward difference is bounded by:</p>
+        <p>\[ \left|\text{fl}(D_+ f(x)) - f'(x)\right| \le \frac{M_2}{2} h + \frac{2 u |f(x)|}{h} \]</p>
+        <p>The error bound is minimized at the optimal step size:</p>
+        <p>\[ h^* = 2 \sqrt{\frac{u |f(x)|}{M_2}} \propto \sqrt{u} \]</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By Taylor's theorem, \(f(x + h) = f(x) + h f'(x) + \frac{h^2}{2} f''(\xi)\). The mathematical truncation error is \(\left|\frac{f(x + h) - f(x)}{h} - f'(x)\right| = \frac{h}{2} |f''(\xi)| \le \frac{M_2}{2} h\). When evaluated in floating-point arithmetic, \(\tilde{f}(x) = f(x) + \varepsilon_1\) and \(\tilde{f}(x + h) = f(x + h) + \varepsilon_2\) with \(|\varepsilon_1|, |\varepsilon_2| \le u |f(x)|\). The roundoff error in the numerator is \(|\varepsilon_2 - \varepsilon_1| \le 2 u |f(x)|\). Dividing by \(h\), the roundoff error contribution is \(\frac{2 u |f(x)|}{h}\). The total error bound is \(E(h) = \frac{M_2}{2} h + \frac{2 u |f(x)|}{h}\). Setting \(\frac{d E}{dh} = \frac{M_2}{2} - \frac{2 u |f(x)|}{h^2} = 0\) yields \(h^{*2} = \frac{4 u |f(x)|}{M_2}\), so \(h^* = 2 \sqrt{\frac{u |f(x)|}{M_2}}\). \(\blacksquare\)</p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 3.3 <span class="name">(central difference optimal step size)</span></span>
+        <p>For the central difference, Taylor expansion shows that first-order truncation terms cancel, leaving truncation error \(\frac{M_3}{6} h^2\). Minimizing \(\frac{M_3}{6} h^2 + \frac{u |f|}{h}\) yields \(h^* \propto u^{1/3} \approx (10^{-16})^{1/3} \approx 10^{-5}\), achieving a minimum error of \(O(u^{2/3}) \approx 10^{-11}\), substantially more accurate than forward differences (\(O(u^{1/2}) \approx 10^{-8}\)).</p>
+      </div>
+
+      <h2 id="s4"><span class="section-number">4</span>Inline laboratory: Cholesky and finite difference U-curve</h2>
+
+      <section class="lab" id="lab-M8-L04-1" data-runtime="python">
+        <h3>Lab 1 · Cholesky decomposition and finite difference step-size trade-off</h3>
+        <p class="hypothesis">Cholesky factorization of a 3x3 SPD matrix produces exact rational factors in Fraction that reconstruct \(A\) with zero error. For the forward difference approximation of \(\frac{d}{dx} e^x\) at \(x = 1\), error follows a U-shaped curve: truncation dominates for \(h &gt; 10^{-8}\), roundoff dominates for \(h &lt; 10^{-8}\), and the optimal error \(\approx 6.6 \times 10^{-9}\) occurs at \(h \approx \sqrt{2u} \approx 1.5 \times 10^{-8}\).</p>
+        <pre><code class="language-python" data-run>"""Lab M8-L04-1: Cholesky decomposition and finite difference step-size trade-off.
+
+Standard library only. Demonstrates exact Cholesky factorization in Fraction
+and the truncation-roundoff error balance in forward finite differences.
+"""
+
+from __future__ import annotations
+
+import math
+from fractions import Fraction
+
+
+def cholesky_3x3_fraction(a: list[list[Fraction]]) -&gt; list[list[Fraction]]:
+    """Compute Cholesky factor L for 3x3 SPD matrix in exact arithmetic."""
+    l_mat: list[list[Fraction]] = [[Fraction(0) for _ in range(3)] for _ in range(3)]
+
+    # Row 0
+    # L00 = sqrt(A00)
+    l00_sq = a[0][0]
+    # For our chosen test matrix, l00_sq is a perfect square of a rational
+    l00 = Fraction(math.isqrt(l00_sq.numerator), math.isqrt(l00_sq.denominator))
+    l_mat[0][0] = l00
+    l_mat[1][0] = a[1][0] / l00
+    l_mat[2][0] = a[2][0] / l00
+
+    # Row 1
+    l11_sq = a[1][1] - l_mat[1][0] ** 2
+    l11 = Fraction(math.isqrt(l11_sq.numerator), math.isqrt(l11_sq.denominator))
+    l_mat[1][1] = l11
+    l_mat[2][1] = (a[2][1] - l_mat[2][0] * l_mat[1][0]) / l11
+
+    # Row 2
+    l22_sq = a[2][2] - l_mat[2][0] ** 2 - l_mat[2][1] ** 2
+    l22 = Fraction(math.isqrt(l22_sq.numerator), math.isqrt(l22_sq.denominator))
+    l_mat[2][2] = l22
+
+    return l_mat
+
+
+def matmul_3x3_fraction(a: list[list[Fraction]], b: list[list[Fraction]]) -&gt; list[list[Fraction]]:
+    """Matrix multiplication in Fraction."""
+    res: list[list[Fraction]] = [[Fraction(0) for _ in range(3)] for _ in range(3)]
+    for i in range(3):
+        for j in range(3):
+            res[i][j] = sum((a[i][k] * b[k][j] for k in range(3)), Fraction(0))
+    return res
+
+
+def transpose_3x3_fraction(a: list[list[Fraction]]) -&gt; list[list[Fraction]]:
+    return [[a[j][i] for j in range(3)] for i in range(3)]
+
+
+def main() -&gt; None:
+    print("=== Part A: Cholesky Decomposition of 3x3 SPD Matrix ===")
+    # A = [[4, 2, -2], [2, 10, 2], [-2, 2, 6]]
+    a_frac = [
+        [Fraction(4), Fraction(2), Fraction(-2)],
+        [Fraction(2), Fraction(10), Fraction(2)],
+        [Fraction(-2), Fraction(2), Fraction(6)],
+    ]
+    l_frac = cholesky_3x3_fraction(a_frac)
+    lt_frac = transpose_3x3_fraction(l_frac)
+    reconstructed = matmul_3x3_fraction(l_frac, lt_frac)
+
+    print("Matrix A:")
+    for row in a_frac:
+        print("  ", [str(x) for x in row])
+    print("Cholesky factor L (exact Fraction):")
+    for row in l_frac:
+        print("  ", [str(x) for x in row])
+    print("L * L^T matches A exactly:", reconstructed == a_frac)
+
+    print("\n=== Part B: Forward Difference Step-Size Trade-off on d/dx exp(x) at x=1 ===")
+    x0 = 1.0
+    true_deriv = math.exp(x0)
+    u = 2.0 ** (-53)  # unit roundoff for binary64
+    print(f"True derivative exp(1): {true_deriv:.16f}")
+    print(f"Machine unit roundoff u: {u:.2e}")
+    print(f"Theoretical optimal step h* ~ sqrt(2*u): {math.sqrt(2.0 * u):.2e}")
+    print(" k    Step h       FD Approximation       Absolute Error   Dominant Reg.")
+
+    for k in range(1, 17):
+        h = 10.0 ** (-k)
+        fd_approx = (math.exp(x0 + h) - math.exp(x0)) / h
+        err = abs(fd_approx - true_deriv)
+        regime = "Truncation" if k &lt; 8 else ("Optimal" if k == 8 else "Roundoff")
+        print(f"{k:2d}   {h:.1e}   {fd_approx:.16f}   {err:.2e}   {regime}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">=== Part A: Cholesky Decomposition of 3x3 SPD Matrix ===
+Matrix A:
+   ['4', '2', '-2']
+   ['2', '10', '2']
+   ['-2', '2', '6']
+Cholesky factor L (exact Fraction):
+   ['2', '0', '0']
+   ['1', '3', '0']
+   ['-1', '1', '2']
+L * L^T matches A exactly: True
+
+=== Part B: Forward Difference Step-Size Trade-off on d/dx exp(x) at x=1 ===
+True derivative exp(1): 2.7182818284590451
+Machine unit roundoff u: 1.11e-16
+Theoretical optimal step h* ~ sqrt(2*u): 1.49e-08
+ k    Step h       FD Approximation       Absolute Error   Dominant Reg.
+ 1   1.0e-01   2.8588419548738830   1.41e-01   Truncation
+ 2   1.0e-02   2.7319186557871245   1.36e-02   Truncation
+ 3   1.0e-03   2.7196414225332255   1.36e-03   Truncation
+ 4   1.0e-04   2.7184177470829241   1.36e-04   Truncation
+ 5   1.0e-05   2.7182954199567173   1.36e-05   Truncation
+ 6   1.0e-06   2.7182831874306146   1.36e-06   Truncation
+ 7   1.0e-07   2.7182819684057336   1.40e-07   Truncation
+ 8   1.0e-08   2.7182818218562943   6.60e-09   Optimal
+ 9   1.0e-09   2.7182820439008992   2.15e-07   Roundoff
+10   1.0e-10   2.7182833761685288   1.55e-06   Roundoff
+11   1.0e-11   2.7183144624132183   3.26e-05   Roundoff
+12   1.0e-12   2.7187141427020833   4.32e-04   Roundoff
+13   1.0e-13   2.7178259642823832   4.56e-04   Roundoff
+14   1.0e-14   2.7089441800853820   9.34e-03   Roundoff
+15   1.0e-15   3.1086244689504379   3.90e-01   Roundoff
+16   1.0e-16   0.0000000000000000   2.72e+00   Roundoff</pre>
+        <p class="interpretation">The lab confirms the exactness and stability of Cholesky factorization. The finite difference table vividly demonstrates the fundamental trade-off: decreasing \(h\) from \(10^{-1}\) to \(10^{-8}\) reduces truncation error, but decreasing \(h\) beyond \(10^{-8}\) causes catastrophic cancellation and roundoff explosion.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s5"><span class="section-number">5</span>Where the canon breaks</h2>
+        <ul>
+          <li><strong>Empirical covariance matrices can fail positive definiteness.</strong> Sample covariance matrices estimated with missing data or asynchronous quotes can have negative eigenvalues due to nonsynchronous closing prices. Attempting Cholesky factorization on such matrices fails with a square-root-of-negative-number exception. In production, eigenvalue clipping or higham nearest correlation matrix projection must precede Cholesky.</li>
+          <li><strong>Step size cannot be arbitrarily small in Greeks calculation.</strong> Bumping an underlying price by \(h = 10^{-8}\) in complex option pricing models can trigger catastrophic cancellation in payoffs. For payout functions with jump discontinuities (e.g. Digitals or barriers), finite differences fail to converge; likelihood ratio or pathwise automatic differentiation must be used.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s6"><span class="section-number">6</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“Choosing a smaller step size \(h\) in numerical differentiation always increases accuracy.”</p>
+            <p>In exact continuous calculus, \(\lim_{h \to 0} \frac{f(x+h) - f(x)}{h} = f'(x)\). In floating-point arithmetic, as \(h \to 0\), \(\text{fl}(f(x+h)) - \text{fl}(f(x))\) suffers from catastrophic cancellation, leaving roundoff error to be divided by \(h\), driving the computational error to infinity.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Cholesky factorization requires pivoting to maintain numerical stability.”</p>
+            <p>Unlike general LU decomposition, Cholesky factorization requires no row or column pivoting because \(L_{ij}^2 \le A_{ii}\) guarantees that multipliers are bounded by matrix diagonal entries. Cholesky is unconditionally backward stable.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“LU decomposition without pivoting is acceptable as long as the diagonal entries \(A_{ii}\) are non-zero.”</p>
+            <p>Even if \(A_{ii} \ne 0\), if a diagonal entry is tiny relative to off-diagonal elements, dividing by the pivot creates massive multipliers (\(|L_{ij}| \gg 1\)), which leads to catastrophic roundoff growth in subsequent elimination stages.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s7"><span class="section-number">7</span>Problem set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Manual Cholesky computation</span>
+            <p>Compute by hand the Cholesky factor \(L\) for \(A = \begin{pmatrix} 9 &amp; 6 \\ 6 &amp; 13 \end{pmatrix}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For a 2x2 SPD matrix: \(L_{11} = \sqrt{A_{11}} = \sqrt{9} = 3\). Next, \(L_{21} = A_{21} / L_{11} = 6 / 3 = 2\). Finally, \(L_{22} = \sqrt{A_{22} - L_{21}^2} = \sqrt{13 - 2^2} = \sqrt{9} = 3\). The Cholesky factor is \(L = \begin{pmatrix} 3 &amp; 0 \\ 2 &amp; 3 \end{pmatrix}\). Verify: \(L L^\top = \begin{pmatrix} 3 &amp; 0 \\ 2 &amp; 3 \end{pmatrix} \begin{pmatrix} 3 &amp; 2 \\ 0 &amp; 3 \end{pmatrix} = \begin{pmatrix} 9 &amp; 6 \\ 6 &amp; 13 \end{pmatrix} = A\).</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · Optimal central difference step size</span>
+            <p>For \(f(x) = \sin(x)\) at \(x = 1\) in binary64 (\(u \approx 1.11 \times 10^{-16}\)), calculate the theoretical optimal step size \(h^*\) for central difference approximation.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For central differences, the third derivative is \(f'''(x) = -\cos(x)\), so \(|f'''(1)| = \cos(1) \approx 0.5403\). Also \(|f(1)| = \sin(1) \approx 0.8415\). The total error bound is \(E(h) = \frac{M_3}{6} h^2 + \frac{u |f|}{h}\). Setting \(E'(h) = \frac{M_3}{3} h - \frac{u |f|}{h^2} = 0\) yields \(h^* = \left(\frac{3 u |f|}{M_3}\right)^{1/3} = \left(\frac{3 \times 1.11 \times 10^{-16} \times 0.8415}{0.5403}\right)^{1/3} \approx (5.186 \times 10^{-16})^{1/3} \approx 8.03 \times 10^{-6}\).</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · Correlated normal generation via Cholesky</span>
+            <p>Explain how the Cholesky factor \(L\) of a correlation matrix \(\Sigma\) converts a vector of independent standard normals \(Z \sim \mathcal{N}(0, I)\) into correlated normals \(X \sim \mathcal{N}(0, \Sigma)\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Define \(X = L Z\). Since expectation is linear, \(\E[X] = L \E[Z] = 0\). The covariance matrix is \(\Cov(X) = \E[X X^\top] = \E[(L Z)(L Z)^\top] = \E[L Z Z^\top L^\top] = L \E[Z Z^\top] L^\top\). Since \(Z\) has independent standard components, \(\E[Z Z^\top] = I\). Thus \(\Cov(X) = L I L^\top = L L^\top = \Sigma\). This provides the standard method for multi-asset Monte Carlo simulation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Central difference truncation order</span>
+            <p>Using Taylor expansions, prove that the central difference stencil \(D_0 f(x) = \frac{f(x + h) - f(x - h)}{2h}\) has truncation error \(O(h^2)\) for \(f \in C^3\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Expand \(f(x + h)\) and \(f(x - h)\) to third order: \(f(x + h) = f(x) + h f'(x) + \frac{h^2}{2} f''(x) + \frac{h^3}{6} f'''(\xi_1)\), and \(f(x - h) = f(x) - h f'(x) + \frac{h^2}{2} f''(x) - \frac{h^3}{6} f'''(\xi_2)\). Subtracting the two expansions: \(f(x + h) - f(x - h) = 2h f'(x) + \frac{h^3}{6} (f'''(\xi_1) + f'''(\xi_2))\). Dividing by \(2h\): \(\frac{f(x + h) - f(x - h)}{2h} = f'(x) + \frac{h^2}{12} (f'''(\xi_1) + f'''(\xi_2))\). The even powers of \(h\) cancel out completely, proving the error is \(O(h^2)\).</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Second derivative central stencil</span>
+            <p>Derive the standard central difference stencil for the second derivative \(f''(x)\) and prove its truncation error is \(O(h^2)\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Expand \(f(x + h) = f(x) + h f'(x) + \frac{h^2}{2} f''(x) + \frac{h^3}{6} f'''(x) + \frac{h^4}{24} f^{(4)}(\xi_1)\), and \(f(x - h) = f(x) - h f'(x) + \frac{h^2}{2} f''(x) - \frac{h^3}{6} f'''(x) + \frac{h^4}{24} f^{(4)}(\xi_2)\). Adding the two expansions: \(f(x + h) + f(x - h) = 2 f(x) + h^2 f''(x) + \frac{h^4}{24} (f^{(4)}(\xi_1) + f^{(4)}(\xi_2))\). Rearranging: \(\frac{f(x + h) - 2f(x) + f(x - h)}{h^2} = f''(x) + O(h^2)\). This is the standard 3-point stencil for the second derivative (e.g. option gamma \(\frac{\partial^2 C}{\partial S^2}\)).</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · Positive definiteness of Schur complement</span>
+            <p>Prove that if \(A = \begin{pmatrix} a_{11} &amp; v^\top \\ v &amp; B \end{pmatrix}\) is symmetric positive-definite, then the Schur complement \(S = B - \frac{1}{a_{11}} v v^\top\) is also symmetric positive-definite.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Symmetry of \(S\) follows directly because \(B = B^\top\) and \((v v^\top)^\top = v v^\top\). To show positive-definiteness, let \(z \in \R^{n-1}\) be any non-zero vector. Construct the vector \(y \in \R^n\) as \(y = \begin{pmatrix} -\frac{v^\top z}{a_{11}} \\ z \end{pmatrix}\). Since \(z \ne 0\), \(y \ne 0\). Compute \(y^\top A y = \begin{pmatrix} -\frac{v^\top z}{a_{11}} &amp; z^\top \end{pmatrix} \begin{pmatrix} a_{11} &amp; v^\top \\ v &amp; B \end{pmatrix} \begin{pmatrix} -\frac{v^\top z}{a_{11}} \\ z \end{pmatrix} = a_{11} \left(\frac{v^\top z}{a_{11}}\right)^2 - 2 \frac{v^\top z}{a_{11}} (v^\top z) + z^\top B z = -\frac{(v^\top z)^2}{a_{11}} + z^\top B z = z^\top \left(B - \frac{1}{a_{11}} v v^\top\right) z = z^\top S z\). Since \(A\) is positive-definite and \(y \ne 0\), \(y^\top A y &gt; 0\), which proves \(z^\top S z &gt; 0\) for all \(z \ne 0\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Lab 1 Cholesky factor</span>
+            <p>From Lab 1, Part A, state the exact values of the lower-triangular Cholesky factor \(L\) for the 3x3 matrix \(A\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Lab 1 prints the exact rational Cholesky factor: \(L_{11} = 2, L_{12} = 0, L_{13} = 0\); \(L_{21} = 1, L_{22} = 3, L_{23} = 0\); \(L_{31} = -1, L_{32} = 1, L_{33} = 2\). In matrix form, \(L = \begin{pmatrix} 2 &amp; 0 &amp; 0 \\ 1 &amp; 3 &amp; 0 \\ -1 &amp; 1 &amp; 2 \end{pmatrix}\). Reconstructing \(L L^\top\) matches \(A\) with zero error in Fraction.</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Optimal step size in Lab 1</span>
+            <p>In Lab 1, Part B, at which value of \(k\) does the minimum forward difference error occur, and what is the error magnitude?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In Lab 1, Part B, the minimum absolute error occurs at \(k = 8\) (\(h = 10^{-8}\)), where the error is \(6.60 \times 10^{-9}\). For \(k \le 7\), truncation error dominates and scales as \(O(h)\); for \(k \ge 9\), roundoff error dominates and scales as \(O(u/h)\), reaching an error of \(2.72\) at \(k = 16\).</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · Flop count comparison</span>
+            <p>For an equity portfolio of \(N = 1000\) assets, compare the number of floating-point operations required to solve \(A x = b\) using standard LU versus Cholesky factorization.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>General LU decomposition requires \(\frac{2}{3} N^3 = \frac{2}{3} \times 10^9 \approx 6.67 \times 10^8\) flops. Cholesky factorization requires \(\frac{1}{3} N^3 = \frac{1}{3} \times 10^9 \approx 3.33 \times 10^8\) flops. Cholesky saves exactly \(3.33 \times 10^8\) operations (a 50% reduction) and avoids storing the upper triangle.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Higham's nearest correlation matrix</span>
+            <p>Describe Nicholas Higham's alternating projections algorithm for finding the nearest valid correlation matrix to an empirical matrix with negative eigenvalues.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Higham's algorithm solves \(\min_{X} \|A - X\|_F\) subject to \(X \in \mathcal{S}_n^+\) (positive semidefinite) and \(\text{diag}(X) = 1\). The algorithm alternates between two orthogonal projections in Frobenius norm: (1) project onto \(\mathcal{S}_n^+\) by computing spectral decomposition \(X = Q \Lambda Q^\top\) and replacing \(\Lambda\) with \(\max(\Lambda, 0)\); and (2) project onto unit diagonal matrices by setting \(X_{ii} = 1\). Using Dykstra's correction for convex sets, alternating projections converges to the unique global nearest correlation matrix, which can then be factored via Cholesky.</p>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Complex-step derivative approximation</span>
+            <p>Explain how the complex-step derivative formula \(f'(x) \approx \frac{\text{Im}(f(x + i h))}{h}\) eliminates catastrophic cancellation, allowing \(h\) to be chosen as small as \(10^{-100}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Expanding \(f(x + i h)\) in complex Taylor series: \(f(x + ih) = f(x) + ih f'(x) - \frac{h^2}{2} f''(x) - i \frac{h^3}{6} f'''(x) + O(h^4)\). Taking the imaginary part: \(\text{Im}(f(x + ih)) = h f'(x) - \frac{h^3}{6} f'''(x) + O(h^5)\). Dividing by \(h\): \(\frac{\text{Im}(f(x + ih))}{h} = f'(x) - \frac{h^2}{6} f'''(x) + O(h^4)\). Crucially, this formula involves no subtraction of function values; the numerator is evaluated directly from the imaginary part of complex arithmetic. Because there is no difference \(\tilde{f}(x+h) - \tilde{f}(x)\), no catastrophic cancellation can occur, and \(h = 10^{-20}\) produces machine-exact derivatives without roundoff error.</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Adjoint algorithmic differentiation (AAD)</span>
+            <p>Why has Adjoint Algorithmic Differentiation (AAD) replaced finite differences for portfolio risk sensitivity calculations on major quantitative desks?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>To compute \(N\) Greeks using finite differences requires \(N + 1\) full portfolio pricing runs (or \(2N\) for central differences), scaling as \(O(N)\). For a bank holding thousands of contracts dependent on \(N \approx 10{,}000\) risk factors (yield curves, volatility smiles, FX spots), finite differences require hours of compute. AAD implements the reverse mode of automatic differentiation (applying the chain rule backwards from the scalar portfolio value to all inputs). The Baur-Skeel / Griewank theorem proves that computing all \(N\) sensitivities via AAD takes at most 3 to 4 times the computational cost of a single pricing run, independent of \(N\), providing an acceleration of several orders of magnitude.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s8"><span class="section-number">8</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>Symmetric positive-definite matrices have a unique Cholesky factorization \(A = L L^\top\) with \(L_{ii} &gt; 0\) (Theorem 2.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 2</td></tr>
+              <tr><td>Forward difference error bound is minimized at \(h^* \propto \sqrt{u}\) (Proposition 3.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 3</td></tr>
+              <tr><td>Central difference truncation error is \(O(h^2)\) with optimal step size \(h^* \propto u^{1/3}\) (Problem P1)</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P1 proof</td></tr>
+              <tr><td>3x3 SPD matrix Cholesky factorization in Fraction reconstructs \(A\) with zero error (Lab 1, Part A)</td><td><span class="grade" data-grade="T">T</span></td><td>Lab 1, Part A</td></tr>
+              <tr><td>Forward difference of \(\exp(x)\) exhibits minimal error \(6.60 \times 10^{-9}\) at \(h = 10^{-8}\) (Lab 1, Part B)</td><td><span class="grade" data-grade="T">T</span></td><td>Lab 1, Part B</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="M8" data-page="L04" data-cards="cards.json">
+        <h2 id="s9"><span class="section-number">9</span>Retrieval quiz</h2>
+        <p>Answer from memory, then check your responses.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What structural properties must a real matrix \(A\) possess to admit a Cholesky factorization \(A = L L^\top\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l4q1"> Orthogonal and skew-symmetric</label>
+              <label class="option" data-correct><input type="radio" name="l4q1"> Symmetric and positive-definite</label>
+              <label class="option"><input type="radio" name="l4q1"> Diagonal and non-zero</label>
+            </fieldset>
+            <div class="explain" hidden><p>By Theorem 2.2, a real matrix has a unique Cholesky factorization if and only if it is symmetric positive-definite.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.5" data-tolerance="0.001">
+            <p class="prompt">What fraction of the floating-point operations of general LU factorization is required by Cholesky factorization?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Cholesky requires \(\frac{1}{3} n^3\) flops compared to \(\frac{2}{3} n^3\) for general LU, exactly a fraction of 0.5 (half the operations).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does Cholesky factorization not require row or column pivoting?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l4q3"> Pivoting is forbidden by the IEEE 754 standard</label>
+              <label class="option" data-correct><input type="radio" name="l4q3"> The diagonal elements satisfy \(|L_{ij}| \le \sqrt{A_{ii}}\), naturally bounding all entries</label>
+              <label class="option"><input type="radio" name="l4q3"> Pivoting changes the matrix determinant</label>
+            </fieldset>
+            <div class="explain" hidden><p>Because \(A_{ii} = \sum_{j=1}^i L_{ij}^2\), entries of \(L\) are bounded by \(\sqrt{A_{ii}}\), preventing element growth without pivoting.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the truncation error order of the forward difference stencil \(D_+ f(x) = \frac{f(x+h) - f(x)}{h}\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l4q4"> \(O(h)\) (first-order)</label>
+              <label class="option"><input type="radio" name="l4q4"> \(O(h^2)\) (second-order)</label>
+              <label class="option"><input type="radio" name="l4q4"> \(O(h^4)\) (fourth-order)</label>
+            </fieldset>
+            <div class="explain" hidden><p>By Taylor expansion, \(f(x+h) = f(x) + h f'(x) + O(h^2)\), so \((f(x+h) - f(x))/h = f'(x) + O(h)\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the theoretical optimal step size \(h^*\) for forward differences in binary64 arithmetic?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l4q5"> \(h^* \approx u \approx 10^{-16}\)</label>
+              <label class="option" data-correct><input type="radio" name="l4q5"> \(h^* \approx \sqrt{u} \approx 10^{-8}\)</label>
+              <label class="option"><input type="radio" name="l4q5"> \(h^* \approx u^{1/3} \approx 10^{-5}\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>Balancing \(O(h)\) truncation with \(O(u/h)\) roundoff error yields \(h^* \propto \sqrt{u} \approx 10^{-8}\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="2" data-tolerance="0.001">
+            <p class="prompt">What is the truncation error order \(p\) in \(O(h^p)\) for the central difference stencil \(\frac{f(x+h) - f(x-h)}{2h}\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Central difference has order \(p = 2\) because odd powers of \(h\) cancel out in the symmetric Taylor subtraction.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In Lab 1, what happens to the forward difference error when \(h\) is decreased from \(10^{-8}\) to \(10^{-16}\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l4q7"> The error continues to decrease toward zero</label>
+              <label class="option" data-correct><input type="radio" name="l4q7"> Roundoff error explodes from \(6.6 \times 10^{-9}\) up to \(2.72\)</label>
+              <label class="option"><input type="radio" name="l4q7"> The error remains constant at machine epsilon</label>
+            </fieldset>
+            <div class="explain" hidden><p>For \(h &lt; 10^{-8}\), roundoff error \(O(u/h)\) dominates and grows inversely with \(h\), reaching \(2.72\) at \(h = 10^{-16}\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How does complex-step differentiation achieve exact derivatives without roundoff error?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l4q8"> By using 128-bit quadruple precision</label>
+              <label class="option" data-correct><input type="radio" name="l4q8"> By evaluating \(\text{Im}(f(x + i h))/h\), which avoids difference cancellation</label>
+              <label class="option"><input type="radio" name="l4q8"> By fitting a high-order polynomial</label>
+            </fieldset>
+            <div class="explain" hidden><p>Complex-step differentiation extracts the derivative from the imaginary part without subtracting function values, avoiding cancellation entirely.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s10"><span class="section-number">10</span>References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L03.html"><span class="dir">Prev</span>L03 · Bracketing Root Finders and Newton's Method</a>
+        <a href="index.html"><span class="dir">Module</span>M8 overview</a>
+        <a class="next" href="L05.html"><span class="dir">Next</span>L05 · Interpolation and Quadrature</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M8 · Numerical Methods &amp; Scientific Computing</footer>
+</body>
+</html>

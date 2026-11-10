@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS3" data-page="L06" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L06 · Database Indexes · CS3</title>
+  <meta name="description" content="Lesson 6 of CS3: Physical database indexing, B-trees, primary and secondary indexes, covering indexes, search complexity bounds, and write amplification in financial stores. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS3 Data, Databases &amp; SQL</a><span class="sep">›</span>
+      <span>L06</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS3 · Lesson 6 of 8 · 8 study hours</p>
+        <h1>Database Indexes</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="relational-model" href="L01.html#def-relational-model">relational model</a></li>
+          <li><strong>Introduces:</strong> database index</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">High-frequency trading environments and multi-asset risk engines query billions of records daily. Without indexing, answering a point lookup or date-range query forces the database engine to perform a full table scan, reading every disk page into memory and exhausting storage bandwidth. Database indexes provide accelerated physical access paths, transforming linear \(O(N)\) scans into logarithmic \(O(\log N)\) lookups. However, indexes are not free: every secondary index imposes severe write amplification on data ingestion, creating a fundamental architectural trade-off between query speed and write throughput.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Physical Access Paths and Index Types</h2>
+      <p>Building on the logical <a class="concept" data-concept="relational-model" href="L01.html#def-relational-model">relational model</a>, database indexes bridge declarative queries with physical hardware storage layout.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 6.1 <span class="name">(Database Index and Structural Variants)</span></span>
+        <p>A <dfn id="def-database-index" data-concept="database-index">database index</dfn> is an auxiliary physical data structure that maps search key values to storage row locations to accelerate data retrieval. Core index variants include:
+        <ol>
+          <li><strong>B-Tree Index:</strong> A balanced multi-way search tree with high fanout \(B\), maintaining sorted key order across leaf pages linked in physical sequence.</li>
+          <li><strong>Clustered (Primary) Index:</strong> An index that dictates the actual physical order of data rows on disk storage pages. A table can have at most one clustered index.</li>
+          <li><strong>Secondary (Non-Clustered) Index:</strong> An auxiliary structure whose leaf nodes store search keys alongside row identifiers (pointers or clustered key values) that point into the primary table heap.</li>
+          <li><strong>Covering Index:</strong> An index containing all columns requested by a query (both predicate columns and projected attributes), allowing the engine to satisfy the query entirely from index pages without accessing the table heap.</li>
+        </ol></p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 6.1 <span class="name">(Write Amplification)</span></span>
+        <p>While indexes accelerate reads, they impose write amplification. When a new row is appended to a table with \(M\) secondary indexes, the database engine must execute 1 heap write plus \(M\) distinct B-tree insert operations, each potentially triggering node splits, leaf rebalancing, and dirty page writebacks to storage.</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Search Complexity Bounds</h2>
+      <p>The performance superiority of database indexing over full table scans is governed by logarithmic tree depth.</p>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 6.1 <span class="name">(B-Tree Search Complexity Bound)</span></span>
+        <p>Let a table contain \(N\) records stored in a B-tree index of fanout (order) \(B \ge 2\). The maximum number of page I/O transfers required to locate any target key is bounded by:
+        \[
+        H \le \left\lceil \log_{\lceil B / 2 \rceil} \left( \frac{N + 1}{2} \right) \right\rceil + 1 = O\left(\frac{\log N}{\log B}\right),
+        \]
+        compared to an unindexed sequential scan requiring \(\Theta(N)\) record inspections and \(\Theta(N / P)\) page I/O reads (where \(P\) is the page record capacity).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>In a valid B-tree of order \(B\), every internal node except the root has at least \(\lceil B / 2 \rceil\) child pointers.
+        At depth 0 (the root), there is at least 1 node.
+        At depth 1, there are at least 2 nodes.
+        At depth \(h\), there are at least \(2 \lceil B / 2 \rceil^{h-1}\) nodes.
+        Each leaf node holds at least \(\lceil B / 2 \rceil - 1\) keys. Therefore, the minimum total number of keys \(N\) stored in a tree of height \(h\) satisfies:
+        \[
+        N \ge 1 + 2 (\lceil B / 2 \rceil - 1) \sum_{i=1}^{h-1} \lceil B / 2 \rceil^{i-1} = 1 + 2 (\lceil B / 2 \rceil^{h-1} - 1) = 2 \lceil B / 2 \rceil^{h-1} - 1.
+        \]
+        Rearranging for height \(h\):
+        \[
+        \frac{N + 1}{2} \ge \lceil B / 2 \rceil^{h-1} \implies h - 1 \le \log_{\lceil B / 2 \rceil} \left( \frac{N + 1}{2} \right) \implies h \le \left\lceil \log_{\lceil B / 2 \rceil} \left( \frac{N + 1}{2} \right) \right\rceil + 1.
+        \]
+        Because searching traverses from root to leaf, it touches exactly \(h\) nodes. For large fanout \(B\) (e.g. \(B \approx 500\) for 4 KiB disk pages), height \(h \le 3\) even for millions of records, yielding \(O(\log_B N)\) page reads.</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 6.1 <span class="name">(Covering Index for Point-in-Time Queries)</span></span>
+        <p>In the Atlas A2 data layer, observation lookups execute:
+        <pre><code class="language-pseudocode">SELECT value FROM observations
+WHERE source = ? AND series = ? AND retrieved <= ? AND date <= ?
+ORDER BY date DESC, seq DESC LIMIT 1;</code></pre>
+        A composite index on <code>(source, series, retrieved, date, seq, value)</code> is a covering index. The database locates the matching leaf page in \(O(\log N)\) page reads and retrieves <code>value</code> directly from the index key entry without touching the observations table heap.</p>
+      </div>
+
+      <section class="lab" id="lab-CS3-L06-1" data-runtime="python">
+        <h3>Lab 1 · Database Index vs Full Scan Search Complexity</h3>
+        <p class="hypothesis">Verifies that a sorted-key index reduces record comparisons from O(N) full table scan (touching 10,000 rows for unmatched keys) to O(log N) binary search (touching at most 14 entries).</p>
+        <pre><code class="language-python" data-run>@@LAB:lab-CS3-L06-1.py@@</code></pre>
+        <pre class="expected" data-tolerance="1e-6">@@OUT:lab-CS3-L06-1.py@@</pre>
+        <p class="interpretation">The results demonstrate an exact 714x reduction in record inspections for missing key lookups, confirming the theoretical logarithmic upper bound.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">3</span>Where the Canon Breaks</h2>
+      <p>Physical database indexing exhibits notable performance traps under quantitative workloads:</p>
+      <ul>
+        <li><strong>UUID Index Fragmentation:</strong> Creating a primary B-tree index on randomly generated UUID strings destroys spatial locality. Because UUID hashes scatter uniformly, every insertion targets a random disk page, causing 50% average page fill factor, massive index page splits, and excessive I/O thrashing. Financial stores require sequential, time-ordered primary keys (e.g. timestamp + autoincrement sequence).</li>
+        <li><strong>Index Scans Slower than Full Scans on High Selectivity:</strong> If a query predicate matches 40% of the table rows, scanning through a secondary non-clustered index forces random disk I/O to dereference heap pointers for 40% of records. Query optimizers correctly abandon the index and perform a sequential table scan because sequential I/O is 10x to 50x faster than random I/O on rotating magnetic disks and block SSDs.</li>
+        <li><strong>Ingestion Stalls on High-Frequency Feeds:</strong> Appending 100,000 ticks per second into an unindexed table is an append-only sequential stream. Adding three secondary indexes forces 300,000 random B-tree leaf modifications per second, causing transaction lock contention and ingestion buffer overflows. High-frequency tick engines ingest into unindexed memory buffers and build indexes during end-of-day batch processing.</li>
+      </ul>
+
+      <section id="misconceptions">
+        <h2 id="s4"><span class="section-number">4</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Adding more indexes always improves database query performance.</p>
+            <p>Every index consumes storage space and incurs write amplification during INSERT, UPDATE, and DELETE operations. Furthermore, having too many redundant indexes confuses query optimizers and bloats database buffer pool memory.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">A table can have multiple clustered indexes.</p>
+            <p>A clustered index defines the actual physical storage order of the rows on disk pages. Because data rows can physically reside in only one physical sequence, a table can have at most one clustered index.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">An index on (A, B) is equally fast for queries filtering only on B.</p>
+            <p>B-trees are sorted lexicographically by the leftmost index prefix. An index on <code>(A, B)</code> is sorted primarily by A, and only secondarily by B within identical values of A. A query filtering strictly on B cannot perform an index range seek and must scan the entire index.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s5"><span class="section-number">5</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+
+          <div class="problem" id="p6-1">
+            <p class="prompt">A B-tree index of order \(B = 100\) holds 1,000,000 records. Calculate the maximum theoretical height of the tree and the maximum number of disk page reads required to locate any single record.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Minimum node fanout is \(\lceil B / 2 \rceil = 50\). The maximum height satisfies \(h \le \lceil \log_{50}((10^6 + 1)/2) \rceil + 1 = \lceil \log_{50}(500{,}000) \rceil + 1\). Since \(50^3 = 125{,}000\) and \(50^4 = 6{,}250{,}000\), \(\log_{50}(500{,}000) \approx 3.35\), so \(\lceil 3.35 \rceil = 4\). Maximum height is \(4 + 1 = 5\). In practice with standard fill factors, at most 4 page I/O reads are needed.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-2">
+            <p class="prompt">A composite index is created on <code>(ticker, trade_date, trade_time)</code>. Which of the following query predicates can use an index seek: (a) <code>WHERE ticker = 'AAPL'</code>; (b) <code>WHERE trade_date = '2020-01-02'</code>; (c) <code>WHERE ticker = 'AAPL' AND trade_date = '2020-01-02'</code>?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>(a) Can use index seek because <code>ticker</code> is the leading leftmost prefix. (b) Cannot use index seek because the leading attribute <code>ticker</code> is missing (requires an index scan). (c) Can use index seek because both <code>ticker</code> and <code>trade_date</code> form a contiguous leftmost prefix of the composite index.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-3">
+            <p class="prompt">In a table of 10,000,000 trade records stored in 4 KiB pages holding 50 rows each (200,000 pages), how many page reads does a full table scan require versus an indexed point lookup taking 3 page reads?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>A full table scan must read all 200,000 heap pages into memory. An indexed point lookup traverses 3 B-tree index pages plus 1 heap page (4 page reads total). The index reduces I/O from 200,000 pages to 4 pages, achieving a 50,000x I/O reduction factor.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+
+          <div class="problem" id="p6-4">
+            <p class="prompt">Prove that for an unindexed table of \(N\) records stored in random order, any deterministic algorithm requires \(\Omega(N)\) comparisons in the worst case to determine that a target key is absent.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>An adversary can place the search target at the last uninspected position or omit it entirely. Let an algorithm inspect \(k < N\) records. There remain \(N - k \ge 1\) uninspected records. The adversary can set one of the remaining records to the target key without contradicting any prior inspection. Therefore, the algorithm cannot conclude that the key is absent without inspecting all \(N\) positions. Hence, the adversary forces \(N\) comparisons, establishing an \(\Omega(N)\) lower bound.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-5">
+            <p class="prompt">Prove that a covering index eliminates all heap table page reads for a query projecting subset \(A \subseteq \operatorname{attr}(\text{Index})\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>In a non-covering secondary index, leaf nodes store search key values alongside tuple identifiers (TIDs) or primary key values pointing to the table heap. The query engine must execute a secondary heap read for each qualifying index entry to retrieve attributes not stored in the index. When all projected and filtered attributes belong to the index schema \(A \subseteq \operatorname{attr}(\text{Index})\), all required values are present in the index leaf pages. Because no attribute needs to be fetched from the heap, the engine executes an index-only scan, requiring exactly zero heap page accesses.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-6">
+            <p class="prompt">Prove that if a secondary index has fanout \(B\) and storage fill factor \(\alpha \in (0, 1]\), the effective fanout is \(\alpha B\), and the tree height grows inversely with \(\log(\alpha B)\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>If each node of capacity \(B\) has fill factor \(\alpha\), the average number of children per internal node is \(B_{\text{eff}} = \alpha B\). By Theorem 6.1, the tree height satisfies \(h \approx \frac{\log N}{\log B_{\text{eff}}} = \frac{\log N}{\log(\alpha B)} = \frac{\log N}{\log \alpha + \log B}\). Because \(\alpha < 1\), \(\log \alpha < 0\), which reduces the denominator and strictly increases the tree height \(h\), confirming inverse logarithmic dependence.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+
+          <div class="problem" id="p6-7">
+            <p class="prompt">A market maker's tick database appends 50,000 quote updates per second. The primary table has 4 secondary indexes. If each secondary index insertion requires an average of 1.5 random page I/O writes, calculate the write I/O operations per second (IOPS) demanded of the storage subsystem.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Each quote update triggers 1 heap append write plus \(4 \times 1.5 = 6.0\) secondary index page writes, totaling \(1 + 6 = 7.0\) I/O write operations per row. At 50,000 updates/sec, the storage subsystem must sustain \(50{,}000 \times 7.0 = 350{,}000\) write IOPS. Without enterprise NVMe SSD arrays, the database will suffer severe write-stall queues.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-8">
+            <p class="prompt">In a database with 10 million rows, an index seek followed by a heap lookup takes 0.05 ms per row. A full table sequential scan takes a constant 200 ms. At what query selectivity (number of qualifying rows) does the sequential scan become faster than the index lookup?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let \(k\) be the number of qualifying rows. Total time for index lookup is \(0.05 \times k\) ms. The sequential scan takes 200 ms. The break-even point occurs when \(0.05 k = 200 \implies k = 200 / 0.05 = 4{,}000\) rows. As a fraction of the 10 million row table, \(4{,}000 / 10{,}000{,}000 = 0.0004\) or 0.04% selectivity. For any query returning more than 4,000 rows, the sequential scan is faster.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-9">
+            <p class="prompt">A financial table uses random UUID strings as primary keys. After 5 million inserts, the index size is 800 MB with an average page fill factor of 52% due to random page splits. If sequential monotonically increasing integers had been used instead, the fill factor would be 95%. Calculate the storage space wasted by UUID fragmentation.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The raw key payload size is \(800 \text{ MB} \times 0.52 = 416\) MB. At 95% fill factor, the index would occupy \(416 \text{ MB} / 0.95 = 437.9\) MB. The wasted storage space is \(800 \text{ MB} - 437.9 \text{ MB} = 362.1\) MB (a 45.3% storage waste), which also pollutes the database buffer cache.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+
+          <div class="problem" id="p6-10">
+            <p class="prompt">Analyze why Log-Structured Merge-trees (LSM-trees, used in RocksDB and DuckDB append logs) achieve higher write throughput than traditional B-trees for streaming financial ticks.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>B-trees perform in-place updates on leaf pages, converting streaming writes into random I/O writes across disk blocks. In contrast, LSM-trees buffer incoming writes sequentially in an in-memory sorted buffer (MemTable). When full, the MemTable is flushed to disk as an immutable, sequential SSTable file using 100% sequential I/O with zero random writes. Background compaction threads merge sorted levels asynchronously. By trading background read amplification for pure sequential write bandwidth, LSM-trees achieve 10x higher write ingestion rates.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-11">
+            <p class="prompt">Evaluate the mechanics of bitmap indexing versus B-tree indexing for low-cardinality financial categorical attributes such as order side (BUY/SELL) or execution venue.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For low-cardinality attributes with few distinct values (e.g., BUY/SELL has cardinality 2), B-trees perform poorly because each branch has low selectivity. A bitmap index constructs a compact bit vector for each distinct value where bit \(i\) is 1 if row \(i\) has that value. Boolean query combinations (e.g. <code>side = 'BUY' AND venue = 'NASDAQ'</code>) evaluate via ultra-fast hardware bitwise <code>AND</code> instructions on SIMD registers. However, bitmap indexes lock entire bit ranges on row modifications, making them ideal for read-only analytical warehouses but unusable for concurrent OLTP transaction engines.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p6-12">
+            <p class="prompt">Discuss how database index hints (e.g. <code>FORCE INDEX</code>) in production trading systems mitigate the risk of optimizer query plan flips caused by stale table statistics.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Relational query optimizers estimate plan costs using internal table histograms and cardinality statistics. In volatile trading sessions, sudden bursts of market orders or executions can shift table statistics, prompting the optimizer to suddenly flip execution plans from an index seek to a full table scan. In an algorithmic execution path, a plan flip causes query latency to spike from 100 microseconds to several seconds, risking massive trading loss. Forcing index hints guarantees deterministic access paths regardless of ephemeral table statistics.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s6"><span class="section-number">6</span>Key-Results Table</h2>
+        <table class="key-results">
+          <thead>
+            <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>B-tree search complexity bound: O(log_B N) page I/O transfers for tree search</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 6.1 (Multi-way tree depth bound)</td>
+            </tr>
+            <tr>
+              <td>Covering index heap elimination: index-only scans execute zero table heap reads</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Problem 6.5 (Heap bypass invariant)</td>
+            </tr>
+            <tr>
+              <td>Write amplification penalty: M secondary indexes require M + 1 write operations per row</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Remark 6.1 (B-tree insertion cost)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS3" data-page="L06" data-cards="cards.json">
+        <h2 id="s7"><span class="section-number">7</span>Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the search time complexity of a B-tree database index for key lookups?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q1"> <span>O(log N)</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>O(N)</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>O(1)</span></label>
+              <label class="option"><input type="radio" name="L06q1"> <span>O(N log N)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A B-tree provides logarithmic search depth \(O(\log_B N)\) by branching at each internal node.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How many clustered indexes can a single database table possess?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q2"> <span>At most 1</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>Up to 16</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>One per column</span></label>
+              <label class="option"><input type="radio" name="L06q2"> <span>Unlimited</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Because the clustered index dictates the physical sequence of rows on disk, a table can have only one clustered index.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is a covering index in relational databases?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q3"> <span>An index containing all columns requested by a query, requiring zero table heap reads</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>An index that encrypts data files</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>An index that spans multiple database files</span></label>
+              <label class="option"><input type="radio" name="L06q3"> <span>An index created automatically on foreign keys</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A covering index contains both the search predicates and projected attributes, satisfying the query directly from the index.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="14" data-tolerance="0">
+            <p class="prompt">In a binary search index over 10,000 sorted keys, what is the maximum number of comparisons needed to locate any key?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\lceil \log_2(10{,}000) \rceil = 14\) comparisons.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does using random UUIDs as primary keys degrade B-tree insertion performance?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q5"> <span>Random hashes cause severe page splits and low fill factor due to lack of spatial locality</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>UUIDs cannot be sorted alphabetically</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>UUIDs require 64-bit floating-point registers</span></label>
+              <label class="option"><input type="radio" name="L06q5"> <span>Databases reject strings longer than 16 characters</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Random insertion destroys write locality, causing B-tree leaf pages to split frequently and halving page storage density.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What trade-off is introduced by adding multiple secondary indexes to a high-frequency trading table?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q6"> <span>Queries run faster, but write ingestion throughput drops significantly due to write amplification</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>Storage decreases while query speed decreases</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>Transactions lose atomicity guarantees</span></label>
+              <label class="option"><input type="radio" name="L06q6"> <span>Network latency increases across foreign exchanges</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Every secondary index requires synchronous modification on every row insert, multiplying the write load.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">If a composite index exists on (symbol, date, time), can a query filtering strictly on 'date' use the index efficiently?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="L06q7"> <span>Yes, B-trees search any column equally fast</span></label>
+              <label class="option" data-correct><input type="radio" name="L06q7"> <span>No, B-trees require the leftmost prefix (symbol) to perform an index seek</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span>Only if date is formatted as ISO 8601</span></label>
+              <label class="option"><input type="radio" name="L06q7"> <span>Only if the table has fewer than 1,000 rows</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>B-trees are sorted lexicographically by the leftmost column; omitting 'symbol' forces an index scan or full table scan.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a query optimizer sometimes choose a full table scan over an available secondary index?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L06q8"> <span>When query selectivity is high, sequential page reads are faster than random I/O heap dereferencing</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>The index has expired</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>The optimizer cannot read B-trees</span></label>
+              <label class="option"><input type="radio" name="L06q8"> <span>Full table scans are always faster for all queries</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>When retrieving many rows, sequential disk scans outperform thousands of random I/O dereferences into the table heap.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="codd1970relational"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L05.html"><span class="dir">Previous</span>L05 Point-in-Time Data</a>
+        <a class="next" href="L07.html"><span class="dir">Next</span>L07 Columnar Storage &amp; Parquet</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS3 · Data, Databases &amp; SQL · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

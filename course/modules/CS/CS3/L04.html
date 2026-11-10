@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="CS3" data-page="L04" data-hours="8">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L04 · ASOF Joins · CS3</title>
+  <meta name="description" content="Lesson 4 of CS3: As-of temporal joins, aligning asynchronous financial time series, matching trade executions to prevailing quotes, deterministic tie-breaking, and no-look-ahead invariants. 8 study hours.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">CS3 Data, Databases &amp; SQL</a><span class="sep">›</span>
+      <span>L04</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">CS3 · Lesson 4 of 8 · 8 study hours</p>
+        <h1>ASOF Joins</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="evidence-grade" href="../../../concepts.html#evidence-grade">evidence grade</a>, <a class="concept" data-concept="sql-join" href="L02.html#def-sql-join">SQL joins</a></li>
+          <li><strong>Introduces:</strong> ASOF join</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Financial market events never happen on synchronized clock ticks. Orders execute against the prevailing national best bid and offer (NBBO), but quote updates arrive asynchronously thousands of times per second. An exact timestamp equi-join between trades and quotes produces near-zero matches. Attempting to align timestamps using nearest-neighbor interpolation leaks future prices into past executions, corrupting transaction cost analysis (TCA) with look-ahead bias. The ASOF join solves this fundamental market microstructure problem by providing mathematically rigorous, strictly non-look-ahead temporal alignment.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Formal Definition of the ASOF Join</h2>
+      <p>Building on classical <a class="concept" data-concept="sql-join" href="L02.html#def-sql-join">SQL joins</a>, an as-of join extends relational joining to ordered continuous time series.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 4.1 <span class="name">(ASOF Join)</span></span>
+        <p>Let \(L\) and \(R\) be relations with common categorical key attribute \(K\) and continuous time attribute \(T \in \mathbb{R}\). The <dfn id="def-asof-join" data-concept="asof-join">ASOF join</dfn> (as-of join) associates each tuple \(t_L \in L\) with at most one tuple \(t_R \in R\) such that:
+        <ol>
+          <li><strong>Exact Key Match:</strong> \(t_R.K = t_L.K\);</li>
+          <li><strong>Temporal Precedence:</strong> \(t_R.T \le t_L.T\);</li>
+          <li><strong>Maximality:</strong> For all \(s \in R\) with \(s.K = t_L.K\) and \(s.T \le t_L.T\), \(s.T \le t_R.T\).</li>
+        </ol>
+        If no such tuple exists in \(R\), the right attributes for \(t_L\) are populated with \(\text{NULL}\). If multiple tuples in \(R\) share the identical maximal timestamp \(t_R.T\), a deterministic <strong>tie-breaking rule</strong> selects the tuple with the greatest physical insertion sequence index (\(\text{seq}\)).</p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 4.1 <span class="name">(Non-Strict versus Strict Inequality)</span></span>
+        <p>Standard financial ASOF joins use non-strict inequality (\(t_R.T \le t_L.T\)), allowing a quote update occurring at the exact microsecond of trade execution to be visible. Strict ASOF joins (\(t_R.T < t_L.T\)) are applied when modeling trading agent reaction latency or when exchange gateway publishing guarantees that quotes cannot precede trades occurring in the same clock cycle.</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>The No-Look-Ahead Invariant</h2>
+      <p>The mathematical justification for ASOF joins in quantitative finance rests on strict filtration consistency.</p>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 4.1 <span class="name">(No-Look-Ahead Invariant)</span></span>
+        <p>Let \((\Omega, \mathcal{F}, (\mathcal{F}_t)_{t \ge 0}, \mathbb{P})\) be a filtered probability space representing market information arrival. If right relation \(R\) records adapted market quotes such that \(R(t_R) \in \mathcal{F}_{t_R}\), then for every trade tuple \(t_L \in L\), the enriched state produced by the ASOF join \(t_L \text{ ASOF } R\) is strictly measurable with respect to the filtration \(\mathcal{F}_{t_L}\).</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By Definition 4.1, the matched quote \(t_R\) satisfies \(t_R.T \le t_L.T\).
+        Because the filtration \((\mathcal{F}_t)\) is non-decreasing (\(\mathcal{F}_s \subseteq \mathcal{F}_t\) for all \(s \le t\)), any random variable measurable with respect to \(\mathcal{F}_{t_R}\) is necessarily measurable with respect to \(\mathcal{F}_{t_L}\).
+        Since \(t_R\) is selected from the candidate set \(\{s \in R : s.T \le t_L.T\}\) without referencing any future tuples \(\{s \in R : s.T > t_L.T\}\), no information from \(t > t_L.T\) is incorporated into the joined tuple.
+        Therefore, \(t_L \text{ ASOF } R \in \mathcal{F}_{t_L}\), and the join is mathematically free of look-ahead bias.</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 4.1 <span class="name">(Trade-to-Quote Matching with Sequence Tie-Breaking)</span></span>
+        <p>Suppose an AAPL trade occurs at \(t = 1050\) ms with price \$150.03. Two quote updates exist at \(t = 1050\) ms: Quote 2 (Bid 150.01, Ask 150.03, \(\text{seq}=2\)) and Quote 3 (Bid 150.02, Ask 150.04, \(\text{seq}=3\)). Both satisfy \(t_R \le 1050\). The tie-breaking rule selects Quote 3 because \(\text{seq}=3 > \text{seq}=2\), accurately reflecting the final market state at millisecond 1050.</p>
+      </div>
+
+      <section class="lab" id="lab-CS3-L04-1" data-runtime="python">
+        <h3>Lab 1 · Pure-Python ASOF Join of Trades to Quotes</h3>
+        <p class="hypothesis">Verifies that an ASOF join between asynchronous trades and quotes enforces the non-strict precedence condition (quote_t <= trade_t) and breaks timestamp ties deterministically on insertion sequence.</p>
+        <pre><code class="language-python" data-run>"""CS3 Lesson 4 Inline Lab 1: Pure-Python ASOF join of trades to quotes.
+
+Demonstrates matching trade executions to the prevailing quote with non-strict
+timestamp ordering (quote_t &lt;= trade_t) and deterministic tie-breaking on insertion sequence.
+Tick size: 0.01.
+Data: SIMULATED trades and quotes for equity instruments.
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import NamedTuple
+
+
+class Quote(NamedTuple):
+    timestamp_ms: int
+    symbol: str
+    bid: Decimal
+    ask: Decimal
+    seq: int  # Insertion order tie-breaker
+
+
+class Trade(NamedTuple):
+    trade_id: int
+    timestamp_ms: int
+    symbol: str
+    price: Decimal
+    quantity: int
+
+
+class EnrichedTrade(NamedTuple):
+    trade_id: int
+    timestamp_ms: int
+    symbol: str
+    price: Decimal
+    quantity: int
+    prevailing_bid: Decimal | None
+    prevailing_ask: Decimal | None
+    quote_timestamp_ms: int | None
+    spread_cents: int | None
+
+
+def asof_join(trades: list[Trade], quotes: list[Quote]) -&gt; list[EnrichedTrade]:
+    """Execute ASOF join matching each trade to the latest quote where quote_t &lt;= trade_t.
+
+    Tie rule: when multiple quotes have identical timestamp, greatest seq wins.
+    """
+    enriched: list[EnrichedTrade] = []
+
+    for t in trades:
+        # Filter candidate quotes: matching symbol and timestamp &lt;= trade.timestamp
+        candidates = [q for q in quotes if q.symbol == t.symbol and q.timestamp_ms &lt;= t.timestamp_ms]
+
+        if not candidates:
+            enriched.append(
+                EnrichedTrade(
+                    trade_id=t.trade_id,
+                    timestamp_ms=t.timestamp_ms,
+                    symbol=t.symbol,
+                    price=t.price,
+                    quantity=t.quantity,
+                    prevailing_bid=None,
+                    prevailing_ask=None,
+                    quote_timestamp_ms=None,
+                    spread_cents=None,
+                )
+            )
+            continue
+
+        # Sort candidate quotes by (timestamp_ms DESC, seq DESC)
+        best_quote = max(candidates, key=lambda q: (q.timestamp_ms, q.seq))
+        spread = round((best_quote.ask - best_quote.bid) * 100)
+
+        enriched.append(
+            EnrichedTrade(
+                trade_id=t.trade_id,
+                timestamp_ms=t.timestamp_ms,
+                symbol=t.symbol,
+                price=t.price,
+                quantity=t.quantity,
+                prevailing_bid=best_quote.bid,
+                prevailing_ask=best_quote.ask,
+                quote_timestamp_ms=best_quote.timestamp_ms,
+                spread_cents=spread,
+            )
+        )
+
+    return enriched
+
+
+def main() -&gt; None:
+    # SIMULATED Quotes (tick size 0.01)
+    quotes = [
+        Quote(1000, "AAPL", Decimal("150.00"), Decimal("150.02"), seq=1),
+        Quote(1050, "AAPL", Decimal("150.01"), Decimal("150.03"), seq=2),
+        Quote(1050, "AAPL", Decimal("150.02"), Decimal("150.04"), seq=3),  # Tie at t=1050: seq 3 wins
+        Quote(1200, "AAPL", Decimal("150.05"), Decimal("150.07"), seq=4),
+        Quote(1020, "MSFT", Decimal("305.50"), Decimal("305.55"), seq=5),
+    ]
+
+    # SIMULATED Trades
+    trades = [
+        Trade(1, 950, "AAPL", Decimal("149.99"), 100),  # Before first AAPL quote -&gt; None
+        Trade(2, 1000, "AAPL", Decimal("150.01"), 200),  # Exact match t=1000
+        Trade(3, 1075, "AAPL", Decimal("150.03"), 150),  # Follows tied quotes at 1050
+        Trade(4, 1205, "AAPL", Decimal("150.06"), 300),  # Follows quote at 1200
+        Trade(5, 1100, "MSFT", Decimal("305.52"), 50),  # MSFT quote at 1020
+    ]
+
+    results = asof_join(trades, quotes)
+
+    print(f"Total trades: {len(trades)}")
+    print(f"Total quotes: {len(quotes)}")
+    for r in results:
+        q_time = r.quote_timestamp_ms if r.quote_timestamp_ms is not None else "None"
+        q_bid = f"{r.prevailing_bid:.2f}" if r.prevailing_bid is not None else "None"
+        q_ask = f"{r.prevailing_ask:.2f}" if r.prevailing_ask is not None else "None"
+        print(
+            f"Trade {r.trade_id} [{r.symbol} t={r.timestamp_ms} px={r.price:.2f}]: "
+            f"Quote t={q_time} Bid={q_bid} Ask={q_ask} Spread={r.spread_cents}c"
+        )
+
+    # Invariants verification
+    # 1. Trade 1 has no prior quote
+    assert results[0].prevailing_bid is None
+    # 2. Trade 2 at t=1000 matches quote at t=1000
+    assert results[1].quote_timestamp_ms == 1000
+    # 3. Trade 3 matches tied quote with seq=3 (Bid 150.02)
+    assert results[2].prevailing_bid == Decimal("150.02")
+    # 4. Strict no look-ahead condition: for all matched, quote_t &lt;= trade_t
+    no_lookahead = all(r.quote_timestamp_ms is None or r.quote_timestamp_ms &lt;= r.timestamp_ms for r in results)
+    print(f"No look-ahead invariant verified: {no_lookahead}")
+    print(f"Tie-breaking rule on seq verified: {results[2].prevailing_bid == Decimal('150.02')}")
+
+
+if __name__ == "__main__":
+    main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Total trades: 5
+Total quotes: 5
+Trade 1 [AAPL t=950 px=149.99]: Quote t=None Bid=None Ask=None Spread=Nonec
+Trade 2 [AAPL t=1000 px=150.01]: Quote t=1000 Bid=150.00 Ask=150.02 Spread=2c
+Trade 3 [AAPL t=1075 px=150.03]: Quote t=1050 Bid=150.02 Ask=150.04 Spread=2c
+Trade 4 [AAPL t=1205 px=150.06]: Quote t=1200 Bid=150.05 Ask=150.07 Spread=2c
+Trade 5 [MSFT t=1100 px=305.52]: Quote t=1020 Bid=305.50 Ask=305.55 Spread=5c
+No look-ahead invariant verified: True
+Tie-breaking rule on seq verified: True</pre>
+        <p class="interpretation">The execution verifies that unmatched trades before any quote return None, while tied quotes at identical timestamps resolve to the later insertion sequence, preserving no-look-ahead guarantees.</p>
+      </section>
+
+      <h2 id="canon-breaks"><span class="section-number">3</span>Where the Canon Breaks</h2>
+      <p>ASOF joins can fail in high-frequency production systems if physical hardware and network realities are overlooked:</p>
+      <ul>
+        <li><strong>Clock Skew Across Exchange Feeds:</strong> ASOF joins assume that timestamps across left and right tables share a synchronized global clock. In fragmented equity markets, matching a trade from NASDAQ against a quote from Direct Edge using local exchange timestamps can match against quotes that were actually published after the trade occurred due to clock drift (relativistic look-ahead bias). Feed handlers must normalize to SIP reception timestamps.</li>
+        <li><strong>Asymmetric Quote Latency:</strong> Matching trades to quotes with \(t_R \le t_L\) assumes zero network propagation delay between market venues. In reality, a trader submitting an order at time \(t_L\) observed the quote available at \(t_L - \delta_{\text{network}}\), not the quote arriving at \(t_L\). High-precision TCA models apply latency-shifted ASOF joins.</li>
+        <li><strong>Unbounded Backward Scans:</strong> If a thinly traded instrument has no quote updates for days, a naive ASOF join will match a trade against a stale quote from the prior week. Production systems impose maximum backward tolerance windows (e.g. <code>TOLERANCE 5 SECONDS</code>) to avoid matching against obsolete liquidity.</li>
+      </ul>
+
+      <section id="misconceptions">
+        <h2 id="s4"><span class="section-number">4</span>Misconceptions</h2>
+        <ol class="misconceptions">
+          <li class="misconception">
+            <p class="wrong">Nearest-neighbor interpolation is equivalent to an ASOF join.</p>
+            <p>Nearest-neighbor interpolation selects the timestamp with minimal absolute difference \(|t_R - t_L|\), which frequently selects future quotes (\(t_R > t_L\)), introducing severe look-ahead bias into execution analysis. An ASOF join strictly constrains \(t_R \le t_L\).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">An ASOF join can be expressed efficiently using standard SQL INNER JOIN and GROUP BY.</p>
+            <p>Expressing an ASOF join in standard SQL requires a non-equi join on \(t_R \le t_L\) followed by a <code>GROUP BY</code> and <code>MAX(t_R)</code>, which has \(O(N \times M)\) quadratic complexity and causes massive memory blowups on tick data. Native ASOF operators sort both streams and merge in \(O(N + M)\) linear time.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">An ASOF join multiplies rows when multiple quotes share the same timestamp.</p>
+            <p>Unlike SQL equi-joins which produce Cartesian expansion on duplicate keys, an ASOF join selects exactly one prevailing quote per trade tuple by applying an explicit tie-breaking rule (such as highest sequence index), preserving 1:1 cardinality.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section id="problems">
+        <h2 id="s5"><span class="section-number">5</span>Problem Set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Tier 1 · Mechanics</h3>
+
+          <div class="problem" id="p4-1">
+            <p class="prompt">Trade executions occur at timestamps: [100, 250, 400]. Quotes are updated at timestamps: [50, 150, 250, 350]. State the quote timestamp matched to each trade under a standard non-strict ASOF join.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>For trade at 100: candidate quotes are {50}, so matched quote is 50. For trade at 250: candidate quotes are {50, 150, 250}; maximal timestamp is 250 (exact match). For trade at 400: candidate quotes are {50, 150, 250, 350}; maximal timestamp is 350. Matches are: (100 -> 50), (250 -> 250), (400 -> 350).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p4-2">
+            <p class="prompt">If the trade at timestamp 250 in the previous problem is evaluated under a strict ASOF join (\(t_R < t_L\)), which quote timestamp is selected?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Under strict ASOF join, candidate quotes must satisfy \(t_R < 250\), which restricts the set to {50, 150}. The maximal quote timestamp strictly prior to 250 is 150.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p4-3">
+            <p class="prompt">A trade occurs at timestamp 45 ms. Quotes for the symbol begin at timestamp 50 ms. What is the output of the ASOF join for this trade?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Because there are no quote records satisfying \(t_R \le 45\), the candidate set is empty. The ASOF join returns the trade record with all quote attributes populated with NULL (or None).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Tier 2 · Proof</h3>
+
+          <div class="problem" id="p4-4">
+            <p class="prompt">Prove that if left stream \(L\) of size \(N\) and right stream \(R\) of size \(M\) are pre-sorted by timestamp, an ASOF join can be computed in \(O(N + M)\) time using a two-pointer merge algorithm.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Maintain pointer \(i\) advancing through \(L\) and pointer \(j\) advancing through \(R\). Maintain variable <code>current_quote = None</code>. For each trade \(t_i \in L\), while \(j < M\) and \(R[j].T \le t_i.T\), update <code>current_quote = R[j]</code> and increment \(j\). Then assign <code>current_quote</code> as the match for \(t_i\). Since both streams are sorted, pointer \(j\) never decrements, so pointer \(j\) advances at most \(M\) times and pointer \(i\) advances at most \(N\) times. Total operations are bounded by \(O(N + M)\).</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p4-5">
+            <p class="prompt">Prove that an ASOF join preserves the cardinality of the left relation: \(|L \text{ ASOF } R| = |L|\).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>By Definition 4.1, the ASOF join maps each tuple \(t_L \in L\) to either exactly one qualifying tuple \(t_R \in R\) (if candidates exist) or a NULL-padded tuple (if no candidates exist). The mapping from \(t_L\) to output tuple is a total function from \(L\) to \(L \times (R \cup \{\text{NULL}\})\). Because every tuple in \(L\) produces exactly one output tuple, the cardinality of the output relation equals \(|L|\) identically.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p4-6">
+            <p class="prompt">Prove that nearest-neighbor timestamp matching admits look-ahead bias with probability greater than zero under independent Poisson event arrivals.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Let trades arrive at \(t_L\) and quotes arrive according to an independent Poisson process with intensity \(\lambda > 0\). The forward time to the next quote \(X_F = t_{R, \text{next}} - t_L\) is exponentially distributed with parameter \(\lambda\). The backward time to the prior quote \(X_B = t_L - t_{R, \text{prior}}\) is independently exponentially distributed with parameter \(\lambda\). Nearest-neighbor matching selects the future quote whenever \(X_F < X_B\). By symmetry of independent identical exponential distributions, \(\mathbb{P}(X_F < X_B) = 0.5 > 0\). Thus, nearest-neighbor matching incorporates future look-ahead information in approximately 50% of matches.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Tier 3 · Empirical</h3>
+
+          <div class="problem" id="p4-7">
+            <p class="prompt">A high-frequency algorithmic strategy matches 1,000,000 executed trades to prevailing quotes. Using nearest-neighbor matching, 480,000 trades match to quotes that arrived after the trade execution. Quantify the look-ahead contamination rate of the backtest.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The look-ahead contamination rate is the proportion of trades whose matched quote timestamp strictly exceeds the trade timestamp: \(\text{Rate} = 480{,}000 / 1{,}000{,}000 = 0.48\) or 48.0%. In nearly half of all execution analyses, the strategy was evaluating execution quality against liquidity that did not yet exist when the order was placed.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p4-8">
+            <p class="prompt">An analyst measures effective spread on 10,000 buy trades: \(\text{Spread} = 2 \times (P_{\text{trade}} - \text{Midpoint})\). Under true ASOF join, average effective spread is \$0.04. Under naive look-ahead matching, trades match to post-trade quotes that already reflect market impact, reporting average effective spread of \$0.01. Quantify the distortion in transaction cost estimates.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>The look-ahead distortion understates true transaction costs by \((\$0.04 - \$0.01) / \$0.04 = 0.75\) or 75.0%. Across 10,000 trades of 1,000 shares each (10M shares), this distortion understates execution friction by \(\$0.03 \times 10{,}000 \times 1{,}000 = \$300{,}000\), creating a spurious illusion of algorithmic profitability.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p4-9">
+            <p class="prompt">In a tick dataset, a symbol has 10 trades before the market open at 09:30:00. The first quote from the primary exchange arrives at 09:30:00.005. How many trades return NULL quote attributes under an ASOF join, and how should an execution pipeline handle them?</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>All 10 pre-open trades occur at timestamps strictly prior to the first available quote. Consequently, all 10 trades return NULL quote attributes. In an execution analysis pipeline, these trades should be flagged as unquoted or matched against secondary pre-market feeds, rather than imputed with post-open quotes.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Tier 4 · Research</h3>
+
+          <div class="problem" id="p4-10">
+            <p class="prompt">Analyze why order processing latency in exchange matching engines creates an informational discrepancy between the trade execution timestamp recorded by the exchange and the quote state visible to the trader at order submission time.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>When an order is submitted at trader local time \(t_{\text{sub}}\), the trader's trading engine observes market quotes up to \(t_{\text{sub}} - \delta_{\text{inbound}}\). The exchange receives and matches the order at exchange time \(t_{\text{match}} = t_{\text{sub}} + \delta_{\text{wire}}\). A standard ASOF join on \(t_{\text{match}}\) matches quotes prevailing at the exchange at matching time, which may include quote cancellations or adverse price moves that occurred while the trader's order was in transit (in-flight adverse selection). Complete transaction cost analysis requires dual ASOF joins: at submission time and execution time.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p4-11">
+            <p class="prompt">Compare the implementation and memory efficiency of ASOF joins in DuckDB (in-memory columnar engine) versus Kdb+/q (time-series database with specialized aj operator).</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Kdb+/q natively implements the <code>aj</code> (as-of join) operator operating directly on splayed, sorted, memory-mapped vectors on disk. Because tick tables in kdb+ are strictly sorted by symbol and time, <code>aj</code> performs binary search lookups directly on mapped memory without data copying. DuckDB performs ASOF joins using vectorized radix partitioning and sorting across SIMD execution blocks, caching the right relation in columnar memory buffers. Both achieve \(O(N + M)\) performance, but kdb+ leverages persistent sorted disk indices while DuckDB operates ephemerally in standard analytics environments.</p>
+            </details>
+          </div>
+
+          <div class="problem" id="p4-12">
+            <p class="prompt">Formulate the mathematical conditions under which an ASOF join between trades and quotes can be inverted to reconstruct the historical order book state at arbitrary microsecond intervals.</p>
+            <details class="solution">
+              <summary>Solution</summary>
+              <p>Order book reconstruction requires generating a uniform synthetic grid of timestamps \(G = \{t_0, t_0 + \Delta, t_0 + 2\Delta, \dots\}\) and executing an ASOF join of grid points \(G\) to quote updates \(Q\). Reconstructibility requires that the quote log \(Q\) forms a complete, monotonic, bitemporal change-log where each update specifies the new bid, ask, and sizes with no unrecorded delta states. If quote updates represent sampled or consolidated top-of-book feeds with packet loss, the reconstructed state underestimates true historical quote volatility.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s6"><span class="section-number">6</span>Key-Results Table</h2>
+        <table class="key-results">
+          <thead>
+            <tr><th>Claim / Result</th><th>Grade</th><th>Citation / Basis</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>No-look-ahead invariant: ASOF joined state is strictly measurable with respect to trade filtration</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Theorem 4.1 (Filtration measurability)</td>
+            </tr>
+            <tr>
+              <td>Two-pointer ASOF merge complexity: linear O(N + M) runtime on pre-sorted time series</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Problem 4.4 (Linear merge bound)</td>
+            </tr>
+            <tr>
+              <td>Nearest-neighbor look-ahead distortion: ~50% future quote contamination rate on Poisson streams</td>
+              <td><span class="grade" data-grade="T">T</span></td>
+              <td>Problem 4.6 (Exponential arrival bound)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="CS3" data-page="L04" data-cards="cards.json">
+        <h2 id="s7"><span class="section-number">7</span>Retrieval quiz</h2>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does an ASOF join match each left record at timestamp t_L to in the right relation?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q1"> <span>The right record with matching key having timestamp t_R &le; t_L with maximal t_R</span></label>
+              <label class="option"><input type="radio" name="L04q1"> <span>The right record with the closest timestamp regardless of direction</span></label>
+              <label class="option"><input type="radio" name="L04q1"> <span>All right records within a 5-second interval</span></label>
+              <label class="option"><input type="radio" name="L04q1"> <span>The right record with the lowest primary key</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>An ASOF join selects the most recent prior or coincident record: \(t_R \le t_L\) with maximal \(t_R\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why is nearest-neighbor timestamp matching banned in quantitative backtests?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q2"> <span>It introduces look-ahead bias by matching against future quotes arriving after trade execution</span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span>It takes exponential computation time</span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span>It cannot handle floating-point timestamps</span></label>
+              <label class="option"><input type="radio" name="L04q2"> <span>It converts prices to negative numbers</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Nearest-neighbor selects future quotes whenever they are closer in time than prior quotes, contaminating backtests with look-ahead bias.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">How are timestamp ties resolved deterministically in the Atlas A2 data layer contract?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q3"> <span>The record with the highest insertion sequence (seq) wins</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span>The first ingested record wins</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span>Both records are averaged together</span></label>
+              <label class="option"><input type="radio" name="L04q3"> <span>An error is raised immediately</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>The tie-breaking rule uses insertion order sequence index (\(\text{seq}\)) so the latest ingested row wins.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="100" data-tolerance="0">
+            <p class="prompt">If a left relation contains 100 trade records, how many records appear in the output of an ASOF join?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>An ASOF join strictly preserves the cardinality of the left table: \(|L \text{ ASOF } R| = |L| = 100\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does an ASOF join return if no right record exists prior to or at the left timestamp?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q5"> <span>NULL values for all right-hand attributes</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>An empty output relation</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>A synthetic zero value</span></label>
+              <label class="option"><input type="radio" name="L04q5"> <span>A ValueError exception</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>If no prior candidate exists, the left record is preserved with NULL attributes for the right relation.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the computational time complexity of an ASOF join between two pre-sorted streams of lengths N and M?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q6"> <span>O(N + M)</span></label>
+              <label class="option"><input type="radio" name="L04q6"> <span>O(N * M)</span></label>
+              <label class="option"><input type="radio" name="L04q6"> <span>O(N log M)</span></label>
+              <label class="option"><input type="radio" name="L04q6"> <span>O(N^2)</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>A two-pointer merge scan evaluates the ASOF join in linear \(O(N + M)\) time without nested loops.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">In non-strict ASOF joining, if a quote arrives at t = 10:00:01.000 and a trade occurs at t = 10:00:01.000, can the quote match the trade?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q7"> <span>Yes, non-strict inequality admits exact timestamp equality</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span>No, quote timestamps must strictly precede trade timestamps</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span>Only if the quote is from the same exchange</span></label>
+              <label class="option"><input type="radio" name="L04q7"> <span>Only if prices are identical</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Non-strict inequality specifies \(t_R \le t_L\), which includes exact timestamp equality.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What problem arises when performing an ASOF join on a very thinly traded stock with no maximum tolerance window?</p>
+            <fieldset style="min-inline-size: 0"><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="L04q8"> <span>Trades match against obsolete stale quotes from days or weeks prior</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>The database automatically shuts down</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>Memory leaks occur in the query engine</span></label>
+              <label class="option"><input type="radio" name="L04q8"> <span>The query returns multiple rows per trade</span></label>
+            </fieldset>
+            <div class="explain" hidden><p>Without a maximum backward tolerance, an ASOF join scans back indefinitely and matches against stale, non-representative quotes.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s8"><span class="section-number">8</span>References</h2>
+        <ol data-references>
+          <li data-cite="codd1970relational"></li>
+        </ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L03.html"><span class="dir">Previous</span>L03 SQL Window Functions</a>
+        <a class="next" href="L05.html"><span class="dir">Next</span>L05 Point-in-Time Data</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">CS3 · Data, Databases &amp; SQL · Every claim carries an evidence grade and a registry citation.</footer>
+</body>
+</html>

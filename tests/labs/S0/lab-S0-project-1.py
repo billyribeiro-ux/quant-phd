@@ -110,9 +110,7 @@ def main() -> None:
     # Row 2 is a gap (None). Rows 4-9 are a stale run of price 50.0 (length 6 >= 5).
     # Row 10 is an unadjusted corporate break: price drops from 50.0 to 25.0 with split_ratio 1.0 (r_t ~ -0.693).
     # Row 11 has price 28.0 (an outlier return ~ +0.113 vs normal variation).
-    prices: list[float | None] = [
-        100.0, 101.0, None, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 25.0, 28.0
-    ]
+    prices: list[float | None] = [100.0, 101.0, None, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 25.0, 28.0]
     splits = [1.0] * 12
 
     dataset: dict[str, Any] = {

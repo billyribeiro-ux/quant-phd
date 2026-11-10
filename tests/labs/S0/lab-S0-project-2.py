@@ -63,9 +63,7 @@ def is_corporate_break(r_t: float, break_log: float = 0.25) -> bool:
 
 def main() -> None:
     # SIMULATED price trajectory
-    quotes: list[float | None] = [
-        100.0, 100.0, 100.0, 100.0, 100.0, 100.0, None, 45.0, 45.0
-    ]
+    quotes: list[float | None] = [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, None, 45.0, 45.0]
 
     # 1. Identify gaps
     gaps = flag_gaps(quotes)

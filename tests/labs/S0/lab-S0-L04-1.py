@@ -67,13 +67,8 @@ def main() -> None:
     stale_runs = detect_stale_runs(prices, min_run=5)
 
     # 2. Compute raw unadjusted returns vs split-adjusted returns
-    raw_returns: list[float] = [
-        math.log(prices[t] / prices[t - 1]) for t in range(1, n)
-    ]
-    adj_returns: list[float] = [
-        math.log(prices[t] / prices[t - 1]) + math.log(split_ratios[t])
-        for t in range(1, n)
-    ]
+    raw_returns: list[float] = [math.log(prices[t] / prices[t - 1]) for t in range(1, n)]
+    adj_returns: list[float] = [math.log(prices[t] / prices[t - 1]) + math.log(split_ratios[t]) for t in range(1, n)]
 
     # Inspect returns at the split event (day 60 -> index 59 in returns)
     r_raw_split = raw_returns[split_day - 1]

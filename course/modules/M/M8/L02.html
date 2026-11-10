@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M8" data-page="L02" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L02 · Conditioning and Stability · M8 Numerical Methods</title>
+  <meta name="description" content="Mathematical conditioning of problems, matrix condition numbers, forward and backward error analysis, and numerical backward stability of algorithms.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M8 Numerical Methods &amp; Scientific Computing</a><span class="sep">›</span>
+      <span>L02</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">M8 · Lesson 2 of 8 · 10 study hours</p>
+        <h1>Conditioning and Stability</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="derivative" href="../../../concepts.html#derivative">derivative</a> (M2), <a class="concept" data-concept="matrix-inverse" href="../../../concepts.html#matrix-inverse">matrix inverse</a> (M3), <a class="concept" data-concept="linear-system-solution" href="../../../concepts.html#linear-system-solution">linear systems</a> (M3), <a href="L01.html#def-catastrophic-cancellation">catastrophic cancellation</a> (L01)</li>
+          <li><strong>Introduces:</strong> <dfn id="def-condition-number" data-concept="condition-number">condition number</dfn>, <dfn id="def-numerical-stability" data-concept="numerical-stability">numerical stability</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or convention</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Numerical errors in scientific computing arise from two fundamentally distinct sources: the sensitivity of the underlying mathematical problem (conditioning) and the propagation of roundoff errors by the algorithm (stability). An ill-conditioned problem amplifies tiny input changes into massive solution errors regardless of the algorithm used. Conversely, an unstable algorithm can produce catastrophic errors even on well-conditioned problems. In quantitative finance, portfolio covariance matrix inversion and option Greek calculations are frequently ill-conditioned. Disentangling problem conditioning from algorithmic stability is necessary to design robust risk models and linear solvers.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Problem conditioning and condition numbers</h2>
+
+      <p>A computational problem can be formalized as evaluating a map \(f: X \to Y\) from input normed space \(X\) to output space \(Y\). Conditioning measures how sensitive the exact output \(f(x)\) is to perturbations in the input \(x\).</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(relative condition number of a function)</span></span>
+        <p>Let \(f: \R \to \R\) be a differentiable scalar function. The relative <dfn id="def-condition-number-scalar" data-concept="condition-number">condition number</dfn> \(\kappa(x)\) of \(f\) at \(x \ne 0\) with \(f(x) \ne 0\) is the limit of the relative output change divided by the relative input change:</p>
+        <p>\[ \kappa(x) = \lim_{\delta x \to 0} \left| \frac{\frac{f(x + \delta x) - f(x)}{f(x)}}{\frac{\delta x}{x}} \right| = \left| \frac{x f'(x)}{f(x)} \right| \]</p>
+        <p>A problem is <em>well-conditioned</em> if \(\kappa(x)\) is small (e.g. \(O(1)\)), and <em>ill-conditioned</em> if \(\kappa(x) \gg 1\).</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 1.2 <span class="name">(conditioning of elementary operations)</span></span>
+        <p>For \(f(x) = \sqrt{x}\), \(\kappa(x) = |x \frac{1}{2\sqrt{x}} / \sqrt{x}| = \frac{1}{2}\). Square root evaluation is unconditionally well-conditioned: a 1% error in \(x\) produces only a 0.5% error in \(\sqrt{x}\). For \(f(x) = \frac{1}{1 - x}\) near \(x \approx 1\), \(f'(x) = \frac{1}{(1-x)^2}\), so \(\kappa(x) = |\frac{x}{(1-x)^2} (1 - x)| = \frac{|x|}{|1 - x|}\). As \(x \to 1\), \(\kappa(x) \to \infty\), illustrating severe ill-conditioning.</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Conditioning of linear systems</h2>
+
+      <p>Consider solving a linear system of equations \(A x = b\) where \(A \in \R^{n \times n}\) is non-singular and \(b \in \R^n\) is non-zero.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(matrix condition number)</span></span>
+        <p>For a non-singular matrix \(A \in \R^{n \times n}\) and subordinate matrix norm \(\|\cdot\|\), the <em>condition number</em> of \(A\) is:</p>
+        <p>\[ \kappa(A) = \|A\| \, \|A^{-1}\| \]</p>
+        <p>Since \(I = A A^{-1}\), \(\|I\| \le \|A\| \|A^{-1}\|\). In any induced norm where \(\|I\| = 1\), \(\kappa(A) \ge 1\). If \(A\) is singular, \(\kappa(A) = \infty\).</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Proposition 2.2 <span class="name">(relative perturbation error bound)</span></span>
+        <p>Let \(A x = b\) and \(A (x + \delta x) = b + \delta b\), where \(b \ne 0\). The relative change in the solution satisfies:</p>
+        <p>\[ \frac{\|\delta x\|}{\|x\|} \le \kappa(A) \frac{\|\delta b\|}{\|b\|} \]</p>
+        <p>Furthermore, this bound is sharp: there exist non-zero vectors \(b\) and \(\delta b\) for which equality holds.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>From \(A (x + \delta x) = b + \delta b\) and \(A x = b\), linearity implies \(A \delta x = \delta b\), so \(\delta x = A^{-1} \delta b\). Taking norms and using submultiplicativity: \(\|\delta x\| \le \|A^{-1}\| \|\delta b\|\). From \(b = A x\), we have \(\|b\| \le \|A\| \|x\|\), which implies \(\frac{1}{\|x\|} \le \frac{\|A\|}{\|b\|}\). Multiplying the two inequalities gives \(\frac{\|\delta x\|}{\|x\|} \le \|A\| \|A^{-1}\| \frac{\|\delta b\|}{\|b\|} = \kappa(A) \frac{\|\delta b\|}{\|b\|}\). To show sharpness, choose \(x\) such that \(\|A x\| = \min_{z \ne 0} \frac{\|A z\|}{\|z\|} \|x\| = \frac{1}{\|A^{-1}\|} \|x\|\), and choose \(\delta b\) such that \(\|A^{-1} \delta b\| = \|A^{-1}\| \|\delta b\|\). Then equality is attained. \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Forward error, backward error, and numerical stability</h2>
+
+      <p>When solving \(f(x) = y\) with a numerical algorithm, finite-precision computation produces an approximate output \(\hat{y} = \text{alg}(x)\). We distinguish between forward and backward error.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.1 <span class="name">(forward and backward error)</span></span>
+        <p>The <em>forward error</em> of an computed solution \(\hat{y}\) is the distance to the true output \(\|\hat{y} - y\|\), or relative forward error \(\frac{\|\hat{y} - y\|}{\|y\|}\). The <em>backward error</em> is the smallest perturbation \(\Delta x\) to the input such that the computed result is exact for the perturbed input: \(f(x + \Delta x) = \hat{y}\). The relative backward error is \(\frac{\|\Delta x\|}{\|x\|}\).</p>
+      </div>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.2 <span class="name">(numerical stability and backward stability)</span></span>
+        <p>An algorithm is <dfn id="def-numerical-stability-term" data-concept="numerical-stability">numerically stable</dfn> if its forward error is commensurate with problem conditioning: \(\text{forward error} \lesssim \kappa(x) \times u\). An algorithm is <em>backward stable</em> if for every input \(x\), it produces the exact output for a slightly perturbed input \(x + \Delta x\) with relative backward error bounded by the unit roundoff: \(\frac{\|\Delta x\|}{\|x\|} \le C u\), where \(C\) is a moderate constant.</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Proposition 3.3 <span class="name">(backward stability implies forward error bound)</span></span>
+        <p>If an algorithm for evaluating \(f\) is backward stable with \(\frac{\|\Delta x\|}{\|x\|} \le C u\), then its relative forward error satisfies:</p>
+        <p>\[ \frac{\|\hat{y} - y\|}{\|y\|} \le \kappa(x) \cdot C u + O(u^2) \]</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>By definition of backward stability, \(\hat{y} = f(x + \Delta x)\). By first-order Taylor expansion for normed spaces, \(f(x + \Delta x) - f(x) = f'(x) \Delta x + O(\|\Delta x\|^2)\). Taking norms and dividing by \(\|y\| = \|f(x)\|\): \(\frac{\|f(x + \Delta x) - f(x)\|}{\|f(x)\|} = \frac{\|f'(x) \Delta x\|}{\|f(x)\|} + O(\|\Delta x\|^2) \le \frac{\|f'(x)\| \|x\|}{\|f(x)\|} \frac{\|\Delta x\|}{\|x\|} + O(u^2) = \kappa(x) \frac{\|\Delta x\|}{\|x\|} + O(u^2) \le \kappa(x) C u + O(u^2)\). \(\blacksquare\)</p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 3.4 <span class="name">(fundamental rule of numerical analysis)</span></span>
+        <p>The forward error is at most the condition number times the backward error:</p>
+        <p>\[ \text{Forward Error} \le \text{Condition Number} \times \text{Backward Error} \]</p>
+        <p>A backward stable algorithm guarantees that any large forward error observed in practice is entirely attributable to the mathematical ill-conditioning of the problem itself, not the algorithmic implementation.</p>
+      </div>
+
+      <h2 id="s4"><span class="section-number">4</span>Inline laboratory: exact conditioning of a 2x2 system</h2>
+
+      <section class="lab" id="lab-M8-L02-1" data-runtime="python">
+        <h3>Lab 1 · Conditioning and stability of a linear system</h3>
+        <p class="hypothesis">For an ill-conditioned 2x2 matrix \(A\) with \(\kappa_\infty(A) = 40{,}000\), an input perturbation \(\|\delta b\|_\infty / \|b\|_\infty = 5 \times 10^{-6}\) produces an observed relative solution change \(\|\delta x\|_\infty / \|x\|_\infty = 10\%\). The exact theoretical bound \(\kappa_\infty(A) \|\delta b\|_\infty / \|b\|_\infty = 20\%\) holds strictly in exact rational arithmetic.</p>
+        <pre><code class="language-python" data-run>"""Lab M8-L02-1: Conditioning and stability of a linear system.
+
+Exact arithmetic using fractions.Fraction. Computes the exact condition number
+and compares the theoretical error bound to the observed solution error under perturbation.
+"""
+
+from __future__ import annotations
+
+from fractions import Fraction
+
+
+def inf_norm_matrix(a11: Fraction, a12: Fraction, a21: Fraction, a22: Fraction) -&gt; Fraction:
+    """Maximum row sum norm."""
+    r1 = abs(a11) + abs(a12)
+    r2 = abs(a21) + abs(a22)
+    return max(r1, r2)
+
+
+def inf_norm_vector(v1: Fraction, v2: Fraction) -&gt; Fraction:
+    """Maximum absolute entry norm."""
+    return max(abs(v1), abs(v2))
+
+
+def solve_2x2(
+    a11: Fraction, a12: Fraction, a21: Fraction, a22: Fraction, b1: Fraction, b2: Fraction
+) -&gt; tuple[Fraction, Fraction]:
+    """Solve 2x2 linear system via Cramer's rule in exact arithmetic."""
+    det = a11 * a22 - a12 * a21
+    if det == 0:
+        raise ValueError("Matrix is singular")
+    x1 = (b1 * a22 - a12 * b2) / det
+    x2 = (a11 * b2 - b1 * a21) / det
+    return x1, x2
+
+
+def invert_2x2(
+    a11: Fraction, a12: Fraction, a21: Fraction, a22: Fraction
+) -&gt; tuple[Fraction, Fraction, Fraction, Fraction]:
+    """Inverse of 2x2 matrix."""
+    det = a11 * a22 - a12 * a21
+    if det == 0:
+        raise ValueError("Matrix is singular")
+    return a22 / det, -a12 / det, -a21 / det, a11 / det
+
+
+def main() -&gt; None:
+    # A = [[1, 1], [1, 1 - eps]] with eps = 1/10000
+    eps = Fraction(1, 10_000)
+    a11, a12 = Fraction(1, 1), Fraction(1, 1)
+    a21, a22 = Fraction(1, 1), Fraction(1, 1) - eps
+
+    # b = [2, 2 - eps], exact solution x = [1, 1]
+    b1, b2 = Fraction(2, 1), Fraction(2, 1) - eps
+    x1, x2 = solve_2x2(a11, a12, a21, a22, b1, b2)
+
+    # Invert A
+    inv11, inv12, inv21, inv22 = invert_2x2(a11, a12, a21, a22)
+
+    norm_a = inf_norm_matrix(a11, a12, a21, a22)
+    norm_inv = inf_norm_matrix(inv11, inv12, inv21, inv22)
+    kappa_inf = norm_a * norm_inv
+
+    print(f"Matrix A: [[{a11}, {a12}], [{a21}, {a22}]]")
+    print(f"Right-hand side b: [{b1}, {b2}]")
+    print(f"Exact unperturbed solution x: [{x1}, {x2}]")
+    print(f"||A||_inf: {norm_a}")
+    print(f"||A^-1||_inf: {norm_inv}")
+    print(f"Exact condition number kappa_inf(A): {kappa_inf} (decimal: {float(kappa_inf):.1f})")
+
+    # Perturb b by delta_b = [0, 1/100000]
+    delta_b1, delta_b2 = Fraction(0, 1), Fraction(1, 100_000)
+    b1_pert = b1 + delta_b1
+    b2_pert = b2 + delta_b2
+
+    x1_pert, x2_pert = solve_2x2(a11, a12, a21, a22, b1_pert, b2_pert)
+    delta_x1 = x1_pert - x1
+    delta_x2 = x2_pert - x2
+
+    norm_b = inf_norm_vector(b1, b2)
+    norm_delta_b = inf_norm_vector(delta_b1, delta_b2)
+    norm_x = inf_norm_vector(x1, x2)
+    norm_delta_x = inf_norm_vector(delta_x1, delta_x2)
+
+    rel_b = norm_delta_b / norm_b
+    rel_x = norm_delta_x / norm_x
+    bound = kappa_inf * rel_b
+
+    print(f"\nPerturbation delta_b: [{delta_b1}, {delta_b2}]")
+    print(f"Perturbed solution x_pert: [{x1_pert}, {x2_pert}]")
+    print(f"Solution error delta_x: [{delta_x1}, {delta_x2}]")
+    print(f"Relative rhs change ||delta_b|| / ||b||: {rel_b} (decimal: {float(rel_b):.2e})")
+    print(f"Relative solution change ||delta_x|| / ||x||: {rel_x} (decimal: {float(rel_x):.2e})")
+    print(f"Condition bound kappa_inf * (||delta_b|| / ||b||): {bound} (decimal: {float(bound):.2e})")
+    print(f"Theoretical bound holds: {rel_x &lt;= bound}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">Matrix A: [[1, 1], [1, 9999/10000]]
+Right-hand side b: [2, 19999/10000]
+Exact unperturbed solution x: [1, 1]
+||A||_inf: 2
+||A^-1||_inf: 20000
+Exact condition number kappa_inf(A): 40000 (decimal: 40000.0)
+
+Perturbation delta_b: [0, 1/100000]
+Perturbed solution x_pert: [11/10, 9/10]
+Solution error delta_x: [1/10, -1/10]
+Relative rhs change ||delta_b|| / ||b||: 1/200000 (decimal: 5.00e-06)
+Relative solution change ||delta_x|| / ||x||: 1/10 (decimal: 1.00e-01)
+Condition bound kappa_inf * (||delta_b|| / ||b||): 1/5 (decimal: 2.00e-01)
+Theoretical bound holds: True</pre>
+        <p class="interpretation">All quantities are computed in exact fractions without floating-point error. The lab proves that large solution errors under tiny perturbations are a consequence of the matrix geometry (\(\kappa_\infty = 40{,}000\)), proving Proposition 2.2 empirically.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s5"><span class="section-number">5</span>Where the canon breaks</h2>
+        <ul>
+          <li><strong>Condition bounds are worst-case upper bounds.</strong> A condition number \(\kappa(A) = 10^8\) does not imply every perturbation will be amplified by \(10^8\). If \(\delta b\) lies along the principal direction associated with the largest singular value of \(A\), the amplification is minimal (\(\sim 1\)). The bound guarantees what <em>cannot</em> happen, not what always happens.</li>
+          <li><strong>Inverting ill-conditioned matrices cannot be fixed by software.</strong> If a financial covariance matrix has condition number \(\kappa = 10^{16}\), all double-precision significance is lost. No stable algorithm can recover meaningful portfolio weights without regularizing the underlying matrix (e.g. Ridge shrinkage or eigenvalue clipping).</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s6"><span class="section-number">6</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“A small matrix determinant implies an ill-conditioned matrix.”</p>
+            <p>Determinants are not scale-invariant. Consider the diagonal matrix \(A = 10^{-2} I_{100 \times 100}\). Its determinant is \(\det(A) = 10^{-200}\), which underflows to 0 in double precision. However, \(\|A\|_2 = 10^{-2}\) and \(\|A^{-1}\|_2 = 10^2\), so \(\kappa_2(A) = 10^{-2} \times 10^2 = 1.0\). The system is perfectly well-conditioned despite having an infinitesimal determinant.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“If an algorithm produces large forward error, the algorithm must be unstable.”</p>
+            <p>If the underlying problem is ill-conditioned (\(\kappa \gg 1\)), even an ideally backward stable algorithm will exhibit large forward error (\(\approx \kappa u\)). Instability occurs only when the forward error is vastly larger than \(\kappa u\).</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“A small residual \(\|A \hat{x} - b\|\) guarantees an accurate solution \(\hat{x}\).”</p>
+            <p>The relative error is bounded by \(\frac{\|\hat{x} - x\|}{\|x\|} \le \kappa(A) \frac{\|A \hat{x} - b\|}{\|b\|}\). When \(\kappa(A)\) is large, a computed solution can achieve a tiny residual near machine precision (\(\|A \hat{x} - b\| \approx 10^{-16}\)) while the error \(\|\hat{x} - x\|\) remains 100%.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s7"><span class="section-number">7</span>Problem set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Condition number of 2x2 matrix</span>
+            <p>Calculate \(\|A\|_\infty\), \(\|A^{-1}\|_\infty\), and \(\kappa_\infty(A)\) for \(A = \begin{pmatrix} 1 &amp; 2 \\ 3 &amp; 4 \end{pmatrix}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The row sums of \(A\) are \(1 + 2 = 3\) and \(3 + 4 = 7\), so \(\|A\|_\infty = 7\). The determinant is \(1(4) - 2(3) = -2\). The inverse is \(A^{-1} = -\frac{1}{2} \begin{pmatrix} 4 &amp; -2 \\ -3 &amp; 1 \end{pmatrix} = \begin{pmatrix} -2 &amp; 1 \\ 1.5 &amp; -0.5 \end{pmatrix}\). The row sums of \(A^{-1}\) are \(|-2| + |1| = 3\) and \(|1.5| + |-0.5| = 2\), so \(\|A^{-1}\|_\infty = 3\). Thus, \(\kappa_\infty(A) = \|A\|_\infty \|A^{-1}\|_\infty = 7 \times 3 = 21\).</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · Condition number of power function</span>
+            <p>Compute the relative condition number \(\kappa(x)\) of \(f(x) = x^n\) for constant non-zero integer \(n\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The derivative is \(f'(x) = n x^{n-1}\). By Definition 1.1, \(\kappa(x) = \left|\frac{x f'(x)}{f(x)}\right| = \left|\frac{x \cdot n x^{n-1}}{x^n}\right| = |n|\). The condition number is constant and equals \(|n|\) for all \(x \ne 0\). For example, squaring has \(\kappa = 2\), while \(x^{100}\) has \(\kappa = 100\).</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · Residual versus error</span>
+            <p>Let \(A = \begin{pmatrix} 1 &amp; 1 \\ 1 &amp; 1.0001 \end{pmatrix}\) and \(b = \begin{pmatrix} 2 \\ 2.0001 \end{pmatrix}\) with exact solution \(x = \begin{pmatrix} 1 \\ 1 \end{pmatrix}\). Suppose an algorithm yields \(\hat{x} = \begin{pmatrix} 2 \\ 0 \end{pmatrix}\). Compute the residual vector \(r = b - A \hat{x}\) and the relative error \(\|\hat{x} - x\|_\infty / \|x\|_\infty\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Compute \(A \hat{x} = \begin{pmatrix} 1(2) + 1(0) \\ 1(2) + 1.0001(0) \end{pmatrix} = \begin{pmatrix} 2 \\ 2 \end{pmatrix}\). The residual is \(r = b - A \hat{x} = \begin{pmatrix} 2 - 2 \\ 2.0001 - 2 \end{pmatrix} = \begin{pmatrix} 0 \\ 0.0001 \end{pmatrix}\). The residual norm is \(\|r\|_\infty = 10^{-4}\), which appears small. However, \(\hat{x} - x = \begin{pmatrix} 2 - 1 \\ 0 - 1 \end{pmatrix} = \begin{pmatrix} 1 \\ -1 \end{pmatrix}\), so \(\|\hat{x} - x\|_\infty / \|x\|_\infty = 1 / 1 = 100\%\). The solution is completely wrong despite a small residual.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Condition number of orthogonal matrix</span>
+            <p>Prove that for any orthogonal matrix \(Q \in \R^{n \times n}\) (\(Q^\top Q = I\)), \(\kappa_2(Q) = 1\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The 2-norm of a matrix is \(\|A\|_2 = \sqrt{\lambda_{\max}(A^\top A)}\). Since \(Q^\top Q = I\), \(Q^\top Q\) has all eigenvalues equal to 1, so \(\|Q\|_2 = 1\). Furthermore, \(Q^{-1} = Q^\top\), and \((Q^\top)^\top Q^\top = Q Q^\top = I\) (since square orthogonal matrices have orthonormal rows as well as columns). Therefore, \(\|Q^{-1}\|_2 = \|Q^\top\|_2 = 1\). Hence \(\kappa_2(Q) = \|Q\|_2 \|Q^{-1}\|_2 = 1 \times 1 = 1\). Orthogonal transformations are perfectly conditioned.</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Perturbation in the coefficient matrix</span>
+            <p>Let \(A x = b\) and \((A + \delta A)(x + \delta x) = b\). Assuming \(\|\delta A\| \|A^{-1}\| &lt; 1\), prove that \(\frac{\|\delta x\|}{\|x\|} \le \frac{\kappa(A) \frac{\|\delta A\|}{\|A\|}}{1 - \kappa(A) \frac{\|\delta A\|}{\|A\|}}\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Expanding gives \(A x + A \delta x + \delta A (x + \delta x) = b\). Since \(A x = b\), we have \(A \delta x = -\delta A (x + \delta x)\), so \(\delta x = -A^{-1} \delta A (x + \delta x)\). Taking norms: \(\|\delta x\| \le \|A^{-1}\| \|\delta A\| (\|x\| + \|\delta x\|)\). Rearranging: \((1 - \|A^{-1}\| \|\delta A\|) \|\delta x\| \le \|A^{-1}\| \|\delta A\| \|x\|\). Dividing by \(\|x\|\) and using \(\|A^{-1}\| \|\delta A\| = \|A\| \|A^{-1}\| \frac{\|\delta A\|}{\|A\|} = \kappa(A) \frac{\|\delta A\|}{\|A\|}\) yields the stated inequality.</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · Singular values and condition number</span>
+            <p>Prove that for any non-singular matrix \(A \in \R^{n \times n}\), \(\kappa_2(A) = \frac{\sigma_{\max}(A)}{\sigma_{\min}(A)}\) where \(\sigma_{\max}, \sigma_{\min}\) are the largest and smallest singular values.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>From the singular value decomposition \(A = U \Sigma V^\top\), the matrix 2-norm is the largest singular value: \(\|A\|_2 = \sigma_{\max}(A) = \sigma_1\). The inverse is \(A^{-1} = V \Sigma^{-1} U^\top\). The diagonal entries of \(\Sigma^{-1}\) are \(1/\sigma_n \ge 1/\sigma_{n-1} \ge \dots \ge 1/\sigma_1\). Therefore, \(\|A^{-1}\|_2 = \frac{1}{\sigma_{\min}(A)}\). Multiplying the two norms gives \(\kappa_2(A) = \|A\|_2 \|A^{-1}\|_2 = \frac{\sigma_{\max}(A)}{\sigma_{\min}(A)}\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Lab 1 exact condition number</span>
+            <p>In Lab 1, what are the exact fraction values of \(\|A\|_\infty\), \(\|A^{-1}\|_\infty\), and \(\kappa_\infty(A)\)?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>As computed in Lab 1: \(\|A\|_\infty = \max(1 + 1, 1 + 9999/10000) = 2\). The inverse matrix has row sums \(\max(|-9999| + |10000|, |10000| + |-10000|) = 20000\), so \(\|A^{-1}\|_\infty = 20000\). The exact condition number is \(\kappa_\infty(A) = 2 \times 20000 = 40000\).</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Perturbation amplification in Lab 1</span>
+            <p>Using the values printed in Lab 1, compare the observed relative solution change with the theoretical condition bound.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Lab 1 prints relative right-hand side change \(\|\delta b\|_\infty / \|b\|_\infty = 1/200000 = 5.00 \times 10^{-6}\). The observed relative solution error is \(\|\delta x\|_\infty / \|x\|_\infty = 1/10 = 0.10\) (10%). The theoretical upper bound is \(\kappa_\infty(A) \times \frac{\|\delta b\|_\infty}{\|b\|_\infty} = 40000 \times 5.00 \times 10^{-6} = 0.20\) (20%). The bound strictly holds: \(0.10 \le 0.20\).</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · Conditioning of Hilbert matrices</span>
+            <p>The \(n \times n\) Hilbert matrix has entries \(H_{ij} = \frac{1}{i + j - 1}\). Explain why solving \(H x = b\) becomes impossible in binary64 for \(n \ge 12\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Hilbert matrices are notoriously ill-conditioned. For \(n = 12\), \(\kappa_2(H_{12}) \approx 1.7 \times 10^{16}\). Since the unit roundoff in binary64 is \(u \approx 1.11 \times 10^{-16}\), the product \(\kappa(H) u \approx 1.9 &gt; 1\). According to Remark 3.4, the expected forward error is \(O(\kappa u) \ge 100\%\), completely destroying all 16 decimal digits of precision.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Covariance matrix conditioning in Markowitz allocation</span>
+            <p>Why are empirical covariance matrices of equity returns with \(N \approx 500\) assets and \(T \approx 250\) daily observations severely ill-conditioned, and how does this affect optimal weights?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>When \(N &gt; T\), the sample covariance matrix \(\hat{\Sigma} = \frac{1}{T} X X^\top\) is singular with rank at most \(T &lt; N\), so \(\kappa(\hat{\Sigma}) = \infty\). Even when \(T &gt; N\) with \(T \approx 2N\), the Marchenko-Pastur distribution from random matrix theory shows that sample eigenvalues spread widely: \(\lambda_{\min} \approx (1 - \sqrt{N/T})^2\). For \(N/T = 0.5\), \(\lambda_{\min} \approx 0.086\) and \(\lambda_{\max} \approx 2.91\). Inverting \(\hat{\Sigma}\) in the Markowitz formula \(w^* \propto \hat{\Sigma}^{-1} \mu\) severely amplifies noise in the smallest eigenvectors, resulting in extreme, unstable portfolio positions.</p>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Conditioning of Black–Scholes vega inversion</span>
+            <p>Explain why inverting the Black–Scholes formula for implied volatility \(\sigma\) becomes ill-conditioned when \(\text{vega} \to 0\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let \(C(\sigma)\) be the option price as a function of volatility. The inverse problem seeks \(\sigma(C)\). By the inverse function theorem, \(\frac{d\sigma}{dC} = \frac{1}{\text{vega}}\). The condition number of inversion is \(\kappa_C = |\frac{C \sigma'(C)}{\sigma}| = \frac{C}{\sigma \cdot \text{vega}}\). As an option moves deep out-of-the-money or approaches expiry (\(\tau \to 0\)), vega decays exponentially to zero. Consequently, \(\kappa_C \to \infty\), meaning a roundoff error of \(10^{-16}\) in price can translate into an error of order 1 in implied volatility.</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Preconditioning in iterative solvers</span>
+            <p>How does left-preconditioning by matrix \(M^{-1}\) transform an ill-conditioned system \(A x = b\), and what properties must the preconditioner \(M\) satisfy?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Left-preconditioning solves the equivalent system \(M^{-1} A x = M^{-1} b\). The goal is to choose \(M\) such that \(M^{-1} A \approx I\), resulting in \(\kappa(M^{-1} A) \approx 1 \ll \kappa(A)\). A valid preconditioner must balance two competing objectives: \(M\) must be a sufficiently accurate approximation of \(A\) to cluster the eigenvalues of \(M^{-1} A\) near 1, while systems of the form \(M z = r\) must be computationally inexpensive to solve (e.g. Incomplete Cholesky or diagonal Jacobi).</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s8"><span class="section-number">8</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>Relative condition number of scalar function is \(\kappa(x) = |x f'(x) / f(x)|\) (Definition 1.1)</td><td><span class="grade" data-grade="T">T</span></td><td>Section 1 derivation</td></tr>
+              <tr><td>Matrix condition number \(\kappa(A) = \|A\| \|A^{-1}\|\) bounds relative solution error \(\frac{\|\delta x\|}{\|x\|} \le \kappa(A) \frac{\|\delta b\|}{\|b\|}\) (Proposition 2.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 2</td></tr>
+              <tr><td>Backward stability implies forward error bound \(\frac{\|\hat{y} - y\|}{\|y\|} \le \kappa(x) C u + O(u^2)\) (Proposition 3.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 3</td></tr>
+              <tr><td>2x2 system with \(\kappa_\infty = 40{,}000\) amplifies a \(5 \times 10^{-6}\) perturbation into a \(10\%\) solution error (Lab 1)</td><td><span class="grade" data-grade="T">T</span></td><td>Lab 1 (exact Fraction)</td></tr>
+              <tr><td>Orthogonal matrices have 2-norm condition number \(\kappa_2(Q) = 1\) (Problem P1)</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P1 proof</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="M8" data-page="L02" data-cards="cards.json">
+        <h2 id="s9"><span class="section-number">9</span>Retrieval quiz</h2>
+        <p>Answer from memory, then check your responses.</p>
+        <ol class="items">
+          <li class="item" data-kind="numeric" data-answer="1" data-tolerance="0.001">
+            <p class="prompt">What is the minimum possible value of the condition number \(\kappa(A)\) in any induced matrix norm?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Because \(\|I\| \le \|A\| \|A^{-1}\| = \kappa(A)\) and induced norms have \(\|I\| = 1\), \(\kappa(A) \ge 1\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What does it mean for a computational problem to be ill-conditioned?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l2q2"> The computer executing the program runs out of memory</label>
+              <label class="option" data-correct><input type="radio" name="l2q2"> Small perturbations in the inputs cause large changes in the exact output</label>
+              <label class="option"><input type="radio" name="l2q2"> The algorithm contains division by zero</label>
+            </fieldset>
+            <div class="explain" hidden><p>Conditioning is an intrinsic property of the mathematical problem, reflecting sensitivity of output to input variations.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.5" data-tolerance="0.001">
+            <p class="prompt">What is the relative condition number \(\kappa(x)\) of the square root function \(f(x) = \sqrt{x}\) for \(x &gt; 0\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\kappa(x) = |x f'(x) / f(x)| = |x \frac{1}{2\sqrt{x}} / \sqrt{x}| = 1/2 = 0.5\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is backward stability of a numerical algorithm?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l2q4"> The algorithm executes in reverse time</label>
+              <label class="option" data-correct><input type="radio" name="l2q4"> The algorithm produces the exact solution to a nearby problem with \(\|\Delta x\|/\|x\| = O(u)\)</label>
+              <label class="option"><input type="radio" name="l2q4"> The algorithm has zero roundoff error</label>
+            </fieldset>
+            <div class="explain" hidden><p>Backward stability ensures that errors introduced by computation can be interpreted as tiny perturbations to the original input.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="40000" data-tolerance="1">
+            <p class="prompt">In Lab 1, what is the exact condition number \(\kappa_\infty(A)\) of the test matrix?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>\(\kappa_\infty(A) = \|A\|_\infty \|A^{-1}\|_\infty = 2 \times 20000 = 40000\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">If a matrix has \(\det(A) = 10^{-50}\), is \(A\) necessarily ill-conditioned?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l2q6"> Yes, small determinant always implies ill-conditioning</label>
+              <label class="option" data-correct><input type="radio" name="l2q6"> No, determinant is not scale-invariant; \(\kappa(A)\) can be 1</label>
+              <label class="option"><input type="radio" name="l2q6"> Only if the matrix size is \(2 \times 2\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>Scaling a matrix by \(c\) scales the determinant by \(c^n\) while leaving \(\kappa(A) = \|c A\| \|(cA)^{-1}\|\) unchanged.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the relationship between forward error, backward error, and condition number?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l2q7"> Forward Error = Backward Error / Condition Number</label>
+              <label class="option" data-correct><input type="radio" name="l2q7"> Forward Error \(\le\) Condition Number \(\times\) Backward Error</label>
+              <label class="option"><input type="radio" name="l2q7"> Backward Error \(\le\) Forward Error \(\times\) Condition Number</label>
+            </fieldset>
+            <div class="explain" hidden><p>By Proposition 3.3, forward error is bounded by condition number times backward error.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="1" data-tolerance="0.001">
+            <p class="prompt">What is the 2-norm condition number \(\kappa_2(Q)\) of any real orthogonal matrix \(Q\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Orthogonal matrices preserve 2-norms: \(\|Q\|_2 = \|Q^{-1}\|_2 = 1\), so \(\kappa_2(Q) = 1\).</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s10"><span class="section-number">10</span>References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L01.html"><span class="dir">Prev</span>L01 · Floating-Point Arithmetic and Cancellation</a>
+        <a href="index.html"><span class="dir">Module</span>M8 overview</a>
+        <a class="next" href="L03.html"><span class="dir">Next</span>L03 · Bracketing Root Finders and Newton's Method</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M8 · Numerical Methods &amp; Scientific Computing</footer>
+</body>
+</html>

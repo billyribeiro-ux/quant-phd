@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M8" data-page="L01" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L01 · Floating-Point Arithmetic and Cancellation · M8 Numerical Methods</title>
+  <meta name="description" content="IEEE 754 floating-point arithmetic, the binary64 format, unit roundoff, the fundamental rounding model, and catastrophic cancellation in numerical subtraction.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M8 Numerical Methods &amp; Scientific Computing</a><span class="sep">›</span>
+      <span>L01</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">M8 · Lesson 1 of 8 · 10 study hours</p>
+        <h1>Floating-Point Arithmetic and Cancellation</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="derivative" href="../../../concepts.html#derivative">derivative</a> (M2), <a class="concept" data-concept="taylor-theorem" href="../../../concepts.html#taylor-theorem">Taylor's theorem</a> (M2), <a class="concept" data-concept="variance" href="../../../concepts.html#variance">variance</a> (M4)</li>
+          <li><strong>Introduces:</strong> <dfn id="def-ieee-754-floating-point" data-concept="ieee-754-floating-point">IEEE 754 floating-point arithmetic</dfn>, <dfn id="def-catastrophic-cancellation" data-concept="catastrophic-cancellation">catastrophic cancellation</dfn></li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or convention</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Digital computers represent real numbers using finite binary expansions. Under the IEEE 754 standard, every elementary arithmetic operation introduces a small roundoff error bounded by the unit roundoff \(u = 2^{-53}\). When two nearly equal quantities are subtracted, the leading identical significant bits vanish, leaving roundoff errors to dominate the remaining digits. This phenomenon, known as catastrophic cancellation, destroys precision in sample variance calculations, finite-difference derivatives, and option Greeks. Understanding IEEE 754 arithmetic enables quantitative researchers to construct stable algorithms that avoid precision loss.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>The IEEE 754 standard and binary64 representation</h2>
+
+      <p>Scientific computing platforms represent real numbers in digital hardware following <span class="claim" data-grade="B" data-cite="goldberg1991every" data-locator="p. 7">IEEE 754 floating-point arithmetic</span>. In the ubiquitous double-precision format (known as binary64 in IEEE 754-2008 and Python's built-in <code>float</code>), each number occupies 64 bits partitioned into three fields:</p>
+
+      <ol>
+        <li>A 1-bit sign \(s \in \{0, 1\}\).</li>
+        <li>An 11-bit biased exponent \(e \in \{0, 1, \dots, 2047\}\), with bias \(B = 1023\).</li>
+        <li>A 52-bit fractional significand (mantissa) \(f = \sum_{j=1}^{52} b_j 2^{-j}\), with \(b_j \in \{0, 1\}\).</li>
+      </ol>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.1 <span class="name">(normalized binary64 number)</span></span>
+        <p>A non-zero floating-point number is <em>normalized</em> when its biased exponent satisfies \(1 \le e \le 2046\). Its real value is:</p>
+        <p>\[ x = (-1)^s \cdot 2^{e - 1023} \cdot \left(1 + \sum_{j=1}^{52} b_j 2^{-j}\right) \]</p>
+        <p>The leading bit before the binary point is implicitly 1 and is not stored in memory. The effective precision is \(p = 53\) bits.</p>
+      </div>
+
+      <div class="block definition">
+        <span class="block-title">Definition 1.2 <span class="name">(unit roundoff and machine epsilon)</span></span>
+        <p>The <dfn>unit roundoff</dfn> \(u\) is the maximum relative rounding error under round-to-nearest rounding:</p>
+        <p>\[ u = 2^{-p} = 2^{-53} \approx 1.110223 \times 10^{-16} \]</p>
+        <p>The <dfn>machine epsilon</dfn> \(\varepsilon_{\text{mach}}\) is the distance from 1 to the next larger floating-point number, \(\varepsilon_{\text{mach}} = 2^{-52} = 2u \approx 2.220446 \times 10^{-16}\).</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Proposition 1.3 <span class="name">(fundamental rounding model)</span></span>
+        <p>Assume an IEEE 754 conforming arithmetic unit with round-to-nearest mode. For any real numbers \(x, y\) and elementary operation \(\text{op} \in \{+, -, \times, /\}\), the computed floating-point result \(\text{fl}(x \text{ op } y)\) satisfies:</p>
+        <p>\[ \text{fl}(x \text{ op } y) = (x \text{ op } y)(1 + \delta), \quad |\delta| \le u = 2^{-53} \]</p>
+        <p>provided no underflow or overflow occurs.</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Let \(z = x \text{ op } y\). In normalized range, \(2^E \le |z| &lt; 2^{E+1}\) for some integer \(E\). The spacing between adjacent representable floating-point numbers in this binade is \(2^{E - 52}\). Under round-to-nearest, the distance to the closest representable number \(\text{fl}(z)\) is at most half the spacing, \(|\text{fl}(z) - z| \le \frac{1}{2} 2^{E - 52} = 2^{E - 53}\). Dividing by \(|z| \ge 2^E\), the relative error is \(|\delta| = \frac{|\text{fl}(z) - z|}{|z|} \le \frac{2^{E - 53}}{2^E} = 2^{-53} = u\). \(\blacksquare\)</p>
+      </div>
+
+      <h2 id="s2"><span class="section-number">2</span>Catastrophic cancellation</h2>
+
+      <p>Although each individual elementary operation incurs a relative error no larger than \(u\), subtraction of two nearby numbers causes extreme loss of relative precision.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(catastrophic cancellation)</span></span>
+        <p>Let \(\tilde{x} = x(1 + \delta_x)\) and \(\tilde{y} = y(1 + \delta_y)\) be approximations of real numbers \(x\) and \(y\) with relative errors \(|\delta_x|, |\delta_y| \le \varepsilon\). <dfn id="def-catastrophic-cancellation-term" data-concept="catastrophic-cancellation">Catastrophic cancellation</dfn> occurs when subtracting \(\tilde{x}\) and \(\tilde{y}\) for \(x \approx y\) yields a difference whose relative error with respect to \(x - y\) is arbitrarily larger than \(\varepsilon\).</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Proposition 2.2 <span class="name">(relative error of subtraction)</span></span>
+        <p>Let \(\tilde{x} = x(1 + \delta_x)\) and \(\tilde{y} = y(1 + \delta_y)\). The relative error of their exact difference \(\tilde{x} - \tilde{y}\) with respect to \(x - y\) is:</p>
+        <p>\[ \frac{(\tilde{x} - \tilde{y}) - (x - y)}{x - y} = \frac{x \delta_x - y \delta_y}{x - y} \]</p>
+        <p>If \(|\delta_x|, |\delta_y| \le \varepsilon\), the worst-case relative error is bounded by:</p>
+        <p>\[ \left|\frac{(\tilde{x} - \tilde{y}) - (x - y)}{x - y}\right| \le \varepsilon \frac{|x| + |y|}{|x - y|} \]</p>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Expanding the numerator: \((\tilde{x} - \tilde{y}) - (x - y) = x(1 + \delta_x) - y(1 + \delta_y) - x + y = x \delta_x - y \delta_y\). Dividing by \(x - y\) gives the equality. Applying the triangle inequality gives \(|x \delta_x - y \delta_y| \le |x||\delta_x| + |y||\delta_y| \le \varepsilon (|x| + |y|)\), and dividing by \(|x - y|\) produces the bound. \(\blacksquare\)</p>
+      </div>
+
+      <div class="block remark">
+        <span class="block-title">Remark 2.3 <span class="name">(amplification factor)</span></span>
+        <p>The factor \(\frac{|x| + |y|}{|x - y|}\) is the condition number of subtraction. When \(x\) and \(y\) agree to \(k\) binary bits, \(|x - y| \approx 2^{-k} |x|\), so the relative error is amplified by \(2^k\). The leading \(k\) significant bits cancel out, leaving the rounded tail bits to occupy the most significant positions of the computed difference.</p>
+      </div>
+
+      <div class="block example">
+        <span class="block-title">Example 2.4 <span class="name">(stable quadratic roots)</span></span>
+        <p>Consider the quadratic equation \(a x^2 + b x + c = 0\) with \(b &gt; 0\) and \(b^2 \gg 4ac\). The textbook quadratic formula computes the smaller root in magnitude as \(x_2 = \frac{-b + \sqrt{b^2 - 4ac}}{2a}\). Because \(\sqrt{b^2 - 4ac} \approx b\), subtracting \(b\) causes severe catastrophic cancellation. Multiplying the numerator and denominator by \(-b - \sqrt{b^2 - 4ac}\) yields the mathematically equivalent Citardauq formula:</p>
+        <p>\[ x_2 = \frac{2c}{-b - \sqrt{b^2 - 4ac}} \]</p>
+        <p>The denominator adds two numbers of the same sign, completely eliminating cancellation.</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Inline laboratory: cancellation in practice</h2>
+
+      <section class="lab" id="lab-M8-L01-1" data-runtime="python">
+        <h3>Lab 1 · Catastrophic cancellation in arithmetic, roots, and sample variance</h3>
+        <p class="hypothesis">When computing \((1 + h) - 1\) in binary64, relative error increases dramatically for \(h \le 10^{-14}\) and reaches 100% for \(h \le 10^{-16}\). For quadratic equations with \(b^2 \gg 4ac\), the textbook formula loses digits while the Citardauq formula preserves full precision. For sample variance on data with a large constant offset, the one-pass formula produces catastrophic cancellation and negative variance, whereas the two-pass algorithm preserves numerical stability.</p>
+        <pre><code class="language-python" data-run>"""Lab M8-L01-1: Catastrophic cancellation in arithmetic, roots, and sample variance.
+
+Standard library only. All offsets and simulated sequences are deterministic.
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def main() -&gt; None:
+    print("=== Part A: Cancellation in (1 + h) - 1 ===")
+    for k in [1, 5, 10, 14, 15, 16, 17]:
+        h = 10.0 ** (-k)
+        computed = (1.0 + h) - 1.0
+        rel_err = abs(computed - h) / h if h != 0.0 else 0.0
+        print(f"k={k:2d}: h={h:.1e}, computed={computed:.16e}, rel_err={rel_err:.2e}")
+
+    print("\n=== Part B: Quadratic Roots for b^2 &gt;&gt; 4ac ===")
+    # Solve x^2 + 10^8 x + 1 = 0.
+    # True roots: x1 ~ -10^8, x2 ~ -10^-8
+    a, b, c = 1.0, 1.0e8, 1.0
+    disc = math.sqrt(b * b - 4.0 * a * c)
+
+    # Standard textbook formula for smaller root (in magnitude)
+    x2_textbook = (-b + disc) / (2.0 * a)
+
+    # Numerically stable Citardauq formula
+    x2_stable = (2.0 * c) / (-b - math.copysign(disc, b))
+
+    # Exact high-precision approximation for x2 via Taylor series:
+    # -c/b * (1 + a*c/b^2) = -1e-8 * (1 + 1e-16) ~ -1.0000000000000000e-8
+    x2_exact = -1.0e-8
+    err_textbook = abs(x2_textbook - x2_exact)
+    err_stable = abs(x2_stable - x2_exact)
+
+    print(f"x2 textbook: {x2_textbook:.16e}, abs error: {err_textbook:.2e}")
+    print(f"x2 stable:   {x2_stable:.16e}, abs error: {err_stable:.2e}")
+
+    print("\n=== Part C: Sample Variance of Offset Data (SIMULATED) ===")
+    rng = random.Random(42)
+    n = 1000
+    base_data = [rng.gauss(0.0, 1.0) for _ in range(n)]
+
+    # Exact two-pass sample variance of base data
+    mean_base = sum(base_data) / n
+    var_base = sum((x - mean_base) ** 2 for x in base_data) / (n - 1)
+
+    # Add large offset: variance should be invariant to constant shift Var(X + C) = Var(X)
+    offset = 1.0e9
+    shifted_data = [x + offset for x in base_data]
+
+    # Naive one-pass formula: Var = (sum(x^2) - (sum x)^2 / n) / (n - 1)
+    sum_x = sum(shifted_data)
+    sum_sq = sum(x * x for x in shifted_data)
+    var_naive = (sum_sq - (sum_x * sum_x) / n) / (n - 1)
+
+    # Numerically stable two-pass formula
+    mean_shifted = sum_x / n
+    var_two_pass = sum((x - mean_shifted) ** 2 for x in shifted_data) / (n - 1)
+
+    print(f"True variance:       {var_base:.10f}")
+    print(f"Stable two-pass var: {var_two_pass:.10f}, error: {abs(var_two_pass - var_base):.2e}")
+    print(f"Naive one-pass var:  {var_naive:.10f}, error: {abs(var_naive - var_base):.2e}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">=== Part A: Cancellation in (1 + h) - 1 ===
+k= 1: h=1.0e-01, computed=1.0000000000000009e-01, rel_err=8.33e-16
+k= 5: h=1.0e-05, computed=1.0000000000065512e-05, rel_err=6.55e-12
+k=10: h=1.0e-10, computed=1.0000000827403710e-10, rel_err=8.27e-08
+k=14: h=1.0e-14, computed=9.9920072216264089e-15, rel_err=7.99e-04
+k=15: h=1.0e-15, computed=1.1102230246251565e-15, rel_err=1.10e-01
+k=16: h=1.0e-16, computed=0.0000000000000000e+00, rel_err=1.00e+00
+k=17: h=1.0e-17, computed=0.0000000000000000e+00, rel_err=1.00e+00
+
+=== Part B: Quadratic Roots for b^2 &gt;&gt; 4ac ===
+x2 textbook: -7.4505805969238281e-09, abs error: 2.55e-09
+x2 stable:   -1.0000000000000000e-08, abs error: 0.00e+00
+
+=== Part C: Sample Variance of Offset Data (SIMULATED) ===
+True variance:       1.0395941850
+Stable two-pass var: 1.0395941868, error: 1.73e-09
+Naive one-pass var:  -131.2032032032, error: 1.32e+02</pre>
+        <p class="interpretation">The lab demonstrates three distinct instances of cancellation: the step subtraction \((1+h)-1\) vanishes completely when \(h &lt; 2^{-53}\); the textbook quadratic root loses digits; and the naive one-pass variance produces a negative result because \(\sum x_i^2 \approx \frac{1}{n}(\sum x_i)^2\), whereas the two-pass algorithm subtracts the sample mean first.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s4"><span class="section-number">4</span>Where the canon breaks</h2>
+        <ul>
+          <li><strong>Floats are not real numbers.</strong> Floating-point addition and multiplication are commutative (\(a + b = b + a\)), but they are <em>not</em> associative: \((a + b) + c \ne a + (b + c)\). For example, \((1.0 + 10^{-16}) - 1.0 = 0.0\), whereas \(1.0 + (10^{-16} - 1.0) = 10^{-16}\).</li>
+          <li><strong>Distributivity fails.</strong> In general, \(a \times (b + c) \ne (a \times b) + (a \times c)\) due to differing roundoff paths.</li>
+          <li><strong>Subnormal numbers preserve underflow at reduced precision.</strong> When numbers fall below \(2^{-1022}\), IEEE 754 supports subnormal numbers with leading zero bit \(0.f \times 2^{-1022}\). While this guarantees that \(x - y = 0 \iff x = y\), the effective precision degrades smoothly from 53 bits down to 1 bit.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s5"><span class="section-number">5</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“Cancellation creates a new roundoff error during the subtraction operation.”</p>
+            <p>Sterbenz's Lemma proves that if \(x\) and \(y\) are floating-point numbers of the same sign such that \(\frac{y}{2} \le x \le 2y\), the subtraction \(\text{fl}(x - y)\) is computed with <em>zero</em> roundoff error: \(\text{fl}(x - y) = x - y\). Catastrophic cancellation does not create an error during subtraction; it exposes and magnifies previous errors in the inputs by shifting canceled leading zeros away.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“Using 64-bit double precision eliminates all numerical accuracy concerns for financial applications.”</p>
+            <p>Double precision provides 53 bits of significand (about 15.9 decimal digits). Subtracting two values that match to 14 decimal digits leaves only 1 or 2 significant digits of accuracy, turning a 64-bit float into the numerical equivalent of an uncalibrated random number.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“The one-pass sample variance formula is mathematically identical to the two-pass formula, so choice of formula is purely a matter of computational convenience.”</p>
+            <p>While algebraically equivalent in continuous mathematics, the one-pass formula \(\frac{1}{n-1}(\sum x_i^2 - \frac{1}{n}(\sum x_i)^2)\) subtracts two numbers of order \(O(n \mu^2)\) to compute a quantity of order \(O(n \sigma^2)\). When the mean \(\mu\) is large relative to the variance \(\sigma^2\) (common in financial price series), catastrophic cancellation occurs and can even produce negative variance estimates.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s6"><span class="section-number">6</span>Problem set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Unit roundoff and bit pattern</span>
+            <p>Determine the exact value of the unit roundoff \(u\) for an imaginary 16-bit floating-point format that has 1 sign bit, 5 exponent bits, and 10 stored significand bits (IEEE half-precision binary16).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In normalized binary format with 10 stored significand bits, the total precision including the implicit leading 1 is \(p = 10 + 1 = 11\) bits. The unit roundoff is \(u = 2^{-p} = 2^{-11} = \frac{1}{2048} \approx 4.8828125 \times 10^{-4}\). Machine epsilon is \(\varepsilon_{\text{mach}} = 2^{-10} = \frac{1}{1024} \approx 9.765625 \times 10^{-4}\).</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · Reforming an expression to avoid cancellation</span>
+            <p>Consider computing \(f(x) = \sqrt{x + 1} - \sqrt{x}\) for large \(x &gt; 0\). Show where cancellation occurs and derive an algebraically equivalent form that evaluates stably.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For large \(x\), \(\sqrt{x + 1} \approx \sqrt{x}\), so subtracting them causes catastrophic cancellation. Multiply and divide by the conjugate: \(f(x) = \frac{(\sqrt{x+1} - \sqrt{x})(\sqrt{x+1} + \sqrt{x})}{\sqrt{x+1} + \sqrt{x}} = \frac{(x + 1) - x}{\sqrt{x+1} + \sqrt{x}} = \frac{1}{\sqrt{x+1} + \sqrt{x}}\). The denominator is a sum of two positive numbers, which involves no cancellation.</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · Cancellation in log difference</span>
+            <p>Compute \(\ln(1 + x)\) for \(x = 10^{-15}\) using standard <code>math.log(1.0 + x)</code> versus <code>math.log1p(x)</code>, and explain the discrepancy.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Evaluating <code>1.0 + 1e-15</code> rounds in binary64 to \(1.0 + 2^{-50} \approx 1.0000000000000011\), losing significant digits. <code>math.log(1.0 + x)</code> yields approximately \(1.110223 \times 10^{-15}\), an error of over 11%. In contrast, <code>math.log1p(x)</code> uses a Taylor series expansion \(\ln(1 + x) = x - x^2/2 + x^3/3 - \dots\) directly on \(x\), yielding \(1.0000000000000000 \times 10^{-15}\) to full machine precision.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Sterbenz's Lemma</span>
+            <p>Prove Sterbenz's Lemma: if \(x\) and \(y\) are positive floating-point numbers in the same binade with \(\frac{y}{2} \le x \le 2y\), then \(\text{fl}(x - y) = x - y\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Assume without loss of generality that \(y \le x \le 2y\). Let \(x = m_x 2^{E - p + 1}\) and \(y = m_y 2^{E - p + 1}\) where \(m_x, m_y\) are integers and \(E\) is the exponent of \(x\). Since \(x \le 2y\), we have \(x - y \le y \le x &lt; 2^{E+1}\). Furthermore, \(x - y \ge 0\). The difference is \(x - y = (m_x - m_y) 2^{E - p + 1}\). Since \(m_x\) and \(m_y\) are integers, \(m_x - m_y\) is an integer with \(0 \le m_x - m_y &lt; 2^p\). Thus, \(x - y\) can be represented exactly with at most \(p\) bits of precision at exponent scale \(E\). Therefore, no rounding occurs and \(\text{fl}(x - y) = x - y\).</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Roundoff in summation</span>
+            <p>Let \(s_n = \text{fl}(\sum_{i=1}^n x_i)\) be computed in recursive order \(((\dots(x_1 + x_2) + \dots) + x_n)\). Under the model \(\text{fl}(a + b) = (a + b)(1 + \delta)\), show that \(s_n = x_1 \prod_{j=1}^{n-1}(1 + \delta_j) + \sum_{i=2}^n x_i \prod_{j=i-1}^{n-1}(1 + \delta_j)\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>For \(n = 2\), \(s_2 = (x_1 + x_2)(1 + \delta_1) = x_1(1 + \delta_1) + x_2(1 + \delta_1)\), satisfying the base case. By induction, assume the formula holds for \(n-1\). Then \(s_n = \text{fl}(s_{n-1} + x_n) = (s_{n-1} + x_n)(1 + \delta_{n-1}) = s_{n-1}(1 + \delta_{n-1}) + x_n(1 + \delta_{n-1})\). Substituting the induction hypothesis for \(s_{n-1}\) multiplies every existing product by \((1 + \delta_{n-1})\), proving the result for all \(n\). This shows that earlier terms \(x_1, x_2\) accumulate \(n-1\) rounding factors, which is why sorting by ascending magnitude reduces sum roundoff.</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · Forward error of the Citardauq formula</span>
+            <p>Prove that in the Citardauq formula \(x_2 = \frac{2c}{-b - \text{sgn}(b)\sqrt{b^2 - 4ac}}\), the denominator incurs no catastrophic cancellation when \(b^2 \gg 4ac\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let \(b &gt; 0\). The term \(\text{sgn}(b)\sqrt{b^2 - 4ac} = +\sqrt{b^2 - 4ac} &gt; 0\). The denominator is \(-b - \sqrt{b^2 - 4ac} = -(b + \sqrt{b^2 - 4ac})\). Both \(b\) and \(\sqrt{b^2 - 4ac}\) are positive, so their sum adds magnitudes without subtraction. By Proposition 2.2, cancellation occurs only when subtracting quantities of like sign. Addition of two positive quantities satisfies \(\frac{|u| + |v|}{|u + v|} = \frac{u + v}{u + v} = 1\), guaranteeing that the relative condition number of the addition is exactly 1, completely avoiding cancellation.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Cancellation in Lab 1 step subtraction</span>
+            <p>In Lab 1, Part A, at what step \(k\) does the computed value of \((1 + 10^{-k}) - 1\) first become identically zero in binary64, and why?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>In Lab 1, Part A, for \(k = 16\), \(h = 10^{-16}\). Since \(10^{-16} &lt; \frac{1}{2} \varepsilon_{\text{mach}} = 2^{-53} \approx 1.11 \times 10^{-16}\), adding \(10^{-16}\) to \(1.0\) rounds down to \(1.0\) under round-to-nearest. Thus, \(\text{fl}(1.0 + 10^{-16}) = 1.0\), and the subsequent subtraction \(1.0 - 1.0\) produces \(0.0\), yielding an absolute error of \(10^{-16}\) and a relative error of 100%.</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Naive variance failure in Lab 1</span>
+            <p>Explain why the naive one-pass variance in Lab 1, Part C, evaluated to a negative value \(-131.2032\) on the offset data.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>With offset \(C = 10^9\) and \(n = 1000\), \(\sum x_i \approx 10^{12}\) and \((\sum x_i)^2 / n \approx 10^{21}\). Similarly, \(\sum x_i^2 \approx 10^{21}\). In binary64, 53 bits provide approximately 16 decimal digits of precision. A magnitude of \(10^{21}\) has its unit in the last place (ulp) around \(10^{21} \times 2^{-52} \approx 2.2 \times 10^5\). Since the true sample variance is near \(1.0\), it is vastly smaller than the roundoff noise of \(10^5\), and the rounded difference happened to be negative.</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · Welford's algorithm</span>
+            <p>State how Welford's one-pass algorithm updates the mean and sum of squared differences recursively to avoid catastrophic cancellation without storing all data points.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Welford's algorithm maintains running mean \(\bar{x}_k\) and sum of squared deviations \(M_k = \sum_{i=1}^k (x_i - \bar{x}_k)^2\). For each new point \(x_k\): update \(\bar{x}_k = \bar{x}_{k-1} + \frac{x_k - \bar{x}_{k-1}}{k}\), and \(M_k = M_{k-1} + (x_k - \bar{x}_{k-1})(x_k - \bar{x}_k)\). Sample variance is \(s^2 = M_n / (n - 1)\). Because it computes deviations from the current mean rather than squared totals, it avoids subtracting large squared sums.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Compensated summation algorithms</span>
+            <p>Describe the mechanism of Kahan compensated summation and state its theoretical error bound relative to naive summation.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Kahan summation tracks accumulated roundoff error in an auxiliary variable \(c\). At step \(i\), the compensation is subtracted from the input: \(y = x_i - c\). The running sum is updated: \(t = \text{sum} + y\), and the lost low-order bits are recovered by \(c = (t - \text{sum}) - y\). While naive summation has a forward error bound of \(O(n u \sum |x_i|)\), Kahan summation reduces the error bound to \(O(2 u + O(n u^2)) \sum |x_i|\), rendering the error virtually independent of \(n\) for practical sample sizes.</p>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Precision in Black–Scholes extreme Greeks</span>
+            <p>Analyze how catastrophic cancellation manifests when computing European digital call delta \(\frac{\partial}{\partial S} [e^{-r\tau} \Phi(d_2)] = \frac{e^{-r\tau} \phi(d_2)}{S \sigma \sqrt{\tau}}\) for ultra-short expiry \(\tau \to 0\) when \(S \approx K\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>When \(\tau \to 0\), \(\sqrt{\tau}\) approaches zero in the denominator, causing \(d_2 = \frac{\ln(S/K) + (r - \sigma^2/2)\tau}{\sigma \sqrt{\tau}}\) to become extraordinarily sensitive to tiny roundoff in \(\ln(S/K)\). If \(S\) and \(K\) are very close, \(\ln(S/K)\) must be evaluated as <code>math.log1p((S - K) / K)</code>. Furthermore, \(\phi(d_2) / \sqrt{\tau}\) transitions abruptly between 0 and \(\infty\), causing overflow or complete underflow to 0 depending on the rounding direction of \(d_2^2\).</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Stochastic roundoff models</span>
+            <p>Discuss the validity of modeling roundoff error \(\delta\) as an independent uniform random variable \(U(-u, u)\) in high-dimensional financial Monte Carlo simulations.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Although roundoff in IEEE 754 arithmetic is completely deterministic, when operations involve diverse, uncorrelated floating-point numbers across millions of paths, the low-order bits often exhibit pseudo-random statistical behavior. Modeling \(\delta_k\) as mean-zero independent random variables predicts that cumulative sum errors scale as \(O(\sqrt{n} u)\) rather than the pessimistic deterministic worst-case bound \(O(n u)\). However, this statistical hypothesis fails when systematic truncation biases exist, such as in fixed-direction rounding or loops with monotonic updates.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s7"><span class="section-number">7</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>IEEE 754 binary64 round-to-nearest unit roundoff is \(u = 2^{-53} \approx 1.11 \times 10^{-16}\) (Definition 1.2)</td><td><span class="grade" data-grade="B" data-cite="goldberg1991every" data-locator="p. 7">B</span></td><td>Goldberg (1991)</td></tr>
+              <tr><td>Elementary arithmetic operations satisfy \(\text{fl}(x \text{ op } y) = (x \text{ op } y)(1 + \delta)\) with \(|\delta| \le u\) (Proposition 1.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 1</td></tr>
+              <tr><td>Relative error in subtraction is magnified by the condition number \(\frac{|x| + |y|}{|x - y|}\) (Proposition 2.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 2</td></tr>
+              <tr><td>Sterbenz's Lemma: subtraction of floating-point numbers within a factor of 2 incurs zero rounding error (Problem P1)</td><td><span class="grade" data-grade="T">T</span></td><td>Problem P1; Goldberg (1991)</td></tr>
+              <tr><td>In binary64, \((1 + h) - 1\) evaluated for \(h = 10^{-16}\) yields 0 due to roundoff (Lab 1, Part A)</td><td><span class="grade" data-grade="T">T</span></td><td>Lab 1, Part A</td></tr>
+              <tr><td>One-pass naive sample variance on offset data \(x_i = 10^9 + u_i\) fails catastrophically, yielding negative variance (Lab 1, Part C)</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1, Part C (SIMULATED)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="M8" data-page="L01" data-cards="cards.json">
+        <h2 id="s8"><span class="section-number">8</span>Retrieval quiz</h2>
+        <p>Answer from memory, then check your responses.</p>
+        <ol class="items">
+          <li class="item" data-kind="numeric" data-answer="53" data-tolerance="0.001">
+            <p class="prompt">What is the total number of significant precision bits \(p\) (including the implicit leading bit) in IEEE 754 binary64?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Binary64 stores 52 mantissa bits plus 1 implicit leading 1 bit, for a total of \(p = 53\) bits.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under round-to-nearest binary64 arithmetic, what is the unit roundoff \(u\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l1q2"> \(2^{-52}\)</label>
+              <label class="option" data-correct><input type="radio" name="l1q2"> \(2^{-53}\)</label>
+              <label class="option"><input type="radio" name="l1q2"> \(2^{-64}\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>\(u = 2^{-53} \approx 1.11 \times 10^{-16}\). Note that machine epsilon \(\varepsilon_{\text{mach}} = 2^{-52} = 2u\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What condition causes catastrophic cancellation when computing \(x - y\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l1q3"> When \(x\) is vastly larger than \(y\)</label>
+              <label class="option" data-correct><input type="radio" name="l1q3"> When \(x\) and \(y\) are nearly equal numbers of the same sign</label>
+              <label class="option"><input type="radio" name="l1q3"> When dividing a very small number by a large number</label>
+            </fieldset>
+            <div class="explain" hidden><p>Catastrophic cancellation occurs when subtracting nearly equal quantities, which cancels leading digits and elevates roundoff to the dominant positions.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">According to Sterbenz's Lemma, when is the subtraction \(\text{fl}(x - y)\) guaranteed to be exact?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l1q4"> When \(y/2 \le x \le 2y\) for positive floats</label>
+              <label class="option"><input type="radio" name="l1q4"> Only when \(x = y\)</label>
+              <label class="option"><input type="radio" name="l1q4"> Whenever both \(x\) and \(y\) are integers</label>
+            </fieldset>
+            <div class="explain" hidden><p>Sterbenz's Lemma proves that if \(y/2 \le x \le 2y\), the difference \(x - y\) is representable without rounding error.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">For the quadratic equation \(x^2 + 10^8 x + 1 = 0\), which formula computes the root near \(-10^{-8}\) without precision loss?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l1q5"> \((-b + \sqrt{b^2 - 4ac})/(2a)\)</label>
+              <label class="option" data-correct><input type="radio" name="l1q5"> \(2c / (-b - \sqrt{b^2 - 4ac})\)</label>
+              <label class="option"><input type="radio" name="l1q5"> \(-b / (2a)\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>The Citardauq formula \(2c / (-b - \sqrt{b^2 - 4ac})\) adds two negative quantities in the denominator, avoiding cancellation.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0" data-tolerance="0.0001">
+            <p class="prompt">In IEEE 754 binary64, what is the exact computed value of the expression \((1.0 + 10^{-16}) - 1.0\)?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Because \(10^{-16} &lt; 2^{-53} \approx 1.11 \times 10^{-16}\), \(1.0 + 10^{-16}\) rounds down to \(1.0\), and \(1.0 - 1.0 = 0.0\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does the naive one-pass sample variance formula fail on data with a large constant offset?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l1q7"> Because division by \(n-1\) overflows</label>
+              <label class="option" data-correct><input type="radio" name="l1q7"> Because it subtracts two nearly equal numbers of order \(O(n \mu^2)\)</label>
+              <label class="option"><input type="radio" name="l1q7"> Because the sample mean is irrational</label>
+            </fieldset>
+            <div class="explain" hidden><p>The one-pass formula subtracts \(\frac{1}{n}(\sum x_i)^2\) from \(\sum x_i^2\), both of order \(O(n \mu^2)\), causing catastrophic cancellation of the small variance.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Is floating-point addition associative in IEEE 754 arithmetic?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option"><input type="radio" name="l1q8"> Yes, addition is always associative</label>
+              <label class="option" data-correct><input type="radio" name="l1q8"> No, \((a + b) + c \ne a + (b + c)\) in general due to differing intermediate roundoffs</label>
+              <label class="option"><input type="radio" name="l1q8"> Only when all operands are positive</label>
+            </fieldset>
+            <div class="explain" hidden><p>Floating-point addition is commutative but not associative because rounding occurs at each intermediate step.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s9"><span class="section-number">9</span>References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="index.html"><span class="dir">Module</span>M8 overview</a>
+        <a class="next" href="L02.html"><span class="dir">Next</span>L02 · Conditioning and Stability</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M8 · Numerical Methods &amp; Scientific Computing</footer>
+</body>
+</html>
