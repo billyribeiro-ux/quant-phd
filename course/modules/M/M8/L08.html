@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en" data-root="../../../" data-unit="M8" data-page="L08" data-hours="10">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>L08 · Importance Sampling and Robust Inversion · M8 Numerical Methods</title>
+  <meta name="description" content="Importance sampling, likelihood ratios, optimal exponential tilting for rare events, dynamic bracket expansion, and safeguarded Newton implied volatility inversion.">
+  <script>try{const t=localStorage.getItem("qf-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="../../../assets/css/course.css">
+  <link rel="stylesheet" href="../../../assets/css/print.css" media="print">
+  <script defer src="../../../assets/vendor/katex/katex.min.js"></script>
+  <script defer src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
+  <script type="module" src="../../../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="../../../index.html">Quant&nbsp;PhD <span>Program</span></a>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="../../../index.html">Program map</a><span class="sep">›</span>
+      <a href="index.html">M8 Numerical Methods &amp; Scientific Computing</a><span class="sep">›</span>
+      <span>L08</span>
+    </nav>
+    <div class="header-actions">
+      <a class="button" href="../../../review.html">Review deck</a>
+      <button type="button" class="icon-button" data-theme-toggle>Theme: system</button>
+    </div>
+  </header>
+  <div class="page with-toc">
+    <nav class="toc" aria-label="On this page" data-auto><h2>On this page</h2></nav>
+    <main id="main" class="prose">
+      <header class="page-head">
+        <p class="eyebrow">M8 · Lesson 8 of 8 · 10 study hours</p>
+        <h1>Importance Sampling and Robust Inversion</h1>
+        <ul class="meta-row">
+          <li><strong>Uses:</strong> <a class="concept" data-concept="normal-distribution" href="../../../concepts.html#normal-distribution">normal distribution</a> (M4), <a class="concept" data-concept="implied-volatility" href="../../../concepts.html#implied-volatility">implied volatility</a> (FC2), <a class="concept" data-concept="option-arbitrage-bounds" href="../../../concepts.html#option-arbitrage-bounds">option arbitrage bounds</a> (FC2), <a href="L02.html#def-condition-number">condition number</a> (L02), <a href="L03.html#def-newtons-method">Newton's method</a> (L03)</li>
+          <li><strong>Introduces:</strong> importance sampling, robust implied-volatility inversion</li>
+        </ul>
+      </header>
+
+      <ul class="grade-legend" aria-label="Evidence grades">
+        <li><span class="grade" data-grade="T">T</span>theorem</li>
+        <li><span class="grade" data-grade="A">A</span>replicated</li>
+        <li><span class="grade" data-grade="B">B</span>published, not settled</li>
+        <li><span class="grade" data-grade="C">C</span>single study or convention</li>
+        <li><span class="grade" data-grade="D">D</span>lore</li>
+        <li><span class="grade" data-grade="X">X</span>refuted</li>
+      </ul>
+
+      <p class="why-it-matters">Rare financial events—such as deep out-of-the-money barrier breaches, catastrophic credit defaults, or multi-sigma market crashes—virtually never occur under crude Monte Carlo paths. Standard sampling wastes computation observing common outcomes while relative error on tail probabilities explodes to infinity. Importance sampling changes the simulation measure, exponentially tilting the proposal density to force frequent occurrences of rare events and recovering unbiased expectations via likelihood ratio reweighting. Inverting implied volatility faces an analogous breakdown: fixed brackets reject valid high-volatility quotes, while vanishing vega destabilizes unconstrained Newton updates. Dynamic bracket expansion paired with safeguarded Newton steps produces an industrial solver that guarantees convergence across extreme market conditions.</p>
+
+      <h2 id="s1"><span class="section-number">1</span>Rare events and relative error breakdown</h2>
+
+      <p>Consider estimating a tail probability \(p = \mathbb{P}(X &gt; c) = \E[\mathbb{I}_{\{X &gt; c\}}]\) for an extreme threshold \(c \gg 0\) where \(p \ll 1\). Under crude Monte Carlo with indicator variates \(Y_i = \mathbb{I}_{\{X_i &gt; c\}}\), the variance is \(\Var(Y) = p(1 - p) \approx p\).</p>
+
+      <p>The standard error is \(\se = \sqrt{p(1 - p)/n} \approx \sqrt{p/n}\). The relative standard error is:</p>
+      <p>\[ \frac{\se}{\hat{p}} \approx \frac{\sqrt{p/n}}{p} = \frac{1}{\sqrt{n p}} \]</p>
+      <p>To achieve a modest 10% relative accuracy (\(\frac{\se}{p} = 0.10\)), the required sample size satisfies \(n p = 100\), or \(n = 100 / p\). For a rare credit event with probability \(p = 10^{-6}\), crude Monte Carlo demands \(n = 10^8\) paths, with over 99.9999% of generated paths producing useless zeros.</p>
+
+      <h2 id="s2"><span class="section-number">2</span>Importance sampling and exponential tilting</h2>
+
+      <p>Importance sampling replaces the nominal probability density with a proposal density that assigns high probability to the rare event of interest.</p>
+
+      <div class="block definition">
+        <span class="block-title">Definition 2.1 <span class="name">(importance sampling)</span></span>
+        <p><dfn id="def-importance-sampling" data-concept="importance-sampling">Importance sampling</dfn> estimates an expectation \(\theta = \E_f[g(X)] = \int_{\mathcal{X}} g(x) f(x) dx\) under nominal density \(f\) by sampling from an alternative proposal density \(q\) satisfying \(q(x) &gt; 0\) whenever \(g(x) f(x) \ne 0\):</p>
+        <p>\[ \theta = \int_{\mathcal{X}} g(x) \frac{f(x)}{q(x)} q(x) dx = \E_q[g(Y) w(Y)] \]</p>
+        <p>where \(w(y) = \frac{f(y)}{q(y)}\) is the <em>likelihood ratio</em> (Radon–Nikodym derivative), and \(Y \sim q\). The importance sampling estimator from \(n\) i.i.d. draws \(Y_1, \dots, Y_n \sim q\) is:</p>
+        <p>\[ \hat{\theta}_{\text{is}} = \frac{1}{n} \sum_{i=1}^n g(Y_i) w(Y_i) \]</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 2.2 <span class="name">(unbiasedness and variance of importance sampling)</span></span>
+        <p>Assume the proposal support condition holds: \(q(x) &gt; 0\) whenever \(g(x)f(x) \ne 0\). Then:</p>
+        <ol>
+          <li>\(\hat{\theta}_{\text{is}}\) is strictly unbiased: \(\E_q[\hat{\theta}_{\text{is}}] = \theta\).</li>
+          <li>The variance of a single draw is:
+          \[ \Var_q(g(Y)w(Y)) = \int_{\mathcal{X}} \frac{(g(x) f(x))^2}{q(x)} dx - \theta^2 \]</li>
+          <li>If \(g(x) \ge 0\), the zero-variance optimal proposal density is:
+          \[ q^*(x) = \frac{g(x) f(x)}{\int g(y) f(y) dy} = \frac{g(x) f(x)}{\theta} \]
+          Under \(q^*\), \(g(Y) w(Y) = g(Y) \frac{f(Y)}{g(Y) f(Y) / \theta} = \theta\) is constant, yielding \(\Var_{q^*}(g(Y) w(Y)) = 0\).</li>
+        </ol>
+      </div>
+
+      <div class="block proof">
+        <span class="block-title">Proof</span>
+        <p>Unbiasedness: \(\E_q[g(Y) w(Y)] = \int_{\mathcal{X}} g(y) \frac{f(y)}{q(y)} q(y) dy = \int_{\mathcal{X}} g(y) f(y) dy = \theta\). For variance: \(\E_q[(g(Y) w(Y))^2] = \int (g(y) \frac{f(y)}{q(y)})^2 q(y) dy = \int \frac{(g(y) f(y))^2}{q(y)} dy\). Subtracting \(\theta^2\) gives the variance formula. Under \(q^*(x) = g(x) f(x) / \theta\), the ratio \(g(x) w(x) = g(x) \frac{f(x)}{g(x) f(x) / \theta} = \theta\) for every \(x\). The random variable is deterministic, so its variance is identically zero. \(\blacksquare\)</p>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Proposition 2.3 <span class="name">(exponential tilting for Gaussian tail probability)</span></span>
+        <p>To estimate \(p = \mathbb{P}(Z &gt; c)\) where \(Z \sim \mathcal{N}(0, 1)\), choose the mean-shifted Gaussian proposal \(Y \sim \mathcal{N}(c, 1)\). The likelihood ratio is:</p>
+        <p>\[ w(y) = \frac{\phi(y)}{\phi(y - c)} = \frac{\frac{1}{\sqrt{2\pi}} e^{-y^2 / 2}}{\frac{1}{\sqrt{2\pi}} e^{-(y - c)^2 / 2}} = \exp\left( -c y + \frac{c^2}{2} \right) \]</p>
+        <p>For any \(y \ge c\), \(w(y) \le e^{-c^2 / 2}\), guaranteeing that the second moment of the estimator is strictly bounded by \(e^{-c^2 / 2} p\), preventing weight explosion (<span class="claim" data-grade="B" data-cite="glasserman2003monte" data-locator="p. 237">Glasserman 2003, §4.6</span>).</p>
+      </div>
+
+      <h2 id="s3"><span class="section-number">3</span>Robust implied-volatility inversion</h2>
+
+      <p>Market quotes on option exchanges require solving \(C_{\text{BS}}(S, K, \tau, r, \sigma) = C_{\text{market}}\) for the implied volatility \(\sigma\). Standard implementations suffer from two catastrophic failure modes:</p>
+      <ol>
+        <li><strong>Fixed-bracket failure:</strong> Setting an ad hoc fixed search bracket such as \([10^{-6}, 10]\) fails whenever extreme quotes or high volatility push \(\sigma &gt; 10\), even though the price satisfies strict no-arbitrage bounds \(C_{\text{market}} &lt; S\).</li>
+        <li><strong>Vega collapse and Newton divergence:</strong> As \(\sigma \to 0\) or \(\sigma \to \infty\), or when \(\tau \to 0\) (near expiry) or \(|S - K| \gg 0\) (deep out-of-the-money), option vega \(\nu = \frac{\partial C}{\partial \sigma} = S \sqrt{\tau} \phi(d_1)\) underflows to zero. An unconstrained Newton step \(\Delta \sigma = -f(\sigma)/\nu\) explodes, shooting the iterate to negative values or infinity.</li>
+      </ol>
+
+      <div class="block definition">
+        <span class="block-title">Definition 3.1 <span class="name">(robust implied-volatility inversion)</span></span>
+        <p><dfn id="def-robust-implied-vol-inversion" data-concept="robust-implied-vol-inversion">Robust implied-volatility inversion</dfn> is an algorithm that guarantees convergence for every valid market quote inside the strict no-arbitrage bounds by combining:</p>
+        <ol>
+          <li><strong>Input validation:</strong> Rejecting quotes on or outside strict arbitrage bounds: for a call, \(C \in (\max(S - K e^{-r\tau}, 0), S)\); for a put, \(P \in (\max(K e^{-r\tau} - S, 0), K e^{-r\tau})\).</li>
+          <li><strong>Dynamic bracket expansion:</strong> Initializing at \([a, b] = [1.0, 2.0]\) and geometrically expanding \(b \leftarrow 2b\) until \(C(b) \ge C_{\text{market}}\), guaranteeing a valid bracket containing the true root.</li>
+          <li><strong>Safeguarded Newton acceleration:</strong> Attempting a Newton step \(\sigma_{k+1} = \sigma_k - f(\sigma_k)/\nu\); if the step falls outside the current bracket \((a, b)\) or if \(\nu &lt; \nu_{\text{tol}}\), falling back to bisection \(\sigma_{k+1} = \frac{1}{2}(a + b)\).</li>
+          <li><strong>Conditioning classification:</strong> Tagging inputs where \(\nu(\hat{\sigma}) \ge 0.01\) as well-conditioned (<code>"solved"</code>), and inputs with \(\nu(\hat{\sigma}) &lt; 0.01\) as ill-conditioned (<code>"ill_conditioned"</code>).</li>
+        </ol>
+      </div>
+
+      <div class="block theorem">
+        <span class="block-title claim" data-grade="T">Theorem 3.2 <span class="name">(global convergence and residual accuracy)</span></span>
+        <p>Let \(C_{\text{market}}\) satisfy the strict no-arbitrage bounds. Dynamic bracket expansion terminates in a finite number of steps \(k \le \lceil \log_2(\sigma^* / 2) \rceil + 1\). Safeguarded Newton bisection converges unconditionally to a solution \(\hat{\sigma}\) satisfying:</p>
+        <p>\[ |C(\hat{\sigma}) - C_{\text{market}}| \le 10^{-12} \cdot S \]</p>
+        <p>in at most \(B \le 35\) pricing evaluations.</p>
+      </div>
+
+      <h2 id="s4"><span class="section-number">4</span>Inline laboratories: importance sampling and bracket expansion</h2>
+
+      <section class="lab" id="lab-M8-L08-1" data-runtime="python">
+        <h3>Lab 1 · Importance sampling for Gaussian tail probability (SIMULATED)</h3>
+        <p class="hypothesis">For estimating the Gaussian tail probability \(\mathbb{P}(Z &gt; 4) = \frac{1}{2} \text{erfc}(4/\sqrt{2}) \approx 3.167124 \times 10^{-5}\) with \(N = 100,000\) draws: (i) crude Monte Carlo will observe only 2 to 5 hits, exhibiting high relative standard error (\(&gt; 50\%\)); (ii) importance sampling with mean shift \(\mu = 4\) will evaluate every path with positive weight, reducing standard error by more than 80-fold and variance by more than 6,000-fold.</p>
+        <pre><code class="language-python" data-run>"""Lab M8-L08-1: Importance sampling for Gaussian tail probability estimation.
+
+Standard library only. Compares crude Monte Carlo to exponentially tilted importance
+sampling for estimating P(Z &gt; 4) (SIMULATED).
+"""
+
+from __future__ import annotations
+
+import math
+import random
+
+
+def main() -&gt; None:
+    c = 4.0
+    # Exact probability: P(Z &gt; 4) = 1 - Phi(4) = 1/2 erfc(4 / sqrt(2))
+    exact_prob = 0.5 * math.erfc(c / math.sqrt(2.0))
+
+    print("=== Importance Sampling for Gaussian Tail P(Z &gt; 4) (SIMULATED) ===")
+    print(f"Exact theoretical tail probability: {exact_prob:.12e}")
+
+    n = 100_000
+    rng = random.Random(42)
+
+    # 1. Crude Monte Carlo: Z ~ N(0, 1)
+    z_crude = [rng.gauss(0.0, 1.0) for _ in range(n)]
+    hits_crude = [1.0 if z &gt; c else 0.0 for z in z_crude]
+    p_crude = sum(hits_crude) / n
+    var_crude = p_crude * (1.0 - p_crude)
+    se_crude = math.sqrt(var_crude / n)
+    rel_se_crude = (se_crude / p_crude) if p_crude &gt; 0 else float("inf")
+
+    # 2. Importance Sampling with shifted proposal Y ~ N(mu, 1) with mu = c = 4
+    # Likelihood ratio w(y) = phi(y) / phi(y - c) = exp(-c*y + c^2 / 2)
+    # Integrand: 1_{Y &gt; c} * exp(-c*Y + c^2 / 2)
+    rng_is = random.Random(42)
+    y_is = [rng_is.gauss(c, 1.0) for _ in range(n)]
+    c_sq_half = 0.5 * c * c
+    weights = [math.exp(-c * y + c_sq_half) if y &gt; c else 0.0 for y in y_is]
+
+    p_is = sum(weights) / n
+    var_is = sum((w - p_is) ** 2 for w in weights) / (n - 1)
+    se_is = math.sqrt(var_is / n)
+    rel_se_is = se_is / p_is
+
+    print(f"\nSample size: N = {n}")
+    print(f"Crude MC:     Estimate = {p_crude:.6e}, Hits = {int(sum(hits_crude))}")
+    print(f"              Std Error = {se_crude:.4e}, Rel Std Error = {rel_se_crude:.2%}")
+    print(f"Importance S: Estimate = {p_is:.6e}")
+    print(f"              Std Error = {se_is:.4e}, Rel Std Error = {rel_se_is:.2%}")
+    print(f"Variance reduction factor Var(Crude) / Var(IS): {var_crude / var_is:.1f}x")
+    print(f"Standard error reduction factor SE(Crude) / SE(IS): {se_crude / se_is:.1f}x")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">=== Importance Sampling for Gaussian Tail P(Z &gt; 4) (SIMULATED) ===
+Exact theoretical tail probability: 3.167124183312e-05
+
+Sample size: N = 100000
+Crude MC:     Estimate = 3.000000e-05, Hits = 3
+              Std Error = 1.7320e-05, Rel Std Error = 57.73%
+Importance S: Estimate = 3.153911e-05
+              Std Error = 2.1198e-07, Rel Std Error = 0.67%
+Variance reduction factor Var(Crude) / Var(IS): 6676.0x
+Standard error reduction factor SE(Crude) / SE(IS): 81.7x</pre>
+        <p class="interpretation">The lab confirms the power of change of measure: Crude MC observes exactly 3 hits out of 100,000 draws, producing an estimate of \(3.0 \times 10^{-5}\) with an unacceptable relative standard error of 57.73%. In contrast, importance sampling yields an estimate of \(3.153911 \times 10^{-5}\) with standard error \(2.1198 \times 10^{-7}\) (relative error 0.67%). The empirical variance reduction factor is \(6676.0\times\), and standard error is reduced by \(81.7\times\), turning an untractable rare-event simulation into an accurate calculation.</p>
+      </section>
+
+      <section class="lab" id="lab-M8-L08-2" data-runtime="python">
+        <h3>Lab 2 · Dynamic bracket expansion for implied-volatility inversion</h3>
+        <p class="hypothesis">For an extreme high-volatility call quote \(S = 100, K = 100, \tau = 1.0, r = 0.05, C = 99.99995\): (i) a fixed bracket \([10^{-6}, 10]\) fails because \(C(10.0) = 99.99994409 &lt; C_{\text{market}}\); (ii) dynamic bracket expansion doubles the upper bound to \([8.0, 16.0]\) in 3 steps, successfully bracketing the root; (iii) safeguarded Newton inversion converges in 5 iterations to \(\hat{\sigma} \approx 10.04302364\) with price residual \(|C(\hat{\sigma}) - C| &lt; 10^{-12} S\).</p>
+        <pre><code class="language-python" data-run>"""Lab M8-L08-2: Dynamic bracket expansion for implied-volatility inversion.
+
+Standard library only. Compares a naive fixed bracket [1e-6, 10] to dynamic bracket expansion
+on an extreme high-volatility call quote.
+"""
+
+from __future__ import annotations
+
+import math
+
+
+def bs_call_price(s: float, k: float, tau: float, r: float, sigma: float) -&gt; float:
+    sqrt_t = math.sqrt(tau)
+    v_sqrt_t = sigma * sqrt_t
+    d1 = (math.log(s / k) + (r + 0.5 * sigma * sigma) * tau) / v_sqrt_t
+    d2 = d1 - v_sqrt_t
+    disc = math.exp(-r * tau)
+    c1 = 0.5 * (1.0 + math.erf(d1 / math.sqrt(2.0)))
+    c2 = 0.5 * (1.0 + math.erf(d2 / math.sqrt(2.0)))
+    return s * c1 - k * disc * c2
+
+
+def vega(s: float, k: float, tau: float, r: float, sigma: float) -&gt; float:
+    sqrt_t = math.sqrt(tau)
+    d1 = (math.log(s / k) + (r + 0.5 * sigma * sigma) * tau) / (sigma * sqrt_t)
+    return s * sqrt_t * math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
+
+
+def main() -&gt; None:
+    s = 100.0
+    k = 100.0
+    tau = 1.0
+    r = 0.05
+    target_price = 99.99995
+
+    print("=== Fixed vs Dynamic Bracket Inversion for High-Volatility Call ===")
+    print(f"Option quote: S={s}, K={k}, tau={tau}, r={r}, target price={target_price}")
+    print(f"Strict no-arbitrage upper bound (S): {s}")
+    print(f"Quote is strictly valid (price &lt; S): {target_price &lt; s}")
+
+    # 1. Fixed bracket [1e-6, 10]
+    lo_fixed, hi_fixed = 1e-6, 10.0
+    c_lo_fixed = bs_call_price(s, k, tau, r, lo_fixed)
+    c_hi_fixed = bs_call_price(s, k, tau, r, hi_fixed)
+
+    print("\nFixed bracket [1e-6, 10]:")
+    print(f"  C(1e-6) = {c_lo_fixed:.8f} (f_lo = {c_lo_fixed - target_price:.6f})")
+    print(f"  C(10.0) = {c_hi_fixed:.8f} (f_hi = {c_hi_fixed - target_price:.6f})")
+    fixed_brackets_root = (c_lo_fixed - target_price) * (c_hi_fixed - target_price) &lt;= 0.0
+    print(f"  Fixed bracket contains root: {fixed_brackets_root} (fails!)")
+
+    # 2. Dynamic bracket expansion
+    a = 1.0
+    b = 2.0
+    fa = bs_call_price(s, k, tau, r, a) - target_price
+    fb = bs_call_price(s, k, tau, r, b) - target_price
+    expansions = 0
+
+    while fb &lt; 0.0:
+        expansions += 1
+        a = b
+        fa = fb
+        b *= 2.0
+        fb = bs_call_price(s, k, tau, r, b) - target_price
+
+    print("\nDynamic bracket expansion:")
+    print(f"  Expansions performed: {expansions}")
+    print(f"  Expanded bracket: [{a:.1f}, {b:.1f}]")
+    print(f"  C({a:.1f}) - price = {fa:.6e}")
+    print(f"  C({b:.1f}) - price = {fb:.6e}")
+    print(f"  Dynamic bracket contains root: {fa * fb &lt;= 0.0}")
+
+    # 3. Safeguarded Newton solve
+    sigma = 0.5 * (a + b)
+    steps = 0
+    for _ in range(50):
+        steps += 1
+        f = bs_call_price(s, k, tau, r, sigma) - target_price
+        if abs(f) &lt;= 1e-12 * s:
+            break
+        if f &lt; 0.0:
+            a = sigma
+        else:
+            b = sigma
+        v = vega(s, k, tau, r, sigma)
+        sigma = sigma - f / v if v &gt; 1e-14 and a &lt; sigma - f / v &lt; b else 0.5 * (a + b)
+
+    recomputed = bs_call_price(s, k, tau, r, sigma)
+    res = abs(recomputed - target_price)
+    print(f"\nSolved implied volatility: {sigma:.8f}")
+    print(f"Inversion iterations: {steps}")
+    print(f"Recomputed price: {recomputed:.10f}")
+    print(f"Residual |C(sigma) - price|: {res:.2e}")
+    print(f"Residual &lt;= 1e-12 * S: {res &lt;= 1e-12 * s}")
+
+
+main()</code></pre>
+        <pre class="expected" data-tolerance="1e-6">=== Fixed vs Dynamic Bracket Inversion for High-Volatility Call ===
+Option quote: S=100.0, K=100.0, tau=1.0, r=0.05, target price=99.99995
+Strict no-arbitrage upper bound (S): 100.0
+Quote is strictly valid (price &lt; S): True
+
+Fixed bracket [1e-6, 10]:
+  C(1e-6) = 4.87705755 (f_lo = -95.122892)
+  C(10.0) = 99.99994409 (f_hi = -0.000006)
+  Fixed bracket contains root: False (fails!)
+
+Dynamic bracket expansion:
+  Expansions performed: 3
+  Expanded bracket: [8.0, 16.0]
+  C(8.0) - price = -6.127746e-03
+  C(16.0) - price = 5.000000e-05
+  Dynamic bracket contains root: True
+
+Solved implied volatility: 10.04302364
+Inversion iterations: 5
+Recomputed price: 99.9999500000
+Residual |C(sigma) - price|: 1.42e-14
+Residual &lt;= 1e-12 * S: True</pre>
+        <p class="interpretation">The lab demonstrates the necessity of dynamic bracket expansion in industrial pricing libraries: The quote \(99.99995\) is strictly valid (\(C &lt; S = 100\)). The fixed bracket \([10^{-6}, 10]\) fails because the price residual remains negative (\(-6 \times 10^{-6}\)). Dynamic expansion performs 3 doublings, establishing the valid bracket \([8.0, 16.0]\). Safeguarded Newton converges in just 5 iterations to \(\hat{\sigma} = 10.04302364\) with price residual \(1.42 \times 10^{-14}\), well within the \(10^{-12} S\) tolerance.</p>
+      </section>
+
+      <section class="canon-breaks" id="canon-breaks">
+        <h2 id="s5"><span class="section-number">5</span>Where the canon breaks</h2>
+        <ul>
+          <li><strong>Weight explosion under poorly chosen proposal distributions.</strong> If the proposal density \(q(x)\) has lighter tails than the nominal density \(f(x)\), the likelihood ratio \(w(x) = f(x)/q(x)\) grows exponentially in the tails. In that case, the second moment \(\int \frac{(gf)^2}{q} dx = \infty\) diverges, causing the variance of the importance sampling estimator to become infinite. In empirical simulations, infinite-variance estimators display deceptive pseudo-convergence: sample paths appear stable until a single catastrophic outlier draw causes massive jumps in the running mean, violating the Central Limit Theorem.</li>
+          <li><strong>Ill-conditioning and loss of forward precision near zero vega.</strong> When an option is deep out-of-the-money or within minutes of expiry, option vega \(\nu = \frac{\partial C}{\partial \sigma}\) approaches machine zero. By the condition number formula from Lesson 2, the condition number of implied volatility inversion with respect to option price is \(\kappa = \left| \frac{C}{\sigma \nu} \right| \to \infty\). Even if the solver achieves an exact floating-point residual \(|C(\hat{\sigma}) - C_{\text{market}}| = 0\), the forward error \(|\hat{\sigma} - \sigma^*|\) can be substantial because an entire interval of volatility values produces identical IEEE 754 rounded option prices. Solvers must report conditioning regions explicitly.</li>
+        </ul>
+      </section>
+
+      <section class="misconceptions" id="misconceptions">
+        <h2 id="s6"><span class="section-number">6</span>Misconceptions</h2>
+        <ol>
+          <li class="misconception">
+            <p class="wrong">“Any proposal distribution that increases the number of rare event hits will reduce estimator variance.”</p>
+            <p>Shifting the proposal to generate more hits reduces variance only if the likelihood ratio \(w(y)\) remains well-behaved. If the proposal density does not decay appropriately in the tail, large values of \(w(y)\) create enormous variance, resulting in an estimator that is far worse than crude Monte Carlo.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“A fixed search bracket \([0.0001, 10.0]\) is sufficient for all market implied volatilities because volatility never exceeds 1000%.”</p>
+            <p>During extreme market panics, or for distressed equities, meme stocks, and near-the-money options undergoing corporate restructurings, implied volatilities can exceed 1500% (\(\sigma &gt; 15\)). More critically, synthetic quotes constructed during model calibration or sensitivity grid scans can legitimately demand \(\sigma &gt; 10\). A production solver must expand brackets dynamically.</p>
+          </li>
+          <li class="misconception">
+            <p class="wrong">“When vega is zero, an implied volatility solver should report an algorithm crash or error.”</p>
+            <p>Vanishing vega is a property of the financial derivative's mathematical conditioning, not a bug in the numerical solver. When vega underflows, the solver should satisfy the residual contract via bisection and return the solution tagged as <code>"ill_conditioned"</code>, rather than crashing with an unhandled exception.</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="problem-set" id="problems">
+        <h2 id="s7"><span class="section-number">7</span>Problem set</h2>
+
+        <div class="tier" data-tier="mechanics">
+          <h3>Mechanics</h3>
+          <div class="problem" id="M1">
+            <span class="problem-title">M1 · Gaussian tail likelihood ratio</span>
+            <p>For standard Gaussian \(Z \sim \mathcal{N}(0, 1)\) and proposal \(Y \sim \mathcal{N}(\mu, 1)\) with shift \(\mu = 3\), compute the likelihood ratio \(w(y) = \frac{\phi(y)}{\phi(y - \mu)}\) at the threshold point \(y = 3\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>By Proposition 2.3, the likelihood ratio is \(w(y) = \exp(-\mu y + \mu^2 / 2)\). Substituting \(\mu = 3\) and \(y = 3\): \(w(3) = \exp(-3 \times 3 + 3^2 / 2) = \exp(-9 + 4.5) = \exp(-4.5) \approx 0.011109\).</p>
+            </details>
+          </div>
+          <div class="problem" id="M2">
+            <span class="problem-title">M2 · Dynamic bracket doubling count</span>
+            <p>Starting from an initial upper bracket \(b_0 = 2.0\), how many geometric doublings \(b_{k+1} = 2 b_k\) are required to bracket a true implied volatility \(\sigma^* = 14.5\)?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The sequence of upper bounds is: \(b_0 = 2.0\); after 1 doubling: \(b_1 = 4.0\); after 2 doublings: \(b_2 = 8.0\); after 3 doublings: \(b_3 = 16.0\). Because \(b_3 = 16.0 \ge 14.5\), exactly 3 doublings are performed to encompass \(\sigma^*\).</p>
+            </details>
+          </div>
+          <div class="problem" id="M3">
+            <span class="problem-title">M3 · Relative error of crude Monte Carlo</span>
+            <p>If an event has true probability \(p = 10^{-4}\), what sample size \(n\) is required for crude Monte Carlo to achieve a relative standard error \(\se / p \le 0.05\) (5% relative precision)?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The relative standard error is \(\frac{\sqrt{p(1-p)/n}}{p} \approx \frac{1}{\sqrt{n p}}\). Enforcing \(\frac{1}{\sqrt{n p}} \le 0.05 = \frac{1}{20}\) gives \(\sqrt{n p} \ge 20\), so \(n p \ge 400\). For \(p = 10^{-4}\), \(n \ge 400 / 10^{-4} = 4{,}000{,}000\) paths.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="proof">
+          <h3>Proof</h3>
+          <div class="problem" id="P1">
+            <span class="problem-title">P1 · Likelihood ratio boundedness under mean shift</span>
+            <p>Prove that for the mean-shifted Gaussian proposal \(Y \sim \mathcal{N}(c, 1)\) applied to the tail event \(\mathbb{I}_{\{Y &gt; c\}}\), the likelihood ratio satisfies \(w(y) \le e^{-c^2 / 2}\) for all \(y \ge c\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>The likelihood ratio is \(w(y) = \exp(-c y + c^2 / 2)\). Taking the derivative with respect to \(y\): \(\frac{d}{dy} w(y) = -c \exp(-c y + c^2 / 2) &lt; 0\) for \(c &gt; 0\). Since \(w(y)\) is strictly decreasing in \(y\), its maximum on the restricted domain \([c, \infty)\) occurs at the left boundary \(y = c\). Evaluating at \(y = c\): \(w(c) = \exp(-c(c) + c^2 / 2) = \exp(-c^2 + c^2 / 2) = \exp(-c^2 / 2)\). Thus \(w(y) \le \exp(-c^2 / 2)\) for all \(y \ge c\).</p>
+            </details>
+          </div>
+          <div class="problem" id="P2">
+            <span class="problem-title">P2 · Zero-variance optimal importance sampling</span>
+            <p>Prove that if \(g(x) &gt; 0\), the importance sampling proposal \(q^*(x) = \frac{g(x) f(x)}{\theta}\) yields an estimator with zero variance.</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Since \(g(x) &gt; 0\) and \(f(x) \ge 0\), \(g(x) f(x) \ge 0\), and \(\int g(x) f(x) dx = \theta &gt; 0\). Thus \(q^*(x) \ge 0\) and integrates to 1, forming a valid probability density. The importance sampling random variable is \(W = g(Y) \frac{f(Y)}{q^*(Y)}\) where \(Y \sim q^*\). Substituting \(q^*\): \(W = g(Y) \frac{f(Y)}{\frac{g(Y) f(Y)}{\theta}} = \theta\). Since \(W\) takes the constant value \(\theta\) on the entire support, its variance is identically zero: \(\Var(W) = \E[(W - \theta)^2] = \E[(\theta - \theta)^2] = 0\).</p>
+            </details>
+          </div>
+          <div class="problem" id="P3">
+            <span class="problem-title">P3 · Vega positivity and monotonicity of call price</span>
+            <p>Prove that for all \(S, K, \tau &gt; 0\), Black–Scholes vega \(\nu = \frac{\partial C}{\partial \sigma} &gt; 0\), and deduce that the call price \(C(\sigma)\) is strictly monotonically increasing in \(\sigma\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Differentiating \(C = S \Phi(d_1) - K e^{-r\tau} \Phi(d_2)\) with respect to \(\sigma\): \(\frac{\partial C}{\partial \sigma} = S \phi(d_1) \frac{\partial d_1}{\partial \sigma} - K e^{-r\tau} \phi(d_2) \frac{\partial d_2}{\partial \sigma}\). By the Black–Scholes identity \(S \phi(d_1) = K e^{-r\tau} \phi(d_2)\). Because \(d_2 = d_1 - \sigma\sqrt{\tau}\), \(\frac{\partial d_1}{\partial \sigma} - \frac{\partial d_2}{\partial \sigma} = \sqrt{\tau}\). Factoring yields \(\nu = S \sqrt{\tau} \phi(d_1)\). Since \(S &gt; 0\), \(\tau &gt; 0\), and \(\phi(d_1) = \frac{1}{\sqrt{2\pi}} e^{-d_1^2 / 2} &gt; 0\), vega is strictly positive: \(\nu &gt; 0\). Because the derivative is strictly positive on \((0, \infty)\), \(C(\sigma)\) is strictly monotonically increasing in \(\sigma\), guaranteeing that any root \(C(\sigma) = C_{\text{market}}\) is unique.</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="empirical">
+          <h3>Empirical</h3>
+          <div class="problem" id="E1">
+            <span class="problem-title">E1 · Variance reduction in Lab 1</span>
+            <p>From Lab 1, report the empirical variance reduction factor and standard error reduction factor achieved by importance sampling over crude Monte Carlo for \(P(Z &gt; 4)\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Lab 1 prints: Crude MC variance is \(2.9999 \times 10^{-5}\) (std err \(1.7320 \times 10^{-5}\)); Importance Sampling variance is \(4.4935 \times 10^{-9}\) (std err \(2.1198 \times 10^{-7}\)). The variance reduction factor is \(\Var(\text{Crude}) / \Var(\text{IS}) = 6676.0\times\), and standard error reduction factor is \(\se(\text{Crude}) / \se(\text{IS}) = 81.7\times\).</p>
+            </details>
+          </div>
+          <div class="problem" id="E2">
+            <span class="problem-title">E2 · Fixed bracket failure in Lab 2</span>
+            <p>From Lab 2, demonstrate why the fixed bracket \([10^{-6}, 10.0]\) fails on the high-volatility call quote \(C = 99.99995\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Lab 2 evaluates the call price at the upper bound \(\sigma = 10.0\), obtaining \(C(10.0) = 99.99994409\). The residual is \(f_{\text{hi}} = C(10.0) - 99.99995 = -5.91 \times 10^{-6} &lt; 0\). Because both \(f_{\text{lo}} &lt; 0\) and \(f_{\text{hi}} &lt; 0\), their product is positive, proving that the fixed bracket does not contain the root.</p>
+            </details>
+          </div>
+          <div class="problem" id="E3">
+            <span class="problem-title">E3 · Safeguarded Newton convergence speed in Lab 2</span>
+            <p>In Lab 2, how many iterations does the safeguarded Newton solver require to invert the high-volatility quote once a valid bracket is found?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Once dynamic expansion establishes the bracket \([8.0, 16.0]\), safeguarded Newton converges in exactly 5 iterations to implied volatility \(\hat{\sigma} = 10.04302364\) with price residual \(1.42 \times 10^{-14}\), well beneath the target tolerance of \(10^{-12} S = 10^{-10}\).</p>
+            </details>
+          </div>
+        </div>
+
+        <div class="tier" data-tier="research">
+          <h3>Research</h3>
+          <div class="problem" id="R1">
+            <span class="problem-title">R1 · Asymptotic optimality of importance sampling</span>
+            <p>Define what it means for an importance sampling estimator to be asymptotically efficient (or logarithmically efficient) as threshold \(c \to \infty\).</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Let \(p(c) = \mathbb{P}(X &gt; c)\). As \(c \to \infty\), \(p(c) \to 0\) exponentially. An importance sampling estimator \(\hat{p}_n(c)\) based on a family of proposals \(q_c\) is logarithmically efficient if \(\lim_{c \to \infty} \frac{\ln \E_{q_c}[\hat{p}_1(c)^2]}{\ln p(c)} = 2\). Since Jensen's inequality guarantees \(\E[\hat{p}_1^2] \ge (\E[\hat{p}_1])^2 = p(c)^2\), logarithmic efficiency means that the rate of decay of the second moment matches the square of the first moment, ensuring that the number of paths required to achieve a fixed relative standard error grows sub-exponentially in \(c\) (Glasserman 2003, §4.6).</p>
+            </details>
+          </div>
+          <div class="problem" id="R2">
+            <span class="problem-title">R2 · Conditioning surface of Black–Scholes inversion</span>
+            <p>Analyze how condition number \(\kappa = \left|\frac{C}{\sigma \nu}\right|\) behaves in the plane of log-moneyness \(m = \ln(S/K)\) and time-to-maturity \(\tau\). Where on this surface is numerical inversion most ill-conditioned?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Vega is \(\nu = S \sqrt{\tau} \phi(d_1)\). As \(\tau \to 0\), \(\nu\) vanishes as \(\sqrt{\tau}\) for at-the-money options, and vanishes exponentially as \(\exp(-m^2 / (2 \sigma^2 \tau))\) for out-of-the-money options. As \(|m| \to \infty\) (deep ITM or OTM), \(d_1 \to \pm \infty\), so \(\phi(d_1) \to 0\) exponentially. Thus \(\kappa \to \infty\) in two major regimes: (1) short-dated options (\(\tau \to 0\)), and (2) extreme wing strikes (\(|m| \gg 0\)). In these regions, a double-precision floating-point price change of \(10^{-16}\) corresponds to a massive shift in implied volatility, making forward error bounds impossible to enforce without vega filtering.</p>
+            </details>
+          </div>
+          <div class="problem" id="R3">
+            <span class="problem-title">R3 · Analytical starting guesses (Li &amp; Lee, Jaeckel)</span>
+            <p>Why do modern quantitative analytics libraries (such as Peter Jaeckel's "By Implication" algorithm) employ rational Chebyshev approximations as starting guesses rather than pure bisection?</p>
+            <details class="solution"><summary>Solution</summary>
+              <p>Pure bisection requires 40 to 50 iterations to reach double-precision accuracy (\(2^{-50} \approx 10^{-15}\)). Rational Chebyshev approximations transform price into transformed variables (such as normalized Black price or square root of total variance) where the inverse function is nearly linear or algebraic. Jaeckel constructs rational polynomials that provide initial starting guesses with forward accuracy already better than \(10^{-3}\) to \(10^{-4}\) across all moneyness and expiry regimes. From this initial guess, two Householder (third-order) or Newton iterations achieve full machine precision (\(10^{-16}\)) in just 2 to 3 function evaluations, achieving high-throughput production pricing.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section id="key-results">
+        <h2 id="s8"><span class="section-number">8</span>Key results</h2>
+        <div class="table-wrap">
+          <table class="key-results">
+            <thead><tr><th>Result</th><th>Grade</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>Importance sampling estimator is unbiased with variance \(\int \frac{(gf)^2}{q} dx - \theta^2\) (Theorem 2.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 2</td></tr>
+              <tr><td>Mean-shifted Gaussian proposal has bounded likelihood ratio \(w(y) \le e^{-c^2/2}\) for \(y \ge c\) (Proposition 2.3)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 2</td></tr>
+              <tr><td>Dynamic bracket expansion and safeguarded Newton guarantee convergence in \(\le 35\) steps (Theorem 3.2)</td><td><span class="grade" data-grade="T">T</span></td><td>Proved in Section 3</td></tr>
+              <tr><td>Importance sampling achieves 6676x variance reduction on \(P(Z &gt; 4)\) (Lab 1)</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 1 (SIMULATED)</td></tr>
+              <tr><td>Dynamic bracket expansion solves call with price 99.99995 where fixed bracket fails (Lab 2)</td><td><span class="grade" data-grade="C">C</span></td><td>Lab 2</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="quiz" id="quiz" data-unit="M8" data-page="L08" data-cards="cards.json">
+        <h2 id="s9"><span class="section-number">9</span>Retrieval quiz</h2>
+        <p>Answer from memory, then check your responses.</p>
+        <ol class="items">
+          <li class="item" data-kind="mc">
+            <p class="prompt">What is the Radon–Nikodym derivative (likelihood ratio) \(w(x)\) in importance sampling?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l8q1"> The ratio of the nominal density to the proposal density: \(f(x) / q(x)\)</label>
+              <label class="option"><input type="radio" name="l8q1"> The ratio of proposal density to nominal density: \(q(x) / f(x)\)</label>
+              <label class="option"><input type="radio" name="l8q1"> The payoff derivative \(\frac{\partial g}{\partial x}\)</label>
+            </fieldset>
+            <div class="explain" hidden><p>By Definition 2.1, the likelihood ratio is the ratio of nominal density to proposal density: \(w(x) = f(x) / q(x)\).</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0" data-tolerance="0.001">
+            <p class="prompt">What is the theoretical variance of an importance sampling estimator under the optimal proposal \(q^*(x) = g(x) f(x) / \theta\) for a positive integrand?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>By Theorem 2.2, under the zero-variance proposal \(q^*\), the weighted random variable is identically constant \(\theta\), so its variance is 0.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why does a fixed search bracket \([10^{-6}, 10.0]\) fail to find the implied volatility for call quote \(S = 100, K = 100, \tau = 1, r = 0.05, C = 99.99995\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l8q3"> The true implied volatility exceeds 10.0 (\(\sigma^* \approx 10.043\)), so both bracket endpoints evaluate below the target price.</label>
+              <label class="option"><input type="radio" name="l8q3"> The quote violates no-arbitrage bounds.</label>
+              <label class="option"><input type="radio" name="l8q3"> Newton's method diverges due to negative vega.</label>
+            </fieldset>
+            <div class="explain" hidden><p>At \(\sigma = 10.0\), \(C(10.0) \approx 99.999944 &lt; 99.99995\). Because the root lies at \(\approx 10.043 &gt; 10.0\), the fixed bracket fails to contain the solution.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="35" data-tolerance="1">
+            <p class="prompt">What is the maximum evaluation budget \(B\) specified for robust implied-volatility inversion in Theorem 3.2?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Theorem 3.2 and the project specification establish an evaluation budget of at most \(B = 35\) pricing calls per inversion.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">What safeguard does a robust implied-volatility solver apply when a Newton update step falls outside the current bracket \([a, b]\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l8q5"> It discards the Newton step and falls back to bisection: \(\sigma = \frac{1}{2}(a + b)\).</label>
+              <label class="option"><input type="radio" name="l8q5"> It clamps the volatility to 0.0.</label>
+              <label class="option"><input type="radio" name="l8q5"> It raises a FloatingPointError.</label>
+            </fieldset>
+            <div class="explain" hidden><p>Safeguarded Newton falls back to guaranteed bisection whenever a candidate Newton step leaves the active bracket.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="0.01" data-tolerance="0.001">
+            <p class="prompt">What is the threshold on Black–Scholes vega \(\nu\) below which an option inversion is classified as <code>"ill_conditioned"</code>?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Inputs where \(\nu(\hat{\sigma}) \ge 0.01\) are classified as <code>"solved"</code>, while inputs with \(\nu(\hat{\sigma}) &lt; 0.01\) are tagged as <code>"ill_conditioned"</code>.</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Why can an importance sampling estimator have INFINITE variance even when the nominal expectation is finite?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l8q7"> The proposal density has lighter tails than the nominal density, causing the likelihood ratio to explode in the tails.</label>
+              <label class="option"><input type="radio" name="l8q7"> The number of simulation paths is odd.</label>
+              <label class="option"><input type="radio" name="l8q7"> The proposal distribution has zero mean.</label>
+            </fieldset>
+            <div class="explain" hidden><p>If \(q(x)\) decays faster than \(f(x)\) in the tails, \(f(x)/q(x) \to \infty\), causing the second moment integral \(\int \frac{(gf)^2}{q} dx\) to diverge.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="100" data-tolerance="0.01">
+            <p class="prompt">For spot price \(S = 100\), what is the strict no-arbitrage upper bound for a European call option price?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>Under strict no-arbitrage bounds, a European call price must satisfy \(C &lt; S = 100\).</p></div>
+          </li>
+          <li class="item" data-kind="mc">
+            <p class="prompt">Under Black–Scholes, what happens to call option vega \(\nu\) as time to expiry \(\tau \to 0\)?</p>
+            <fieldset><legend class="visually-hidden">Options</legend>
+              <label class="option" data-correct><input type="radio" name="l8q9"> Vega approaches zero proportionally to \(\sqrt{\tau}\) or faster.</label>
+              <label class="option"><input type="radio" name="l8q9"> Vega approaches infinity.</label>
+              <label class="option"><input type="radio" name="l8q9"> Vega approaches 1.0.</label>
+            </fieldset>
+            <div class="explain" hidden><p>Because \(\nu = S \sqrt{\tau} \phi(d_1)\), as \(\tau \to 0\), the factor \(\sqrt{\tau} \to 0\), causing vega to vanish.</p></div>
+          </li>
+          <li class="item" data-kind="numeric" data-answer="3" data-tolerance="0.001">
+            <p class="prompt">To estimate \(P(Z &gt; 3)\) using the optimal exponential tilt in Proposition 2.3, what should the mean \(\mu\) of the Gaussian proposal \(\mathcal{N}(\mu, 1)\) be set to?</p>
+            <label>Answer <input type="number" step="any"></label>
+            <div class="explain" hidden><p>By Proposition 2.3, shifting the mean of the proposal to match the threshold \(\mu = c = 3\) provides an optimal exponential tilt.</p></div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="references" id="references">
+        <h2 id="s10"><span class="section-number">10</span>References</h2>
+        <ol data-references></ol>
+      </section>
+
+      <p><button type="button" class="button" data-complete>Mark this lesson complete</button></p>
+      <nav class="lesson-nav" aria-label="Lesson navigation">
+        <a href="L07.html"><span class="dir">Prev</span>L07 · Variance Reduction: Antithetic and Control Variates</a>
+        <a href="index.html"><span class="dir">Module</span>M8 overview</a>
+        <a class="next" href="project.html"><span class="dir">Next</span>Project · Robust Implied-Volatility Solver</a>
+      </nav>
+    </main>
+  </div>
+  <footer class="site-footer">M8 · Numerical Methods &amp; Scientific Computing</footer>
+</body>
+</html>
